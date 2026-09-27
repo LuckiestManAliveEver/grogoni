@@ -314,6 +314,13 @@ export interface MessagingDomainDeps {
           title: string;
           body: string;
         }
+      | {
+          type: "network.connection";
+          connectionId: string;
+          event: "requested" | "accepted";
+          title: string;
+          body: string;
+        }
   ) => Promise<"sent" | "failed" | "expired">;
   messageEmailNotificationSender?: (input: {
     conversationId: string;
@@ -3380,6 +3387,35 @@ export class MessagingDomain {
       if (result.status === "sent") summary.sent += 1;
       else if (result.status === "dead_letter") summary.deadLettered += 1;
       else summary.failed += 1;
+    }
+    return summary;
+  }
+
+  /**
+   * Best-effort push to every device one account subscribed. Expired subscriptions are dropped,
+   * the same as broadcastAppUpdateAvailable; nothing is retried (callers with a durable path, like
+   * the in-app connection-request prompt, use this only as a nudge).
+   */
+  async pushToAccount(
+    accountId: string,
+    payload: Parameters<NonNullable<MessagingDomainDeps["pushNotificationSender"]>>[1]
+  ): Promise<{ targeted: number; sent: number; expired: number; failed: number }> {
+    const summary = { targeted: 0, sent: 0, expired: 0, failed: 0 };
+    if (this.deps.pushNotificationSender === undefined) return summary;
+
+    for (const subscription of [...this.pushSubscriptions.values()]) {
+      if (subscription.accountId !== accountId) continue;
+      summary.targeted += 1;
+      const outcome = await this.deps.pushNotificationSender(subscription, payload);
+      if (outcome === "sent") {
+        summary.sent += 1;
+      } else if (outcome === "expired") {
+        summary.expired += 1;
+        this.pushSubscriptions.delete(subscription.id);
+        this.pushSubscriptionIdByEndpoint.delete(subscription.endpoint);
+      } else {
+        summary.failed += 1;
+      }
     }
     return summary;
   }

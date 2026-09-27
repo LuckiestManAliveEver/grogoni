@@ -137,4 +137,40 @@ describe("service worker: app-update push notifications", () => {
     expect(focus).toHaveBeenCalledTimes(1);
     expect(sw.self.clients.openWindow).not.toHaveBeenCalled();
   });
+
+  it("shows a connection request as its own notification, not a chat message", async () => {
+    const handler = sw.listeners.get("push");
+    const { event, settled } = pushEvent({
+      type: "network.connection",
+      connectionId: "c-1",
+      event: "requested",
+      title: "Amina wants to connect on Soko",
+      body: "Open Soko to accept or decline."
+    });
+
+    handler?.(event);
+    await settled();
+
+    expect(sw.self.registration.showNotification).toHaveBeenCalledWith(
+      "Amina wants to connect on Soko",
+      expect.objectContaining({
+        body: "Open Soko to accept or decline.",
+        tag: "soko-connection-c-1",
+        data: { type: "network.connection", url: "/" }
+      })
+    );
+  });
+
+  it("brings the app forward when a connection notification is clicked", async () => {
+    const focus = vi.fn().mockResolvedValue(undefined);
+    sw.self.clients.matchAll.mockResolvedValueOnce([{ focus, postMessage: vi.fn() }]);
+    const handler = sw.listeners.get("notificationclick");
+    const { event, settled } = notificationClickEvent({ type: "network.connection", url: "/" });
+
+    handler?.(event);
+    await settled();
+
+    expect(focus).toHaveBeenCalledTimes(1);
+    expect(sw.self.clients.openWindow).not.toHaveBeenCalled();
+  });
 });

@@ -214,7 +214,14 @@ before the purge sweep runs.
 
 The recipient sees waiting requests in the app shell (`ConnectionRequestsPrompt`, next to staff
 invitations, rechecked when the app returns to the foreground) and in Phone Contacts, and can
-accept or decline from either.
+accept or decline from either. They are also pushed on every device they enabled notifications
+on: the recipient when someone asks, the requester when the other side accepts (including by
+asking back). Pushes hang off the `network.connection_requested` / `_accepted` audit events, so a
+decline (private) and a re-ask after a cancel (no new event) never push anyone. Push is best
+effort and off the request path: a failed push never fails the request, expired subscriptions are
+dropped (persisted with the next mutation, as for app-update pushes), and each push records a
+`network.connection_push` audit event with its sent/expired/failed counts. The service worker
+shows it as its own notification and opens the app on click, where the prompt shows the request.
 
 Audit events: `network.connection_requested`, `network.connection_accepted` (`via: response` or
 `mutual`), `network.connection_declined`, `network.connection_removed`, and

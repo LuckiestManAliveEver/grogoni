@@ -930,6 +930,15 @@ export type PushNotificationPayload =
       service: string;
       title: string;
       body: string;
+    }
+  // Someone asked to connect, or accepted. Best effort: the in-app ConnectionRequestsPrompt is
+  // the durable path, this is the nudge.
+  | {
+      type: "network.connection";
+      connectionId: string;
+      event: "requested" | "accepted";
+      title: string;
+      body: string;
     };
 
 export type PushNotificationSender = (
@@ -1087,8 +1096,10 @@ export class Cp2Store {
       businesses: this.businesses,
       userIdentities: this.oauthDomain.userIdentitiesMap,
       users: this.users,
-      recordAuditEvent: (event) =>
-        this.recordAuditEvent({ ...event, aggregateType: "network_connection" }),
+      recordAuditEvent: (event) => {
+        this.recordAuditEvent({ ...event, aggregateType: "network_connection" });
+        this.notifyNetworkConnection(event);
+      },
       ...(options.networkLimits === undefined ? {} : { limits: options.networkLimits })
     });
     this.salesDomain = new SalesDomain({
@@ -12469,6 +12480,65 @@ export class Cp2Store {
           entity ? { ...entity } : null
         );
     }
+  }
+
+  /**
+   * Push the other person when someone asks to connect or accepts: the requested/accepted audit
+   * events NetworkDomain emits. A decline emits nothing to its requester (declines are private),
+   * and re-asking after a cancel emits no event, so neither can be used to push anyone. Best
+   * effort, off the request path: the in-app prompt is the durable way requests are seen.
+   */
+  private notifyNetworkConnection(event: {
+    type: string;
+    actorId: string;
+    aggregateId: string;
+    payload: Record<string, unknown>;
+  }): void {
+    if (
+      event.type !== "network.connection_requested" &&
+      event.type !== "network.connection_accepted"
+    ) {
+      return;
+    }
+    const requesterUserId = String(event.payload.requesterUserId);
+    const recipientUserId = String(event.payload.recipientUserId);
+    const notifyUserId = event.actorId === requesterUserId ? recipientUserId : requesterUserId;
+    const accountId = this.users.get(notifyUserId)?.accountId;
+    const summary = this.networkDomain.connectionSummaryFor(event.aggregateId, notifyUserId);
+    if (accountId === undefined || summary === null) return;
+
+    const name = summary.counterpartDisplayName;
+    const requested = event.type === "network.connection_requested";
+    void this.messagingDomain
+      .pushToAccount(accountId, {
+        type: "network.connection",
+        connectionId: event.aggregateId,
+        event: requested ? "requested" : "accepted",
+        title: requested
+          ? `${name} wants to connect on Soko`
+          : `You are now connected with ${name}`,
+        body: requested ? "Open Soko to accept or decline." : "Open Soko to see your network."
+      })
+      .then((outcome) => {
+        if (outcome.targeted === 0) return;
+        this.recordAuditEvent({
+          type: "network.connection_push",
+          aggregateType: "network_connection",
+          aggregateId: event.aggregateId,
+          actorId: notifyUserId,
+          occurredAt: new Date().toISOString(),
+          payload: { event: requested ? "requested" : "accepted", ...outcome }
+        });
+      })
+      .catch((error: unknown) => {
+        console.error(
+          JSON.stringify({
+            event: "network.connection_push_failed",
+            connectionId: event.aggregateId,
+            message: error instanceof Error ? error.message : String(error)
+          })
+        );
+      });
   }
 
   private recordAuditEvent(input: {

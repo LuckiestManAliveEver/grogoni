@@ -510,6 +510,21 @@ export class NetworkDomain {
     return this.networkGraphForUser(session.user.id, now);
   }
 
+  /**
+   * How one party sees a connection, for notifying them; null when it is not visible to them
+   * (for example a declined request, for its recipient).
+   */
+  connectionSummaryFor(
+    connectionId: string,
+    viewerUserId: string
+  ): NetworkConnectionSummary | null {
+    return (
+      listNetworkConnections(this.connectionDeps(), viewerUserId).find(
+        (connection) => connection.id === connectionId
+      ) ?? null
+    );
+  }
+
   listConnections(input: { sessionId: string | null; now?: Date }): NetworkConnectionSummary[] {
     const now = input.now ?? new Date();
     const session = this.deps.requirePinVerifiedSession(input.sessionId, now);

@@ -240,6 +240,22 @@ self.addEventListener("push", (event) => {
     payload = {};
   }
 
+  // Someone asked to connect or accepted. Handled before the message fallback below, which
+  // would otherwise show it as "New Soko message". The app's connection prompt shows the request
+  // when the app opens or regains focus, so the click only has to bring the app forward.
+  if (payload.type === "network.connection") {
+    event.waitUntil(
+      self.registration.showNotification(payload.title || "New connection request on Soko", {
+        body: payload.body || "Open Soko to accept or decline.",
+        icon: "/icons/soko-icon-192.png",
+        badge: "/icons/soko-icon-192.png",
+        tag: payload.connectionId ? `soko-connection-${payload.connectionId}` : "soko-connection",
+        data: { type: "network.connection", url: "/" }
+      })
+    );
+    return;
+  }
+
   if (payload.type === "app.update_available") {
     event.waitUntil(
       Promise.all([
@@ -278,7 +294,10 @@ self.addEventListener("push", (event) => {
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
 
-  if (event.notification.data?.type === "app.update_available") {
+  if (
+    event.notification.data?.type === "app.update_available" ||
+    event.notification.data?.type === "network.connection"
+  ) {
     event.waitUntil(
       self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
         const existing = clients[0];
