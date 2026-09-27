@@ -11,6 +11,9 @@ describe("web bundle budget gate", () => {
     expect(budget).toContain("initialJavaScriptGzip");
     expect(budget).toContain("ownerRouteGzip");
     expect(budget).toContain('item.name === "SokoApplication"');
+    // The owner route counts its whole eager closure, not just its own chunk.
+    expect(budget).toContain("collectStaticFiles(ownerRoute, ownerRouteFiles)");
+    expect(budget).toContain("!initialFiles.has(file)");
     expect(budget).not.toContain("browser-model.worker");
     expect(packageJson).toContain("check:web-bundle-budgets");
   });

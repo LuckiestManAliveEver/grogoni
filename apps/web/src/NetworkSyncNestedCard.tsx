@@ -6,6 +6,7 @@ import type { NetworkInviteSummary } from "@soko/shared-types";
 
 import type { NetworkConnectionAction } from "./hooks/useNetworkState";
 import { LazyModuleErrorBoundary } from "./LazyModuleErrorBoundary";
+import { loadLazyModuleWithRecovery, workspaceModuleKeys } from "./lazy-module-recovery";
 import type { DevicePhonebookContact } from "./phonebook-directory";
 import type { InviteOutcome } from "./phonebook-sync";
 import {
@@ -19,10 +20,12 @@ import {
 } from "./soko-application-shared";
 
 // Only rendered once the owner opens Phone Contacts: kept out of the owner route's chunk.
-const PhoneContactsCard = lazy(async () => {
-  const module = await import("./PhoneContactsCard");
-  return { default: module.PhoneContactsCard };
-});
+const PhoneContactsCard = lazy(() =>
+  loadLazyModuleWithRecovery(
+    workspaceModuleKeys.phoneContacts,
+    () => import("./PhoneContactsCard")
+  ).then((module) => ({ default: module.PhoneContactsCard }))
+);
 
 export function NetworkSyncNestedCard({
   graph,
@@ -103,7 +106,7 @@ export function NetworkSyncNestedCard({
 
   if (view === "phone") {
     return (
-      <LazyModuleErrorBoundary moduleKey="phone-contacts" label="Phone Contacts">
+      <LazyModuleErrorBoundary moduleKey={workspaceModuleKeys.phoneContacts} label="Phone Contacts">
         <Suspense fallback={<div className="inline-loading-card">Opening Phone Contacts…</div>}>
           <PhoneContactsCard
             connected={phoneSource !== null}

@@ -1,3 +1,6 @@
+import { Suspense } from "react";
+import { LazyModuleErrorBoundary } from "./LazyModuleErrorBoundary";
+import * as Screens from "./owner-workspace-screens";
 import {
   emptyCustomerForm,
   emptyInvoiceForm,
@@ -6,19 +9,12 @@ import {
 } from "./soko-application-shared";
 import type { ShellView } from "./app-shell";
 import { ProductSurface } from "./ProductSurface";
-import { SupplierSurface } from "./SupplierSurface";
 import { CustomerSurface } from "./CustomerSurface";
-import { PosTerminal } from "./PosTerminal";
 import { InvoiceSurface } from "./InvoiceSurface";
 import { NetworkSurface } from "./NetworkSurface";
 import { SyncSurface } from "./SyncSurface";
 import { RuntimeSurface } from "./RuntimeSurface";
 import { PaymentSurface } from "./PaymentSurface";
-import { ImportSurface } from "./ImportSurface";
-import { LogisticsSurface } from "./LogisticsSurface";
-import { ComplianceSurface } from "./ComplianceSurface";
-import { BetaSurface } from "./BetaSurface";
-import { LaunchSurface } from "./LaunchSurface";
 import { ReportsSurface } from "./ReportsSurface";
 import { NotificationsSurface } from "./NotificationsSurface";
 
@@ -254,7 +250,19 @@ export interface OwnerWorkspaceBindings {
   chatThreadState: ChatThreadState;
 }
 
+/** The open workspace screen, inside one recovery boundary so a lazily loaded screen can load. */
 export function renderOwnerWorkspace(input: OwnerWorkspaceBindings) {
+  const screen = renderOwnerWorkspaceScreen(input);
+  if (screen === null) return null;
+  const moduleKey = `workspace-${input.view}`;
+  return (
+    <LazyModuleErrorBoundary key={input.view} moduleKey={moduleKey} label="This screen">
+      <Suspense fallback={<div className="inline-loading-card">Opening…</div>}>{screen}</Suspense>
+    </LazyModuleErrorBoundary>
+  );
+}
+
+function renderOwnerWorkspaceScreen(input: OwnerWorkspaceBindings) {
   const { businessId, publicStorefrontUrl, view } = input;
   if (businessId === null) return null;
   const { runAction } = input.asyncActions;
@@ -448,7 +456,7 @@ export function renderOwnerWorkspace(input: OwnerWorkspaceBindings) {
       );
     case "suppliers":
       return (
-        <SupplierSurface
+        <Screens.SupplierSurface
           businessId={businessId}
           suppliers={suppliers}
           purchaseReceipts={purchaseReceipts}
@@ -519,7 +527,7 @@ export function renderOwnerWorkspace(input: OwnerWorkspaceBindings) {
       );
     case "pos":
       return (
-        <PosTerminal
+        <Screens.PosTerminal
           businessId={businessId}
           products={products}
           customers={customers}
@@ -673,7 +681,7 @@ export function renderOwnerWorkspace(input: OwnerWorkspaceBindings) {
       );
     case "imports":
       return (
-        <ImportSurface
+        <Screens.ImportSurface
           form={importForm}
           importJobs={importJobs}
           activeImportJob={activeImportJob}
@@ -689,7 +697,7 @@ export function renderOwnerWorkspace(input: OwnerWorkspaceBindings) {
       );
     case "logistics":
       return (
-        <LogisticsSurface
+        <Screens.LogisticsSurface
           businessId={businessId}
           viewerPermissions={input.businessPermissions}
           invoices={invoices}
@@ -705,7 +713,7 @@ export function renderOwnerWorkspace(input: OwnerWorkspaceBindings) {
       );
     case "compliance":
       return (
-        <ComplianceSurface
+        <Screens.ComplianceSurface
           form={complianceForm}
           securityReview={securityReview}
           dataExport={dataExport}
@@ -722,7 +730,7 @@ export function renderOwnerWorkspace(input: OwnerWorkspaceBindings) {
       );
     case "beta":
       return (
-        <BetaSurface
+        <Screens.BetaSurface
           form={betaForm}
           readiness={betaReadiness}
           supportTickets={betaSupportTickets}
@@ -744,7 +752,7 @@ export function renderOwnerWorkspace(input: OwnerWorkspaceBindings) {
       );
     case "launch":
       return (
-        <LaunchSurface
+        <Screens.LaunchSurface
           form={launchForm}
           readiness={launchReadiness}
           incidents={launchIncidents}

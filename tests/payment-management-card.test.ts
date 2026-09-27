@@ -11,8 +11,9 @@ describe("payments chat-invokable capability (Phase 4e)", () => {
   it("registers a payment-management card in the generated-surface registry", () => {
     expect(registry).toContain('"payment-management": (content) => {');
     expect(registry).toContain("<PaymentManagementCard");
-    expect(soko).toContain(
-      'export const PaymentManagementCard = lazy(() => import("./PaymentManagementCard"));'
+    // Lazy, and through the deploy-recovery loader (tests/lazy-module-recovery-coverage.test.ts).
+    expect(soko).toMatch(
+      /export const PaymentManagementCard = lazy\(\s*\(\) =>\s*loadLazyModuleWithRecovery\(\s*ownerModuleKeys\.paymentManagementCard,\s*\(\) =>\s*import\("\.\/PaymentManagementCard"\)/u
     );
   });
 

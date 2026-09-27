@@ -3,12 +3,19 @@ import type { AccountShopSummary } from "@soko/shared-types";
 import { AuthenticationActionMessage } from "./AuthenticationActionMessage";
 import { isRedundantAgentErrorMessage } from "./chat-message-plumbing";
 import StaffInvitationsPrompt from "./StaffInvitationsPrompt";
+import { LazyModuleErrorBoundary } from "./LazyModuleErrorBoundary";
+import { loadLazyModuleWithRecovery, workspaceModuleKeys } from "./lazy-module-recovery";
 import { authenticationRoute } from "./routes";
 import { readPendingJoin } from "./staff-join-link";
 import { staffCopy } from "./staff-copy";
 
 // Renders nothing unless someone asked to connect: loaded after the shell, not with it.
-const ConnectionRequestsPrompt = lazy(() => import("./ConnectionRequestsPrompt"));
+const ConnectionRequestsPrompt = lazy(() =>
+  loadLazyModuleWithRecovery(
+    workspaceModuleKeys.connectionRequests,
+    () => import("./ConnectionRequestsPrompt")
+  )
+);
 
 // The notices at the top of the app shell: the last action's status line, invitations to join a
 // business waiting for the signed-in person (docs/architecture/staff-invitations.md), and requests
@@ -46,9 +53,14 @@ export default function ShellNotices(props: {
         <StaffInvitationsPrompt accountId={props.accountId} onJoined={props.onJoinedShop} />
       )}
       {props.accountId === null ? null : (
-        <Suspense fallback={null}>
-          <ConnectionRequestsPrompt accountId={props.accountId} />
-        </Suspense>
+        <LazyModuleErrorBoundary
+          moduleKey={workspaceModuleKeys.connectionRequests}
+          label="Connection requests"
+        >
+          <Suspense fallback={null}>
+            <ConnectionRequestsPrompt accountId={props.accountId} />
+          </Suspense>
+        </LazyModuleErrorBoundary>
       )}
     </>
   );

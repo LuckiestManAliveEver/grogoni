@@ -35,8 +35,12 @@ const AccountDeletionPage = lazy(() =>
   )
 );
 const OwnerApp = lazy(() => loadSokoApplication().then((module) => ({ default: module.OwnerApp })));
+// Loaded on its own: a storefront visitor chats with a shop without downloading the owner app.
 const PublicStorefront = lazy(() =>
-  loadSokoApplication().then((module) => ({ default: module.PublicStorefrontChat }))
+  loadLazyModuleWithRecovery(
+    appRouteModuleKeys.publicStorefront,
+    () => import("./PublicStorefrontChat")
+  ).then((module) => ({ default: module.PublicStorefrontChat }))
 );
 
 function loadSokoApplication() {

@@ -137,7 +137,6 @@ import {
   loadLazyModuleWithRecovery,
   registerPreReloadFlush
 } from "./lazy-module-recovery";
-export { PublicStorefrontChat } from "./PublicStorefrontChat";
 
 import ShellNotices from "./ShellNotices";
 import { permissionsForOpenShop } from "./active-shop-permissions";

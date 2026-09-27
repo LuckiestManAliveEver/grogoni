@@ -14,7 +14,14 @@ const initialCssGzip = sumGzip([...initialFiles].filter((file) => file.endsWith(
 const ownerRoute = Object.values(manifest).find(
   (item) => item.src?.endsWith("src/SokoApplication.tsx") || item.name === "SokoApplication"
 );
-const ownerRouteGzip = ownerRoute ? gzipBytes(ownerRoute.file) : 0;
+// Everything opening the owner app downloads beyond the initial page: its chunk plus every chunk
+// it statically imports. Measuring the chunk alone would let a split that merely moves code into
+// a sibling eager chunk "pass" without saving the user a byte.
+const ownerRouteFiles = new Set();
+if (ownerRoute) collectStaticFiles(ownerRoute, ownerRouteFiles);
+const ownerRouteGzip = sumGzip(
+  [...ownerRouteFiles].filter((file) => file.endsWith(".js") && !initialFiles.has(file))
+);
 
 const budgets = {
   initialJavaScriptGzip: 250 * 1024,

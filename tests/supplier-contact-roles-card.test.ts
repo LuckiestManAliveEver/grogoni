@@ -46,6 +46,6 @@ describe("supplier contact roles card", () => {
   });
 
   it("OwnerWorkspace passes the in-scope businessId into SupplierSurface", () => {
-    expect(normalizedOwnerWorkspace).toContain("<SupplierSurface businessId={businessId}");
+    expect(normalizedOwnerWorkspace).toContain("<Screens.SupplierSurface businessId={businessId}");
   });
 });

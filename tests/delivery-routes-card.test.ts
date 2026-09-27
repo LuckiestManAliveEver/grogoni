@@ -43,7 +43,9 @@ describe("delivery routes card (permanent surface, no chat wiring)", () => {
   });
 
   it("receives businessId from OwnerWorkspace's logistics case, the only change made there", () => {
-    expect(ownerWorkspace).toContain("<LogisticsSurface\n          businessId={businessId}");
+    expect(ownerWorkspace).toContain(
+      "<Screens.LogisticsSurface\n          businessId={businessId}"
+    );
   });
 
   it("does not add any new chat/NLU capability wiring for delivery routes", () => {
