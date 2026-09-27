@@ -768,6 +768,45 @@ describe("invites", () => {
     expect(tooManyConnections.statusCode).toBe(400);
     await app.close();
   });
+  it("keeps the discovery budget across a restart, and purges it with the account", async () => {
+    const store = createCp2Store({ networkLimits: { phonebookSyncDailyBudget: 2 } });
+    const app = buildApi({ cp2: { store } });
+    const alice = await signUp(app, alicePhone, { business: true });
+    await syncContacts(app, alice.cookie, "merge", [
+      { name: "A", phone: "+254722000001" },
+      { name: "B", phone: "+254722000002" }
+    ]);
+    await app.close();
+
+    // A restart: a fresh store hydrated from the persisted snapshot.
+    const restarted = createCp2Store({ networkLimits: { phonebookSyncDailyBudget: 2 } });
+    restarted.hydrateSnapshot(store.snapshot());
+    const restartedApp = buildApi({ cp2: { store: restarted } });
+    const refused = await request(restartedApp, "POST", "/network/sync/contacts", alice.cookie, {
+      mode: "merge",
+      contacts: [{ name: "C", phone: "+254722000003" }]
+    });
+    expect(refused.statusCode).toBe(429);
+    expect(restarted.snapshot().discoveryBudgets).toEqual([
+      expect.objectContaining({
+        userId: alice.userId,
+        entries: [expect.objectContaining({ count: 2 })]
+      })
+    ]);
+
+    const now = new Date();
+    restarted.requestAccountDeletion({
+      sessionId: readSessionCookie(alice.cookie),
+      businessId: alice.businessId!,
+      deletion: { confirmation: "DELETE", reason: "budget purge proof" },
+      now
+    });
+    await restarted.purgeExpiredAccountDeletions(
+      new Date(now.getTime() + 40 * 24 * 60 * 60 * 1000)
+    );
+    expect(restarted.snapshot().discoveryBudgets).toEqual([]);
+    await restartedApp.close();
+  });
 });
 
 async function signUpByEmail(app: App, email: string) {

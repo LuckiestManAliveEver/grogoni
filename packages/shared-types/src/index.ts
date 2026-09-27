@@ -1779,6 +1779,16 @@ export interface SokoIdentityLinkSummary {
  */
 export type NetworkConnectionStatus = "pending" | "accepted" | "declined";
 
+/**
+ * One user's discovery spending in the last 24 hours (NetworkDomain's daily budget of numbers
+ * asked about). Persisted so a restart does not reset it. `id` is the user id: one record each.
+ */
+export interface DiscoveryBudgetRecord {
+  id: string;
+  userId: string;
+  entries: Array<{ at: string; count: number }>;
+}
+
 export interface NetworkConnectionRecord {
   id: string;
   requesterUserId: string;

@@ -41,6 +41,7 @@ import type {
   ExternalIdentitySummary,
   IdentityCandidateSummary,
   IdentityProvenance,
+  DiscoveryBudgetRecord,
   MembershipSummary,
   NetworkConnectionRecord,
   NetworkConnectionSummary,
@@ -130,8 +131,9 @@ export class NetworkDomain {
   // `${channel}:${destination}` -> discovery key. Accounts rarely change their destination, so
   // hashing each one once keeps late-joiner discovery on every graph load cheap.
   private readonly discoveryKeyMemo = new Map<string, string | null>();
-  // userId -> recent syncs. In memory on purpose: a restart resetting the window is harmless.
-  private readonly phonebookSyncLog = new Map<string, Array<{ at: number; count: number }>>();
+  // userId -> spending in the rolling window. Persisted with the snapshot so a restart does not
+  // hand every user a fresh budget.
+  private readonly discoveryBudgets = new Map<string, DiscoveryBudgetRecord>();
 
   constructor(private readonly deps: NetworkDomainDeps) {}
 
@@ -183,6 +185,10 @@ export class NetworkDomain {
     return this.networkConnections;
   }
 
+  get discoveryBudgetsMap(): Map<string, DiscoveryBudgetRecord> {
+    return this.discoveryBudgets;
+  }
+
   clear(): void {
     this.networkNodes.clear();
     this.networkEdges.clear();
@@ -197,6 +203,7 @@ export class NetworkDomain {
     this.identityCandidates.clear();
     this.networkConnections.clear();
     this.discoveryKeyMemo.clear();
+    this.discoveryBudgets.clear();
   }
 
   rebuildDerivedIndexes(): void {
@@ -1704,9 +1711,11 @@ export class NetworkDomain {
     return ids;
   }
 
-  private recentPhonebookSyncs(userId: string, now: Date) {
+  private recentPhonebookSyncs(userId: string, now: Date): DiscoveryBudgetRecord["entries"] {
     const since = now.getTime() - phonebookSyncWindowMs;
-    return (this.phonebookSyncLog.get(userId) ?? []).filter((entry) => entry.at > since);
+    return (this.discoveryBudgets.get(userId)?.entries ?? []).filter(
+      (entry) => Date.parse(entry.at) > since
+    );
   }
 
   /** Refuses a sync that would exceed the budget. Only syncs that succeed are charged. */
@@ -1726,10 +1735,14 @@ export class NetworkDomain {
   }
 
   private recordPhonebookSync(userId: string, count: number, now: Date): void {
-    this.phonebookSyncLog.set(userId, [
-      ...this.recentPhonebookSyncs(userId, now),
-      { at: now.getTime(), count }
-    ]);
+    // Nothing asked, nothing to keep (and no record for users who never spend).
+    if (count === 0 && !this.discoveryBudgets.has(userId)) return;
+    this.discoveryBudgets.set(userId, {
+      id: userId,
+      userId,
+      // Expired entries are dropped on every write, so a record never outgrows one day.
+      entries: [...this.recentPhonebookSyncs(userId, now), { at: now.toISOString(), count }]
+    });
   }
 
   /**

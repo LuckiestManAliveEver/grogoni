@@ -107,12 +107,22 @@ describePostgres("network connections on PostgreSQL", () => {
       [connectionIds.get("Declined")!]: "declined"
     });
 
+    // The discovery budget the sync spent is persisted too (migration 106).
+    const budgets = await pool.query<{ total: string }>(
+      "select sum((entry ->> 'count')::int)::text as total from cp2_discovery_budgets, jsonb_array_elements(record -> 'entries') as entry where user_id = $1",
+      [owner.userId]
+    );
+    expect(Number(budgets.rows[0]?.total)).toBe(people.length);
+
     const second = await createPostgresCp2Store({ databaseUrl: databaseUrl ?? "" });
     const secondApp = buildApi({
       cp2: { store: second },
       mutationPersistenceFlush: () => second.flush()
     });
     const graph = await ok<NetworkGraphSummary>(secondApp, "GET", "/network", owner.cookie);
+    expect(
+      second.snapshot().discoveryBudgets?.find((budget) => budget.userId === owner.userId)
+    ).toMatchObject({ entries: [expect.objectContaining({ count: people.length })] });
     const direct = graph.nodes.filter((node) => node.degree === 1);
     expect(direct).toHaveLength(4);
     expect(direct.every((node) => node.sokoUserId !== null)).toBe(true);

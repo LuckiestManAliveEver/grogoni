@@ -199,6 +199,7 @@ export const normalizedCollections: NormalizedCollection[] = [
   { key: "sokoIdentityLinks", tableName: "cp2_soko_identity_links" },
   { key: "identityCandidates", tableName: "cp2_identity_candidates" },
   { key: "networkConnections", tableName: "cp2_network_connections" },
+  { key: "discoveryBudgets", tableName: "cp2_discovery_budgets" },
   { key: "auditEvents", tableName: "cp2_audit_events" }
 ];
 
@@ -4381,6 +4382,7 @@ function emptySnapshot(): Cp2Snapshot {
     sokoIdentityLinks: [],
     identityCandidates: [],
     networkConnections: [],
+    discoveryBudgets: [],
     externalRegistryConnections: [],
     auditEvents: []
   };

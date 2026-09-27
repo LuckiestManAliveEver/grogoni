@@ -168,6 +168,7 @@ INSERT INTO purge_table_plan (table_name, classification, delete_order, reason) 
   ('cp2_soko_identity_links', 'DELETE', 11, 'Account identity graph links'),
   ('cp2_identity_candidates', 'DELETE', 11, 'Account pending identity candidates'),
   ('cp2_network_connections', 'DELETE', 11, 'Account user-to-user network connections'),
+  ('cp2_discovery_budgets', 'DELETE', 11, 'Account discovery budget spending'),
   ('cp2_audit_events', 'DELETE', 11, 'User/business audit events'),
   ('platform_identities', 'DELETE', 12, 'Business-scoped external commerce identities'),
   ('conversation_channels', 'DELETE', 12, 'External provider conversation mappings'),
