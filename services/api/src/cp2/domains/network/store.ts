@@ -74,6 +74,7 @@ import {
 } from "./shared.js";
 import {
   primaryBusinessByUser,
+  summarizeConnectionFor,
   listNetworkConnections,
   removeNetworkConnection,
   requestNetworkConnection,
@@ -518,11 +519,7 @@ export class NetworkDomain {
     connectionId: string,
     viewerUserId: string
   ): NetworkConnectionSummary | null {
-    return (
-      listNetworkConnections(this.connectionDeps(), viewerUserId).find(
-        (connection) => connection.id === connectionId
-      ) ?? null
-    );
+    return summarizeConnectionFor(this.connectionDeps(), connectionId, viewerUserId);
   }
 
   listConnections(input: { sessionId: string | null; now?: Date }): NetworkConnectionSummary[] {

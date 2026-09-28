@@ -161,16 +161,51 @@ describe("service worker: app-update push notifications", () => {
     );
   });
 
-  it("brings the app forward when a connection notification is clicked", async () => {
+  it("tells an open window to recheck and brings it forward when a connection notification is clicked", async () => {
     const focus = vi.fn().mockResolvedValue(undefined);
-    sw.self.clients.matchAll.mockResolvedValueOnce([{ focus, postMessage: vi.fn() }]);
+    const postMessage = vi.fn();
+    sw.self.clients.matchAll.mockResolvedValueOnce([{ focus, postMessage }]);
     const handler = sw.listeners.get("notificationclick");
     const { event, settled } = notificationClickEvent({ type: "network.connection", url: "/" });
 
     handler?.(event);
     await settled();
 
+    expect(postMessage).toHaveBeenCalledWith({ type: "network.connection.changed" });
     expect(focus).toHaveBeenCalledTimes(1);
     expect(sw.self.clients.openWindow).not.toHaveBeenCalled();
+  });
+
+  it("opens the app where the connection shows when no window is open", async () => {
+    const handler = sw.listeners.get("notificationclick");
+    const accepted = notificationClickEvent({ type: "network.connection", url: "/network" });
+    handler?.(accepted.event);
+    await accepted.settled();
+    expect(sw.self.clients.openWindow).toHaveBeenCalledWith("/network");
+  });
+
+  it("refreshes open windows when a connection push arrives, and alerts again for a repeat", async () => {
+    const postMessage = vi.fn();
+    sw.self.clients.matchAll.mockResolvedValueOnce([{ postMessage }]);
+    const handler = sw.listeners.get("push");
+    const { event, settled } = pushEvent({
+      type: "network.connection",
+      connectionId: "c-2",
+      event: "accepted",
+      title: "You are now connected with Amina",
+      body: "Open Soko to see your network."
+    });
+
+    handler?.(event);
+    await settled();
+
+    expect(postMessage).toHaveBeenCalledWith({ type: "network.connection.changed" });
+    expect(sw.self.registration.showNotification).toHaveBeenCalledWith(
+      "You are now connected with Amina",
+      expect.objectContaining({
+        renotify: true,
+        data: { type: "network.connection", url: "/network" }
+      })
+    );
   });
 });

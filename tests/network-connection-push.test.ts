@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { buildApi } from "../services/api/src/app";
 import {
   createCp2Store,
+  readSessionCookie,
   type PushNotificationPayload,
   type PushNotificationSender
 } from "../services/api/src/cp2/store";
@@ -133,11 +134,119 @@ describe("connection request push", () => {
     );
     await expired.app.close();
   });
+
+  it("pushes the original requester when the other side asks back after a cancel", async () => {
+    const { app, deliveries } = setup();
+    const alice = await signUp(app, alicePhone);
+    const bob = await signUp(app, bobPhone);
+    await subscribe(app, alice, "https://push.example.test/alice");
+    await subscribe(app, bob, "https://push.example.test/bob");
+
+    const request = await connect(app, alice, "Bob", bobPhone);
+    await settle();
+    await remove(app, alice, request.id);
+    await connect(app, bob, "Alice", alicePhone);
+    await settle();
+
+    expect(
+      deliveries.map((delivery) => [
+        delivery.endpoint,
+        delivery.payload.type === "network.connection" && delivery.payload.event
+      ])
+    ).toEqual([
+      ["https://push.example.test/bob", "requested"],
+      // Bob's own request, in the other direction: Alice is asked, not told she is connected.
+      ["https://push.example.test/alice", "requested"]
+    ]);
+    await app.close();
+  });
+
+  it("reaches every device of the account, and carries no user ids", async () => {
+    const { app, store, deliveries } = setup();
+    const alice = await signUp(app, alicePhone);
+    const bob = await signUp(app, bobPhone);
+    await subscribe(app, bob, "https://push.example.test/bob-phone");
+    await subscribe(app, bob, "https://push.example.test/bob-laptop");
+
+    await connect(app, alice, "Bob", bobPhone);
+    await settle();
+
+    expect(deliveries.map((delivery) => delivery.endpoint).sort()).toEqual([
+      "https://push.example.test/bob-laptop",
+      "https://push.example.test/bob-phone"
+    ]);
+    const userIds = store.snapshot().users.map((user) => user.id);
+    for (const delivery of deliveries) {
+      for (const id of userIds) expect(JSON.stringify(delivery.payload)).not.toContain(id);
+    }
+    await app.close();
+  });
+
+  it("does nothing when push is not configured", async () => {
+    const store = createCp2Store();
+    const app = buildApi({ cp2: { store } });
+    const alice = await signUp(app, alicePhone);
+    await signUp(app, bobPhone);
+    const request = await connect(app, alice, "Bob", bobPhone);
+    await settle();
+
+    expect(request.status).toBe("pending");
+    expect(
+      store.snapshot().auditEvents.some((event) => event.type === "network.connection_push")
+    ).toBe(false);
+    await app.close();
+  });
+
+  it("skips a device whose sender throws and still reaches the others", async () => {
+    const { app, sender, deliveries } = setup();
+    const alice = await signUp(app, alicePhone);
+    const bob = await signUp(app, bobPhone);
+    await subscribe(app, bob, "https://push.example.test/bob-broken");
+    await subscribe(app, bob, "https://push.example.test/bob-ok");
+    const real = sender.getMockImplementation()!;
+    sender.mockImplementation(async (subscription, payload) => {
+      if (subscription.endpoint.endsWith("broken")) throw new Error("boom");
+      return real(subscription, payload);
+    });
+
+    await connect(app, alice, "Bob", bobPhone);
+    await settle();
+    expect(deliveries.map((delivery) => delivery.endpoint)).toEqual([
+      "https://push.example.test/bob-ok"
+    ]);
+    await app.close();
+  });
+
+  it("pushes nothing for a request cancelled or turned around before its push went out", async () => {
+    const { app, store, deliveries } = setup();
+    const alice = await signUp(app, alicePhone);
+    const bob = await signUp(app, bobPhone);
+    await subscribe(app, alice, "https://push.example.test/alice");
+    await subscribe(app, bob, "https://push.example.test/bob");
+    const aliceNode = (await syncOnly(app, bob, "Alice", alicePhone)).syncedContactNodeIds![0]!;
+    const bobNode = (await syncOnly(app, alice, "Bob", bobPhone)).syncedContactNodeIds![0]!;
+    const aliceSession = readSessionCookie(alice);
+    const bobSession = readSessionCookie(bob);
+
+    // All in one tick, before any push runs: Alice asks and cancels; Bob asks back.
+    const request = store.requestNetworkConnection({ sessionId: aliceSession, nodeId: bobNode });
+    store.removeNetworkConnection({ sessionId: aliceSession, connectionId: request.id });
+    store.requestNetworkConnection({ sessionId: bobSession, nodeId: aliceNode });
+    await settle();
+
+    // Alice's withdrawn request reached nobody; Bob's request reached Alice.
+    expect(deliveries.map((delivery) => delivery.endpoint)).toEqual([
+      "https://push.example.test/alice"
+    ]);
+    await app.close();
+  });
 });
 
-/** Pushes run off the request path; let them finish. */
+/** Pushes run off the request path (setImmediate, then the sender); let them finish. */
 async function settle() {
-  await new Promise((resolve) => setTimeout(resolve, 0));
+  for (let round = 0; round < 5; round += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
 }
 
 async function signUp(app: App, phone: string): Promise<string> {
@@ -167,6 +276,13 @@ async function connect(app: App, cookie: string, name: string, phone: string) {
   });
   return post<NetworkConnectionSummary>(app, "/network/connections", cookie, {
     nodeId: graph.syncedContactNodeIds?.[0]
+  });
+}
+
+async function syncOnly(app: App, cookie: string, name: string, phone: string) {
+  return post<NetworkGraphSummary>(app, "/network/sync/contacts", cookie, {
+    mode: "merge",
+    contacts: [{ name, phone }]
   });
 }
 

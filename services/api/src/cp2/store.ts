@@ -12500,15 +12500,32 @@ export class Cp2Store {
     ) {
       return;
     }
+    // Off the request's tick: building the summary and encrypting the push is not the request's
+    // work. Read at send time, so a request already declined or withdrawn by then pushes nothing.
+    setImmediate(() => this.sendNetworkConnectionPush(event));
+  }
+
+  private sendNetworkConnectionPush(event: {
+    type: string;
+    actorId: string;
+    aggregateId: string;
+    payload: Record<string, unknown>;
+  }): void {
     const requesterUserId = String(event.payload.requesterUserId);
     const recipientUserId = String(event.payload.recipientUserId);
     const notifyUserId = event.actorId === requesterUserId ? recipientUserId : requesterUserId;
     const accountId = this.users.get(notifyUserId)?.accountId;
     const summary = this.networkDomain.connectionSummaryFor(event.aggregateId, notifyUserId);
+    const requested = event.type === "network.connection_requested";
     if (accountId === undefined || summary === null) return;
+    // The connection must still say what the event said: a request that was cancelled (or turned
+    // around by the other side) before this push went out must not reach anyone.
+    const stillTrue = requested
+      ? summary.status === "pending" && summary.direction === "incoming"
+      : summary.status === "accepted";
+    if (!stillTrue) return;
 
     const name = summary.counterpartDisplayName;
-    const requested = event.type === "network.connection_requested";
     void this.messagingDomain
       .pushToAccount(accountId, {
         type: "network.connection",
@@ -12525,9 +12542,13 @@ export class Cp2Store {
           type: "network.connection_push",
           aggregateType: "network_connection",
           aggregateId: event.aggregateId,
-          actorId: notifyUserId,
+          actorId: event.actorId,
           occurredAt: new Date().toISOString(),
-          payload: { event: requested ? "requested" : "accepted", ...outcome }
+          payload: {
+            event: requested ? "requested" : "accepted",
+            notifiedUserId: notifyUserId,
+            ...outcome
+          }
         });
       })
       .catch((error: unknown) => {

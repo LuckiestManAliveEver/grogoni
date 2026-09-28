@@ -3406,7 +3406,10 @@ export class MessagingDomain {
     for (const subscription of [...this.pushSubscriptions.values()]) {
       if (subscription.accountId !== accountId) continue;
       summary.targeted += 1;
-      const outcome = await this.deps.pushNotificationSender(subscription, payload);
+      // One device failing (even by throwing) must not stop the others or their expiry cleanup.
+      const outcome = await this.deps
+        .pushNotificationSender(subscription, payload)
+        .catch(() => "failed" as const);
       if (outcome === "sent") {
         summary.sent += 1;
       } else if (outcome === "expired") {
