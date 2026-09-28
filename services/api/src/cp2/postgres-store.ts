@@ -596,6 +596,7 @@ export async function createPostgresCp2Store(
       ...(options.networkInviteSender === undefined
         ? {}
         : { networkInviteSender: options.networkInviteSender }),
+      ...(options.networkLimits === undefined ? {} : { networkLimits: options.networkLimits }),
       ...(options.messageWebBaseUrl === undefined
         ? {}
         : { messageWebBaseUrl: options.messageWebBaseUrl }),

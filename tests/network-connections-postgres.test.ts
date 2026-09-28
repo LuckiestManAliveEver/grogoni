@@ -114,12 +114,26 @@ describePostgres("network connections on PostgreSQL", () => {
     );
     expect(Number(budgets.rows[0]?.total)).toBe(people.length);
 
-    const second = await createPostgresCp2Store({ databaseUrl: databaseUrl ?? "" });
+    // Reloaded with a budget the persisted spending already used up: still enforced.
+    const second = await createPostgresCp2Store({
+      databaseUrl: databaseUrl ?? "",
+      networkLimits: { phonebookSyncDailyBudget: people.length }
+    });
     const secondApp = buildApi({
       cp2: { store: second },
       mutationPersistenceFlush: () => second.flush()
     });
     const graph = await ok<NetworkGraphSummary>(secondApp, "GET", "/network", owner.cookie);
+    const overBudget = await secondApp.inject({
+      method: "POST",
+      url: "/network/sync/contacts",
+      headers: { "content-type": "application/json", cookie: owner.cookie },
+      payload: JSON.stringify({
+        mode: "merge",
+        contacts: [{ name: "New", phone: "+254722999001" }]
+      })
+    });
+    expect(overBudget.statusCode).toBe(429);
     expect(
       second.snapshot().discoveryBudgets?.find((budget) => budget.userId === owner.userId)
     ).toMatchObject({ entries: [expect.objectContaining({ count: people.length })] });

@@ -1735,14 +1735,27 @@ export class NetworkDomain {
   }
 
   private recordPhonebookSync(userId: string, count: number, now: Date): void {
-    // Nothing asked, nothing to keep (and no record for users who never spend).
-    if (count === 0 && !this.discoveryBudgets.has(userId)) return;
-    this.discoveryBudgets.set(userId, {
-      id: userId,
-      userId,
-      // Expired entries are dropped on every write, so a record never outgrows one day.
-      entries: [...this.recentPhonebookSyncs(userId, now), { at: now.toISOString(), count }]
-    });
+    // Expired entries are dropped on every write, so a record never outgrows one day. A free
+    // request (nothing new asked) adds nothing, and a record with nothing left is removed.
+    const entries = [
+      ...this.recentPhonebookSyncs(userId, now),
+      ...(count > 0 ? [{ at: now.toISOString(), count }] : [])
+    ];
+    if (entries.length === 0) {
+      this.discoveryBudgets.delete(userId);
+      return;
+    }
+    const current = this.discoveryBudgets.get(userId);
+    // Unchanged (a free request with nothing expired): leave it, so persistence has nothing to do.
+    if (count === 0 && current?.entries.length === entries.length) return;
+    this.discoveryBudgets.set(userId, { id: userId, userId, entries });
+  }
+
+  /** Drops budget records with no spending left in the window (called after loading a snapshot). */
+  pruneDiscoveryBudgets(now: Date): void {
+    for (const userId of [...this.discoveryBudgets.keys()]) {
+      if (this.recentPhonebookSyncs(userId, now).length === 0) this.discoveryBudgets.delete(userId);
+    }
   }
 
   /**

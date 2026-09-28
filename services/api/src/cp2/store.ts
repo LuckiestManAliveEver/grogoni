@@ -8643,6 +8643,8 @@ export class Cp2Store {
     for (const budget of snapshot.discoveryBudgets ?? []) {
       this.networkDomain.discoveryBudgetsMap.set(budget.id, budget);
     }
+    // Users whose spending has all expired need no record (it would never shrink otherwise).
+    this.networkDomain.pruneDiscoveryBudgets(new Date());
 
     for (const change of snapshot.syncChanges ?? []) {
       this.syncChanges.push(change);
