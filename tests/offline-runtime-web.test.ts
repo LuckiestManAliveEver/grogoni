@@ -50,15 +50,25 @@ describe("Chat API offline adapter", () => {
     const root = createRoot(host);
     const button = (text: string) =>
       [...document.querySelectorAll("button")].find((entry) => entry.textContent === text)!;
+    // Wait for the UI to reach a state instead of sleeping a fixed time: IndexedDB and effects
+    // settle much later on a loaded machine, and a fixed sleep then fails for no real reason.
+    const until = async (condition: () => boolean) => {
+      const deadline = Date.now() + 5_000;
+      while (!condition() && Date.now() < deadline) {
+        await act(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        });
+      }
+    };
+    const shows = (text: string) => () => (host.textContent ?? "").includes(text);
+    const hasButton = (text: string) => () => button(text) !== undefined;
     try {
       await act(async () => {
         root.render(
           createElement(OfflineRuntimeSettings, { accountId: "account", businessId: "shop" })
         );
       });
-      await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 30));
-      });
+      await until(hasButton("Prepare offline storage"));
       await act(async () => {
         button("Prepare offline storage").click();
       });
@@ -74,8 +84,8 @@ describe("Chat API offline adapter", () => {
       expect(network).not.toHaveBeenCalled();
       await act(async () => {
         button("Install").click();
-        await new Promise((resolve) => setTimeout(resolve, 60));
       });
+      await until(shows("Offline business data is prepared"));
       expect(host.textContent).toContain("Offline business data is prepared");
       await act(async () => {
         button("Done").click();
@@ -87,11 +97,15 @@ describe("Chat API offline adapter", () => {
       // conversation), so sync stays impossible to trigger by accident from Install alone.
       await act(async () => {
         button("Resume saved offline session").click();
-        await new Promise((resolve) => setTimeout(resolve, 30));
       });
+      await until(shows("Offline mode is active"));
       expect(host.textContent).toContain("Offline mode is active");
       await act(async () => {
         window.dispatchEvent(new Event("online"));
+      });
+      await until(shows("Sync and go back online"));
+      // Coming back online must not sync by itself (a short settle to catch a stray request).
+      await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 30));
       });
       expect(network).toHaveBeenCalledTimes(1);
@@ -99,12 +113,12 @@ describe("Chat API offline adapter", () => {
       await act(async () => {
         localStorage.removeItem("soko.offline-runtime.active.v1");
         window.dispatchEvent(new Event("storage"));
-        await new Promise((resolve) => setTimeout(resolve, 30));
       });
+      await until(hasButton("Resume saved offline session"));
       await act(async () => {
         button("Resume saved offline session").click();
-        await new Promise((resolve) => setTimeout(resolve, 30));
       });
+      await until(shows("Offline mode is active"));
       expect(host.textContent).toContain("Offline mode is active");
       expect(network).toHaveBeenCalledTimes(1);
     } finally {
@@ -114,7 +128,7 @@ describe("Chat API offline adapter", () => {
       host.remove();
       (await offlineDatabase()).close();
     }
-  });
+  }, 30_000);
   it("routes persisted offline sessions locally after reload, blocks unsupported calls and prevents account crossover", async () => {
     vi.stubGlobal("indexedDB", new IDBFactory());
     vi.stubGlobal("crypto", webcrypto);
@@ -173,5 +187,5 @@ describe("Chat API offline adapter", () => {
     } finally {
       db.close();
     }
-  });
+  }, 30_000);
 });

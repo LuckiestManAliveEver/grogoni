@@ -22,6 +22,8 @@ afterEach(() => {
   vi.resetModules();
 });
 
+// Whole-flow tests (IndexedDB, React, fake network): ~2.5s alone, much longer on a busy machine,
+// so each gets a 30s budget; every step waits for the UI state it expects, not a fixed time.
 describe("Receipt scan recovery in Suppliers", () => {
   it("shows every persisted scan without suppliers, recovers after remount, and confirms the synced ID online", async () => {
     vi.stubGlobal("indexedDB", new IDBFactory());
@@ -96,6 +98,16 @@ describe("Receipt scan recovery in Suppliers", () => {
     const host = document.createElement("div");
     document.body.append(host);
     let root = createRoot(host);
+    // Wait for the UI to reach a state instead of sleeping a fixed time: IndexedDB, the network
+    // mock and effects settle much later on a loaded machine.
+    const until = async (condition: () => boolean) => {
+      const deadline = Date.now() + 5_000;
+      while (!condition() && Date.now() < deadline) {
+        await act(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        });
+      }
+    };
     const confirmButtons = () =>
       [...host.querySelectorAll("button")].filter(
         (button) => button.textContent?.trim() === "Confirm and save"
@@ -140,14 +152,14 @@ describe("Receipt scan recovery in Suppliers", () => {
       await act(async () => {
         localStorage.removeItem("soko.offline-runtime.active.v1");
         window.dispatchEvent(new Event(offline.offlineModeEvent));
-        await new Promise((resolve) => setTimeout(resolve, 30));
       });
+      await until(() => confirmButtons().length === 1 && !confirmButtons()[0]!.disabled);
       expect(confirmButtons()).toHaveLength(1);
       expect(confirmButtons()[0]!.disabled).toBe(false);
       await act(async () => {
         confirmButtons()[0]!.click();
-        await new Promise((resolve) => setTimeout(resolve, 50));
       });
+      await until(() => (host.textContent ?? "").includes("COMPLETED"));
       expect(
         network.mock.calls.some(
           ([url, init]) => String(url).endsWith("/cloud-job/confirm") && init.method === "POST"
@@ -160,5 +172,5 @@ describe("Receipt scan recovery in Suppliers", () => {
       host.remove();
       db.close();
     }
-  });
+  }, 30_000);
 });
