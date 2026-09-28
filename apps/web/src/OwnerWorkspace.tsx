@@ -1,5 +1,3 @@
-import { Suspense } from "react";
-import { LazyModuleErrorBoundary } from "./LazyModuleErrorBoundary";
 import * as Screens from "./owner-workspace-screens";
 import {
   emptyCustomerForm,
@@ -250,15 +248,11 @@ export interface OwnerWorkspaceBindings {
   chatThreadState: ChatThreadState;
 }
 
-/** The open workspace screen, inside one recovery boundary so a lazily loaded screen can load. */
 export function renderOwnerWorkspace(input: OwnerWorkspaceBindings) {
   const screen = renderOwnerWorkspaceScreen(input);
   if (screen === null) return null;
-  const moduleKey = `workspace-${input.view}`;
   return (
-    <LazyModuleErrorBoundary key={input.view} moduleKey={moduleKey} label="This screen">
-      <Suspense fallback={<div className="inline-loading-card">Opening…</div>}>{screen}</Suspense>
-    </LazyModuleErrorBoundary>
+    <Screens.WorkspaceScreenBoundary view={input.view}>{screen}</Screens.WorkspaceScreenBoundary>
   );
 }
 

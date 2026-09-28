@@ -8,6 +8,11 @@ import {
 import { appRouteModuleKeys, loadLazyModuleWithRecovery } from "./lazy-module-recovery";
 import { LazyModuleErrorBoundary } from "./LazyModuleErrorBoundary";
 import { recordComponentRender, recordRouteRender } from "./performance";
+import {
+  matchStorefrontRoute,
+  shouldWarmOwnerRoute,
+  type StorefrontRoute
+} from "./app-route-matching";
 import { readAuthenticationRoutePath, readOwnerRoute, routes } from "./routes";
 import { isSokoId, normalizeSokoId } from "./sokoid-and-storefront";
 
@@ -47,15 +52,6 @@ function loadSokoApplication() {
   return (
     initialSokoApplicationModule ??
     loadLazyModuleWithRecovery(appRouteModuleKeys.ownerApp, () => import("./SokoApplication"))
-  );
-}
-
-function shouldWarmOwnerRoute(pathname: string): boolean {
-  return (
-    readOwnerRoute(pathname) !== null ||
-    readAuthenticationRoutePath(pathname) !== null ||
-    pathname === routes.oauthCallback ||
-    /^\/(?:agent|shop|shops|soko)\//u.test(pathname)
   );
 }
 
@@ -195,40 +191,17 @@ export function readStorefrontAgentId(): string | null {
   return readStorefrontRoute()?.agentId ?? null;
 }
 
-export interface StorefrontRoute {
-  agentId: string;
-  productId: string | null;
-}
+export function readStorefrontRoute(
+  pathname: string = window.location.pathname
+): StorefrontRoute | null {
+  const route = matchStorefrontRoute(pathname);
+  if (route === null) return null;
 
-export function readStorefrontRoute(): StorefrontRoute | null {
-  const pathname = window.location.pathname;
-  const match =
-    pathname.match(/^\/agent\/([^/]+)(?:\/products\/([^/]+))?\/?$/) ??
-    pathname.match(/^\/(?:shop|shops|soko)\/([^/]+)\/?$/);
-
-  if (match === null) return null;
-
-  const rawAgentId = (match[1] ?? "").replace(/^\//, "");
-  let agentId: string;
-  try {
-    agentId = decodeURIComponent(rawAgentId).trim();
-  } catch {
-    return null;
-  }
-
-  if (agentId.length === 0) return null;
-
-  let productId: string | null = null;
-  if (match[2] !== undefined) {
-    try {
-      productId = decodeURIComponent(match[2]).trim() || null;
-    } catch {
-      return null;
-    }
-  }
-
+  // /shop/:id, /shops/:id and /soko/:id are aliases: show the canonical /agent/:id address.
   if (!pathname.startsWith("/agent/")) {
-    const canonicalAgentId = isSokoId(agentId) ? normalizeSokoId(agentId) : agentId;
+    const canonicalAgentId = isSokoId(route.agentId)
+      ? normalizeSokoId(route.agentId)
+      : route.agentId;
     window.history.replaceState(
       null,
       "",
@@ -236,5 +209,5 @@ export function readStorefrontRoute(): StorefrontRoute | null {
     );
   }
 
-  return { agentId, productId };
+  return route;
 }

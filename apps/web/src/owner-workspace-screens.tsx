@@ -1,4 +1,6 @@
-import { lazy } from "react";
+import { Suspense, lazy, type ReactNode } from "react";
+
+import { LazyModuleErrorBoundary } from "./LazyModuleErrorBoundary";
 
 import { loadLazyModuleWithRecovery, workspaceModuleKeys } from "./lazy-module-recovery";
 
@@ -68,3 +70,37 @@ export {
   BetaSurface,
   LaunchSurface
 };
+
+/**
+ * The views whose screen loads lazily, and the recovery key each one loads under. The boundary
+ * below keys itself workspaceScreenModuleKey(view), so these must match (tests/lazy-module-recovery-coverage).
+ */
+export const lazyWorkspaceScreens = {
+  suppliers: workspaceModuleKeys.supplierSurface,
+  pos: workspaceModuleKeys.posTerminal,
+  imports: workspaceModuleKeys.importSurface,
+  logistics: workspaceModuleKeys.logisticsSurface,
+  compliance: workspaceModuleKeys.complianceSurface,
+  beta: workspaceModuleKeys.betaSurface,
+  launch: workspaceModuleKeys.launchSurface
+} as const;
+
+/** The recovery key a workspace view's boundary uses. */
+export function workspaceScreenModuleKey(view: string): string {
+  return `workspace-${view}`;
+}
+
+/** The open workspace screen, inside one recovery boundary so a lazily loaded screen can load. */
+export function WorkspaceScreenBoundary(props: { view: string; children: ReactNode }) {
+  return (
+    <LazyModuleErrorBoundary
+      key={props.view}
+      moduleKey={workspaceScreenModuleKey(props.view)}
+      label="This screen"
+    >
+      <Suspense fallback={<div className="inline-loading-card">Opening…</div>}>
+        {props.children}
+      </Suspense>
+    </LazyModuleErrorBoundary>
+  );
+}
