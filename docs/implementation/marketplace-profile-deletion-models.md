@@ -64,7 +64,7 @@ Deletion routes are:
 Finalize verifies the owner PIN and places the tenant in `QUARANTINED` for 30 days. Quarantined
 shops are excluded from account shop lists and business authorization returns HTTP 410. Restore
 removes that guard before expiry. `pnpm db:purge-shops` permanently removes expired tenant data;
-Render runs it daily as `soko-market-shop-purge`.
+Render runs it daily as `grogoni-shop-purge`.
 
 Migration `020_marketplace_deletion_models.sql` adds normalized persistence tables and the deletion
 archive manifest table. PostgreSQL startup now requires migration 020.
@@ -74,6 +74,6 @@ archive manifest table. PostgreSQL startup now requires migration 020.
 1. Apply migrations with `pnpm db:migrate`.
 2. Confirm no obsolete Firebase phone-auth variables remain on the API or web service.
 3. Deploy API and web from the same commit.
-4. Confirm the `soko-market-shop-purge` cron has both database URLs.
+4. Confirm the `grogoni-shop-purge` cron has both database URLs.
 5. Smoke test anonymous Marketplace, first Sell, email signup, phone-plus-PIN login, compulsory
    phone capture, model activation, quarantine, and restore.

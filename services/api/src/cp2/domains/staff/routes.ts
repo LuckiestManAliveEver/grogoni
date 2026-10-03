@@ -5,8 +5,8 @@
  * the identity the invitee signs in with.
  */
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import { isBusinessRole } from "@soko/business-core";
-import type { BusinessRole, StaffInvitationChannel } from "@soko/shared-types";
+import { isBusinessRole } from "@grogoni/business-core";
+import type { BusinessRole, StaffInvitationChannel } from "@grogoni/shared-types";
 import { Cp2Error } from "../../cp2-error.js";
 import { readSessionCookie, type Cp2Store } from "../../store.js";
 import {

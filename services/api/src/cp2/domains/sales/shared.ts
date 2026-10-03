@@ -66,7 +66,7 @@ import type {
   ProductFieldDefinition,
   ProductFieldInputType,
   ProductMediaSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { Cp2Error } from "../../cp2-error.js";
 import { normalizeRequiredBoundedText } from "../../text-normalization.js";
 

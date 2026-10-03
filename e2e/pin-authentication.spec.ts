@@ -96,7 +96,7 @@ test("signs up with a profile and later logs in from the welcome message", async
   });
 
   await page.addInitScript(() => {
-    localStorage.setItem("soko.market.marketplace-intro.completed.v1", "true");
+    localStorage.setItem("grogoni.marketplace-intro.completed.v1", "true");
   });
   // Zero-form entry (docs/authentication/progressive-identity.md): a non-deliberate cold boot at
   // /marketplace lands straight on the chat shell with its inline welcome message, not behind a
@@ -130,13 +130,13 @@ test("signs up with a profile and later logs in from the welcome message", async
   await expect(page.getByText("Authentication complete", { exact: true })).toBeVisible();
 
   sessionActive = false;
-  await page.evaluate(() => localStorage.removeItem("soko.market.auth-bootstrap.v1"));
+  await page.evaluate(() => localStorage.removeItem("grogoni.auth-bootstrap.v1"));
   await page.reload();
 
   // A non-deliberate reload never auto-navigates to /login, even once the session is invalid
   // (docs/authentication/progressive-identity.md) - it lands back on the chat shell's welcome
   // message, same as any other cold boot. The phone number is still remembered separately (in
-  // soko.chatFirst.ownerAuth, untouched above) once the visitor deliberately taps Log in.
+  // grogoni.chatFirst.ownerAuth, untouched above) once the visitor deliberately taps Log in.
   await expect(welcome).toBeVisible();
   await page.getByTestId("welcome-login-button").click();
   await expect(page).toHaveURL(/\/login$/u);

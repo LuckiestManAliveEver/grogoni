@@ -81,7 +81,7 @@ export function normalizeDeviceBootstrapIdempotencyKey(value: string | null): st
 }
 
 export function hashDeviceBootstrapKey(value: string): string {
-  return createHash("sha256").update(`soko-device-bootstrap:${value}`).digest("base64url");
+  return createHash("sha256").update(`grogoni-device-bootstrap:${value}`).digest("base64url");
 }
 
 export function normalizeDeviceRecoveryCredentialId(value: string): string {
@@ -129,7 +129,7 @@ export function deviceRecoveryAssertionPayload(
   nonce: string,
   issuedAt: number
 ): string {
-  return `soko-device-recovery:v1:${credentialId}:${issuedAt}:${nonce}`;
+  return `grogoni-device-recovery:v1:${credentialId}:${issuedAt}:${nonce}`;
 }
 
 export function verifyDeviceRecoverySignature(

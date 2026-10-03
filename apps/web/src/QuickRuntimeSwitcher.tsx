@@ -5,7 +5,7 @@ import {
   type AgentDefinition,
   type AgentModelActivationResult,
   type EffectiveRuntimeSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
 import { getJson, postJson, putJson } from "./api-helpers";
 import { isDeviceInferenceSupported, listInstalledDeviceModels } from "./device-models";
@@ -17,7 +17,7 @@ import type {
   AgentSettings,
   AiModelSummary,
   BusinessAgentProfileSummary
-} from "./soko-application-shared";
+} from "./grogoni-application-shared";
 
 export interface QuickRuntimeSwitcherProps {
   business: ActiveBusiness;
@@ -171,7 +171,7 @@ export function QuickRuntimeSwitcher({
         `/api/agents/${canonicalAgentId}/models/${encodeURIComponent(modelId)}/activate`,
         {
           shopId: business.id,
-          // Provider-routed models (OpenAI, Anthropic, Z.ai, Soko Cloud...) run on "backend";
+          // Provider-routed models (OpenAI, Anthropic, Z.ai, Grogoni Cloud...) run on "backend";
           // artifact-backed ones on "vercel". The catalog response says which.
           executionTarget:
             modelOptions.find((option) => option.id === modelId)?.hostedExecutionTarget ?? "vercel",

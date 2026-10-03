@@ -15,7 +15,7 @@ sequenceDiagram
     Owner->>Frontend: Test model
     Frontend->>API: POST /api/agents/:agentId/models/:modelId/test
     API->>Binding: Authorize shop and resolve canonical model
-    Binding->>Adapter: healthCheck(SOKO_MODEL_OK)
+    Binding->>Adapter: healthCheck(GROGONI_MODEL_OK)
     Adapter-->>Binding: Actual model, target, latency, completion
     Binding-->>Frontend: Verified health result
     Owner->>Frontend: Use with agent
@@ -96,11 +96,11 @@ not remove device-local model files.
 `ModelRuntimeAdapter` in `services/api/src/inference/model-runtime.ts` provides:
 
 - `canRun(context)` for target/model availability;
-- `healthCheck(context)` for a real `SOKO_MODEL_OK` completion;
+- `healthCheck(context)` for a real `GROGONI_MODEL_OK` completion;
 - `generate({ context, prompt })` for inference with model, provider, target, token and latency
   metadata.
 
-The backend adapter uses the authenticated Soko private-inference gateway, not Ollama directly. It
+The backend adapter uses the authenticated Grogoni private-inference gateway, not Ollama directly. It
 calls `/health/ready`, `/v1/models/:modelId/probe`, and `/v1/chat/completions`, applies separate
 connect and generation timeouts, supports caller cancellation, retries only readiness, and rejects
 HTTP failures, empty output, malformed output, and provider-model identity mismatches.
@@ -138,7 +138,7 @@ surface as their own distinct errors, same as any other request.
   checkbox and no model is downloaded.
 - Browser downloads remain explicit and lazy.
 - Downloaded GGUF artifacts run through Wllama's worker-backed llama.cpp/WASM runtime in compatible
-  Chromium browsers. The installed-app contract remains `window.SokoAgentModelRuntime` and is used
+  Chromium browsers. The installed-app contract remains `window.GrogoniAgentModelRuntime` and is used
   when a trusted native bridge is present.
 - Device activation, restoration, and chat share one runtime registry and are bounded by finite
   load/generation deadlines. A timeout terminates the Wllama worker and projects to

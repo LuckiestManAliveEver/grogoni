@@ -6,7 +6,7 @@
  * footprint (3 routes) with zero cross-domain coupling.
  */
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import type { FulfillmentMethod, FulfillmentStatus } from "@soko/shared-types";
+import type { FulfillmentMethod, FulfillmentStatus } from "@grogoni/shared-types";
 import { Cp2Error } from "../../cp2-error.js";
 import { type Cp2Store, readSessionCookie } from "../../store.js";
 import {

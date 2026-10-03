@@ -37,7 +37,7 @@ const catalog = [
   }),
   catalogModel({ id: "claude-test", providerId: "anthropic", providerModelId: "claude-vendor-id" }),
   catalogModel({ id: "glm-test", providerId: "zai-general", providerModelId: "glm-vendor-id" }),
-  catalogModel({ id: "qwen3-4b-cloud", providerId: "soko-llama", providerModelId: "qwen3-4b" }),
+  catalogModel({ id: "qwen3-4b-cloud", providerId: "grogoni-llama", providerModelId: "qwen3-4b" }),
   catalogModel({
     id: "smollm-local",
     providerId: "local",
@@ -60,7 +60,7 @@ function request(modelId: string, extra: Partial<InferenceRequest> = {}): Infere
     requestId: `req-${modelId}`,
     modelId,
     messages: [
-      { role: "system", content: "You are Soko." },
+      { role: "system", content: "You are Grogoni." },
       { role: "user", content: "SECRET-PROMPT-CONTENT hello" }
     ],
     ...extra
@@ -117,7 +117,7 @@ describe("inference router: model and provider resolution", () => {
       ["gpt-test", "api.openai.com"],
       ["claude-test", "api.anthropic.com"],
       ["glm-test", "api.z.ai"],
-      ["qwen3-4b-cloud", "inference.soko.example"]
+      ["qwen3-4b-cloud", "inference.grogoni.example"]
     ] as const) {
       const response = await platform.router.generate(request(modelId), callContext);
       expect(response.modelId).toBe(modelId);
@@ -276,7 +276,7 @@ describe("inference router: model and provider resolution", () => {
 });
 
 describe("inference router: credential precedence and BYOK isolation", () => {
-  it("uses tenant BYOK, then user BYOK, then the Soko-managed key", async () => {
+  it("uses tenant BYOK, then user BYOK, then the Grogoni-managed key", async () => {
     const { fetch, requests } = vendorFetch();
     const { platform } = createTestPlatform({ catalog, fetch });
     const authorizationOfLastCall = () => requests.at(-1)?.headers.authorization;
@@ -658,7 +658,7 @@ describe("inference router: usage, cost and limits", () => {
       catalog: [
         catalogModel({
           id: "capped",
-          providerId: "soko-llama",
+          providerId: "grogoni-llama",
           providerModelId: "q",
           maxOutputTokens: 300
         })
@@ -691,7 +691,7 @@ describe("inference router: health isolation and streaming", () => {
       userId: null
     });
     const llama = await platform.router.checkHealth({
-      providerId: "soko-llama",
+      providerId: "grogoni-llama",
       tenantId: null,
       userId: null
     });

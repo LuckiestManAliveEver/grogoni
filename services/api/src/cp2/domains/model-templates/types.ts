@@ -48,8 +48,8 @@ export interface CompiledExpertiseArtifactDescriptor {
   sizeBytes: number;
 }
 
-export interface SokoModelTemplateManifestV1 {
-  format: "soko-template";
+export interface GrogoniModelTemplateManifestV1 {
+  format: "grogoni-template";
   formatVersion: 1;
   template: {
     id: string;
@@ -135,7 +135,7 @@ export interface ModelTemplateVersionRecord {
   accountId: string;
   version: string;
   state: TemplateVersionState;
-  manifest: SokoModelTemplateManifestV1;
+  manifest: GrogoniModelTemplateManifestV1;
   manifestSha256: string;
   baseModelId: string;
   nativeRuntimeBindingId: string | null;

@@ -5,13 +5,13 @@ import type {
   RuntimeResumeResult,
   RuntimeCapabilities,
   RuntimeTransfer
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import type {
   LocalDatabase,
   LocalRuntimeHandoffSession,
   LocalRuntimeMessage,
   Scope
-} from "@soko/offline-runtime";
+} from "@grogoni/offline-runtime";
 
 export interface LocalResumeReceipt {
   handoffId: string;

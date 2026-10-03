@@ -5,7 +5,7 @@ const chatSurface = readFileSync("apps/web/src/ChatSurface.tsx", "utf8");
 const conversationListPanel = readFileSync("apps/web/src/ConversationListPanel.tsx", "utf8");
 const chatInboxState = readFileSync("apps/web/src/hooks/useChatInboxState.ts", "utf8");
 const useAuthState = readFileSync("apps/web/src/hooks/useAuthState.ts", "utf8");
-const sokoApplication = readFileSync("apps/web/src/SokoApplication.tsx", "utf8");
+const grogoniApplication = readFileSync("apps/web/src/GrogoniApplication.tsx", "utf8");
 const normalizedChatSurface = chatSurface.replace(/\s+/gu, " ");
 
 describe("session-list home screen (Phase 3)", () => {
@@ -35,7 +35,7 @@ describe("session-list home screen (Phase 3)", () => {
 
   it("restores the selected session's own mode instead of the account-wide default", () => {
     expect(useAuthState).toMatch(
-      /async function applySessionContextForConversation\s*\(\s*conversationId: string\s*\): Promise<SokoMode \| null>/u
+      /async function applySessionContextForConversation\s*\(\s*conversationId: string\s*\): Promise<GrogoniMode \| null>/u
     );
     expect(useAuthState).toContain("/v1/session/context?conversationId=");
     expect(chatInboxState).toContain(
@@ -44,8 +44,8 @@ describe("session-list home screen (Phase 3)", () => {
   });
 
   it("wires useAuthState before useChatInboxState so the mode-restore function exists at call time", () => {
-    const authIndex = sokoApplication.indexOf("} = useAuthState({");
-    const inboxIndex = sokoApplication.indexOf("} = useChatInboxState({");
+    const authIndex = grogoniApplication.indexOf("} = useAuthState({");
+    const inboxIndex = grogoniApplication.indexOf("} = useChatInboxState({");
     expect(authIndex).toBeGreaterThan(-1);
     expect(inboxIndex).toBeGreaterThan(-1);
     expect(authIndex).toBeLessThan(inboxIndex);

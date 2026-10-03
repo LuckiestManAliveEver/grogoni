@@ -1,6 +1,6 @@
-import type { OssAgentSummary } from "@soko/shared-types";
+import type { OssAgentSummary } from "@grogoni/shared-types";
 
-import type { AgentSettings } from "./soko-application-shared";
+import type { AgentSettings } from "./grogoni-application-shared";
 
 export type AgentCompatibilityStatus = "hosted-ready" | "backend-assisted" | "unavailable";
 
@@ -34,7 +34,7 @@ export function rankPortableOssAgents(input: {
             : "Runs through the hosted Hugging Face API without local installation."
           : !backendAvailable
             ? "This GitHub project needs a configured backend adapter before it can be selected."
-            : `Runs through Soko's restricted backend adapter (estimated ${agent.minimumMemoryGb} GB backend memory); repository code is never executed in the browser.`;
+            : `Runs through Grogoni's restricted backend adapter (estimated ${agent.minimumMemoryGb} GB backend memory); repository code is never executed in the browser.`;
 
       return {
         agent,

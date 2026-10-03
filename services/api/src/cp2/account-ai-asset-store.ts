@@ -4,11 +4,11 @@ import type {
   InstalledAgentModelSummary,
   InstalledOssAgentManifestSummary,
   OssAgentSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import {
   portableAgentManifestFromOssAgent,
   validatePortableAgentManifest
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
 export const modelArtifactChunkSizeBytes = 4 * 1024 * 1024;
 

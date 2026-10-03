@@ -12,7 +12,7 @@
 - Sufficient storage and working memory for the selected profile shown in Agent settings.
 - `VITE_BROWSER_LOCAL_INFERENCE_ENABLED=true` in the frontend build.
 
-WebGPU support and mobile memory reporting vary. An unsupported device must continue on Soko's
+WebGPU support and mobile memory reporting vary. An unsupported device must continue on Grogoni's
 native or Cloud route.
 
 ## Diagnosis
@@ -41,8 +41,8 @@ regression in the activation coordinator rather than retrying downloads blindly.
 
 ## Clear model data
 
-**Delete browser model** unloads the worker and clears engine model cache plus Soko model metadata.
-It intentionally leaves chat history and the normal Soko sync database unchanged. Signing out
+**Delete browser model** unloads the worker and clears engine model cache plus Grogoni model metadata.
+It intentionally leaves chat history and the normal Grogoni sync database unchanged. Signing out
 terminates generation and removes account-scoped settings, summaries, and offline inference queue
 records.
 

@@ -4,7 +4,7 @@ import type {
   DeviceInferenceJob,
   DeviceInferenceResultInput,
   DeviceInferenceRuntime
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
 import { InferenceError } from "./providers/errors.js";
 

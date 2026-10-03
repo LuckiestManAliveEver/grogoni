@@ -45,7 +45,7 @@ check(
   identity.android?.compileSdk >= identity.android?.targetSdk,
   "compileSdk must not be lower than targetSdk"
 );
-check(identity.web?.origin === "https://soko.market", "production web origin is invalid");
+check(identity.web?.origin === "https://grogoni.com", "production web origin is invalid");
 check(isHttpsUrl(identity.web?.origin), "production web origin must use HTTPS");
 check(isHttpsUrl(identity.web?.apiOrigin), "production API origin must use HTTPS");
 check(
@@ -61,9 +61,9 @@ check(
   identity.web?.digitalAssetLinksUrl === `${identity.web?.origin}/.well-known/assetlinks.json`,
   "Digital Asset Links URL is inconsistent"
 );
-check(renderBlueprint.includes("domains:\n      - soko.market"), "Render must declare soko.market");
+check(renderBlueprint.includes("domains:\n      - grogoni"), "Render must declare grogoni");
 check(
-  renderBlueprint.includes("value: https://soko.market"),
+  renderBlueprint.includes("value: https://grogoni.com"),
   "Render web API origin must match the release identity"
 );
 check(identity.signing?.playAppSigning === true, "Play App Signing must be enabled");

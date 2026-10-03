@@ -14,7 +14,7 @@ import {
   type SupplierBusinessCardSummary,
   type SupplierFormState,
   type SupplierSummary
-} from "../soko-application-shared";
+} from "../grogoni-application-shared";
 
 interface UseSuppliersStateDeps {
   businessId: string | null;

@@ -1,10 +1,10 @@
-import { type RuntimeModelProviderName } from "@soko/shared-types";
-import { createMetrics, type Metrics } from "@soko/observability";
+import { type RuntimeModelProviderName } from "@grogoni/shared-types";
+import { createMetrics, type Metrics } from "@grogoni/observability";
 import { Pool } from "pg";
 import { buildApi } from "./app.js";
 import { readEnvironment } from "./config.js";
 import { buildPgPoolConfig } from "./db-pool-config.js";
-import { positiveIntegerFromEnv } from "@soko/resource-control";
+import { positiveIntegerFromEnv } from "@grogoni/resource-control";
 import {
   createOllamaInferenceClient,
   createOllamaModelAdapter,
@@ -53,9 +53,9 @@ import {
   type ConnectedMailboxSyncRunner
 } from "./cp2/connected-mailbox-sync-runner.js";
 import {
-  startSokoIdCooldownRunner,
-  type SokoIdCooldownRunner
-} from "./cp2/sokoid-cooldown-runner.js";
+  startGrogoniIdCooldownRunner,
+  type GrogoniIdCooldownRunner
+} from "./cp2/grogoniid-cooldown-runner.js";
 import { createBinaryUploadPipelineFromEnvironment } from "./cp2/binary-upload-pipeline.js";
 import { createChannelGatewayFromEnvironment } from "./messaging/channel-gateway.js";
 import { createEmailMailboxProviderClient } from "./messaging/email-provider-client.js";
@@ -101,7 +101,7 @@ const webPushConfiguration = readWebPushConfiguration();
 const pushNotificationSender =
   webPushConfiguration === null ? undefined : createWebPushSender(webPushConfiguration);
 const emailProvider = createEmailProviderFromEnvironment();
-const messageWebBaseUrl = (process.env.WEB_PUBLIC_URL ?? "https://soko.market").trim();
+const messageWebBaseUrl = (process.env.WEB_PUBLIC_URL ?? "https://grogoni.com").trim();
 const accountDeletionProcessors = readAccountDeletionProcessors();
 const networkInviteSender = createNetworkInviteSenderFromEnvironment();
 const binaryUploadPipeline = createBinaryUploadPipelineFromEnvironment();
@@ -129,7 +129,7 @@ const shouldUsePostgresStore =
   cp2StoreMode === "postgres" || (cp2StoreMode !== "memory" && databaseUrl !== "");
 
 // Multi-provider inference router (docs/architecture/multi-provider-inference-implementation.md).
-// Environment variables configure Soko-managed providers/credentials only; BYOK keys, provider
+// Environment variables configure Grogoni-managed providers/credentials only; BYOK keys, provider
 // overrides, usage telemetry and budgets are Postgres-authoritative on the module's own pool, the
 // same own-pool shape corridor fulfillment uses. No provider is required to boot: with nothing
 // configured, provider-routed models simply report CREDENTIAL_MISSING / unconfigured.
@@ -300,7 +300,7 @@ app.log.info(
 let accountDeletionRunner: AccountDeletionRunner | null = null;
 let notificationDeliveryRunner: NotificationDeliveryRunner | null = null;
 let connectedMailboxSyncRunner: ConnectedMailboxSyncRunner | null = null;
-let sokoIdCooldownRunner: SokoIdCooldownRunner | null = null;
+let grogoniIdCooldownRunner: GrogoniIdCooldownRunner | null = null;
 let conversationRecycleBinRunner: ConversationRecycleBinRunner | null = null;
 let agentOwnerCorrectionRetentionRunner: AgentOwnerCorrectionRetentionRunner | null = null;
 let runtimeExperienceRetentionRunner: RuntimeExperienceRetentionRunner | null = null;
@@ -319,12 +319,12 @@ let fulfillmentOutboxRunner: IntervalRunner<{ delivered: number; failed: number 
 const connectedMailboxSyncIntervalMs = readOptionalPositiveInteger(
   process.env.CONNECTED_MAILBOX_SYNC_INTERVAL_MS
 );
-const sokoIdCooldownIntervalMs = readOptionalPositiveInteger(
-  process.env.SOKO_ID_COOLDOWN_RUNNER_INTERVAL_MS
+const grogoniIdCooldownIntervalMs = readOptionalPositiveInteger(
+  process.env.GROGONI_ID_COOLDOWN_RUNNER_INTERVAL_MS
 );
-const sokoIdCooldownMs = readOptionalPositiveInteger(process.env.SOKO_ID_COOLDOWN_MS);
+const grogoniIdCooldownMs = readOptionalPositiveInteger(process.env.GROGONI_ID_COOLDOWN_MS);
 app.addHook("onClose", async () => {
-  await sokoIdCooldownRunner?.stop();
+  await grogoniIdCooldownRunner?.stop();
   await connectedMailboxSyncRunner?.stop();
   await notificationDeliveryRunner?.stop();
   await accountDeletionRunner?.stop();
@@ -484,18 +484,18 @@ if (fulfillmentService !== undefined) {
   });
 }
 
-if (process.env.ENABLE_SOKO_ID_COOLDOWN_RUNNER !== "false") {
-  sokoIdCooldownRunner = startSokoIdCooldownRunner({
+if (process.env.ENABLE_GROGONI_ID_COOLDOWN_RUNNER !== "false") {
+  grogoniIdCooldownRunner = startGrogoniIdCooldownRunner({
     store: cp2Store,
     timeScheduledJob: metrics.timeScheduledJob,
-    ...(sokoIdCooldownIntervalMs === undefined ? {} : { intervalMs: sokoIdCooldownIntervalMs }),
-    ...(sokoIdCooldownMs === undefined ? {} : { cooldownMs: sokoIdCooldownMs }),
+    ...(grogoniIdCooldownIntervalMs === undefined ? {} : { intervalMs: grogoniIdCooldownIntervalMs }),
+    ...(grogoniIdCooldownMs === undefined ? {} : { cooldownMs: grogoniIdCooldownMs }),
     onResult: (released) => {
       if (released > 0) {
-        app.log.info({ event: "soko_id_cooldown_released", released }, "Retired sokoIds released.");
+        app.log.info({ event: "grogoni_id_cooldown_released", released }, "Retired grogoniIds released.");
       }
     },
-    onError: (error) => app.log.error({ error }, "SokoId cooldown run failed.")
+    onError: (error) => app.log.error({ error }, "GrogoniId cooldown run failed.")
   });
 }
 

@@ -3,7 +3,7 @@ import {
   emptyInvoiceForm,
   emptyProductForm,
   emptySupplierForm
-} from "./soko-application-shared";
+} from "./grogoni-application-shared";
 import type { ShellView } from "./app-shell";
 import { ProductSurface } from "./ProductSurface";
 import { SupplierSurface } from "./SupplierSurface";

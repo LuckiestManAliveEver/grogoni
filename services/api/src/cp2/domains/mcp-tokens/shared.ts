@@ -18,7 +18,7 @@
  * incidental side effect of moving code.
  */
 import { createHash } from "node:crypto";
-import type { McpAccessTokenSummary } from "@soko/shared-types";
+import type { McpAccessTokenSummary } from "@grogoni/shared-types";
 
 export interface McpAccessTokenRecord extends McpAccessTokenSummary {
   userId: string;

@@ -3,7 +3,7 @@ import {
   parsePhoneNumberFromString,
   type CountryCode
 } from "libphonenumber-js";
-import type { MessageComposerChannel, MessageHandoffStatus } from "@soko/shared-types";
+import type { MessageComposerChannel, MessageHandoffStatus } from "@grogoni/shared-types";
 
 export const smsNativeSendingEnabled = false;
 export const singleSmsCharacterWarningThreshold = 160;
@@ -41,11 +41,11 @@ export class SmsRecipientError extends Error {
 }
 
 export function selectMessageComposerChannel(input: {
-  isSokoRecipient: boolean;
+  isGrogoniRecipient: boolean;
   smsRequested: boolean;
 }): MessageComposerChannel {
   if (input.smsRequested) return "sms_external_app";
-  return input.isSokoRecipient ? "soko" : "unsupported";
+  return input.isGrogoniRecipient ? "grogoni" : "unsupported";
 }
 
 export function normalizeSmsRecipient(recipient: string, defaultCountry?: CountryCode): string {
@@ -53,8 +53,8 @@ export function normalizeSmsRecipient(recipient: string, defaultCountry?: Countr
   if (rawRecipient.length === 0) {
     throw new SmsRecipientError("Enter a telephone number.");
   }
-  if (/^soko\s*:/i.test(rawRecipient) || /[a-z]/i.test(rawRecipient)) {
-    throw new SmsRecipientError("A Soko shop ID is not a telephone number.");
+  if (/^grogoni\s*:/i.test(rawRecipient) || /[a-z]/i.test(rawRecipient)) {
+    throw new SmsRecipientError("A Grogoni shop ID is not a telephone number.");
   }
 
   const digits = rawRecipient.replace(/\D/g, "");
@@ -110,9 +110,9 @@ export function supportsBrowserSmsHandoff(userAgent: string): boolean {
 export function browserSmsComposerEnvironment(): SmsComposerEnvironment {
   const bridge = (
     window as Window & {
-      SokoAndroid?: AndroidSmsComposerBridge;
+      GrogoniAndroid?: AndroidSmsComposerBridge;
     }
-  ).SokoAndroid;
+  ).GrogoniAndroid;
   return {
     ...(bridge === undefined ? {} : { nativeBridge: bridge }),
     navigate: (uri) => window.location.assign(uri),

@@ -7,7 +7,7 @@ import type {
   McpAccessTokenSummary,
   McpPrincipal,
   MembershipSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { Cp2Error } from "../../cp2-error.js";
 import { hashMcpAccessToken, mcpAccessTokenSummary, type McpAccessTokenRecord } from "./shared.js";
 import type { Cp2Snapshot } from "../../store.js";
@@ -116,7 +116,7 @@ export class McpTokensDomain {
       );
     }
     const expiresAt = new Date(now.getTime() + expiresInSeconds * 1_000).toISOString();
-    const accessToken = `soko_mcp_${randomUUID().replaceAll("-", "")}${randomUUID().replaceAll("-", "")}`;
+    const accessToken = `grogoni_mcp_${randomUUID().replaceAll("-", "")}${randomUUID().replaceAll("-", "")}`;
     const record: McpAccessTokenRecord = {
       id: randomUUID(),
       accountId: session.account.id,

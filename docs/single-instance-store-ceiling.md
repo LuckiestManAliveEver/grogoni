@@ -28,7 +28,7 @@ Consequences:
   snapshot and diverge from the first the moment either one accepts a write. Postgres `LISTEN`/
   `NOTIFY` (`realtimeChannel` in `postgres-store.ts`) fans out change _notifications_ between
   instances for the sync protocol, but does not make two in-memory copies of the same mutable
-  state consistent. Do not add a second `soko-market` instance (or Render autoscaling) until
+  state consistent. Do not add a second `grogoni` instance (or Render autoscaling) until
   this is resolved.
 - **Restart loses the persistence queue's in-flight tail**: writes are queued and flushed async;
   a hard crash between a completed HTTP response and the queued Postgres write landing can lose
@@ -61,7 +61,7 @@ restart, and would not be shared across a second instance for the same reason th
 store wouldn't be.
 
 **What's already fixed (this pass):** HTTP-level request throttling is now handled by
-`@fastify/rate-limit`, backed by a shared Redis instance (`soko-market-rate-limit-cache` in
+`@fastify/rate-limit`, backed by a shared Redis instance (`grogoni-rate-limit-cache` in
 `render.yaml`, wired via `REDIS_URL`) in both `services/api` and `services/ai-runtime`. This is a
 coarse, additive backstop across the _entire_ request surface (previously there was none at all
 outside a handful of specific auth routes) and survives restarts/would work correctly if these
@@ -164,7 +164,7 @@ horizontally scalable.
 ## Recommended path, in order
 
 1. **Now / cheap - done**: `GET /metrics` (see [`docs/observability.md`](./observability.md))
-   exposes process RSS/heap, CPU, and event-loop lag for free via `@soko/observability`, plus
+   exposes process RSS/heap, CPU, and event-loop lag for free via `@grogoni/observability`, plus
    HTTP/Neon-query/model-request latency histograms and connection-pool saturation gauges for the
    same pools this document is about. Nothing scrapes it yet and there's no alerting wired to it -
    that's the remaining part of "now / cheap" - but the numbers are real and queryable today, not

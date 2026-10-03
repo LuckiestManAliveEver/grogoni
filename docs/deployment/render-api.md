@@ -2,7 +2,7 @@
 
 ## Topology
 
-`render.yaml`'s `soko-market` service is a standard `type: web`, `runtime: node` Render
+`render.yaml`'s `grogoni` service is a standard `type: web`, `runtime: node` Render
 service - no persistent disk, no private inference service alongside it. It builds with
 `pnpm build:production` (workspace build, then the production-boundary checks in
 [../runtime/vercel-inference-audit.md](../runtime/vercel-inference-audit.md)'s "Bugs found" list
@@ -14,12 +14,12 @@ The API talks to three external systems, none of them containing model weights:
   runtime graph.
 - **Neon object storage** (`NEON_MODEL_STORAGE_*`) - used only to mint short-lived signed download
   URLs for model artifacts; the API never streams the bytes itself.
-- **Vercel** (`VERCEL_INFERENCE_URL` + `SOKO_INFERENCE_SERVICE_TOKEN`) - the inference execution
+- **Vercel** (`VERCEL_INFERENCE_URL` + `GROGONI_INFERENCE_SERVICE_TOKEN`) - the inference execution
   host. See [vercel-inference.md](./vercel-inference.md).
 
 ## Required configuration
 
-The full set lives in `render.yaml`'s `soko-market` service block and `.env.example`. The
+The full set lives in `render.yaml`'s `grogoni` service block and `.env.example`. The
 inference-relevant subset:
 
 ```text
@@ -27,7 +27,7 @@ PLATFORM_DEFAULT_EXECUTION_TARGET=vercel
 VERCEL_INFERENCE_URL=<generated per environment, sync: false>
 VERCEL_INFERENCE_TIMEOUT_MS=300000
 INFERENCE_REQUIRED=true
-SOKO_INFERENCE_SERVICE_TOKEN=<copy the existing shared value from the old API and Vercel>
+GROGONI_INFERENCE_SERVICE_TOKEN=<copy the existing shared value from the old API and Vercel>
 NEON_MODEL_STORAGE_ENDPOINT=<sync: false>
 NEON_MODEL_STORAGE_REGION=us-east-1
 NEON_MODEL_STORAGE_ACCESS_KEY_ID=<sync: false>
@@ -39,10 +39,10 @@ INFERENCE_JOB_TIMEOUT_MS=120000
 INFERENCE_JOB_SIGNING_SECRET=<generateValue: true>
 ```
 
-`VERCEL_INFERENCE_URL`, `SOKO_INFERENCE_SERVICE_TOKEN`, and the `NEON_MODEL_STORAGE_*` credentials
+`VERCEL_INFERENCE_URL`, `GROGONI_INFERENCE_SERVICE_TOKEN`, and the `NEON_MODEL_STORAGE_*` credentials
 are `sync: false` in `render.yaml`; they must be set by hand in the Render dashboard because they
 reference infrastructure Render does not provision itself. Preserve the existing shared
-`SOKO_INFERENCE_SERVICE_TOKEN` during this service migration and verify Vercel has the exact same
+`GROGONI_INFERENCE_SERVICE_TOKEN` during this service migration and verify Vercel has the exact same
 value (see [vercel-inference.md](./vercel-inference.md)). `INFERENCE_JOB_SIGNING_SECRET` remains
 Render-generated because it is internal to this service and does not authenticate another
 provider.
@@ -64,7 +64,7 @@ Does not:
 - load, cache, or run a model (`pnpm check:render-inference-boundaries` fails the build if
   `node-llama-cpp` or a similar engine ever becomes a dependency of `services/api`);
 - give Vercel direct database access or tool-execution authority;
-- expose `SOKO_INFERENCE_SERVICE_TOKEN`, the Neon storage credentials, or a signed artifact URL to
+- expose `GROGONI_INFERENCE_SERVICE_TOKEN`, the Neon storage credentials, or a signed artifact URL to
   the browser (the same boundary check enforces this for every `VITE_*` variable).
 
 ## Health surfaces

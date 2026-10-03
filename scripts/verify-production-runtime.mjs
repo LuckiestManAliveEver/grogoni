@@ -1,9 +1,9 @@
-const apiUrl = required("SOKO_API_URL").replace(/\/+$/u, "");
+const apiUrl = required("GROGONI_API_URL").replace(/\/+$/u, "");
 const inferenceUrl = required("VERCEL_INFERENCE_URL").replace(/\/+$/u, "");
-const sessionToken = required("SOKO_TEST_TOKEN");
-const shopId = required("SOKO_TEST_SHOP_ID");
-const modelId = process.env.SOKO_MODEL_ID?.trim() || "smollm2-360m";
-const cookie = sessionToken.includes("=") ? sessionToken : `soko_session=${sessionToken}`;
+const sessionToken = required("GROGONI_TEST_TOKEN");
+const shopId = required("GROGONI_TEST_SHOP_ID");
+const modelId = process.env.GROGONI_MODEL_ID?.trim() || "smollm2-360m";
+const cookie = sessionToken.includes("=") ? sessionToken : `grogoni_session=${sessionToken}`;
 
 const apiReadiness = await getJson(`${apiUrl}/health/ready`);
 assert(apiReadiness.response.ok, "API readiness failed.", apiReadiness.body);

@@ -1,8 +1,8 @@
-# Soko Agent Business Runtime
+# Grogoni Agent Business Runtime
 
 ## Architecture
 
-Soko treats a model as one replaceable component of a shop-specific runtime. The effective agent is
+Grogoni treats a model as one replaceable component of a shop-specific runtime. The effective agent is
 assembled from the saved agent profile, structured personality and policy, a tenant-bound context
 manifest, executable skill bindings, bounded memory, evaluation policy, and the active model
 binding.

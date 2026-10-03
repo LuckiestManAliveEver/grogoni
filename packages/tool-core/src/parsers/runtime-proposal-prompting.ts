@@ -11,7 +11,7 @@ export function renderRuntimeModelOutputInstructions(
     'or {"type":"clarification","message":"..."}',
     'or {"type":"response","message":"..."}.',
     `Allowed tools: ${tools || "none"}.`,
-    "A tool proposal is only a request; the Soko server validates permissions and confirmation before execution."
+    "A tool proposal is only a request; the Grogoni server validates permissions and confirmation before execution."
   ].join("\n");
 }
 

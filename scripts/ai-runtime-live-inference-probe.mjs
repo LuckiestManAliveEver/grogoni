@@ -9,10 +9,10 @@
 // artifact is served from a throwaway local HTTP server standing in for Neon object storage.
 //
 // Usage:
-//   pnpm --filter @soko/ai-runtime build
-//   SOKO_LIVE_GGUF_PATH=/path/to/SmolLM2-360M-Instruct-Q4_0.gguf node scripts/ai-runtime-live-inference-probe.mjs
+//   pnpm --filter @grogoni/ai-runtime build
+//   GROGONI_LIVE_GGUF_PATH=/path/to/SmolLM2-360M-Instruct-Q4_0.gguf node scripts/ai-runtime-live-inference-probe.mjs
 //
-// SOKO_LIVE_GGUF_PATH must point at a real local GGUF file. This script computes its own sha256/size
+// GROGONI_LIVE_GGUF_PATH must point at a real local GGUF file. This script computes its own sha256/size
 // from that file and uses them as the "expected" artifact metadata, so it is intentionally decoupled
 // from the production checksum in infra/db/migrations - it verifies the mechanism, not one specific
 // upstream file.
@@ -28,7 +28,7 @@ import {
   readVercelInferenceConfig
 } from "../services/ai-runtime/dist/index.js";
 
-const ggufPath = required("SOKO_LIVE_GGUF_PATH");
+const ggufPath = required("GROGONI_LIVE_GGUF_PATH");
 const stats = statSync(ggufPath);
 const sha256 = await hashFile(ggufPath);
 console.log(`Probing against ${ggufPath}`);
@@ -56,7 +56,7 @@ console.log(
 );
 
 const config = readVercelInferenceConfig({
-  SOKO_INFERENCE_SERVICE_TOKEN: token,
+  GROGONI_INFERENCE_SERVICE_TOKEN: token,
   MODEL_ARTIFACT_ALLOWED_HOSTS: artifactHostname,
   INFERENCE_RUNTIME_CACHE_ENTRIES: "1"
 });
@@ -73,7 +73,7 @@ try {
 
   // 2. /ready - configuration-level readiness, no download triggered.
   const readyResponse = createVercelReadyHandler({
-    SOKO_INFERENCE_SERVICE_TOKEN: token,
+    GROGONI_INFERENCE_SERVICE_TOKEN: token,
     MODEL_ARTIFACT_ALLOWED_HOSTS: artifactHostname
   })();
   assert(readyResponse.status === 200, "/ready did not return 200");
@@ -108,7 +108,7 @@ try {
       downloadUrl: `https://${artifactAuthority}/model.gguf`,
       expiresAt
     },
-    prompt: "Reply with exactly: SOKO_OK",
+    prompt: "Reply with exactly: GROGONI_OK",
     generation: { maxTokens: 16, temperature: 0, jsonOutput: false }
   });
   // The local probe server is plain HTTP; downloadVerifiedArtifact requires https in production,

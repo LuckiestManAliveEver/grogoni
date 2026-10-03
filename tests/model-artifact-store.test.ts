@@ -1,5 +1,5 @@
 import { createHash, createHmac } from "node:crypto";
-import type { ModelArtifact } from "@soko/shared-types";
+import type { ModelArtifact } from "@grogoni/shared-types";
 import { describe, expect, it, vi } from "vitest";
 
 import { createNeonModelArtifactStore } from "../services/api/src/inference/model-artifact-store";
@@ -22,7 +22,7 @@ const artifact: ModelArtifact = {
   id: "builtin:smollm2-360m:q4_0:gguf",
   modelId: "smollm2-360m",
   storageProvider: "neon-object-storage",
-  bucket: "soko-model-artifacts",
+  bucket: "grogoni-model-artifacts",
   objectKey: "models/smollm2-360m/SmolLM2-360M-Instruct-Q4_0.gguf",
   format: "gguf",
   quantization: "Q4_0",

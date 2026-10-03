@@ -4,7 +4,7 @@
  * nothing vendor-specific (OpenAI `choices`, Anthropic `content` blocks, SSE frames, request-id
  * headers) crosses into the router, the routed model adapter, or the agent runtime.
  *
- * These names intentionally live in services/api rather than @soko/shared-types: the shared
+ * These names intentionally live in services/api rather than @grogoni/shared-types: the shared
  * package already exports a *client-side* InferenceRequest/InferenceChunk/InferenceProvider for the
  * offline/owner-node executor (apps/web/src/inference), and the server contract below is a
  * different shape with a different trust boundary (it carries resolved credentials).
@@ -14,11 +14,11 @@ import type {
   InferenceExecutionTarget,
   InferenceModelCapabilities,
   InferenceModelPricing
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
 /**
  * Where inference physically runs, from the provider layer's point of view (declared in
- * @soko/shared-types so the catalog row and the client share it). Deliberately separate from the
+ * @grogoni/shared-types so the catalog row and the client share it). Deliberately separate from the
  * native graph's ModelExecutionTarget: the two client-only targets were retired from the native
  * graph by ADR-device-independent-runtime-and-registry-discovery.md and must never materialize a
  * server-side host - see docs/architecture/multi-provider-inference-audit.md §3.1.
@@ -74,7 +74,7 @@ export type InferenceContentPart =
 export interface ToolCall {
   /** Provider-issued id, kept so a tool result can be correlated on the next turn. */
   id: string;
-  /** Soko's canonical tool name (e.g. "products.list"), already decoded from any wire encoding. */
+  /** Grogoni's canonical tool name (e.g. "products.list"), already decoded from any wire encoding. */
   name: string;
   arguments: Record<string, unknown>;
 }
@@ -88,7 +88,7 @@ export interface InferenceMessage {
   toolCalls?: ToolCall[];
 }
 
-/** Soko tool definition as handed to a provider. The provider never executes it. */
+/** Grogoni tool definition as handed to a provider. The provider never executes it. */
 export interface ToolDefinition {
   name: string;
   description: string;

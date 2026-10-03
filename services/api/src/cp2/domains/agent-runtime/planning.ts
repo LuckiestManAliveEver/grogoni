@@ -5,7 +5,7 @@ import {
   validateRuntimeToolInput,
   type ReceiptContextScriptMatch,
   type RuntimeToolProposal
-} from "@soko/tool-core";
+} from "@grogoni/tool-core";
 
 import { isChannelProvider, normalizeRuntimeLookup } from "./shared.js";
 import type { AgentRuntimeDomainDeps } from "./store.js";
@@ -188,11 +188,11 @@ export function createRuntimeMessagingProposal(
   }
   const email = /^(?:please\s+)?email\s+(.+?)\s+(?:that|saying|:)\s+(.+)$/iu.exec(message.trim());
   const direct =
-    /^(?:please\s+)?(?:message|tell)\s+(.+?)(?:\s+on\s+(telegram|whatsapp|messenger|instagram|tiktok|x|native[_ ]?sms|sms|email|soko))?\s+(?:that|saying|:)\s+(.+)$/iu.exec(
+    /^(?:please\s+)?(?:message|tell)\s+(.+?)(?:\s+on\s+(telegram|whatsapp|messenger|instagram|tiktok|x|native[_ ]?sms|sms|email|grogoni))?\s+(?:that|saying|:)\s+(.+)$/iu.exec(
       message.trim()
     );
   const send =
-    /^(?:please\s+)?send\s+["“]?(.+?)["”]?\s+to\s+(.+?)(?:\s+on\s+(telegram|whatsapp|messenger|instagram|tiktok|x|native[_ ]?sms|sms|email|soko))?$/iu.exec(
+    /^(?:please\s+)?send\s+["“]?(.+?)["”]?\s+to\s+(.+?)(?:\s+on\s+(telegram|whatsapp|messenger|instagram|tiktok|x|native[_ ]?sms|sms|email|grogoni))?$/iu.exec(
       message.trim()
     );
   const customerName = (email?.[1] ?? direct?.[1] ?? send?.[2])?.trim();
@@ -207,7 +207,7 @@ export function createRuntimeMessagingProposal(
     input: {
       customerName,
       text,
-      ...(provider === "email" ? { subject: "Update from Soko" } : {}),
+      ...(provider === "email" ? { subject: "Update from Grogoni" } : {}),
       ...(isChannelProvider(provider) ? { provider } : {})
     },
     reason: `Prepared a message to ${customerName}${provider ? ` on ${provider}` : ""}.`,

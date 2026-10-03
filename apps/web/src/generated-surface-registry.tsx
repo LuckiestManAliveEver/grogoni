@@ -1,6 +1,6 @@
 import { Suspense, type ReactNode } from "react";
 
-import type { ConversationMessageContent } from "@soko/shared-types";
+import type { ConversationMessageContent } from "@grogoni/shared-types";
 
 import {
   CustomerManagementCard,
@@ -13,7 +13,7 @@ import {
   ProductManagementCard,
   StatusBroadcastCard,
   SupplierManagementCard
-} from "./soko-application-shared";
+} from "./grogoni-application-shared";
 
 /**
  * The generated-surface registry: one renderer per ConversationMessageContent variant, looked up

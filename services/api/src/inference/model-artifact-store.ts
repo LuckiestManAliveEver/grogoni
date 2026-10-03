@@ -3,7 +3,7 @@ import type {
   ArtifactVerificationResult,
   ModelArtifact,
   ResolvedModelArtifact
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import type { Pool } from "pg";
 
 import { ModelRuntimeError } from "./model-runtime.js";

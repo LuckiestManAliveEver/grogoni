@@ -12,7 +12,7 @@ collectStaticFiles(entry, initialFiles);
 const initialJavaScriptGzip = sumGzip([...initialFiles].filter((file) => file.endsWith(".js")));
 const initialCssGzip = sumGzip([...initialFiles].filter((file) => file.endsWith(".css")));
 const ownerRoute = Object.values(manifest).find(
-  (item) => item.src?.endsWith("src/SokoApplication.tsx") || item.name === "SokoApplication"
+  (item) => item.src?.endsWith("src/GrogoniApplication.tsx") || item.name === "GrogoniApplication"
 );
 const ownerRouteGzip = ownerRoute ? gzipBytes(ownerRoute.file) : 0;
 

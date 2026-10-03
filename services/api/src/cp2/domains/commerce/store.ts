@@ -14,8 +14,8 @@
  * as they read every other entity Map.
  */
 import { randomUUID } from "node:crypto";
-import type { BusinessPermission, InvoiceInput, ProductInput } from "@soko/business-core";
-import { queryCatalogueProducts } from "@soko/business-core";
+import type { BusinessPermission, InvoiceInput, ProductInput } from "@grogoni/business-core";
+import { queryCatalogueProducts } from "@grogoni/business-core";
 import type {
   AuthenticatedActorView,
   BusinessSummary,
@@ -43,7 +43,7 @@ import type {
   UserSummary,
   MessageChannel,
   OrderSource
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { Cp2Error } from "../../cp2-error.js";
 import type { ProductMediaRecord, PublicStorefrontSummary } from "../../store.js";
 import {
@@ -682,7 +682,7 @@ export class CommerceDomain {
 
   /**
    * Phone contacts eligible to receive a status broadcast. `defaultSelected` is only true for
-   * contacts who are both a matched Soko account and an existing customer of this business - the
+   * contacts who are both a matched Grogoni account and an existing customer of this business - the
    * caller must never treat the full candidate list as the default selection.
    */
   listStatusBroadcastCandidates(input: {
@@ -708,21 +708,21 @@ export class CommerceDomain {
       .filter((node) => node.ownerUserId === session.user.id && node.sourceType === "phone_contact")
       .map((node) => {
         const recipientAccountId = this.accountIdForNetworkNode(node);
-        const isSokoUser = recipientAccountId !== null;
-        const isExistingCustomer = isSokoUser && existingCustomerAccountIds.has(recipientAccountId);
+        const isGrogoniUser = recipientAccountId !== null;
+        const isExistingCustomer = isGrogoniUser && existingCustomerAccountIds.has(recipientAccountId);
         return {
           networkNodeId: node.id,
           displayName: node.displayName,
-          isSokoUser,
+          isGrogoniUser,
           isExistingCustomer,
-          defaultSelected: isSokoUser && isExistingCustomer
+          defaultSelected: isGrogoniUser && isExistingCustomer
         };
       });
   }
 
   /**
    * Posts a status broadcast from a capture job's confirmed items to the chosen contacts. A
-   * status is a distinct trackable object, not a chat message, so recipients matched to a Soko
+   * status is a distinct trackable object, not a chat message, so recipients matched to a Grogoni
    * account ("in_app") do not receive it as a conversation message - conversations with two human
    * accounts must be end-to-end encrypted (validateConversationEncryption), and a server-composed
    * status card cannot honestly satisfy that. Instead "in_app" recipients discover it through
@@ -1123,9 +1123,9 @@ export class CommerceDomain {
         status: "draft",
         confirmedAt: null,
         now,
-        // Marketplace checkout by a Soko buyer account (web or the commerce.checkout capability).
-        source: "SOKO_CHAT",
-        sourceMessageChannel: "soko"
+        // Marketplace checkout by a Grogoni buyer account (web or the commerce.checkout capability).
+        source: "GROGONI_CHAT",
+        sourceMessageChannel: "grogoni"
       });
       this.deps.invoices.set(invoice.id, invoice);
 
@@ -1270,13 +1270,13 @@ export class CommerceDomain {
   ): StatusBroadcastRecipientSummary | undefined {
     return status.recipients.find((candidate) => {
       const node = this.deps.networkNodes.get(candidate.networkNodeId);
-      return node?.sokoUserId === viewerUserId;
+      return node?.grogoniUserId === viewerUserId;
     });
   }
 
   private accountIdForNetworkNode(node: NetworkNodeSummary): string | null {
-    if (node.sokoUserId === null) return null;
-    return this.deps.users.get(node.sokoUserId)?.accountId ?? null;
+    if (node.grogoniUserId === null) return null;
+    return this.deps.users.get(node.grogoniUserId)?.accountId ?? null;
   }
 
   private requireStatusBroadcastById(statusBroadcastId: string): StatusBroadcastSummary {
@@ -1306,7 +1306,7 @@ export class CommerceDomain {
    */
   private contactLabelForStatus(status: StatusBroadcastSummary, viewerUserId: string): string {
     const contactNode = [...this.deps.networkNodes.values()].find(
-      (node) => node.ownerUserId === viewerUserId && node.sokoUserId === status.postedBy
+      (node) => node.ownerUserId === viewerUserId && node.grogoniUserId === status.postedBy
     );
     return (
       contactNode?.displayName ?? this.deps.businesses.get(status.businessId)?.name ?? "Contact"
@@ -1323,6 +1323,6 @@ export class CommerceDomain {
   }
 
   private businessIdForAgentId(agentId: string): string | undefined {
-    return [...this.deps.businesses.values()].find((business) => business.sokoId === agentId)?.id;
+    return [...this.deps.businesses.values()].find((business) => business.grogoniId === agentId)?.id;
   }
 }

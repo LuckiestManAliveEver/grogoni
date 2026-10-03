@@ -43,7 +43,7 @@ test("a signed-in account registers its first shop without OTP", async ({ page }
           id: "first-shop",
           name: "No OTP Shop",
           language: "en",
-          sokoId: "254A00000001"
+          grogoniId: "254A00000001"
         },
         membership: { role: "owner" }
       });
@@ -53,7 +53,7 @@ test("a signed-in account registers its first shop without OTP", async ({ page }
   });
 
   await page.addInitScript(() => {
-    localStorage.setItem("soko.market.marketplace-intro.completed.v1", "true");
+    localStorage.setItem("grogoni.marketplace-intro.completed.v1", "true");
   });
   await page.goto("/marketplace");
   await page.getByTestId("shop-entry-button").click();
@@ -144,7 +144,7 @@ test("captures and normalizes the compulsory owner phone without SMS", async ({ 
   });
 
   await page.addInitScript(() => {
-    localStorage.setItem("soko.market.marketplace-intro.completed.v1", "true");
+    localStorage.setItem("grogoni.marketplace-intro.completed.v1", "true");
   });
   await page.goto("/marketplace");
   await page.getByTestId("shop-entry-button").click();

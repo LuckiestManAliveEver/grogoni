@@ -5,8 +5,8 @@ import type {
   Entity,
   Operation,
   OfflineOrderIntentOutcome
-} from "@soko/offline-runtime";
-import { same } from "@soko/offline-runtime";
+} from "@grogoni/offline-runtime";
+import { same } from "@grogoni/offline-runtime";
 import { Cp2Error } from "./cp2-error.js";
 
 export interface OfflineReceipt {

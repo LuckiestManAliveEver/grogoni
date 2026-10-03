@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import type { McpAccessScope } from "@soko/shared-types";
+import type { McpAccessScope } from "@grogoni/shared-types";
 import { Cp2Error, readSessionCookie, type Cp2Store } from "../cp2/store.js";
 
 const authorizationCodeTtlMs = 5 * 60 * 1_000;
@@ -64,7 +64,7 @@ export function registerMcpOAuthRoutes(app: FastifyInstance, options: McpOAuthOp
   app.get("/oauth/authorize", async (request, reply) => {
     try {
       const query = recordValue(request.query);
-      const sessionId = requireSokoSession(request, options.store);
+      const sessionId = requireGrogoniSession(request, options.store);
       const authorization = validateAuthorizationRequest(query, resource, sessionId);
       pruneExpired(pendingAuthorizations);
       const requestId = randomToken();
@@ -87,9 +87,9 @@ export function registerMcpOAuthRoutes(app: FastifyInstance, options: McpOAuthOp
       if (pending === undefined || pending.expiresAt <= Date.now()) {
         throw new OAuthError("invalid_request", "The authorization request expired.");
       }
-      const sessionId = requireSokoSession(request, options.store);
+      const sessionId = requireGrogoniSession(request, options.store);
       if (sessionId !== pending.sessionId) {
-        throw new OAuthError("access_denied", "The Soko session changed during authorization.");
+        throw new OAuthError("access_denied", "The Grogoni session changed during authorization.");
       }
       if (query.decision !== "approve") {
         return reply.redirect(authorizationRedirect(pending, { error: "access_denied" }), 302);
@@ -169,7 +169,7 @@ export function registerMcpOAuthRoutes(app: FastifyInstance, options: McpOAuthOp
     if (query.resource !== expectedResource) {
       throw new OAuthError(
         "invalid_target",
-        "The OAuth resource must identify the Soko MCP endpoint."
+        "The OAuth resource must identify the Grogoni MCP endpoint."
       );
     }
     return {
@@ -194,10 +194,10 @@ export function mcpSecuritySchemes(scopes: McpAccessScope[]) {
   return [{ type: "oauth2", scopes }];
 }
 
-function requireSokoSession(request: FastifyRequest, store: Cp2Store): string {
+function requireGrogoniSession(request: FastifyRequest, store: Cp2Store): string {
   const sessionId = readSessionCookie(request.headers.cookie);
   if (store.getSession(sessionId) === null || sessionId === null) {
-    throw new OAuthError("login_required", "Sign in to Soko Market before authorizing ChatGPT.");
+    throw new OAuthError("login_required", "Sign in to Grogoni before authorizing ChatGPT.");
   }
   return sessionId;
 }
@@ -233,7 +233,7 @@ function consentPage(requestId: string, scopes: McpAccessScope[]): string {
     .map((label) => `<li>${escapeHtml(label)}</li>`)
     .join("");
   const encodedId = encodeURIComponent(requestId);
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Authorize ChatGPT</title><style>body{font-family:system-ui,sans-serif;max-width:38rem;margin:4rem auto;padding:0 1.5rem;color:#18221d}h1{font-size:1.7rem}li{margin:.6rem 0}.actions{display:flex;gap:.75rem;margin-top:2rem}a{padding:.7rem 1rem;border:1px solid #167d5a;color:#126548;text-decoration:none}a.primary{background:#167d5a;color:white}</style></head><body><main><h1>Connect ChatGPT to Soko Market</h1><p>ChatGPT is requesting permission to:</p><ul>${permissions}</ul><p>Business changes still use Soko's confirmation controls.</p><div class="actions"><a class="primary" href="/oauth/authorize/decision?request_id=${encodedId}&decision=approve">Allow</a><a href="/oauth/authorize/decision?request_id=${encodedId}&decision=deny">Cancel</a></div></main></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Authorize ChatGPT</title><style>body{font-family:system-ui,sans-serif;max-width:38rem;margin:4rem auto;padding:0 1.5rem;color:#18221d}h1{font-size:1.7rem}li{margin:.6rem 0}.actions{display:flex;gap:.75rem;margin-top:2rem}a{padding:.7rem 1rem;border:1px solid #167d5a;color:#126548;text-decoration:none}a.primary{background:#167d5a;color:white}</style></head><body><main><h1>Connect ChatGPT to Grogoni</h1><p>ChatGPT is requesting permission to:</p><ul>${permissions}</ul><p>Business changes still use Grogoni's confirmation controls.</p><div class="actions"><a class="primary" href="/oauth/authorize/decision?request_id=${encodedId}&decision=approve">Allow</a><a href="/oauth/authorize/decision?request_id=${encodedId}&decision=deny">Cancel</a></div></main></body></html>`;
 }
 
 function sendAuthorizationError(reply: FastifyReply, error: unknown, publicOrigin: string) {
@@ -243,7 +243,7 @@ function sendAuthorizationError(reply: FastifyReply, error: unknown, publicOrigi
       .header("cache-control", "no-store")
       .type("text/html; charset=utf-8")
       .send(
-        `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Authorization failed</title></head><body><main><h1>Authorization failed</h1><p>${escapeHtml(error.message)}</p><p><a href="${escapeHtml(publicOrigin)}">Open Soko Market</a></p></main></body></html>`
+        `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Authorization failed</title></head><body><main><h1>Authorization failed</h1><p>${escapeHtml(error.message)}</p><p><a href="${escapeHtml(publicOrigin)}">Open Grogoni</a></p></main></body></html>`
       );
   }
   throw error;

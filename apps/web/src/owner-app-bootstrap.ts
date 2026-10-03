@@ -6,13 +6,13 @@ import type {
   AgentSkillBinding,
   ProductFieldDefinition,
   ProductFieldInputType
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import {
   defaultAgentDefinition,
   defaultAgentDefinitionId,
   isAgentDefinitionId
-} from "@soko/shared-types";
-import { type SokoMode } from "./app-shell";
+} from "@grogoni/shared-types";
+import { type GrogoniMode } from "./app-shell";
 
 import {
   type ActiveBusiness,
@@ -33,9 +33,9 @@ import {
   ownerAuthStorageKey,
   pendingOAuthStorageKey,
   setupDraftStorageKey
-} from "./soko-application-shared";
+} from "./grogoni-application-shared";
 
-import { isSokoId, normalizeSokoId, createStorefrontUrl } from "./sokoid-and-storefront";
+import { isGrogoniId, normalizeGrogoniId, createStorefrontUrl } from "./grogoniid-and-storefront";
 import { inferCountryCode, isCountryDialCode, isSocialSignupProvider } from "./country-dial-codes";
 
 export function readStoredBusiness(): ActiveBusiness | null {
@@ -55,11 +55,11 @@ export function readStoredBusiness(): ActiveBusiness | null {
       typeof parsed.name === "string" &&
       (parsed.language === "en" || parsed.language === "sw") &&
       typeof parsed.role === "string" &&
-      isSokoId(parsed.sokoId)
+      isGrogoniId(parsed.grogoniId)
     ) {
       return {
         ...parsed,
-        sokoId: normalizeSokoId(parsed.sokoId)
+        grogoniId: normalizeGrogoniId(parsed.grogoniId)
       };
     }
   } catch {
@@ -71,7 +71,7 @@ export function readStoredBusiness(): ActiveBusiness | null {
   return null;
 }
 
-export function readStoredSokoMode(): SokoMode {
+export function readStoredGrogoniMode(): GrogoniMode {
   return localStorage.getItem(activeModeStorageKey) === "seller" ? "seller" : "marketplace";
 }
 
@@ -223,8 +223,8 @@ export function readSetupDraft(): SetupDraft | null {
 }
 
 export function createDefaultAgent(business: ActiveBusiness | null): AgentSettings {
-  const businessName = business?.name.trim() || "Soko.market";
-  const globalAgentId = business === null ? "local-soko-market" : normalizeSokoId(business.sokoId);
+  const businessName = business?.name.trim() || "Grogoni";
+  const globalAgentId = business === null ? "local-grogoni" : normalizeGrogoniId(business.grogoniId);
 
   const generalInstruction = defaultAgentDefinition.instructions;
   const personality = defaultAgentDefinition.personality;
@@ -245,7 +245,7 @@ export function createDefaultAgent(business: ActiveBusiness | null): AgentSettin
     knowledge: defaultAgentDefinition.knowledge,
     tools: [...defaultAgentDefinition.tools],
     skillBindings: defaultWebAgentSkills(),
-    integrations: ["Soko.market storefront"],
+    integrations: ["Grogoni storefront"],
     contextScripts: defaultAgentContextScripts,
     memoryPolicy: defaultWebAgentMemoryPolicy(),
     evaluationPolicy: defaultWebAgentEvaluationPolicy(),
@@ -262,7 +262,7 @@ export function agentSettingsFromBusinessProfile(
   profile: BusinessAgentProfileSummary,
   business: ActiveBusiness
 ): AgentSettings {
-  const globalAgentId = normalizeSokoId(business.sokoId);
+  const globalAgentId = normalizeGrogoniId(business.grogoniId);
   return {
     agentDefinitionId: profile.agentDefinitionId ?? defaultAgentDefinitionId,
     id: `agent-${globalAgentId}`,
@@ -464,7 +464,7 @@ export function isAgentModel(value: unknown): value is AgentModel {
     value === "smollm2-360m-android" ||
     value === "tinyllama-1.1b-chat-q3-k-m-android" ||
     value === "tinyllama-1.1b-chat-q4-k-m-android" ||
-    value === "sokoclaw-local" ||
+    value === "grogoniclaw-local" ||
     value === "llama-cpp-configured" ||
     value === "openai-fast" ||
     value === "openai-reasoning" ||

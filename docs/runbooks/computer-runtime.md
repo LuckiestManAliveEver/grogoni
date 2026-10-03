@@ -5,7 +5,7 @@
 Set `COMPUTER_RUNTIME_URL`, the same high-entropy `COMPUTER_RUNTIME_SERVICE_TOKEN` on API and
 worker, and `AUTH_TOKEN_ENCRYPTION_KEY` on API. Locally run
 `docker compose --profile computer up computer-runtime` or
-`pnpm --filter @soko/computer-runtime dev`. Chromium never runs in the API or web process.
+`pnpm --filter @grogoni/computer-runtime dev`. Chromium never runs in the API or web process.
 
 Required configuration should include:
 

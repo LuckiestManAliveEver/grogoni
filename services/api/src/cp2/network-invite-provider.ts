@@ -45,8 +45,8 @@ export function createSignedNetworkInviteSender(
         headers: {
           "content-type": "application/json",
           "idempotency-key": input.inviteId,
-          "x-soko-invite-signature": `sha256=${signature}`,
-          "x-soko-invite-timestamp": timestamp
+          "x-grogoni-invite-signature": `sha256=${signature}`,
+          "x-grogoni-invite-timestamp": timestamp
         },
         body,
         signal: AbortSignal.timeout(15_000)

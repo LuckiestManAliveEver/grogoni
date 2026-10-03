@@ -7,7 +7,7 @@
  * process. Swapping any of those repoints execution to a new handoff instead of replaying chat
  * history.
  *
- * Soko has no separate `tasks` entity distinct from `conversations` (see
+ * Grogoni has no separate `tasks` entity distinct from `conversations` (see
  * cp2/domains/native-runtime/store.ts): a conversation is the unit of runtime execution, so
  * `taskId` is always populated with the owning conversation's id today. The field stays named
  * `taskId` throughout so a future task/conversation split only has to add a real `tasks` table,
@@ -68,7 +68,7 @@ export interface RuntimeTestResults {
   pending: string[];
 }
 
-/** The runtime binding snapshot a handoff was created under. References Soko's actual native
+/** The runtime binding snapshot a handoff was created under. References Grogoni's actual native
  *  runtime graph entities (cp2_native_runtime_agents / cp2_native_runtime_models /
  *  cp2_native_execution_hosts), not a generic `agents`/`models`/`execution_hosts` schema. */
 export interface RuntimeHandoffRuntimeRef {
@@ -140,7 +140,7 @@ export type RuntimeTaskInstanceStatus =
 
 /** The checkpoint this task's current executor *believes* it is running, plus its lifecycle
  *  status. Comparing `activeHandoffId` here against `RuntimeTaskHead.activeHandoffId` for the
- *  same task is runtime drift detection (section 5/12). This is the closest Soko has to the
+ *  same task is runtime drift detection (section 5/12). This is the closest Grogoni has to the
  *  protocol's generic "runtime_instances" concept for a per-task executing process; it is
  *  intentionally a new, narrow table rather than an extension of `cp2_runtime_sessions`, which is
  *  a distinct business/user-scoped agentic-planner concept (see invariant 1.4).

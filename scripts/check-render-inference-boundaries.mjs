@@ -17,7 +17,7 @@ const blockedDependencies = [
   "ollama"
 ];
 const blockedImportPatterns = [
-  /^@soko\/ai-runtime\/(?:src|local-model|ollama-model|llama-runtime|artifact-loader)(?:\/|$)/u,
+  /^@grogoni\/ai-runtime\/(?:src|local-model|ollama-model|llama-runtime|artifact-loader)(?:\/|$)/u,
   /(?:^|\/)(?:local-model|ollama-model|browser-model\.worker|llama-runtime|artifact-loader)(?:\.js)?$/u,
   /(?:llama|gguf).*(?:loader|worker|binding)/iu
 ];
@@ -54,7 +54,7 @@ for (const root of ["services/api/src", "services/api/dist"]) {
 // would either fail (services/api/apps/web aren't installed in the Vercel project) or silently
 // bundle application code into the inference deployment.
 const aiRuntimeManifest = JSON.parse(readFileSync("services/ai-runtime/package.json", "utf8"));
-const allowedAiRuntimeDependencies = new Set(["@soko/shared-types", "node-llama-cpp"]);
+const allowedAiRuntimeDependencies = new Set(["@grogoni/shared-types", "node-llama-cpp"]);
 for (const dependency of Object.keys(aiRuntimeManifest.dependencies ?? {})) {
   if (!allowedAiRuntimeDependencies.has(dependency)) {
     violations.push(
@@ -90,12 +90,12 @@ const blueprint = readFileSync("render.yaml", "utf8");
 
 // The Render Blueprint must no longer declare a Render-hosted inference service of any kind.
 const forbiddenBlueprintMarkers = [
-  "soko-market-inference",
+  "grogoni-inference",
   "services/ai-runtime/Dockerfile",
   "BACKEND_INFERENCE_ENABLED",
   "BACKEND_INFERENCE_BASE_URL",
   "BACKEND_INFERENCE_MODEL_ID",
-  "mountPath: /var/lib/soko-models",
+  "mountPath: /var/lib/grogoni-models",
   "OLLAMA_KEEP_ALIVE",
   "INFERENCE_ENGINE",
   "key: INFERENCE_SERVICE_TOKEN"
@@ -108,7 +108,7 @@ for (const forbidden of forbiddenBlueprintMarkers) {
   }
 }
 
-const apiStart = blueprint.indexOf("name: soko-market");
+const apiStart = blueprint.indexOf("name: grogoni");
 const nextService = blueprint.indexOf("\n  - type:", apiStart);
 const apiService = blueprint.slice(apiStart, nextService === -1 ? undefined : nextService);
 
@@ -122,10 +122,10 @@ for (const forbidden of ["LOCAL_MODEL_", "llama.cpp", ".gguf", "OLLAMA_BASE_URL"
 // not a bare `apiService.includes("type: pserv")`, because the API's envVars legitimately contain
 // that substring inside a `fromService: { type: pserv }` reference to another private service (the
 // OCR worker, docs/receipt-ocr.md), which is not this boundary's concern.
-if (!/-\s+type:\s*web\s*\n\s*name:\s*soko-market/u.test(blueprint)) {
+if (!/-\s+type:\s*web\s*\n\s*name:\s*grogoni/u.test(blueprint)) {
   violations.push("Render API service must declare `type: web`, not a private service (pserv).");
 }
-for (const required of ["key: VERCEL_INFERENCE_URL", "key: SOKO_INFERENCE_SERVICE_TOKEN"]) {
+for (const required of ["key: VERCEL_INFERENCE_URL", "key: GROGONI_INFERENCE_SERVICE_TOKEN"]) {
   if (!apiService.includes(required)) {
     violations.push(`Render API service is missing the Vercel execution-host marker ${required}`);
   }
@@ -135,7 +135,7 @@ for (const required of ["key: VERCEL_INFERENCE_URL", "key: SOKO_INFERENCE_SERVIC
 // credentials that let Render mint signed model-artifact download URLs.
 for (const forbidden of [
   "VITE_INFERENCE_SERVICE_TOKEN",
-  "VITE_SOKO_INFERENCE_SERVICE_TOKEN",
+  "VITE_GROGONI_INFERENCE_SERVICE_TOKEN",
   "VITE_NEON_MODEL_STORAGE",
   "VITE_VERCEL_INFERENCE"
 ]) {

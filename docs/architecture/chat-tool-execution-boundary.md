@@ -78,7 +78,7 @@ executes — at worst it costs one unnecessary round trip.
 Reading the code in isolation, `cp2_agent_model_bindings`, `agentModelAssignments`, and
 `activeAiModels` look like three overlapping ways to pick a model. They are not — each has a
 distinct, non-overlapping job, enforced by the actual UI flow
-(`apps/web/src/SokoApplication.tsx`), not just by convention:
+(`apps/web/src/GrogoniApplication.tsx`), not just by convention:
 
 1. **`cp2_agent_model_bindings`** (`AgentModelBindingSummary`) — the canonical binding for
    provider-neutral execution targets (`backend`, `browser-local`, installed-app native bridge,
@@ -90,7 +90,7 @@ distinct, non-overlapping job, enforced by the actual UI flow
    whether a _device-local_ model (browser-downloaded or installed-app) has actually completed a
    real inference successfully. The frontend gate that matters:
    `agentModelAssignment.lastSuccessfulInferenceAt !== null && runtimeBackend !== "CLOUD"`
-   (`SokoApplication.tsx:13195`) — a device model is not considered "ready" until it has proven
+   (`GrogoniApplication.tsx:13195`) — a device model is not considered "ready" until it has proven
    itself with a real completion, mirroring the health-check discipline of layer 1 at the device
    level.
 3. **`activeAiModels`** (`PUT /businesses/:id/ai-model`, `activateAiModel`) — the **hosted fallback
@@ -147,6 +147,6 @@ AgentRuntimeDomain.ensureDefaultRuntimeForTurn` (`store.ts`) only requires a con
 
 An earlier pass flagged the three model-selection layers above as a possible sign of overlapping,
 unclear mechanisms worth auditing. On tracing the actual frontend gating logic
-(`SokoApplication.tsx`), that concern did not hold up: each layer has a distinct job and its own
+(`GrogoniApplication.tsx`), that concern did not hold up: each layer has a distinct job and its own
 real-inference gate. No code change was made here — this document replaces that earlier informal
 concern with the traced, verified explanation, so it does not need re-investigating later.

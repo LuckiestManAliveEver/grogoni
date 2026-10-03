@@ -2,7 +2,7 @@
 
 ## Current status
 
-The web app publishes the supplied Soko.market Terms of Service Version 1.0 Draft, Parts I–IV,
+The web app publishes the supplied Grogoni Terms of Service Version 1.0 Draft, Parts I–IV,
 at `/terms`. The page is responsive, keyboard navigable, printable, and uses semantic headings,
 lists, landmarks, and anchored navigation.
 

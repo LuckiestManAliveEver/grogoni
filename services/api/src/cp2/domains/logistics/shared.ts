@@ -1,4 +1,4 @@
-import type { LogisticsReportSummary, LogisticsSummary } from "@soko/shared-types";
+import type { LogisticsReportSummary, LogisticsSummary } from "@grogoni/shared-types";
 
 export function summarizeLogistics(logistics: LogisticsSummary[]): LogisticsReportSummary {
   const summary: LogisticsReportSummary = {

@@ -2,7 +2,7 @@ import type {
   CloudModelArtifactSummary,
   InstalledOssAgentManifestSummary,
   OssAgentSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
 import { getJson, postJson } from "./api-helpers";
 import { installOssAgentManifest } from "./oss-agent-installation";

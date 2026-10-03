@@ -3,7 +3,7 @@
  * docs/architecture/domain-modularization-roadmap.md). Owns the phone/social contact-graph
  * Maps: `networkNodes`, `networkEdges`, `networkSources`, `networkPermissions`,
  * `networkRoutes`, `contactHashes` (+ derived `contactHashIdByValue`), `externalIdentities`
- * (+ derived `externalIdentityIdBySubject`), and `sokoIdentityLinks` - plus every method that
+ * (+ derived `externalIdentityIdBySubject`), and `grogoniIdentityLinks` - plus every method that
  * reads/writes them directly.
  *
  * Unlike every domain extracted so far, this one is **user-scoped, not business-scoped**: its
@@ -14,9 +14,9 @@
  *
  * The coupling for this domain runs in the opposite direction from most prior slices: instead
  * of cross-cutting report builders reaching into this domain, this domain's own methods
- * (`syncConnectedSocialProvider`, `findSokoIdentityLink`) reach into the not-yet-extracted core
+ * (`syncConnectedSocialProvider`, `findGrogoniIdentityLink`) reach into the not-yet-extracted core
  * auth/identity kernel (`accounts`, `userByAccount`, `memberships`, `businesses`,
- * `userIdentities`) to auto-link a contact to an existing Soko account. All five are injected
+ * `userIdentities`) to auto-link a contact to an existing Grogoni account. All five are injected
  * as read-only raw `Map` references, the same pattern already used elsewhere.
  *
  * `CommerceDomain` and `SupplierDomain` were both extracted before this domain existed, so they
@@ -53,10 +53,10 @@ import type {
   NetworkSyncSourceSummary,
   NetworkVisibilityStatus,
   SocialNetworkProvider,
-  SokoIdentityLinkSummary,
+  GrogoniIdentityLinkSummary,
   UserIdentitySummary,
   UserSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { Cp2Error } from "../../cp2-error.js";
 import {
   createContactDisplayHint,
@@ -87,7 +87,7 @@ export const maxPhonebookSyncContacts = 5000;
 export const maxPhonebookContacts = 20000;
 /**
  * Contacts one user may submit for sync per rolling day. Every sync tells the caller which of the
- * submitted numbers are on Soko, so this bounds how fast one account can probe numbers it does not
+ * submitted numbers are on Grogoni, so this bounds how fast one account can probe numbers it does not
  * actually know, while leaving room to re-sync a typical phonebook (a few thousand contacts)
  * several times a day. Refused syncs are not charged.
  */
@@ -124,7 +124,7 @@ export class NetworkDomain {
   private readonly contactHashIdByValue = new Map<string, string>();
   private readonly externalIdentities = new Map<string, ExternalIdentitySummary>();
   private readonly externalIdentityIdBySubject = new Map<string, string>();
-  private readonly sokoIdentityLinks = new Map<string, SokoIdentityLinkSummary>();
+  private readonly grogoniIdentityLinks = new Map<string, GrogoniIdentityLinkSummary>();
   private readonly identityCandidates = new Map<string, IdentityCandidateSummary>();
   private readonly networkConnections = new Map<string, NetworkConnectionRecord>();
   // `${channel}:${destination}` -> discovery key. Accounts rarely change their destination, so
@@ -171,8 +171,8 @@ export class NetworkDomain {
     return this.externalIdentityIdBySubject;
   }
 
-  get sokoIdentityLinksMap(): Map<string, SokoIdentityLinkSummary> {
-    return this.sokoIdentityLinks;
+  get grogoniIdentityLinksMap(): Map<string, GrogoniIdentityLinkSummary> {
+    return this.grogoniIdentityLinks;
   }
 
   get identityCandidatesMap(): Map<string, IdentityCandidateSummary> {
@@ -193,7 +193,7 @@ export class NetworkDomain {
     this.contactHashIdByValue.clear();
     this.externalIdentities.clear();
     this.externalIdentityIdBySubject.clear();
-    this.sokoIdentityLinks.clear();
+    this.grogoniIdentityLinks.clear();
     this.identityCandidates.clear();
     this.networkConnections.clear();
     this.discoveryKeyMemo.clear();
@@ -224,8 +224,8 @@ export class NetworkDomain {
    * the owner selected needs: picking A and B, then C, leaves A, B and C. In both modes a contact
    * whose phone or email is already in the source updates that contact instead of duplicating it.
    *
-   * Every sync, and every graph load, re-runs Soko discovery, so a contact who joins after being
-   * synced shows up as a Soko user without another sync.
+   * Every sync, and every graph load, re-runs Grogoni discovery, so a contact who joins after being
+   * synced shows up as a Grogoni user without another sync.
    */
   syncPhoneContacts(input: {
     sessionId: string | null;
@@ -284,7 +284,7 @@ export class NetworkDomain {
       throw new Cp2Error(
         400,
         "network_contacts_limit",
-        `A phonebook can hold at most ${contactLimit} contacts on Soko.`
+        `A phonebook can hold at most ${contactLimit} contacts on Grogoni.`
       );
     }
 
@@ -358,7 +358,7 @@ export class NetworkDomain {
   }): NetworkGraphSummary {
     const now = input.now ?? new Date();
     const session = this.deps.requirePinVerifiedSession(input.sessionId, now);
-    // Profiles reveal which of their numbers are on Soko exactly like a phonebook sync, so they
+    // Profiles reveal which of their numbers are on Grogoni exactly like a phonebook sync, so they
     // get the same limits.
     const clientSubmitted = (input.provenance ?? "imported") !== "verified";
     const perRequest = this.deps.limits?.maxPhonebookSyncContacts ?? maxPhonebookSyncContacts;
@@ -488,7 +488,7 @@ export class NetworkDomain {
       throw new Cp2Error(
         409,
         "network_provider_not_connected",
-        "Connect this provider to your Soko account before synchronizing it."
+        "Connect this provider to your Grogoni account before synchronizing it."
       );
     }
 
@@ -506,7 +506,7 @@ export class NetworkDomain {
     const now = input.now ?? new Date();
     const session = this.deps.requirePinVerifiedSession(input.sessionId, now);
     this.ensureOwnerNetworkNode(session.user, now);
-    this.refreshSokoDiscovery(session.user.id, now);
+    this.refreshGrogoniDiscovery(session.user.id, now);
     return this.networkGraphForUser(session.user.id, now);
   }
 
@@ -516,7 +516,7 @@ export class NetworkDomain {
     return listNetworkConnections(this.connectionDeps(), session.user.id);
   }
 
-  /** Ask a phonebook contact who is on Soko to connect. See connections.ts for the rules. */
+  /** Ask a phonebook contact who is on Grogoni to connect. See connections.ts for the rules. */
   requestConnection(input: {
     sessionId: string | null;
     nodeId: string;
@@ -525,7 +525,7 @@ export class NetworkDomain {
     const now = input.now ?? new Date();
     const session = this.deps.requirePinVerifiedSession(input.sessionId, now);
     // Discovery first, so a contact who joined since the last graph load can be connected to.
-    this.refreshSokoDiscovery(session.user.id, now);
+    this.refreshGrogoniDiscovery(session.user.id, now);
     return requestNetworkConnection(this.connectionDeps(), {
       userId: session.user.id,
       nodeId: input.nodeId,
@@ -560,8 +560,8 @@ export class NetworkDomain {
   }
 
   /**
-   * A lookup of which Soko user a canonical phone number or email belongs to, for keeping invites
-   * away from people already on Soko. Every lookup tells the caller whether a number is on Soko,
+   * A lookup of which Grogoni user a canonical phone number or email belongs to, for keeping invites
+   * away from people already on Grogoni. Every lookup tells the caller whether a number is on Grogoni,
    * so `probes` is charged to the same daily budget as phonebook syncs (refused up front, recorded
    * on `commit`). The index is built once per lookup, not once per number.
    */
@@ -1080,15 +1080,15 @@ export class NetworkDomain {
     const node: NetworkNodeSummary = {
       id: randomUUID(),
       ownerUserId: user.id,
-      kind: "soko_user",
+      kind: "grogoni_user",
       displayName: user.displayName,
       degree: 0,
       sourceId: null,
       sourceType: "owner",
       sourcePlatform: null,
-      sokoUserId: user.id,
-      sokoBusinessId: null,
-      sokoAgentId: null,
+      grogoniUserId: user.id,
+      grogoniBusinessId: null,
+      grogoniAgentId: null,
       contactHashIds: [],
       externalIdentityIds: [],
       visibilityStatus: "direct",
@@ -1185,9 +1185,9 @@ export class NetworkDomain {
       }
     }
 
-    for (const [id, link] of this.sokoIdentityLinks.entries()) {
+    for (const [id, link] of this.grogoniIdentityLinks.entries()) {
       if (link.ownerUserId === source.ownerUserId && nodeIds.has(link.nodeId)) {
-        this.sokoIdentityLinks.delete(id);
+        this.grogoniIdentityLinks.delete(id);
       }
     }
 
@@ -1238,7 +1238,7 @@ export class NetworkDomain {
             input.provenance ?? "imported"
           ).id
         : null;
-    const sokoLink = this.findSokoIdentityLink({
+    const grogoniLink = this.findGrogoniIdentityLink({
       ownerUserId: input.ownerUserId,
       contactHashIds,
       now: input.now,
@@ -1247,15 +1247,15 @@ export class NetworkDomain {
     const node: NetworkNodeSummary = {
       id: randomUUID(),
       ownerUserId: input.ownerUserId,
-      kind: sokoLink === null ? input.kind : "soko_user",
+      kind: grogoniLink === null ? input.kind : "grogoni_user",
       displayName: input.displayName,
       degree: input.degree,
       sourceId: input.sourceId,
       sourceType: input.sourceType,
       sourcePlatform: input.sourcePlatform,
-      sokoUserId: sokoLink?.linkedUserId ?? null,
-      sokoBusinessId: sokoLink?.linkedBusinessId ?? null,
-      sokoAgentId: sokoLink?.linkedAgentId ?? null,
+      grogoniUserId: grogoniLink?.linkedUserId ?? null,
+      grogoniBusinessId: grogoniLink?.linkedBusinessId ?? null,
+      grogoniAgentId: grogoniLink?.linkedAgentId ?? null,
       contactHashIds,
       externalIdentityIds: externalIdentityId === null ? [] : [externalIdentityId],
       visibilityStatus: input.degree === 1 ? "direct" : "agent_mediated",
@@ -1265,9 +1265,9 @@ export class NetworkDomain {
     };
     this.networkNodes.set(node.id, node);
 
-    if (sokoLink !== null) {
-      this.sokoIdentityLinks.set(sokoLink.id, {
-        ...sokoLink,
+    if (grogoniLink !== null) {
+      this.grogoniIdentityLinks.set(grogoniLink.id, {
+        ...grogoniLink,
         nodeId: node.id
       });
     }
@@ -1375,12 +1375,12 @@ export class NetworkDomain {
     return identity;
   }
 
-  private findSokoIdentityLink(input: {
+  private findGrogoniIdentityLink(input: {
     ownerUserId: string;
     contactHashIds: string[];
     now: Date;
     discovery?: DiscoveryPass;
-  }): SokoIdentityLinkSummary | null {
+  }): GrogoniIdentityLinkSummary | null {
     // Nothing to match (e.g. a second-degree contact): do not build the account index for it.
     if (input.contactHashIds.length === 0) return null;
     const { index, businessByUser } = input.discovery ?? this.discoveryPass();
@@ -1407,7 +1407,7 @@ export class NetworkDomain {
         nodeId: "",
         linkedUserId,
         linkedBusinessId: linkedBusiness?.id ?? null,
-        linkedAgentId: linkedBusiness?.sokoId ?? null,
+        linkedAgentId: linkedBusiness?.grogoniId ?? null,
         confidence: 0.95,
         provenance: "imported",
         createdAt: input.now.toISOString()
@@ -1418,16 +1418,16 @@ export class NetworkDomain {
   }
 
   /**
-   * Discovery key (`phone:<hash>` / `email:<hash>`) -> Soko user id for every active account: its
+   * Discovery key (`phone:<hash>` / `email:<hash>`) -> Grogoni user id for every active account: its
    * primary login destination, plus the user's verified phone and verified email (a device-first
    * account has no phone login but can still have a verified phone). Same hash as ContactHash, so
    * phonebook hashes look up directly and raw numbers never need to be compared.
    */
   private discoveryPass(): DiscoveryPass {
-    return { index: this.sokoDiscoveryIndex(), businessByUser: primaryBusinessByUser(this.deps) };
+    return { index: this.grogoniDiscoveryIndex(), businessByUser: primaryBusinessByUser(this.deps) };
   }
 
-  private sokoDiscoveryIndex(): Map<string, string> {
+  private grogoniDiscoveryIndex(): Map<string, string> {
     const index = new Map<string, string>();
     const add = (
       channel: "phone" | "email",
@@ -1473,21 +1473,21 @@ export class NetworkDomain {
   }
 
   /**
-   * Re-links every direct contact of this owner to the Soko user its phone/email belongs to right
+   * Re-links every direct contact of this owner to the Grogoni user its phone/email belongs to right
    * now: links contacts who joined after they were synced, and unlinks contacts whose account is
    * gone or no longer holds that number.
    */
-  private refreshSokoDiscovery(ownerUserId: string, now: Date): void {
+  private refreshGrogoniDiscovery(ownerUserId: string, now: Date): void {
     const discovery = this.discoveryPass();
     // Contacts whose link changed, with their new link (or null). Their old links are replaced in
     // one pass over identity links after the loop, never one pass per contact.
-    const relinked = new Map<string, SokoIdentityLinkSummary | null>();
+    const relinked = new Map<string, GrogoniIdentityLinkSummary | null>();
 
     for (const node of [...this.networkNodes.values()]) {
       if (node.ownerUserId !== ownerUserId || node.degree !== 1) continue;
-      if (node.contactHashIds.length === 0 && node.sokoUserId === null) continue;
+      if (node.contactHashIds.length === 0 && node.grogoniUserId === null) continue;
 
-      const link = this.findSokoIdentityLink({
+      const link = this.findGrogoniIdentityLink({
         ownerUserId,
         contactHashIds: node.contactHashIds,
         now,
@@ -1496,8 +1496,8 @@ export class NetworkDomain {
       const linkedUserId = link?.linkedUserId ?? null;
 
       if (
-        linkedUserId === node.sokoUserId &&
-        (link?.linkedBusinessId ?? null) === node.sokoBusinessId
+        linkedUserId === node.grogoniUserId &&
+        (link?.linkedBusinessId ?? null) === node.grogoniBusinessId
       ) {
         continue;
       }
@@ -1507,27 +1507,27 @@ export class NetworkDomain {
         ...node,
         kind:
           link !== null
-            ? "soko_user"
+            ? "grogoni_user"
             : node.sourceType === "social"
               ? "external_social"
               : "external_contact",
-        sokoUserId: linkedUserId,
-        sokoBusinessId: link?.linkedBusinessId ?? null,
-        sokoAgentId: link?.linkedAgentId ?? null,
+        grogoniUserId: linkedUserId,
+        grogoniBusinessId: link?.linkedBusinessId ?? null,
+        grogoniAgentId: link?.linkedAgentId ?? null,
         updatedAt: now.toISOString()
       });
     }
 
     if (relinked.size === 0) return;
 
-    for (const [id, existing] of [...this.sokoIdentityLinks.entries()]) {
+    for (const [id, existing] of [...this.grogoniIdentityLinks.entries()]) {
       if (existing.ownerUserId === ownerUserId && relinked.has(existing.nodeId)) {
-        this.sokoIdentityLinks.delete(id);
+        this.grogoniIdentityLinks.delete(id);
       }
     }
 
     for (const [nodeId, link] of relinked) {
-      if (link !== null) this.sokoIdentityLinks.set(link.id, { ...link, nodeId });
+      if (link !== null) this.grogoniIdentityLinks.set(link.id, { ...link, nodeId });
     }
   }
 
@@ -1801,9 +1801,9 @@ export class NetworkDomain {
   }
 
   /**
-   * Soko users this owner is connected with. Discovery links a contact to a Soko user so the owner
+   * Grogoni users this owner is connected with. Discovery links a contact to a Grogoni user so the owner
    * can connect, but which shop they run is only shown once connected: holding someone's number
-   * reveals that they use Soko, not their business.
+   * reveals that they use Grogoni, not their business.
    */
   private connectedUserIds(ownerUserId: string): Set<string> {
     const connected = new Set<string>();
@@ -1829,27 +1829,27 @@ export class NetworkDomain {
     for (const node of [...this.networkNodes.values()]) {
       if (scope.has(node.ownerUserId)) continue;
       const linked =
-        (node.sokoUserId !== null && scope.has(node.sokoUserId)) ||
-        (node.sokoBusinessId !== null && scope.has(node.sokoBusinessId));
+        (node.grogoniUserId !== null && scope.has(node.grogoniUserId)) ||
+        (node.grogoniBusinessId !== null && scope.has(node.grogoniBusinessId));
       if (!linked) continue;
       this.networkNodes.set(node.id, {
         ...node,
         kind: node.sourceType === "social" ? "external_social" : "external_contact",
-        sokoUserId: null,
-        sokoBusinessId: null,
-        sokoAgentId: null,
+        grogoniUserId: null,
+        grogoniBusinessId: null,
+        grogoniAgentId: null,
         updatedAt: now.toISOString()
       });
       detached += 1;
     }
 
-    for (const [id, link] of [...this.sokoIdentityLinks.entries()]) {
+    for (const [id, link] of [...this.grogoniIdentityLinks.entries()]) {
       if (scope.has(link.ownerUserId)) continue;
       if (
         (link.linkedUserId !== null && scope.has(link.linkedUserId)) ||
         (link.linkedBusinessId !== null && scope.has(link.linkedBusinessId))
       ) {
-        this.sokoIdentityLinks.delete(id);
+        this.grogoniIdentityLinks.delete(id);
       }
     }
 
@@ -1869,9 +1869,9 @@ export class NetworkDomain {
 
   private nodeView(node: NetworkNodeSummary, connected: Set<string>): NetworkNodeSummary {
     const view = sanitizeNetworkNode(node);
-    return view.sokoUserId === null || connected.has(view.sokoUserId)
+    return view.grogoniUserId === null || connected.has(view.grogoniUserId)
       ? view
-      : { ...view, sokoBusinessId: null, sokoAgentId: null };
+      : { ...view, grogoniBusinessId: null, grogoniAgentId: null };
   }
 
   private networkGraphForUser(ownerUserId: string, now: Date): NetworkGraphSummary {
@@ -1895,7 +1895,7 @@ export class NetworkDomain {
       permissions: [...this.networkPermissions.values()]
         .filter((permission) => permission.ownerUserId === ownerUserId)
         .sort((left, right) => left.createdAt.localeCompare(right.createdAt)),
-      identityLinks: [...this.sokoIdentityLinks.values()]
+      identityLinks: [...this.grogoniIdentityLinks.values()]
         .filter((link) => link.ownerUserId === ownerUserId)
         .map((link) =>
           link.linkedUserId !== null && connected.has(link.linkedUserId)
@@ -2004,9 +2004,9 @@ export class NetworkDomain {
       sourceId: null,
       sourceType: "manual",
       sourcePlatform: null,
-      sokoUserId: null,
-      sokoBusinessId: null,
-      sokoAgentId: null,
+      grogoniUserId: null,
+      grogoniBusinessId: null,
+      grogoniAgentId: null,
       contactHashIds: [],
       externalIdentityIds: [],
       visibilityStatus: "direct",
@@ -2068,7 +2068,7 @@ export class NetworkDomain {
 }
 
 /**
- * One discovery pass: which Soko user each phone/email hash belongs to, and each user's primary
+ * One discovery pass: which Grogoni user each phone/email hash belongs to, and each user's primary
  * shop. Built once per request and handed to every lookup in it, so linking N contacts costs one
  * scan of accounts and memberships, not N.
  */
@@ -2081,7 +2081,7 @@ interface PhonebookSourceIndex {
   byHashId: Map<string, NetworkNodeSummary>;
   /** Contacts with neither phone nor email, matched by exact (case-insensitive) name. */
   byBareName: Map<string, NetworkNodeSummary>;
-  /** Built once per sync; see NetworkDomain.sokoDiscoveryIndex. */
+  /** Built once per sync; see NetworkDomain.grogoniDiscoveryIndex. */
   discovery: DiscoveryPass;
   /** See NetworkDomain.extendedConnectionKeys; null until first needed. */
   extendedKeys: Set<string> | null;

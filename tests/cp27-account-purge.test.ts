@@ -127,9 +127,9 @@ describe("CP27 complete account purge", () => {
     const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
       const body = String(init?.body);
       const headers = new Headers(init?.headers);
-      const timestamp = headers.get("x-soko-deletion-timestamp") ?? "";
+      const timestamp = headers.get("x-grogoni-deletion-timestamp") ?? "";
       expect(headers.get("idempotency-key")).toBe("request-123");
-      expect(headers.get("x-soko-deletion-signature")).toBe(
+      expect(headers.get("x-grogoni-deletion-signature")).toBe(
         `sha256=${createHmac("sha256", secret).update(`${timestamp}.${body}`).digest("hex")}`
       );
       return new Response(JSON.stringify({ externalReference: "identity-delete-456" }), {

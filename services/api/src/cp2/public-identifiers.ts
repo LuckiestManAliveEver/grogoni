@@ -1,4 +1,4 @@
-import type { OAuthProvider } from "@soko/shared-types";
+import type { OAuthProvider } from "@grogoni/shared-types";
 
 export function providerDisplayName(provider: OAuthProvider): string {
   switch (provider) {

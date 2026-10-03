@@ -8,7 +8,7 @@ Actual tag: `checkpoint/cp11-local-model-adapter`
 
 ## Purpose
 
-CP11 attaches a local llama.cpp-compatible model adapter behind the CP10 Sokoclaw Runtime contract.
+CP11 attaches a local llama.cpp-compatible model adapter behind the CP10 Grogoniclaw Runtime contract.
 
 The goal is to let the runtime use a local model for language understanding and response generation while preserving CP10's deterministic planning, verification, confirmation, telemetry, and business mutation boundaries.
 

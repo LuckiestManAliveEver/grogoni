@@ -1,4 +1,4 @@
-import type { OssAgentSummary, RuntimeAssetKind } from "@soko/shared-types";
+import type { OssAgentSummary, RuntimeAssetKind } from "@grogoni/shared-types";
 import type {
   RuntimeRegistryContext,
   RuntimeRegistryResourceDetails,
@@ -6,7 +6,7 @@ import type {
   RuntimeRegistryResourceRef,
   RuntimeRegistrySearchItem,
   RuntimeRegistrySearchQuery
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import type { GitHubModelCatalog, GitHubAiModelSummary } from "../github-model-catalog.js";
 import type { GitHubAgentCatalog } from "../github-agent-catalog.js";
 import { RuntimeRegistryResourceNotFoundError, type RuntimeRegistryAdapter } from "./types.js";
@@ -129,7 +129,7 @@ function githubAgentToItem(agent: OssAgentSummary): RuntimeRegistrySearchItem {
     verified: agent.licenseVerified,
     imported: false,
     // Agent import never executes repository code (see import-service.ts) - it registers a
-    // Soko-side PortableAgentManifest synthesized from this same discovery metadata, so a
+    // Grogoni-side PortableAgentManifest synthesized from this same discovery metadata, so a
     // verified-license repo is always import-safe. An unverified license still needs a human to
     // confirm before import (see LICENSE_CONFIRMATION_REQUIRED in the import state machine).
     compatibility: agent.licenseVerified
@@ -195,11 +195,11 @@ async function inspectGitHubRepository(
   }
   const repository = await fetchRepository(fullName, deps);
   if (repository === null) throw new RuntimeRegistryResourceNotFoundError(ref);
-  const [readmeExcerpt, files, sokoAgentManifest] = await Promise.all([
+  const [readmeExcerpt, files, grogoniAgentManifest] = await Promise.all([
     fetchReadmeExcerpt(fullName, deps),
     fetchRootFileListing(fullName, deps),
     ref.kind === "agent"
-      ? fetchRepositoryFile(fullName, "soko.agent.json", deps)
+      ? fetchRepositoryFile(fullName, "grogoni.agent.json", deps)
       : Promise.resolve(null)
   ]);
   const license = (repository.license as { spdx_id?: string | null } | null)?.spdx_id ?? null;
@@ -232,7 +232,7 @@ async function inspectGitHubRepository(
     files,
     providerMetadata: {
       repository,
-      ...(sokoAgentManifest === null ? {} : { sokoAgentManifest })
+      ...(grogoniAgentManifest === null ? {} : { grogoniAgentManifest })
     }
   };
 }
@@ -401,7 +401,7 @@ function humanizeFileName(fileName: string): string {
 function githubHeaders(token: string | undefined): HeadersInit {
   return {
     accept: "application/vnd.github+json",
-    "user-agent": "soko-market-runtime-registry",
+    "user-agent": "grogoni-runtime-registry",
     "x-github-api-version": "2022-11-28",
     ...(token === undefined ? {} : { authorization: `Bearer ${token}` })
   };

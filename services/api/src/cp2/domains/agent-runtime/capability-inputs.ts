@@ -1,4 +1,4 @@
-import type { ProductFieldInputType } from "@soko/shared-types";
+import type { ProductFieldInputType } from "@grogoni/shared-types";
 
 export function runtimeInvoiceItems(value: unknown): Array<{
   productId: string;

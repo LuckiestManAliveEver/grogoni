@@ -4,7 +4,7 @@ Status: active
 Date opened: 2026-07-12
 Target tag: `checkpoint/cp22-realtime-sync`
 
-CP22 starts Phase 3 of the refined cross-platform Soko architecture. It adds authenticated,
+CP22 starts Phase 3 of the refined cross-platform Grogoni architecture. It adds authenticated,
 account-scoped realtime change hints on top of the durable Phase 2 cursor journal.
 
 ## Phase 3 Scope

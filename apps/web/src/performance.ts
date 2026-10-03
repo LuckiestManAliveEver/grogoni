@@ -1,11 +1,11 @@
 const performanceLoggingEnabled = import.meta.env.DEV && typeof window !== "undefined";
-const performanceEventName = "soko:performance";
+const performanceEventName = "grogoni:performance";
 
 let navigationSequence = 0;
 let monitoringStarted = false;
 const componentRenderCounts = new Map<string, number>();
 
-export interface SokoPerformanceEvent {
+export interface GrogoniPerformanceEvent {
   event: string;
   timestamp: number;
   details: Record<string, unknown>;
@@ -64,7 +64,7 @@ export function startPerformanceMonitoring(): void {
 
 export function startNavigationMeasurement(route: string): NavigationMeasurement | null {
   if (!performanceLoggingEnabled) return null;
-  const id = `soko-navigation-${++navigationSequence}`;
+  const id = `grogoni-navigation-${++navigationSequence}`;
   performance.mark(`${id}:click`);
   logPerformance("navigation-click", { route });
   return { id, route };
@@ -153,7 +153,7 @@ export function recordRuntimeInitialization(
 
 export function markIndexedDbReadStart(domain: string): PerformanceMeasurement | null {
   if (!performanceLoggingEnabled) return null;
-  const id = `soko-idb-${domain}-${++navigationSequence}`;
+  const id = `grogoni-idb-${domain}-${++navigationSequence}`;
   performance.mark(`${id}:start`);
   return { id, startedAt: performance.now() };
 }
@@ -206,16 +206,16 @@ export function isPerformanceDebugEnabled(): boolean {
   if (typeof window === "undefined") return false;
   return (
     new URLSearchParams(window.location.search).get("debug") === "performance" ||
-    localStorage.getItem("soko.market.performance-debug.v1") === "true"
+    localStorage.getItem("grogoni.performance-debug.v1") === "true"
   );
 }
 
 export function subscribeToPerformanceEvents(
-  listener: (event: SokoPerformanceEvent) => void
+  listener: (event: GrogoniPerformanceEvent) => void
 ): () => void {
   if (typeof window === "undefined") return () => undefined;
   const handler = (event: Event) => {
-    listener((event as CustomEvent<SokoPerformanceEvent>).detail);
+    listener((event as CustomEvent<GrogoniPerformanceEvent>).detail);
   };
   window.addEventListener(performanceEventName, handler);
   return () => window.removeEventListener(performanceEventName, handler);
@@ -272,9 +272,9 @@ function safePath(pathOrUrl: string): string {
 }
 
 function logPerformance(event: string, details: Record<string, unknown>): void {
-  console.info("[SOKO_PERF]", { event, ...details });
+  console.info("[GROGONI_PERF]", { event, ...details });
   window.dispatchEvent(
-    new CustomEvent<SokoPerformanceEvent>(performanceEventName, {
+    new CustomEvent<GrogoniPerformanceEvent>(performanceEventName, {
       detail: { event, timestamp: Date.now(), details }
     })
   );

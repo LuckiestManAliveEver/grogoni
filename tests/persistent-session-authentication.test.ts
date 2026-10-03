@@ -40,7 +40,7 @@ describe("persistent session authentication", () => {
 
     expect(completed.statusCode).toBe(200);
     const issuedCookies = JSON.stringify(completed.headers["set-cookie"]);
-    expect(issuedCookies).toContain("soko_refresh=");
+    expect(issuedCookies).toContain("grogoni_refresh=");
     expect(issuedCookies).toContain("Path=/");
     expect(issuedCookies).not.toContain("Path=/auth");
     expect(store.snapshot().passwordCredentials).toHaveLength(1);
@@ -295,8 +295,8 @@ describe("persistent session authentication", () => {
   it("fails closed on unsafe production cookie and session configuration", () => {
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("COOKIE_SECURE", "false");
-    vi.stubEnv("WEBAUTHN_RP_ID", "soko.market");
-    vi.stubEnv("WEBAUTHN_EXPECTED_ORIGINS", "https://soko.market");
+    vi.stubEnv("WEBAUTHN_RP_ID", "grogoni");
+    vi.stubEnv("WEBAUTHN_EXPECTED_ORIGINS", "https://grogoni.com");
     for (const name of [
       "OTP_HMAC_SECRET",
       "AUTH_AUDIT_HMAC_SECRET",
@@ -306,13 +306,13 @@ describe("persistent session authentication", () => {
     ]) {
       vi.stubEnv(name, `${name}-secure-production-value-1234567890`);
     }
-    expect(() => readAuthRuntimeConfig(["https://soko.market"])).toThrow(
+    expect(() => readAuthRuntimeConfig(["https://grogoni.com"])).toThrow(
       "Production cookies must be secure"
     );
 
     vi.stubEnv("COOKIE_SECURE", "true");
     vi.stubEnv("SESSION_ROTATION_ENABLED", "false");
-    expect(() => readAuthRuntimeConfig(["https://soko.market"])).toThrow(
+    expect(() => readAuthRuntimeConfig(["https://grogoni.com"])).toThrow(
       "Production requires refresh-token rotation"
     );
   });
@@ -328,8 +328,8 @@ describe("persistent session authentication", () => {
     vi.stubEnv("COOKIE_SECURE", "true");
     vi.stubEnv("SESSION_ROTATION_ENABLED", "true");
     vi.stubEnv("SESSION_REUSE_DETECTION_ENABLED", "true");
-    vi.stubEnv("WEBAUTHN_RP_ID", "soko.market");
-    vi.stubEnv("WEBAUTHN_EXPECTED_ORIGINS", "https://soko.market");
+    vi.stubEnv("WEBAUTHN_RP_ID", "grogoni");
+    vi.stubEnv("WEBAUTHN_EXPECTED_ORIGINS", "https://grogoni.com");
     for (const name of [
       "OTP_HMAC_SECRET",
       "AUTH_AUDIT_HMAC_SECRET",
@@ -339,17 +339,17 @@ describe("persistent session authentication", () => {
       vi.stubEnv(name, `${name}-secure-production-value-1234567890`);
     }
     vi.stubEnv("PIN_HASH_SECRET", "");
-    expect(() => readAuthRuntimeConfig(["https://soko.market"])).toThrow(
+    expect(() => readAuthRuntimeConfig(["https://grogoni.com"])).toThrow(
       "PIN_HASH_SECRET must contain at least 32 characters in production"
     );
 
     vi.stubEnv("PIN_HASH_SECRET", "too-short");
-    expect(() => readAuthRuntimeConfig(["https://soko.market"])).toThrow(
+    expect(() => readAuthRuntimeConfig(["https://grogoni.com"])).toThrow(
       "PIN_HASH_SECRET must contain at least 32 characters in production"
     );
 
     vi.stubEnv("PIN_HASH_SECRET", "PIN_HASH_SECRET-secure-production-value-1234567890");
-    expect(() => readAuthRuntimeConfig(["https://soko.market"])).not.toThrow();
+    expect(() => readAuthRuntimeConfig(["https://grogoni.com"])).not.toThrow();
   });
 });
 

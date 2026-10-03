@@ -1,7 +1,7 @@
-import type { InvoiceSummary, PaymentMethod } from "@soko/shared-types";
+import type { InvoiceSummary, PaymentMethod } from "@grogoni/shared-types";
 
 import { postJson } from "./api-helpers";
-import type { ConfirmInvoiceResponse, RecordPaymentResponse } from "./soko-application-shared";
+import type { ConfirmInvoiceResponse, RecordPaymentResponse } from "./grogoni-application-shared";
 
 export interface PosSaleLine {
   productId: string;

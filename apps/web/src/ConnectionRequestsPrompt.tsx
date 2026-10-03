@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { NetworkConnectionSummary } from "@soko/shared-types";
+import type { NetworkConnectionSummary } from "@grogoni/shared-types";
 
 import { fetchFreshJson, postJson } from "./api-helpers";
 import { getUserFacingErrorMessage } from "./user-facing-error";
@@ -75,7 +75,7 @@ export default function ConnectionRequestsPrompt(props: { accountId: string }) {
       ) : null}
       {requests.map((request) => (
         <article className="mini-card" key={request.id}>
-          <strong>{request.counterpartDisplayName} wants to connect on Soko</strong>
+          <strong>{request.counterpartDisplayName} wants to connect on Grogoni</strong>
           {request.counterpartBusinessName !== null ? (
             <small>{request.counterpartBusinessName}</small>
           ) : null}

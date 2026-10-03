@@ -20,8 +20,8 @@ describe("registered-user purge script", () => {
       (match) => match[1]
     );
 
-    // The canonical store slug system (docs/architecture/soko-id-slug-system.md) added
-    // cp2_soko_id_history, and native runtime
+    // The canonical store slug system (docs/architecture/grogoni-id-slug-system.md) added
+    // cp2_grogoni_id_history, and native runtime
     // bindings (docs/architecture/native-runtime-bindings.md) added the six
     // cp2_native_runtime_*/cp2_native_execution_hosts/cp2_native_model_installations collections,
     // to postgres-store.ts's normalizedCollections - each must be classified DELETE here too, or an
@@ -75,7 +75,7 @@ describe("registered-user purge script", () => {
         "cp2_agent_catalog",
         "cp2_model_catalog",
         "identity_providers",
-        "soko_schema_migrations"
+        "grogoni_schema_migrations"
       ].sort()
     );
     expect(normalizedTables.length).toBeGreaterThan(0);

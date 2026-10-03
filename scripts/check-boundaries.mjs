@@ -3,11 +3,11 @@ import { join } from "node:path";
 
 const businessCoreRoot = "packages/business-core/src";
 const forbiddenPatterns = [
-  "@soko/ai-runtime",
+  "@grogoni/ai-runtime",
   "services/ai-runtime",
   "llama",
   "openclaw",
-  "sokoclaw"
+  "grogoniclaw"
 ];
 
 async function listSourceFiles(directory) {
@@ -169,7 +169,7 @@ for (const file of webSourceFiles) {
   }
   if (/\bBigInt\s*\(/u.test(contents)) {
     violations.push(
-      `${file}: gram values must be converted only by @soko/shared-types grams helpers (A22)`
+      `${file}: gram values must be converted only by @grogoni/shared-types grams helpers (A22)`
     );
   }
 }
@@ -181,7 +181,7 @@ for (const file of (await listSourceFiles(businessCoreRoot)).filter((candidate) 
   const contents = await read(file);
   for (const match of contents.matchAll(/from\s+["']([^"']+)["']/gu)) {
     const specifier = match[1];
-    if (specifier !== "@soko/shared-types" && specifier !== "@soko/tool-core") {
+    if (specifier !== "@grogoni/shared-types" && specifier !== "@grogoni/tool-core") {
       violations.push(`${file}: pure fulfillment rules may not import ${specifier}`);
     }
   }
@@ -199,7 +199,7 @@ for (const file of apiFiles.filter((candidate) => !candidate.startsWith(fulfillm
 for (const file of apiFiles.filter((candidate) => candidate.startsWith(fulfillmentDomainPrefix))) {
   if (/\bBigInt\s*\(/u.test(await read(file))) {
     violations.push(
-      `${file}: gram values must be converted only by @soko/shared-types grams helpers (A22)`
+      `${file}: gram values must be converted only by @grogoni/shared-types grams helpers (A22)`
     );
   }
 }
@@ -212,7 +212,7 @@ const lineBudgets = new Map([
   ["packages/tool-core/src/parsers/receipt-context.ts", 350],
   ["packages/tool-core/src/parsers/runtime-proposals.ts", 275],
   ["packages/tool-core/src/registry/index.ts", 50],
-  ["apps/web/src/SokoApplication.tsx", 2150],
+  ["apps/web/src/GrogoniApplication.tsx", 2150],
   ["apps/web/src/OwnerWorkspace.tsx", 800],
   ["apps/web/src/ChatSurface.tsx", 1125],
   ["apps/web/src/ChatComposer.tsx", 375],

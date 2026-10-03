@@ -1,4 +1,4 @@
-import type { AgentSettings } from "./soko-application-shared";
+import type { AgentSettings } from "./grogoni-application-shared";
 import { ensureRequiredAgentContextScripts, sanitizeContextScripts } from "./owner-app-bootstrap";
 
 export function buildAgentProfileUpdate(agent: AgentSettings): Record<string, unknown> {

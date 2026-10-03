@@ -10,7 +10,7 @@ Actual tag: not created. No `.repo.git` directory exists in this checkout; see t
 
 CP4 adds the first deterministic chat intelligence behind the CP3 chat shell.
 
-The goal is to prove chat-first interaction without depending on a local model, cloud model, Pi/OpenClaw harness, or full Sokoclaw runtime. CP4 must parse merchant text into explicit intents, confidence scores, slots, clarifying questions, and safe UI routes.
+The goal is to prove chat-first interaction without depending on a local model, cloud model, Pi/OpenClaw harness, or full Grogoniclaw runtime. CP4 must parse merchant text into explicit intents, confidence scores, slots, clarifying questions, and safe UI routes.
 
 CP4 is an AI entry point, not a business-record checkpoint. State-changing commands may be parsed and drafted, but they must not create or mutate products, customers, invoices, payments, inventory, tax records, or debt records before their later checkpoints define the deterministic business rules.
 
@@ -49,7 +49,7 @@ Out of scope:
 - local LLM or llama.cpp integration
 - cloud model fallback
 - Pi/OpenClaw-style harness integration
-- full Sokoclaw runtime
+- full Grogoniclaw runtime
 - product/customer/supplier CRUD persistence
 - invoice or inventory mutation
 - payment or M-Pesa mutation

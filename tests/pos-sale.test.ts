@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
-import type { InvoiceSummary } from "@soko/shared-types";
+import type { InvoiceSummary } from "@grogoni/shared-types";
 
 import {
   completePosSale,
   PosPaymentRecordingError,
   type PosSaleInput
 } from "../apps/web/src/pos-sale";
-import type { RecordPaymentResponse } from "../apps/web/src/soko-application-shared";
+import type { RecordPaymentResponse } from "../apps/web/src/grogoni-application-shared";
 
 const draft: InvoiceSummary = {
   id: "invoice-1",

@@ -29,7 +29,7 @@ flowchart TD
   AR --> AT[Agent turn]
   T --> MR[Model runtime adapter registry]
   MR --> AT
-  AT --> TB[Soko protected tool boundary]
+  AT --> TB[Grogoni protected tool boundary]
   TB --> MCP[MCP and business services]
 ```
 
@@ -50,7 +50,7 @@ for existing users, not a second turn router.
 - **AgentRuntimeAdapter**: an in-process harness implementation selected from a registry by the
   resolved agent's declared adapter ID. It receives resolved turn state and a bounded model
   completion callback. It does not query arbitrary database state or mutate business data.
-- **Model**: canonical Soko model identity and capability metadata. Its provider mapping is
+- **Model**: canonical Grogoni model identity and capability metadata. Its provider mapping is
   independent from where it runs.
 - **ModelRuntimeAdapter**: execution-target implementation with `canRun`, `healthCheck`, and
   `generate`. Backend providers remain behind this boundary.
@@ -83,7 +83,7 @@ its own `runtimeAdapterId`. A business swaps engines by picking a different agen
 (`PUT /businesses/:businessId/agent-profile`) - the same action that already changes personality
 and instructions - and the next activation or turn resolves `configuration.runtimeAdapterId` from
 that definition. The GitHub/HuggingFace _harness_-import pipeline (a separate, now-deleted
-`RuntimeAssetKind`) is retired entirely: only the two built-in adapters (`pi`, `soko`) exist, and
+`RuntimeAssetKind`) is retired entirely: only the two built-in adapters (`pi`, `grogoni`) exist, and
 new engines are added by a human wiring code into `AgentRuntimeAdapterRegistry.register()`, never
 by importing a search result.
 
@@ -92,7 +92,7 @@ by importing a search result.
 ```text
 AgentRuntimeAdapterRegistry             ModelRuntimeAdapterRegistry
   pi                                      backend:model-id
-  soko                                    browser-local:model-id
+  grogoni                                    browser-local:model-id
   future OSS adapters                    installed-app:model-id
                                           remote-shop-device:model-id
                 \                       /
@@ -106,8 +106,8 @@ registering adapter B and declaring `runtimeAdapterId: "adapter-b"` on an agent 
 model B means catalog/provider mapping plus a compatible model adapter. Moving a model changes the
 binding's model/host role, not the model identity.
 
-Pi is registered as `pi`. The existing Soko orchestration path is retained as the independently
-registered `soko` adapter for explicit existing bindings and rollback. The initial platform agent
+Pi is registered as `pi`. The existing Grogoni orchestration path is retained as the independently
+registered `grogoni` adapter for explicit existing bindings and rollback. The initial platform agent
 record is `builtin:pi:v1` with `configuration.runtimeAdapterId = "pi"`.
 
 ## Platform default policy and precedence

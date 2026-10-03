@@ -7,8 +7,8 @@ export interface PortableAgentToolRequirement {
 
 export interface PortableAgentManifest {
   schemaVersion: "1";
-  /** Which registered AgentRuntimeAdapter this agent runs on (e.g. "pi", "soko"). Absent defaults
-   *  to "soko" at import time - this only ever selects among adapters Soko already ships and
+  /** Which registered AgentRuntimeAdapter this agent runs on (e.g. "pi", "grogoni"). Absent defaults
+   *  to "grogoni" at import time - this only ever selects among adapters Grogoni already ships and
    *  trusts, it never supplies adapter code, so it carries none of the harness-import security
    *  boundary that third-party executable adapters would. */
   runtimeAdapterId?: string;
@@ -50,7 +50,7 @@ export interface PortableAgentManifest {
 }
 
 export type AgentImportSource =
-  { kind: "soko-manifest"; manifest: unknown } | { kind: "catalog-record"; record: unknown };
+  { kind: "grogoni-manifest"; manifest: unknown } | { kind: "catalog-record"; record: unknown };
 
 export interface AgentImportInspection {
   supported: boolean;
@@ -76,7 +76,7 @@ export type PortableAgentManifestValidation =
   | { valid: false; manifest: null; issues: PortableAgentManifestIssue[] };
 
 /**
- * Converts discovery metadata into Soko's declarative definition. Repository runtime names remain
+ * Converts discovery metadata into Grogoni's declarative definition. Repository runtime names remain
  * provenance metadata; no repository executable, endpoint, credential, or device binding crosses
  * into the runtime contract.
  */
@@ -90,7 +90,7 @@ export function portableAgentManifestFromOssAgent(agent: OssAgentSummary): Porta
       version: agent.updatedAt ?? "unversioned"
     },
     instructions: {
-      system: `Act as ${agent.label} through Soko's bounded instructions, tools, and permission policy.`
+      system: `Act as ${agent.label} through Grogoni's bounded instructions, tools, and permission policy.`
     },
     capabilities: [...new Set(agent.capabilities)].sort(),
     tools: [],

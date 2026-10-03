@@ -7,7 +7,7 @@ export interface SurfaceProps {
 
 export function Surface({ children, title }: SurfaceProps) {
   return (
-    <section className="soko-surface" aria-label={title}>
+    <section className="grogoni-surface" aria-label={title}>
       <h1>{title}</h1>
       {children}
     </section>

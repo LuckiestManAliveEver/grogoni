@@ -329,7 +329,7 @@ export function parseMerchantCommand(input: string): ParseResult {
   ) {
     return createUnknownResult(
       normalizedInput,
-      "I could not match that to a Soko command. Try products, customers, invoices, payments, or debt."
+      "I could not match that to a Grogoni command. Try products, customers, invoices, payments, or debt."
     );
   }
 

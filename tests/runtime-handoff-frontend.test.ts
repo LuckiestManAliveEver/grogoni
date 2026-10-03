@@ -3,8 +3,8 @@ import { IDBFactory } from "fake-indexeddb";
 import { openLocalDatabase } from "../packages/offline-runtime/db/client";
 import { LocalProvider } from "../packages/offline-runtime/providers/local-provider";
 import { executeProviderCall } from "../packages/offline-runtime/providers/resolver";
-import type { RuntimeHandoff, RuntimeTransfer } from "@soko/shared-types";
-import type { LocalRuntimeMessage, Scope } from "@soko/offline-runtime";
+import type { RuntimeHandoff, RuntimeTransfer } from "@grogoni/shared-types";
+import type { LocalRuntimeMessage, Scope } from "@grogoni/offline-runtime";
 import {
   RuntimeHandoffController,
   type LocalHandoffHost,

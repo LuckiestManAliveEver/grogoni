@@ -1,4 +1,4 @@
-import type { BuyResultSummary } from "@soko/shared-types";
+import type { BuyResultSummary } from "@grogoni/shared-types";
 
 /**
  * One row in the BUY feed - a contact's status or a catalogue listing, rendered distinctly by

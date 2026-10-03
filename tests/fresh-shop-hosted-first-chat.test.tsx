@@ -9,7 +9,7 @@ import type {
   ActiveBusiness,
   AgentSettings,
   SessionResponse
-} from "../apps/web/src/soko-application-shared";
+} from "../apps/web/src/grogoni-application-shared";
 
 // Regression coverage for the private on-device model architecture's removal: a fresh shop's
 // first AI message must reach the plain server runtime turn with zero client-side model state -
@@ -41,7 +41,7 @@ describe("fresh shop, first AI message: hosted-first with no client model state"
       id: "fresh-shop-1",
       name: "Fresh Shop",
       language: "en",
-      sokoId: "fresh-shop-1",
+      grogoniId: "fresh-shop-1",
       role: "owner"
     } as unknown as ActiveBusiness;
   }
@@ -249,10 +249,10 @@ describe("fresh shop, first AI message: hosted-first with no client model state"
     // No on-device model assignment, browser-inference session, or model-scoped device id was
     // read or written - only lib/api.ts's generic request-tracing device id (unrelated to model
     // execution) may exist. The retired keys (agent-model-assignment.ts's
-    // "soko.agent-model-assignment.v1", browser-inference-*'s IndexedDB/localStorage state) must
+    // "grogoni.agent-model-assignment.v1", browser-inference-*'s IndexedDB/localStorage state) must
     // never reappear.
     const storedKeys = Object.keys(localStorage);
-    expect(storedKeys).not.toContain("soko.agent-model-assignment.v1");
+    expect(storedKeys).not.toContain("grogoni.agent-model-assignment.v1");
     expect(storedKeys.some((key) => key.includes("model-scope"))).toBe(false);
     expect(storedKeys.some((key) => key.includes("browser-inference"))).toBe(false);
   });

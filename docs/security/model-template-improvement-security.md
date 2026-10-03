@@ -29,7 +29,7 @@ model selection.
 - Treat judge output as evidence, not authority. Deterministic safety/tool/output checks take
   precedence.
 - Keep large binaries in object storage with immutable keys and checksums.
-- Do not grant a template new Soko tool permissions. Existing agent, role, confirmation, and tool
+- Do not grant a template new Grogoni tool permissions. Existing agent, role, confirmation, and tool
   validation stay authoritative.
 - Audit dataset approvers and promotion actors. For higher-risk domains, require two-person review
   before adding a training worker.

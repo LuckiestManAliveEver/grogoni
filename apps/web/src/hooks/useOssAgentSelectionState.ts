@@ -8,7 +8,7 @@ import type {
   AgentSettings,
   BusinessAgentProfileSummary,
   SessionResponse
-} from "../soko-application-shared";
+} from "../grogoni-application-shared";
 
 interface UseOssAgentSelectionStateDeps {
   agentSettings: AgentSettings;

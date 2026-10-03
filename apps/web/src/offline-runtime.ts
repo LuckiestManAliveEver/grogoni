@@ -13,14 +13,14 @@ import {
   type InstallSnapshot,
   type InstalledRuntimeAdapter,
   type RuntimeBinding
-} from "@soko/offline-runtime";
+} from "@grogoni/offline-runtime";
 import { readCachedAuthSession } from "./auth-bootstrap";
 import { activateOfflineShell } from "./offline-shell";
 import { loadRemovableDeviceHandle, saveRemovableDeviceHandle } from "./offline-device-handle";
 import { createWebLLMRuntimeAdapter, resolveWebLLMRuntimeBinding } from "./webllm-runtime";
 
-const modeKey = "soko.offline-runtime.active.v1";
-const storageTargetKey = "soko.offline-runtime.storage-target.v1";
+const modeKey = "grogoni.offline-runtime.active.v1";
+const storageTargetKey = "grogoni.offline-runtime.storage-target.v1";
 let database: Promise<LocalDatabase> | null = null;
 let adapter: InstalledRuntimeAdapter | undefined;
 let binding: RuntimeBinding | null = null;
@@ -43,7 +43,7 @@ export function ensureInstalledOfflineRuntime(): Promise<void> {
     }));
 }
 export const offlineRuntimeEnabled = import.meta.env.VITE_OFFLINE_RUNTIME_ENABLED === "true";
-export const offlineModeEvent = "soko:offline-mode-changed";
+export const offlineModeEvent = "grogoni:offline-mode-changed";
 export type StorageTarget = "local" | "removable";
 export { supportsRemovableDevice, pickRemovableDevice };
 

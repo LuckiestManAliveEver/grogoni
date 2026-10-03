@@ -28,7 +28,7 @@ describe("messaging outbox", () => {
   it("isolates queued messages by account and removes unsafe legacy entries", () => {
     const storage = new MemoryStorage();
     storage.setItem(
-      "soko.market.messaging-outbox.v1",
+      "grogoni.messaging-outbox.v1",
       JSON.stringify([{ clientMessageId: "legacy-message", payload: { text: "private" } }])
     );
 
@@ -49,7 +49,7 @@ describe("messaging outbox", () => {
       storage
     );
 
-    expect(storage.getItem("soko.market.messaging-outbox.v1")).toBeNull();
+    expect(storage.getItem("grogoni.messaging-outbox.v1")).toBeNull();
     expect(readMessagingOutbox("account-a", storage)).toEqual([
       expect.objectContaining({ accountId: "account-a", clientMessageId: "message-a" })
     ]);

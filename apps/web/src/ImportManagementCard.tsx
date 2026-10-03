@@ -6,7 +6,7 @@ import { getUserFacingErrorMessage } from "./user-facing-error";
 import type {
   DocumentImportConfirmResult,
   DocumentImportJobSummary
-} from "./soko-application-shared";
+} from "./grogoni-application-shared";
 
 function draftName(draft: DocumentImportJobSummary["rows"][number]["mapped"]): string {
   return draft.name;

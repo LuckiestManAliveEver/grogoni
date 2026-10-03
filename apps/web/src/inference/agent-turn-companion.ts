@@ -1,5 +1,5 @@
-import type { AgentTurnStreamEvent, DeviceInferenceJob } from "@soko/shared-types";
-import { createRuntimeReplyTextStream } from "@soko/tool-core";
+import type { AgentTurnStreamEvent, DeviceInferenceJob } from "@grogoni/shared-types";
+import { createRuntimeReplyTextStream } from "@grogoni/tool-core";
 
 import type { runDeviceGeneration } from "../device-model-engine";
 import {
@@ -73,7 +73,7 @@ export function startAgentTurnCompanion(options: AgentTurnCompanionOptions): Age
 
   return {
     turnId,
-    headers: { "x-soko-turn-id": turnId },
+    headers: { "x-grogoni-turn-id": turnId },
     stop: () => controller.abort()
   };
 }

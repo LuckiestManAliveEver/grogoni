@@ -1,10 +1,10 @@
 import { pathForOwnerRoute, readOwnerRoute, type OwnerRoute } from "./routes";
 
-const navigationEventName = "soko:navigation";
+const navigationEventName = "grogoni:navigation";
 const historyStateVersion = 1;
 
-export interface SokoHistoryState {
-  soko: true;
+export interface GrogoniHistoryState {
+  grogoni: true;
   version: typeof historyStateVersion;
   key: string;
   depth: number;
@@ -21,8 +21,8 @@ export interface OwnerNavigationOptions {
   replace?: boolean | undefined;
 }
 
-export function initializeOwnerHistory(route: OwnerRoute): SokoHistoryState {
-  const existing = readSokoHistoryState(window.history.state);
+export function initializeOwnerHistory(route: OwnerRoute): GrogoniHistoryState {
+  const existing = readGrogoniHistoryState(window.history.state);
   const state = createHistoryState(route, {
     key: existing?.key,
     depth: existing?.depth ?? 0
@@ -37,7 +37,7 @@ export function navigateToOwnerRoute(
 ): boolean {
   saveCurrentScroll();
   const nextUrl = pathForOwnerRoute(route);
-  const existing = readSokoHistoryState(window.history.state);
+  const existing = readGrogoniHistoryState(window.history.state);
   const sameUrl = currentRelativeUrl() === nextUrl;
   const replace = options.replace === true || sameUrl;
   const state = createHistoryState(route, {
@@ -86,11 +86,11 @@ export function readCurrentOwnerRoute(): OwnerRoute | null {
   return readOwnerRoute(window.location.pathname);
 }
 
-export function readSokoHistoryState(value: unknown): SokoHistoryState | null {
+export function readGrogoniHistoryState(value: unknown): GrogoniHistoryState | null {
   if (typeof value !== "object" || value === null) return null;
-  const candidate = value as Partial<SokoHistoryState>;
+  const candidate = value as Partial<GrogoniHistoryState>;
   if (
-    candidate.soko !== true ||
+    candidate.grogoni !== true ||
     candidate.version !== historyStateVersion ||
     typeof candidate.key !== "string" ||
     typeof candidate.depth !== "number" ||
@@ -99,11 +99,11 @@ export function readSokoHistoryState(value: unknown): SokoHistoryState | null {
   ) {
     return null;
   }
-  return candidate as SokoHistoryState;
+  return candidate as GrogoniHistoryState;
 }
 
 export function canNavigateBackWithinApp(): boolean {
-  return (readSokoHistoryState(window.history.state)?.depth ?? 0) > 0;
+  return (readGrogoniHistoryState(window.history.state)?.depth ?? 0) > 0;
 }
 
 export function subscribeToBrowserNavigation(listener: () => void): () => void {
@@ -157,9 +157,9 @@ export function installBrowserLinkInterceptor(): () => void {
 function createHistoryState(
   route: OwnerRoute,
   options: { key?: string | undefined; depth: number }
-): SokoHistoryState {
+): GrogoniHistoryState {
   return {
-    soko: true,
+    grogoni: true,
     version: historyStateVersion,
     key: options.key ?? createNavigationKey(),
     depth: Math.max(0, options.depth),
@@ -174,7 +174,7 @@ function createHistoryState(
 }
 
 function saveCurrentScroll() {
-  const state = readSokoHistoryState(window.history.state);
+  const state = readGrogoniHistoryState(window.history.state);
   if (state === null) return;
   window.history.replaceState(
     { ...state, scrollX: window.scrollX, scrollY: window.scrollY },

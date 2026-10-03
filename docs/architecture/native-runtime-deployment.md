@@ -116,7 +116,7 @@ exception rather than a loophole.
 
 ## 3. Migration ordering: compile-and-verify before migrate
 
-Render's `soko-market` `buildCommand` now runs, in order:
+Render's `grogoni` `buildCommand` now runs, in order:
 
 ```
 pnpm install
@@ -153,7 +153,7 @@ present, and now also fails if any native runtime table, its required columns, i
 into the rest of the graph, or its uniqueness guards are missing (§5) - so an incomplete or
 half-migrated schema is caught before the API is allowed to start, in either direction.
 
-`render.yaml`'s `buildFilter.paths` for `soko-market` now also includes `scripts/**` (it
+`render.yaml`'s `buildFilter.paths` for `grogoni` now also includes `scripts/**` (it
 previously did not) - the retired-runtime gate and the other `pnpm check:*` scripts it calls live
 there, so a change to them now correctly triggers an API rebuild/redeploy.
 
@@ -201,10 +201,10 @@ global default binding" must exist. This was verified directly against a live, m
 `redis://127.0.0.1:6379` in every environment, including production - the exact mechanism behind
 `rate_limit_redis_connection_error` / `ECONNREFUSED 127.0.0.1:6379`: no Render instance has a local
 Redis, so if `REDIS_URL` was ever absent or empty when a production process read its environment
-(a stale deploy that predates the `soko-market-rate-limit-cache` Key Value service being linked, or
+(a stale deploy that predates the `grogoni-rate-limit-cache` Key Value service being linked, or
 any other environment-propagation gap), the API would silently try to talk to nothing rather than
 fail loudly. `render.yaml` already wires `REDIS_URL` correctly via `fromService: { name:
-soko-market-rate-limit-cache, type: keyvalue, property: connectionString }` - that wiring was not
+grogoni-rate-limit-cache, type: keyvalue, property: connectionString }` - that wiring was not
 the defect. The defect was that a missing value degraded silently instead of surfacing.
 
 `readRedisUrl()` now throws a clear, actionable error at boot in production

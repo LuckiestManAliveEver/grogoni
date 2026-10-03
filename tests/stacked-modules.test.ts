@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { shouldCloseStackedModuleFromSwipe } from "../apps/web/src/stacked-module-behavior";
 import { readOwnerRoute } from "../apps/web/src/routes";
 
-const application = readFileSync("apps/web/src/SokoApplication.tsx", "utf8");
+const application = readFileSync("apps/web/src/GrogoniApplication.tsx", "utf8");
 const chatSurface = readFileSync("apps/web/src/ChatSurface.tsx", "utf8");
 const navigationState = readFileSync("apps/web/src/hooks/useNavigationState.ts", "utf8");
 const modulePrimitive = readFileSync("apps/web/src/StackedModule.tsx", "utf8");

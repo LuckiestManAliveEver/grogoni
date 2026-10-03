@@ -2,7 +2,7 @@
  * The one shared implementation of the "setInterval + single-flight guard" shape that
  * notification-delivery-runner.ts, connected-mailbox-sync-runner.ts,
  * conversation-recycle-bin-runner.ts, agent-owner-correction-retention-runner.ts,
- * sokoid-cooldown-runner.ts, and account-deletion-runner.ts each hand-rolled independently
+ * grogoniid-cooldown-runner.ts, and account-deletion-runner.ts each hand-rolled independently
  * (docs/architecture/resource-isolation-audit.md §11: "six runners, identical shape"). Extracting
  * it means the scheduled-job timing/failure telemetry this module adds
  * (resource-isolation.md §17, `scheduled_job_duration_seconds`/`scheduled_job_failure_total`)
@@ -18,7 +18,7 @@ export interface IntervalRunnerOptions<T> {
   run: () => Promise<T>;
   onResult?: (result: T) => void;
   onError?: (error: unknown) => void;
-  /** Typically `metrics.timeScheduledJob` (@soko/observability); omitted in tests that don't
+  /** Typically `metrics.timeScheduledJob` (@grogoni/observability); omitted in tests that don't
    *  construct a Metrics instance, in which case the job still runs, just unmeasured. */
   timeScheduledJob?: <R>(job: string, fn: () => Promise<R>) => Promise<R>;
 }

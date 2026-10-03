@@ -1,5 +1,5 @@
 import { OfflineError } from "../types.js";
-import type { SokoProvider } from "./types.js";
+import type { GrogoniProvider } from "./types.js";
 export interface ResolverContext {
   online: boolean;
   offlineModeActive: boolean;
@@ -7,11 +7,11 @@ export interface ResolverContext {
 }
 export async function resolveProviderChain(
   op: string,
-  providers: SokoProvider[],
+  providers: GrogoniProvider[],
   context: ResolverContext
-): Promise<SokoProvider[]> {
-  const order: SokoProvider["name"][] = context.offlineModeActive ? ["local", "peer"] : ["cloud"];
-  const result: SokoProvider[] = [];
+): Promise<GrogoniProvider[]> {
+  const order: GrogoniProvider["name"][] = context.offlineModeActive ? ["local", "peer"] : ["cloud"];
+  const result: GrogoniProvider[] = [];
   for (const name of order) {
     const provider = providers.find((candidate) => candidate.name === name);
     if (!provider?.supports(op)) continue;
@@ -24,7 +24,7 @@ export async function resolveProviderChain(
 export async function executeProviderCall<T>(
   op: string,
   args: unknown,
-  providers: SokoProvider[],
+  providers: GrogoniProvider[],
   context: ResolverContext
 ): Promise<T> {
   const chain = await resolveProviderChain(op, providers, context);

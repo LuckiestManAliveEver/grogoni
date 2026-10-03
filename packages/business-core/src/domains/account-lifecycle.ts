@@ -1,6 +1,6 @@
-import { createEvent, type BusinessEvent } from "@soko/event-core";
-import type { AccountDeletionRequestSummary, DataExportBundleSummary } from "@soko/shared-types";
-import { invalid, type ValidationResult, valid } from "@soko/tool-core";
+import { createEvent, type BusinessEvent } from "@grogoni/event-core";
+import type { AccountDeletionRequestSummary, DataExportBundleSummary } from "@grogoni/shared-types";
+import { invalid, type ValidationResult, valid } from "@grogoni/tool-core";
 
 import { normalizeOptionalText, nullableText } from "../shared/text-normalization.js";
 

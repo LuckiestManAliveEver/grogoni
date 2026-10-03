@@ -10,19 +10,19 @@ drop table if exists native_sms_devices;
 alter table conversation_messages
   drop constraint if exists conversation_messages_provider_check,
   add constraint conversation_messages_provider_check check (
-    provider in ('soko', 'telegram', 'whatsapp', 'messenger', 'instagram', 'tiktok', 'x', 'sms')
+    provider in ('grogoni', 'telegram', 'whatsapp', 'messenger', 'instagram', 'tiktok', 'x', 'sms')
   ),
   drop constraint if exists conversation_messages_selected_channel_check,
   add constraint conversation_messages_selected_channel_check check (
     selected_channel in (
-      'soko', 'sms', 'mms', 'rcs_business', 'whatsapp_business', 'telegram',
+      'grogoni', 'sms', 'mms', 'rcs_business', 'whatsapp_business', 'telegram',
       'facebook_messenger', 'instagram_messaging', 'tiktok_business', 'x_dm', 'email'
     )
   ),
   drop constraint if exists conversation_messages_actual_channel_check,
   add constraint conversation_messages_actual_channel_check check (
     actual_channel is null or actual_channel in (
-      'soko', 'sms', 'mms', 'rcs_business', 'whatsapp_business', 'telegram',
+      'grogoni', 'sms', 'mms', 'rcs_business', 'whatsapp_business', 'telegram',
       'facebook_messenger', 'instagram_messaging', 'tiktok_business', 'x_dm', 'email'
     )
   );

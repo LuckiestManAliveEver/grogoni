@@ -112,7 +112,7 @@ describePostgres("corridor fulfillment Phase 1c on PostgreSQL", () => {
         {
           TELEGRAM_BOT_TOKEN: "test-token",
           TELEGRAM_WEBHOOK_SECRET: "test-webhook-secret",
-          TELEGRAM_BOT_USERNAME: "soko_test_bot"
+          TELEGRAM_BOT_USERNAME: "grogoni_test_bot"
         },
         async (_url, init) => {
           const body = JSON.parse(String(init?.body)) as { text: string };

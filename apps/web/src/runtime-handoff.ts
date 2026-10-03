@@ -5,7 +5,7 @@ import {
   scopeKey,
   type LocalRuntimeMessage,
   type Scope
-} from "@soko/offline-runtime";
+} from "@grogoni/offline-runtime";
 import { readCachedAuthSession } from "./auth-bootstrap";
 import { clearApiRequestCache } from "./api-request-cache";
 import { apiCloudFetch } from "./lib/api";
@@ -102,7 +102,7 @@ export async function runtimeHandoffController(): Promise<RuntimeHandoffControll
       if (!navigator.locks)
         throw new Error("This browser cannot safely coordinate runtime handoffs across tabs.");
       return await navigator.locks.request(
-        "soko-runtime-handoff",
+        "grogoni-runtime-handoff",
         { ifAvailable: true },
         (lock) => {
           if (!lock)
@@ -140,7 +140,7 @@ export function localRuntimeMessages(messages: ChatMessage[]): LocalRuntimeMessa
 export function handoffChatMessages(messages: LocalRuntimeMessage[]): ChatMessage[] {
   return messages.map((message) => ({
     id: message.id,
-    author: message.role === "user" ? "merchant" : "sokoclaw",
+    author: message.role === "user" ? "merchant" : "grogoniclaw",
     body: message.content,
     createdAt: message.createdAt,
     status: "delivered"

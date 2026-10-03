@@ -32,7 +32,7 @@ export const networkRuntimeTools = {
     name: "network.contacts.resolve",
     hub: {
       module: "network",
-      label: { en: "Find a contact on Soko", sw: "Tafuta mawasiliano kwenye Soko" }
+      label: { en: "Find a contact on Grogoni", sw: "Tafuta mawasiliano kwenye Grogoni" }
     },
     description: "Resolve a name, phone, email, or handle against the owner's own phonebook.",
     risk: "low",

@@ -98,7 +98,7 @@ export const computerRuntimeTools = {
   ),
   "computer.control.release": computerTool(
     "computer.control.release",
-    "Return control of the computer session to Soko after a fresh observation.",
+    "Return control of the computer session to Grogoni after a fresh observation.",
     { risk: "medium", requiresConfirmation: false, readOnly: false }
   ),
   "computer.checkpoint": computerTool(

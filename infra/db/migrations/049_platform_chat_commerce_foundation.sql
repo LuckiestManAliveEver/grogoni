@@ -61,9 +61,9 @@ create index if not exists product_capture_jobs_status_idx
   on product_capture_jobs (business_id, (record ->> 'status'));
 
 comment on table platform_identities is
-  'Business-scoped provider identities. External identities are never auto-linked to Soko accounts.';
+  'Business-scoped provider identities. External identities are never auto-linked to Grogoni accounts.';
 comment on table conversation_channels is
-  'Provider-neutral bindings between external chats and canonical Soko conversations.';
+  'Provider-neutral bindings between external chats and canonical Grogoni conversations.';
 comment on table provider_update_receipts is
   'Durable provider update idempotency receipts.';
 comment on table customer_runtime_capabilities is

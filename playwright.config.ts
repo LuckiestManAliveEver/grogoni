@@ -15,7 +15,7 @@ export default defineConfig({
     video: "off"
   },
   webServer: {
-    command: "pnpm --filter @soko/web dev",
+    command: "pnpm --filter @grogoni/web dev",
     env: {
       VITE_INFERENCE_CLIENT_FIRST: "true",
       VITE_INFERENCE_CLOUD_FALLBACK_ENABLED: "true"

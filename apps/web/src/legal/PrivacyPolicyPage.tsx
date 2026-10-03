@@ -1,4 +1,4 @@
-import { Surface } from "@soko/ui";
+import { Surface } from "@grogoni/ui";
 import {
   LegalMarkdownBody,
   parseAnnexes,
@@ -51,22 +51,22 @@ const privacyAnnexes = parseAnnexes(partFourMarkdown);
 
 export default function PrivacyPolicyPage() {
   return (
-    <Surface title="Soko.market Privacy Policy — Version 1.0 Draft">
+    <Surface title="Grogoni Privacy Policy — Version 1.0 Draft">
       <a className="legal-skip-link" href="#privacy-content">
         Skip to privacy policy
       </a>
       <main className="legal-document-shell">
         <header className="legal-document-header">
-          <a className="legal-brand" href="/" aria-label="Back to Soko.market home">
+          <a className="legal-brand" href="/" aria-label="Back to Grogoni home">
             <AppIcon className="legal-brand-icon" />
-            <span>soko.market</span>
+            <span>grogoni</span>
           </a>
           <p className="eyebrow">Legal</p>
           <h1>Privacy Policy</h1>
           <p className="legal-version">Version 1.0 (Draft) · Parts I–IV</p>
           <p className="legal-effective-date">Effective Date: To Be Inserted</p>
           <p className="legal-intro">
-            How Soko.market collects, uses, stores, shares, protects, and otherwise processes
+            How Grogoni collects, uses, stores, shares, protects, and otherwise processes
             Personal Data when people use the Services.
           </p>
           <dl className="legal-particulars">
@@ -80,7 +80,7 @@ export default function PrivacyPolicyPage() {
             </div>
             <div>
               <dt>Privacy Contact</dt>
-              <dd>privacy@soko.market (placeholder)</dd>
+              <dd>privacy@grogoni.com (placeholder)</dd>
             </div>
           </dl>
         </header>
@@ -190,7 +190,7 @@ export default function PrivacyPolicyPage() {
                 By using the Services, you acknowledge that you have been informed about the
                 processing of your Personal Data as described in this Privacy Policy.
               </p>
-              <p>© Soko.market. All rights reserved.</p>
+              <p>© Grogoni. All rights reserved.</p>
             </footer>
           </article>
         </div>

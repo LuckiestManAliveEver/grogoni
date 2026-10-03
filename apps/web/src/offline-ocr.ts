@@ -4,7 +4,7 @@ import {
   assertStorage,
   type Artifact,
   type ReceiptOcrExtraction
-} from "@soko/offline-runtime";
+} from "@grogoni/offline-runtime";
 
 import {
   ocrAssetFiles,
@@ -22,7 +22,7 @@ import {
  * supplier/sales-agent matching, the authoritative re-parse of a captured product's fields) still
  * happens once the capture syncs, matching what apps/web/src/OfflineRuntimeSettings.tsx discloses.
  */
-const cacheName = "soko-ocr-engine-v1";
+const cacheName = "grogoni-ocr-engine-v1";
 const enginePath = "/tesseract";
 const manifestUrl = `${enginePath}/manifest.json`;
 
@@ -55,7 +55,7 @@ function parseManifest(value: unknown): Artifact[] {
 }
 function requireServiceWorker(): void {
   if (!navigator.serviceWorker?.controller)
-    throw new Error("Reload Soko once to activate offline support, then try again.");
+    throw new Error("Reload Grogoni once to activate offline support, then try again.");
 }
 
 /** Reads the manifest already saved locally by ensureOcrEngineCached - never touches the network,

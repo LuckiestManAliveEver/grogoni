@@ -1,12 +1,12 @@
 // Shared by scripts/store-lock.mjs and its tests. Matches only the CP2 persistence lock
-// `pg_advisory_*lock(hashtext('soko.cp2.normalized_store'))` in the current database: pg_locks is
+// `pg_advisory_*lock(hashtext('grogoni.cp2.normalized_store'))` in the current database: pg_locks is
 // server-wide, and a bigint advisory key is stored as classid (high 32 bits), objid (low 32 bits)
 // and objsubid 1.
 export const storeLockPredicate = `
   l.locktype = 'advisory'
   and l.database = (select oid from pg_database where datname = current_database())
-  and l.classid = ((hashtext('soko.cp2.normalized_store')::bigint >> 32) & 4294967295)::oid
-  and l.objid = (hashtext('soko.cp2.normalized_store')::bigint & 4294967295)::oid
+  and l.classid = ((hashtext('grogoni.cp2.normalized_store')::bigint >> 32) & 4294967295)::oid
+  and l.objid = (hashtext('grogoni.cp2.normalized_store')::bigint & 4294967295)::oid
   and l.objsubid = 1`;
 
 /** Every backend holding or waiting for the store lock, holders first. */

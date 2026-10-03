@@ -1,4 +1,4 @@
--- Soko owns OTP creation and verification. Gateways only deliver message bodies.
+-- Grogoni owns OTP creation and verification. Gateways only deliver message bodies.
 
 alter table otp_challenges add column if not exists consumed_at timestamptz;
 alter table otp_challenges add column if not exists resend_count integer not null default 0;

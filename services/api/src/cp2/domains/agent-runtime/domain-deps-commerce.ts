@@ -18,8 +18,8 @@ import type {
   SupplierSummary,
   TrustedMessageAttachmentReference,
   WorkspaceDeliverResult
-} from "@soko/shared-types";
-import type { InvoiceInput, PaymentInput } from "@soko/business-core";
+} from "@grogoni/shared-types";
+import type { InvoiceInput, PaymentInput } from "@grogoni/business-core";
 
 /**
  * Business record CRUD, receipts, imports, channel messaging, and workspace file delivery -

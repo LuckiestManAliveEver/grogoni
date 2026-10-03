@@ -1,7 +1,7 @@
 # CP25 Full Messaging Platform
 
-CP25 upgrades Soko's chat-first workspace into a durable direct-messaging platform while keeping the
-Soko business agent in the same inbox. The implementation is shared by web/PWA clients and the
+CP25 upgrades Grogoni's chat-first workspace into a durable direct-messaging platform while keeping the
+Grogoni business agent in the same inbox. The implementation is shared by web/PWA clients and the
 server-authoritative conversation API.
 
 ## User experience
@@ -9,7 +9,7 @@ server-authoritative conversation API.
 The messaging workspace provides:
 
 - an inbox ordered by pinned state and recent activity
-- direct conversations created from an exact Soko phone number or email address
+- direct conversations created from an exact Grogoni phone number or email address
 - conversation search, unread badges, pin, eight-hour mute, and archive controls
 - persisted text messages and up to 10 attachments per message
 - image previews and downloadable document, video, audio, and other file attachments
@@ -19,7 +19,7 @@ The messaging workspace provides:
 - voice dictation where the browser exposes the Web Speech API
 - closed-browser Web Push notifications with notification-click routing back to the conversation
 - end-to-end encrypted human direct-message bodies and attachments
-- the existing Soko agent runtime as a first-class inbox participant
+- the existing Grogoni agent runtime as a first-class inbox participant
 
 The responsive behavior is messenger-like: desktop and tablet layouts display an inbox beside the
 active thread, while phones expose the inbox as an accessible slide-over panel. The composer and
@@ -27,7 +27,7 @@ thread remain usable at the certified viewport widths.
 
 ## Shared contracts
 
-`@soko/shared-types` defines the interoperable message model:
+`@grogoni/shared-types` defines the interoperable message model:
 
 - `ConversationInboxItem`
 - `ConversationAttachment`
@@ -41,7 +41,7 @@ thread remain usable at the certified viewport widths.
 
 The conversation owner is not the only reader. Access is granted to every account participant, and
 all message and conversation mutations verify that the active account is a participant. Direct
-threads reject agent-authored messages so an account cannot impersonate the Soko agent in a human
+threads reject agent-authored messages so an account cannot impersonate the Grogoni agent in a human
 conversation.
 
 Agent-only threads are processed server-side as part of `POST /v1/messages`. The user message,
@@ -127,14 +127,14 @@ retention rules, and per-account storage quotas before raising the limit.
 
 Users opt in from the inbox. The PWA creates a `PushSubscription`, stores it against the signed-in
 account, and the API sends standards-based Web Push with VAPID authentication. This wakes the service
-worker even when every Soko window is closed. Notifications intentionally contain no message text;
+worker even when every Grogoni window is closed. Notifications intentionally contain no message text;
 selecting one focuses or opens the app and routes to the conversation.
 
 Generate one stable VAPID key pair per deployment and store the private key only in the API secret
 manager:
 
 ```bash
-pnpm --filter @soko/api exec web-push generate-vapid-keys --json
+pnpm --filter @grogoni/api exec web-push generate-vapid-keys --json
 ```
 
 Configure `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_SUBJECT` together. `VAPID_SUBJECT` must
@@ -157,7 +157,7 @@ the API does not create ephemeral keys that would invalidate existing subscripti
 - The API rejects plaintext in multi-account conversations and rejects stale or incomplete device
   envelope sets.
 
-The end-to-end encryption claim applies only to human-to-human direct threads. Soko agent threads are
+The end-to-end encryption claim applies only to human-to-human direct threads. Grogoni agent threads are
 visibly labelled as agent-processed and remain readable by the server so the selected local or hosted
 agent can respond and use tools. Conversation membership, sender, timestamps, delivery/read state,
 reactions, reply/forward references, attachment count, and push endpoints remain server-visible

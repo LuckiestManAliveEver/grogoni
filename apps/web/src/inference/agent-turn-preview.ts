@@ -40,7 +40,7 @@ export async function withAgentTurnPreview<T>(input: {
             ...messages,
             {
               id: previewId,
-              author: "sokoclaw",
+              author: "grogoniclaw",
               body,
               createdAt: new Date().toISOString(),
               status: "delivered"
@@ -61,7 +61,7 @@ export async function withAgentTurnPreview<T>(input: {
     });
   });
   try {
-    return await input.run({ "x-soko-turn-id": turnId });
+    return await input.run({ "x-grogoni-turn-id": turnId });
   } finally {
     settled = true;
     (companion as AgentTurnCompanion | null)?.stop();

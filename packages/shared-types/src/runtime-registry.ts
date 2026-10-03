@@ -20,7 +20,7 @@ export interface ExternalRegistryConnection {
   scopes: string[];
   /**
    * Separate from `scopes` (the token's own declared permissions on the provider's side): this is
-   * Soko's own explicit authorization to spend this connection's credential on the account's own
+   * Grogoni's own explicit authorization to spend this connection's credential on the account's own
    * inference usage instead of the platform's. False by default even right after connecting -
    * connecting an account for discovery (raising Hub search rate limits) never implies inference
    * billing authorization. Only POST /v1/external-connections/:id/inference-authorization sets this
@@ -38,7 +38,7 @@ export interface ExternalRegistryConnection {
 
 export type RuntimeAssetKind = "agent" | "model";
 
-export type RuntimeRegistryProviderId = "soko" | "github" | "huggingface";
+export type RuntimeRegistryProviderId = "grogoni" | "github" | "huggingface";
 
 export interface RuntimeRegistrySearchQuery {
   query: string;

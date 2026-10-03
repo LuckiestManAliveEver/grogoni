@@ -2,7 +2,7 @@
 
 ## Audit result
 
-Soko already had a useful canonical conversation and message model, delivery attempts,
+Grogoni already had a useful canonical conversation and message model, delivery attempts,
 provider-update receipts, a unified inbox, and a confirmation-aware agent runtime. The missing
 boundary was a real channel gateway: provider identities were not attached to CRM customers,
 Telegram had no authenticated webhook or send adapter, external sends stopped at a queued
@@ -13,7 +13,7 @@ message store.
 
 | Concern                | Canonical implementation                                                                 |
 | ---------------------- | ---------------------------------------------------------------------------------------- |
-| Customer               | `CustomerSummary`, optionally linked to one Soko account                                 |
+| Customer               | `CustomerSummary`, optionally linked to one Grogoni account                                 |
 | Provider identity      | `PlatformIdentitySummary`, scoped by business and linked to one customer                 |
 | Conversation transport | `ConversationChannelSummary`                                                             |
 | Message                | `ConversationMessageSummary`, including provider, direction, lifecycle, and external IDs |
@@ -24,7 +24,7 @@ message store.
 
 ## Identity rules
 
-- An external provider identifier is never treated as a Soko account identifier.
+- An external provider identifier is never treated as a Grogoni account identifier.
 - A new storefront or provider contact creates one guest customer when no canonical customer was
   selected.
 - Additional channel identities selected for that customer reuse its canonical conversation.
@@ -32,7 +32,7 @@ message store.
   `CHANNEL_IDENTITY_ALREADY_LINKED`.
 - Telegram linking uses a 256-bit, 15-minute, one-use token. Only its hash is persisted. The token
   is redacted from the canonical message body.
-- A guest customer can later be explicitly linked to a Soko account without creating a replacement
+- A guest customer can later be explicitly linked to a Grogoni account without creating a replacement
   customer. Conflicting account links are rejected.
 - Every lookup and write is business-scoped; an account from another tenant cannot use a channel
   relationship merely by knowing its external identifier.
@@ -48,7 +48,7 @@ Selection is deterministic:
 1. An explicitly selected provider is used or rejected; it never silently falls back.
 2. The current conversation provider is preferred when supplied and eligible.
 3. Otherwise, the most recently active reachable channel is used.
-4. A reachable Soko identity is next.
+4. A reachable Grogoni identity is next.
 5. The remaining first eligible linked endpoint is used.
 
 Opt-out, missing authorization, missing configuration, an expired reply window, missing opt-in, and
@@ -62,7 +62,7 @@ provider review have been completed.
 
 | Provider            | Inbound | Reply           | Initiate | Configured        | Contract/mock tested | Live verified |
 | ------------------- | ------: | --------------- | -------: | ----------------- | -------------------- | ------------- |
-| Soko                |     Yes | Yes             |      Yes | Yes               | Yes                  | Internal only |
+| Grogoni                |     Yes | Yes             |      Yes | Yes               | Yes                  | Internal only |
 | Telegram            |     Yes | Existing thread |       No | Runtime-dependent | Yes                  | No            |
 | WhatsApp Business   |      No | No              |       No | No                | Fail-closed only     | No            |
 | Facebook Messenger  |      No | No              |       No | No                | Fail-closed only     | No            |

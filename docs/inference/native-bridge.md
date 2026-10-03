@@ -1,7 +1,7 @@
 # Native llama.cpp bridge
 
 The web application never attempts to run native llama.cpp directly. It feature-detects
-`globalThis.sokoNativeInference`, validates the required methods, and otherwise uses a safe
+`globalThis.grogoniNativeInference`, validates the required methods, and otherwise uses a safe
 unavailable bridge.
 
 An installed Capacitor, Tauri, Electron, or Android shell may expose:
@@ -19,7 +19,7 @@ primitive.
 
 ## Installed GGUF package attestation
 
-`SokoAgentModelRuntime.inspect()` is the authoritative pre-load gate for installed GGUF models.
+`GrogoniAgentModelRuntime.inspect()` is the authoritative pre-load gate for installed GGUF models.
 The current bridge API requires version `1.0.0` or newer and returns:
 
 - available memory and estimated model memory;

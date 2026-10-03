@@ -1,7 +1,7 @@
-# Soko Agent Execution Fabric — Phase 2: Runtime Adapters, UI Wiring, Flagged Cutover
+# Grogoni Agent Execution Fabric — Phase 2: Runtime Adapters, UI Wiring, Flagged Cutover
 
 Status: complete, with four explicitly scoped-out gaps/follow-ups named in §8 rather than silently
-skipped. This document assumes [Phase 0](soko-execution-fabric-audit.md) and
+skipped. This document assumes [Phase 0](grogoni-execution-fabric-audit.md) and
 [Phase 1](agent-execution-fabric-phase1.md) as ground truth and does not re-derive their findings.
 
 **Headline guarantee, verified by test, not just asserted**: with `EXECUTION_FABRIC_ENABLED`
@@ -163,7 +163,7 @@ pre-existing client inference test suite (`tests/client-first-inference.test.ts`
 new write path only fires from an explicit "Save preference" click in `ModelPreferencePanel.tsx`,
 never from a mount effect) and by test
 (`executes successfully for a second device with no re-selection of the agent and no new model
-install`, `tests/execution-fabric-runtime-route.test.ts`) - two different `x-soko-device-id`
+install`, `tests/execution-fabric-runtime-route.test.ts`) - two different `x-grogoni-device-id`
 headers hit the same conversation and agent, both execute successfully, and neither creates any
 `AgentModelBindingSummary`.
 
@@ -176,7 +176,7 @@ not just that a database row is absent.
 
 `ModelPreferencePanel` (`apps/web/src/execution-fabric/ModelPreferencePanel.tsx`) is a new,
 self-contained, additive section inserted into the existing `AgentModelPanel.tsx` (right after the
-"Soko backend models" section, before "Cloud fallback models" — `AgentModelPanel.tsx:1746-1752`),
+"Grogoni backend models" section, before "Cloud fallback models" — `AgentModelPanel.tsx:1746-1752`),
 rendered **only when `executionFabricEnabled` (client flag) is true**. With the flag off - the
 default everywhere - this component never mounts and the existing panel is pixel-for-pixel
 unchanged; verified by the existing frontend test suite passing unmodified (§7).

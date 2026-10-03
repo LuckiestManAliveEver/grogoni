@@ -10,12 +10,12 @@ disagreed, this audit trusts the code and calls out the doc.
 Two layers, unified by `docs/adr/ADR-collapse-harness-into-agent.md`:
 
 - `AgentDefinition` (`packages/shared-types/src/index.ts:3987-4006`) — the catalog entity a business
-  picks: personality, instructions, knowledge, tools, and a `runtimeAdapterId` (e.g. `"pi"`, `"soko"`).
-  Stored in `cp2_agent_catalog`. Built-ins: `builtin:shopkeeper` (adapter `soko`) and
+  picks: personality, instructions, knowledge, tools, and a `runtimeAdapterId` (e.g. `"pi"`, `"grogoni"`).
+  Stored in `cp2_agent_catalog`. Built-ins: `builtin:shopkeeper` (adapter `grogoni`) and
   `builtin:pi-assistant` (adapter `pi`, added by migration `096_agent_definition_runtime_adapter.sql`).
 - `AgentRuntimeAdapter` (`services/api/src/agent-harness/agent-runtime-adapter.ts:40-65`) — the
   execution harness: `{id, canRun(), execute()}`, held in `AgentRuntimeAdapterRegistry`. Only two are
-  registered (`services/api/src/agent-harness/default-agent-runtime-adapters.ts`): `soko`, `pi`.
+  registered (`services/api/src/agent-harness/default-agent-runtime-adapters.ts`): `grogoni`, `pi`.
 - Selection is per-business (`PUT /businesses/:businessId/agent-profile`), via
   `QuickRuntimeSwitcher.tsx`. Not per-message, per-user, or per-model.
 
@@ -31,7 +31,7 @@ here needed extension.
 - `aiModelRegistry` (`services/api/src/cp2/domains/agent-runtime/model-catalog.ts:78-243`) is the
   **catalog surfaced to the UI/activation API** (`AiModelSummary[]`, typed at
   `packages/shared-types/src/index.ts:971-1001`). It already models `source: "huggingface"` (a
-  downloadable HF Hub GGUF file) and `source: "hosted"` (a Soko-run remote model) as distinct
+  downloadable HF Hub GGUF file) and `source: "hosted"` (a Grogoni-run remote model) as distinct
   concepts, and already carries `runtimeAvailability: Partial<Record<ModelExecutionTarget, ...>>` for
   per-target configured/unconfigured state.
 - Both registries needed a new entry for Qwen3-4B, not a new table. See Part B below for what changed
@@ -53,7 +53,7 @@ The live mechanism is the **native runtime binding graph**: `cp2_native_runtime_
 Resolver: `NativeRuntimeBindingStore.resolveRuntimeBinding()`
 (`services/api/src/cp2/domains/native-runtime/store.ts`), precedence: (1) conversation's explicit
 `runtimeBindingId`, (2) most recent active business/account binding, (3) platform default
-(`builtin:soko-default-runtime:v1`). This resolver is unchanged by this work — it already implements
+(`builtin:grogoni-default-runtime:v1`). This resolver is unchanged by this work — it already implements
 exactly the "explicit > conversation > preference > platform default" hierarchy the task asked for.
 
 **Assessment**: fully reusable. This feature does not add a binding table; it adds a second live model
@@ -100,7 +100,7 @@ implementation**: `services/ai-runtime/src/huggingface-runtime.ts` (201 lines) c
 errors (401/403 → auth failed, 404 → model not found, 429/5xx → retryable). It is wired into
 `services/ai-runtime/src/vercel-handler.ts` behind a **single deployment-wide switch**:
 `INFERENCE_PROVIDER=llama-cpp|huggingface` (`readVercelInferenceConfig`, `vercel-handler.ts:39-75`).
-When `huggingface`, every request — regardless of which Soko model id it names — is routed to
+When `huggingface`, every request — regardless of which Grogoni model id it names — is routed to
 whichever HF Hub model that id maps to in `HF_MODEL_MAP` (a JSON object env var). When `llama-cpp`,
 every request downloads a GGUF artifact and runs it locally. **A single deployment can never serve
 both at once**, and `parseRequest` (`vercel-handler.ts:300-362`) unconditionally requires an `artifact`
@@ -110,7 +110,7 @@ llama.cpp-only design.
 Retired/dead code confirmed absent: `services/api/src/inference/openai-provider.ts` and
 `cloud-fallback.ts` **do not exist** (removed by `068_remove_cloud_fallback.sql`). There is **no
 OpenAI or Anthropic cloud provider adapter anywhere in this codebase** — only the Vercel-hosted
-llama.cpp/HF pair and the deterministic non-LLM `sokoclaw-local` fallback. Four docs and one
+llama.cpp/HF pair and the deterministic non-LLM `grogoniclaw-local` fallback. Four docs and one
 shared-types comment still cite the deleted files (see "Known doc drift").
 
 **This is the one piece of real, non-cosmetic backend work this feature required**: making Hugging
@@ -130,12 +130,12 @@ handoff mechanism and changes no handoff code.
 ## 7. Conversation state & message persistence — exists, reusable, one field flagged for reconciliation
 
 Relational: `conversations`, `conversation_participants`, `conversation_messages`,
-`soko_session_contexts` (migration `017_cp20_unified_session_conversations.sql`). CP2 JSON mirrors:
+`grogoni_session_contexts` (migration `017_cp20_unified_session_conversations.sql`). CP2 JSON mirrors:
 `cp2_conversations`, `cp2_conversation_messages`, etc. (same file). `conversations.runtime_binding_id`
 / `cp2_conversations.runtime_binding_id` (added by migration 063) is how a conversation pins itself to
 a specific runtime binding.
 
-**Flagged, not changed**: `soko_session_contexts.active_model_id` is a second, older per-session
+**Flagged, not changed**: `grogoni_session_contexts.active_model_id` is a second, older per-session
 "which model" field that predates the native-runtime-binding graph. This feature does not write to it
 and does not treat it as authoritative — the binding's model is authoritative — but a future cleanup
 should either retire this column or make it a read-only projection of the binding, so there is only
@@ -210,7 +210,7 @@ flagging:
 Model preference today is `activeAiModels: Map<businessId, ActiveAiModelSummary>`
 (`packages/shared-types/src/index.ts:1003-1008`), read/written throughout
 `services/api/src/cp2/domains/agent-runtime/store.ts`. There is no separate `user_preferences` table
-for an individual (non-business) account's model choice. Given Soko's merchant-tool framing throughout
+for an individual (non-business) account's model choice. Given Grogoni's merchant-tool framing throughout
 the docs, "user" in the task brief maps to "business/shop owner" here — this audit treats it that way
 rather than inventing a parallel per-account preference concept.
 
@@ -286,7 +286,7 @@ openai-provider.ts` and `cloud-fallback.ts` as if live. Both files were deleted 
 `CLAUDE.md`'s "LLM access" section says: "When the software we build needs to call an LLM, do NOT use
 an LLM API (Anthropic API, OpenAI API, any hosted inference endpoint) unless Julien explicitly
 instructs it." This audit reads that as governing _tooling Claude Code builds for itself_ (evals,
-internal agents), not Soko-the-product's own inference architecture, which has called hosted HF
+internal agents), not Grogoni-the-product's own inference architecture, which has called hosted HF
 inference in production since before this task began (`render.yaml`, `services/ai-runtime`). The task
 instructions that produced this audit are themselves an explicit, detailed instruction to extend that
 existing hosted-inference architecture, naming Hugging Face and `router.huggingface.co` specifically —

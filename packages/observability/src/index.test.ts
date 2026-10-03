@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createBulkhead, createCircuitBreaker } from "@soko/resource-control";
+import { createBulkhead, createCircuitBreaker } from "@grogoni/resource-control";
 import { createMetrics, type QueryablePool } from "./index.js";
 
 function fakePool(
@@ -267,25 +267,25 @@ describe("createMetrics", () => {
 
   it("times a scheduled job and records success", async () => {
     const metrics = createMetrics({ serviceName: "api" });
-    const result = await metrics.timeScheduledJob("sokoid_cooldown", async () => "done");
+    const result = await metrics.timeScheduledJob("grogoniid_cooldown", async () => "done");
     expect(result).toBe("done");
     const text = await metrics.metricsText();
     expect(text).toMatch(
-      /scheduled_job_duration_seconds_bucket\{[^}]*job="sokoid_cooldown"[^}]*outcome="success"/
+      /scheduled_job_duration_seconds_bucket\{[^}]*job="grogoniid_cooldown"[^}]*outcome="success"/
     );
   });
 
   it("times a failing scheduled job and increments the failure counter", async () => {
     const metrics = createMetrics({ serviceName: "api" });
     await expect(
-      metrics.timeScheduledJob("sokoid_cooldown", async () => {
+      metrics.timeScheduledJob("grogoniid_cooldown", async () => {
         throw new Error("boom");
       })
     ).rejects.toThrow("boom");
     const text = await metrics.metricsText();
     expect(text).toMatch(
-      /scheduled_job_duration_seconds_bucket\{[^}]*job="sokoid_cooldown"[^}]*outcome="error"/
+      /scheduled_job_duration_seconds_bucket\{[^}]*job="grogoniid_cooldown"[^}]*outcome="error"/
     );
-    expect(text).toMatch(/scheduled_job_failure_total\{[^}]*job="sokoid_cooldown"[^}]*\} 1/);
+    expect(text).toMatch(/scheduled_job_failure_total\{[^}]*job="grogoniid_cooldown"[^}]*\} 1/);
   });
 });

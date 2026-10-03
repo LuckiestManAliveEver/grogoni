@@ -1,6 +1,6 @@
 # Deploy backend inference on Render (superseded)
 
-This runbook described the retired topology: a private `soko-market-inference` Docker service on
+This runbook described the retired topology: a private `grogoni-inference` Docker service on
 Render, running Ollama against a persistent model disk, reachable from the API only over Render's
 private network.
 

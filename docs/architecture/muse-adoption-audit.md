@@ -9,7 +9,7 @@ this repository:
 
 - [`context-semantic-runtime-audit.md`](context-semantic-runtime-audit.md) — the context-retrieval
   pipeline (evidence selection, budgeting, authorization).
-- [`soko-execution-fabric-audit.md`](soko-execution-fabric-audit.md) — the now-retired Execution
+- [`grogoni-execution-fabric-audit.md`](grogoni-execution-fabric-audit.md) — the now-retired Execution
   Fabric and why it must not be resurrected.
 - [`../agent-runtime-vs-research-standards-audit.md`](../agent-runtime-vs-research-standards-audit.md)
   — a prior, independent comparison of this runtime against the ReAct/Reflexion/MemGPT/GEPA/METR
@@ -21,7 +21,7 @@ this repository:
 
 ## Executive summary
 
-Soko already implements the large majority of what the MUSE-adoption brief asks for, under
+Grogoni already implements the large majority of what the MUSE-adoption brief asks for, under
 different names, as real, tested, invoked code — not aspirational documentation. This is the same
 conclusion the three audits above independently reached for their own narrower scopes. Concretely:
 
@@ -35,7 +35,7 @@ conclusion the three audits above independently reached for their own narrower s
   execution) → `validateRuntimeToolInput`/`parseRuntimeModelOutput` (result validation) →
   `createRuntimeVerification` (verification) → `RuntimeHandoffDomain.checkpointAfterTurn`
   (handoff/checkpoint) → `recordAgentEvaluationEvent` (outcome recording).
-- The **permanent rule** ("Soko owns state/identity/authorization/commerce semantics and execution
+- The **permanent rule** ("Grogoni owns state/identity/authorization/commerce semantics and execution
   policy; models reason; tools act; evidence grounds; experience improves future context") is already
   the repo's own stated invariant, verified independently by both background audits in this change and
   by `governed-tool-runtime.md`'s "one canonical tool registry, one execution pipeline" finding.
@@ -62,7 +62,7 @@ conclusion the three audits above independently reached for their own narrower s
 - Everything else the brief asks for — runtime handoff/continuity, provider-neutral inference, bounded
   tool execution, outcome recording, MCP (inbound direction), tenant isolation, fail-closed
   authorization — **already exists**, is already tested, and must not be rebuilt. The one **explicit
-  non-goal** carried forward from this audit is outbound MCP (Soko acting as an MCP _client_ against
+  non-goal** carried forward from this audit is outbound MCP (Grogoni acting as an MCP _client_ against
   external servers) — see "Explicitly not adopted" below.
 
 ## Capability classification
@@ -77,7 +77,7 @@ conclusion the three audits above independently reached for their own narrower s
 | 6   | Outcome feedback                | `EXISTS`                                      | `AgentEvaluationEvent`/`AgentEvaluationEventType` (shared-types:4137-4171) already covers intent classification, context retrieval, tool selection/execution, policy compliance, corrections, sales, abandonment, escalation, latency, model failure, hallucination, invalid discount, satisfaction, owner feedback — `outcome: "success" \| "partial" \| "failure" \| "blocked"`. Reused as-is (see "Outcome taxonomy mapping" below) rather than adding a parallel enum.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | 7   | Provider-neutral inference      | `EXISTS`                                      | Native runtime graph (`cp2_native_runtime_agents/models/execution_hosts/bindings`, migration 063+), `NativeRuntimeBindingStore`, `ModelRuntimeAdapter` (`services/api/src/inference/model-runtime.ts:46`). Provider SDK specifics never leak past the adapter boundary; execution targets (`backend`/`remote-shop-device`) are provider-agnostic (`docs/architecture/native-agent-model-runtime.md`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | 8   | Bounded tool execution          | `EXISTS` (by a different, stricter mechanism) | No multi-step model→tool→model loop exists at all (one plan, one policy gate, one execution per turn — `governed-tool-runtime.md`, deliberate), so "prevent unbounded loops" is satisfied structurally rather than by a call-count budget. `maxRuntimeTurnsPerSession = 20` bounds session-level action count; `withRuntimeDeadline` bounds I/O; `validateRuntimeToolInput` validates before execution; `findRuntimeUnknownEntityReferenceError` validates referenced entities exist. No literal `maxToolCalls`/`maxIterations` config exists because there is no loop for it to bound.                                                                                                                                                                                                                                                                                                                                                                               |
-| 9   | Bidirectional MCP               | `PARTIAL`                                     | Soko→caller (server) direction: `EXISTS`, thoroughly (`services/api/src/mcp/routes.ts`, JSON-RPC 2.0, tenant-scoped bearer tokens, same governed pipeline as REST — `soko.runtime_turn` calls `Cp2Store.createRuntimeTurn` directly, no parallel path). Caller→external-MCP-server (client) direction: `MISSING`. See "Explicitly not adopted."                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| 9   | Bidirectional MCP               | `PARTIAL`                                     | Grogoni→caller (server) direction: `EXISTS`, thoroughly (`services/api/src/mcp/routes.ts`, JSON-RPC 2.0, tenant-scoped bearer tokens, same governed pipeline as REST — `grogoni.runtime_turn` calls `Cp2Store.createRuntimeTurn` directly, no parallel path). Caller→external-MCP-server (client) direction: `MISSING`. See "Explicitly not adopted."                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | 10  | Systematic runtime evaluation   | `PARTIAL`                                     | Two real, distinct systems already exist: (a) per-turn `AgentEvaluationEvent`/`AgentEvaluationSummary` telemetry (`docs/agent-evaluation-feedback-loop.md`), and (b) the Model Template flywheel's `getReportCard`/`TemplateReportCard` (`services/api/src/cp2/domains/model-templates/store.ts:552`, `docs/architecture/model-template-flywheel.md`) — a genuine evaluate→gate→promote loop with versioned lineage, scoped to model-template prompt optimization. Missing: a report card at the _granularity the brief asks for_ (comparing M+C+T+R combinations at the runtime-turn level, not just the model-template level).                                                                                                                                                                                                                                                                                                                                      |
 
 ## Detailed findings by brief section
@@ -143,7 +143,7 @@ Two partial, non-duplicative existing mechanisms, neither of which is what the b
   vocabulary snapshots), not evidence requirements or a grounding policy.
 
 Neither should be deleted or forked. The recommended action is a new, small `ContextRecipe` registry
-(`soko.<taskType>@<version>`) that both existing mechanisms can be read as specializations of:
+(`grogoni.<taskType>@<version>`) that both existing mechanisms can be read as specializations of:
 `intentContextTypes` becomes a derived view (`recipe.requiredEvidence ∪ recipe.optionalEvidence`),
 and the recipe's `groundingPolicy` field is what the new grounding gate (§6) reads.
 
@@ -170,7 +170,7 @@ genuinely new, additive persistence. It must integrate with, not replace:
 
 The brief's outcome states (`successful | adjusted | rejected | failed | unknown`) do not need a
 parallel enum. `AgentEvaluationEvent.outcome` (`success | partial | failure | blocked`) already
-covers this ground and is the system every other Soko surface (owner UI, retention runner, model
+covers this ground and is the system every other Grogoni surface (owner UI, retention runner, model
 template flywheel) already reads. Mapping used by the new experience extractor introduced in this
 change: `successful → success`, `adjusted → partial`, `rejected/unauthorized → blocked`,
 `failed → failure`; `unknown` has no existing equivalent and is intentionally not synthesized —
@@ -194,12 +194,12 @@ gated-promotion machinery a second time.
 
 ## Explicitly not adopted
 
-- **Outbound MCP client (Soko calling external MCP servers).** Confirmed `MISSING` — no MCP client
+- **Outbound MCP client (Grogoni calling external MCP servers).** Confirmed `MISSING` — no MCP client
   SDK usage, no external-MCP-server connection concept exists anywhere in the repo (the adjacent
   GitHub/HuggingFace registry-import pipeline, `073_external_registry_connections.sql`, is a
   PAT-based artifact importer, not an MCP protocol client). This is a real gap against brief §13, but
   building it safely (a new trust boundary: authenticating to a third party's tool surface, mapping
-  its tool schemas through Soko's own authorization/policy/audit pipeline without ever letting an
+  its tool schemas through Grogoni's own authorization/policy/audit pipeline without ever letting an
   external server bypass tenant isolation) is large, security-sensitive, net-new surface area with no
   existing scaffold to extend — unlike every other gap in this audit, there is no stubbed slot, wired
   telemetry, or half-built store to complete. Per the brief's own definition-of-done framing

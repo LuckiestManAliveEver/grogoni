@@ -4,7 +4,7 @@ import type {
   InferenceProviderConnectionSummary,
   InferenceProviderConnectionTestResult,
   InferenceProviderSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
 import { deleteJson, fetchFreshJson, postJson } from "./api-helpers";
 import { getErrorMessage } from "./chat-message-plumbing";

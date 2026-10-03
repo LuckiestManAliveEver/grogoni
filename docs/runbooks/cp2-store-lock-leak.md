@@ -19,7 +19,7 @@
 
 ## Cause
 
-Every save takes the advisory lock `hashtext('soko.cp2.normalized_store')`. Builds before the
+Every save takes the advisory lock `hashtext('grogoni.cp2.normalized_store')`. Builds before the
 transaction-scoped lock took it with a session-level `pg_advisory_lock` outside the transaction and
 released it with `pg_advisory_unlock` in a separate statement. Through Neon's `-pooler` endpoint
 (PgBouncer in transaction mode) those statements can run on different server backends, so the
@@ -51,7 +51,7 @@ report no idle holder. Run it a few times: a holder that stays listed across run
 ## Release
 
 1. Stop any API process still running a build from before this fix, since it can leak the lock
-   again. Rebuild before restarting: `pnpm --filter @soko/api build`.
+   again. Rebuild before restarting: `pnpm --filter @grogoni/api build`.
 2. Terminate the idle holder:
 
    ```bash

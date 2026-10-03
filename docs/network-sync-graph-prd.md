@@ -2,7 +2,7 @@
 
 ## Objective
 
-Build Soko's network engine so contact and social sync create a trusted commerce graph instead of a plain address book import.
+Build Grogoni's network engine so contact and social sync create a trusted commerce graph instead of a plain address book import.
 
 ## Goals
 
@@ -17,7 +17,7 @@ Build Soko's network engine so contact and social sync create a trusted commerce
 
 1. Direct phone network
    - Imported contacts become direct network nodes.
-   - Existing Soko users, shops, or agents are linked where possible.
+   - Existing Grogoni users, shops, or agents are linked where possible.
    - External contacts are stored with hashed identifiers when phone or email data is present.
 
 2. Direct social network
@@ -43,7 +43,7 @@ Build Soko's network engine so contact and social sync create a trusted commerce
 - NetworkPermission
 - ContactHash
 - ExternalIdentity
-- SokoIdentityLink
+- GrogoniIdentityLink
 
 Each edge stores ownerUserId, sourceType, sourcePlatform, fromNodeId, toNodeId, degree, trustWeight, interactionWeight, visibilityStatus, consentStatus, createdAt, and updatedAt.
 

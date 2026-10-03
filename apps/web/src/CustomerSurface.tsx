@@ -1,4 +1,4 @@
-import { type CustomerFormState, type CustomerSummary } from "./soko-application-shared";
+import { type CustomerFormState, type CustomerSummary } from "./grogoni-application-shared";
 import ShopLocationCard from "./ShopLocationCard";
 
 export interface CustomerSurfaceProps {

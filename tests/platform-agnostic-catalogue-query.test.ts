@@ -92,7 +92,7 @@ describe("catalogue query integration", () => {
     const store = createCp2Store();
     const app = buildApi({ cp2: { store } });
     const cookie = await createSession(app, "254700000481");
-    const created = await postJson<{ business: { id: string; sokoId: string } }>(
+    const created = await postJson<{ business: { id: string; grogoniId: string } }>(
       app,
       "/businesses",
       { name: "Chat Commerce Shop", language: "en" },
@@ -148,12 +148,12 @@ describe("catalogue query integration", () => {
     });
     const publicSession = await postJson<{ capabilityToken: string }>(
       app,
-      `/public/storefronts/${created.business.sokoId}/sessions`,
+      `/public/storefronts/${created.business.grogoniId}/sessions`,
       { visitorId: "visitor-chat-commerce" }
     );
     const order = await postJson<{ items: Array<{ productId: string }>; status: string }>(
       app,
-      `/public/storefronts/${created.business.sokoId}/orders`,
+      `/public/storefronts/${created.business.grogoniId}/orders`,
       {
         capabilityToken: publicSession.capabilityToken,
         customerName: "Amina",

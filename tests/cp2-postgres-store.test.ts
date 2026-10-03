@@ -78,7 +78,7 @@ const { Pool } = requireApiDependency("pg") as {
 interface CreateBusinessResponse {
   business: {
     id: string;
-    sokoId: string;
+    grogoniId: string;
   };
 }
 
@@ -300,10 +300,10 @@ describePostgres("CP2 Postgres store", () => {
         const sessionId = readSessionCookie(owner.sessionCookie);
         expect(sessionId).not.toBeNull();
 
-        await lockClient.query("select pg_advisory_lock(hashtext('soko.cp2.normalized_store'))");
+        await lockClient.query("select pg_advisory_lock(hashtext('grogoni.cp2.normalized_store'))");
         lockHeld = true;
 
-        store.updateSokoSessionContext({
+        store.updateGrogoniSessionContext({
           sessionId,
           mode: "seller",
           activeShopId: owner.business.id,
@@ -312,7 +312,7 @@ describePostgres("CP2 Postgres store", () => {
         await waitUntil(async () => (await store.health()).persistenceQueue.active);
 
         for (let index = 0; index < scenario.mutationsWhileSnapshotRuns; index += 1) {
-          store.updateSokoSessionContext({
+          store.updateGrogoniSessionContext({
             sessionId,
             mode: "seller",
             activeShopId: owner.business.id,
@@ -330,7 +330,7 @@ describePostgres("CP2 Postgres store", () => {
           queuedCount: 0
         });
 
-        await lockClient.query("select pg_advisory_unlock(hashtext('soko.cp2.normalized_store'))");
+        await lockClient.query("select pg_advisory_unlock(hashtext('grogoni.cp2.normalized_store'))");
         lockHeld = false;
         await store.flush();
 
@@ -356,7 +356,7 @@ describePostgres("CP2 Postgres store", () => {
       } finally {
         if (lockHeld) {
           await lockClient
-            .query("select pg_advisory_unlock(hashtext('soko.cp2.normalized_store'))")
+            .query("select pg_advisory_unlock(hashtext('grogoni.cp2.normalized_store'))")
             .catch(() => undefined);
         }
         lockClient.release();
@@ -460,7 +460,7 @@ describePostgres("CP2 Postgres store", () => {
       codeVerifier: "postgres-code-verifier",
       csrfToken: uniqueCsrfToken,
       provider: "google",
-      redirectUri: "https://soko.market/auth/oauth/google/callback",
+      redirectUri: "https://grogoni.com/auth/oauth/google/callback",
       state: uniqueState
     });
 
@@ -493,7 +493,7 @@ describePostgres("CP2 Postgres store", () => {
     });
     expect(restoredExchangeData).toEqual({
       codeVerifier: "postgres-code-verifier",
-      redirectUri: "https://soko.market/auth/oauth/google/callback"
+      redirectUri: "https://grogoni.com/auth/oauth/google/callback"
     });
 
     await restoredApp.close();
@@ -640,7 +640,7 @@ describePostgres("CP2 Postgres store", () => {
           id: `postgres-integration:${requestedModelId}`,
           modelId: requestedModelId,
           storageProvider: "neon-object-storage",
-          bucket: "soko-model-artifacts",
+          bucket: "grogoni-model-artifacts",
           objectKey: `models/${requestedModelId}/model.gguf`,
           format: "gguf",
           quantization: "Q4_0",
@@ -655,7 +655,7 @@ describePostgres("CP2 Postgres store", () => {
       async createDownloadUrl(artifact) {
         return {
           ...artifact,
-          downloadUrl: "https://storage.example.neon.tech/soko-model-artifacts/model.gguf",
+          downloadUrl: "https://storage.example.neon.tech/grogoni-model-artifacts/model.gguf",
           expiresAt: new Date(Date.now() + 60_000).toISOString()
         };
       },
@@ -1022,7 +1022,7 @@ describePostgres("CP2 Postgres store", () => {
 
       const careRequest = await postJson<{ id: string }>(
         app,
-        `/public/storefronts/${business.sokoId}/customer-care`,
+        `/public/storefronts/${business.grogoniId}/customer-care`,
         { type: "quote", customerName: "Storefront Visitor", message: "How much for rice?" },
         undefined
       );
@@ -1030,13 +1030,13 @@ describePostgres("CP2 Postgres store", () => {
       const visitorId = `visitor-${Date.now()}`;
       const session = await postJson<{ capabilityToken: string }>(
         app,
-        `/public/storefronts/${business.sokoId}/sessions`,
+        `/public/storefronts/${business.grogoniId}/sessions`,
         { visitorId, displayName: "Storefront Visitor" },
         undefined
       );
       const order = await postJson<{ id: string; invoiceId: string }>(
         app,
-        `/public/storefronts/${business.sokoId}/orders`,
+        `/public/storefronts/${business.grogoniId}/orders`,
         {
           capabilityToken: session.capabilityToken,
           customerName: "Storefront Visitor",
@@ -1226,7 +1226,7 @@ describePostgres("CP2 Postgres store", () => {
     await restoredStore.close();
   }, 20_000);
 
-  // Regression test: continueWithChannelPin and loginWithSokoIdPin back the endpoints the actual
+  // Regression test: continueWithChannelPin and loginWithGrogoniIdPin back the endpoints the actual
   // product frontend calls for every sign up and log in (PhoneFirstAuthentication.tsx) - unlike
   // the /auth/pin/signup fixture other tests in this file use to bootstrap accounts. Both were
   // missing from postgres-store.ts's mutatingMethodNames allowlist, so calling them through the
@@ -1236,7 +1236,7 @@ describePostgres("CP2 Postgres store", () => {
   // incidental call sweeps the account/session in too - which is exactly why this needs a store-
   // level test that calls the store directly and skips that side effect, rather than a route-level
   // test through app.inject(), to actually exercise the gap the allowlist entry closes.
-  it("queues a Postgres save for continueWithChannelPin and loginWithSokoIdPin on their own", async () => {
+  it("queues a Postgres save for continueWithChannelPin and loginWithGrogoniIdPin on their own", async () => {
     expect(databaseUrl).toBeDefined();
     const connectionString = databaseUrl ?? "";
     const suffix = Date.now().toString().slice(-7);
@@ -1278,8 +1278,8 @@ describePostgres("CP2 Postgres store", () => {
       });
       await store.flush();
 
-      const storeLogin = store.loginWithSokoIdPin({
-        sokoId: business.business.sokoId,
+      const storeLogin = store.loginWithGrogoniIdPin({
+        grogoniId: business.business.grogoniId,
         pin: "7421"
       });
 
@@ -1349,7 +1349,7 @@ describePostgres("CP2 Postgres store", () => {
       const loginCookie = extractSessionCookie(login.headers["set-cookie"]);
       const loginBody = login.json<{ session: { id: string } }>();
       loginSessionIds.push(loginBody.session.id);
-      expect(loginCookie).toContain("soko_session=");
+      expect(loginCookie).toContain("grogoni_session=");
 
       const authenticated = await app.inject({
         method: "GET",
@@ -2885,7 +2885,7 @@ describePostgres("CP2 Postgres store", () => {
     const holder = await pool.connect();
     const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
     try {
-      await holder.query("select pg_advisory_lock(hashtext('soko.cp2.normalized_store'))");
+      await holder.query("select pg_advisory_lock(hashtext('grogoni.cp2.normalized_store'))");
       const holderPid = (await holder.query<{ pid: number }>("select pg_backend_pid() as pid"))
         .rows[0]?.pid;
       const startedAt = Date.now();
@@ -2915,7 +2915,7 @@ describePostgres("CP2 Postgres store", () => {
       expect(parsedHolderLog.holders?.map((item) => item.pid)).toContain(holderPid);
       expect(parsedHolderLog.runbook).toBe("docs/runbooks/cp2-store-lock-leak.md");
 
-      await holder.query("select pg_advisory_unlock(hashtext('soko.cp2.normalized_store'))");
+      await holder.query("select pg_advisory_unlock(hashtext('grogoni.cp2.normalized_store'))");
       await waitUntil(async () => {
         const row = await pool.query("select 1 from accounts where id = $1", [added.account.id]);
         return row.rows.length === 1;
@@ -2993,7 +2993,7 @@ describePostgres("CP2 Postgres store", () => {
       const deletion = await postJson<{ request: { id: string } }>(
         app,
         `/businesses/${businessId}/shop-deletion/request`,
-        { shopId: owner.business.sokoId },
+        { shopId: owner.business.grogoniId },
         owner.sessionCookie
       );
       await postJson(
@@ -3030,7 +3030,7 @@ describePostgres("CP2 Postgres store", () => {
       const deletion = await postJson<{ request: { id: string } }>(
         app,
         `/businesses/${businessId}/shop-deletion/request`,
-        { shopId: owner.business.sokoId },
+        { shopId: owner.business.grogoniId },
         owner.sessionCookie
       );
       await postJson(
@@ -3149,9 +3149,9 @@ describePostgres("CP2 Postgres store", () => {
     );
     const otherDatabaseHolder = await otherPool.connect();
     try {
-      await leaked.query("select pg_advisory_lock(hashtext('soko.cp2.normalized_store'))");
+      await leaked.query("select pg_advisory_lock(hashtext('grogoni.cp2.normalized_store'))");
       await otherDatabaseHolder.query(
-        "select pg_advisory_lock(hashtext('soko.cp2.normalized_store'))"
+        "select pg_advisory_lock(hashtext('grogoni.cp2.normalized_store'))"
       );
       const leakedPid = (await leaked.query<{ pid: number }>("select pg_backend_pid() as pid"))
         .rows[0]?.pid;
@@ -3193,7 +3193,7 @@ describePostgres("CP2 Postgres store", () => {
     const saving = await pool.connect();
     try {
       await saving.query("begin");
-      await saving.query("select pg_advisory_xact_lock(hashtext('soko.cp2.normalized_store'))");
+      await saving.query("select pg_advisory_xact_lock(hashtext('grogoni.cp2.normalized_store'))");
       const savingPid = (await saving.query<{ pid: number }>("select pg_backend_pid() as pid"))
         .rows[0]?.pid;
       const released = await releaseLeakedStoreLockHolders(pool);
@@ -3738,7 +3738,7 @@ describePostgres("CP2 Postgres store", () => {
       const deletion = await postJson<{ request: { id: string } }>(
         app,
         `/businesses/${purgedBusinessId}/shop-deletion/request`,
-        { shopId: purged.business.sokoId },
+        { shopId: purged.business.grogoniId },
         purged.sessionCookie
       );
       await postJson(
@@ -4089,7 +4089,7 @@ describePostgres("CP2 Postgres store", () => {
       const cookies = setCookies.map((cookie) => cookie.split(";")[0] ?? "").join("; ");
       const sessionId = readSessionCookie(cookies);
       if (sessionId === null) throw new Error("Session cookie was not issued.");
-      expect(cookies).toContain("soko_refresh=");
+      expect(cookies).toContain("grogoni_refresh=");
       await firstApp.close();
       await firstStore.close();
 

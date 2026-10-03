@@ -5,9 +5,9 @@ import type {
   ConversationInboxItem,
   ConversationMessageSummary,
   ConversationView
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
-import type { SokoMode } from "../app-shell";
+import type { GrogoniMode } from "../app-shell";
 import { navigateToOwnerRoute } from "../browser-navigation";
 import { getErrorMessage } from "../chat-message-plumbing";
 import { getJson, postJson, putJson } from "../api-helpers";
@@ -25,7 +25,7 @@ import {
   type CountryDialCode,
   type SessionResponse,
   type SupportedLanguage
-} from "../soko-application-shared";
+} from "../grogoni-application-shared";
 
 interface UseBusinessSetupStateDeps {
   business: ActiveBusiness | null;
@@ -33,7 +33,7 @@ interface UseBusinessSetupStateDeps {
   session: SessionResponse | null;
   setSession: Dispatch<SetStateAction<SessionResponse | null>>;
   setAgentSettings: Dispatch<SetStateAction<AgentSettings>>;
-  setMode: Dispatch<SetStateAction<SokoMode>>;
+  setMode: Dispatch<SetStateAction<GrogoniMode>>;
   setView: (view: "chat") => void;
   refreshSession: () => Promise<void>;
   setConversationInbox: Dispatch<SetStateAction<ConversationInboxItem[]>>;
@@ -103,7 +103,7 @@ export function useBusinessSetupState(deps: UseBusinessSetupStateDeps) {
         const created = await postJson<ConversationView>("/v1/conversations", {
           kind: "personal",
           activeShopId: shopId,
-          title: "Soko agent"
+          title: "Grogoni agent"
         });
         conversationId = created.conversation.id;
         response = await getJson<{ conversations: ConversationInboxItem[] }>("/v1/conversations");

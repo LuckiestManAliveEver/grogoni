@@ -54,7 +54,7 @@ all remain ahead of it in `createRuntimeTurn`. Confirmed actions re-enter the sa
   with retry guidance instead of interpreting the business request against cached domain state.
 - **UI:** posts typed form data to the existing domain route. The route invokes the same domain
   method used by the capability dispatcher.
-- **MCP:** `soko.runtime_turn` and confirmation call `store.createRuntimeTurn`; MCP does not invoke
+- **MCP:** `grogoni.runtime_turn` and confirmation call `store.createRuntimeTurn`; MCP does not invoke
   domain mutations directly. Registry entries do not become public MCP tools automatically.
 - **External channels:** canonical agent conversation processing injects `createRuntimeTurn` into
   Messaging. Channel delivery itself is the confirmed `messaging.send` capability.

@@ -1,6 +1,6 @@
 # Authentication provider setup
 
-Soko Market supports email verification and phone-plus-PIN account access. Phone numbers collected
+Grogoni supports email verification and phone-plus-PIN account access. Phone numbers collected
 for first-shop registration are compulsory identity/support attributes and remain unverified.
 
 Google, Facebook, TikTok, Apple, GitHub, Microsoft, LinkedIn, and X login are disabled in the

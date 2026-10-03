@@ -1,4 +1,4 @@
-import type { ReceiptOCRJobSummary } from "@soko/shared-types";
+import type { ReceiptOCRJobSummary } from "@grogoni/shared-types";
 import type { Entity, ReceiptOcrExtraction } from "../types.js";
 
 /**

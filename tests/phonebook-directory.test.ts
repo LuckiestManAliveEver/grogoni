@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { NetworkConnectionSummary, NetworkInviteSummary } from "@soko/shared-types";
+import type { NetworkConnectionSummary, NetworkInviteSummary } from "@grogoni/shared-types";
 import {
   buildPhonebookDirectory,
   devicePhonebookContactKey,
@@ -9,11 +9,11 @@ import {
 import type {
   NetworkGraphSummary,
   NetworkNodeSummary
-} from "../apps/web/src/soko-application-shared";
+} from "../apps/web/src/grogoni-application-shared";
 
 const at = "2026-09-26T00:00:00.000Z";
 
-function node(id: string, displayName: string, sokoUserId: string | null): NetworkNodeSummary {
+function node(id: string, displayName: string, grogoniUserId: string | null): NetworkNodeSummary {
   return {
     id,
     displayName,
@@ -21,8 +21,8 @@ function node(id: string, displayName: string, sokoUserId: string | null): Netwo
     sourceId: "phone-source",
     sourceType: "phone_contact",
     sourcePlatform: "phone",
-    sokoUserId,
-    kind: sokoUserId === null ? "external_contact" : "soko_user",
+    grogoniUserId,
+    kind: grogoniUserId === null ? "external_contact" : "grogoni_user",
     visibilityStatus: "direct",
     consentStatus: "pending"
   };
@@ -37,7 +37,7 @@ function connection(
     direction: "outgoing",
     counterpartDisplayName: "Someone",
     counterpartBusinessName: null,
-    counterpartSokoId: null,
+    counterpartGrogoniId: null,
     nodeId: null,
     createdAt: at,
     updatedAt: at,
@@ -68,7 +68,7 @@ function contact(
 }
 
 describe("phonebook directory", () => {
-  it("groups requests, on-Soko contacts by connection state, invites, and unreachable contacts", () => {
+  it("groups requests, on-Grogoni contacts by connection state, invites, and unreachable contacts", () => {
     const directory = buildPhonebookDirectory({
       graph: graph(
         [
@@ -113,15 +113,15 @@ describe("phonebook directory", () => {
     });
 
     expect(directory.requests.map((request) => request.id)).toEqual(["c-eve"]);
-    expect(directory.onSoko.map((entry) => [entry.name, entry.state, entry.connectionId])).toEqual([
+    expect(directory.onGrogoni.map((entry) => [entry.name, entry.state, entry.connectionId])).toEqual([
       ["Bob", "connect", null],
       ["Carol", "requested", "c-carol"],
       ["Dan", "connected", "c-dan"],
       ["Gina", "connected", "c-gina"]
     ]);
-    // Eve's pending request is shown once, under requests, not again under On Soko.
-    expect(directory.onSoko.some((entry) => entry.name === "Eve")).toBe(false);
-    // Bob is on Soko: never offered as an invite.
+    // Eve's pending request is shown once, under requests, not again under On Grogoni.
+    expect(directory.onGrogoni.some((entry) => entry.name === "Eve")).toBe(false);
+    // Bob is on Grogoni: never offered as an invite.
     expect(directory.invite.map((entry) => entry.contact.name)).toEqual(["Frank", "Hana"]);
     expect(directory.unreachable.map((entry) => entry.name)).toEqual(["No Number"]);
   });
@@ -180,7 +180,7 @@ describe("phonebook directory", () => {
       search: "bob"
     });
 
-    expect(directory.onSoko).toHaveLength(1);
+    expect(directory.onGrogoni).toHaveLength(1);
     expect(directory.invite).toEqual([]);
   });
 

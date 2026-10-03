@@ -1,4 +1,4 @@
-import type { RuntimePlannedAction } from "@soko/shared-types";
+import type { RuntimePlannedAction } from "@grogoni/shared-types";
 
 import { optionalRuntimeString, runtimeInvoiceItems } from "./capability-inputs.js";
 import type { AgentRuntimeDomainDeps } from "./store.js";

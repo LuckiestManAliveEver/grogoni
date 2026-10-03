@@ -44,7 +44,7 @@ can serve that member's own turns once the model is installed on that device.
 
 - authenticated sessions of the account whose turn it is;
 - a device that reports the model as installed;
-- the turn the device is watching (`x-soko-turn-id`).
+- the turn the device is watching (`x-grogoni-turn-id`).
 
 Results need a one-time token and are size-bounded.
 
@@ -66,7 +66,7 @@ Postgres; the browser cache holds the weights.
 **Anonymous callers are refused.** Storefront visitors and MCP tokens without an account are
 refused with `LOCAL_EXECUTION_REQUIRED`. A buyer's device never runs a shop's model.
 
-**What `installed-app` means.** The device runs Soko as an installed app (standalone display
+**What `installed-app` means.** The device runs Grogoni as an installed app (standalone display
 mode), or is a native client implementing the same claim/complete HTTP protocol. A
 `browser-local` model runs on either kind of device; an `installed-app` model runs only on
 installed-app devices.

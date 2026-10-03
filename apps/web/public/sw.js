@@ -1,6 +1,6 @@
 /* global URL, Response, caches, self */
 
-const CACHE_PREFIX = "soko-market-app-";
+const CACHE_PREFIX = "grogoni-app-";
 const CACHE_NAME = `${CACHE_PREFIX}v13`;
 const STATIC_CACHE = `${CACHE_PREFIX}static-v13`;
 const PUBLIC_READ_CACHE = `${CACHE_PREFIX}public-read-v13`;
@@ -9,11 +9,11 @@ const APP_SHELL = [
   "/",
   "/manifest.webmanifest",
   "/favicon.ico",
-  "/icons/soko-icon.svg",
-  "/icons/soko-icon-32.png",
-  "/icons/soko-icon-192.png",
-  "/icons/soko-icon-512.png",
-  "/icons/soko-icon-maskable-512.png",
+  "/icons/grogoni-icon.svg",
+  "/icons/grogoni-icon-32.png",
+  "/icons/grogoni-icon-192.png",
+  "/icons/grogoni-icon-512.png",
+  "/icons/grogoni-icon-maskable-512.png",
   "/icons/apple-touch-icon.png"
 ];
 
@@ -126,13 +126,13 @@ self.addEventListener("fetch", (event) => {
 });
 
 async function offlineShellResponse(request) {
-  const cache = await caches.open("soko-offline-shell-v1");
-  if (!(await cache.match("/__soko_offline_active__"))) return undefined;
+  const cache = await caches.open("grogoni-offline-shell-v1");
+  if (!(await cache.match("/__grogoni_offline_active__"))) return undefined;
   return cache.match(request.mode === "navigate" ? "/" : request);
 }
 
 async function ocrEngineResponse(request) {
-  const cache = await caches.open("soko-ocr-engine-v1");
+  const cache = await caches.open("grogoni-ocr-engine-v1");
   return cache.match(request);
 }
 
@@ -150,7 +150,7 @@ async function navigationResponse(event) {
   } catch {
     const offlineShell = await cachedShell;
     if (offlineShell !== undefined) return offlineShell;
-    return new Response("Soko.market is not available offline yet. Open it once while connected.", {
+    return new Response("Grogoni is not available offline yet. Open it once while connected.", {
       status: 503,
       headers: { "content-type": "text/plain; charset=utf-8" }
     });
@@ -217,10 +217,10 @@ function isInteractiveModelRequest(request, url) {
 self.addEventListener("message", (event) => {
   if (event.data?.type !== "message.notification") return;
   event.waitUntil(
-    self.registration.showNotification(event.data.title || "New Soko message", {
-      body: event.data.body || "Open Soko to read your message.",
-      icon: "/icons/soko-icon-192.png",
-      badge: "/icons/soko-icon-192.png",
+    self.registration.showNotification(event.data.title || "New Grogoni message", {
+      body: event.data.body || "Open Grogoni to read your message.",
+      icon: "/icons/grogoni-icon-192.png",
+      badge: "/icons/grogoni-icon-192.png",
       tag: event.data.tag,
       data: {
         conversationId: event.data.conversationId,
@@ -247,11 +247,11 @@ self.addEventListener("push", (event) => {
         // opening the notification (see notificationclick below) lands on the new version
         // instead of racing the browser's own periodic update check.
         self.registration.update().catch(() => undefined),
-        self.registration.showNotification(payload.title || "Soko update available", {
-          body: payload.body || "A new version of Soko is ready. Open the app to update.",
-          icon: "/icons/soko-icon-192.png",
-          badge: "/icons/soko-icon-192.png",
-          tag: "soko-app-update",
+        self.registration.showNotification(payload.title || "Grogoni update available", {
+          body: payload.body || "A new version of Grogoni is ready. Open the app to update.",
+          icon: "/icons/grogoni-icon-192.png",
+          badge: "/icons/grogoni-icon-192.png",
+          tag: "grogoni-app-update",
           data: { type: "app.update_available", url: "/" }
         })
       ])
@@ -260,11 +260,11 @@ self.addEventListener("push", (event) => {
   }
 
   event.waitUntil(
-    self.registration.showNotification(payload.title || "New Soko message", {
-      body: "Open Soko to read your message.",
-      icon: "/icons/soko-icon-192.png",
-      badge: "/icons/soko-icon-192.png",
-      tag: payload.messageId ? `soko-message-${payload.messageId}` : "soko-message",
+    self.registration.showNotification(payload.title || "New Grogoni message", {
+      body: "Open Grogoni to read your message.",
+      icon: "/icons/grogoni-icon-192.png",
+      badge: "/icons/grogoni-icon-192.png",
+      tag: payload.messageId ? `grogoni-message-${payload.messageId}` : "grogoni-message",
       data: {
         conversationId: payload.conversationId,
         url: payload.conversationId

@@ -5,7 +5,7 @@
  * extraction's own finding that this domain is user-scoped, not business-scoped.
  */
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import type { SocialNetworkProvider } from "@soko/shared-types";
+import type { SocialNetworkProvider } from "@grogoni/shared-types";
 import { Cp2Error } from "../../cp2-error.js";
 import { maxConnectionsPerContact, maxDestinationsPerContact } from "./shared.js";
 import { fetchGoogleContacts, googleContactsScope } from "../../google-contacts.js";

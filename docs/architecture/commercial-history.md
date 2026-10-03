@@ -2,7 +2,7 @@
 
 > Current values may change. Historical transactions do not.
 
-Soko's contact and commercial-history capabilities extend the existing CP2 domain store, Fastify
+Grogoni's contact and commercial-history capabilities extend the existing CP2 domain store, Fastify
 API, runtime-tool registry, audit stream, and normalized PostgreSQL snapshot transaction. They do
 not introduce another runtime or frontend-owned business logic.
 

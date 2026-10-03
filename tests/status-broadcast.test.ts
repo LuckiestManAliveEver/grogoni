@@ -117,7 +117,7 @@ describe("photo capture items and status broadcast", () => {
     await app.close();
   });
 
-  it("never defaults the contact picker to select-all, and delivers in-app only to matched Soko contacts", async () => {
+  it("never defaults the contact picker to select-all, and delivers in-app only to matched Grogoni contacts", async () => {
     const store = createCp2Store();
     const app = buildApi({ cp2: { store } });
     const { business, cookie } = await createOwnerBusiness(app, "254700000604");
@@ -128,16 +128,16 @@ describe("photo capture items and status broadcast", () => {
       "/network/sync/contacts",
       {
         contacts: [
-          { name: "Amina (on Soko)", phone: "+254700000605" },
-          { name: "Baraka (not on Soko)", phone: "+254700000606" }
+          { name: "Amina (on Grogoni)", phone: "+254700000605" },
+          { name: "Baraka (not on Grogoni)", phone: "+254700000606" }
         ]
       },
       cookie
     );
-    const sokoContactNode = graph.nodes.find((node) => node.displayName === "Amina (on Soko)")!;
-    const unmatchedNode = graph.nodes.find((node) => node.displayName === "Baraka (not on Soko)")!;
-    expect(sokoContactNode.sokoUserId).not.toBeNull();
-    expect(unmatchedNode.sokoUserId).toBeNull();
+    const grogoniContactNode = graph.nodes.find((node) => node.displayName === "Amina (on Grogoni)")!;
+    const unmatchedNode = graph.nodes.find((node) => node.displayName === "Baraka (not on Grogoni)")!;
+    expect(grogoniContactNode.grogoniUserId).not.toBeNull();
+    expect(unmatchedNode.grogoniUserId).toBeNull();
 
     const { candidates } = await getJson<{ candidates: StatusBroadcastCandidateSummary[] }>(
       app,
@@ -145,10 +145,10 @@ describe("photo capture items and status broadcast", () => {
       cookie
     );
     // Neither candidate is an existing *customer* of this business yet, so neither is
-    // pre-selected even though one of them is a matched Soko account - never select-all.
+    // pre-selected even though one of them is a matched Grogoni account - never select-all.
     expect(candidates.every((candidate) => candidate.defaultSelected === false)).toBe(true);
-    const sokoCandidate = candidates.find((c) => c.networkNodeId === sokoContactNode.id)!;
-    expect(sokoCandidate.isSokoUser).toBe(true);
+    const grogoniCandidate = candidates.find((c) => c.networkNodeId === grogoniContactNode.id)!;
+    expect(grogoniCandidate.isGrogoniUser).toBe(true);
 
     const job = await postJson<ProductCaptureJobSummary>(
       app,
@@ -166,12 +166,12 @@ describe("photo capture items and status broadcast", () => {
     const status = await postJson<StatusBroadcastSummary>(
       app,
       `/businesses/${business.id}/status-broadcasts`,
-      { sourceCaptureJobId: job.id, recipientNodeIds: [sokoContactNode.id, unmatchedNode.id] },
+      { sourceCaptureJobId: job.id, recipientNodeIds: [grogoniContactNode.id, unmatchedNode.id] },
       cookie
     );
     expect(status.recipients).toHaveLength(2);
     expect(
-      status.recipients.find((r) => r.networkNodeId === sokoContactNode.id)?.deliveryChannel
+      status.recipients.find((r) => r.networkNodeId === grogoniContactNode.id)?.deliveryChannel
     ).toBe("in_app");
     expect(
       status.recipients.find((r) => r.networkNodeId === unmatchedNode.id)?.deliveryChannel
@@ -222,7 +222,7 @@ async function createOwnerBusiness(
   });
   expect(signup.statusCode, signup.body).toBe(200);
   const cookie = extractCookie(signup.headers["set-cookie"]);
-  const result = await postJson<{ business: { id: string; sokoId: string } }>(
+  const result = await postJson<{ business: { id: string; grogoniId: string } }>(
     app,
     "/businesses",
     { name: `Shop ${destination}`, language: "en" },

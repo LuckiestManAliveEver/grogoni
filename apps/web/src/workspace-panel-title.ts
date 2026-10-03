@@ -1,5 +1,5 @@
 import { shopHubCopy } from "./shop-hub-copy";
-import type { SokoMode } from "./app-shell";
+import type { GrogoniMode } from "./app-shell";
 
 // Pulled out of ChatSurface to keep it under the modularity budget
 // (scripts/check-boundaries.mjs).
@@ -14,7 +14,7 @@ export type WorkspaceCardView =
   | "storefrontPreview"
   | "businessDashboard";
 
-export function workspaceModuleClassName(view: WorkspaceCardView, mode: SokoMode): string {
+export function workspaceModuleClassName(view: WorkspaceCardView, mode: GrogoniMode): string {
   if (view === "businessDashboard") return "merchant-dashboard-module";
   return mode === "seller" ? "sell-module" : "buy-module";
 }

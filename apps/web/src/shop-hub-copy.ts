@@ -1,7 +1,7 @@
 import { fulfillmentLanguage, type FulfillmentLanguage } from "./fulfillment-copy";
 
 // English and Swahili chrome for the Shop Hub. Module, tool and setup copy comes from the API
-// (the canonical registry in @soko/tool-core); only the hub's own buttons and states live here.
+// (the canonical registry in @grogoni/tool-core); only the hub's own buttons and states live here.
 
 const en = {
   title: "Your shop",

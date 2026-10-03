@@ -4,9 +4,9 @@
 // grants anything by itself (the server still requires the invited sign-in identity).
 //
 // The link targets the site root with query parameters, so it works on any host without a
-// server-side route: `https://soko.market/?staffInvite=<id>&t=<secret>`.
+// server-side route: `https://grogoni.com/?staffInvite=<id>&t=<secret>`.
 
-const pendingJoinStorageKey = "soko.staffInvite.pending";
+const pendingJoinStorageKey = "grogoni.staffInvite.pending";
 /** A captured link is kept this long while the person signs up or logs in. */
 const pendingJoinTtlMs = 7 * 24 * 60 * 60 * 1000;
 

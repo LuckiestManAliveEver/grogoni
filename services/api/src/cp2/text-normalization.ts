@@ -5,19 +5,19 @@
  * commerce-only shared module.
  */
 import { createHmac, timingSafeEqual } from "node:crypto";
-import type { AccountSummary, SupportedLanguage } from "@soko/shared-types";
+import type { AccountSummary, SupportedLanguage } from "@grogoni/shared-types";
 import { Cp2Error } from "./cp2-error.js";
 
 /**
- * Re-exported (not redefined) from @soko/shared-types so the web app can derive the same
- * commerce address from a sokoId it already has, without an extra API round trip, and without a
+ * Re-exported (not redefined) from @grogoni/shared-types so the web app can derive the same
+ * commerce address from a grogoniId it already has, without an extra API round trip, and without a
  * second copy of this logic drifting from this one.
  */
 export {
-  commerceAddressFromSokoId,
+  commerceAddressFromGrogoniId,
   normalizeCommerceAddress,
-  sokoIdFromCommerceAddress
-} from "@soko/shared-types";
+  grogoniIdFromCommerceAddress
+} from "@grogoni/shared-types";
 
 export function normalizeRequiredBoundedText(
   value: string,
@@ -59,18 +59,18 @@ export function normalizeStorefrontLookupId(value: string): string {
   return value.trim().toLowerCase();
 }
 
-export function isSokoStorefrontId(value: string): boolean {
-  return /^soko\.[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?$/iu.test(value.trim());
+export function isGrogoniStorefrontId(value: string): boolean {
+  return /^grogoni\.[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?$/iu.test(value.trim());
 }
 
 /**
  * Reserved handles a store may never claim, whether via initial generation or the rename flow
- * (docs/architecture/soko-id-slug-system.md). Derived from what's actually in this monorepo today
+ * (docs/architecture/grogoni-id-slug-system.md). Derived from what's actually in this monorepo today
  * - not a guessed list - so a change to real routing does not silently drift out of sync with
  * this constant:
- *   - `api` (services/api's own domain, render.yaml:23 `soko.market`) and `www` (an origin this
+ *   - `api` (services/api's own domain, render.yaml:23 `grogoni`) and `www` (an origin this
  *     app already treats as canonical - see WEB_ORIGINS/AUTH_ALLOWED_REDIRECT_ORIGINS in
- *     render.yaml/.env.example - even though no literal `www.soko.market` Render domain exists yet).
+ *     render.yaml/.env.example - even though no literal `www.grogoni.com` Render domain exists yet).
  *   - Every top-level API path segment (grep `app.(get|post|put|delete|patch)("/<segment>`,
  *     services/api/src/cp2/routes.ts / app.ts): auth, account, account-restoration, businesses,
  *     logout, logout-all, roles, session, sessions, v1.
@@ -84,7 +84,7 @@ export function isSokoStorefrontId(value: string): boolean {
  *     that a store claiming them would be confusing or actively break something the moment they
  *     are wired up: admin, app, assets, cdn, docs, help, mail, staging, status, support.
  */
-export const reservedSokoHandles: ReadonlySet<string> = new Set([
+export const reservedGrogoniHandles: ReadonlySet<string> = new Set([
   "api",
   "www",
   "auth",
@@ -139,22 +139,22 @@ export const reservedSokoHandles: ReadonlySet<string> = new Set([
   "support"
 ]);
 
-export function isReservedSokoHandle(handle: string): boolean {
-  return reservedSokoHandles.has(handle.trim().toLowerCase());
+export function isReservedGrogoniHandle(handle: string): boolean {
+  return reservedGrogoniHandles.has(handle.trim().toLowerCase());
 }
 
 /** DNS label / Telegram `start` param minimum this repo treats as a usable handle - below this,
  *  callers fall back to a generated base (see Cp2Store.createGlobalShopId). */
-export const minimumSokoHandleLength = 2;
+export const minimumGrogoniHandleLength = 2;
 
 /** DNS label maximum (RFC 1035) - documented here as the ceiling any handle must respect to also
- *  work as a `{handle}.soko.market` subdomain label. `createSokoHandle`'s own auto-generation cap
+ *  work as a `{handle}.grogoni.com` subdomain label. `createGrogoniHandle`'s own auto-generation cap
  *  below (48) already sits comfortably under this and is left unchanged - this constant exists for
  *  the rename flow, where a merchant-supplied custom handle is validated against the real DNS
  *  limit rather than the more conservative auto-generation cap. */
-export const maximumSokoHandleLength = 63;
+export const maximumGrogoniHandleLength = 63;
 
-export function createSokoHandle(value: string): string {
+export function createGrogoniHandle(value: string): string {
   return value
     .normalize("NFKD")
     .replace(/\p{Mark}+/gu, "")
@@ -220,7 +220,7 @@ export function otpHmacSecret(): string {
       "Verification codes are temporarily unavailable."
     );
   }
-  return "soko-market-local-otp-hmac-secret";
+  return "grogoni-local-otp-hmac-secret";
 }
 
 /**

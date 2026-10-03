@@ -14,7 +14,7 @@
  *
  * The per-device `/businesses/:businessId/agent-model` and `/businesses/:businessId/
  * browser-inference[/executions]` routes (and their backing `AgentRuntimeDomain` methods) were
- * removed when Soko retired its private on-device/browser model-assignment architecture in favor
+ * removed when Grogoni retired its private on-device/browser model-assignment architecture in favor
  * of a hosted-first, device-independent runtime; the surviving shop-scoped path is
  * `/api/agents/:agentId/model-binding` below.
  *

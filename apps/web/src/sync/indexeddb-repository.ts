@@ -1,11 +1,11 @@
-import { applySyncPullPage } from "@soko/sync-core";
+import { applySyncPullPage } from "@grogoni/sync-core";
 import type {
   LocalSyncMutation,
   LocalSyncRecord,
   LocalSyncSnapshot,
   SyncCollection,
   SyncPullPage
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
 const databaseVersion = 2;
 const recordsStore = "sync_records";
@@ -168,7 +168,7 @@ export async function openIndexedDbSyncRepository(
     throw new Error("IndexedDB is unavailable in this runtime.");
   }
 
-  const request = factory.open(options.databaseName ?? "soko-market-sync", databaseVersion);
+  const request = factory.open(options.databaseName ?? "grogoni-sync", databaseVersion);
   request.onupgradeneeded = () => {
     const database = request.result;
     if (!database.objectStoreNames.contains(recordsStore)) {

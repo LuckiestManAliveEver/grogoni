@@ -2,7 +2,7 @@ import { Suspense, lazy, useEffect, useState } from "react";
 
 import { AuthenticationActionMessage } from "./AuthenticationActionMessage";
 
-import type { NetworkInviteSummary } from "@soko/shared-types";
+import type { NetworkInviteSummary } from "@grogoni/shared-types";
 
 import type { NetworkConnectionAction } from "./hooks/useNetworkState";
 import { LazyModuleErrorBoundary } from "./LazyModuleErrorBoundary";
@@ -16,7 +16,7 @@ import {
   type OAuthProviderSummary,
   type SocialSignupProvider,
   networkSyncProviders
-} from "./soko-application-shared";
+} from "./grogoni-application-shared";
 
 // Only rendered once the owner opens Phone Contacts: kept out of the owner route's chunk.
 const PhoneContactsCard = lazy(async () => {

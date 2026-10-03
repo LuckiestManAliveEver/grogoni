@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 const apiHelpers = readFileSync("apps/web/src/api-helpers.ts", "utf8");
 const apiCache = readFileSync("apps/web/src/api-request-cache.ts", "utf8");
-const application = readFileSync("apps/web/src/SokoApplication.tsx", "utf8");
+const application = readFileSync("apps/web/src/GrogoniApplication.tsx", "utf8");
 
 const generatedManagementCards = [
   "ProductManagementCard.tsx",

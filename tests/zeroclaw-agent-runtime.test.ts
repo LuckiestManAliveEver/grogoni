@@ -23,7 +23,7 @@ import {
 
 const luna = inferenceRouterSeedModels.find((model) => model.id === "gpt-6-luna")!;
 const gateway: ZeroClawGatewayConfig = {
-  url: new URL("https://zeroclaw.soko.example"),
+  url: new URL("https://zeroclaw.grogoni.example"),
   token: "",
   webhookSecret: "zc-webhook-secret-0000000000000000",
   agentAlias: "shopkeeper",
@@ -53,7 +53,7 @@ const prompt: RuntimeModelPrompt = {
 const unusedModel: RuntimeModelProvider = {
   name: "openai",
   complete: async () => {
-    throw new Error("ZeroClaw runs the model; Soko's own adapter must not be called.");
+    throw new Error("ZeroClaw runs the model; Grogoni's own adapter must not be called.");
   }
 };
 
@@ -93,7 +93,7 @@ function execute(adapter: ReturnType<typeof setup>["adapter"]) {
 }
 
 describe("ZeroClaw agent runtime", () => {
-  it("is the platform default engine for Shopkeeper with Soko-funded GPT-6 Luna", () => {
+  it("is the platform default engine for Shopkeeper with Grogoni-funded GPT-6 Luna", () => {
     expect(repositoryDefaultRuntimePolicy).toEqual({
       agentId: "builtin:shopkeeper:v1",
       agentName: "Shopkeeper",
@@ -131,16 +131,16 @@ describe("ZeroClaw agent runtime", () => {
     });
     expect(requests).toHaveLength(1);
     const [request] = requests;
-    expect(request!.url).toBe("https://zeroclaw.soko.example/webhook?agent=shopkeeper");
+    expect(request!.url).toBe("https://zeroclaw.grogoni.example/webhook?agent=shopkeeper");
     expect(request!.method).toBe("POST");
     expect(request!.headers["x-webhook-secret"]).toBe(gateway.webhookSecret);
     expect(request!.headers).not.toHaveProperty("authorization");
-    expect(request!.headers["x-session-id"]).toMatch(/^soko-[0-9a-f-]{36}$/u);
+    expect(request!.headers["x-session-id"]).toMatch(/^grogoni-[0-9a-f-]{36}$/u);
     expect(request!.headers["x-idempotency-key"]).toBe(
-      request!.headers["x-session-id"]!.slice("soko-".length)
+      request!.headers["x-session-id"]!.slice("grogoni-".length)
     );
     expect(request!.body).toMatchObject({ stream: false });
-    // Soko's prompt (instructions, history, message) is what ZeroClaw receives - no provider key.
+    // Grogoni's prompt (instructions, history, message) is what ZeroClaw receives - no provider key.
     const message = String(request!.body!.message);
     expect(message).toContain("How much sugar is left?");
     expect(message).toContain("User: Hi");
@@ -195,7 +195,7 @@ describe("ZeroClaw agent runtime", () => {
     }
   });
 
-  it("enforces Soko budgets before calling ZeroClaw", async () => {
+  it("enforces Grogoni budgets before calling ZeroClaw", async () => {
     const { adapter, requests } = setup(
       () => jsonResponse({ response: "hi", model: "gpt-6-luna" }),
       { env: { INFERENCE_MAX_REQUESTS_PER_MINUTE: "1" } }
@@ -226,9 +226,9 @@ describe("ZeroClaw agent runtime", () => {
     ).resolves.toMatchObject({ available: false, errorCode: "MODEL_RUNTIME_INCOMPATIBLE" });
   });
 
-  it("resolves ZeroClaw to Soko's engine only when no gateway is connected", () => {
+  it("resolves ZeroClaw to Grogoni's engine only when no gateway is connected", () => {
     expect(connectedAgentRuntimeAdapterId("zeroclaw", true)).toBe("zeroclaw");
-    expect(connectedAgentRuntimeAdapterId("zeroclaw", false)).toBe("soko");
+    expect(connectedAgentRuntimeAdapterId("zeroclaw", false)).toBe("grogoni");
     expect(connectedAgentRuntimeAdapterId("pi", false)).toBe("pi");
   });
 });
@@ -241,16 +241,16 @@ describe("ZeroClaw gateway configuration", () => {
   it("accepts Render's private hostport only with the private-network opt-in", () => {
     expect(() =>
       readZeroClawGatewayConfig({
-        ZEROCLAW_GATEWAY_URL: "soko-market-zeroclaw:42617",
+        ZEROCLAW_GATEWAY_URL: "grogoni-zeroclaw:42617",
         ZEROCLAW_WEBHOOK_SECRET: "secret"
       })
     ).toThrow(/ZEROCLAW_GATEWAY_URL/u);
     const config = readZeroClawGatewayConfig({
-      ZEROCLAW_GATEWAY_URL: "soko-market-zeroclaw:42617",
+      ZEROCLAW_GATEWAY_URL: "grogoni-zeroclaw:42617",
       ZEROCLAW_ALLOW_PRIVATE_NETWORK: "true",
       ZEROCLAW_WEBHOOK_SECRET: "secret"
     });
-    expect(config?.url.href).toBe("http://soko-market-zeroclaw:42617/");
+    expect(config?.url.href).toBe("http://grogoni-zeroclaw:42617/");
   });
 
   it("requires a credential and rejects plain http on the public internet", () => {

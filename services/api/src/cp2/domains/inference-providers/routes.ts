@@ -29,7 +29,7 @@ import type {
   DeviceInferenceResultInput,
   DeviceInferenceRuntime,
   InferenceProviderConnectionScope
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { isValidTurnId } from "../../../inference/turn-stream.js";
 import { readSessionCookie, type Cp2Store } from "../../store.js";
 import { Cp2Error } from "../../cp2-error.js";

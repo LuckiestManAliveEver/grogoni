@@ -1,4 +1,4 @@
-import type { OssAgentSummary, RuntimeAssetKind } from "@soko/shared-types";
+import type { OssAgentSummary, RuntimeAssetKind } from "@grogoni/shared-types";
 import type {
   RuntimeRegistryContext,
   RuntimeRegistryResourceDetails,
@@ -6,7 +6,7 @@ import type {
   RuntimeRegistryResourceRef,
   RuntimeRegistrySearchItem,
   RuntimeRegistrySearchQuery
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import type {
   HuggingFaceModelCatalog,
   HuggingFaceAiModelSummary
@@ -341,7 +341,7 @@ function encodeRepositoryPath(repositoryId: string): string {
 function huggingFaceHeaders(token: string | undefined): HeadersInit {
   return {
     accept: "application/json",
-    "user-agent": "soko-market-runtime-registry",
+    "user-agent": "grogoni-runtime-registry",
     ...(token === undefined ? {} : { authorization: `Bearer ${token}` })
   };
 }

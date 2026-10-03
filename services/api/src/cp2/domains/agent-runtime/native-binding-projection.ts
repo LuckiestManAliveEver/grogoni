@@ -1,4 +1,4 @@
-import type { ActiveNativeAgentBinding, AgentModelBindingSummary } from "@soko/shared-types";
+import type { ActiveNativeAgentBinding, AgentModelBindingSummary } from "@grogoni/shared-types";
 
 /**
  * The sole place `AgentModelBindingSummary` (the wire shape `AgentModelPanel.tsx`/

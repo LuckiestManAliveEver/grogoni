@@ -8,7 +8,7 @@
  * instead of from routes.ts, avoiding a circular import back into the file being split apart.
  */
 import type { FastifyReply, FastifyRequest } from "fastify";
-import type { AuthChannel } from "@soko/shared-types";
+import type { AuthChannel } from "@grogoni/shared-types";
 import { Cp2Error } from "./cp2-error.js";
 import {
   type Cp2Store,
@@ -194,10 +194,10 @@ export function readHeader(request: FastifyRequest, name: string): string | null
 
 export function readDeviceSessionMetadata(request: FastifyRequest): DeviceSessionMetadata {
   return {
-    deviceId: readHeader(request, "x-soko-device-id") ?? "unknown-device",
-    deviceName: readHeader(request, "x-soko-device-name") ?? "This device",
-    platform: readHeader(request, "x-soko-platform") ?? "unknown",
-    browserOrApp: readHeader(request, "x-soko-client") ?? "web",
+    deviceId: readHeader(request, "x-grogoni-device-id") ?? "unknown-device",
+    deviceName: readHeader(request, "x-grogoni-device-name") ?? "This device",
+    platform: readHeader(request, "x-grogoni-platform") ?? "unknown",
+    browserOrApp: readHeader(request, "x-grogoni-client") ?? "web",
     userAgent: request.headers["user-agent"] ?? ""
   };
 }

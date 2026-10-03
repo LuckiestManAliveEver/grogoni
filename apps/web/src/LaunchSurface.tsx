@@ -8,7 +8,7 @@ import {
   type LaunchIncidentStatus,
   type LaunchIncidentSummary,
   type LaunchReadinessReportSummary
-} from "./soko-application-shared";
+} from "./grogoni-application-shared";
 
 import { ReportRow } from "./ReportRow";
 

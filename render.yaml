@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: soko-market
+    name: grogoni
     runtime: node
     branch: main
     autoDeployTrigger: commit
@@ -14,7 +14,7 @@ services:
     # succeeds means a failed build can never leave the schema migrated out from under whatever
     # instance is still serving traffic on the previous deploy.
     buildCommand: COREPACK_HOME=/tmp/corepack corepack pnpm install --frozen-lockfile && COREPACK_HOME=/tmp/corepack corepack pnpm build:production && COREPACK_HOME=/tmp/corepack corepack pnpm db:migrate && REQUIRE_NEON_DATABASE=true COREPACK_HOME=/tmp/corepack corepack pnpm db:verify-schema
-    startCommand: COREPACK_HOME=/tmp/corepack corepack pnpm --filter @soko/api start
+    startCommand: COREPACK_HOME=/tmp/corepack corepack pnpm --filter @grogoni/api start
     healthCheckPath: /health/ready
     buildFilter:
       paths:
@@ -29,25 +29,25 @@ services:
         - scripts/**
         - vendor/**
     domains:
-      - soko.market
+      - grogoni.com
       # Temporary compatibility alias for installed PWAs and cached bundles compiled before the
       # same-origin migration. Keep it until access logs show no meaningful legacy API traffic.
-      - api.soko.market
-      # Store subdomain resolution (docs/architecture/soko-id-slug-system.md §4): this service's
-      # onRequest hook (services/api/src/app.ts) already resolves {handle}.soko.market and
+      - api.grogoni.com
+      # Store subdomain resolution (docs/architecture/grogoni-id-slug-system.md §4): this service's
+      # onRequest hook (services/api/src/app.ts) already resolves {handle}.grogoni.com and
       # 302-redirects to the real storefront, excluding api./www. and the bare apex.
       # This line registers the wildcard domain in Render; it stays unverified/inert until a
-      # matching wildcard DNS record (e.g. a CNAME for *.soko.market) is added at whatever
-      # registrar manages soko.market's DNS, pointed at this service per Render's custom-domain
+      # matching wildcard DNS record (e.g. a CNAME for *.grogoni.com) is added at whatever
+      # registrar manages grogoni's DNS, pointed at this service per Render's custom-domain
       # instructions - that DNS-side step is outside this repository.
-      - "*.soko.market"
+      - "*.grogoni.com"
     envVars:
       - key: NODE_ENV
         value: production
       - key: NODE_VERSION
         value: 22.19.0
       - key: VITE_API_BASE_URL
-        value: https://soko.market
+        value: https://grogoni.com
       - key: VITE_DEPLOYMENT_ENV
         value: production
       - key: VITE_INFERENCE_OWNER_NODE_ENABLED
@@ -57,15 +57,15 @@ services:
       - key: API_HOST
         value: 0.0.0.0
       - key: WEB_ORIGINS
-        value: https://soko.market,https://www.soko.market
+        value: https://grogoni.com,https://www.grogoni.com
       - key: APP_URL
-        value: https://soko.market
+        value: https://grogoni.com
       - key: AUTH_ALLOWED_REDIRECT_ORIGINS
-        value: https://soko.market,https://www.soko.market
+        value: https://grogoni.com,https://www.grogoni.com
       - key: WEBAUTHN_RP_ID
-        value: soko.market
+        value: grogoni
       - key: WEBAUTHN_EXPECTED_ORIGINS
-        value: https://soko.market,https://www.soko.market
+        value: https://grogoni.com,https://www.grogoni.com
       - key: COOKIE_SECURE
         value: "true"
       - key: COOKIE_SAME_SITE
@@ -100,8 +100,8 @@ services:
         sync: false
       - key: RESEND_API_KEY
         sync: false
-      - key: SOKO_EMAIL_FROM
-        value: "Soko <messages@soko.market>"
+      - key: GROGONI_EMAIL_FROM
+        value: "Grogoni <messages@grogoni.com>"
       - key: CP2_STORE
         value: postgres
       - key: DATABASE_URL
@@ -134,8 +134,8 @@ services:
       # object-storage credentials, or a signed artifact URL directly - Render mints those and
       # proxies the inference stream back to the client.
       # Platform default before any swap: the Shopkeeper agent on the ZeroClaw agent runtime with
-      # OpenAI's GPT-6 Luna, Soko-funded (docs/adr/ADR-zeroclaw-default-agent-runtime.md). Needs
-      # OPENAI_API_KEY below; without a ZeroClaw gateway Shopkeeper runs on Soko's own engine.
+      # OpenAI's GPT-6 Luna, Grogoni-funded (docs/adr/ADR-zeroclaw-default-agent-runtime.md). Needs
+      # OPENAI_API_KEY below; without a ZeroClaw gateway Shopkeeper runs on Grogoni's own engine.
       - key: PLATFORM_DEFAULT_AGENT_ID
         value: builtin:shopkeeper:v1
       - key: PLATFORM_DEFAULT_AGENT_NAME
@@ -146,17 +146,17 @@ services:
         value: gpt-6-luna
       - key: PLATFORM_DEFAULT_EXECUTION_TARGET
         value: backend
-      # ZeroClaw gateway (soko-market-zeroclaw below), reached over Render's private network.
+      # ZeroClaw gateway (grogoni-zeroclaw below), reached over Render's private network.
       - key: ZEROCLAW_GATEWAY_URL
         fromService:
-          name: soko-market-zeroclaw
+          name: grogoni-zeroclaw
           type: pserv
           property: hostport
       - key: ZEROCLAW_ALLOW_PRIVATE_NETWORK
         value: "true"
       - key: ZEROCLAW_WEBHOOK_SECRET
         fromService:
-          name: soko-market-zeroclaw
+          name: grogoni-zeroclaw
           type: pserv
           envVarKey: ZEROCLAW_gateway__webhook_secret
       - key: ZEROCLAW_TIMEOUT_MS
@@ -170,7 +170,7 @@ services:
       # Shared bearer secret between this service and services/ai-runtime's Vercel deployment.
       # Preserve the existing value during the service migration and configure that exact value
       # in both Render and Vercel; Blueprint sync cannot link secrets across providers.
-      - key: SOKO_INFERENCE_SERVICE_TOKEN
+      - key: GROGONI_INFERENCE_SERVICE_TOKEN
         sync: false
       - key: NEON_MODEL_STORAGE_ENDPOINT
         sync: false
@@ -196,9 +196,9 @@ services:
         sync: false
       - key: ZAI_BASE_URL
         value: https://api.z.ai/api/paas/v4
-      - key: SOKO_LLAMA_BASE_URL
+      - key: GROGONI_LLAMA_BASE_URL
         sync: false
-      - key: SOKO_LLAMA_API_KEY
+      - key: GROGONI_LLAMA_API_KEY
         sync: false
       - key: INFERENCE_DEFAULT_MODEL
         value: gpt-6-luna
@@ -233,7 +233,7 @@ services:
         value: "60000"
       - key: OCR_WORKER_URL
         fromService:
-          name: soko-market-ocr-worker
+          name: grogoni-ocr-worker
           type: pserv
           property: hostport
       - key: OCR_CONCURRENCY
@@ -257,7 +257,7 @@ services:
       - key: VAPID_PRIVATE_KEY
         sync: false
       - key: VAPID_SUBJECT
-        value: mailto:operations@soko.market
+        value: mailto:operations@grogoni.com
       # Signing secret for the workspace-level Render deploy webhook (Dashboard -> Integrations ->
       # Webhooks -> this webhook's Settings page). Set manually after creating that webhook; see
       # docs/deployment/render-deploy-push-notifications.md for the full setup. Until this is set,
@@ -266,24 +266,24 @@ services:
         sync: false
       - key: REDIS_URL
         fromService:
-          name: soko-market-rate-limit-cache
+          name: grogoni-rate-limit-cache
           type: keyvalue
           property: connectionString
 
   - type: keyvalue
-    name: soko-market-rate-limit-cache
+    name: grogoni-rate-limit-cache
     plan: starter
     region: oregon
     ipAllowList: []
     maxmemoryPolicy: allkeys-lru
 
   # Self-hosted PaddleOCR/Tesseract worker (docs/receipt-ocr.md, services/receipt-ocr-service/).
-  # Private, not public: only soko-market reaches it, over Render's private network at the
+  # Private, not public: only grogoni reaches it, over Render's private network at the
   # "hostport" wired into OCR_WORKER_URL above. This is unrelated to the LLM inference boundary
   # docs/deployment/render-inference.md describes - Render still never runs a chat model itself,
   # it hosts an OCR worker, which is a bounded image/PDF-to-text tool, not a model runtime.
   - type: pserv
-    name: soko-market-ocr-worker
+    name: grogoni-ocr-worker
     runtime: docker
     branch: main
     autoDeployTrigger: commit
@@ -325,12 +325,12 @@ services:
 
   # ZeroClaw agent runtime (https://github.com/zeroclaw-labs/zeroclaw, MIT OR Apache-2.0) - the
   # default engine for the Shopkeeper agent (docs/adr/ADR-zeroclaw-default-agent-runtime.md).
-  # Private: only soko-market reaches its gateway. It runs no model itself; it calls OpenAI's
-  # GPT-6 Luna with Soko's key. Locked down: read-only risk profile with every ZeroClaw tool
-  # denied, so it can only produce text, which Soko then parses and approval-gates like any model
-  # output. No pairing tokens; the generated webhook secret is shared with soko-market above.
+  # Private: only grogoni reaches its gateway. It runs no model itself; it calls OpenAI's
+  # GPT-6 Luna with Grogoni's key. Locked down: read-only risk profile with every ZeroClaw tool
+  # denied, so it can only produce text, which Grogoni then parses and approval-gates like any model
+  # output. No pairing tokens; the generated webhook secret is shared with grogoni above.
   - type: pserv
-    name: soko-market-zeroclaw
+    name: grogoni-zeroclaw
     runtime: image
     image:
       url: ghcr.io/zeroclaw-labs/zeroclaw:v0.8.5
@@ -363,11 +363,11 @@ services:
         value: "true"
 
   - type: web
-    name: soko-market-web-staging
+    name: grogoni-web-staging
     runtime: static
     branch: agent/passkey-auth
     autoDeployTrigger: commit
-    buildCommand: COREPACK_HOME=/tmp/corepack corepack pnpm install --frozen-lockfile && COREPACK_HOME=/tmp/corepack corepack pnpm --filter @soko/web... build
+    buildCommand: COREPACK_HOME=/tmp/corepack corepack pnpm install --frozen-lockfile && COREPACK_HOME=/tmp/corepack corepack pnpm --filter @grogoni/web... build
     staticPublishPath: apps/web/dist
     buildFilter:
       paths:
@@ -380,7 +380,7 @@ services:
     headers:
       - path: /*
         name: Content-Security-Policy
-        value: "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; manifest-src 'self'; worker-src 'self'; child-src 'self'; connect-src 'self' https://*.soko.market wss://*.soko.market; upgrade-insecure-requests"
+        value: "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; manifest-src 'self'; worker-src 'self'; child-src 'self'; connect-src 'self' https://*.grogoni.com wss://*.grogoni.com; upgrade-insecure-requests"
       - path: /*
         name: Cross-Origin-Embedder-Policy
         value: credentialless
@@ -427,7 +427,7 @@ services:
         value: "3"
 
   - type: pserv
-    name: soko-computer-runtime
+    name: grogoni-computer-runtime
     runtime: docker
     branch: main
     plan: starter
@@ -451,7 +451,7 @@ services:
         sync: false
 
   - type: cron
-    name: soko-market-db-backup
+    name: grogoni-db-backup
     runtime: node
     branch: main
     schedule: "17 2 * * *"
@@ -479,11 +479,11 @@ services:
         sync: false
 
   - type: cron
-    name: soko-market-shop-purge
+    name: grogoni-shop-purge
     runtime: node
     branch: main
     schedule: "37 3 * * *"
-    buildCommand: COREPACK_HOME=/tmp/corepack corepack pnpm install --frozen-lockfile && COREPACK_HOME=/tmp/corepack corepack pnpm --filter @soko/api... build
+    buildCommand: COREPACK_HOME=/tmp/corepack corepack pnpm install --frozen-lockfile && COREPACK_HOME=/tmp/corepack corepack pnpm --filter @grogoni/api... build
     startCommand: COREPACK_HOME=/tmp/corepack corepack pnpm db:purge-shops
     buildFilter:
       paths:
@@ -505,11 +505,11 @@ services:
         sync: false
 
   - type: cron
-    name: soko-market-account-purge
+    name: grogoni-account-purge
     runtime: node
     branch: main
     schedule: "7 4 * * *"
-    buildCommand: COREPACK_HOME=/tmp/corepack corepack pnpm install --frozen-lockfile && COREPACK_HOME=/tmp/corepack corepack pnpm --filter @soko/api... build
+    buildCommand: COREPACK_HOME=/tmp/corepack corepack pnpm install --frozen-lockfile && COREPACK_HOME=/tmp/corepack corepack pnpm --filter @grogoni/api... build
     startCommand: COREPACK_HOME=/tmp/corepack corepack pnpm db:purge-accounts
     buildFilter:
       paths:
@@ -535,7 +535,7 @@ services:
         sync: false
 
   - type: cron
-    name: soko-market-db-health
+    name: grogoni-db-health
     runtime: node
     branch: main
     schedule: "*/10 * * * *"

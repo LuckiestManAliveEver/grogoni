@@ -4,7 +4,7 @@
  * logistics.
  */
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import type { BusinessNotificationStatus } from "@soko/shared-types";
+import type { BusinessNotificationStatus } from "@grogoni/shared-types";
 import { Cp2Error } from "../../cp2-error.js";
 import { type Cp2Store, readSessionCookie } from "../../store.js";
 import { parseString, sendCp2Error, type BusinessParams } from "../../route-helpers.js";

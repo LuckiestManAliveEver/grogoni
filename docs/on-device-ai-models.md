@@ -1,10 +1,10 @@
 # On-device AI models
 
-The Soko agent model library exposes five llama.cpp-compatible GGUF models that are small enough
+The Grogoni agent model library exposes five llama.cpp-compatible GGUF models that are small enough
 for Android-class hardware. Each upstream repository identifies its license as Apache-2.0, which
 permits commercial use subject to the license's notice and attribution terms.
 
-| Soko model     | Hugging Face source                        | Quantization | Download | Device profile |
+| Grogoni model     | Hugging Face source                        | Quantization | Download | Device profile |
 | -------------- | ------------------------------------------ | ------------ | -------: | -------------- |
 | SmolLM2 360M   | `HuggingFaceTB/SmolLM2-360M-Instruct-GGUF` | Q8_0         |   386 MB | 2 GB+ RAM      |
 | TinyLlama 1.1B | `TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF`   | Q3_K_M       |   551 MB | 3 GB+ RAM      |
@@ -25,20 +25,20 @@ are present in private device storage. Completing a download installs and select
 the library; the merchant then saves the agent settings.
 
 Browser storage is not itself an inference runtime. The PWA does not execute a GGUF file directly
-from OPFS; GGUF inference still requires the Android `SokoAgentModelRuntime` bridge or a configured
+from OPFS; GGUF inference still requires the Android `GrogoniAgentModelRuntime` bridge or a configured
 llama.cpp-compatible server.
 
 An optional browser-local backend uses approved Transformers.js/ONNX and WebLLM/MLC profiles. The
 Transformers.js adapter uses WebGPU when available and a conservative WASM fallback. WebLLM runs
 only through WebGPU in its own dedicated worker. This backend is disabled by default with
 `VITE_BROWSER_LOCAL_INFERENCE_ENABLED`, requires an explicit per-user download action, and shares
-the existing Soko agent/chat router rather than treating a cached model as active.
+the existing Grogoni agent/chat router rather than treating a cached model as active.
 
 The browser engine now exposes a reviewed multi-model profile registry. SmolLM2 135M is the
 low-memory default, SmolLM2 360M remains the balanced option, and Qwen2.5 0.5B is restricted to
 high-tier WebGPU profiles. Each combination must pass a tokenizer/allocation/readiness
 generation before it is marked ready. See
-[`docs/inference/soko-web-inference-engine.md`](inference/soko-web-inference-engine.md) for model
+[`docs/inference/grogoni-web-inference-engine.md`](inference/grogoni-web-inference-engine.md) for model
 admission, resource budgets, device outcome history, and logical checkpoint behavior.
 
 Compatible WebGPU devices prefer the pinned WebLLM profiles. Their immutable weight/library
@@ -56,7 +56,7 @@ merchant's action. In the interface, “installed on this phone” means the mer
 predownload into origin-private storage on that Android device. “Available from your account” means
 an authenticated Neon copy can be restored to another signed-in device.
 
-The Android model library searches both the curated Soko registry and public GitHub releases:
+The Android model library searches both the curated Grogoni registry and public GitHub releases:
 
 - `/v1/ai-models?search=...` searches the curated registry.
 - `/v1/ai-models/github?search=...` searches GitHub repositories and published release assets.
@@ -87,7 +87,7 @@ rewrites the downloaded model assignment.
 
 A runnable installation still belongs to one device; selecting it must not imply that its GGUF is
 already present on another phone. The other phone can restore the account's Neon copy from the
-model library, after which Soko validates and registers a new device-scoped installation. Until
+model library, after which Grogoni validates and registers a new device-scoped installation. Until
 then, the API marks the local installation missing. It never runs GGUF inference inside Neon,
 converts the assignment into `CLOUD_ONLY`, or selects an OpenAI model from environment defaults.
 

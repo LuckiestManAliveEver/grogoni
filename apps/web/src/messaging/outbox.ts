@@ -1,5 +1,5 @@
-const messagingOutboxStoragePrefix = "soko.market.messaging-outbox.v2";
-const legacyMessagingOutboxStorageKey = "soko.market.messaging-outbox.v1";
+const messagingOutboxStoragePrefix = "grogoni.messaging-outbox.v2";
+const legacyMessagingOutboxStorageKey = "grogoni.messaging-outbox.v1";
 
 export interface MessagingOutboxEntry {
   accountId: string;

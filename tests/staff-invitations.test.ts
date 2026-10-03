@@ -113,7 +113,7 @@ describe("staff invitation identity matching", () => {
         ({ account: { id: "a-invitee" }, user: { id: "u-invitee" } }) as never,
       memberships,
       businesses: new Map([
-        ["b1", { id: "b1", name: "Shop", language: "en", sokoId: "soko.shop" }]
+        ["b1", { id: "b1", name: "Shop", language: "en", grogoniId: "grogoni.shop" }]
       ]),
       users: new Map(),
       accounts: new Map(
@@ -611,7 +611,7 @@ describe("staff invitations over HTTP", () => {
         id: 2,
         method: "tools/call",
         params: {
-          name: "soko.query_catalogue",
+          name: "grogoni.query_catalogue",
           arguments: { shopId: owner.businessId, query: "x" }
         }
       })
@@ -1046,19 +1046,19 @@ describe("staff invitations over HTTP", () => {
     const owner = await createOwner(app, "Closing Down");
     const phone = uniquePhone();
     const pending = await invite(app, owner, phone, "driver");
-    const shops = await ok<{ shops: Array<{ business: { id: string; sokoId: string } }> }>(
+    const shops = await ok<{ shops: Array<{ business: { id: string; grogoniId: string } }> }>(
       app,
       "GET",
       "/v1/shops",
       owner.cookie
     );
-    const sokoId = shops.shops[0]?.business.sokoId;
+    const grogoniId = shops.shops[0]?.business.grogoniId;
     const deletion = await ok<{ request: { id: string } }>(
       app,
       "POST",
       `/businesses/${owner.businessId}/shop-deletion/request`,
       owner.cookie,
-      { shopId: sokoId }
+      { shopId: grogoniId }
     );
     await ok(
       app,

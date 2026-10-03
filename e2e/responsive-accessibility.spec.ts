@@ -22,17 +22,17 @@ test.beforeEach(async ({ page }) => {
   await installApiMocks(page);
   await page.addInitScript(() => {
     localStorage.setItem(
-      "soko.chatFirst.activeBusiness",
+      "grogoni.chatFirst.activeBusiness",
       JSON.stringify({
         id: "responsive-certification-shop",
         name: "Jane's International Neighborhood Market and Supplies",
         language: "en",
         role: "owner",
-        sokoId: "soko.janes-market"
+        grogoniId: "grogoni.janes-market"
       })
     );
-    localStorage.setItem("soko.chatFirst.mode", "seller");
-    localStorage.setItem("soko.market.marketplace-intro.completed.v1", "true");
+    localStorage.setItem("grogoni.chatFirst.mode", "seller");
+    localStorage.setItem("grogoni.marketplace-intro.completed.v1", "true");
   });
 });
 
@@ -112,7 +112,7 @@ test("a stale agent-profile chunk reloads once and reopens settings instead of g
   expect(rejectedProfileChunk).toBe(true);
   await expect
     .poll(() =>
-      page.evaluate(() => sessionStorage.getItem("soko.lazy-module-recovery.v1.agent-profile"))
+      page.evaluate(() => sessionStorage.getItem("grogoni.lazy-module-recovery.v1.agent-profile"))
     )
     .toBeNull();
 });
@@ -157,7 +157,7 @@ for (const nestedProfileChunk of [
     await expect
       .poll(() =>
         page.evaluate(
-          (moduleKey) => sessionStorage.getItem(`soko.lazy-module-recovery.v1.${moduleKey}`),
+          (moduleKey) => sessionStorage.getItem(`grogoni.lazy-module-recovery.v1.${moduleKey}`),
           nestedProfileChunk.moduleKey
         )
       )
@@ -174,7 +174,7 @@ test("clicking a public shop opens its storefront instead of a blank screen", as
   await expect(shopCard).toBeVisible();
   await shopCard.click();
 
-  await expect(page).toHaveURL(/\/agent\/soko\.responsive-public-shop$/u);
+  await expect(page).toHaveURL(/\/agent\/grogoni\.responsive-public-shop$/u);
   await expect(page.getByRole("main")).toBeVisible();
   await expect(page.getByText("Responsive Public Shop", { exact: true }).first()).toBeVisible();
   await expect(page.getByRole("region", { name: "Storefront chat" })).toBeVisible();
@@ -495,13 +495,13 @@ test("SMS handoff confirms cost, normalizes the recipient, and preserves the dra
   await page.setViewportSize({ width: 360, height: 800 });
   await page.goto("/sell");
   const composer = page.getByRole("textbox", { name: "Message" });
-  const draft = `Hello from Soko. ${"This message may use more than one carrier SMS. ".repeat(4)}`;
+  const draft = `Hello from Grogoni. ${"This message may use more than one carrier SMS. ".repeat(4)}`;
   await composer.fill(draft);
 
-  let sokoMessagePosts = 0;
+  let grogoniMessagePosts = 0;
   page.on("request", (request) => {
     if (request.method() === "POST" && new URL(request.url()).pathname === "/v1/messages") {
-      sokoMessagePosts += 1;
+      grogoniMessagePosts += 1;
     }
   });
 
@@ -522,7 +522,7 @@ test("SMS handoff confirms cost, normalizes the recipient, and preserves the dra
   await dialog.getByRole("button", { name: "Cancel" }).click();
   await expect(dialog).toBeHidden();
   await expect(composer).toHaveValue(draft);
-  expect(sokoMessagePosts).toBe(0);
+  expect(grogoniMessagePosts).toBe(0);
 });
 
 test("mobile composer keeps one More control and exposes secondary actions in a sheet", async ({
@@ -589,7 +589,7 @@ test("the composer grows to show a wrapped draft instead of clipping it on mobil
 test("persisted owner-control entry stays attached to its historical message and opens the hub", async ({
   page
 }) => {
-  await page.setExtraHTTPHeaders({ "x-soko-test-owner-controls": "true" });
+  await page.setExtraHTTPHeaders({ "x-grogoni-test-owner-controls": "true" });
   // The startup chat window stays blank unless the URL deep-links to a conversation (see
   // useChatInboxState.loadMessagingInbox) - go straight to the historical conversation instead of
   // relying on auto-selecting the first inbox entry.
@@ -650,7 +650,7 @@ test("shop deletion Continue and Quarantine buttons call the backend", async ({ 
   await page.locator(".settings-group-title", { hasText: "Advanced" }).click();
   await page.getByRole("button", { name: "Delete account", exact: true }).click();
   await page.getByRole("button", { name: "Delete this shop", exact: true }).click();
-  await page.getByLabel("Type the shop ID to continue").fill("soko.janes-market");
+  await page.getByLabel("Type the shop ID to continue").fill("grogoni.janes-market");
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await page.getByRole("textbox", { name: "Login PIN", exact: true }).fill("1234");
   await page.getByLabel(/I understand the shop will be hidden now and permanently purged/).check();
@@ -697,7 +697,7 @@ test("draft Terms of Service reflow and pass an automated accessibility scan", a
     await expect(page.getByText("Version 1.0 (Draft) · Parts I–IV")).toBeVisible();
     await expect(page.getByText("Effective Date: To Be Inserted")).toBeVisible();
     await expect(page.getByRole("heading", { name: "1. Introduction" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "15. The Soko.market Services" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "15. The Grogoni Services" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "33. Subscription Plans" })).toBeVisible();
     await expect(
       page.getByRole("heading", { name: "77. Effective Date and Version History" })
@@ -750,7 +750,7 @@ test("public account deletion resource reflows and passes accessibility", async 
     await page.setViewportSize(viewport);
     await page.goto("/account-deletion");
     await expect(
-      page.getByRole("heading", { name: "Delete your Soko.market account", level: 1 })
+      page.getByRole("heading", { name: "Delete your Grogoni account", level: 1 })
     ).toBeVisible();
     await expect(
       page.getByRole("link", { name: "Continue to secure deletion request" })
@@ -870,8 +870,8 @@ test("activating a backend model preserves the previous model when activation fa
     })
   );
   await page.setExtraHTTPHeaders({
-    "x-soko-test-seed-active-model": "openai-fast",
-    "x-soko-test-failing-activation-model": secondModelId
+    "x-grogoni-test-seed-active-model": "openai-fast",
+    "x-grogoni-test-failing-activation-model": secondModelId
   });
   await openModelLibrary(page, { width: 390, height: 844 });
 
@@ -934,8 +934,8 @@ test("a second backend-configured model does not clip the model library at 280px
     })
   );
   await page.setExtraHTTPHeaders({
-    "x-soko-test-seed-active-model": "openai-fast",
-    "x-soko-test-failing-activation-model": secondModelId
+    "x-grogoni-test-seed-active-model": "openai-fast",
+    "x-grogoni-test-failing-activation-model": secondModelId
   });
   await openModelLibrary(page, { width: 280, height: 653 });
 
@@ -1039,8 +1039,8 @@ test("touch controls satisfy the WCAG 2.2 minimum target size", async ({ page })
 
 test("the status notice never covers the customer home's header buttons", async ({ page }) => {
   // The customer home (mode === "marketplace") has no Buy/Messages pills - Message history is
-  // reached through the hamburger menu instead (see Soko Home: hides the Buy/Messages pills...
-  // in tests/soko-home-progressive-entry.test.ts).
+  // reached through the hamburger menu instead (see Grogoni Home: hides the Buy/Messages pills...
+  // in tests/grogoni-home-progressive-entry.test.ts).
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   await page.getByRole("button", { name: "Open menu" }).click();
@@ -1153,8 +1153,8 @@ async function installApiMocks(page: Page): Promise<void> {
     const path = new URL(route.request().url()).pathname;
     const method = route.request().method();
     const failingActivationModelId =
-      route.request().headers()["x-soko-test-failing-activation-model"] ?? null;
-    const seedActiveModelId = route.request().headers()["x-soko-test-seed-active-model"];
+      route.request().headers()["x-grogoni-test-failing-activation-model"] ?? null;
+    const seedActiveModelId = route.request().headers()["x-grogoni-test-seed-active-model"];
     if (seedActiveModelId !== undefined && activeModelBinding === null) {
       activeModelBinding = {
         id: "responsive-seed-binding",
@@ -1209,10 +1209,10 @@ async function installApiMocks(page: Page): Promise<void> {
     if (path === "/public/storefronts" && method === "GET") {
       return json({ storefronts: [mockPublicStorefront] });
     }
-    if (path === "/public/storefronts/soko.responsive-public-shop" && method === "GET") {
+    if (path === "/public/storefronts/grogoni.responsive-public-shop" && method === "GET") {
       return json(mockPublicStorefront);
     }
-    if (path === "/public/storefronts/soko.responsive-public-shop/sessions" && method === "POST") {
+    if (path === "/public/storefronts/grogoni.responsive-public-shop/sessions" && method === "POST") {
       return json({
         conversationId: "responsive-public-conversation",
         capabilityToken: "responsive-public-capability",
@@ -1250,7 +1250,7 @@ async function installApiMocks(page: Page): Promise<void> {
     }
     if (path === "/v1/conversations/responsive-conversation" && method === "GET") {
       return json(
-        route.request().headers()["x-soko-test-owner-controls"] === "true"
+        route.request().headers()["x-grogoni-test-owner-controls"] === "true"
           ? mockOwnerControlsConversationView
           : mockConversationView
       );
@@ -1325,7 +1325,7 @@ async function installApiMocks(page: Page): Promise<void> {
       const modelId = activeModelBinding?.modelId ?? "openai-fast";
       const model = modelCatalog.find((candidate) => candidate.id === modelId);
       return json({
-        agent: { id: "builtin:shopkeeper", name: "Soko AI", runtimeAdapterId: "soko" },
+        agent: { id: "builtin:shopkeeper", name: "Grogoni AI", runtimeAdapterId: "grogoni" },
         model: { id: modelId, name: model?.label ?? modelId },
         execution: { type: "backend", hostId: null, ready: true },
         binding: activeModelBinding !== null ? { id: activeModelBinding.id } : null,
@@ -1340,7 +1340,7 @@ async function installApiMocks(page: Page): Promise<void> {
         healthCheck: {
           ok: true,
           modelId,
-          provider: "soko",
+          provider: "grogoni",
           executionTarget: "backend",
           latencyMs: 42,
           responsePreview: null,
@@ -1383,7 +1383,7 @@ async function installApiMocks(page: Page): Promise<void> {
         healthCheck: {
           ok: true,
           modelId,
-          provider: "soko",
+          provider: "grogoni",
           executionTarget: "backend",
           latencyMs: 42,
           responsePreview: null,
@@ -1546,8 +1546,8 @@ const mockOssAgent = {
 };
 
 const mockPublicStorefront = {
-  agentId: "soko.responsive-public-shop",
-  sokoId: "soko.responsive-public-shop",
+  agentId: "grogoni.responsive-public-shop",
+  grogoniId: "grogoni.responsive-public-shop",
   businessName: "Responsive Public Shop",
   presence: { status: "online", updatedAt: "2026-07-15T00:00:00.000Z" },
   products: [

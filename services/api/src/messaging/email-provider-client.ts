@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import type { ConnectedMailboxProvider, ConnectedMailboxProviderSummary } from "@soko/shared-types";
+import type { ConnectedMailboxProvider, ConnectedMailboxProviderSummary } from "@grogoni/shared-types";
 
 export interface EmailProviderTokens {
   accessToken: string;
@@ -398,7 +398,7 @@ class EnvironmentEmailMailboxProviderClient implements EmailMailboxProviderClien
           subject: input.subject,
           body: { contentType: "Text", content: input.text },
           toRecipients: [{ emailAddress: { address: input.recipientAddress } }],
-          internetMessageHeaders: [{ name: "x-soko-message-id", value: input.idempotencyKey }],
+          internetMessageHeaders: [{ name: "x-grogoni-message-id", value: input.idempotencyKey }],
           attachments: outlookAttachments(input.attachments)
         })
       }
@@ -602,7 +602,7 @@ function createRfc822Message(input: EmailProviderSendRequest): string {
     `From: ${input.senderAddress}`,
     `To: ${input.recipientAddress}`,
     `Subject: ${encodeHeader(input.subject)}`,
-    `Message-ID: <${sanitizeHeader(input.idempotencyKey)}@soko.market>`,
+    `Message-ID: <${sanitizeHeader(input.idempotencyKey)}@grogoni.com>`,
     "MIME-Version: 1.0",
     'Content-Type: text/plain; charset="UTF-8"',
     "Content-Transfer-Encoding: 8bit"
@@ -611,12 +611,12 @@ function createRfc822Message(input: EmailProviderSendRequest): string {
 }
 
 function createMultipartRfc822Message(input: EmailProviderSendRequest): string {
-  const boundary = `soko-${createHash("sha256").update(input.idempotencyKey).digest("hex").slice(0, 24)}`;
+  const boundary = `grogoni-${createHash("sha256").update(input.idempotencyKey).digest("hex").slice(0, 24)}`;
   const headers = [
     `From: ${input.senderAddress}`,
     `To: ${input.recipientAddress}`,
     `Subject: ${encodeHeader(input.subject)}`,
-    `Message-ID: <${sanitizeHeader(input.idempotencyKey)}@soko.market>`,
+    `Message-ID: <${sanitizeHeader(input.idempotencyKey)}@grogoni.com>`,
     "MIME-Version: 1.0",
     `Content-Type: multipart/mixed; boundary="${boundary}"`
   ];

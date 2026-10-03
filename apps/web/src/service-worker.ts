@@ -24,7 +24,7 @@ export function registerAppServiceWorker() {
       if (!isExplicitOfflineMode()) return registration.update();
     })
     .catch((error: unknown) => {
-      console.error("Unable to register the Soko.market service worker.", error);
+      console.error("Unable to register the Grogoni service worker.", error);
     });
 }
 
@@ -37,7 +37,7 @@ async function unregisterDevelopmentServiceWorkers() {
       const cacheNames = await globalThis.caches.keys();
       await Promise.all(
         cacheNames
-          .filter((cacheName) => cacheName.startsWith("soko-market-app-"))
+          .filter((cacheName) => cacheName.startsWith("grogoni-app-"))
           .map((cacheName) => globalThis.caches.delete(cacheName))
       );
     }

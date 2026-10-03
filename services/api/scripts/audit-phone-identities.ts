@@ -30,7 +30,7 @@ if (databaseUrl === null) {
 
 const pool = new Pool(
   databasePoolConfig(databaseUrl, {
-    applicationName: apply ? "soko-phone-normalize" : "soko-phone-audit",
+    applicationName: apply ? "grogoni-phone-normalize" : "grogoni-phone-audit",
     poolMaxFallback: 1
   })
 );

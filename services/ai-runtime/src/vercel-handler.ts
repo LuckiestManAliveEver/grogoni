@@ -3,7 +3,7 @@ import type {
   InferenceExecutionEvent,
   InferenceExecutionRequest,
   ResolvedModelArtifact
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
 import { downloadVerifiedArtifact } from "./artifact-loader.js";
 import { generateWithHuggingFace, type HuggingFaceRuntimeConfig } from "./huggingface-runtime.js";
@@ -50,7 +50,7 @@ export type InferenceEngineResolution =
   { engine: "llama-cpp" } | { engine: "huggingface"; huggingFaceModelId: string };
 
 /**
- * Decides, per request, which engine actually serves a given Soko model id - the concurrency this
+ * Decides, per request, which engine actually serves a given Grogoni model id - the concurrency this
  * module adds over the pre-hybrid design, where the whole deployment was hard-wired to exactly one
  * engine. A model id present in HF_MODEL_MAP always routes to Hugging Face regardless of
  * `config.provider`. When `config.provider === "huggingface"` (the legacy exclusive mode), an
@@ -92,9 +92,9 @@ export interface VercelInferenceDependencies {
 export function readVercelInferenceConfig(
   environment: NodeJS.ProcessEnv = process.env
 ): VercelInferenceConfig {
-  const serviceToken = environment.SOKO_INFERENCE_SERVICE_TOKEN?.trim() ?? "";
+  const serviceToken = environment.GROGONI_INFERENCE_SERVICE_TOKEN?.trim() ?? "";
   if (serviceToken.length < 32) {
-    throw new Error("SOKO_INFERENCE_SERVICE_TOKEN must contain at least 32 characters.");
+    throw new Error("GROGONI_INFERENCE_SERVICE_TOKEN must contain at least 32 characters.");
   }
   const provider = providerValue(environment.INFERENCE_PROVIDER);
   const hosts = (environment.MODEL_ARTIFACT_ALLOWED_HOSTS ?? "")
@@ -334,7 +334,7 @@ export function createVercelInferenceHandler(
 export function createVercelHealthHandler(): () => Response {
   return () =>
     Response.json(
-      { ok: true, service: "soko-ai-runtime" },
+      { ok: true, service: "grogoni-ai-runtime" },
       { headers: { "cache-control": "no-store" } }
     );
 }
@@ -362,7 +362,7 @@ export function createVercelReadyHandler(
         {
           ok: false,
           ready: false,
-          service: "soko-ai-runtime",
+          service: "grogoni-ai-runtime",
           reason: error instanceof Error ? error.message : "Configuration is invalid."
         },
         { status: 503, headers: { "cache-control": "no-store" } }
@@ -372,7 +372,7 @@ export function createVercelReadyHandler(
       {
         ok: true,
         ready: true,
-        service: "soko-ai-runtime",
+        service: "grogoni-ai-runtime",
         configured: true,
         capabilities: {
           formats: [
@@ -626,22 +626,22 @@ function huggingFaceModelMap(
     parsed = JSON.parse(text);
   } catch {
     throw new Error(
-      "HF_MODEL_MAP must be a JSON object of Soko model IDs to Hugging Face model IDs."
+      "HF_MODEL_MAP must be a JSON object of Grogoni model IDs to Hugging Face model IDs."
     );
   }
   if (!record(parsed) || Object.keys(parsed).length === 0) {
     throw new Error("HF_MODEL_MAP must contain at least one model mapping.");
   }
   const models = new Map<string, string>();
-  for (const [sokoModelId, huggingFaceModelId] of Object.entries(parsed)) {
+  for (const [grogoniModelId, huggingFaceModelId] of Object.entries(parsed)) {
     if (
-      sokoModelId.trim() === "" ||
+      grogoniModelId.trim() === "" ||
       typeof huggingFaceModelId !== "string" ||
       huggingFaceModelId.trim() === ""
     ) {
       throw new Error("HF_MODEL_MAP keys and values must be non-empty strings.");
     }
-    models.set(sokoModelId, huggingFaceModelId.trim());
+    models.set(grogoniModelId, huggingFaceModelId.trim());
   }
   return models;
 }

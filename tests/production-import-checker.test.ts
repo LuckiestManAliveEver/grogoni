@@ -29,9 +29,9 @@ describe("production import checker", () => {
 
     const output = formatProductionImportViolations(checkProductionImports(fixture)).join("\n");
     expect(output).toContain("Missing production build output:");
-    expect(output).toContain("Package: @soko/fixture");
+    expect(output).toContain("Package: @grogoni/fixture");
     expect(output).toContain("Expected: service/dist/index.js");
-    expect(output).toContain("Run: pnpm --filter @soko/fixture build");
+    expect(output).toContain("Run: pnpm --filter @grogoni/fixture build");
   });
 
   it("rejects compiled imports that reach into TypeScript source", async () => {
@@ -48,13 +48,13 @@ describe("production import checker", () => {
 });
 
 async function createPackageFixture() {
-  const rootDirectory = await mkdtemp(join(tmpdir(), "soko-production-imports-"));
+  const rootDirectory = await mkdtemp(join(tmpdir(), "grogoni-production-imports-"));
   temporaryDirectories.push(rootDirectory);
   await mkdir(join(rootDirectory, "service/dist"), { recursive: true });
   await writeFile(
     join(rootDirectory, "service/package.json"),
     JSON.stringify({
-      name: "@soko/fixture",
+      name: "@grogoni/fixture",
       type: "module",
       main: "./dist/index.js",
       types: "./dist/index.d.ts",
@@ -71,10 +71,10 @@ async function createPackageFixture() {
     rootDirectory,
     packages: [
       {
-        packageName: "@soko/fixture",
+        packageName: "@grogoni/fixture",
         manifestPath: "service/package.json",
         additionalOutputs: [],
-        command: "pnpm --filter @soko/fixture build"
+        command: "pnpm --filter @grogoni/fixture build"
       }
     ]
   };

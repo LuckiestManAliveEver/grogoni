@@ -1,13 +1,13 @@
 # Agent model runtime connection
 
-Soko keeps one business agent and one messenger pipeline. Installed GGUF files live in OPFS under
-the existing `soko-ai-models` private directory. The browser stores a device-scoped installation
+Grogoni keeps one business agent and one messenger pipeline. Installed GGUF files live in OPFS under
+the existing `grogoni-ai-models` private directory. The browser stores a device-scoped installation
 record and assignment; the API stores only safe installation metadata and the assignment. A raw
 Android filesystem path is never sent to the API or telemetry.
 
 ## Runtime boundary
 
-The adaptive runtime uses an Android-injected `window.SokoAgentModelRuntime` bridge when available,
+The adaptive runtime uses an Android-injected `window.GrogoniAgentModelRuntime` bridge when available,
 otherwise it uses the existing Wllama llama.cpp/WASM engine for compatible OPFS GGUF files. Wllama
 owns a dedicated inference Worker; model loading and token generation do not execute the heavy
 llama.cpp loop on the React/UI thread. Descriptors contain an opaque OPFS storage key, not a native
@@ -31,7 +31,7 @@ The bridge should:
 - honor cancellation and release native buffers on unload or process teardown;
 - return safe error codes without logging prompts, messages, private paths, or customer data.
 
-Readiness is established only by real inference of `Reply with exactly: SOKO_MODEL_READY`. The
+Readiness is established only by real inference of `Reply with exactly: GROGONI_MODEL_READY`. The
 test result is configuration metadata and is not written into the customer conversation.
 
 ## Activation lifecycle and source of truth
@@ -123,12 +123,12 @@ device agent/model assignment
 provider-neutral chat dispatcher
               |
               v
-local generation -> authorized Soko tool boundary -> streamed response
+local generation -> authorized Grogoni tool boundary -> streamed response
 ```
 
 The separate Transformers.js/WebLLM browser catalog remains another adapter inside the same
 provider-neutral router. Neither local adapter silently changes to cloud. Repository-backed agents
-are metadata/instructions unless a real isolated backend adapter is composed; general Soko agent
+are metadata/instructions unless a real isolated backend adapter is composed; general Grogoni agent
 readiness does not advertise repository source as executable.
 
 ## Composer actions

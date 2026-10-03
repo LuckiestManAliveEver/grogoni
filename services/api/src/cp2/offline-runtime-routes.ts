@@ -5,7 +5,7 @@ import {
   type OfflineOrderIntent,
   type OfflineOrderItemIntent,
   type OfflineOrderCustomerClaim
-} from "@soko/offline-runtime";
+} from "@grogoni/offline-runtime";
 import { type Cp2Store, readSessionCookie } from "./store.js";
 import { Cp2Error } from "./cp2-error.js";
 import { parseRequestBody, parseString, sendCp2Error } from "./route-helpers.js";
@@ -38,7 +38,7 @@ export function registerOfflineRuntimeRoutes(app: FastifyInstance, store: Cp2Sto
       const results = [];
       for (const raw of body.ops) {
         const operation = parseOperation(raw);
-        const deviceId = request.headers["x-soko-device-id"];
+        const deviceId = request.headers["x-grogoni-device-id"];
         if (typeof deviceId !== "string" || deviceId !== operation.deviceId)
           throw new Cp2Error(
             403,

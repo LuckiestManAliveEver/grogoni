@@ -1,8 +1,8 @@
-import type { InvoiceSummary, ProductSummary } from "./soko-application-shared";
+import type { InvoiceSummary, ProductSummary } from "./grogoni-application-shared";
 
 /**
  * Pure, deterministic data shaping for the merchant workspace dashboard (audit A27, docs/audits/
- * soko-home-2026-09-17/audit.md). The reference's single-screen dashboard ("Orders today",
+ * grogoni-home-2026-09-17/audit.md). The reference's single-screen dashboard ("Orders today",
  * "Revenue today", "Pending", recent orders, catalogue) has no backend equivalent that is already
  * scoped to "today" - only all-time aggregates (BusinessReportSummary) exist. Rather than add a
  * new backend aggregation for a single UI screen, this derives "today" client-side from the real

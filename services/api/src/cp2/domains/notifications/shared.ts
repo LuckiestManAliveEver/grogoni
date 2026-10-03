@@ -2,7 +2,7 @@ import type {
   BusinessNotificationSummary,
   BusinessNotificationType,
   NotificationInbox
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
 /**
  * `ensureDeterministicNotifications` upserts each rule-based notification under a ruleKey

@@ -1,4 +1,4 @@
-# Soko.market Terms of Service
+# Grogoni Terms of Service
 
 **Version:** 1.0 (Draft)
 **Part III – Commercial Terms, Payments, Intellectual Property, Security, Compliance, and Third-Party Services**
@@ -7,7 +7,7 @@
 
 # 33. Subscription Plans
 
-Soko.market may offer the Services under one or more commercial plans, including:
+Grogoni may offer the Services under one or more commercial plans, including:
 
 - Free plans;
 - Individual plans;
@@ -49,9 +49,9 @@ Unless otherwise stated:
 
 # 35. Payment Methods
 
-Soko.market may accept payment through supported payment providers.
+Grogoni may accept payment through supported payment providers.
 
-Users authorize Soko.market and its payment processors to:
+Users authorize Grogoni and its payment processors to:
 
 - collect applicable charges;
 - process recurring payments where authorized;
@@ -60,7 +60,7 @@ Users authorize Soko.market and its payment processors to:
 
 Payment information may be processed by third-party payment providers in accordance with their own terms and privacy notices.
 
-Soko.market does not store full payment card information unless expressly stated.
+Grogoni does not store full payment card information unless expressly stated.
 
 ---
 
@@ -82,7 +82,7 @@ Unless otherwise required by law or expressly stated:
 
 - digital services already provided are generally non-refundable;
 - marketplace purchases are subject to the policies applicable to the relevant listing;
-- partial refunds may be granted at Soko.market's discretion.
+- partial refunds may be granted at Grogoni's discretion.
 
 Nothing in these Terms limits any mandatory statutory rights that cannot lawfully be excluded.
 
@@ -90,9 +90,9 @@ Nothing in these Terms limits any mandatory statutory rights that cannot lawfull
 
 # 38. Taxes
 
-Users are responsible for any taxes arising from their use of the Services, except taxes imposed on Soko.market's income.
+Users are responsible for any taxes arising from their use of the Services, except taxes imposed on Grogoni's income.
 
-Where required by law, Soko.market may collect and remit:
+Where required by law, Grogoni may collect and remit:
 
 - value-added tax (VAT);
 - goods and services tax (GST);
@@ -114,7 +114,7 @@ Marketplace transactions may occur between:
 - publishers;
 - third-party vendors.
 
-Unless expressly stated otherwise, Soko.market acts solely as the platform operator facilitating such transactions.
+Unless expressly stated otherwise, Grogoni acts solely as the platform operator facilitating such transactions.
 
 Publishers remain responsible for:
 
@@ -128,7 +128,7 @@ Publishers remain responsible for:
 
 # 40. Intellectual Property Ownership
 
-The Services, including software, source code, user interfaces, documentation, trademarks, service marks, branding, graphics, designs, databases, algorithms, and related materials, are owned by Soko.market or its licensors and are protected by applicable intellectual property laws.
+The Services, including software, source code, user interfaces, documentation, trademarks, service marks, branding, graphics, designs, databases, algorithms, and related materials, are owned by Grogoni or its licensors and are protected by applicable intellectual property laws.
 
 Except for the limited rights expressly granted under these Terms, no ownership rights are transferred to users.
 
@@ -136,7 +136,7 @@ Except for the limited rights expressly granted under these Terms, no ownership 
 
 # 41. User Licenses
 
-Subject to these Terms, Soko.market grants users a limited, revocable, non-exclusive, non-transferable, non-sublicensable license to access and use the Services for their intended purposes.
+Subject to these Terms, Grogoni grants users a limited, revocable, non-exclusive, non-transferable, non-sublicensable license to access and use the Services for their intended purposes.
 
 Users may not:
 
@@ -154,7 +154,7 @@ Certain components of the Services may incorporate open-source software distribu
 
 Nothing in these Terms modifies the rights or obligations arising under applicable open-source licenses.
 
-Where required, Soko.market will make applicable license notices available.
+Where required, Grogoni will make applicable license notices available.
 
 In the event of a conflict between an applicable open-source license and these Terms regarding the relevant software component, the applicable open-source license shall govern that component.
 
@@ -162,7 +162,7 @@ In the event of a conflict between an applicable open-source license and these T
 
 # 43. Trademarks
 
-The names "Soko.market," associated logos, branding, product names, and service marks are protected trademarks or trade dress owned by Soko.market or its licensors.
+The names "Grogoni," associated logos, branding, product names, and service marks are protected trademarks or trade dress owned by Grogoni or its licensors.
 
 Users may not use such marks in a manner likely to cause confusion or imply sponsorship, endorsement, or affiliation without prior written permission.
 
@@ -172,11 +172,11 @@ Reasonable referential use, where permitted by law, is not prohibited.
 
 # 44. Copyright Complaints
 
-Soko.market respects intellectual property rights.
+Grogoni respects intellectual property rights.
 
 A copyright owner or authorized representative may submit a notice identifying allegedly infringing material.
 
-Upon receipt of a sufficiently detailed notice, Soko.market may:
+Upon receipt of a sufficiently detailed notice, Grogoni may:
 
 - investigate the claim;
 - temporarily disable access to the material;
@@ -190,7 +190,7 @@ Knowingly submitting false infringement claims may result in legal consequences 
 
 # 45. Confidential Information
 
-During use of the Services, users may receive confidential information belonging to Soko.market or other users.
+During use of the Services, users may receive confidential information belonging to Grogoni or other users.
 
 Confidential information includes non-public business, technical, commercial, financial, or operational information designated as confidential or that should reasonably be understood to be confidential.
 
@@ -206,7 +206,7 @@ This obligation does not apply to information that is publicly available through
 
 # 46. Security Responsibilities
 
-Soko.market implements technical and organizational measures designed to protect the confidentiality, integrity, and availability of the Services.
+Grogoni implements technical and organizational measures designed to protect the confidentiality, integrity, and availability of the Services.
 
 Users are responsible for maintaining reasonable security practices, including:
 
@@ -216,13 +216,13 @@ Users are responsible for maintaining reasonable security practices, including:
 - reporting suspected compromises;
 - avoiding unauthorized credential sharing.
 
-Security is a shared responsibility between Soko.market and its users.
+Security is a shared responsibility between Grogoni and its users.
 
 ---
 
 # 47. Responsible Security Research
 
-Soko.market welcomes responsible disclosure of genuine security vulnerabilities.
+Grogoni welcomes responsible disclosure of genuine security vulnerabilities.
 
 Security researchers must:
 
@@ -237,7 +237,7 @@ Nothing in this section authorizes testing that would otherwise violate applicab
 
 # 48. Availability of the Services
 
-Soko.market aims to provide reliable access to the Services but does not guarantee uninterrupted or error-free operation.
+Grogoni aims to provide reliable access to the Services but does not guarantee uninterrupted or error-free operation.
 
 Availability may be affected by:
 
@@ -299,7 +299,7 @@ Users agree not to use or access the Services in violation of applicable export 
 
 Users represent that they are not located in, ordinarily resident in, or acting on behalf of persons or entities subject to applicable sanctions that prohibit access to the Services.
 
-Soko.market may restrict or terminate access where necessary to comply with applicable legal obligations.
+Grogoni may restrict or terminate access where necessary to comply with applicable legal obligations.
 
 ---
 
@@ -307,7 +307,7 @@ Soko.market may restrict or terminate access where necessary to comply with appl
 
 The Services may interoperate with third-party software, platforms, infrastructure providers, cloud services, communication providers, payment processors, or other external services.
 
-Soko.market does not control third-party services and is not responsible for:
+Grogoni does not control third-party services and is not responsible for:
 
 - their availability;
 - their security practices;
@@ -321,7 +321,7 @@ Users acknowledge that their use of such services is governed by the applicable 
 
 # 53. Service Modifications
 
-Soko.market continuously develops and improves the Services.
+Grogoni continuously develops and improves the Services.
 
 Accordingly, we may:
 
@@ -340,7 +340,7 @@ Where reasonably practicable, material changes affecting paid Services will be c
 
 Users may voluntarily submit suggestions, ideas, enhancement requests, bug reports, comments, or other feedback relating to the Services.
 
-Unless otherwise agreed in writing, users grant Soko.market a perpetual, irrevocable, worldwide, royalty-free, transferable license to use, modify, incorporate, publish, and otherwise exploit such feedback without restriction or obligation to provide compensation.
+Unless otherwise agreed in writing, users grant Grogoni a perpetual, irrevocable, worldwide, royalty-free, transferable license to use, modify, incorporate, publish, and otherwise exploit such feedback without restriction or obligation to provide compensation.
 
 Nothing in this section transfers ownership of unrelated user intellectual property.
 

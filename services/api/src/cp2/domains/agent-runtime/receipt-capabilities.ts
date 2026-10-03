@@ -1,4 +1,4 @@
-import type { RuntimePlannedAction } from "@soko/shared-types";
+import type { RuntimePlannedAction } from "@grogoni/shared-types";
 import type { AgentRuntimeDomainDeps } from "./store.js";
 
 export function executeReceiptCapability(

@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import {
-  commerceAddressFromSokoId,
+  commerceAddressFromGrogoniId,
   type ProductSummary,
   type ShareableCatalogueProductSummary,
   type ShareableCatalogueSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { useAsyncActions } from "./hooks/useAsyncActions";
 import { getJson, postJson } from "./api-helpers";
 import { getUserFacingErrorMessage } from "./user-facing-error";
@@ -109,7 +109,7 @@ export default function CatalogueBrowsePanel({
               Search shops
               <input
                 value={searchDraft}
-                placeholder="Shop name or Soko ID"
+                placeholder="Shop name or Grogoni ID"
                 onChange={(event) => setSearchDraft(event.target.value)}
               />
             </label>
@@ -138,7 +138,7 @@ export default function CatalogueBrowsePanel({
                   }
                 >
                   <strong>{shop.businessName}</strong>
-                  <small>{commerceAddressFromSokoId(shop.sokoId)}</small>
+                  <small>{commerceAddressFromGrogoniId(shop.grogoniId)}</small>
                   <p>
                     {shop.productCount} catalogue {shop.productCount === 1 ? "item" : "items"}
                   </p>

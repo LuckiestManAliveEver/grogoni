@@ -1,7 +1,7 @@
 # Observability: metrics
 
 `services/api` exposes a Prometheus-format `GET /metrics` endpoint backed by
-`packages/observability` (`@soko/observability`, wrapping the official
+`packages/observability` (`@grogoni/observability`, wrapping the official
 `@prometheus-io/client` - the package `prom-client` now redirects to). This is the "first
 measure" pass called for in
 [`docs/single-instance-store-ceiling.md`](./single-instance-store-ceiling.md)'s recommended
@@ -50,7 +50,7 @@ Connection-pool saturation as a ratio:
 ```bash
 curl -s http://127.0.0.1:4000/metrics
 # or, in production, with the auth token set:
-curl -s -H "x-metrics-token: $METRICS_AUTH_TOKEN" https://soko.market/metrics
+curl -s -H "x-metrics-token: $METRICS_AUTH_TOKEN" https://grogoni.com/metrics
 ```
 
 `METRICS_AUTH_TOKEN` (render.yaml, `generateValue: true`) gates the endpoint in any
@@ -65,7 +65,7 @@ a scraper polling every few seconds never gets throttled.
 
 - `services/sync` and `services/ai-runtime` are not instrumented. The ceiling doc's concern is
   specifically `services/api`'s single in-memory store, so that's where this pass focused; wiring
-  the other services in is a follow-up, and `@soko/observability` is already a shared package so
+  the other services in is a follow-up, and `@grogoni/observability` is already a shared package so
   doing so is additive (`createMetrics` + `instrumentPgPool` + the HTTP hook), not a rewrite.
 - Nothing scrapes `/metrics` today (no Prometheus/Grafana deployed alongside this Blueprint).
   The endpoint is real and correct against a live pool - see the test suite - but a scraper and a

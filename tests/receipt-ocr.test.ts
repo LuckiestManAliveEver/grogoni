@@ -538,7 +538,7 @@ async function createOwnerBusiness(app: ReturnType<typeof buildApi>) {
     },
     null
   );
-  const sessionCookie = `soko_session=${verified.session.id}`;
+  const sessionCookie = `grogoni_session=${verified.session.id}`;
   const created = await postJson<CreateBusinessResponse>(
     app,
     "/businesses",

@@ -45,7 +45,7 @@ describe("CP23 MCP tool gateway", () => {
     const endpoint = await mcpPost(
       app,
       token.accessToken,
-      toolCall(2, "soko.register_secure_endpoint", {
+      toolCall(2, "grogoni.register_secure_endpoint", {
         endpointId: "sender-agent-endpoint",
         label: "Sender agent runtime",
         publicKey: secureFixturePublicKey
@@ -60,7 +60,7 @@ describe("CP23 MCP tool gateway", () => {
     const created = await mcpPost(
       app,
       token.accessToken,
-      toolCall(3, "soko.create_secure_channel", {
+      toolCall(3, "grogoni.create_secure_channel", {
         recipient: "+254700000242",
         title: "Agent and model coordination"
       }),
@@ -70,7 +70,7 @@ describe("CP23 MCP tool gateway", () => {
     const channel = await mcpPost(
       app,
       token.accessToken,
-      toolCall(4, "soko.get_secure_channel", { conversationId }),
+      toolCall(4, "grogoni.get_secure_channel", { conversationId }),
       sessionId
     );
     expect(channel.json().result.structuredContent.devices).toEqual(
@@ -87,7 +87,7 @@ describe("CP23 MCP tool gateway", () => {
     const sent = await mcpPost(
       app,
       token.accessToken,
-      toolCall(5, "soko.send_secure_message", {
+      toolCall(5, "grogoni.send_secure_message", {
         conversationId,
         idempotencyKey: "secure-agent-model-message-1",
         content: secureMessage
@@ -106,7 +106,7 @@ describe("CP23 MCP tool gateway", () => {
     const replayed = await mcpPost(
       app,
       token.accessToken,
-      toolCall(6, "soko.send_secure_message", {
+      toolCall(6, "grogoni.send_secure_message", {
         conversationId,
         idempotencyKey: "secure-agent-model-message-1",
         content: secureMessage
@@ -121,7 +121,7 @@ describe("CP23 MCP tool gateway", () => {
     const plaintext = await mcpPost(
       app,
       token.accessToken,
-      toolCall(7, "soko.send_message", {
+      toolCall(7, "grogoni.send_message", {
         conversationId,
         text: "Agent and model plaintext leak",
         idempotencyKey: "plaintext-agent-model-message-1"
@@ -135,7 +135,7 @@ describe("CP23 MCP tool gateway", () => {
     const plaintextDisguised = await mcpPost(
       app,
       token.accessToken,
-      toolCall(8, "soko.send_secure_message", {
+      toolCall(8, "grogoni.send_secure_message", {
         conversationId,
         idempotencyKey: "plaintext-agent-model-message-2",
         content: { type: "text", text: "Agent and model plaintext leak" }
@@ -181,7 +181,7 @@ describe("CP23 MCP tool gateway", () => {
       mcpPost(app, token.accessToken, toolCall(requestId++, name, args), sessionId);
     const send = async (idempotencyKey: string, deviceIds: string[]) =>
       (
-        await call("soko.send_secure_message", {
+        await call("grogoni.send_secure_message", {
           conversationId,
           idempotencyKey,
           content: encryptedMcpFixture(deviceIds)
@@ -189,12 +189,12 @@ describe("CP23 MCP tool gateway", () => {
       ).json().result;
     const rejected = (code: string) => ({ isError: true, structuredContent: { code } });
 
-    await call("soko.register_secure_endpoint", {
+    await call("grogoni.register_secure_endpoint", {
       endpointId: "sender-agent-endpoint",
       label: "Sender agent runtime",
       publicKey: secureFixturePublicKey
     });
-    const created = await call("soko.create_secure_channel", { recipient: "+254700000244" });
+    const created = await call("grogoni.create_secure_channel", { recipient: "+254700000244" });
     const conversationId: string = created.json().result.structuredContent.conversation.id;
 
     // Recipient has no endpoint yet: nothing can be encrypted for them.
@@ -244,7 +244,7 @@ describe("CP23 MCP tool gateway", () => {
     expect(await send("envelope-stale-add", live)).toMatchObject(
       rejected("e2ee_device_set_changed")
     );
-    const refreshed = await call("soko.get_secure_channel", { conversationId });
+    const refreshed = await call("grogoni.get_secure_channel", { conversationId });
     const refreshedIds = refreshed
       .json()
       .result.structuredContent.devices.map((device: { id: string }) => device.id)
@@ -361,7 +361,7 @@ describe("CP23 MCP tool gateway", () => {
   it("links ChatGPT through OAuth 2.1 authorization code with PKCE", async () => {
     const app = buildApi();
     const cookie = await createSession(app, "254700000230");
-    const verifier = "soko-chatgpt-oauth-verifier-0123456789abcdef";
+    const verifier = "grogoni-chatgpt-oauth-verifier-0123456789abcdef";
     const challenge = createHash("sha256").update(verifier).digest("base64url");
 
     const resourceMetadata = await app.inject({
@@ -370,8 +370,8 @@ describe("CP23 MCP tool gateway", () => {
     });
     expect(resourceMetadata.statusCode).toBe(200);
     expect(resourceMetadata.json()).toMatchObject({
-      resource: "https://soko.market/mcp",
-      authorization_servers: ["https://soko.market"],
+      resource: "https://grogoni.com/mcp",
+      authorization_servers: ["https://grogoni.com"],
       scopes_supported: ["mcp:read", "mcp:act"]
     });
 
@@ -380,23 +380,23 @@ describe("CP23 MCP tool gateway", () => {
       url: "/.well-known/oauth-authorization-server"
     });
     expect(serverMetadata.json()).toMatchObject({
-      issuer: "https://soko.market",
-      authorization_endpoint: "https://soko.market/oauth/authorize",
-      token_endpoint: "https://soko.market/oauth/token",
+      issuer: "https://grogoni.com",
+      authorization_endpoint: "https://grogoni.com/oauth/authorize",
+      token_endpoint: "https://grogoni.com/oauth/token",
       code_challenge_methods_supported: ["S256"],
       token_endpoint_auth_methods_supported: ["none"],
       client_id_metadata_document_supported: true,
       authorization_response_iss_parameter_supported: true
     });
 
-    const authorizeUrl = new URL("https://soko.market/oauth/authorize");
+    const authorizeUrl = new URL("https://grogoni.com/oauth/authorize");
     authorizeUrl.searchParams.set("response_type", "code");
     authorizeUrl.searchParams.set("client_id", "https://chatgpt.com/oauth/client.json");
     authorizeUrl.searchParams.set(
       "redirect_uri",
       "https://chatgpt.com/connector_platform_oauth_redirect"
     );
-    authorizeUrl.searchParams.set("resource", "https://soko.market/mcp");
+    authorizeUrl.searchParams.set("resource", "https://grogoni.com/mcp");
     authorizeUrl.searchParams.set("scope", "mcp:read mcp:act");
     authorizeUrl.searchParams.set("state", "chatgpt-state");
     authorizeUrl.searchParams.set("code_challenge", challenge);
@@ -409,7 +409,7 @@ describe("CP23 MCP tool gateway", () => {
     });
     expect(consent.statusCode).toBe(200);
     expect(consent.headers["cache-control"]).toBe("no-store");
-    expect(consent.body).toContain("Connect ChatGPT to Soko Market");
+    expect(consent.body).toContain("Connect ChatGPT to Grogoni");
     const requestId = consent.body.match(/request_id=([^&"]+)/u)?.[1];
     expect(requestId).toBeTruthy();
 
@@ -424,7 +424,7 @@ describe("CP23 MCP tool gateway", () => {
       "https://chatgpt.com/connector_platform_oauth_redirect"
     );
     expect(callback.searchParams.get("state")).toBe("chatgpt-state");
-    expect(callback.searchParams.get("iss")).toBe("https://soko.market");
+    expect(callback.searchParams.get("iss")).toBe("https://grogoni.com");
     const code = callback.searchParams.get("code");
     expect(code).toBeTruthy();
 
@@ -437,13 +437,13 @@ describe("CP23 MCP tool gateway", () => {
         code: String(code),
         client_id: "https://chatgpt.com/oauth/client.json",
         redirect_uri: "https://chatgpt.com/connector_platform_oauth_redirect",
-        resource: "https://soko.market/mcp",
+        resource: "https://grogoni.com/mcp",
         code_verifier: verifier
       }).toString()
     });
     expect(token.statusCode).toBe(200);
     expect(token.json()).toMatchObject({
-      access_token: expect.stringMatching(/^soko_mcp_[a-f0-9]{64}$/u),
+      access_token: expect.stringMatching(/^grogoni_mcp_[a-f0-9]{64}$/u),
       token_type: "Bearer",
       expires_in: 3600,
       scope: "mcp:read mcp:act"
@@ -457,7 +457,7 @@ describe("CP23 MCP tool gateway", () => {
       String(initialized.headers["mcp-session-id"])
     );
     expect(listed.json().result.tools[0]).toMatchObject({
-      name: "soko.get_profile",
+      name: "grogoni.get_profile",
       outputSchema: { required: ["id"] },
       securitySchemes: [{ type: "oauth2", scopes: ["mcp:read"] }],
       _meta: { "openai/profile": true }
@@ -472,7 +472,7 @@ describe("CP23 MCP tool gateway", () => {
         code: String(code),
         client_id: "https://chatgpt.com/oauth/client.json",
         redirect_uri: "https://chatgpt.com/connector_platform_oauth_redirect",
-        resource: "https://soko.market/mcp",
+        resource: "https://grogoni.com/mcp",
         code_verifier: verifier
       }).toString()
     });
@@ -526,13 +526,13 @@ describe("CP23 MCP tool gateway", () => {
       payload: JSON.stringify(initializeRequest())
     });
     expect(initialized.statusCode).toBe(200);
-    expect(initialized.json().result.serverInfo).toMatchObject({ name: "soko-market" });
+    expect(initialized.json().result.serverInfo).toMatchObject({ name: "grogoni" });
 
     const sessionId = String(initialized.headers["mcp-session-id"]);
     const profile = await mcpPost(
       app,
       token.accessToken,
-      toolCall(2, "soko.get_profile", {}),
+      toolCall(2, "grogoni.get_profile", {}),
       sessionId
     );
     expect(profile.json().result).toMatchObject({
@@ -547,21 +547,21 @@ describe("CP23 MCP tool gateway", () => {
       sessionId
     );
     expect(listed.json().result.tools.map((tool: { name: string }) => tool.name)).toContain(
-      "soko.get_inbox"
+      "grogoni.get_inbox"
     );
     expect(listed.json().result.tools.map((tool: { name: string }) => tool.name)).toEqual(
       expect.arrayContaining([
-        "soko.search_marketplace",
-        "soko.send_message",
-        "soko.prepare_checkout",
-        "soko.confirm_checkout"
+        "grogoni.search_marketplace",
+        "grogoni.send_message",
+        "grogoni.prepare_checkout",
+        "grogoni.confirm_checkout"
       ])
     );
 
     const inbox = await mcpPost(
       app,
       token.accessToken,
-      toolCall(4, "soko.get_inbox", { shopId: shop.business.id }),
+      toolCall(4, "grogoni.get_inbox", { shopId: shop.business.id }),
       sessionId
     );
     expect(inbox.json().result).toMatchObject({
@@ -580,7 +580,7 @@ describe("CP23 MCP tool gateway", () => {
     const sent = await mcpPost(
       app,
       token.accessToken,
-      toolCall(5, "soko.send_message", {
+      toolCall(5, "grogoni.send_message", {
         conversationId: conversation.conversation.id,
         text: "Please reserve two bags for pickup.",
         idempotencyKey: "external-agent-message-1"
@@ -598,7 +598,7 @@ describe("CP23 MCP tool gateway", () => {
     const catalogue = await mcpPost(
       app,
       token.accessToken,
-      toolCall(6, "soko.query_catalogue", {
+      toolCall(6, "grogoni.query_catalogue", {
         shopId: shop.business.id,
         query: "agent flour"
       }),
@@ -614,7 +614,7 @@ describe("CP23 MCP tool gateway", () => {
     const marketplace = await mcpPost(
       app,
       token.accessToken,
-      toolCall(7, "soko.search_marketplace", { query: "agent flour" }),
+      toolCall(7, "grogoni.search_marketplace", { query: "agent flour" }),
       sessionId
     );
     const buyItem = marketplace.json().result.structuredContent.results[0];
@@ -627,7 +627,7 @@ describe("CP23 MCP tool gateway", () => {
     const prepared = await mcpPost(
       app,
       token.accessToken,
-      toolCall(8, "soko.prepare_checkout", {
+      toolCall(8, "grogoni.prepare_checkout", {
         items: [{ ...buyItem, quantity: 2 }],
         idempotencyKey: "external-buyer-checkout-1"
       }),
@@ -644,7 +644,7 @@ describe("CP23 MCP tool gateway", () => {
     const confirmed = await mcpPost(
       app,
       token.accessToken,
-      toolCall(9, "soko.confirm_checkout", {
+      toolCall(9, "grogoni.confirm_checkout", {
         confirmationToken: prepared.json().result.structuredContent.confirmationToken
       }),
       sessionId
@@ -659,7 +659,7 @@ describe("CP23 MCP tool gateway", () => {
     const repeatedConfirmation = await mcpPost(
       app,
       token.accessToken,
-      toolCall(10, "soko.confirm_checkout", {
+      toolCall(10, "grogoni.confirm_checkout", {
         confirmationToken: prepared.json().result.structuredContent.confirmationToken
       }),
       sessionId
@@ -671,7 +671,7 @@ describe("CP23 MCP tool gateway", () => {
     await app.close();
   });
 
-  it("connects an existing system catalogue to confirmed Soko Chat orders", async () => {
+  it("connects an existing system catalogue to confirmed Grogoni Chat orders", async () => {
     const app = buildApi();
     const ownerCookie = await createSession(app, "254700000239");
     const shop = await postJson<{ business: { id: string } }>(
@@ -780,7 +780,7 @@ describe("CP23 MCP tool gateway", () => {
       { origin: "http://localhost:5173" }
     );
 
-    expect(token.accessToken).toMatch(/^soko_mcp_[a-f0-9]{64}$/);
+    expect(token.accessToken).toMatch(/^grogoni_mcp_[a-f0-9]{64}$/);
     expect(JSON.stringify(store.snapshot())).not.toContain(token.accessToken);
     expect(store.snapshot().mcpAccessTokens[0]?.tokenHash).toHaveLength(64);
 
@@ -836,29 +836,29 @@ describe("CP23 MCP tool gateway", () => {
       mcpSessionId
     );
     expect(listed.json().result.tools.map((tool: { name: string }) => tool.name)).toEqual([
-      "soko.get_profile",
-      "soko.list_shops",
-      "soko.get_sync_changes",
-      "soko.query_catalogue",
-      "soko.get_inbox",
-      "soko.search_marketplace",
-      "soko.get_secure_channel",
-      "soko.runtime_status",
-      "soko.runtime_turn",
-      "soko.confirm_runtime_action",
-      "soko.send_message",
-      "soko.register_secure_endpoint",
-      "soko.create_secure_channel",
-      "soko.send_secure_message",
-      "soko.prepare_checkout",
-      "soko.confirm_checkout",
-      "soko.runtime_checkpoint",
-      "soko.runtime_resume",
-      "soko.runtime_rollback",
-      "soko.runtime_merge",
-      "soko.agent_swap",
-      "soko.model_swap",
-      "soko.execution_host_swap"
+      "grogoni.get_profile",
+      "grogoni.list_shops",
+      "grogoni.get_sync_changes",
+      "grogoni.query_catalogue",
+      "grogoni.get_inbox",
+      "grogoni.search_marketplace",
+      "grogoni.get_secure_channel",
+      "grogoni.runtime_status",
+      "grogoni.runtime_turn",
+      "grogoni.confirm_runtime_action",
+      "grogoni.send_message",
+      "grogoni.register_secure_endpoint",
+      "grogoni.create_secure_channel",
+      "grogoni.send_secure_message",
+      "grogoni.prepare_checkout",
+      "grogoni.confirm_checkout",
+      "grogoni.runtime_checkpoint",
+      "grogoni.runtime_resume",
+      "grogoni.runtime_rollback",
+      "grogoni.runtime_merge",
+      "grogoni.agent_swap",
+      "grogoni.model_swap",
+      "grogoni.execution_host_swap"
     ]);
 
     // product.create is auto-accepted (no confirmation gate), so it can't prove the confirmation
@@ -867,7 +867,7 @@ describe("CP23 MCP tool gateway", () => {
     const createdResponse = await mcpPost(
       app,
       token.accessToken,
-      toolCall(3, "soko.runtime_turn", {
+      toolCall(3, "grogoni.runtime_turn", {
         shopId: shop.business.id,
         message: "add product sugar"
       }),
@@ -883,7 +883,7 @@ describe("CP23 MCP tool gateway", () => {
     const proposedResponse = await mcpPost(
       app,
       token.accessToken,
-      toolCall(4, "soko.runtime_turn", {
+      toolCall(4, "grogoni.runtime_turn", {
         shopId: shop.business.id,
         runtimeSessionId: created.session.id,
         message: "update product sugar ksh 200"
@@ -900,7 +900,7 @@ describe("CP23 MCP tool gateway", () => {
     const confirmedResponse = await mcpPost(
       app,
       token.accessToken,
-      toolCall(5, "soko.confirm_runtime_action", {
+      toolCall(5, "grogoni.confirm_runtime_action", {
         shopId: shop.business.id,
         runtimeSessionId: proposed.session.id,
         confirmationToken: proposed.turn.plan.confirmationToken
@@ -975,19 +975,19 @@ describe("CP23 MCP tool gateway", () => {
       String(readInitialized.headers["mcp-session-id"])
     );
     expect(readListed.json().result.tools.map((tool: { name: string }) => tool.name)).toEqual([
-      "soko.get_profile",
-      "soko.list_shops",
-      "soko.get_sync_changes",
-      "soko.query_catalogue",
-      "soko.get_inbox",
-      "soko.search_marketplace",
-      "soko.get_secure_channel",
-      "soko.runtime_status"
+      "grogoni.get_profile",
+      "grogoni.list_shops",
+      "grogoni.get_sync_changes",
+      "grogoni.query_catalogue",
+      "grogoni.get_inbox",
+      "grogoni.search_marketplace",
+      "grogoni.get_secure_channel",
+      "grogoni.runtime_status"
     ]);
     const readOnlyAction = await mcpPost(
       app,
       readOnlyToken.accessToken,
-      toolCall(20, "soko.runtime_turn", {
+      toolCall(20, "grogoni.runtime_turn", {
         shopId: first.business.id,
         message: "add product forbidden"
       }),
@@ -1000,7 +1000,7 @@ describe("CP23 MCP tool gateway", () => {
     const catalogue = await mcpPost(
       app,
       readOnlyToken.accessToken,
-      toolCall(3, "soko.query_catalogue", {
+      toolCall(3, "grogoni.query_catalogue", {
         shopId: first.business.id,
         query: "nyanya"
       }),
@@ -1022,7 +1022,7 @@ describe("CP23 MCP tool gateway", () => {
     const crossBusinessCatalogue = await mcpPost(
       app,
       readOnlyToken.accessToken,
-      toolCall(4, "soko.query_catalogue", {
+      toolCall(4, "grogoni.query_catalogue", {
         shopId: second.business.id,
         query: "tomatoes"
       }),
@@ -1052,34 +1052,34 @@ describe("CP23 MCP tool gateway", () => {
       sessionId
     );
     expect(listed.json().result.tools.map((tool: { name: string }) => tool.name)).toEqual([
-      "soko.get_profile",
-      "soko.list_shops",
-      "soko.get_sync_changes",
-      "soko.query_catalogue",
-      "soko.get_inbox",
-      "soko.search_marketplace",
-      "soko.get_secure_channel",
-      "soko.runtime_status",
-      "soko.runtime_turn",
-      "soko.confirm_runtime_action",
-      "soko.send_message",
-      "soko.register_secure_endpoint",
-      "soko.create_secure_channel",
-      "soko.send_secure_message",
-      "soko.prepare_checkout",
-      "soko.confirm_checkout",
-      "soko.runtime_checkpoint",
-      "soko.runtime_resume",
-      "soko.runtime_rollback",
-      "soko.runtime_merge",
-      "soko.agent_swap",
-      "soko.model_swap",
-      "soko.execution_host_swap"
+      "grogoni.get_profile",
+      "grogoni.list_shops",
+      "grogoni.get_sync_changes",
+      "grogoni.query_catalogue",
+      "grogoni.get_inbox",
+      "grogoni.search_marketplace",
+      "grogoni.get_secure_channel",
+      "grogoni.runtime_status",
+      "grogoni.runtime_turn",
+      "grogoni.confirm_runtime_action",
+      "grogoni.send_message",
+      "grogoni.register_secure_endpoint",
+      "grogoni.create_secure_channel",
+      "grogoni.send_secure_message",
+      "grogoni.prepare_checkout",
+      "grogoni.confirm_checkout",
+      "grogoni.runtime_checkpoint",
+      "grogoni.runtime_resume",
+      "grogoni.runtime_rollback",
+      "grogoni.runtime_merge",
+      "grogoni.agent_swap",
+      "grogoni.model_swap",
+      "grogoni.execution_host_swap"
     ]);
     const forbidden = await mcpPost(
       app,
       token.accessToken,
-      toolCall(3, "soko.runtime_turn", {
+      toolCall(3, "grogoni.runtime_turn", {
         shopId: second.business.id,
         message: "show products"
       }),
@@ -1240,7 +1240,7 @@ describe("CP23 MCP tool gateway", () => {
     const shops = await mcpPost(
       app,
       token.accessToken,
-      toolCall(3, "soko.list_shops", {}),
+      toolCall(3, "grogoni.list_shops", {}),
       mcpSessionId
     );
     expect(shops.json().result.structuredContent).toEqual([
@@ -1249,7 +1249,7 @@ describe("CP23 MCP tool gateway", () => {
     const catalogue = await mcpPost(
       app,
       token.accessToken,
-      toolCall(4, "soko.query_catalogue", { shopId: shop.business.id, query: "tea" }),
+      toolCall(4, "grogoni.query_catalogue", { shopId: shop.business.id, query: "tea" }),
       mcpSessionId
     );
     expect(catalogue.json().result).toMatchObject({
@@ -1259,7 +1259,7 @@ describe("CP23 MCP tool gateway", () => {
     const runtime = await mcpPost(
       app,
       token.accessToken,
-      toolCall(5, "soko.runtime_turn", {
+      toolCall(5, "grogoni.runtime_turn", {
         shopId: shop.business.id,
         message: "add product coffee"
       }),
@@ -1374,8 +1374,8 @@ describe("CP23 MCP tool gateway", () => {
 function expectInteractiveBudget(response: {
   headers: Record<string, string | string[] | undefined>;
 }): void {
-  expect(response.headers["x-soko-response-budget-class"]).toBe("interactive");
-  expect(response.headers["x-soko-response-budget-ms"]).toBe("150");
+  expect(response.headers["x-grogoni-response-budget-class"]).toBe("interactive");
+  expect(response.headers["x-grogoni-response-budget-ms"]).toBe("150");
   const timing = String(response.headers["server-timing"]);
   const duration = Number(timing.match(/dur=([\d.]+)/u)?.[1]);
   expect(duration).toBeLessThanOrEqual(150);
@@ -1389,7 +1389,7 @@ function initializeRequest() {
     params: {
       protocolVersion: "2025-11-25",
       capabilities: {},
-      clientInfo: { name: "soko-test", version: "1.0.0" }
+      clientInfo: { name: "grogoni-test", version: "1.0.0" }
     }
   };
 }

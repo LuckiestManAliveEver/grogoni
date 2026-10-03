@@ -4,7 +4,7 @@ import {
   ProductCapturePanel,
   type ProductFormState,
   type ProductSummary
-} from "./soko-application-shared";
+} from "./grogoni-application-shared";
 
 import { formatOptionalMoney } from "./formatters";
 import CatalogueBrowsePanel from "./CatalogueBrowsePanel";

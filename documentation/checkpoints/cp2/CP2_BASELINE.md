@@ -8,7 +8,7 @@ Actual tag: not created. No `.repo.git` directory exists in this checkout; see t
 
 ## Purpose
 
-CP2 lets a business owner create and access a Soko.market account, create the first business workspace, choose an initial language, and receive an owner role.
+CP2 lets a business owner create and access a Grogoni account, create the first business workspace, choose an initial language, and receive an owner role.
 
 The checkpoint starts product implementation while preserving the CP0 boundaries:
 
@@ -59,7 +59,7 @@ Out of scope:
 - full TIEL
 - marketplace
 - product, customer, invoice, supplier, inventory, or report feature logic
-- chat parser or Sokoclaw runtime implementation
+- chat parser or Grogoniclaw runtime implementation
 - native app-only auth
 - multi-business switching beyond the first business workspace
 

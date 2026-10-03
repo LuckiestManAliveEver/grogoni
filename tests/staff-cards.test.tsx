@@ -7,7 +7,7 @@ import type {
   MyStaffInvitationSummary,
   StaffInvitationSummary,
   StaffOverviewSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
 const fetchFreshJson = vi.fn();
 const postJson = vi.fn();
@@ -237,7 +237,7 @@ describe("staff cards", () => {
 
   it("sends the link's secret when accepting the invitation it was opened for", async () => {
     window.localStorage.setItem(
-      "soko.staffInvite.pending",
+      "grogoni.staffInvite.pending",
       JSON.stringify({ invitationId: "inv-1", joinToken: "secret-xyz", savedAt: Date.now() })
     );
     fetchFreshJson.mockResolvedValue({
@@ -254,7 +254,7 @@ describe("staff cards", () => {
     });
     postJson.mockResolvedValue({
       invitation: {},
-      business: { id: "shop-a", name: "Shop A", language: "en", sokoId: "soko.shop-a" },
+      business: { id: "shop-a", name: "Shop A", language: "en", grogoniId: "grogoni.shop-a" },
       membership: { id: "m1", businessId: "shop-a", userId: "me", role: "driver" }
     });
     await render(<StaffInvitationsPrompt accountId="me" onJoined={vi.fn()} />);
@@ -263,25 +263,25 @@ describe("staff cards", () => {
     expect(postJson).toHaveBeenCalledWith("/v1/staff-invitations/inv-1/accept", {
       joinToken: "secret-xyz"
     });
-    expect(window.localStorage.getItem("soko.staffInvite.pending")).toBeNull();
+    expect(window.localStorage.getItem("grogoni.staffInvite.pending")).toBeNull();
   });
 
   it("says so when the link was sent to a different number", async () => {
     window.localStorage.setItem(
-      "soko.staffInvite.pending",
+      "grogoni.staffInvite.pending",
       JSON.stringify({ invitationId: "inv-elsewhere", joinToken: "x", savedAt: Date.now() })
     );
     fetchFreshJson.mockResolvedValue({ invitations: [] });
     await render(<StaffInvitationsPrompt accountId="me" onJoined={vi.fn()} />);
     expect(host.querySelector('[role="alert"]')?.textContent).toBe(t.joinLinkNotForYou);
     await act(async () => button(host, t.dismiss).click());
-    expect(window.localStorage.getItem("soko.staffInvite.pending")).toBeNull();
+    expect(window.localStorage.getItem("grogoni.staffInvite.pending")).toBeNull();
     expect(host.textContent).toBe("");
   });
 
   it("asks a signed-out visitor who opened a link to sign up or log in", async () => {
     window.localStorage.setItem(
-      "soko.staffInvite.pending",
+      "grogoni.staffInvite.pending",
       JSON.stringify({ invitationId: "inv-1", joinToken: "x", savedAt: Date.now() })
     );
     await render(
@@ -301,7 +301,7 @@ describe("staff cards", () => {
     // Both paths: someone who already has an account logs in, a new person signs up.
     expect(hrefOf(t.joinBannerSignUp)).toBe("/signup");
     expect(hrefOf(t.joinBannerLogIn)).toBe("/login");
-    window.localStorage.removeItem("soko.staffInvite.pending");
+    window.localStorage.removeItem("grogoni.staffInvite.pending");
   });
 
   it("sends an email invitation by email, worded for email", async () => {
@@ -386,7 +386,7 @@ describe("staff cards", () => {
     };
     fetchFreshJson.mockResolvedValue({ invitations: [invitation] });
     const shop = {
-      business: { id: "shop-a", name: "Shop A", language: "en", sokoId: "soko.shop-a" },
+      business: { id: "shop-a", name: "Shop A", language: "en", grogoniId: "grogoni.shop-a" },
       membership: { id: "m1", businessId: "shop-a", userId: "me", role: "driver" }
     };
     postJson.mockResolvedValue({ invitation: {}, ...shop });
@@ -503,7 +503,7 @@ describe("staff cards", () => {
     expect(Object.keys(sw).sort()).toEqual(Object.keys(t).sort());
     expect(Object.keys(sw.role).sort()).toEqual(Object.keys(t.role).sort());
     expect(sw.accept).not.toBe(t.accept);
-    expect(readFileSync("apps/web/src/SokoApplication.tsx", "utf8")).toContain("<ShellNotices");
+    expect(readFileSync("apps/web/src/GrogoniApplication.tsx", "utf8")).toContain("<ShellNotices");
     expect(readFileSync("apps/web/src/ShellNotices.tsx", "utf8")).toContain(
       "<StaffInvitationsPrompt"
     );

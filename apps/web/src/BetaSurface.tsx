@@ -8,7 +8,7 @@ import {
   type BetaSupportTicketStatus,
   type BetaSupportTicketSummary,
   type BetaTelemetryKind
-} from "./soko-application-shared";
+} from "./grogoni-application-shared";
 
 import { formatPercent } from "./formatters";
 

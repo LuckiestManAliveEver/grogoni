@@ -20,8 +20,8 @@ import type {
   RuntimeToolName,
   ShopAgentRuntime,
   SupportedLanguage
-} from "@soko/shared-types";
-import { runtimeToolRegistry } from "@soko/tool-core";
+} from "@grogoni/shared-types";
+import { runtimeToolRegistry } from "@grogoni/tool-core";
 
 const promptInjectionPattern =
   /\b(?:ignore|disregard|override|replace|reveal|bypass)\b.{0,80}\b(?:system|developer|security|permission|instruction|prompt|policy|rule|secret|token)\b/i;
@@ -353,7 +353,7 @@ function recipe(
   groundingPolicy: GroundingPolicyId
 ): ContextRecipe {
   return {
-    id: `soko.${taskType}@${version}`,
+    id: `grogoni.${taskType}@${version}`,
     taskType,
     version,
     requiredEvidence,

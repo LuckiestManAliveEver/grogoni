@@ -181,7 +181,7 @@ code and changes no handoff behavior.
 
 - Platform HF token (`ai-runtime`'s `HF_TOKEN`) never leaves that service; the wire request between
   `services/api` and `services/ai-runtime` is server-to-server only, authenticated by the pre-existing
-  shared bearer (`SOKO_INFERENCE_SERVICE_TOKEN`), and never touches a browser.
+  shared bearer (`GROGONI_INFERENCE_SERVICE_TOKEN`), and never touches a browser.
 - User-connected HF tokens: encrypted at rest (`encryptOAuthToken`), validated against the real HF API
   before persistence, resolved only server-side, never returned to a browser in full, never logged.
   `resolveInferenceToken` additionally requires an explicit, separately-authorized
@@ -268,8 +268,8 @@ None, by design and by verification:
   transiently made this session's own committed changes appear to have vanished from disk until
   switching back — nothing was actually lost, but real debugging time went into confirming that; (b)
   that same branch churn left `packages/shared-types/dist` built from a different branch's source,
-  producing spurious `@soko/shared-types` typecheck failures in unrelated files
-  (`fulfillment/dispatch.ts`) until `pnpm --filter @soko/shared-types build` was re-run. Both are
+  producing spurious `@grogoni/shared-types` typecheck failures in unrelated files
+  (`fulfillment/dispatch.ts`) until `pnpm --filter @grogoni/shared-types build` was re-run. Both are
   reported here as operational findings about this environment, not defects in the shipped feature.
 
 ## 13. Outstanding limitations
@@ -290,7 +290,7 @@ None, by design and by verification:
    is later revoked or removed), a turn silently continues under the platform credential rather than
    failing — an accepted tradeoff for availability, not an oversight, but worth surfacing to a
    business somewhere (e.g. a "billing fell back to platform" notice) in a future pass.
-6. `soko_session_contexts.active_model_id` vs. the native-runtime-binding's own model selection as two
+6. `grogoni_session_contexts.active_model_id` vs. the native-runtime-binding's own model selection as two
    possibly-overlapping sources of truth (flagged in the audit) was not reconciled — out of scope for
    this feature, named as a separate follow-up.
 

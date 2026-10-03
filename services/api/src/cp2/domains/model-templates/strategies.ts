@@ -4,7 +4,7 @@ import type {
   DatasetExampleRecord,
   JsonValue,
   ModelTemplateVersionRecord,
-  SokoModelTemplateManifestV1,
+  GrogoniModelTemplateManifestV1,
   SourceExpertiseRule,
   TemplateExecutionResult
 } from "./types.js";
@@ -56,7 +56,7 @@ export function optimizePromptExpertise(input: {
   actorId: string;
   createdAt: string;
 }): {
-  manifest: SokoModelTemplateManifestV1;
+  manifest: GrogoniModelTemplateManifestV1;
   promptTokenEstimate: number;
   artifactSizeBytes: number;
 } {
@@ -86,7 +86,7 @@ export function optimizePromptExpertise(input: {
   ].join("\n");
   const promptChecksum = sha256(prompt);
   const artifactSizeBytes = Buffer.byteLength(prompt, "utf8");
-  const manifest: SokoModelTemplateManifestV1 = {
+  const manifest: GrogoniModelTemplateManifestV1 = {
     ...parent,
     template: { ...parent.template, version: input.candidateVersion },
     baseModel: {

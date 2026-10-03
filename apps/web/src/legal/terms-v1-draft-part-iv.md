@@ -1,4 +1,4 @@
-# Soko.market Terms of Service
+# Grogoni Terms of Service
 
 **Version:** 1.0 (Draft)
 **Part IV – Suspension, Termination, Liability, Consumer Rights, Dispute Resolution, Governing Law, and General Provisions**
@@ -7,7 +7,7 @@
 
 # 55. Enforcement of these Terms
 
-Soko.market may investigate conduct that appears to violate these Terms, applicable law, or the rights or safety of other users.
+Grogoni may investigate conduct that appears to violate these Terms, applicable law, or the rights or safety of other users.
 
 Where appropriate and proportionate, enforcement actions may include:
 
@@ -26,7 +26,7 @@ Enforcement decisions will be made using reasonable and proportionate measures, 
 
 # 56. Temporary Suspension
 
-Soko.market may temporarily suspend access where reasonably necessary to:
+Grogoni may temporarily suspend access where reasonably necessary to:
 
 - investigate suspected fraud;
 - respond to security incidents;
@@ -41,7 +41,7 @@ Where practicable and legally permissible, users will be informed of the reasons
 
 # 57. Account Termination by the User
 
-Users may terminate their account at any time using the available account management tools or by contacting Soko.market support.
+Users may terminate their account at any time using the available account management tools or by contacting Grogoni support.
 
 Termination of an account:
 
@@ -54,9 +54,9 @@ Where required by law, users may retain access to certain records or obtain copi
 
 ---
 
-# 58. Account Termination by Soko.market
+# 58. Account Termination by Grogoni
 
-Soko.market may terminate or permanently disable an account where:
+Grogoni may terminate or permanently disable an account where:
 
 - the user materially breaches these Terms;
 - the user repeatedly violates platform policies;
@@ -71,7 +71,7 @@ Termination will be proportionate to the circumstances and carried out in accord
 
 # 59. Account Deletion and Recovery
 
-When a user requests deletion of an account, Soko.market may maintain a temporary recovery period before permanent deletion.
+When a user requests deletion of an account, Grogoni may maintain a temporary recovery period before permanent deletion.
 
 Unless a different period is required by applicable law or expressly communicated at the time of deletion:
 
@@ -115,11 +115,11 @@ If a provision of these Terms conflicts with mandatory consumer protection law, 
 
 # 62. Warranties
 
-Soko.market will use reasonable care and skill in providing the Services.
+Grogoni will use reasonable care and skill in providing the Services.
 
 Except where prohibited by applicable law, and except as expressly stated in these Terms, the Services are provided on an "as available" and "as is" basis.
 
-Soko.market does not warrant that:
+Grogoni does not warrant that:
 
 - the Services will always be uninterrupted;
 - all errors will be corrected;
@@ -132,11 +132,11 @@ Nothing in this section excludes warranties that cannot lawfully be excluded.
 
 # 63. Limitation of Liability
 
-To the fullest extent permitted by applicable law, Soko.market shall not be liable for indirect, incidental, consequential, special, exemplary, or punitive damages arising from or relating to the use of the Services.
+To the fullest extent permitted by applicable law, Grogoni shall not be liable for indirect, incidental, consequential, special, exemplary, or punitive damages arising from or relating to the use of the Services.
 
-Subject to mandatory law, Soko.market's aggregate liability arising out of or relating to these Terms shall not exceed the greater of:
+Subject to mandatory law, Grogoni's aggregate liability arising out of or relating to these Terms shall not exceed the greater of:
 
-- the total amount paid by the user to Soko.market for the Services during the twelve (12) months immediately preceding the event giving rise to the claim; or
+- the total amount paid by the user to Grogoni for the Services during the twelve (12) months immediately preceding the event giving rise to the claim; or
 - one hundred euros (€100), where no fees have been paid during that period.
 
 This limitation does not apply where liability cannot lawfully be limited, including liability for fraud, willful misconduct, gross negligence where applicable, death or personal injury caused by negligence, or any other liability that applicable law prohibits from being excluded or limited.
@@ -145,13 +145,13 @@ This limitation does not apply where liability cannot lawfully be limited, inclu
 
 # 64. Indemnification
 
-To the extent permitted by applicable law, users agree to indemnify and hold harmless Soko.market, its affiliates, directors, officers, employees, and agents from claims, losses, liabilities, damages, costs, and reasonable legal expenses arising from:
+To the extent permitted by applicable law, users agree to indemnify and hold harmless Grogoni, its affiliates, directors, officers, employees, and agents from claims, losses, liabilities, damages, costs, and reasonable legal expenses arising from:
 
 - the user's breach of these Terms;
 - unlawful use of the Services;
 - infringement of third-party rights by the user;
 - products or services offered by the user through the platform;
-- user-generated content, except to the extent caused by Soko.market's own breach of these Terms or applicable law.
+- user-generated content, except to the extent caused by Grogoni's own breach of these Terms or applicable law.
 
 ---
 
@@ -185,7 +185,7 @@ Users may submit complaints regarding:
 - billing disputes;
 - alleged violations of these Terms.
 
-Soko.market will establish reasonable procedures for reviewing complaints and appeals and will consider them in a fair, timely, and proportionate manner.
+Grogoni will establish reasonable procedures for reviewing complaints and appeals and will consider them in a fair, timely, and proportionate manner.
 
 Where required by applicable law, users may also have access to certified out-of-court dispute settlement mechanisms or other statutory remedies.
 
@@ -193,7 +193,7 @@ Where required by applicable law, users may also have access to certified out-of
 
 # 67. Governing Law
 
-These Terms shall be governed by the laws specified in the legal notices published by Soko.market for the relevant contracting entity.
+These Terms shall be governed by the laws specified in the legal notices published by Grogoni for the relevant contracting entity.
 
 Where mandatory consumer protection laws require application of another jurisdiction's mandatory provisions, those mandatory provisions remain unaffected.
 
@@ -222,7 +222,7 @@ Legal notices under these Terms may be provided by:
 
 - email;
 - in-application notifications;
-- publication on the Soko.market website;
+- publication on the Grogoni website;
 - postal mail where required by law.
 
 Users are responsible for maintaining accurate contact information.
@@ -233,9 +233,9 @@ Electronic notices satisfy any legal requirement for written notice where permit
 
 # 70. Assignment
 
-Users may not assign or transfer their rights or obligations under these Terms without Soko.market's prior written consent.
+Users may not assign or transfer their rights or obligations under these Terms without Grogoni's prior written consent.
 
-Soko.market may assign or transfer these Terms as part of:
+Grogoni may assign or transfer these Terms as part of:
 
 - a merger;
 - acquisition;
@@ -264,7 +264,7 @@ The invalid provision shall be interpreted, where possible, in a manner that mos
 
 # 73. No Waiver
 
-Failure by Soko.market to enforce any provision of these Terms shall not constitute a waiver of that provision or of any other rights.
+Failure by Grogoni to enforce any provision of these Terms shall not constitute a waiver of that provision or of any other rights.
 
 Any waiver must be made expressly and in writing.
 
@@ -290,15 +290,15 @@ The following provisions survive termination to the extent necessary to give the
 
 These Terms may be translated into multiple languages for user convenience.
 
-In the event of any inconsistency between translated versions and the legally designated controlling version, the controlling version identified by Soko.market shall prevail, except where mandatory law requires otherwise.
+In the event of any inconsistency between translated versions and the legally designated controlling version, the controlling version identified by Grogoni shall prevail, except where mandatory law requires otherwise.
 
 ---
 
 # 76. Contact Information
 
-Questions regarding these Terms may be directed through the contact methods identified on the Soko.market website.
+Questions regarding these Terms may be directed through the contact methods identified on the Grogoni website.
 
-Where required by law, Soko.market will publish:
+Where required by law, Grogoni will publish:
 
 - the identity of the contracting entity;
 - registered business address;
@@ -312,7 +312,7 @@ Where required by law, Soko.market will publish:
 
 These Terms become effective on the Effective Date identified at the beginning of this document.
 
-Soko.market may publish updated versions from time to time.
+Grogoni may publish updated versions from time to time.
 
 Each version will include:
 
@@ -326,4 +326,4 @@ Each version will include:
 
 By creating an account, accessing, or using the Services, you acknowledge that you have read, understood, and agree to be bound by these Terms of Service.
 
-© Soko.market. All rights reserved.
+© Grogoni. All rights reserved.

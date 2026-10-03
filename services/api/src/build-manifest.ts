@@ -7,7 +7,7 @@ export interface BuildManifest {
   runtimeArchitecture: string;
 }
 
-// Written by scripts/write-build-manifest.mjs as the last step of `pnpm --filter @soko/api
+// Written by scripts/write-build-manifest.mjs as the last step of `pnpm --filter @grogoni/api
 // build`, right next to this module's own compiled output, so it always describes the dist
 // this process is actually running from - see docs/architecture/native-runtime-deployment.md.
 export function readBuildManifest(): BuildManifest | null {

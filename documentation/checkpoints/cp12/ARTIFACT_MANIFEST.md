@@ -56,8 +56,8 @@ Date passed: 2026-07-04
 
 Passed verification:
 
-- `pnpm --filter @soko/shared-types typecheck`
-- `pnpm --filter @soko/api typecheck`
-- `pnpm --filter @soko/web typecheck`
+- `pnpm --filter @grogoni/shared-types typecheck`
+- `pnpm --filter @grogoni/api typecheck`
+- `pnpm --filter @grogoni/web typecheck`
 - `pnpm vitest run tests/cp12-reports-knowledge.test.ts --reporter=dot`
 - `pnpm run ci`

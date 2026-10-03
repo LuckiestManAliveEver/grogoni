@@ -24,8 +24,8 @@ import {
   type ContactRecordInput,
   type DocumentImportSourceInput,
   type ProductInput
-} from "@soko/business-core";
-import type { BusinessEvent } from "@soko/event-core";
+} from "@grogoni/business-core";
+import type { BusinessEvent } from "@grogoni/event-core";
 import type {
   AuthenticatedActorView,
   DocumentImportConfirmResult,
@@ -36,7 +36,7 @@ import type {
   ProductSummary,
   SupplierImportDraft,
   SupplierSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { Cp2Error, assertValid } from "../../cp2-error.js";
 import { documentImportSourceView, type DocumentImportSourceRecord } from "./shared.js";
 

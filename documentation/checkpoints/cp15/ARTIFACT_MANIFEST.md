@@ -47,6 +47,6 @@ Opening verification:
 
 Passed verification:
 
-- `pnpm --filter @soko/api typecheck`
+- `pnpm --filter @grogoni/api typecheck`
 - `pnpm vitest run tests/cp15-beta-hardening.test.ts --reporter=dot`
 - `pnpm run ci`

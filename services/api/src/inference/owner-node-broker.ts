@@ -4,7 +4,7 @@ import type {
   InferenceNodePresence,
   InferenceRequest,
   OwnerInferenceJob
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
 interface NodeRegistration {
   presence: InferenceNodePresence;

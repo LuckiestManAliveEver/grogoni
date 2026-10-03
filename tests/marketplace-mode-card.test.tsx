@@ -3,13 +3,13 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import type { PublicStorefrontSummary } from "../apps/web/src/soko-application-shared";
+import type { PublicStorefrontSummary } from "../apps/web/src/grogoni-application-shared";
 import { MarketplaceModeCard } from "../apps/web/src/MarketplaceModeCard";
 
 const otherShop: PublicStorefrontSummary = {
-  agentId: "soko.amina-fresh",
-  sokoId: "soko.amina-fresh",
-  commerceAddress: "amina-fresh@soko.market",
+  agentId: "grogoni.amina-fresh",
+  grogoniId: "grogoni.amina-fresh",
+  commerceAddress: "amina-fresh@grogoni.com",
   businessName: "Amina Fresh",
   presence: { status: "online", updatedAt: new Date(0).toISOString() },
   products: []
@@ -46,7 +46,7 @@ describe("MarketplaceModeCard", () => {
           isLoadingStorefronts={false}
           productCount={3}
           publicStorefronts={[otherShop]}
-          sokoId="soko.mama-mboga"
+          grogoniId="grogoni.mama-mboga"
           buyFeed={null}
           isSearchingBuyFeed={false}
           buyCart={[]}
@@ -65,11 +65,11 @@ describe("MarketplaceModeCard", () => {
       );
     });
 
-    // "Your shop" line - derived client-side from the raw sokoId prop.
-    expect(host.textContent).toContain("mama-mboga@soko.market");
+    // "Your shop" line - derived client-side from the raw grogoniId prop.
+    expect(host.textContent).toContain("mama-mboga@grogoni.com");
     // Directory listing of another merchant - carried on the resolved PublicStorefrontSummary.
-    expect(host.textContent).toContain("amina-fresh@soko.market");
-    expect(host.textContent).not.toContain("soko.mama-mboga");
-    expect(host.textContent).not.toContain("soko.amina-fresh");
+    expect(host.textContent).toContain("amina-fresh@grogoni.com");
+    expect(host.textContent).not.toContain("grogoni.mama-mboga");
+    expect(host.textContent).not.toContain("grogoni.amina-fresh");
   });
 });

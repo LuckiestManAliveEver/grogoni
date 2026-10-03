@@ -6,7 +6,7 @@ Social OAuth login is disabled for Google, Facebook, TikTok, Apple, GitHub, Micr
 and X. The frontend has no social-login controls, the provider registry reports every OAuth
 provider as disabled, and all OAuth start/callback paths are rejected by the API.
 
-Phone account access uses Soko PIN routes. Phone OTP is rejected, while the existing email OTP path
+Phone account access uses Grogoni PIN routes. Phone OTP is rejected, while the existing email OTP path
 remains available. First-shop registration stores an unverified private phone identity without
 sending an SMS.
 

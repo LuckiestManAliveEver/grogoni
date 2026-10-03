@@ -1,9 +1,9 @@
-import type { BuyFeedSummary, BuyResultSummary, UnifiedCheckoutSummary } from "@soko/shared-types";
+import type { BuyFeedSummary, BuyResultSummary, UnifiedCheckoutSummary } from "@grogoni/shared-types";
 
 import { getJson, postJson } from "../api-helpers";
 import type { ChatMessage } from "../app-shell";
 import { getErrorMessage } from "../chat-message-plumbing";
-import type { BuyCartItem } from "../soko-application-shared";
+import type { BuyCartItem } from "../grogoni-application-shared";
 
 interface UseBuyCartStateDeps {
   runAction: <T>(key: string, action: () => Promise<T>) => Promise<T | undefined>;

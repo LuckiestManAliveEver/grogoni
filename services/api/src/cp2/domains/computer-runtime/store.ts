@@ -13,12 +13,12 @@ import type {
   ComputerProfileRecord,
   ComputerSession,
   ExternalSurfaceDescriptor
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import {
   classifyComputerAction,
   compileUntrustedWebObservation,
   resolveCapabilityRoute
-} from "@soko/tool-core";
+} from "@grogoni/tool-core";
 import { decryptOAuthToken, encryptOAuthToken } from "../../oauth.js";
 import { Cp2Error } from "../../cp2-error.js";
 import type { ComputerWorkerClient } from "../../../computer-runtime/client.js";
@@ -202,7 +202,7 @@ export class ComputerRuntimeDomain {
       throw new Cp2Error(
         409,
         "computer_orchestrating_agent_required",
-        "Computer use must remain owned by an active Soko agent."
+        "Computer use must remain owned by an active Grogoni agent."
       );
     }
     const externalSurface: ExternalSurfaceDescriptor = input.externalSurface ?? {

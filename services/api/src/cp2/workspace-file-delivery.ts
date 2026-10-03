@@ -6,7 +6,7 @@ import type {
   ClientWorkspaceFileTransfer,
   ConversationAttachment,
   ConversationAttachmentKind
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { Cp2Error } from "./cp2-error.js";
 
 export interface ConversationAttachmentRecord {

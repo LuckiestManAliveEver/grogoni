@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import type { InvoiceSummary, ProductSummary } from "@soko/shared-types";
+import type { InvoiceSummary, ProductSummary } from "@grogoni/shared-types";
 import { useAsyncActions } from "./hooks/useAsyncActions";
 import { useApiMutationRevision } from "./hooks/useApiMutationRevision";
 import { getJson, postJson } from "./api-helpers";
 import { getUserFacingErrorMessage } from "./user-facing-error";
-import type { ConfirmInvoiceResponse } from "./soko-application-shared";
+import type { ConfirmInvoiceResponse } from "./grogoni-application-shared";
 
 // Self-contained generated-surface card for the invoices domain (Phase 4d). Unlike
 // products/suppliers/customers, invoices genuinely need interactive product+quantity+price

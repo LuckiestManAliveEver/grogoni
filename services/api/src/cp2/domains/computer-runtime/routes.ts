@@ -5,7 +5,7 @@ import type {
   ComputerActionKind,
   ExternalSurfaceDescriptor,
   ExternalSurfaceType
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { Cp2Error, readSessionCookie, type Cp2Store } from "../../store.js";
 import {
   parseNullableString,

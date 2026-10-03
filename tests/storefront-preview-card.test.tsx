@@ -22,14 +22,14 @@ describe("StorefrontPreviewCard", () => {
     host.remove();
   });
 
-  it("shows the public commerce address under the business name, not the raw sokoId", () => {
+  it("shows the public commerce address under the business name, not the raw grogoniId", () => {
     act(() => {
       root = createRoot(host);
       root.render(
         <StorefrontPreviewCard
           businessName="Mama Mboga"
           products={[]}
-          sokoId="soko.mama-mboga"
+          grogoniId="grogoni.mama-mboga"
           onBack={() => {}}
           onOpenProfile={() => {}}
           onAddToOrder={() => {}}
@@ -39,7 +39,7 @@ describe("StorefrontPreviewCard", () => {
       );
     });
 
-    expect(host.textContent).toContain("mama-mboga@soko.market");
-    expect(host.textContent).not.toContain("soko.mama-mboga");
+    expect(host.textContent).toContain("mama-mboga@grogoni.com");
+    expect(host.textContent).not.toContain("grogoni.mama-mboga");
   });
 });

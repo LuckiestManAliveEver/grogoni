@@ -108,7 +108,7 @@ describe("API persistence acknowledgement barrier", () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.cookies.map((cookie) => cookie.name)).toEqual(
-      expect.arrayContaining(["soko_session", "soko_refresh"])
+      expect.arrayContaining(["grogoni_session", "grogoni_refresh"])
     );
     expect(response.json()).toMatchObject({
       account: { primaryAuthDestination: phone },
@@ -150,8 +150,8 @@ describe("API persistence acknowledgement barrier", () => {
       code: "AUTH_PERSISTENCE_UNAVAILABLE",
       message: "Authentication could not be saved safely. Please try again."
     });
-    expect(response.cookies.map((cookie) => cookie.name)).not.toContain("soko_session");
-    expect(response.cookies.map((cookie) => cookie.name)).not.toContain("soko_refresh");
+    expect(response.cookies.map((cookie) => cookie.name)).not.toContain("grogoni_session");
+    expect(response.cookies.map((cookie) => cookie.name)).not.toContain("grogoni_refresh");
     expect(response.body).not.toContain("session table unavailable");
     await app.close();
   });
@@ -182,7 +182,7 @@ describe("API persistence acknowledgement barrier", () => {
 
       expect(response.statusCode).toBe(200);
       expect(response.cookies.map((cookie) => cookie.name)).toEqual(
-        expect.arrayContaining(["soko_session", "soko_refresh"])
+        expect.arrayContaining(["grogoni_session", "grogoni_refresh"])
       );
 
       const authenticated = await app.inject({

@@ -39,7 +39,7 @@ create table if not exists conversation_messages (
 create index if not exists conversation_messages_conversation_created_idx
   on conversation_messages (conversation_id, created_at, id);
 
-create table if not exists soko_session_contexts (
+create table if not exists grogoni_session_contexts (
   session_id uuid primary key references sessions (id) on delete cascade,
   conversation_id uuid not null references conversations (id),
   active_shop_id uuid references businesses (id),

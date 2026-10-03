@@ -178,7 +178,7 @@ describe("workspace file resolution", () => {
 });
 
 async function temporaryRoot(): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), "soko-workspace-delivery-"));
+  const root = await mkdtemp(join(tmpdir(), "grogoni-workspace-delivery-"));
   temporaryRoots.push(root);
   return root;
 }

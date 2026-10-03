@@ -6,24 +6,24 @@ import {
   type SetStateAction
 } from "react";
 
-import type { SokoSessionContext } from "@soko/shared-types";
+import type { GrogoniSessionContext } from "@grogoni/shared-types";
 
-import type { ShellView, SokoMode } from "../app-shell";
-import type { ActiveBusiness, AgentSettings, SessionResponse } from "../soko-application-shared";
+import type { ShellView, GrogoniMode } from "../app-shell";
+import type { ActiveBusiness, AgentSettings, SessionResponse } from "../grogoni-application-shared";
 
 export interface OwnerCoreState {
   session: SessionResponse | null;
   setSession: Dispatch<SetStateAction<SessionResponse | null>>;
-  sokoSessionContext: SokoSessionContext | null;
-  setSokoSessionContext: Dispatch<SetStateAction<SokoSessionContext | null>>;
+  grogoniSessionContext: GrogoniSessionContext | null;
+  setGrogoniSessionContext: Dispatch<SetStateAction<GrogoniSessionContext | null>>;
   business: ActiveBusiness | null;
   setBusiness: Dispatch<SetStateAction<ActiveBusiness | null>>;
   agentSettings: AgentSettings;
   setAgentSettings: Dispatch<SetStateAction<AgentSettings>>;
   view: ShellView;
   setView: Dispatch<SetStateAction<ShellView>>;
-  mode: SokoMode;
-  setMode: Dispatch<SetStateAction<SokoMode>>;
+  mode: GrogoniMode;
+  setMode: Dispatch<SetStateAction<GrogoniMode>>;
 }
 
 const OwnerCoreContext = createContext<OwnerCoreState | null>(null);

@@ -10,7 +10,7 @@ different model/provider.
 
 For a planned inference outage:
 
-1. keep `VERCEL_INFERENCE_URL` and `SOKO_INFERENCE_SERVICE_TOKEN` set - do not remove them from the
+1. keep `VERCEL_INFERENCE_URL` and `GROGONI_INFERENCE_SERVICE_TOKEN` set - do not remove them from the
    Render dashboard, since Neon artifact metadata still needs to resolve for readiness reporting;
 2. set `INFERENCE_REQUIRED=false` on the API (or leave it at its default) so `/health/ready` does
    not fail Render's health check while Vercel is down;
@@ -20,7 +20,7 @@ For a planned inference outage:
 5. re-enable `INFERENCE_REQUIRED=true` if that was your steady-state setting, and run a first-chat
    smoke test.
 
-Do not copy `SOKO_INFERENCE_SERVICE_TOKEN`, `VERCEL_INFERENCE_URL`, or the Neon model-storage
+Do not copy `GROGONI_INFERENCE_SERVICE_TOKEN`, `VERCEL_INFERENCE_URL`, or the Neon model-storage
 credentials into any `VITE_*` variable. Browser-local, installed-app and owner-node runtimes remain
 separate optional execution targets and are unaffected by a Vercel inference outage.
 

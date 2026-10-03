@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { CountryCode } from "libphonenumber-js";
-import type { Scope } from "@soko/offline-runtime";
+import type { Scope } from "@grogoni/offline-runtime";
 import type {
   ChannelEndpointSummary,
   ChannelProvider,
   MessageHandoffStatus
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
 import type { SmsHandoffRequest } from "../messaging/SmsHandoffDialog";
 import { buildSmsHandoffRequest } from "../messaging/sms-handoff";
@@ -97,7 +97,7 @@ export function useChatComposerState(input: ChatComposerStateInput) {
   async function openPlatformHandoff(label: string) {
     const result = await shareMessageExternally({
       text: liveDraft,
-      title: label.trim() ? `Message for ${label.trim()}` : "Message from Soko"
+      title: label.trim() ? `Message for ${label.trim()}` : "Message from Grogoni"
     });
     input.onPlatformHandoff(result.status, result.errorCode);
     setExternalShareNotice(externalShareNoticeFor(result.status));

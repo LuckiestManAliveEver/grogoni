@@ -5,7 +5,7 @@ import type {
   PublicCustomerCareRequestSummary,
   PublicOrderSummary,
   PublicStorefrontMessageSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
 import { getJson } from "../api-helpers";
 

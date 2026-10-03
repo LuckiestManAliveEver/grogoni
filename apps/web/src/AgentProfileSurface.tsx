@@ -10,7 +10,7 @@ import type {
   AgentOwnerCorrection,
   AgentRuntimeReadiness,
   AgentRuntimeVersion
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
 import { copyTextToClipboard } from "./misc-browser-utils";
 import { SettingsGroup } from "./SettingsGroup";
@@ -46,10 +46,10 @@ import {
   type BusinessAgentProfileSummary,
   type OAuthProviderSummary,
   type SessionResponse
-} from "./soko-application-shared";
+} from "./grogoni-application-shared";
 
 import { postJson, putJson, getJson } from "./api-helpers";
-import { createStorefrontUrl, normalizeSokoId } from "./sokoid-and-storefront";
+import { createStorefrontUrl, normalizeGrogoniId } from "./grogoniid-and-storefront";
 import { agentSettingsFromBusinessProfile } from "./owner-app-bootstrap";
 import { getErrorMessage } from "./chat-message-plumbing";
 import { buildAgentProfileUpdate } from "./agent-profile-payload";
@@ -83,7 +83,7 @@ export interface AgentProfileSurfaceProps {
     reason: string;
   }) => Promise<boolean>;
   isLoggingOut: boolean;
-  /** Soko Home's menu drawer deep-links here from "Shop settings"/"Agent settings"/"Account
+  /** Grogoni Home's menu drawer deep-links here from "Shop settings"/"Agent settings"/"Account
    *  settings" - which of this page's own SettingsGroups to open and scroll to on arrival. */
   initialOpenSection?: "business" | "agent" | "security" | null;
 }
@@ -311,7 +311,7 @@ export function AgentProfileSurface({
 
   async function saveAgent() {
     if (isSaving) return;
-    const publicAgentId = normalizeSokoId(business.sokoId);
+    const publicAgentId = normalizeGrogoniId(business.grogoniId);
     setIsSaving(true);
     try {
       const saved = await putJson<BusinessAgentProfileSummary>(
@@ -493,7 +493,7 @@ export function AgentProfileSurface({
             updateAgent={updateAgent}
             activeAiModelId={activeAiModelId}
             activeAiModel={activeAiModel}
-            // Agent-runtime readiness describes Soko's bounded prompt/tool runtime. It does not
+            // Agent-runtime readiness describes Grogoni's bounded prompt/tool runtime. It does not
             // prove that arbitrary repository source has a configured isolated backend adapter.
             backendAvailable={false}
           />
@@ -591,7 +591,7 @@ export function AgentProfileSurface({
         <SettingsGroup
           id="settings-group-ai-providers"
           title="AI providers"
-          description="OpenAI, Anthropic, Z.ai, Soko Cloud, and on-device AI"
+          description="OpenAI, Anthropic, Z.ai, Grogoni Cloud, and on-device AI"
         >
           <Suspense fallback={<div className="inline-loading-card">Opening AI providers…</div>}>
             <AiProvidersPanel businessId={business.id} />

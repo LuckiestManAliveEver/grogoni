@@ -5,7 +5,7 @@ import type {
   StaffInvitationSummary,
   StaffMemberSummary,
   StaffOverviewSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { useAsyncActions } from "./hooks/useAsyncActions";
 import { useApiMutationRevision } from "./hooks/useApiMutationRevision";
 import { deleteJson, fetchFreshJson, patchJson, postJson } from "./api-helpers";

@@ -1,4 +1,4 @@
-import type { RuntimePlannedAction } from "@soko/shared-types";
+import type { RuntimePlannedAction } from "@grogoni/shared-types";
 
 import { Cp2Error } from "../../cp2-error.js";
 import type { AgentRuntimeDomainDeps } from "./store.js";

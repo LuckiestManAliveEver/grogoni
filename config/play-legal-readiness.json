@@ -5,7 +5,7 @@
   "lastReviewedOn": "2026-07-15",
   "readinessStatus": "proposed",
   "product": {
-    "appName": "Soko.market",
+    "appName": "Grogoni",
     "playDeveloperName": null,
     "legalEntityName": null,
     "registeredAddress": null,
@@ -19,16 +19,16 @@
     "contactVerificationStatus": "pending"
   },
   "legalDocuments": {
-    "privacyPolicyUrl": "https://soko.market/privacy",
+    "privacyPolicyUrl": "https://grogoni.com/privacy",
     "privacyPolicyStatus": "draft",
     "privacyPolicyEffectiveOn": null,
-    "termsUrl": "https://soko.market/terms",
+    "termsUrl": "https://grogoni.com/terms",
     "termsStatus": "draft",
     "termsEffectiveOn": null,
     "legalApprovalReference": null
   },
   "accountDeletion": {
-    "externalRequestUrl": "https://soko.market/account-deletion",
+    "externalRequestUrl": "https://grogoni.com/account-deletion",
     "inAppPath": "Account Settings > Delete account",
     "authenticationRequired": true,
     "androidAppRequired": false,

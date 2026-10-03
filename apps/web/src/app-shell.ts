@@ -2,7 +2,7 @@ import type {
   ConversationAttachmentKind,
   ConversationMessageContent,
   ConversationMessageDeliveryStatus
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
 export type ShellView =
   | "home"
@@ -25,8 +25,8 @@ export type ShellView =
   | "reports"
   | "notifications";
 
-export type { SokoChatSurface, SokoMode } from "@soko/shared-types";
-export type { SokoSessionContext as SokoSessionState } from "@soko/shared-types";
+export type { GrogoniChatSurface, GrogoniMode } from "@grogoni/shared-types";
+export type { GrogoniSessionContext as GrogoniSessionState } from "@grogoni/shared-types";
 
 export interface QuickAction {
   id: ShellView;
@@ -42,7 +42,7 @@ export interface EmptyState {
 
 export interface ChatMessage {
   id: string;
-  author: "merchant" | "sokoclaw" | "contact";
+  author: "merchant" | "grogoniclaw" | "contact";
   authorLabel?: string;
   body: string;
   /**
@@ -260,7 +260,7 @@ export function createInitialChatMessages(businessName: string): ChatMessage[] {
   return [
     {
       id: "welcome",
-      author: "sokoclaw",
+      author: "grogoniclaw",
       body: `Karibu. What do you need? Find products, shops, services, or deliveries — just ask. Tap the shop icon when you are ready to start running ${businessName}.`
     }
   ];

@@ -10,7 +10,7 @@
  * parallel path - see that file for the canonical wiring this mirrors. Nothing here calls Claude
  * Code or any tool outside this codebase's own inference stack.
  *
- * Run: pnpm --filter @soko/api eval:ai   (or `pnpm eval:ai` from the repo root)
+ * Run: pnpm --filter @grogoni/api eval:ai   (or `pnpm eval:ai` from the repo root)
  * Exits 0 with a report on pass >= threshold, non-zero otherwise. Skips (exit 0, no report) with
  * a clear message when no model backend is configured at all - this is dev/CI tooling, not a
  * required gate, so it must not fail a machine that simply has no model configured.
@@ -29,7 +29,7 @@ import { createCp2Store } from "../src/cp2/store.js";
 import { modelFallbackEvalScenarios } from "../../../tests/ai-eval/model-fallback-scenarios.js";
 
 const passThreshold = 0.8;
-const reportPath = "/tmp/soko-ai-eval-report.json";
+const reportPath = "/tmp/grogoni-ai-eval-report.json";
 
 interface ScenarioResult {
   id: string;
@@ -45,7 +45,7 @@ async function main() {
   if (config.vercelInferenceUrl === "") {
     console.log(
       "No Vercel inference host is configured (VERCEL_INFERENCE_URL is unset) - skipping the " +
-        "AI eval. Set VERCEL_INFERENCE_URL, SOKO_INFERENCE_SERVICE_TOKEN and the NEON_MODEL_" +
+        "AI eval. Set VERCEL_INFERENCE_URL, GROGONI_INFERENCE_SERVICE_TOKEN and the NEON_MODEL_" +
         "STORAGE_* credentials to a deployed services/ai-runtime instance to run this."
     );
     return;

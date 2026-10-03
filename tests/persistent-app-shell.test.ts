@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const application = readFileSync("apps/web/src/SokoApplication.tsx", "utf8");
+const application = readFileSync("apps/web/src/GrogoniApplication.tsx", "utf8");
 const authStateHook = readFileSync("apps/web/src/hooks/useAuthState.ts", "utf8");
 const navigationStateHook = readFileSync("apps/web/src/hooks/useNavigationState.ts", "utf8");
 const syncStateHook = readFileSync("apps/web/src/hooks/useSyncState.ts", "utf8");

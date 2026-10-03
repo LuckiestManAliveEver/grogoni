@@ -8,7 +8,7 @@ import {
 } from "react";
 import { reportBackgroundLoadError } from "../background-load-error";
 
-import { commerceAddressFromSokoId, type NetworkInviteSummary } from "@soko/shared-types";
+import { commerceAddressFromGrogoniId, type NetworkInviteSummary } from "@grogoni/shared-types";
 
 import { copyTextToClipboard } from "../misc-browser-utils";
 import type { ChatMessage } from "../app-shell";
@@ -20,7 +20,7 @@ import {
   createPhoneNetworkSeed,
   parseContactImportContent
 } from "../contacts-import";
-import { createPublicStorefrontUrl } from "../sokoid-and-storefront";
+import { createPublicStorefrontUrl } from "../grogoniid-and-storefront";
 import {
   browserDefaultCountry,
   networkChangedEvent,
@@ -49,7 +49,7 @@ import type {
   NetworkGraphSummary,
   NetworkInvitesResponse,
   SocialSignupProvider
-} from "../soko-application-shared";
+} from "../grogoni-application-shared";
 
 interface UseNetworkStateDeps {
   business: ActiveBusiness | null;
@@ -95,7 +95,7 @@ export function useNetworkState(deps: UseNetworkStateDeps) {
   const [devicePhonebook, setDevicePhonebook] = useState<DevicePhonebookContact[]>([]);
   const devicePhonebookUserId = useRef<string | null>(null);
 
-  // The device copy of picked contacts belongs to one Soko user; load it the first time a graph
+  // The device copy of picked contacts belongs to one Grogoni user; load it the first time a graph
   // tells us who that is.
   function receiveNetworkGraph(graph: NetworkGraphSummary) {
     setNetworkGraph(graph);
@@ -198,12 +198,12 @@ export function useNetworkState(deps: UseNetworkStateDeps) {
     writeDevicePhonebook(graph.ownerUserId, merged);
     setDevicePhonebook(merged);
     const syncedIds = new Set(result.nodeIds);
-    const onSoko = graph.nodes.filter(
-      (node) => node.degree === 1 && node.sokoUserId != null && syncedIds.has(node.id)
+    const onGrogoni = graph.nodes.filter(
+      (node) => node.degree === 1 && node.grogoniUserId != null && syncedIds.has(node.id)
     ).length;
     deps.setStatusMessage(
       result.error === null
-        ? `Synced ${picked.length} contact${picked.length === 1 ? "" : "s"}. ${onSoko} already on Soko.`
+        ? `Synced ${picked.length} contact${picked.length === 1 ? "" : "s"}. ${onGrogoni} already on Grogoni.`
         : `Synced ${picked.length} of ${contacts.length} contacts, then: ${getErrorMessage(result.error)}`
     );
     return { ...graph, syncedContactNodeIds: result.nodeIds };
@@ -219,8 +219,8 @@ export function useNetworkState(deps: UseNetworkStateDeps) {
 
     // Invites are sent in a shop's name. Without a shop, hand the owner a link to share.
     if (business === null) {
-      const shared = contacts.length > 0 && (await shareSokoInviteLink());
-      return { invited: 0, alreadyOnSoko: 0, invalid: 0, shared };
+      const shared = contacts.length > 0 && (await shareGrogoniInviteLink());
+      return { invited: 0, alreadyOnGrogoni: 0, invalid: 0, shared };
     }
 
     // Failures show in the status line and are rethrown for the card to report too.
@@ -240,7 +240,7 @@ export function useNetworkState(deps: UseNetworkStateDeps) {
     }
     await loadNetworkInvites(business.id);
     deps.setStatusMessage(describeInviteOutcome(outcome));
-    if (outcome.alreadyOnSoko > 0) await loadNetworkGraph({ fresh: true });
+    if (outcome.alreadyOnGrogoni > 0) await loadNetworkGraph({ fresh: true });
     return outcome;
   }
 
@@ -288,12 +288,12 @@ export function useNetworkState(deps: UseNetworkStateDeps) {
   }
 
   /** True when the link was handed to the share sheet or copied; false if cancelled or failed. */
-  async function shareSokoInviteLink(): Promise<boolean> {
+  async function shareGrogoniInviteLink(): Promise<boolean> {
     const url = window.location.origin;
-    const text = "Join me on Soko.market.";
+    const text = "Join me on Grogoni.";
     try {
       if (navigator.share !== undefined) {
-        await navigator.share({ title: "Soko.market", text, url });
+        await navigator.share({ title: "Grogoni", text, url });
       } else {
         await copyTextToClipboard(`${text} ${url}`);
       }
@@ -317,7 +317,7 @@ export function useNetworkState(deps: UseNetworkStateDeps) {
     await authenticateSocialProfile(provider, provider === "google" ? "contacts" : "identity");
   }
 
-  // targetNodeId stays the first parameter to match the existing SokoApplication.tsx call site
+  // targetNodeId stays the first parameter to match the existing GrogoniApplication.tsx call site
   // (requesting a route to one specific node); requestText is additive.
   async function requestNetworkRoute(targetNodeId?: string, requestText?: string) {
     try {
@@ -400,8 +400,8 @@ export function useNetworkState(deps: UseNetworkStateDeps) {
 
     const publicStorefrontUrl = createPublicStorefrontUrl(deps.business);
     const shareData = {
-      title: `${deps.business.name} on Soko.market`,
-      text: `Open ${deps.business.name} with Soko Shop ID ${commerceAddressFromSokoId(deps.business.sokoId)}.`,
+      title: `${deps.business.name} on Grogoni`,
+      text: `Open ${deps.business.name} with Grogoni Shop ID ${commerceAddressFromGrogoniId(deps.business.grogoniId)}.`,
       url: publicStorefrontUrl
     };
 
@@ -478,8 +478,8 @@ export function useNetworkState(deps: UseNetworkStateDeps) {
       setChatMessages((messages) => [
         ...messages,
         {
-          id: `sokoclaw-contacts-${Date.now()}`,
-          author: "sokoclaw",
+          id: `grogoniclaw-contacts-${Date.now()}`,
+          author: "grogoniclaw",
           body: `I found ${selectedContacts.length} contact${
             selectedContacts.length === 1 ? "" : "s"
           }: ${labels.slice(0, 5).join(", ") || "selected contacts"}. Use Invite to share your storefront link.`
@@ -512,7 +512,7 @@ export function useNetworkState(deps: UseNetworkStateDeps) {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `${deps.business?.name ?? "soko"}-contacts.csv`;
+    link.download = `${deps.business?.name ?? "grogoni"}-contacts.csv`;
     link.click();
     URL.revokeObjectURL(url);
     deps.setStatusMessage(

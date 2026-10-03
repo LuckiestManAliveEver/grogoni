@@ -1,7 +1,7 @@
 -- Durable execution event log (docs/architecture/durable-execution-plane.md,
 -- docs/architecture/durable-execution-audit.md section 9.1).
 --
--- Runtime Handoff Protocol (083_runtime_handoff_protocol.sql onward) already gives Soko an
+-- Runtime Handoff Protocol (083_runtime_handoff_protocol.sql onward) already gives Grogoni an
 -- immutable checkpoint chain (cp2_runtime_handoffs) and mutable transfer progress
 -- (cp2_runtime_transfers). Neither is a fine-grained, append-only, sequence-numbered record of
 -- *what happened* during one task's execution (binding resolution, authorization, context

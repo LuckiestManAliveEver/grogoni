@@ -5,7 +5,7 @@ Model Templates domain.
 
 ## Architecture discovered
 
-Soko already separated most runtime concepts correctly:
+Grogoni already separated most runtime concepts correctly:
 
 | Question                            | Existing answer                                                                                                                                                                       | Evidence                                                                                                                 | Disposition                                            |
 | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------ |
@@ -14,7 +14,7 @@ Soko already separated most runtime concepts correctly:
 | How are agent and model bound?      | The native graph links agent, ordered model roles, installation, and execution host; conversations reference the runtime binding                                                      | migration 063, `native-runtime/store.ts`, `native-runtime-routing.ts`                                                    | Extend with a template-version overlay; do not replace |
 | How are model artifacts stored?     | PostgreSQL stores metadata and SHA-256; bytes live in object storage and use short-lived signed URLs                                                                                  | migration 079, `model-artifact-store.ts`, `ai-runtime/artifact-loader.ts`                                                | Reuse for large compiled expertise                     |
 | How are model versions represented? | Catalogue/runtime models have identities, but no expertise-version lineage existed                                                                                                    | migrations 071/079                                                                                                       | Add template versions separately                       |
-| Did `.soko` exist?                  | Only conceptually. No canonical schema, validator, exporter, or runtime contract existed                                                                                              | repository search before this change                                                                                     | Add                                                    |
+| Did `.grogoni.com` exist?                  | Only conceptually. No canonical schema, validator, exporter, or runtime contract existed                                                                                              | repository search before this change                                                                                     | Add                                                    |
 | How is inference routed?            | Chat authorizes a turn, resolves native binding/model/host, builds context and prompt, calls `ModelRuntimeAdapter` through an `AgentRuntimeAdapter`, then validates tools server-side | `agent-runtime/store.ts`, `runtime-model-routing.ts`, `inference/model-runtime.ts`                                       | Reuse with one expertise prompt hook                   |
 | Execution targets                   | Provider-neutral `vercel`, `backend`, and `remote-shop-device` targets in the existing native graph                                                                                   | `ModelExecutionTarget`, provider-neutral runtime docs                                                                    | Reuse; no new fabric                                   |
 | Existing telemetry                  | Per-turn runtime telemetry and durable shop-scoped `AgentEvaluationEvent` aggregates; no suite/case/run report cards                                                                  | `RuntimeTelemetryEvent`, `cp2_agent_evaluation_events`                                                                   | Extend                                                 |
@@ -29,7 +29,7 @@ Soko already separated most runtime concepts correctly:
 - `AgentRuntimeDomain` continues to own chat/runtime turns, prompt assembly, tools, and policy.
 - `NativeRuntimeBindingStore` continues to select the swappable base model and execution host.
 - `ModelRuntimeAdapter` and `AgentRuntimeAdapter` remain the only execution boundaries.
-- `runtimeToolRegistry` remains the allowed tool namespace. A `.soko` manifest cannot invent a host
+- `runtimeToolRegistry` remains the allowed tool namespace. A `.grogoni.com` manifest cannot invent a host
   tool.
 - The migration runner, normalized persistence queue, Neon tables, object-storage artifact
   contract, telemetry conventions, and agent settings UI are reused.

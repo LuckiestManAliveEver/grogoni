@@ -1,11 +1,11 @@
 /**
  * The contacts the owner picked, with their raw numbers, kept on this device only so the invite
  * list survives a reload. The server stores hashes, never these numbers (see
- * docs/architecture/phonebook-identity-resolution.md). Scoped per Soko user and cleared on
+ * docs/architecture/phonebook-identity-resolution.md). Scoped per Grogoni user and cleared on
  * logout. Storage can be missing or throw (private window, blocked site data): every access
  * degrades to "nothing cached".
  */
-const storagePrefix = "soko.phonebook.v1:";
+const storagePrefix = "grogoni.phonebook.v1:";
 
 export interface DevicePhonebookContact {
   name: string;

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { reportBackgroundLoadError } from "../background-load-error";
 
-import type { SyncMutationPayload, SyncMutationType } from "@soko/shared-types";
+import type { SyncMutationPayload, SyncMutationType } from "@grogoni/shared-types";
 
 import { getErrorMessage } from "../chat-message-plumbing";
 import { getJson, patchJson, postJson } from "../api-helpers";
@@ -9,7 +9,7 @@ import {
   emptyCustomerForm,
   type CustomerFormState,
   type CustomerSummary
-} from "../soko-application-shared";
+} from "../grogoni-application-shared";
 
 interface UseCustomersStateDeps {
   businessId: string | null;

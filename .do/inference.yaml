@@ -1,11 +1,11 @@
 # Import into App Platform after pushing the migration commit. Fill the two empty environment
 # values in the DigitalOcean dashboard before deploying; never commit the service token.
-name: soko-market-inference
+name: grogoni-inference
 region: nyc
 services:
   - name: inference
     github:
-      repo: LuckiestManAliveEver/soko.market
+      repo: LuckiestManAliveEver/grogoni
       branch: main
       deploy_on_push: false
     source_dir: /
@@ -20,7 +20,7 @@ services:
       timeout_seconds: 5
       failure_threshold: 3
     envs:
-      - key: SOKO_INFERENCE_SERVICE_TOKEN
+      - key: GROGONI_INFERENCE_SERVICE_TOKEN
         scope: RUN_TIME
         type: SECRET
         value: ""

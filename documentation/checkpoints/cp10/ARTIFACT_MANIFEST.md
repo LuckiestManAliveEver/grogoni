@@ -24,7 +24,7 @@ Date passed: 2026-07-03
 | `apps/web/src/cp3-shell.ts`              | CP10 runtime chat shell metadata and welcome copy.                                           |
 | `apps/web/src/main.tsx`                  | Owner-facing runtime chat, confirmation token handling, and CP4 fallback behavior.           |
 | `tests/cp3-shell.test.ts`                | Shell contract test updated for CP10 runtime behavior.                                       |
-| `tests/cp10-sokoclaw-runtime.test.ts`    | Runtime API, planning, verification, confirmation, telemetry, scoping, and rate-limit tests. |
+| `tests/cp10-grogoniclaw-runtime.test.ts`    | Runtime API, planning, verification, confirmation, telemetry, scoping, and rate-limit tests. |
 | `tests/ai-eval/cp10-runtime-commands.ts` | Runtime evaluation dataset and task-completion gate fixtures.                                |
 
 ## CP10 Opening Checklist
@@ -53,12 +53,12 @@ Date passed: 2026-07-03
 - [x] AI evaluation dataset expanded for CP10.
 - [x] Owner runtime chat/confirmation UI implemented.
 - [x] Existing CP1 through CP9 checks pass.
-- [x] `checkpoint/cp10-sokoclaw-runtime` tag created.
+- [x] `checkpoint/cp10-grogoniclaw-runtime` tag created.
 
 ## Verification
 
 Passed verification:
 
-- `pnpm --filter @soko/api typecheck`
-- `pnpm --filter @soko/web typecheck`
-- `pnpm vitest run tests/cp3-shell.test.ts tests/cp4-rule-parser.test.ts tests/cp10-sokoclaw-runtime.test.ts --reporter=dot`
+- `pnpm --filter @grogoni/api typecheck`
+- `pnpm --filter @grogoni/web typecheck`
+- `pnpm vitest run tests/cp3-shell.test.ts tests/cp4-rule-parser.test.ts tests/cp10-grogoniclaw-runtime.test.ts --reporter=dot`

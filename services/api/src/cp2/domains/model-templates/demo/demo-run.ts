@@ -1,7 +1,7 @@
 import { pathToFileURL } from "node:url";
 import { createModelTemplatesDomain } from "../store.js";
 import { executeDeterministicRuleExpertise } from "../strategies.js";
-import type { SokoModelTemplateManifestV1, TemplateTelemetryEvent } from "../types.js";
+import type { GrogoniModelTemplateManifestV1, TemplateTelemetryEvent } from "../types.js";
 import { emptyVocabularySnapshotId } from "../manifest.js";
 
 const businessId = "demo-retail-business";
@@ -184,14 +184,14 @@ function productOutput(productType: string, category: string, quantity: number, 
   return { department: "food", category, productType, quantity, unit };
 }
 
-function retailProductManifest(): SokoModelTemplateManifestV1 {
+function retailProductManifest(): GrogoniModelTemplateManifestV1 {
   const verbosePrompt = Array.from(
     { length: 8 },
     () =>
       "Always carefully classify the retail product using the full business taxonomy, preserve the measured quantity and unit, and return only the required structured fields."
   ).join(" ");
   return {
-    format: "soko-template",
+    format: "grogoni-template",
     formatVersion: 1,
     template: {
       id: "retail-product-classifier-demo",

@@ -9,12 +9,12 @@ describe("cross-platform message handoff", () => {
     const share = vi.fn().mockResolvedValue(undefined);
 
     const result = await shareMessageExternally(
-      { text: "Hello from Soko", title: "Message for Jane" },
+      { text: "Hello from Grogoni", title: "Message for Jane" },
       { share }
     );
 
     expect(share).toHaveBeenCalledWith({
-      text: "Hello from Soko",
+      text: "Hello from Grogoni",
       title: "Message for Jane"
     });
     expect(result).toEqual({
@@ -42,11 +42,11 @@ describe("cross-platform message handoff", () => {
     const writeClipboard = vi.fn().mockResolvedValue(undefined);
 
     const result = await shareMessageExternally(
-      { text: "Hello", url: "https://soko.market/shop/example" },
+      { text: "Hello", url: "https://grogoni.com/shop/example" },
       { writeClipboard }
     );
 
-    expect(writeClipboard).toHaveBeenCalledWith("Hello\nhttps://soko.market/shop/example");
+    expect(writeClipboard).toHaveBeenCalledWith("Hello\nhttps://grogoni/shop/example");
     expect(result).toMatchObject({
       status: "copied_to_clipboard",
       errorCode: null,

@@ -1,6 +1,6 @@
 \set ON_ERROR_STOP on
 
--- Soko.market registered-user purge.
+-- Grogoni registered-user purge.
 --
 -- Read-only audit (the default):
 --   psql "$DIRECT_DATABASE_URL" -v execute_purge=NO -f scripts/purge-all-users.sql
@@ -19,14 +19,14 @@
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 SET LOCAL lock_timeout = '10s';
 SET LOCAL statement_timeout = '5min';
-SELECT pg_advisory_xact_lock(hashtext('soko.purge_all_registered_users'));
+SELECT pg_advisory_xact_lock(hashtext('grogoni.purge_all_registered_users'));
 
 DO $$
 BEGIN
   IF to_regclass('public.accounts') IS NULL
      OR to_regclass('public.users') IS NULL
      OR to_regclass('public.businesses') IS NULL
-     OR to_regclass('public.soko_schema_migrations') IS NULL THEN
+     OR to_regclass('public.grogoni_schema_migrations') IS NULL THEN
     RAISE EXCEPTION
       'Canonical account/user/business or migration tables are missing; refusing to audit or purge.';
   END IF;
@@ -36,7 +36,7 @@ DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1
-    FROM public.soko_schema_migrations
+    FROM public.grogoni_schema_migrations
     WHERE filename = '051_single_identity_single_store.sql'
   ) THEN
     RAISE EXCEPTION
@@ -94,7 +94,7 @@ INSERT INTO purge_table_plan (table_name, classification, delete_order, reason) 
   ('cp2_model_template_versions', 'DELETE', 3, 'Immutable model-template lineage versions'),
   ('cp2_template_evaluation_suites', 'DELETE', 3, 'Versioned template evaluation suites'),
   ('cp2_model_templates', 'DELETE', 4, 'Business-owned portable expertise templates'),
-  ('cp2_soko_id_history', 'DELETE', 11, 'Retired storefront ids (soko-id-slug-system)'),
+  ('cp2_grogoni_id_history', 'DELETE', 11, 'Retired storefront ids (grogoni-id-slug-system)'),
   ('cp2_product_field_schemas', 'DELETE', 11, 'Business product schema settings'),
   ('cp2_products', 'DELETE', 11, 'Normalized product records'),
   ('cp2_contacts', 'DELETE', 11, 'Permissioned canonical contact records'),
@@ -165,7 +165,7 @@ INSERT INTO purge_table_plan (table_name, classification, delete_order, reason) 
   ('cp2_network_routes', 'DELETE', 11, 'Business agent network routes'),
   ('cp2_contact_hashes', 'DELETE', 11, 'Account contact hashes'),
   ('cp2_external_identities', 'DELETE', 11, 'Account external contact identities'),
-  ('cp2_soko_identity_links', 'DELETE', 11, 'Account identity graph links'),
+  ('cp2_grogoni_identity_links', 'DELETE', 11, 'Account identity graph links'),
   ('cp2_identity_candidates', 'DELETE', 11, 'Account pending identity candidates'),
   ('cp2_network_connections', 'DELETE', 11, 'Account user-to-user network connections'),
   ('cp2_audit_events', 'DELETE', 11, 'User/business audit events'),
@@ -190,7 +190,7 @@ INSERT INTO purge_table_plan (table_name, classification, delete_order, reason) 
   ('sync_queue', 'DELETE', 30, 'Outbox for user/business events'),
   ('business_events', 'DELETE', 31, 'User/business domain audit events'),
   ('message_delivery_attempts', 'DELETE', 40, 'Canonical message delivery history'),
-  ('soko_session_contexts', 'DELETE', 41, 'Account conversation/session context'),
+  ('grogoni_session_contexts', 'DELETE', 41, 'Account conversation/session context'),
   ('conversation_messages', 'DELETE', 42, 'Canonical user/business messages'),
   ('conversation_participants', 'DELETE', 43, 'Canonical account/business participants'),
   ('conversations', 'DELETE', 44, 'Canonical account/business conversations'),
@@ -251,7 +251,7 @@ INSERT INTO purge_table_plan (table_name, classification, delete_order, reason) 
   ('users', 'DELETE', 91, 'Canonical registered users'),
   ('businesses', 'DELETE', 92, 'All businesses are application user-created tenants'),
   ('accounts', 'DELETE', 93, 'Canonical registered accounts'),
-  ('soko_schema_migrations', 'PRESERVE', NULL, 'Migration ledger'),
+  ('grogoni_schema_migrations', 'PRESERVE', NULL, 'Migration ledger'),
   ('identity_providers', 'PRESERVE', NULL, 'Global OAuth provider definitions'),
   ('database_backup_runs', 'PRESERVE', NULL, 'Global database operations metadata'),
   ('database_restore_drills', 'PRESERVE', NULL, 'Global database operations metadata'),
@@ -500,7 +500,7 @@ UNION ALL SELECT 'residual_agents',
   + (SELECT count(*) FROM cp2_native_runtime_bindings)
 UNION ALL SELECT 'residual_orders', count(*) FROM cp2_public_orders
 UNION ALL SELECT 'residual_context_memory',
-  (SELECT count(*) FROM soko_session_contexts)
+  (SELECT count(*) FROM grogoni_session_contexts)
   + (SELECT count(*) FROM cp2_session_contexts)
   + (SELECT count(*) FROM cp2_agent_context_sources)
   + (SELECT count(*) FROM cp2_runtime_turns)

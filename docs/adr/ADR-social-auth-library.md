@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-Soko.market already has a custom Fastify auth implementation with:
+Grogoni already has a custom Fastify auth implementation with:
 
 - phone-plus-PIN access and email OTP
 - OAuth state and CSRF validation
@@ -23,7 +23,7 @@ The product requirement asks for social signup/login without adding Prisma, Supa
 Continue using the existing custom CP2 auth stack and extend it for the requested social signup/login providers.
 
 Do not introduce Better Auth, Auth.js, Passport, Supabase Auth, Clerk, Firebase Auth, or another
-overlapping framework in this phase. Phone account access remains on the Soko PIN/session stack;
+overlapping framework in this phase. Phone account access remains on the Grogoni PIN/session stack;
 email OTP remains the only OTP channel.
 
 ## Rationale

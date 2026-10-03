@@ -103,7 +103,7 @@ not queried or assumed.
 ## 5. API contracts
 
 Prefix: `/v1/runtime/:taskId`. Authorization uses the existing session cookie. Mutation requests
-include `x-soko-device-id`; transfer creation requires `Idempotency-Key`.
+include `x-grogoni-device-id`; transfer creation requires `Idempotency-Key`.
 
 ```http
 GET /capabilities

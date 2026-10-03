@@ -11,7 +11,7 @@ This is the first stage of the consent-based, offline-first messaging plan. It a
 - additive PostgreSQL migration and scoped rollback;
 - account-scoped delivery-attempt API and persistence.
 
-It does not add a transport adapter, Android SMS access, provider connection, history import, or a new client outbox. A channel other than `soko` is rejected until a real, configured official adapter exists.
+It does not add a transport adapter, Android SMS access, provider connection, history import, or a new client outbox. A channel other than `grogoni` is rejected until a real, configured official adapter exists.
 
 ## Repository diagnosis before implementation
 
@@ -36,7 +36,7 @@ It does not add a transport adapter, Android SMS access, provider connection, hi
 - `selectedChannel`, `actualChannel`, and `providerMessageId`;
 - `importedSource`, `importedExternalId`, and `consentRecordId`.
 
-`POST /v1/messages` accepts `idempotencyKey`, `queuedAt`, and `selectedChannel`. Repeating a request with the same conversation and idempotency key returns the original message even if a later client message ID differs. The only currently available channel is `soko`.
+`POST /v1/messages` accepts `idempotencyKey`, `queuedAt`, and `selectedChannel`. Repeating a request with the same conversation and idempotency key returns the original message even if a later client message ID differs. The only currently available channel is `grogoni`.
 
 An agent-only conversation can include an `agent` processing request with its business ID, message,
 optional runtime session, and agent profile. The API persists the user message, creates the runtime
@@ -47,14 +47,14 @@ attempts to attach it to an encrypted human conversation.
 
 `GET /v1/conversations/:conversationId/messages/:messageId/delivery-attempts` returns attempt metadata only after account ownership is verified. The record deliberately excludes message bodies, access tokens, and provider credentials.
 
-Legacy snapshots are hydrated with deterministic Soko idempotency keys and safe state defaults. New snapshots persist delivery attempts in `cp2_message_delivery_attempts`.
+Legacy snapshots are hydrated with deterministic Grogoni idempotency keys and safe state defaults. New snapshots persist delivery attempts in `cp2_message_delivery_attempts`.
 
 ## Threat model
 
 - Cross-tenant access: every attempt has an `accountId`; reads first resolve the conversation inside the current account and return 404 for other tenants.
 - Replay/duplicate send: idempotency is scoped to a conversation in memory and by a unique PostgreSQL index.
 - Secret leakage: attempts and audit payloads contain identifiers, channel, timing, and normalized result only. They do not contain message content or credentials.
-- Fake provider availability: non-Soko channels are enumerated for durable schema compatibility but rejected by runtime capability enforcement.
+- Fake provider availability: non-Grogoni channels are enumerated for durable schema compatibility but rejected by runtime capability enforcement.
 - Import confusion: source and external IDs are reserved and uniquely indexed when present; no import path is enabled in this stage.
 - Destructive rollout: the migration is additive and backfills existing rows before making idempotency non-null.
 
@@ -63,7 +63,7 @@ Legacy snapshots are hydrated with deterministic Soko idempotency keys and safe 
 1. Back up PostgreSQL using the existing database operations procedure.
 2. Deploy migration `031_message_delivery_state.sql`.
 3. Deploy API and web artifacts from the same commit.
-4. Confirm a Soko send returns state metadata and exactly one attempt.
+4. Confirm a Grogoni send returns state metadata and exactly one attempt.
 5. Confirm repeating the idempotency key returns the same message ID.
 6. Monitor `message_channel_unavailable`, idempotency validation errors, and API error rate.
 
@@ -71,10 +71,10 @@ No new environment variable or credential is required. Roll back the application
 
 ## Manual verification
 
-- Send a Soko message with a stable idempotency key and queued timestamp.
+- Send a Grogoni message with a stable idempotency key and queued timestamp.
 - Retry it with a different client message ID and the same idempotency key.
 - Verify both responses use the same server message ID.
-- Read delivery attempts as the owner and verify one successful Soko attempt.
+- Read delivery attempts as the owner and verify one successful Grogoni attempt.
 - Verify another account receives 404.
 - Select SMS and verify the server reports the channel as unavailable instead of pretending to send.
 - Restart from a persisted snapshot and verify message metadata and attempts remain.
@@ -82,7 +82,7 @@ No new environment variable or credential is required. Roll back the application
 ## Remaining staged work
 
 1. Move the PWA message outbox from localStorage to encrypted IndexedDB; persist before send; add authenticated connectivity probing, ordered retry/backoff, cancel/manual retry, attachment resume, app-resume and service-worker sync.
-2. Add a transport interface and migrate Soko delivery behind it.
+2. Add a transport interface and migrate Grogoni delivery behind it.
 3. Introduce a separately approved Kotlin/Compose Android companion with secure auth and encrypted local storage.
 4. Implement the complete Android default-SMS role only after explicit product and Play-policy review. Restricted SMS permissions must not be requested during generic onboarding.
 5. Add separate SMS import consent, local-only behavior, resumable deduplication, revocation, and deletion.

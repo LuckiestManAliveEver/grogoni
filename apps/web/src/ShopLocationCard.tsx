@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { CorridorMatchResultSummary, ShopLocationStatusSummary } from "@soko/shared-types";
+import type { CorridorMatchResultSummary, ShopLocationStatusSummary } from "@grogoni/shared-types";
 import { useAsyncActions } from "./hooks/useAsyncActions";
 import { useApiMutationRevision } from "./hooks/useApiMutationRevision";
 import { getJson, putJson } from "./api-helpers";

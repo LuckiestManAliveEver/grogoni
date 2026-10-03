@@ -1,5 +1,5 @@
 const unexplainedErrorMessage =
-  "Soko could not complete this request because the server did not provide an explanation. Please try again.";
+  "Grogoni could not complete this request because the server did not provide an explanation. Please try again.";
 export const accountSyncInitializationMessage =
   "We could not finish setting up your account. Please try again.";
 
@@ -19,7 +19,7 @@ export function getUserFacingErrorMessage(
   }
 
   if (/failed to fetch|networkerror|network request failed|load failed/i.test(message)) {
-    return "Soko could not reach the server. Check your internet connection and try again.";
+    return "Grogoni could not reach the server. Check your internet connection and try again.";
   }
 
   if (/aborterror|the operation was aborted|request was aborted/i.test(message)) {
@@ -32,8 +32,8 @@ export function getUserFacingErrorMessage(
 const authenticationErrorMessages: Record<string, string> = {
   pin_not_set: "This account doesn't have a PIN yet. Create one now.",
   passkey_pin_recovery_required: "Verify your passkey again before changing your PIN.",
-  passkey_unknown: "That passkey is not linked to a Soko account.",
-  passkey_authentication_invalid: "Soko could not verify that passkey. Try again.",
+  passkey_unknown: "That passkey is not linked to a Grogoni account.",
+  passkey_authentication_invalid: "Grogoni could not verify that passkey. Try again.",
   auth_refresh_required: "Sign in to start a new session on this device.",
   auth_refresh_revoked: "This session is no longer active. Sign in again.",
   auth_refresh_expired: "This session has expired. Sign in again.",

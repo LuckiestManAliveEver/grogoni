@@ -20,7 +20,7 @@ import type {
   RuntimeOfflineCheckpointInput,
   RuntimeRejectedPath,
   RuntimeSwapDimension
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { Cp2Error, type Cp2Store, readSessionCookie } from "../../store.js";
 import {
   parseNullableString,
@@ -230,7 +230,7 @@ export function registerRuntimeHandoffRoutes(app: FastifyInstance, store: Cp2Sto
         return store.getRuntimeCapabilities(
           readSessionCookie(request.headers.cookie),
           request.params.taskId,
-          readHeader(request, "x-soko-device-id") ?? ""
+          readHeader(request, "x-grogoni-device-id") ?? ""
         );
       } catch (error) {
         return sendCp2Error(reply, error);
@@ -246,7 +246,7 @@ export function registerRuntimeHandoffRoutes(app: FastifyInstance, store: Cp2Sto
           readSessionCookie(request.headers.cookie),
           request.params.taskId,
           request.params.hostId,
-          parseString(readHeader(request, "x-soko-device-id"), "deviceId"),
+          parseString(readHeader(request, "x-grogoni-device-id"), "deviceId"),
           body.connected === true
         );
       } catch (error) {
@@ -264,7 +264,7 @@ export function registerRuntimeHandoffRoutes(app: FastifyInstance, store: Cp2Sto
           targetExecutionHostId: parseString(body.targetExecutionHostId, "targetExecutionHostId"),
           expectedHandoffId: parseString(body.expectedHandoffId, "expectedHandoffId"),
           idempotencyKey: parseString(readHeader(request, "idempotency-key"), "idempotencyKey"),
-          deviceId: parseString(readHeader(request, "x-soko-device-id"), "deviceId")
+          deviceId: parseString(readHeader(request, "x-grogoni-device-id"), "deviceId")
         });
         return reply
           .code(result.status === "COMPLETED" || result.status === "FAILED" ? 200 : 202)
@@ -296,7 +296,7 @@ export function registerRuntimeHandoffRoutes(app: FastifyInstance, store: Cp2Sto
       async (request: FastifyRequest<{ Params: TaskParams & { transferId: string } }>, reply) => {
         try {
           const session = readSessionCookie(request.headers.cookie);
-          const device = parseString(readHeader(request, "x-soko-device-id"), "deviceId");
+          const device = parseString(readHeader(request, "x-grogoni-device-id"), "deviceId");
           if (action === "fail")
             return store.failRuntimeTransfer(
               session,

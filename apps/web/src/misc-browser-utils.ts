@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { type BeforeInstallPromptEvent } from "./soko-application-shared";
+import { type BeforeInstallPromptEvent } from "./grogoni-application-shared";
 
 export function useInstallPrompt() {
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);

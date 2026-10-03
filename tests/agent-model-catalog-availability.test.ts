@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyDeploymentRuntimeAvailability } from "../apps/web/src/agent-model-panel-utils";
-import type { AiModelSummary } from "../apps/web/src/soko-application-shared";
+import type { AiModelSummary } from "../apps/web/src/grogoni-application-shared";
 
 const modelId = "qwen2.5-0.5b-android";
 

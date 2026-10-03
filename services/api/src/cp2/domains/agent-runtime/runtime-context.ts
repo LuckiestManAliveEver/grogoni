@@ -5,7 +5,7 @@ import type {
   AgentOwnerCorrection,
   RuntimeExperience,
   ShopAgentRuntime
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
 import type { AgentRuntimeDomainDeps } from "./domain-deps.js";
 import {
@@ -52,7 +52,7 @@ export function buildShopAgentRuntime(
     identity: {
       agentName: profile.name,
       shopName: business.name,
-      shopIdentifier: business.sokoId,
+      shopIdentifier: business.grogoniId,
       role: profile.role,
       supportedLanguages: [...profile.supportedLanguages],
       shopDescription: profile.description,

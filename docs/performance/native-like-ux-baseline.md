@@ -10,7 +10,7 @@ Navigation was already implemented with `history.pushState`, so authenticated ta
 
 The most important root causes were:
 
-1. `SokoApplication.tsx` was a 722 KB source file and produced a 570.09 KB minified authenticated chunk. A route change updated `view` at the top of this component and reconciled the chat tree plus the active business surface.
+1. `GrogoniApplication.tsx` was a 722 KB source file and produced a 570.09 KB minified authenticated chunk. A route change updated `view` at the top of this component and reconciled the chat tree plus the active business surface.
 2. Cached authentication was read only after `/auth/bootstrap` failed. A returning authenticated user therefore saw the blocking launch screen while a slow request was outstanding even when a usable cached session and shop existed.
 3. The request cache was memory-only. It provided in-session stale-while-revalidate and request deduplication but could not hydrate business screens after process restart.
 4. The IndexedDB/realtime effect depended on `isOnline`, so a connectivity transition closed and reopened the database and WebSocket instead of keeping their lifecycles scoped only to the account.
@@ -30,7 +30,7 @@ The most important root causes were:
 - Authentication: `refreshSession()` calls `/auth/bootstrap`, then validates the stored business and fetches presence and agent profile. Cached auth existed in localStorage but was originally a failure fallback.
 - State: React local state in `OwnerApp`; there was no selector-based global store. High-frequency state and low-frequency domain state shared the same owner component.
 - API cache: a module-level `Map`, 15–300 second stale windows, concurrent-request deduplication, and mutation invalidation.
-- Offline data: versioned `soko-market-sync` IndexedDB database for sync records, metadata, and typed mutations. Other screen data was not persisted.
+- Offline data: versioned `grogoni-sync` IndexedDB database for sync records, metadata, and typed mutations. Other screen data was not persisted.
 - Realtime: one account WebSocket with reconnect, created by the IndexedDB/sync effect.
 - Model runtime: browser inference and GGUF work run in a dedicated typed worker. Server/runtime session identity is deduplicated by `RuntimeManager`.
 - OCR/receipt processing: server-side API workflow; no OCR engine was found in the initial browser bundle.
@@ -40,7 +40,7 @@ The most important root causes were:
 
 ## Production build baseline
 
-Command: `pnpm --filter @soko/web build`
+Command: `pnpm --filter @grogoni/web build`
 
 Build completed successfully in 24.63 seconds (29.01 seconds shell wall time), transforming 218 modules.
 
@@ -48,7 +48,7 @@ Build completed successfully in 24.63 seconds (29.01 seconds shell wall time), t
 | ------------------------------------- | -----------: | -------------------: |
 | Bootstrap entry                       |      2.08 KB |              1.08 KB |
 | Main React/router chunk               |    199.25 KB |             62.58 KB |
-| Authenticated `SokoApplication` chunk |    570.09 KB |            149.88 KB |
+| Authenticated `GrogoniApplication` chunk |    570.09 KB |            149.88 KB |
 | Initial CSS                           |     71.15 KB |             13.42 KB |
 | Browser-model worker                  |    883.33 KB | not reported by Vite |
 | ONNX/WASM runtime                     | 21,596.02 KB |          5,067.67 KB |

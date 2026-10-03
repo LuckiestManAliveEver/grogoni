@@ -30,7 +30,7 @@ if (!Number.isInteger(requestedSteps) || requestedSteps <= 0) {
 
 const pool = new Pool(
   databasePoolConfig(databaseUrl, {
-    applicationName: "soko-market-rollback",
+    applicationName: "grogoni-rollback",
     max: 2,
     useQueryTimeouts: false
   })
@@ -41,7 +41,7 @@ try {
     const appliedResult = await pool.query(
       `
         select filename
-        from soko_schema_migrations
+        from grogoni_schema_migrations
         order by filename desc
         limit $1
       `,
@@ -65,10 +65,10 @@ try {
       try {
         await client.query("begin");
         await client.query(sql);
-        await client.query("delete from soko_schema_migrations where filename = $1", [filename]);
+        await client.query("delete from grogoni_schema_migrations where filename = $1", [filename]);
         await client.query(
           `
-            insert into soko_schema_rollbacks (filename, rollback_filename, rollback_checksum, rolled_back_at)
+            insert into grogoni_schema_rollbacks (filename, rollback_filename, rollback_checksum, rolled_back_at)
             values ($1, $2, $3, now())
           `,
           [filename, rollbackFilename, checksum]
@@ -91,9 +91,9 @@ async function withAdvisoryLock(callback) {
   const client = await pool.connect();
 
   try {
-    await client.query("select pg_advisory_lock(hashtext('soko.schema_migrations'))");
+    await client.query("select pg_advisory_lock(hashtext('grogoni.schema_migrations'))");
     await client.query(`
-      create table if not exists soko_schema_rollbacks (
+      create table if not exists grogoni_schema_rollbacks (
         id bigserial primary key,
         filename text not null,
         rollback_filename text not null,
@@ -104,7 +104,7 @@ async function withAdvisoryLock(callback) {
     return await callback();
   } finally {
     await client
-      .query("select pg_advisory_unlock(hashtext('soko.schema_migrations'))")
+      .query("select pg_advisory_unlock(hashtext('grogoni.schema_migrations'))")
       .catch(() => undefined);
     client.release();
   }

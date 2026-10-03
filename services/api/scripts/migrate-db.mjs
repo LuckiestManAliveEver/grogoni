@@ -24,7 +24,7 @@ if (databaseUrl === null) {
 
 const pool = new Pool(
   databasePoolConfig(databaseUrl, {
-    applicationName: "soko-market-migrate",
+    applicationName: "grogoni-migrate",
     max: 2,
     useQueryTimeouts: false
   })
@@ -37,7 +37,7 @@ try {
   await withAdvisoryLock(async () => {
     for (const migration of migrations) {
       const alreadyApplied = await pool.query(
-        "select checksum from soko_schema_migrations where filename = $1",
+        "select checksum from grogoni_schema_migrations where filename = $1",
         [migration.filename]
       );
 
@@ -61,7 +61,7 @@ try {
         await client.query(migration.sql);
         await client.query(
           `
-            insert into soko_schema_migrations (filename, checksum, applied_at, duration_ms)
+            insert into grogoni_schema_migrations (filename, checksum, applied_at, duration_ms)
             values ($1, $2, now(), $3)
           `,
           [migration.filename, migration.checksum, Date.now() - startedAt]
@@ -85,7 +85,7 @@ try {
 
 async function ensureMigrationTable() {
   await pool.query(`
-    create table if not exists soko_schema_migrations (
+    create table if not exists grogoni_schema_migrations (
       filename text primary key,
       checksum text not null,
       applied_at timestamp with time zone not null,
@@ -98,11 +98,11 @@ async function withAdvisoryLock(callback) {
   const client = await pool.connect();
 
   try {
-    await client.query("select pg_advisory_lock(hashtext('soko.schema_migrations'))");
+    await client.query("select pg_advisory_lock(hashtext('grogoni.schema_migrations'))");
     return await callback();
   } finally {
     await client
-      .query("select pg_advisory_unlock(hashtext('soko.schema_migrations'))")
+      .query("select pg_advisory_unlock(hashtext('grogoni.schema_migrations'))")
       .catch(() => undefined);
     client.release();
   }

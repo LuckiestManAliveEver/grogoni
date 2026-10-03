@@ -5,12 +5,12 @@ import type {
   RuntimeRegistryResourceRef,
   RuntimeRegistrySearchItem,
   RuntimeRegistrySearchQuery
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { createGitHubModelCatalog } from "../services/api/src/cp2/github-model-catalog";
 import { createGitHubAgentCatalog } from "../services/api/src/cp2/github-agent-catalog";
 import type { GitHubModelCatalog } from "../services/api/src/cp2/github-model-catalog";
 import type { GitHubAgentCatalog } from "../services/api/src/cp2/github-agent-catalog";
-import { createSokoCatalogRegistryAdapter } from "../services/api/src/cp2/runtime-registry/soko-adapter";
+import { createGrogoniCatalogRegistryAdapter } from "../services/api/src/cp2/runtime-registry/grogoni-adapter";
 import { createGitHubRegistryAdapter } from "../services/api/src/cp2/runtime-registry/github-adapter";
 import { createHuggingFaceRegistryAdapter } from "../services/api/src/cp2/runtime-registry/huggingface-adapter";
 import { createRuntimeRegistrySearchService } from "../services/api/src/cp2/runtime-registry/search";
@@ -24,7 +24,7 @@ import { createMemoryRuntimeRegistryImportStore } from "../services/api/src/cp2/
 const publicContext: RuntimeRegistryContext = { accountId: "public", connected: false };
 
 function fakeAdapter(
-  id: "github" | "huggingface" | "soko",
+  id: "github" | "huggingface" | "grogoni",
   behavior: {
     search?: (query: RuntimeRegistrySearchQuery) => Promise<RuntimeRegistrySearchItem[]>;
   }
@@ -42,7 +42,7 @@ function fakeAdapter(
 }
 
 function fakeItem(
-  provider: "github" | "huggingface" | "soko",
+  provider: "github" | "huggingface" | "grogoni",
   name: string
 ): RuntimeRegistrySearchItem {
   return {
@@ -71,17 +71,17 @@ describe("runtime registry unified search fan-out", () => {
         throw new Error("Hugging Face is down");
       }
     });
-    const soko = fakeAdapter("soko", { search: async () => [fakeItem("soko", "soko-model")] });
+    const grogoni = fakeAdapter("grogoni", { search: async () => [fakeItem("grogoni", "grogoni-model")] });
 
     const service = createRuntimeRegistrySearchService({
-      adapters: { github, huggingface, soko }
+      adapters: { github, huggingface, grogoni }
     });
 
     const result = await service.search({ query: "model" }, publicContext);
 
-    expect(result.items.map((item) => item.externalId).sort()).toEqual(["gh-model", "soko-model"]);
+    expect(result.items.map((item) => item.externalId).sort()).toEqual(["gh-model", "grogoni-model"]);
     expect(result.providers.github).toEqual({ status: "ok" });
-    expect(result.providers.soko).toEqual({ status: "ok" });
+    expect(result.providers.grogoni).toEqual({ status: "ok" });
     expect(result.providers.huggingface).toEqual({
       status: "error",
       errorMessage: "Hugging Face is down"
@@ -145,13 +145,13 @@ describe("runtime registry unified search fan-out", () => {
   });
 });
 
-describe("Soko catalog registry adapter", () => {
-  it("normalizes Soko's own model/agent catalog and marks every result already-imported", async () => {
-    const adapter = createSokoCatalogRegistryAdapter({
+describe("Grogoni catalog registry adapter", () => {
+  it("normalizes Grogoni's own model/agent catalog and marks every result already-imported", async () => {
+    const adapter = createGrogoniCatalogRegistryAdapter({
       listModels: () => [
         {
-          id: "sokoclaw-local",
-          label: "Soko deterministic compatibility fallback",
+          id: "grogoniclaw-local",
+          label: "Grogoni deterministic compatibility fallback",
           provider: "local",
           description: "Built-in deterministic agent behavior",
           capabilities: ["tool-routing"],
@@ -185,7 +185,7 @@ describe("Soko catalog registry adapter", () => {
           knowledge: "Use saved records.",
           tools: [],
           skillIds: [],
-          runtimeAdapterId: "soko"
+          runtimeAdapterId: "grogoni"
         }
       ]
     });
@@ -193,7 +193,7 @@ describe("Soko catalog registry adapter", () => {
     const result = await adapter.search({ query: "shopkeeper" }, publicContext);
     expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({
-      provider: "soko",
+      provider: "grogoni",
       kind: "agent",
       externalId: "builtin:shopkeeper",
       imported: true,
@@ -420,7 +420,7 @@ describe("agent import", () => {
       if (url === "https://api.github.com/repos/example/agent-repo/contents/") {
         return Response.json([{ path: "package.json", size: 300, type: "file" }]);
       }
-      if (url === "https://api.github.com/repos/example/agent-repo/contents/soko.agent.json") {
+      if (url === "https://api.github.com/repos/example/agent-repo/contents/grogoni.agent.json") {
         return new Response(null, { status: 404 });
       }
       return new Response(null, { status: 404 });

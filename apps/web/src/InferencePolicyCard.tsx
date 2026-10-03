@@ -3,7 +3,7 @@ import type {
   InferenceFallbackPolicyMode,
   InferencePolicySummary,
   InferenceProviderSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
 import { fetchFreshJson, putJson } from "./api-helpers";
 import { getErrorMessage } from "./chat-message-plumbing";

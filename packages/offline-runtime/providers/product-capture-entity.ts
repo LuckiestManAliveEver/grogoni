@@ -4,8 +4,8 @@ import {
   productCaptureItemsFromFields,
   queryCatalogueProducts,
   visibleProductCapturePrice
-} from "@soko/business-core";
-import type { ProductCaptureJobSummary, ProductSummary } from "@soko/shared-types";
+} from "@grogoni/business-core";
+import type { ProductCaptureJobSummary, ProductSummary } from "@grogoni/shared-types";
 import type { Entity } from "../types.js";
 
 /**
@@ -13,7 +13,7 @@ import type { Entity } from "../types.js";
  * structured extraction needs the server's contact graph), title/price extraction and duplicate
  * detection are pure, deterministic functions the server itself uses
  * (services/api/src/cp2/domains/commerce/store.ts's createProductCaptureJob) - both sides import
- * them from @soko/business-core, so the offline review card shows the same fields a merchant would
+ * them from @grogoni/business-core, so the offline review card shows the same fields a merchant would
  * see online, not a degraded "not yet extracted" placeholder. The job still syncs for real once
  * online: the server recomputes the same fields from `extractedText` rather than trusting this
  * device's copy, and assigns the durable id and any product-media handling.

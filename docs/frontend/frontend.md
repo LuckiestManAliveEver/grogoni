@@ -1,15 +1,15 @@
-# Soko conversation-first frontend: architecture and migration roadmap
+# Grogoni conversation-first frontend: architecture and migration roadmap
 
 Status: roadmap adopted and fully implemented — Phases 1-3, 4a-4m (all ShellViews audited), 5 (architectural enforcement), and 6 (permanent tab bar removed) all shipped
 Date: 2026-08-21
 Design contract: three mockups reviewed as one product system —
-`soko-shell-mockup.html`, `soko-sell-status-mockup.html`,
-`soko-buy-unified-cart-mockup.html` (not committed to the repo; treat this
+`grogoni-shell-mockup.html`, `grogoni-sell-status-mockup.html`,
+`grogoni-buy-unified-cart-mockup.html` (not committed to the repo; treat this
 document plus the running Buy/Sell implementation as the durable record of
 their content).
 Decision: **full shell replacement** — home becomes the session list and
-Soko's permanent UI is reduced to
-`SokoShell → SessionList → ConversationSession → Composer → GeneratedSurface`,
+Grogoni's permanent UI is reduced to
+`GrogoniShell → SessionList → ConversationSession → Composer → GeneratedSurface`,
 with every other business view (products, customers, invoices, payments,
 suppliers, network, sync, runtime history, imports, logistics, compliance,
 beta, launch, reports, notifications) migrated one at a time into
@@ -21,7 +21,7 @@ big-bang cutover.
 
 > Conversation is the app. Buy/Sell is a mode, not a page.
 
-Soko is not an e-commerce site with chat added. It is a conversation
+Grogoni is not an e-commerce site with chat added. It is a conversation
 runtime in which commerce interfaces are rendered. The mockups' shell
 explicitly rejects Catalogue and Orders tabs; the session list is the
 entire home screen; everything past it — product cards, confirmations,
@@ -42,25 +42,25 @@ earlier work on the same underlying product vision, before these specific
 HTML files were reviewed together as a system. Nothing here needed to be
 invented from scratch.
 
-### Sell flow (`soko-sell-status-mockup.html`) — already built
+### Sell flow (`grogoni-sell-status-mockup.html`) — already built
 
 | Mockup step                         | Existing implementation                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Attach photo                        | Existing product-capture upload pipeline (reused, not duplicated)                                                                                                                                                                                                                                                                                                                                                                       |
 | Vision detects items, pins on photo | `packages/shared-types/src/index.ts` `ProductCaptureItemSummary.boundingBox` (normalized `{x,y,width,height}` in `[0,1]`, exactly the mockup's coordinate convention). `detectionAvailable` is honestly `false` today — no real vision model is wired in — and the frontend renders that fact ("Detection isn't available yet — review manually") rather than fabricating pins, per `apps/web/src/ProductCaptureItemsCard.tsx:103-107`. |
 | Seller reviews/edits per item       | `ProductCaptureItemsCard.tsx` — confirm/reject per item through `/product-captures/.../items/.../confirm`, never a direct catalogue write                                                                                                                                                                                                                                                                                               |
-| Contact picker, never select-all    | `apps/web/src/StatusBroadcastComposer.tsx:28-36` — explicit comment: "Never default to select-all: only pre-check contacts who are both a matched Soko account and an existing customer of this business"                                                                                                                                                                                                                               |
+| Contact picker, never select-all    | `apps/web/src/StatusBroadcastComposer.tsx:28-36` — explicit comment: "Never default to select-all: only pre-check contacts who are both a matched Grogoni account and an existing customer of this business"                                                                                                                                                                                                                               |
 | Status posted, tracked              | `apps/web/src/StatusBroadcastCard.tsx` + `StatusBroadcastSummary` (`viewCount`/`replyCount`/`resultingOrderIds`) — a real trackable object, not a plain message                                                                                                                                                                                                                                                                         |
 
 One deliberate deviation from the mockup: its step-3 contact list checks
 Pastor Njoroge (labeled "In phonebook", not "Regular customer") by
 default, which is inconsistent with its own "contacts-only by default,
 trust model" note. The existing, already-tested backend rule
-(`defaultSelected` only when `isExistingCustomer && isSokoUser`) is more
+(`defaultSelected` only when `isExistingCustomer && isGrogoniUser`) is more
 precisely specified and is what the implementation follows — the mockup's
 example checkbox state was not copied literally.
 
-### Buy flow (`soko-buy-unified-cart-mockup.html`) — already built
+### Buy flow (`grogoni-buy-unified-cart-mockup.html`) — already built
 
 | Mockup step                                                   | Existing implementation                                                                                                                                                                                                                                   |
 | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -104,10 +104,10 @@ than phrase-matching. **This is fixed in Phase 1, below.**
 This is the one place where the mockups describe something the repository
 does not yet have, and where "just move a variable" would be wrong.
 
-- `apps/web/src/hooks/useNavigationState.ts` holds `mode: SokoMode`
+- `apps/web/src/hooks/useNavigationState.ts` holds `mode: GrogoniMode`
   (`"marketplace" | "seller"`) as a single piece of state for the whole
   app — not a property of any individual conversation.
-- The server has an equivalent concept, `SokoSessionContext`
+- The server has an equivalent concept, `GrogoniSessionContext`
   (`packages/shared-types/src/index.ts:1108-1133`), but it is stored
   **one row per account** (`services/api/src/cp2/store.ts:6060-6093`,
   keyed by `session.account.id`, not by conversation), and it already
@@ -145,7 +145,7 @@ infrastructure without changing today's single-session behavior yet").
 
 **What the audit found:**
 
-- `getSokoSessionContext`/`updateSokoSessionContext`
+- `getGrogoniSessionContext`/`updateGrogoniSessionContext`
   (`services/api/src/cp2/store.ts`) gate three separate authorization
   invariants on `mode`/`activeShopId`/`activeSurface`: the
   `seller_context_required` check on `owner-controls` messages
@@ -154,22 +154,22 @@ infrastructure without changing today's single-session behavior yet").
 new Set(["catalogue", "owner-controls", "receipt"])`, `store.ts:275`,
   only reachable in seller mode). None of the three cared how the context
   row was keyed — they only ever read fields off whatever
-  `StoredSokoSessionContext` they were handed.
-- `updateSokoSessionContext` already accepted a `conversationId` input
+  `StoredGrogoniSessionContext` they were handed.
+- `updateGrogoniSessionContext` already accepted a `conversationId` input
   before this change, but only used it to validate membership and to
   overwrite the single row's `conversationId` field — not to select which
   row to operate on. There was exactly one row per account, full stop.
 - Context bootstrap was duplicated verbatim in two places: account/session
   creation (`store.ts`, inside `createSession`) and the lazy
-  `ensureSokoSessionContext`. Both built the same default-shape object.
+  `ensureGrogoniSessionContext`. Both built the same default-shape object.
   Collapsed into one `buildDefaultSessionContext` helper as part of this
   change — a correctness-neutral cleanup the audit surfaced, not a
   Phase 2 goal in itself.
 - The frontend (`apps/web/src/hooks/useAuthState.ts`) genuinely keeps
   `mode`/`view`/`activeConversationId` synced with the backend context
-  today, bidirectionally: `loadSokoSessionContext` restores frontend state
+  today, bidirectionally: `loadGrogoniSessionContext` restores frontend state
   from `/v1/session/context` on every login, and a debounced 250ms effect
-  in `SokoApplication.tsx` (~line 847) `PATCH`es the backend whenever
+  in `GrogoniApplication.tsx` (~line 847) `PATCH`es the backend whenever
   frontend mode/shop/surface/conversation drift from the last-known
   server value — already sending its current `activeConversationId` on
   every patch. This is why Phase 2 could ship as a pure backend change:
@@ -177,7 +177,7 @@ new Set(["catalogue", "owner-controls", "receipt"])`, `store.ts:275`,
   conversation to be aware of.
 - Persistence is a JSON-blob mirror (`cp2_session_contexts` table, one row
   per snapshot-array entry, upserted by `entity_id`), not a structured
-  SQL table — the Drizzle-schema `soko_session_contexts` table (with its
+  SQL table — the Drizzle-schema `grogoni_session_contexts` table (with its
   own migration history, including 052's deliberate collapse from
   `session_id`-per-row to `account_id`-per-row) is a separate, write-never
   table that only the GDPR purge query touches. No DDL migration was
@@ -192,7 +192,7 @@ new Set(["catalogue", "owner-controls", "receipt"])`, `store.ts:275`,
 
 - `sessionContexts` (`store.ts`) is now keyed by
   `sessionContextKey(accountId, conversationId) = "${accountId}:${conversationId}"`,
-  not `accountId` alone. `ensureSokoSessionContext` takes an optional
+  not `accountId` alone. `ensureGrogoniSessionContext` takes an optional
   `conversationId`; omitted, it resolves to the account's personal
   conversation exactly as before (so every existing caller is unchanged).
   Passed, it resolves and validates that conversation
@@ -233,7 +233,7 @@ session-list UI itself.
 `pos`, `invoices`, `network`, `sync`, `runtime`, `payments`, `imports`,
 `logistics`, `compliance`, `beta`, `launch`, `reports`, `notifications`).
 `OwnerWorkspace.tsx`'s `renderOwnerWorkspace()` is a single switch statement rendering one
-`*Surface` component per view. `SokoApplication.tsx` supplies grouped hook bindings and remains the
+`*Surface` component per view. `GrogoniApplication.tsx` supplies grouped hook bindings and remains the
 shell composition root.
 
 The good news for migration risk: every one of these 15 views is already
@@ -290,17 +290,17 @@ guard.
   and switches to it via `selectConversation`.
 - `apps/web/src/hooks/useAuthState.ts` — added
   `applySessionContextForConversation(conversationId)`, the per-session
-  sibling of `loadSokoSessionContext`: fetches
+  sibling of `loadGrogoniSessionContext`: fetches
   `/v1/session/context?conversationId=` (Phase 2) and applies that
   conversation's own `mode` instead of the account-wide default.
   `selectConversation` now calls this on every switch, so **Buy/Sell mode
   is genuinely per-session** — switching to a different agent session
   restores that session's own mode instead of carrying over whatever mode
   the previous session was in. The existing debounced sync effect in
-  `SokoApplication.tsx` (Phase 2) already sent the active
+  `GrogoniApplication.tsx` (Phase 2) already sent the active
   `conversationId` on every patch, so the write side needed no change —
   only the read side (switching sessions) was missing this.
-- `useAuthState`'s hook call moved earlier in `SokoApplication.tsx` (right
+- `useAuthState`'s hook call moved earlier in `GrogoniApplication.tsx` (right
   after `useChatThreadState`, before `useChatInboxState`), since
   `useChatInboxState` now needs `applySessionContextForConversation` at
   call time. Verified none of `useAuthState`'s own inputs depend on
@@ -389,7 +389,7 @@ spec, one domain at a time.
 - A new self-contained `ProductManagementCard` (mirrors
   `ProductCaptureItemsCard`'s shape — fetches its own data from
   `businessId` alone, not `useProductsState`/`ProductSurface`, which need
-  8 injected deps tied to sibling hooks in `SokoApplication.tsx`) is
+  8 injected deps tied to sibling hooks in `GrogoniApplication.tsx`) is
   posted into the owner's own conversation
   (`useChatRuntimeState.ts`'s `applyRuntimeResult`, after any successful
   `product.create`/`product.update`/`product.stock_adjust` runtime turn)
@@ -407,7 +407,7 @@ chat, but the Products page keeps working exactly as before for
 everyone who doesn't use it that way yet.
 
 Regression tests: `tests/cp4-rule-parser.test.ts` (new intents, and the
-currency/quantity double-counting fix), `tests/cp10-sokoclaw-runtime.test.ts`
+currency/quantity double-counting fix), `tests/cp10-grogoniclaw-runtime.test.ts`
 ("creates, edits, and adjusts stock for a product through confirmed
 runtime turns" — a full propose→confirm cycle against the real HTTP
 route, the test that caught both bugs above), `tests/product-management-card.test.ts`
@@ -468,7 +468,7 @@ registered under a new `"supplier-management"` content type. Permanent
 
 Regression tests: `tests/cp4-rule-parser.test.ts` (new intents, and the
 `parseProductContextScriptCommand` exclusion guard — asserts `"edit
-supplier..."` returns `null` from the product matcher), `tests/cp10-sokoclaw-runtime.test.ts`
+supplier..."` returns `null` from the product matcher), `tests/cp10-grogoniclaw-runtime.test.ts`
 ("creates and edits a supplier through confirmed runtime turns, not the
 product vocabulary" — asserts zero products exist after the run, the
 guard against the exact regression this phase found), `tests/supplier-management-card.test.ts`
@@ -508,7 +508,7 @@ case resolving the named customer and calling the sales domain's existing
 checking rather than assuming, so the card only offers what the REST
 contract actually supports), registered under `"customer-management"`.
 
-Regression tests: `tests/cp4-rule-parser.test.ts`, `tests/cp10-sokoclaw-runtime.test.ts`
+Regression tests: `tests/cp4-rule-parser.test.ts`, `tests/cp10-grogoniclaw-runtime.test.ts`
 ("creates and edits a customer through confirmed runtime turns, not the
 product vocabulary"), `tests/customer-management-card.test.ts`. Verified
 to fail against the pre-Phase-4c code before restoring the fix.
@@ -554,7 +554,7 @@ phase** - `create_invoice`/`invoice.draft`'s existing shape was already
 exactly what the new frontend trigger needed; Phase 4d only added the
 frontend reaction to a proposal shape that already existed.
 
-Regression tests: `tests/cp10-sokoclaw-runtime.test.ts` ("classifies
+Regression tests: `tests/cp10-grogoniclaw-runtime.test.ts` ("classifies
 create_invoice and surfaces the extracted customer name for the composer
 card" - pins the existing backend contract the new frontend code depends
 on; passes unchanged with no backend files stashed, confirming this
@@ -599,7 +599,7 @@ parallel test.
 structured input containing `invoiceId`, positive `amount`, and `method` now executes the
 registered `payment.record` capability through `SalesDomain.recordPayment` after confirmation.
 
-Regression tests: `tests/cp10-sokoclaw-runtime.test.ts` (extended, not
+Regression tests: `tests/cp10-grogoniclaw-runtime.test.ts` (extended, not
 duplicated), `tests/payment-management-card.test.ts` (frontend wiring —
 verified to fail without the frontend implementation).
 
@@ -707,7 +707,7 @@ been wired into the runtime-tool system.
   `PATCH`es the same endpoint the permanent Logistics page already uses
   (`useLogisticsState.ts:updateLogisticsStatus`).
 - Registered in `generated-surface-registry.tsx` and
-  `soko-application-shared.ts`; the `logistics-management` message-content
+  `grogoni-application-shared.ts`; the `logistics-management` message-content
   variant added to `ConversationMessageContent` and validated server-side
   in `messaging/shared.ts`; the trigger in `useChatRuntimeState.ts` posts
   the card as soon as a turn classifies as `logistics.update_status`, not
@@ -716,7 +716,7 @@ been wired into the runtime-tool system.
 
 Regression tests: `tests/cp4-rule-parser.test.ts` (new parser-level
 assertion for `update_logistics`, verified against real parser output
-first), `tests/cp10-sokoclaw-runtime.test.ts` (new end-to-end test
+first), `tests/cp10-grogoniclaw-runtime.test.ts` (new end-to-end test
 proving the real HTTP route classifies "mark delivered for Mary" as
 `logistics.update_status` and stays a non-executing clarification),
 `tests/logistics-management-card.test.ts` (frontend wiring — verified to
@@ -738,7 +738,7 @@ retry queued offline writes, `queueMutationAfterNetworkFailure` persists
 a mutation locally when a write fails offline. Its only two owner-facing
 actions are "replay the sync queue" and "replay one item" — both need a
 `syncItemId` a chat message would never carry, and both already have
-direct buttons on the permanent Sync page (`SokoApplication.tsx:1613`,
+direct buttons on the permanent Sync page (`GrogoniApplication.tsx:1613`,
 `:1624`, wired directly to the domain hook, not through the runtime-tool
 system). No `RuntimeToolName`/`RuleIntent` was ever defined for sync, and
 grepping every caller of `replaySyncQueue`/`queueMutationAfterNetworkFailure`
@@ -820,7 +820,7 @@ dashboards — but the audit found the gap in an unexpected place.
   work.
 - Confirmed this is a real, load-bearing precedent to extend, not a new
   pattern to invent: `show_products`/`show_invoices` are plain
-  `RuleIntent`s in the shared `@soko/tool-core` parser (used by both the
+  `RuleIntent`s in the shared `@grogoni/tool-core` parser (used by both the
   frontend's local fallback decision engine and the real backend
   `/runtime/turns` HTTP route, since it's the same package on both
   sides), mapping to a `type: "navigate"` next-action that short-circuits
@@ -856,7 +856,7 @@ navigates as soon as either tool executes — identical shape to the
 existing `products.list`/`invoices.list` triggers.
 
 Regression tests: `tests/cp4-rule-parser.test.ts` (parser-level, verified
-against real parser output first), `tests/cp10-sokoclaw-runtime.test.ts`
+against real parser output first), `tests/cp10-grogoniclaw-runtime.test.ts`
 (new end-to-end test proving both tools execute for real through the
 HTTP route and return real report/notification data, not just a
 clarification), `tests/reports-notifications-navigation.test.ts`
@@ -925,8 +925,8 @@ chat-invokable capability — but left `PrimaryNavigation.tsx`, a permanent
 6-item nav (Home/Stock/Sales/Docs/Reports/Settings, a desktop side rail
 that collapsed to a mobile bottom bar), rendered whenever
 `business !== null && mode === "seller"`. That directly contradicted this
-document's own opening decision — "Soko's permanent UI is reduced to
-`SokoShell → SessionList → ConversationSession → Composer →
+document's own opening decision — "Grogoni's permanent UI is reduced to
+`GrogoniShell → SessionList → ConversationSession → Composer →
 GeneratedSurface`" — even though every domain surface underneath it
 already rendered as a `StackedModule` overlay
 (`ChatSurface.tsx`'s `owner-management` module, fed
@@ -1006,14 +1006,14 @@ button, and unconditional header Sign up/Log in buttons — the exact
 "top nav + big onboarding card" pattern this document's governing
 principle rejects, just on the buyer's half of the shell instead of the
 seller's. Two invariants now hold for the customer entry point,
-enforced by `tests/soko-home-progressive-entry.test.ts`:
+enforced by `tests/grogoni-home-progressive-entry.test.ts`:
 
 - **Customer home = conversation.** `/`, `/chat`, and `/marketplace`
   all resolve to the same route (`readOwnerRoute` in `routes.ts`) and
   render the same `mode: "marketplace"` chat shell — there is no
   separate customer landing page. The customer-facing header
-  (`SokoApplication.tsx`'s `top-bar`/`shell-mode-bar`) carries only the
-  `soko.market` wordmark, the hamburger menu, and the shop icon; the
+  (`GrogoniApplication.tsx`'s `top-bar`/`shell-mode-bar`) carries only the
+  `grogoni` wordmark, the hamburger menu, and the shop icon; the
   old Buy/Sell toggle, the unconditional Messages button, and the
   header Sign up/Log in buttons only render at all `mode === "seller"`
   now (message history for a customer lives in the hamburger menu
@@ -1053,7 +1053,7 @@ phase relied on that existing behavior rather than changing it.
 ## Target architecture
 
 ```text
-                    SOKO SHELL
+                    GROGONI SHELL
                         │
               ┌─────────┴─────────┐
               │                   │
@@ -1080,7 +1080,7 @@ phase relied on that existing behavior rather than changing it.
   results   /status    (products, invoices, ...)
 ```
 
-`SokoShell → SessionList → ConversationSession → Composer → GeneratedSurface`
+`GrogoniShell → SessionList → ConversationSession → Composer → GeneratedSurface`
 are the only permanent frontend concepts. Catalogue, orders, checkout,
 status, product management, search results, and the other 15 business
 views do not get top-level navigation because implementing them as
@@ -1154,7 +1154,7 @@ not require touching `ChatSurface.tsx`'s render body again.
 | Phase | Scope                                                                                                                                                                                                                                                                                                                                                                                                                                   | Status                                                                              |
 | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
 | 1     | Generated-surface protocol: typed content carried through, renderer registry, safe unknown-type fallback                                                                                                                                                                                                                                                                                                                                | **Implemented** (this change)                                                       |
-| 2     | Session-list-as-home foundation: audit every `SokoSessionContext`/`context.mode` read site; design the per-conversation mode + multi-session data model change; land it behind the existing conversation/session infrastructure without changing today's single-session behavior yet                                                                                                                                                    | **Implemented** (this change) — see "Per-conversation session context" above        |
+| 2     | Session-list-as-home foundation: audit every `GrogoniSessionContext`/`context.mode` read site; design the per-conversation mode + multi-session data model change; land it behind the existing conversation/session infrastructure without changing today's single-session behavior yet                                                                                                                                                    | **Implemented** (this change) — see "Per-conversation session context" above        |
 | 3     | Multi-session UI: session list becomes the home screen (`ConversationInboxItem` already has the shape - title/preview/time/unread); `New session` creates a real personal agent conversation; Buy/Sell toggle persists per-session using Phase 2's data model                                                                                                                                                                           | **Implemented** (this change) — see "Multi-session UI" above                        |
 | 4a    | Products: give the domain a chat-invokable capability/tool that renders inline in a session (found to need fixing two runtime-tool execution stubs, adding two new parser intents to both the primary and context-script parsers, and a currency/quantity parsing bug - not a small phase). Permanent `products` nav entry kept until a generated-surface replacement can be proven live in a browser                                   | **Implemented** (this change) — see "Products chat-invokable capability" above      |
 | 4b    | Suppliers: same pattern as 4a (found zero existing supplier runtime tools, and a product-vocabulary false-positive that would have silently misrouted supplier edits as product edits)                                                                                                                                                                                                                                                  | **Implemented** (this change) — see "Suppliers chat-invokable capability" above     |

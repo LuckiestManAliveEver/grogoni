@@ -4,7 +4,7 @@ import type {
   RuntimeRegistrySearchItem,
   RuntimeRegistrySearchQuery,
   RuntimeRegistrySearchResult
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import type { RuntimeRegistryAdapter } from "./types.js";
 
 export interface RuntimeRegistrySearchServiceDeps {

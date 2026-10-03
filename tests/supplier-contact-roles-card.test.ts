@@ -23,7 +23,7 @@ describe("supplier contact roles card", () => {
 
   it("imports the supplier-contact relationship types from shared-types rather than redefining them", () => {
     expect(normalizedCard).toContain(
-      'import type { CanonicalContactSummary, SupplierContactRelationshipSummary, SupplierContactRole } from "@soko/shared-types";'
+      'import type { CanonicalContactSummary, SupplierContactRelationshipSummary, SupplierContactRole } from "@grogoni/shared-types";'
     );
   });
 

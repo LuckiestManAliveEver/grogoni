@@ -3,7 +3,7 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   define: {
-    __APP_NAME__: JSON.stringify("Soko"),
+    __APP_NAME__: JSON.stringify("Grogoni"),
     __APP_VERSION__: JSON.stringify("test"),
     __BUILD_TIMESTAMP__: JSON.stringify("test"),
     __DEPLOYMENT_ENV__: JSON.stringify("test"),

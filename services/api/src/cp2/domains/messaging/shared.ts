@@ -12,7 +12,7 @@ import type {
   NativeSmsDeviceReadiness,
   NativeSmsDeviceSummary,
   RuntimeTurnResult
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { Cp2Error } from "../../cp2-error.js";
 import { normalizeRequiredBoundedText } from "../../text-normalization.js";
 import { normalizeInternationalOwnerPhoneNumber } from "../../phone-identity.js";
@@ -233,7 +233,7 @@ export function nativeSmsDeviceRequirement(device: NativeSmsDeviceSummary): stri
   if (device.readiness === "ready") return null;
   if (device.readiness === "offline") return "The preferred Android SMS device is offline.";
   if (!device.roleAvailable) return "The Android SMS role is unavailable on this device.";
-  if (!device.roleGranted) return "Grant Soko the Android default SMS role.";
+  if (!device.roleGranted) return "Grant Grogoni the Android default SMS role.";
   if (!device.sendPermissionGranted || !device.receivePermissionGranted) {
     return "Grant the required Android SMS permissions after granting the SMS role.";
   }

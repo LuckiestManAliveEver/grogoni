@@ -2,12 +2,12 @@
 
 ## Context
 
-Soko was asked to implement a "durable execution plane," explicitly inspired by Google AX's
+Grogoni was asked to implement a "durable execution plane," explicitly inspired by Google AX's
 architectural patterns: durable checkpointing, capability isolation, declarative workload
 requirements, explicit runtime lifecycle, and fencing against stale execution authority.
 
 The audit performed before this change
-([`durable-execution-audit.md`](../architecture/durable-execution-audit.md)) found that Soko
+([`durable-execution-audit.md`](../architecture/durable-execution-audit.md)) found that Grogoni
 already had almost every one of these concepts, built independently and under repository-native
 names, well before this task: an immutable checkpoint chain
 (`cp2_runtime_handoffs`/`RuntimeHandoff`), a mutable transfer-of-authority state machine
@@ -23,7 +23,7 @@ from chat (`commerce.checkout`).
 
 ## Decision
 
-Soko adopts durable execution, checkpointing, capability isolation, declarative workload
+Grogoni adopts durable execution, checkpointing, capability isolation, declarative workload
 requirements, and explicit runtime lifecycle concepts - validated against Google AX's architecture
 as a reference for which concepts matter and why - while retaining its lightweight, provider-neutral
 native runtime, deployed without Kubernetes and without a second control plane.
@@ -45,7 +45,7 @@ Concretely, this change:
 4. Adds a durable idempotency key to `commerce.checkout` (`CommerceDomain.createUnifiedCheckout`),
    matching the pattern `messaging.send` already used, closing the one non-idempotent, order-
    creating capability gap found in the audit.
-5. Extends the `.soko` artifact schema additively (`runtime.resumable`/`runtime.portable`/
+5. Extends the `.grogoni.com` artifact schema additively (`runtime.resumable`/`runtime.portable`/
    `context.recipe`) without breaking any existing artifact or bumping `schemaVersion`.
 
 Every addition is either a new Postgres table following the exact generic-entity shape every other
@@ -56,9 +56,9 @@ second runtime resolver, or a second control plane.
 ## Explicitly rejected
 
 - **Google AX runtime dependency.** Studied for architectural patterns only (per this task's own
-  scope); never integrated as a library, service, or protocol dependency. Soko's runtime resolver,
+  scope); never integrated as a library, service, or protocol dependency. Grogoni's runtime resolver,
   capability gateway, and checkpoint format are all native.
-- **Kubernetes requirement.** `render.yaml` deploys a single `soko-market` instance
+- **Kubernetes requirement.** `render.yaml` deploys a single `grogoni` instance
   (`docs/single-instance-store-ceiling.md`); this change adds no orchestration requirement and
   changes nothing about that deployment model.
 - **Agent Substrate requirement.** No such abstraction is introduced; agents, models, and hosts
@@ -126,4 +126,4 @@ other `runtime-handoff/routes.ts` route already enforces and never expose secret
 Additive only. `087_runtime_execution_events.sql` creates one new table; no existing table's schema
 changes. `RuntimeTaskInstance.fenceToken`/`executionId` are new JSON fields inside the existing
 `record` column (no ALTER TABLE required), defaulted on restore for any snapshot predating this
-change. The `.soko` schema's `required` list is unchanged.
+change. The `.grogoni.com` schema's `required` list is unchanged.

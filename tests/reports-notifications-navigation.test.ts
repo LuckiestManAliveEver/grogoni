@@ -10,7 +10,7 @@ const runtimeProposals = readFileSync(
   "utf8"
 );
 const chatRuntime = readFileSync("apps/web/src/hooks/useChatRuntimeState.ts", "utf8");
-const sokoApplication = readFileSync("apps/web/src/SokoApplication.tsx", "utf8");
+const grogoniApplication = readFileSync("apps/web/src/GrogoniApplication.tsx", "utf8");
 
 describe("reports + notifications chat navigation (Phase 4l)", () => {
   it("registers show_reports and show_notifications as read-only navigate intents", () => {
@@ -32,10 +32,10 @@ describe("reports + notifications chat navigation (Phase 4l)", () => {
   });
 
   it("threads loadReports/loadNotifications from OwnerApp into the chat runtime hook", () => {
-    expect(sokoApplication).toContain("useChatRuntimeState({");
-    const chatCallStart = sokoApplication.indexOf("useChatRuntimeState({");
-    const chatCallEnd = sokoApplication.indexOf("});", chatCallStart);
-    const chatCallSource = sokoApplication.slice(chatCallStart, chatCallEnd);
+    expect(grogoniApplication).toContain("useChatRuntimeState({");
+    const chatCallStart = grogoniApplication.indexOf("useChatRuntimeState({");
+    const chatCallEnd = grogoniApplication.indexOf("});", chatCallStart);
+    const chatCallSource = grogoniApplication.slice(chatCallStart, chatCallEnd);
     expect(chatCallSource).toContain("loadReports,");
     expect(chatCallSource).toContain("loadNotifications,");
   });

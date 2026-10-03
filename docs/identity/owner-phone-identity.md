@@ -51,7 +51,7 @@ The `users` table stores:
 The existing `business_memberships.user_id` owner membership links the authenticated user and
 their phone identity to every owned shop. The phone is not copied into the business record because
 the membership is the authoritative relationship. It does not replace the user ID, business ID, or
-global Soko shop ID.
+global Grogoni shop ID.
 
 Migration `029_owner_phone_identity.sql` adds nullable legacy-safe columns, normalizes already
 valid E.164 phone login identities where possible, and adds lookup/conflict indexes. Compulsory
@@ -60,7 +60,7 @@ backfill or a premature `NOT NULL` constraint.
 
 ## Authentication architecture
 
-Phone account signup and login use the existing Soko PIN routes. Email verification remains on the
+Phone account signup and login use the existing Grogoni PIN routes. Email verification remains on the
 email OTP routes. Phone OTP requests and verification are rejected. There is no Firebase phone-auth
 package, initialization module, server token verifier, feature flag, or Firebase environment
 variable.

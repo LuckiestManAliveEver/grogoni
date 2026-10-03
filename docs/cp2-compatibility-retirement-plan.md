@@ -65,7 +65,7 @@ Status: Phase 1 uses relational tables as the read source while continuing to du
 - `cp2_network_routes`
 - `cp2_contact_hashes`
 - `cp2_external_identities`
-- `cp2_soko_identity_links`
+- `cp2_grogoni_identity_links`
 
 ### Admin, launch, and beta data
 

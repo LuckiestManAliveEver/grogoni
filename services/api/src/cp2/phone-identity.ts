@@ -4,7 +4,7 @@ import {
   phoneNormalizationErrorMessage,
   type AuthChannel,
   type PhoneNormalizationError
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { getCountryCallingCode, isSupportedCountry, type CountryCode } from "libphonenumber-js";
 import { Cp2Error } from "./cp2-error.js";
 

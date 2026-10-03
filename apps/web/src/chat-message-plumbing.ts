@@ -4,7 +4,7 @@ import type {
   ConversationParticipantSummary,
   ConversationView,
   E2eeDeviceSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { type ChatAttachment, type ChatMessage } from "./app-shell";
 
 import { type DecryptedMessage } from "./e2ee";
@@ -15,7 +15,7 @@ import {
   type DocumentExtractionResponse,
   type SessionResponse,
   documentUploadRuntimeMarker
-} from "./soko-application-shared";
+} from "./grogoni-application-shared";
 import { postJson, getJson } from "./api-helpers";
 import { formatFileSize, formatAttachmentCategory } from "./formatters";
 
@@ -60,7 +60,7 @@ export function conversationTitle(view: ConversationView, accountId: string): st
   return (
     view.participants.find(
       (participant) => participant.role === "account" && participant.accountId !== accountId
-    )?.displayName ?? "Soko agent"
+    )?.displayName ?? "Grogoni agent"
   );
 }
 
@@ -96,13 +96,13 @@ export function mapConversationMessage(
       message.authorId === session.user.id
         ? "merchant"
         : message.author === "agent"
-          ? "sokoclaw"
+          ? "grogoniclaw"
           : "contact",
     authorLabel:
       message.authorId === session.user.id
         ? "You"
         : message.author === "agent"
-          ? "Soko agent"
+          ? "Grogoni agent"
           : (otherParticipant?.displayName ?? "Contact"),
     body:
       message.deletedAt !== null && message.deletedAt !== undefined
@@ -233,7 +233,7 @@ function managedAttachmentUrl(
 export async function getConversationEncryptionDevices(
   conversationId: string
 ): Promise<E2eeDeviceSummary[]> {
-  const storageKey = `soko.market.e2ee-devices.v1:${conversationId}`;
+  const storageKey = `grogoni.e2ee-devices.v1:${conversationId}`;
   try {
     const response = await getJson<{ devices: E2eeDeviceSummary[] }>(
       `/v1/conversations/${conversationId}/encryption-devices`

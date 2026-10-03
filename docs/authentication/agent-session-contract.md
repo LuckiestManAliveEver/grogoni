@@ -2,8 +2,8 @@
 
 ## Canonical browser authentication
 
-Soko's web and PWA clients authenticate to the public API with the `soko_session` and
-`soko_refresh` HTTP-only cookies. Login, signup, OAuth completion, and device recovery all issue
+Grogoni's web and PWA clients authenticate to the public API with the `grogoni_session` and
+`grogoni_refresh` HTTP-only cookies. Login, signup, OAuth completion, and device recovery all issue
 this same cookie family. Browser JavaScript does not read or copy either credential.
 
 All authenticated frontend requests use `apps/web/src/lib/api.ts`. That client always uses
@@ -73,20 +73,20 @@ tokens, prompts, and message bodies are never logged.
 
 ## Production configuration
 
-Current production is a Render static frontend at `https://soko.market` and a Render API at
-`https://soko.market`. These hosts are same-site, so secure `SameSite=Lax` host-only cookies are
+Current production is a Render static frontend at `https://grogoni.com` and a Render API at
+`https://grogoni.com`. These hosts are same-site, so secure `SameSite=Lax` host-only cookies are
 appropriate.
 
 Frontend build:
 
 ```dotenv
-VITE_API_BASE_URL=https://soko.market
+VITE_API_BASE_URL=https://grogoni.com
 ```
 
 Render API:
 
 ```dotenv
-WEB_ORIGINS=https://soko.market,https://www.soko.market
+WEB_ORIGINS=https://grogoni.com,https://www.grogoni.com
 COOKIE_SECURE=true
 COOKIE_SAME_SITE=lax
 SESSION_ACCESS_TTL_SECONDS=900
@@ -110,8 +110,8 @@ INFERENCE_SERVICE_TOKEN=<same secret configured on the inference service>
 This repository has no Vercel deployment configuration. If a separate Vercel preview or production
 frontend is introduced, set `VITE_API_BASE_URL` in that project and add its exact HTTPS origin to
 `WEB_ORIGINS` and the relevant WebAuthn/OAuth origin lists. A `*.vercel.app` frontend is cross-site
-from `soko.market`; supporting that topology requires `COOKIE_SAME_SITE=none` with
-`COOKIE_SECURE=true`. Prefer the same-site `soko.market` custom domain for production.
+from `grogoni`; supporting that topology requires `COOKIE_SAME_SITE=none` with
+`COOKIE_SECURE=true`. Prefer the same-site `grogoni` custom domain for production.
 
 ## Verification checklist
 

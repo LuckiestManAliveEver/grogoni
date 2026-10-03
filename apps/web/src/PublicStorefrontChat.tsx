@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 
-import { Surface } from "@soko/ui";
+import { Surface } from "@grogoni/ui";
 
 import { routes } from "./routes";
 import { navigateToBrowserUrl } from "./browser-navigation";
@@ -22,11 +22,11 @@ import {
   type StorefrontCheckoutDetails,
   type StorefrontCrmNote,
   chatAttachmentAccept
-} from "./soko-application-shared";
+} from "./grogoni-application-shared";
 
 import { postJson, getJson } from "./api-helpers";
 import { formatMoney, formatCareRequestType } from "./formatters";
-import { createStorefrontUrl } from "./sokoid-and-storefront";
+import { createStorefrontUrl } from "./grogoniid-and-storefront";
 
 import { findBestByName, hasUseVerb } from "./agent-command-engine";
 import { startVoiceInput, getErrorMessage } from "./chat-message-plumbing";
@@ -504,10 +504,10 @@ export function PublicStorefrontChat(props: { agentId: string; productId?: strin
 
   if (status === "loading") {
     return (
-      <Surface title="Soko.market">
+      <Surface title="Grogoni">
         <main className="public-storefront-shell">
           <section className="public-chat-panel">
-            <div className="message sokoclaw">
+            <div className="message grogoniclaw">
               <span>Agent</span>
               <p>Loading storefront...</p>
             </div>
@@ -519,10 +519,10 @@ export function PublicStorefrontChat(props: { agentId: string; productId?: strin
 
   if (status === "error" || storefront === null) {
     return (
-      <Surface title="Soko.market">
+      <Surface title="Grogoni">
         <main className="public-storefront-shell">
           <section className="public-chat-panel">
-            <div className="message sokoclaw">
+            <div className="message grogoniclaw">
               <span>Agent</span>
               <p>
                 <AuthenticationActionMessage message={error || "Storefront was not found."} />
@@ -534,7 +534,7 @@ export function PublicStorefrontChat(props: { agentId: string; productId?: strin
     );
   }
 
-  const storefrontUrl = createStorefrontUrl(storefront.sokoId);
+  const storefrontUrl = createStorefrontUrl(storefront.grogoniId);
 
   return (
     <Surface title={`${storefront.businessName} storefront`}>
@@ -593,7 +593,7 @@ export function PublicStorefrontChat(props: { agentId: string; productId?: strin
           </div>
 
           <div className="public-message-list" ref={messageListRef}>
-            <div className="message sokoclaw">
+            <div className="message grogoniclaw">
               <span>Agent</span>
               <p>
                 Karibu to {storefront.businessName}. I can help you browse products and prepare
@@ -821,7 +821,7 @@ export function PublicStorefrontChat(props: { agentId: string; productId?: strin
             {messages.map((message) => (
               <div
                 key={message.id}
-                className={`message ${message.author === "agent" ? "sokoclaw" : "merchant"}`}
+                className={`message ${message.author === "agent" ? "grogoniclaw" : "merchant"}`}
               >
                 <span>{message.author === "agent" ? "Agent" : "You"}</span>
                 <p>
@@ -983,7 +983,7 @@ export function PublicStorefrontChat(props: { agentId: string; productId?: strin
             </button>
           </form>
           <footer className="app-credits">
-            <span>Karibu Soko</span>
+            <span>Karibu Grogoni</span>
             <BuildIdentity />
           </footer>
         </section>
@@ -993,7 +993,7 @@ export function PublicStorefrontChat(props: { agentId: string; productId?: strin
 }
 
 export function readStorefrontVisitorId(): string {
-  const storageKey = "soko.market.storefront-visitor.v1";
+  const storageKey = "grogoni.storefront-visitor.v1";
   const stored = localStorage.getItem(storageKey)?.trim();
   if (stored) return stored;
   const visitorId =

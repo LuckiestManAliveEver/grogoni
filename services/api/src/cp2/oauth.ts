@@ -1,5 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import type { OAuthProvider } from "@soko/shared-types";
+import type { OAuthProvider } from "@grogoni/shared-types";
 import { Cp2Error } from "./store.js";
 
 // Moved to secret-box.ts so non-OAuth credential stores (inference provider keys) share the same
@@ -366,7 +366,7 @@ export async function fetchOAuthProfile(input: {
     headers: {
       accept: "application/json",
       authorization: `Bearer ${input.tokens.accessToken}`,
-      "user-agent": "soko-market"
+      "user-agent": "grogoni"
     }
   });
 

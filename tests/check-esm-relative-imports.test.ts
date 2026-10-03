@@ -26,7 +26,7 @@ describe("check-esm-relative-imports script", () => {
       mkdirSync(join(packageDir, "src"), { recursive: true });
       writeFileSync(
         join(packageDir, "package.json"),
-        JSON.stringify({ name: "@soko/fixture-pkg", type: "module" })
+        JSON.stringify({ name: "@grogoni/fixture-pkg", type: "module" })
       );
       writeFileSync(
         join(packageDir, "src", "index.ts"),
@@ -51,7 +51,7 @@ describe("check-esm-relative-imports script", () => {
       mkdirSync(join(packageDir, "src"), { recursive: true });
       writeFileSync(
         join(packageDir, "package.json"),
-        JSON.stringify({ name: "@soko/fixture-pkg", type: "module" })
+        JSON.stringify({ name: "@grogoni/fixture-pkg", type: "module" })
       );
       writeFileSync(
         join(packageDir, "src", "index.ts"),
@@ -72,7 +72,7 @@ describe("check-esm-relative-imports script", () => {
       mkdirSync(join(packageDir, "src"), { recursive: true });
       writeFileSync(
         join(packageDir, "package.json"),
-        JSON.stringify({ name: "@soko/fixture-pkg" })
+        JSON.stringify({ name: "@grogoni/fixture-pkg" })
       );
       writeFileSync(join(packageDir, "src", "index.ts"), 'import { helper } from "./helper";\n');
       writeFileSync(join(packageDir, "src", "helper.ts"), "export function helper() {}\n");

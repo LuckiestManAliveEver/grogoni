@@ -5,12 +5,12 @@
   "lastReviewedOn": "2026-07-15",
   "identityStatus": "proposed",
   "brand": {
-    "appName": "Soko.market",
-    "launcherName": "Soko",
-    "serviceName": "Soko.market"
+    "appName": "Grogoni",
+    "launcherName": "Grogoni",
+    "serviceName": "Grogoni"
   },
   "android": {
-    "applicationId": "market.soko.app",
+    "applicationId": "market.grogoni.app",
     "applicationIdStatus": "proposed",
     "wrapper": "trusted-web-activity",
     "distribution": "google-play",
@@ -22,12 +22,12 @@
     "compileSdk": 35
   },
   "web": {
-    "origin": "https://soko.market",
-    "startUrl": "https://soko.market/",
-    "scope": "https://soko.market/",
-    "manifestUrl": "https://soko.market/manifest.webmanifest",
-    "digitalAssetLinksUrl": "https://soko.market/.well-known/assetlinks.json",
-    "apiOrigin": "https://soko.market"
+    "origin": "https://grogoni.com",
+    "startUrl": "https://grogoni.com/",
+    "scope": "https://grogoni.com/",
+    "manifestUrl": "https://grogoni.com/manifest.webmanifest",
+    "digitalAssetLinksUrl": "https://grogoni.com/.well-known/assetlinks.json",
+    "apiOrigin": "https://grogoni.com"
   },
   "developer": {
     "accountType": "organization",

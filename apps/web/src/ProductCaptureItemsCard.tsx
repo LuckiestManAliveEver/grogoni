@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { ProductCaptureItemSummary, ProductCaptureJobSummary } from "@soko/shared-types";
+import type { ProductCaptureItemSummary, ProductCaptureJobSummary } from "@grogoni/shared-types";
 import { useAsyncActions } from "./hooks/useAsyncActions";
 import { apiFetch } from "./lib/api";
 import { invalidateApiCacheForMutation } from "./api-request-cache";

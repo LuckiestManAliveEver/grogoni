@@ -1,9 +1,9 @@
-# Soko Agent Execution Fabric — Phase 1: Core Entities + Execution Planner
+# Grogoni Agent Execution Fabric — Phase 1: Core Entities + Execution Planner
 
 Status: complete. Nothing in this phase is wired into any live call site — `decideInferenceRoute`
 (`apps/web/src/browser-inference-routing.ts`) is unchanged and continues to serve all production
 chat/inference traffic exactly as it did before this phase. This document is the required Phase 1
-deliverable; it assumes the reader has [`docs/architecture/soko-execution-fabric-audit.md`](soko-execution-fabric-audit.md)
+deliverable; it assumes the reader has [`docs/architecture/grogoni-execution-fabric-audit.md`](grogoni-execution-fabric-audit.md)
 (Phase 0) as ground truth and does not re-derive its findings.
 
 ## 1. What was built
@@ -11,8 +11,8 @@ deliverable; it assumes the reader has [`docs/architecture/soko-execution-fabric
 A pure, standalone Execution Planner library plus a minimal set of additive, in-memory-first
 entities that sit next to the current routing path — not in front of it.
 
-**New package: `packages/execution-planner`** (694 lines across 6 files, `@soko/execution-planner`,
-zero runtime dependencies besides `@soko/shared-types`). Contains no network calls, no DB access,
+**New package: `packages/execution-planner`** (694 lines across 6 files, `@grogoni/execution-planner`,
+zero runtime dependencies besides `@grogoni/shared-types`). Contains no network calls, no DB access,
 and no reference to any Express route, `Cp2Store`, or `OwnerNodeBroker` — every exported function
 takes already-fetched plain data and returns a plain result.
 
@@ -67,7 +67,7 @@ call, for the planner only.
   `aiModelRegistry` metadata) — a conflict is surfaced for an operator to review, never silently
   picked for the caller.
 - `contextWindow` is only flagged when `aiModelRegistry`'s value is non-null; a null value there
-  (a genuinely unknowable context window, e.g. `sokoclaw-local`) is a gap, not a disagreement.
+  (a genuinely unknowable context window, e.g. `grogoniclaw-local`) is a gap, not a disagreement.
 
 **The confirmed real conflict.** Direct inspection of both live registries found exactly three
 shared ids — `qwen2.5-0.5b-android`, `qwen2.5-1.5b-android`, `smollm2-360m-android` — and all three

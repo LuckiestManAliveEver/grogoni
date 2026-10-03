@@ -1,5 +1,5 @@
 -- Persists RuntimeRegistryImport rows (packages/shared-types/src/runtime-registry.ts) for the
--- unified GitHub/Hugging Face/Soko runtime-asset search and import pipeline
+-- unified GitHub/Hugging Face/Grogoni runtime-asset search and import pipeline
 -- (services/api/src/cp2/runtime-registry/). Follows the exact generic
 -- entity_id/business_id/account_id/user_id/parent_id/record/updated_at contract documented in
 -- infra/db/migrations/071_platform_catalog.sql: these seven columns are the fixed shape the
@@ -23,7 +23,7 @@ create table cp2_runtime_registry_imports (
     and record ->> 'id' = entity_id
     and record ->> 'accountId' = account_id
     and record ->> 'kind' in ('agent', 'harness', 'model')
-    and record ->> 'provider' in ('soko', 'github', 'huggingface')
+    and record ->> 'provider' in ('grogoni', 'github', 'huggingface')
     and record ->> 'state' in (
       'DISCOVERED', 'INSPECTING', 'VALIDATED', 'IMPORTING', 'REGISTERED', 'PROVISIONING',
       'READY', 'ACTIVE', 'INSPECTION_FAILED', 'VALIDATION_FAILED', 'IMPORT_FAILED',

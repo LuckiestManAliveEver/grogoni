@@ -2,7 +2,7 @@ import { isExplicitOfflineMode, offlineModeEvent, offlineRuntimeEnabled } from "
 import { useEffect, useRef, useState } from "react";
 import { reportBackgroundLoadError } from "../background-load-error";
 
-import type { SyncMutationPayload, SyncMutationType } from "@soko/shared-types";
+import type { SyncMutationPayload, SyncMutationType } from "@grogoni/shared-types";
 
 import { getErrorMessage } from "../chat-message-plumbing";
 import { getJson, postJson } from "../api-helpers";
@@ -24,7 +24,7 @@ import {
   type SyncQueueItem,
   type SyncQueueResponse,
   type SyncQueueSummary
-} from "../soko-application-shared";
+} from "../grogoni-application-shared";
 
 interface ReplaySyncLoaders {
   loadProducts: (businessId: string) => Promise<void>;

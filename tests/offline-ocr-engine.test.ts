@@ -34,7 +34,7 @@ beforeEach(() => {
     serviceWorker: { controller: {} },
     storage: { estimate: async () => ({ quota: 2 ** 30, usage: 0 }) }
   });
-  vi.stubGlobal("location", { origin: "https://soko.test" });
+  vi.stubGlobal("location", { origin: "https://grogoni.test" });
   network = vi.fn(async (url: string) =>
     url.endsWith("manifest.json") ? Response.json(manifest) : new Response(bytes)
   );
@@ -73,7 +73,7 @@ describe("Offline OCR installation and worker", () => {
       expect.objectContaining({
         workerBlobURL: false,
         cacheMethod: "none",
-        workerPath: "https://soko.test/tesseract/worker.min.js"
+        workerPath: "https://grogoni.test/tesseract/worker.min.js"
       })
     );
   });

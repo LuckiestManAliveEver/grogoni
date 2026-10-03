@@ -26,7 +26,7 @@ Deployment notes
    during API shutdown. Alternatively, run the purge script as a scheduled job using:
 
 ```bash
-pnpm --filter @soko/api db:purge-accounts
+pnpm --filter @grogoni/api db:purge-accounts
 ```
 
 Security

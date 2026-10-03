@@ -8,7 +8,7 @@ Actual tag: not created. No `.repo.git` directory exists in this checkout; see t
 
 ## Purpose
 
-CP0 establishes the planning baseline for Soko.market before implementation begins.
+CP0 establishes the planning baseline for Grogoni before implementation begins.
 
 The goal is to prevent the project from drifting into premature implementation without a shared understanding of:
 
@@ -26,22 +26,22 @@ The source documents remain in `documentation/`.
 
 Authoritative order:
 
-1. `Soko doc 5 June ctrl .pdf`
-2. `Soko_Master_Control_Document_v1.docx`
-3. `Soko_Master_Control_Document_v1 (1).docx`
-4. `Soko doc 2 June .pdf`
-5. `Soko doc 3 june.pdf`
-6. `Soko doc 1 june.pdf`
-7. `Soko doc 4 June  (1).pdf`
-8. `Soko doc 1.0 june (1).pdf`
-9. `Soko doc 1,1 june.pdf`
+1. `Grogoni doc 5 June ctrl .pdf`
+2. `Grogoni_Master_Control_Document_v1.docx`
+3. `Grogoni_Master_Control_Document_v1 (1).docx`
+4. `Grogoni doc 2 June .pdf`
+5. `Grogoni doc 3 june.pdf`
+6. `Grogoni doc 1 june.pdf`
+7. `Grogoni doc 4 June  (1).pdf`
+8. `Grogoni doc 1.0 june (1).pdf`
+9. `Grogoni doc 1,1 june.pdf`
 10. PNG UI references
 
 Known invalid source:
 
-- `Soko doc 4 June .pdf`
+- `Grogoni doc 4 June .pdf`
   - Broken placeholder.
-  - Contains only `Soko.markeyl`.
+  - Contains only `Grogoni.markeyl`.
   - Excluded from authority.
 
 ## Harmonized Readme
@@ -89,12 +89,12 @@ Out of scope:
 
 ## Baseline Architecture
 
-Soko.market should be implemented as:
+Grogoni should be implemented as:
 
 ```text
 Mobile PWA / optional native shell
   -> Application Runtime
-  -> Sokoclaw Runtime
+  -> Grogoniclaw Runtime
   -> Business Runtime
   -> Data and Sync Runtime
   -> Cloud services
@@ -113,7 +113,7 @@ Events record what happened.
 
 Current planning position:
 
-- Pi/OpenClaw-style agentic harness may implement Sokoclaw orchestration.
+- Pi/OpenClaw-style agentic harness may implement Grogoniclaw orchestration.
 - llama.cpp may implement local model inference through a model adapter.
 - Both must remain replaceable.
 - Neither may own business records.
@@ -122,7 +122,7 @@ Current planning position:
 Initial sequence:
 
 1. Rule-based parser.
-2. Sokoclaw runtime adapter.
+2. Grogoniclaw runtime adapter.
 3. Optional Pi/OpenClaw harness adapter.
 4. Optional llama.cpp model provider.
 5. Cloud fallback.

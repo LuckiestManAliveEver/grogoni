@@ -7,8 +7,8 @@ import type {
   EffectiveRuntimeSummary,
   ModelExecutionTarget,
   ModelRuntimeHealthSummary
-} from "@soko/shared-types";
-import { platformSharedModelId } from "@soko/shared-types";
+} from "@grogoni/shared-types";
+import { platformSharedModelId } from "@grogoni/shared-types";
 
 import {
   readClientInferencePreferences,
@@ -24,20 +24,16 @@ import {
   type ActiveBusiness,
   type AgentSettings,
   type AiModelSummary,
-  type CatalogAiModelSearchResponse,
   backendModelProbeRequestTimeoutMs,
   clientInferenceFeatureFlags
-} from "./soko-application-shared";
+} from "./grogoni-application-shared";
 
 import { postJson, deleteJson, getJson } from "./api-helpers";
-import { formatDate, formatLatency, formatModelBytes, formatExecutionTarget } from "./formatters";
+import { formatDate, formatLatency, formatExecutionTarget } from "./formatters";
 import { isAgentModel } from "./owner-app-bootstrap";
 import { normalizeSearchText } from "./agent-command-engine";
 import { getErrorMessage } from "./chat-message-plumbing";
-import {
-  applyDeploymentRuntimeAvailability,
-  isDownloadableCatalogModel
-} from "./agent-model-panel-utils";
+import { applyDeploymentRuntimeAvailability } from "./agent-model-panel-utils";
 import { backendModelRuntimeStatusMessage } from "./backend-model-runtime-status";
 import { McpAccessTokensPanel } from "./McpAccessTokensPanel";
 
@@ -123,20 +119,6 @@ export function AgentModelPanel({
   const [inferencePreferences, setInferencePreferences] = useState<ClientInferencePreferences>(() =>
     readClientInferencePreferences(accountId, business.id)
   );
-  const [githubModelDiscovery, setGitHubModelDiscovery] = useState<CatalogAiModelSearchResponse>({
-    models: [],
-    status: "unavailable",
-    connection: "public",
-    message: "GitHub model discovery has not run yet."
-  });
-  const [huggingFaceModelDiscovery, setHuggingFaceModelDiscovery] =
-    useState<CatalogAiModelSearchResponse>({
-      models: [],
-      status: "unavailable",
-      connection: "public",
-      message: "Hugging Face model discovery has not run yet."
-    });
-
   useEffect(() => {
     setInferencePreferences(readClientInferencePreferences(accountId, business.id));
     void loadCanonicalAgentModelBinding();
@@ -188,34 +170,15 @@ export function AgentModelPanel({
   }
 
   async function loadAiModels(search?: string) {
-    // Only used below in the catch block, as a bare-minimum offline fallback when the fetch to
-    // GET /v1/ai-models fails entirely - the DB-hosted catalog (services/api/src/cp2/store.ts
-    // listModelCatalog, infra/db/migrations/071_platform_catalog.sql) is authoritative once that
-    // fetch succeeds.
     const offlineDefaults: AiModelSummary[] = [];
     try {
       const normalizedSearch = search?.trim() ?? "";
-      const [
-        registry,
-        searchResults,
-        githubRegistry,
-        githubSearchResults,
-        huggingFaceRegistry,
-        huggingFaceSearchResults,
-        canonicalBinding,
-        resolvedRuntime
-      ] = await Promise.all([
+      const [registry, searchResults, canonicalBinding, resolvedRuntime] = await Promise.all([
         getJson<{ models: AiModelSummary[] }>("/v1/ai-models"),
         normalizedSearch.length > 0
           ? getJson<{ models: AiModelSummary[] }>(
               `/v1/ai-models?search=${encodeURIComponent(normalizedSearch)}`
             )
-          : Promise.resolve(null),
-        loadGitHubModels(),
-        normalizedSearch.length > 0 ? loadGitHubModels(normalizedSearch) : Promise.resolve(null),
-        loadHuggingFaceModels(),
-        normalizedSearch.length > 0
-          ? loadHuggingFaceModels(normalizedSearch)
           : Promise.resolve(null),
         getJson<{ binding: AgentModelBindingSummary | null }>(
           `/api/agents/${encodeURIComponent(
@@ -224,22 +187,9 @@ export function AgentModelPanel({
         ).catch(() => ({ binding: null })),
         getJson<EffectiveRuntimeSummary>(`/businesses/${business.id}/runtime/effective`)
       ]);
-      const externalRegistry = mergeAiModelCatalogs(
-        githubRegistry.models,
-        huggingFaceRegistry.models
-      );
-      const allModels = applyDeploymentRuntimeAvailability(
-        mergeAiModelCatalogs(registry.models, externalRegistry),
-        registry.models
-      );
+      const allModels = applyDeploymentRuntimeAvailability(registry.models, registry.models);
       const visibleModels = applyDeploymentRuntimeAvailability(
-        mergeAiModelCatalogs(
-          searchResults?.models ?? registry.models,
-          mergeAiModelCatalogs(
-            githubSearchResults?.models ?? githubRegistry.models,
-            huggingFaceSearchResults?.models ?? huggingFaceRegistry.models
-          )
-        ),
+        searchResults?.models ?? registry.models,
         registry.models
       );
       const effectiveModelId = resolvedRuntime.model.id;
@@ -248,8 +198,6 @@ export function AgentModelPanel({
       setActiveAiModelId(effectiveModelId);
       setActiveAgentModelBinding(canonicalBinding.binding);
       setEffectiveRuntime(resolvedRuntime);
-      setGitHubModelDiscovery(githubSearchResults ?? githubRegistry);
-      setHuggingFaceModelDiscovery(huggingFaceSearchResults ?? huggingFaceRegistry);
       if (!isEditing && isAgentModel(effectiveModelId)) {
         updateAgent({ model: effectiveModelId });
       }
@@ -264,40 +212,6 @@ export function AgentModelPanel({
       setAiModels(offlineDefaults);
       setVisibleAiModels(matchingDefaults);
       setProfileMessage(getErrorMessage(error));
-    }
-  }
-
-  async function loadGitHubModels(search?: string): Promise<CatalogAiModelSearchResponse> {
-    try {
-      const query = search?.trim();
-      return await getJson<CatalogAiModelSearchResponse>(
-        query ? `/v1/ai-models/github?search=${encodeURIComponent(query)}` : "/v1/ai-models/github"
-      );
-    } catch {
-      return {
-        models: [],
-        status: "unavailable",
-        connection: "public",
-        message: "GitHub model discovery is temporarily unavailable."
-      };
-    }
-  }
-
-  async function loadHuggingFaceModels(search?: string): Promise<CatalogAiModelSearchResponse> {
-    try {
-      const query = search?.trim();
-      return await getJson<CatalogAiModelSearchResponse>(
-        query
-          ? `/v1/ai-models/huggingface?search=${encodeURIComponent(query)}`
-          : "/v1/ai-models/huggingface"
-      );
-    } catch {
-      return {
-        models: [],
-        status: "unavailable",
-        connection: "public",
-        message: "Hugging Face model discovery is temporarily unavailable."
-      };
     }
   }
 
@@ -516,23 +430,12 @@ export function AgentModelPanel({
   // Deliberately keyed off aiModels (the full deployment catalog), not visibleAiModels (which is
   // search-filtered) - typing into the model search box must never make this banner flicker to
   // "Unavailable" just because the current search happens to exclude every backend-configured model.
-  const sokoAiReady = effectiveRuntime?.ready === true;
-  // A discovered GitHub/Hugging Face result that isn't yet server-registered has no hosted
-  // activation path - list it as browse-only rather than offering a device download.
-  // TODO(runtime-registry): route through unified registry search once it consolidates this
-  // discovery surface.
-  const browseOnlyDiscoveryModels = visibleAiModels.filter(
-    (model) =>
-      isDownloadableCatalogModel(model) &&
-      model.license === "Apache-2.0" &&
-      model.runtimeAvailability?.backend !== "configured"
-  );
-
+  const grogoniAiReady = effectiveRuntime?.ready === true;
   return (
     <>
       <div className="record-form agent-model-panel">
         <div className="section-heading">
-          <p className="eyebrow">Soko AI · {sokoAiReady ? "Ready" : "Unavailable"}</p>
+          <p className="eyebrow">Grogoni AI · {grogoniAiReady ? "Ready" : "Unavailable"}</p>
           <h3>Advanced model preferences</h3>
           <p>
             Execution is automatic and always backend-hosted. There is no private per-device model
@@ -555,14 +458,14 @@ export function AgentModelPanel({
           </div>
           <h4>
             {explicitAgentModelBinding === null
-              ? sokoAiReady
-                ? (effectiveRuntime?.model.name ?? "Soko AI is ready")
-                : "Soko AI is unavailable"
+              ? grogoniAiReady
+                ? (effectiveRuntime?.model.name ?? "Grogoni AI is ready")
+                : "Grogoni AI is unavailable"
               : (activeAiModel?.label ?? explicitAgentModelBinding.modelId)}
           </h4>
           <p>
             {explicitAgentModelBinding === null
-              ? sokoAiReady
+              ? grogoniAiReady
                 ? "A compatible execution host and model are selected automatically when you chat."
                 : "No backend-hosted model is currently configured for this deployment."
               : `Running on: ${formatExecutionTarget(explicitAgentModelBinding.executionTarget)}`}
@@ -624,7 +527,7 @@ export function AgentModelPanel({
             <div>
               <strong>Client-first route permissions</strong>
               <p>
-                Soko routes chat through the configured backend-hosted model. A signed-in,
+                Grogoni routes chat through the configured backend-hosted model. A signed-in,
                 shop-owned device (for example a merchant's own laptop) can additionally be
                 registered as an allowed execution host. Server tools remain confirmation-gated.
               </p>
@@ -653,14 +556,13 @@ export function AgentModelPanel({
           <p className="eyebrow">Backend-hosted AI</p>
           <h3>Model library</h3>
           <p>
-            Browse Soko's hosted catalog, Hugging Face Hub, and verified GitHub release assets.
-            Every model runs on the Soko backend - nothing downloads to this device.
+            Browse Grogoni's local model catalog. Every model runs through the local Grogoni runtime.
           </p>
         </div>
 
         {!modelLibraryLoaded ? (
           <div className="deferred-model-library">
-            <p>Remote model catalogs stay paused until you open this library.</p>
+            <p>The local model catalog stays paused until you open this library.</p>
             <button
               type="button"
               disabled={modelLibraryLoading}
@@ -673,9 +575,9 @@ export function AgentModelPanel({
         ) : (
           <>
             {serverBackendModels.length > 0 ? (
-              <section aria-label="Soko backend models">
+              <section aria-label="Grogoni backend models">
                 <div className="section-subheading">
-                  <h4>Soko backend models</h4>
+                  <h4>Grogoni backend models</h4>
                   <p>
                     Available means the deployed runtime passed a real model probe. Active means
                     this agent has a persisted binding that passed real backend inference.
@@ -791,7 +693,7 @@ export function AgentModelPanel({
               </label>
               <div className="ai-model-search-actions">
                 <button type="button" onClick={() => void searchAiModels()}>
-                  Search all model sources
+                  Search local models
                 </button>
                 <button
                   className="secondary"
@@ -810,79 +712,6 @@ export function AgentModelPanel({
                 >
                   Clear
                 </button>
-              </div>
-            </div>
-            <div
-              className={`github-model-status ${
-                githubModelDiscovery.status === "available" ? "ok" : ""
-              }`}
-              role="status"
-            >
-              <span className="github-model-connection">
-                GitHub ·{" "}
-                {githubModelDiscovery.connection === "authenticated"
-                  ? "Authenticated API"
-                  : "Public API"}{" "}
-                · {githubModelDiscovery.status === "available" ? "Available" : "Unavailable"}
-              </span>
-              <span>{githubModelDiscovery.message}</span>
-            </div>
-            <div
-              className={`github-model-status ${
-                huggingFaceModelDiscovery.status === "available" ? "ok" : ""
-              }`}
-              role="status"
-            >
-              <span className="github-model-connection">
-                Hugging Face ·{" "}
-                {huggingFaceModelDiscovery.connection === "authenticated"
-                  ? "Authenticated API"
-                  : "Public API"}{" "}
-                · {huggingFaceModelDiscovery.status === "available" ? "Available" : "Unavailable"}
-              </span>
-              <span>{huggingFaceModelDiscovery.message}</span>
-            </div>
-
-            <div className="ai-model-best-fit">
-              <div className="section-subheading">
-                <h4>Discovered models</h4>
-                <p>
-                  Results from Hugging Face Hub and verified GitHub release assets that are not yet
-                  registered on the Soko backend. Browse them here; activation follows once a model
-                  is server-registered.
-                </p>
-              </div>
-              <div className="ai-model-catalog">
-                {browseOnlyDiscoveryModels.map((model) => (
-                  <article className="ai-model-card" key={model.id}>
-                    <div>
-                      <p className="eyebrow">
-                        Browse only ·{" "}
-                        {model.source === "github" ? "GitHub release · " : "Hugging Face · "}
-                        {model.license} · {model.format}
-                      </p>
-                      <h4>{model.label}</h4>
-                      <p>{model.description}</p>
-                      <small>
-                        {formatModelBytes(model.fileSizeBytes)} · {model.minimumMemoryGb} GB minimum
-                        RAM · {model.capabilities.join(" · ")}
-                      </small>
-                      <small role="status">
-                        Not yet available for hosted activation on this deployment.
-                      </small>
-                    </div>
-                    <div className="ai-model-card-actions">
-                      {model.modelCardUrl !== null ? (
-                        <a href={model.modelCardUrl} target="_blank" rel="noreferrer">
-                          {model.source === "github" ? "GitHub release" : "Model card"}
-                        </a>
-                      ) : null}
-                    </div>
-                  </article>
-                ))}
-                {browseOnlyDiscoveryModels.length === 0 ? (
-                  <p>No additional discovered models right now. Try a different search.</p>
-                ) : null}
               </div>
             </div>
           </>

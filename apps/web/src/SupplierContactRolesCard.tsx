@@ -3,7 +3,7 @@ import type {
   CanonicalContactSummary,
   SupplierContactRelationshipSummary,
   SupplierContactRole
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { useAsyncActions } from "./hooks/useAsyncActions";
 import { useApiMutationRevision } from "./hooks/useApiMutationRevision";
 import { deleteJson, getJson, postJson } from "./api-helpers";

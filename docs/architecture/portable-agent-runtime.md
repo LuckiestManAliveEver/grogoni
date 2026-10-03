@@ -1,6 +1,6 @@
 # Portable agent runtime
 
-Soko's invariant is:
+Grogoni's invariant is:
 
 ```text
 Agent != Model != Execution Host
@@ -46,5 +46,5 @@ Local execution remains useful for privacy, offline work, cost, and sovereignty.
 execution remains an authenticated owner-node capability. Neither is a prerequisite for ordinary
 chat. Provider identity stays inside model/adapter metadata and is not an execution target.
 
-Imported OSS projects are converted into `PortableAgentManifest` records. Soko never treats a
+Imported OSS projects are converted into `PortableAgentManifest` records. Grogoni never treats a
 repository's Python/Node/Docker runtime as something that must run on the current Android device.

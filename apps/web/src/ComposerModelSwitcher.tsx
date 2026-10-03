@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import type { ActiveBusiness, AgentSettings } from "./soko-application-shared";
+import type { ActiveBusiness, AgentSettings } from "./grogoni-application-shared";
 import { QuickRuntimeSwitcher } from "./QuickRuntimeSwitcher";
 import { StackedModule } from "./StackedModule";
 

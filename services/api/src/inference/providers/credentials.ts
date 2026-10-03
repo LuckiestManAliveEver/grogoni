@@ -120,13 +120,13 @@ export async function rotateCredentialKeys(input: {
 /**
  * Deterministic credential precedence (brief §11):
  *
- *   explicit request scope  ->  tenant BYOK  ->  user BYOK  ->  Soko-managed
+ *   explicit request scope  ->  tenant BYOK  ->  user BYOK  ->  Grogoni-managed
  *
  * - "explicit" narrows resolution to exactly one scope and never falls through: a request that
- *   asks for the tenant's own key must not silently be billed to Soko.
+ *   asks for the tenant's own key must not silently be billed to Grogoni.
  * - Tenant and user lookups are exact-owner matches in the repository (tenant_id = X / user_id = Y),
  *   so one tenant can never resolve another tenant's credential.
- * - Soko-managed means the provider's credentialRef: an env var captured at boot, or a
+ * - Grogoni-managed means the provider's credentialRef: an env var captured at boot, or a
  *   platform-scoped encrypted row. Env values never leave this module except inside SecretValue.
  * - A BYOK row that fails to decrypt is skipped (and reported), never surfaced as an error string
  *   that could echo ciphertext.

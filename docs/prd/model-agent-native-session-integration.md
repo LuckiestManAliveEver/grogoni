@@ -4,7 +4,7 @@ Date: 2026-07-21
 
 ## Scope and decision
 
-This audit was completed before implementation changes. Soko already has working account,
+This audit was completed before implementation changes. Grogoni already has working account,
 shop, agent, model-installation, local-inference, runtime, chat, tool, offline-sync, and business
 service boundaries. The integration must extend those boundaries; it must not introduce a second
 identity provider, model registry, database, chat pipeline, or tool executor.
@@ -12,21 +12,21 @@ identity provider, model registry, database, chat pipeline, or tool executor.
 The three independent lifecycles are currently represented, but not orchestrated by one startup
 state machine:
 
-1. Account session: the `soko_session` HttpOnly cookie and CP2 `sessions` record.
+1. Account session: the `grogoni_session` HttpOnly cookie and CP2 `sessions` record.
 2. Agent runtime session: CP2 runtime records plus the browser `RuntimeManager` cache.
 3. Model installation: device-scoped OPFS metadata plus CP2 installed-model and assignment records.
 
 ## 1. Authentication
 
-- Login and signup are panels inside `apps/web/src/SokoApplication.tsx`. They support phone/PIN,
+- Login and signup are panels inside `apps/web/src/GrogoniApplication.tsx`. They support phone/PIN,
   email OTP/PIN recovery, passkeys, and configured OAuth identities.
 - `services/api/src/cp2/routes.ts` exposes the existing `/auth/*`, `/api/auth/*`, and `/session`
   routes. `services/api/src/cp2/store.ts` is the authoritative custom CP2 authentication store.
 - Successful login creates one opaque session identifier. It is stored only in an HttpOnly
-  `soko_session` cookie (`Path=/`, `SameSite=Lax`, `Secure` in production) and a `sessions` row.
+  `grogoni_session` cookie (`Path=/`, `SameSite=Lax`, `Secure` in production) and a `sessions` row.
 - The session expires after seven days. There is no short-lived access token, rotating refresh
   credential, refresh-token family, reuse detection, or device-scoped account-session record.
-- The existing OAuth refresh token is provider authorization data and is unrelated to Soko account
+- The existing OAuth refresh token is provider authorization data and is unrelated to Grogoni account
   session restoration.
 - Logout revokes the current session; logout-all revokes every account session and clears the
   cookie. Local browser inference account data is also cleared by the frontend logout path.
@@ -58,7 +58,7 @@ state machine:
 ## 3. Model interface
 
 - Model-library cards and Agent Profile live in `AgentProfileSurface` inside
-  `SokoApplication.tsx`.
+  `GrogoniApplication.tsx`.
 - GGUF actions call the existing `ai-model-manager.ts` functions for import, predownload, remove,
   validation, and metadata refresh.
 - “Use model” calls `useModelWithAgent`; backend models call `useBackendModelWithAgent`.
@@ -77,7 +77,7 @@ state machine:
   storage handle, license, memory estimate, runtime backend, and installation state.
 - Browser ONNX inference is separate by artifact/runtime type, not a duplicate GGUF registry:
   `browser-model-registry.ts`, a dedicated Worker, Cache Storage managed by Transformers.js, and
-  `soko-browser-inference` IndexedDB metadata/state.
+  `grogoni-browser-inference` IndexedDB metadata/state.
 - `infra/db/migrations/035_agent_model_assignments.sql` persists CP2 installed-model and assignment
   summaries. They describe a device installation; they do not prove that OPFS bytes still exist.
   `infra/db/migrations/066_account_ai_assets.sql` separately persists account agent manifests and
@@ -115,7 +115,7 @@ state machine:
 ## 7. Inference system
 
 - Native GGUF: `agent-model-runtime.ts` calls the optional trusted Android
-  `window.SokoAgentModelRuntime` bridge. It performs inspect/load/generate/unload/health and a real
+  `window.GrogoniAgentModelRuntime` bridge. It performs inspect/load/generate/unload/health and a real
   deterministic warmup inference.
 - Browser local: the existing Transformers.js Worker uses WebGPU first and WASM fallback for the
   approved ONNX registry. It streams generation and persists model/cache metadata separately.

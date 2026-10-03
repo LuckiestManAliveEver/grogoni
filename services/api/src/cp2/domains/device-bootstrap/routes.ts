@@ -72,7 +72,7 @@ export function registerDeviceBootstrapRoutes(
             sessionId: session.session.id,
             requestCorrelationId: request.id
           },
-          "One-tap Soko access completed."
+          "One-tap Grogoni access completed."
         );
         return session;
       } catch (error) {
@@ -82,7 +82,7 @@ export function registerDeviceBootstrapRoutes(
             code: error instanceof Cp2Error ? error.code : "device_continue_failed",
             requestCorrelationId: request.id
           },
-          "One-tap Soko access failed."
+          "One-tap Grogoni access failed."
         );
         return sendCp2Error(reply, error);
       }
@@ -118,7 +118,7 @@ export function registerDeviceBootstrapRoutes(
             sessionId: session.session.id,
             requestCorrelationId: request.id
           },
-          "Device-bound Soko account recovered."
+          "Device-bound Grogoni account recovered."
         );
         return session;
       } catch (error) {
@@ -128,7 +128,7 @@ export function registerDeviceBootstrapRoutes(
             code: error instanceof Cp2Error ? error.code : "device_recovery_failed",
             requestCorrelationId: request.id
           },
-          "Device-bound Soko account recovery failed."
+          "Device-bound Grogoni account recovery failed."
         );
         return sendCp2Error(reply, error);
       }

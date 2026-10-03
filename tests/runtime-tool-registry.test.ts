@@ -181,7 +181,7 @@ describe("runtime tool registry", () => {
   it("declares no tool MCP-exposable yet, matching the current MCP surface exactly", () => {
     // services/api/src/mcp/routes.ts does not call any of these RuntimeToolName tools directly -
     // it only exposes a separately curated read-only set plus the generic
-    // soko.runtime_turn/soko.confirm_runtime_action pair, which route natural-language messages
+    // grogoni.runtime_turn/grogoni.confirm_runtime_action pair, which route natural-language messages
     // through this same registry rather than naming a tool directly. If this test starts failing
     // because an entry flipped to true, that is a deliberate MCP-surface expansion that needs its
     // own review (adjusting mcp/routes.ts to actually call mcpSchemaForRuntimeTool for it), not an
@@ -217,7 +217,7 @@ describe("runtime tool registry", () => {
 
   it("adapts a canonical tool definition into a valid MCP tools/list entry shape", () => {
     const schema = mcpSchemaForRuntimeTool("product.create");
-    expect(schema.name).toBe("soko.product.create");
+    expect(schema.name).toBe("grogoni.product.create");
     expect(schema.description).toBe(runtimeToolRegistry["product.create"].description);
     expect(schema.inputSchema).toMatchObject({
       type: "object",

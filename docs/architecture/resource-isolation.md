@@ -8,7 +8,7 @@ Operational response to an incident belongs in
 
 ## The invariant
 
-> No non-critical Soko workload may exhaust resources required by the critical commerce path.
+> No non-critical Grogoni workload may exhaust resources required by the critical commerce path.
 
 Concretely: background workload reaches its budget → backpressure/defer → that background
 operation degrades → critical capacity remains protected → commerce stays available. Never:
@@ -17,7 +17,7 @@ background workload exhausts a shared resource → API waits indefinitely → 50
 ## 0. Why this looks different from a typical stateless API
 
 Read [`../single-instance-store-ceiling.md`](../single-instance-store-ceiling.md) first if you
-haven't. Soko's business store (`Cp2Store`) is loaded entirely into one process's memory at boot;
+haven't. Grogoni's business store (`Cp2Store`) is loaded entirely into one process's memory at boot;
 auth, conversations, catalogue, and orders are synchronous in-memory operations, not per-request
 Postgres queries. That single documented fact changes where DB-connection isolation actually
 matters here: not "every request competes for a DB connection," but "the async persistence path,
@@ -30,7 +30,7 @@ contention points in _this_ architecture, not a generic template.
 Used as a label on every bulkhead, every resource-control event, and every metric, so nothing
 duplicates these as string literals.
 
-| Class      | Examples in Soko                                                                                                                              | Bounded today?                                                                                                                                                          |
+| Class      | Examples in Grogoni                                                                                                                              | Bounded today?                                                                                                                                                          |
 | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | critical   | auth, session restore, conversation persistence, catalogue reads, order/payment state                                                         | No dedicated bulkhead - it runs against the in-memory store (§0), which isn't the contended resource; protected by _not sharing_ the resources below with anything else |
 | important  | an agent turn's inference call                                                                                                                | Yes - `inferenceBulkhead` + `inferenceBreaker` (§3)                                                                                                                     |
@@ -46,7 +46,7 @@ for one-off scripts, and index.ts's bare `{ max: 2 }` artifact pool with no time
 | Pool                   | Budget env var         | Default | Purpose                                                                                                                    |
 | ---------------------- | ---------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------- |
 | `cp2_primary`          | `DB_POOL_MAX`          | 5       | Boot snapshot load, async persistence, health checks                                                                       |
-| `cp2_realtime`         | (fixed `max: 1`)       | 1       | `LISTEN soko_sync_changes`                                                                                                 |
+| `cp2_realtime`         | (fixed `max: 1`)       | 1       | `LISTEN grogoni_sync_changes`                                                                                                 |
 | `model_artifact_store` | `DB_ARTIFACT_POOL_MAX` | 2       | Inference artifact resolution - now has real `connectionTimeoutMillis`/`query_timeout`/`statement_timeout` instead of none |
 
 `DB_CONNECTION_TIMEOUT_MS` / `DB_IDLE_TIMEOUT_MS` / `DB_QUERY_TIMEOUT_MS` / `DB_STATEMENT_TIMEOUT_MS`
@@ -68,7 +68,7 @@ path. `cachedParity` starts empty and fills in on the first background tick inst
 
 ## 3. Bounded concurrency
 
-`@soko/resource-control`'s `createBulkhead()` (bounded concurrency + bounded wait queue,
+`@grogoni/resource-control`'s `createBulkhead()` (bounded concurrency + bounded wait queue,
 `packages/resource-control/src/bulkhead.ts`) is the one reusable primitive, replacing OCR's
 previously private, unexported semaphore. Two live instances:
 
@@ -134,7 +134,7 @@ state. Now, once open, `CircuitOpenError` short-circuits before any network call
 
 ## 8. Observability
 
-`@soko/observability`'s `Metrics` interface gained, on top of the pre-existing HTTP/DB/model
+`@grogoni/observability`'s `Metrics` interface gained, on top of the pre-existing HTTP/DB/model
 histograms and pool gauges:
 
 - `instrumentBulkhead(bulkhead)` → live-sampled `workload_active` / `workload_queued` /
@@ -229,14 +229,14 @@ runners, identical shape"). Extracted into one shared factory,
 `services/api/src/cp2/interval-runner.ts`'s `createIntervalRunner()` - every runner
 (`notification-delivery-runner.ts`, `connected-mailbox-sync-runner.ts`,
 `conversation-recycle-bin-runner.ts`, `agent-owner-correction-retention-runner.ts`,
-`sokoid-cooldown-runner.ts`, `account-deletion-runner.ts`) is now a thin wrapper supplying its own
+`grogoniid-cooldown-runner.ts`, `account-deletion-runner.ts`) is now a thin wrapper supplying its own
 interval validation and store call; the timer/overlap-prevention/timing plumbing lives once. This
 is also how `scheduled_job_duration_seconds`/`scheduled_job_failure_total` (§8) get wired in without
 touching each runner's internals a second time - `index.ts` passes `metrics.timeScheduledJob` into
 all six.
 
 **Deliberately not added**: cross-instance locking (`pg_advisory_lock`) for these six runners.
-`render.yaml` deploys exactly one `soko-market` instance and
+`render.yaml` deploys exactly one `grogoni` instance and
 `docs/single-instance-store-ceiling.md` explicitly says not to add a second one until that
 document's ceiling is resolved - adding advisory-lock machinery to defend against a deployment
 topology that doesn't exist yet, and that the repo's own architecture doc says not to introduce,
@@ -260,7 +260,7 @@ it never blocks process exit, and is explicitly cleared in `close()`.
 
 ```
                        ┌─────────────────┐
-                       │   Soko API      │
+                       │   Grogoni API      │
                        └────────┬────────┘
                                 │
               ┌─────────────────┼─────────────────────────┐

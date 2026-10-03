@@ -1,11 +1,11 @@
 -- Runtime Handoff Protocol.
 --
--- Soko's native runtime graph (063_native_runtime_bindings.sql onward) resolves *which* agent,
+-- Grogoni's native runtime graph (063_native_runtime_bindings.sql onward) resolves *which* agent,
 -- model, and execution host a conversation uses. It has never represented the task's in-flight
 -- execution state independently of that binding, so swapping the agent, model, or host had no
 -- portable checkpoint for the new runtime to resume from. This migration adds that checkpoint.
 --
--- Soko has no separate `tasks` entity distinct from `conversations` - a conversation *is* the
+-- Grogoni has no separate `tasks` entity distinct from `conversations` - a conversation *is* the
 -- unit of runtime execution here (see docs/architecture/native-runtime-bindings.md). So
 -- `task_id` below is populated with the owning conversation's id; the column is still named and
 -- exposed as `taskId` throughout the application layer for fidelity with the wider protocol

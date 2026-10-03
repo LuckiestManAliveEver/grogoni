@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { StatusBroadcastCandidateSummary, StatusBroadcastSummary } from "@soko/shared-types";
+import type { StatusBroadcastCandidateSummary, StatusBroadcastSummary } from "@grogoni/shared-types";
 import { useAsyncActions } from "./hooks/useAsyncActions";
 import { apiFetch } from "./lib/api";
 import { invalidateApiCacheForMutation } from "./api-request-cache";
@@ -25,7 +25,7 @@ export default function StatusBroadcastComposer(props: {
       .then((result) => {
         if (cancelled) return;
         setCandidates(result.candidates);
-        // Never default to select-all: only pre-check contacts who are both a matched Soko
+        // Never default to select-all: only pre-check contacts who are both a matched Grogoni
         // account and an existing customer of this business.
         setSelected(
           new Set(
@@ -109,7 +109,7 @@ export default function StatusBroadcastComposer(props: {
             </span>
             <span className="status-contact-copy">
               <strong>{candidate.displayName}</strong>
-              <small>{candidate.isSokoUser ? "On Soko" : "Shared via your phone"}</small>
+              <small>{candidate.isGrogoniUser ? "On Grogoni" : "Shared via your phone"}</small>
             </span>
           </label>
         ))

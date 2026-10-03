@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { ShopCapabilitiesSummary, ShopCapabilityModule } from "@soko/shared-types";
+import type { ShopCapabilitiesSummary, ShopCapabilityModule } from "@grogoni/shared-types";
 
 import { getJson } from "./api-helpers";
 import { useApiMutationRevision } from "./hooks/useApiMutationRevision";
@@ -7,13 +7,13 @@ import { shopHubCopy, shopHubLanguage, type ShopHubLanguage } from "./shop-hub-c
 import { surfacesForModule, type ShopHubSurface } from "./shop-hub-surfaces";
 import { ShopHubSkeleton } from "./ShopHubEntryCard";
 import { ShopHubIcon } from "./ShopHubIcon";
-import { createStorefrontUrl, isSokoId } from "./sokoid-and-storefront";
+import { createStorefrontUrl, isGrogoniId } from "./grogoniid-and-storefront";
 
 export interface ShopHubProps {
   businessId: string;
   businessName: string;
-  /** The shop's public Soko ID, or anything else while the shop has none yet. */
-  sokoId: string;
+  /** The shop's public Grogoni ID, or anything else while the shop has none yet. */
+  grogoniId: string;
   language?: ShopHubLanguage;
   onOpenSurface: (surface: ShopHubSurface) => void;
   /** Pre-fills the chat composer; the agent runs the tool through the same runtime as chat. */
@@ -37,7 +37,7 @@ export function askAgentDraft(toolName: string): string {
 export function ShopHub({
   businessId,
   businessName,
-  sokoId,
+  grogoniId,
   language = shopHubLanguage(),
   onOpenSurface,
   onAskAgent
@@ -91,7 +91,7 @@ export function ShopHub({
 
   const modules = hub?.categories.flatMap((category) => category.modules) ?? [];
   const openModule = modules.find((module) => module.id === openModuleId) ?? null;
-  const storefrontUrl = isSokoId(sokoId) ? createStorefrontUrl(sokoId) : null;
+  const storefrontUrl = isGrogoniId(grogoniId) ? createStorefrontUrl(grogoniId) : null;
 
   function openSurface(surface: ShopHubSurface) {
     setOpenModuleId(null);

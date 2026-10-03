@@ -11,14 +11,14 @@ import type {
   ConversationView,
   MessageHandoffStatus,
   RecycleBinStatusSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
 import { deleteJson, getJson, patchJson, postJson } from "../api-helpers";
 import {
   createInitialChatMessages,
   type ChatMessage,
   type ShellView,
-  type SokoMode
+  type GrogoniMode
 } from "../app-shell";
 import { navigateToOwnerRoute } from "../browser-navigation";
 import { chatMessagesEqual } from "../chat-messages-equal";
@@ -44,16 +44,16 @@ import type {
   ActiveBusiness,
   ProcessedConversationMessageResponse,
   SessionResponse
-} from "../soko-application-shared";
+} from "../grogoni-application-shared";
 
 interface UseChatInboxStateDeps {
   business: ActiveBusiness | null;
   session: SessionResponse | null;
   e2eeIdentity: E2eeIdentity | null;
-  mode: SokoMode;
+  mode: GrogoniMode;
   setStatusMessage: (message: string) => void;
   setView: (view: ShellView) => void;
-  applySessionContextForConversation: (conversationId: string) => Promise<SokoMode | null>;
+  applySessionContextForConversation: (conversationId: string) => Promise<GrogoniMode | null>;
   requireMessagingSignIn: () => void;
   chatMessages: ChatMessage[];
   setChatMessages: (messages: ChatMessage[] | ((current: ChatMessage[]) => ChatMessage[])) => void;
@@ -180,7 +180,7 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
         void showMessageNotification({
           title: conversationTitle(view, session.account.id),
           body: conversationMessageText(newest),
-          tag: `soko-message-${newest.id}`,
+          tag: `grogoni-message-${newest.id}`,
           conversationId
         });
       }

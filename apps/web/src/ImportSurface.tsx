@@ -6,7 +6,7 @@ import {
   type DocumentImportPreviewRow,
   type DocumentImportTarget,
   type ImportFormState
-} from "./soko-application-shared";
+} from "./grogoni-application-shared";
 
 import { readFileAsDataUrl, dataUrlPayload } from "./chat-message-plumbing";
 

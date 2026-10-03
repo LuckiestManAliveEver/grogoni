@@ -3,7 +3,7 @@ import { useState, type ChangeEvent } from "react";
 import {
   defaultProductVocabularyContextScript,
   parseProductContextScriptCommand
-} from "@soko/tool-core";
+} from "@grogoni/tool-core";
 
 import { AuthenticationActionMessage } from "./AuthenticationActionMessage";
 import { postJson } from "./api-helpers";
@@ -11,7 +11,7 @@ import { resolveContextScriptCommand } from "./agent-command-engine";
 import { getErrorMessage } from "./chat-message-plumbing";
 import { formatDate } from "./formatters";
 import { sanitizeContextScripts } from "./owner-app-bootstrap";
-import { defaultAgentContextScripts, type AgentSettings } from "./soko-application-shared";
+import { defaultAgentContextScripts, type AgentSettings } from "./grogoni-application-shared";
 
 export interface ProtectedContextFilesPanelProps {
   draftAgent: AgentSettings;

@@ -10,7 +10,7 @@ describe("web bundle budget gate", () => {
     expect(vite).toContain("manifest: true");
     expect(budget).toContain("initialJavaScriptGzip");
     expect(budget).toContain("ownerRouteGzip");
-    expect(budget).toContain('item.name === "SokoApplication"');
+    expect(budget).toContain('item.name === "GrogoniApplication"');
     expect(budget).not.toContain("browser-model.worker");
     expect(packageJson).toContain("check:web-bundle-budgets");
   });

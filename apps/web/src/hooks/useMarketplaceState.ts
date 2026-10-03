@@ -1,11 +1,11 @@
 import { useState } from "react";
 
-import type { AccountShopSummary, BuyFeedSummary } from "@soko/shared-types";
+import type { AccountShopSummary, BuyFeedSummary } from "@grogoni/shared-types";
 
 import { getErrorMessage } from "../chat-message-plumbing";
 import { fetchFreshJson, getJson, postJson } from "../api-helpers";
 import { resolveStoredShopAtLaunch } from "../stored-shop";
-import { activeBusinessStorageKey } from "../soko-application-shared";
+import { activeBusinessStorageKey } from "../grogoni-application-shared";
 import { agentSettingsFromBusinessProfile, readStoredBusiness } from "../owner-app-bootstrap";
 import type {
   ActiveBusiness,
@@ -19,7 +19,7 @@ import type {
   SessionResponse,
   ShopPresenceStatus,
   ShopPresenceSummary
-} from "../soko-application-shared";
+} from "../grogoni-application-shared";
 
 interface UseMarketplaceStateDeps {
   session: SessionResponse | null;
@@ -39,7 +39,7 @@ interface UseMarketplaceStateDeps {
 
 export function useMarketplaceState(deps: UseMarketplaceStateDeps) {
   const [isMarketplaceIntroComplete, setIsMarketplaceIntroComplete] = useState(
-    () => localStorage.getItem("soko.market.marketplace-intro.completed.v1") === "true"
+    () => localStorage.getItem("grogoni.marketplace-intro.completed.v1") === "true"
   );
   const [publicStorefronts, setPublicStorefronts] = useState<PublicStorefrontSummary[]>([]);
   const [publicStorefrontsLoading, setPublicStorefrontsLoading] = useState(false);
@@ -52,7 +52,7 @@ export function useMarketplaceState(deps: UseMarketplaceStateDeps) {
     try {
       const state = await getJson<MarketplaceIntroStateSummary>("/v1/marketplace-intro");
       if (state.completedAt !== null) {
-        localStorage.setItem("soko.market.marketplace-intro.completed.v1", "true");
+        localStorage.setItem("grogoni.marketplace-intro.completed.v1", "true");
         setIsMarketplaceIntroComplete(true);
       }
     } catch {
@@ -74,7 +74,7 @@ export function useMarketplaceState(deps: UseMarketplaceStateDeps) {
 
   async function completeMarketplaceIntro() {
     const { setIsMarketplaceShortcutOpen } = deps.getNavigationSetters();
-    localStorage.setItem("soko.market.marketplace-intro.completed.v1", "true");
+    localStorage.setItem("grogoni.marketplace-intro.completed.v1", "true");
     setIsMarketplaceIntroComplete(true);
     setIsMarketplaceShortcutOpen(false);
     setStatusMessage("Marketplace ready. Use the Marketplace button to return anytime.");

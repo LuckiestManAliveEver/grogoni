@@ -7,7 +7,7 @@ import type {
   EvaluationMatcher,
   JsonValue,
   OptimizationStrategy,
-  SokoModelTemplateManifestV1
+  GrogoniModelTemplateManifestV1
 } from "./types.js";
 
 interface TemplateParams extends BusinessParams {
@@ -104,7 +104,7 @@ export function registerModelTemplateRoutes(app: FastifyInstance, store: Cp2Stor
           store.createModelTemplate({
             sessionId: readSessionCookie(request.headers.cookie),
             businessId: request.params.businessId,
-            manifest: body.manifest as unknown as SokoModelTemplateManifestV1,
+            manifest: body.manifest as unknown as GrogoniModelTemplateManifestV1,
             baseModelId: requiredString(body.baseModelId, "baseModelId"),
             nativeRuntimeBindingId: nullableString(body.nativeRuntimeBindingId),
             executionHostId: nullableString(body.executionHostId)

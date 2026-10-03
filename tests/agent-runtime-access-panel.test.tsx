@@ -3,10 +3,10 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AgentContextSource } from "@soko/shared-types";
+import type { AgentContextSource } from "@grogoni/shared-types";
 
 import { AgentRuntimeAccessPanel } from "../apps/web/src/AgentRuntimeAccessPanel";
-import type { AgentSettings } from "../apps/web/src/soko-application-shared";
+import type { AgentSettings } from "../apps/web/src/grogoni-application-shared";
 
 describe("agent runtime access panel - context source creation", () => {
   let host: HTMLDivElement;

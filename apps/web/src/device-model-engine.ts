@@ -1,4 +1,4 @@
-import type { DeviceInferenceJob } from "@soko/shared-types";
+import type { DeviceInferenceJob } from "@grogoni/shared-types";
 // Type-only: erased at compile time, so the ~6 MB webllm bundle is never in the main chunk. The real
 // module is always loaded lazily through loadWebLLM() below.
 import type * as WebLLM from "@mlc-ai/web-llm";
@@ -42,7 +42,7 @@ async function approvedRecord(providerModelId: string): Promise<ModelRecord> {
   if (record === undefined || !record.model.startsWith(approvedDeviceModelOrigin)) {
     throw new DeviceModelError(
       "MODEL_NOT_APPROVED",
-      "This on-device model is not available from Soko's approved model source."
+      "This on-device model is not available from Grogoni's approved model source."
     );
   }
   return record;

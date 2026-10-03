@@ -16,7 +16,7 @@ describe("unified phone + PIN continue flow", () => {
       account: { primaryAuthDestination: "+254712345690" },
       user: { displayName: "Trader 5690" }
     });
-    expect(cookies(response.headers["set-cookie"])).toContain("soko_refresh=");
+    expect(cookies(response.headers["set-cookie"])).toContain("grogoni_refresh=");
     await app.close();
   });
 
@@ -34,7 +34,7 @@ describe("unified phone + PIN continue flow", () => {
       account: { primaryAuthDestination: "+254712345691" }
     });
     expect(response.cookies.map((cookie) => cookie.name)).toEqual(
-      expect.arrayContaining(["soko_session", "soko_refresh"])
+      expect.arrayContaining(["grogoni_session", "grogoni_refresh"])
     );
     const refreshed = await app.inject({
       method: "POST",
@@ -133,7 +133,7 @@ describe("unified email + PIN continue flow", () => {
       account: { primaryAuthChannel: "email", primaryAuthDestination: "new.trader@example.com" },
       user: { displayName: "new.trader" }
     });
-    expect(cookies(response.headers["set-cookie"])).toContain("soko_refresh=");
+    expect(cookies(response.headers["set-cookie"])).toContain("grogoni_refresh=");
     await app.close();
   });
 
@@ -177,7 +177,7 @@ describe("unified email + PIN continue flow", () => {
 });
 
 describe("store ID + PIN login", () => {
-  it("logs the owner in using their store's Soko ID and PIN", async () => {
+  it("logs the owner in using their store's Grogoni ID and PIN", async () => {
     const app = buildApi({ cp2: { store: createCp2Store() } });
     const signup = await post(app, "/auth/pin/continue", {
       contact: "0712345700",
@@ -191,17 +191,17 @@ describe("store ID + PIN login", () => {
       method: "POST",
       url: "/businesses",
       headers: { cookie: ownerCookie, "content-type": "application/json" },
-      payload: { name: "Soko ID Login Shop", language: "en" }
+      payload: { name: "Grogoni ID Login Shop", language: "en" }
     });
-    const { sokoId } = business.json<{ business: { sokoId: string } }>().business;
+    const { grogoniId } = business.json<{ business: { grogoniId: string } }>().business;
 
-    const storeLogin = await post(app, "/auth/pin/store-login", { sokoId, pin: "9012" });
+    const storeLogin = await post(app, "/auth/pin/store-login", { grogoniId, pin: "9012" });
     expect(storeLogin.statusCode).toBe(200);
     expect(storeLogin.json()).toMatchObject({ account: { id: ownerAccountId } });
-    expect(cookies(storeLogin.headers["set-cookie"])).toContain("soko_refresh=");
+    expect(cookies(storeLogin.headers["set-cookie"])).toContain("grogoni_refresh=");
 
     const storeLoginLowercase = await post(app, "/auth/pin/store-login", {
-      sokoId: sokoId.toLowerCase(),
+      grogoniId: grogoniId.toLowerCase(),
       pin: "9012"
     });
     expect(storeLoginLowercase.statusCode).toBe(200);
@@ -212,7 +212,7 @@ describe("store ID + PIN login", () => {
   it("rejects an unknown store ID and a wrong PIN with the same generic error", async () => {
     const app = buildApi({ cp2: { store: createCp2Store() } });
     const unknown = await post(app, "/auth/pin/store-login", {
-      sokoId: "soko.unknown-store",
+      grogoniId: "grogoni.unknown-store",
       pin: "9012"
     });
     expect(unknown.statusCode).toBe(401);
@@ -230,9 +230,9 @@ describe("store ID + PIN login", () => {
       headers: { cookie: ownerCookie, "content-type": "application/json" },
       payload: { name: "Wrong PIN Shop", language: "en" }
     });
-    const { sokoId } = business.json<{ business: { sokoId: string } }>().business;
+    const { grogoniId } = business.json<{ business: { grogoniId: string } }>().business;
 
-    const wrongPin = await post(app, "/auth/pin/store-login", { sokoId, pin: "0000" });
+    const wrongPin = await post(app, "/auth/pin/store-login", { grogoniId, pin: "0000" });
     expect(wrongPin.statusCode).toBe(401);
     expect(wrongPin.json()).toMatchObject({ code: "auth_credentials_invalid" });
     await app.close();
@@ -261,9 +261,9 @@ describe("store ID + PIN login", () => {
       headers: { cookie: ownerCookie, "content-type": "application/json" },
       payload: { name: "No PIN Shop", language: "en" }
     });
-    const { sokoId } = business.json<{ business: { sokoId: string } }>().business;
+    const { grogoniId } = business.json<{ business: { grogoniId: string } }>().business;
 
-    const attempt = await post(app, "/auth/pin/store-login", { sokoId, pin: "1234" });
+    const attempt = await post(app, "/auth/pin/store-login", { grogoniId, pin: "1234" });
     expect(attempt.statusCode).toBe(401);
     expect(attempt.json()).toMatchObject({ code: "pin_not_configured" });
     await app.close();

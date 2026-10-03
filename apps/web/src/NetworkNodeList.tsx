@@ -1,4 +1,4 @@
-import { type NetworkNodeSummary } from "./soko-application-shared";
+import { type NetworkNodeSummary } from "./grogoni-application-shared";
 
 export function NetworkNodeList({ nodes, title }: { nodes: NetworkNodeSummary[]; title: string }) {
   return (

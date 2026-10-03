@@ -254,7 +254,7 @@ describe("phone-first authentication", () => {
       password: "correct horse battery staple"
     });
     expect(login.statusCode).toBe(200);
-    expect(cookies(login.headers["set-cookie"])).toContain("soko_refresh=");
+    expect(cookies(login.headers["set-cookie"])).toContain("grogoni_refresh=");
 
     const phoneRecovery = await post(app, "/auth/recovery/start", {
       ...credentials,
@@ -375,7 +375,7 @@ describe("phone-first authentication", () => {
       code: recoveryCode
     });
     expect(mfa.statusCode).toBe(200);
-    expect(cookies(mfa.headers["set-cookie"])).toContain("soko_session=");
+    expect(cookies(mfa.headers["set-cookie"])).toContain("grogoni_session=");
 
     const nextLogin = await post(app, "/auth/login/password", {
       type: "phone",

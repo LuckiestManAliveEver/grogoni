@@ -15,7 +15,7 @@ set record = jsonb_set(
     true
   ),
   updated_at = now()
-where parent_id = 'builtin:soko-default-runtime:v1' and role = 'primary';
+where parent_id = 'builtin:grogoni-default-runtime:v1' and role = 'primary';
 
 delete from cp2_native_model_installations
 where entity_id = 'builtin:smollm2-360m:vercel:v1';

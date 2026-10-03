@@ -17,7 +17,7 @@ declare global {
   }
 }
 
-const rootFolderName = "soko-offline-runtime";
+const rootFolderName = "grogoni-offline-runtime";
 
 export function supportsRemovableDevice(): boolean {
   return typeof window !== "undefined" && typeof window.showDirectoryPicker === "function";

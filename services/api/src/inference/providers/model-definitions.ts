@@ -1,4 +1,4 @@
-import type { AiModelSummary, ModelExecutionTarget } from "@soko/shared-types";
+import type { AiModelSummary, ModelExecutionTarget } from "@grogoni/shared-types";
 
 import type { InferenceExecutionTarget, ModelDefinition } from "./contract.js";
 import { isInferenceExecutionTarget } from "./contract.js";

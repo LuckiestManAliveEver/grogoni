@@ -4,7 +4,7 @@ Status: active
 Date opened: 2026-07-12
 Target tag: `checkpoint/cp21-offline-client-sync`
 
-CP21 starts Phase 2 of the refined cross-platform Soko architecture. It builds the local-data and
+CP21 starts Phase 2 of the refined cross-platform Grogoni architecture. It builds the local-data and
 incremental catch-up layer deferred by CP20 while preserving the server as the authority for
 identity, permissions, session context, conversations, and structured messages.
 

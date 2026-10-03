@@ -1,16 +1,16 @@
 # Multi-provider inference: implementation report
 
-This change lets Soko agents run on models from OpenAI, Anthropic, Z.ai (GLM), Soko-hosted
+This change lets Grogoni agents run on models from OpenAI, Anthropic, Z.ai (GLM), Grogoni-hosted
 llama.cpp, any other OpenAI-compatible server, or the device itself. It does this without new
 agents, without vendor branches in agent code, and without a second model registry. The Phase 0
 audit that shaped these decisions is
 [multi-provider-inference-audit.md](./multi-provider-inference-audit.md).
 
 ```text
-                        SOKO CHAT
+                        GROGONI CHAT
                             │
                             ▼
-                       SOKO AGENT            (pi / soko AgentRuntimeAdapter - unchanged)
+                       GROGONI AGENT            (pi / grogoni AgentRuntimeAdapter - unchanged)
                             │
                             ▼
                     AGENT MODEL BINDING      (cp2_native_runtime_bindings - unchanged)
@@ -21,7 +21,7 @@ audit that shaped these decisions is
           ┌─────────────────┼──────────────────┐
           │                 │                  │
           ▼                 ▼                  ▼
-    REMOTE APIs        SOKO-HOSTED          LOCAL
+    REMOTE APIs        GROGONI-HOSTED          LOCAL
           │                 │                  │
    ┌──────┼──────┐     llama.cpp          Browser /
    │      │      │         │              Device
@@ -59,7 +59,7 @@ No agent called a vendor directly, so no agent code needed to be removed.
 
 | Layer              | Where                                                                         | Notes                                                                                                                                                                                                        |
 | ------------------ | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Canonical contract | `inference/providers/contract.ts`                                             | Implements the brief's `InferenceRequest`, `InferenceResponse`, `InferenceChunk`, `InferenceProvider`, `ProviderHealth` and `ModelDefinition`. Target/capability/pricing types live in `@soko/shared-types`. |
+| Canonical contract | `inference/providers/contract.ts`                                             | Implements the brief's `InferenceRequest`, `InferenceResponse`, `InferenceChunk`, `InferenceProvider`, `ProviderHealth` and `ModelDefinition`. Target/capability/pricing types live in `@grogoni/shared-types`. |
 | Normalized errors  | `inference/providers/errors.ts`                                               | `InferenceError` extends the existing `ModelRuntimeError`, so the chat pipeline handles it unchanged. Codes are registered in `normalizeInferenceErrorCode`.                                                 |
 | Provider adapters  | `openai-compatible-provider.ts`, `anthropic-provider.ts`, `local-provider.ts` | Covered in §4.                                                                                                                                                                                               |
 | Provider registry  | `provider-registry.ts`, `environment.ts`                                      | The one map from provider _type_ to adapter. Config merge order: built-ins < `inference_providers` rows < environment.                                                                                       |
@@ -149,13 +149,13 @@ reasons:
 - **In memory:** a decrypted key lives only inside `SecretValue`, which prints `[REDACTED]` for
   `String()`, `JSON.stringify` and `util.inspect`. The only place it is revealed is where an adapter
   builds a request header.
-- **Soko-managed keys:** read from the environment once at boot into `managedSecrets`, and
+- **Grogoni-managed keys:** read from the environment once at boot into `managedSecrets`, and
   referenced by `credentialRef: "env:NAME"`. They can also be platform-scoped encrypted rows
   (`secret://<id>`).
 - **Precedence** (`CredentialResolver`, deterministic):
 
   ```text
-  explicit request scope → tenant BYOK → user BYOK → Soko-managed
+  explicit request scope → tenant BYOK → user BYOK → Grogoni-managed
   ```
 
   An explicit scope never falls through to another payer. Tenant and user lookups are exact-owner
@@ -221,23 +221,23 @@ unchanged.
 Run `llama-server` anywhere (Render, Hetzner, Oracle, RunPod, own hardware):
 
 ```bash
-llama-server -m qwen3-4b-q4_k_m.gguf --alias qwen3-4b --api-key "$SOKO_LLAMA_API_KEY" --host 0.0.0.0 --port 8080
+llama-server -m qwen3-4b-q4_k_m.gguf --alias qwen3-4b --api-key "$GROGONI_LLAMA_API_KEY" --host 0.0.0.0 --port 8080
 ```
 
 Then configure the API:
 
 ```env
-SOKO_LLAMA_BASE_URL=https://inference.soko.market/v1
-SOKO_LLAMA_API_KEY=...
+GROGONI_LLAMA_BASE_URL=https://inference.grogoni.com/v1
+GROGONI_LLAMA_API_KEY=...
 ```
 
-Register a catalog model with `inference.providerId: "soko-llama"`,
+Register a catalog model with `inference.providerId: "grogoni-llama"`,
 `providerModelId: "qwen3-4b"` (the `--alias`) and `executionTarget: "remote-inference"`.
 
 Nothing in the code knows which host serves the model. Moving hosts means changing the URL.
 
-A llama-server on a private network next to the API needs `SOKO_LLAMA_ALLOW_PRIVATE_NETWORK=true`
-(and `SOKO_LLAMA_ALLOW_HTTP=true` for plain http). These are operator-only switches. Additional
+A llama-server on a private network next to the API needs `GROGONI_LLAMA_ALLOW_PRIVATE_NETWORK=true`
+(and `GROGONI_LLAMA_ALLOW_HTTP=true` for plain http). These are operator-only switches. Additional
 compatible hosts are rows in `inference_providers` (`provider_type = 'openai-compatible'`) and need
 no code.
 
@@ -276,7 +276,7 @@ local-only models never trigger those native fallbacks either.
   - user-facing messages are fixed strings.
 - Tenant isolation: connection ids owned by another tenant or user return 404, so they can't be
   probed. Tenant keys require `membership:manage` on that exact business.
-- Provider tool calls are converted to Soko's JSON proposal. Only tools the agent offered are
+- Provider tool calls are converted to Grogoni's JSON proposal. Only tools the agent offered are
   accepted, and every proposal goes through `parseRuntimeModelOutput`, validation, permission and
   confirmation. Providers never execute anything; tests show a provider-native `product.update`
   stopping at `needs_confirmation`.
@@ -327,9 +327,9 @@ set it.
   cached rate (or the input rate if none is set), and output tokens at the output rate, all from
   catalog pricing.
 - **Budgets** come in two independent kinds; both must pass:
-  - **Soko's caps** (environment and the global policy row): a daily budget per shop and per
-    person, and provider monthly ceilings. They apply only to Soko-funded requests, measured
-    against Soko-funded spend. A shop paying with its own key is not limited by them.
+  - **Grogoni's caps** (environment and the global policy row): a daily budget per shop and per
+    person, and provider monthly ceilings. They apply only to Grogoni-funded requests, measured
+    against Grogoni-funded spend. A shop paying with its own key is not limited by them.
   - **A shop's or person's own caps** (their policy row, set in Settings): a daily budget over all
     of their spend, including their own keys.
   - A per-minute request limit per shop and person: the strictest defined value wins. It is
@@ -366,7 +366,7 @@ set it.
 ```bash
 pnpm install --frozen-lockfile
 pnpm -r --filter "./packages/**" --if-present build
-pnpm --filter @soko/api typecheck && pnpm --filter @soko/web typecheck
+pnpm --filter @grogoni/api typecheck && pnpm --filter @grogoni/web typecheck
 pnpm typecheck
 pnpm lint
 npx prettier --check .
@@ -376,7 +376,7 @@ pnpm check:render-inference-boundaries
 pnpm build:production && node scripts/check-web-bundle-budgets.mjs
 pnpm test
 # Throwaway PostgreSQL 16 cluster:
-DATABASE_URL=postgres://soko@127.0.0.1:55432/soko_test pnpm db:migrate
+DATABASE_URL=postgres://grogoni@127.0.0.1:55432/grogoni_test pnpm db:migrate
 DATABASE_URL=... pnpm db:verify-schema
 psql -f infra/db/migrations/101_multi_provider_inference.sql   # re-apply: idempotent
 psql -f infra/db/rollbacks/101_multi_provider_inference.down.sql && psql -f .../101_...sql
@@ -407,7 +407,7 @@ Every follow-up from the first iteration is resolved in §20. What remains:
 - **Z.ai verification** still uses a 1-token completion (minimal cost), because no free
   key-verification endpoint is relied on.
 - **Commercial vendor models are not seeded.** Vendor ids and prices change and must be verified
-  by the operator (§7). The on-device models and a disabled Soko Cloud entry are seeded
+  by the operator (§7). The on-device models and a disabled Grogoni Cloud entry are seeded
   (migration 102).
 - **The device broker and turn streams are in-process,** like the owner-node broker, which
   matches the single-writer API deployment. A multi-writer deployment would need Redis pub/sub for
@@ -421,12 +421,12 @@ Every follow-up from the first iteration is resolved in §20. What remains:
 
 | Variable                                                                                                                                                                                                    | Meaning                                                                                         |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `OPENAI_API_KEY`, `OPENAI_BASE_URL`                                                                                                                                                                         | Soko-managed OpenAI key and optional base URL                                                   |
-| `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`                                                                                                                                                                   | Soko-managed Anthropic key and optional base URL                                                |
+| `OPENAI_API_KEY`, `OPENAI_BASE_URL`                                                                                                                                                                         | Grogoni-managed OpenAI key and optional base URL                                                   |
+| `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`                                                                                                                                                                   | Grogoni-managed Anthropic key and optional base URL                                                |
 | `ZAI_API_KEY`, `ZAI_BASE_URL` (default general endpoint)                                                                                                                                                    | Z.ai general API                                                                                |
 | `ZAI_CODING_BASE_URL`, `ZAI_CODING_API_KEY`                                                                                                                                                                 | Optional separate `zai-coding` provider (a distinct billing product; no BYOK, never a fallback) |
-| `SOKO_LLAMA_BASE_URL`, `SOKO_LLAMA_API_KEY`                                                                                                                                                                 | Soko-hosted llama.cpp or other OpenAI-compatible server (`soko-llama`)                          |
-| `SOKO_LLAMA_ALLOW_PRIVATE_NETWORK`, `SOKO_LLAMA_ALLOW_HTTP`                                                                                                                                                 | Operator-only switches for a private-network llama-server                                       |
+| `GROGONI_LLAMA_BASE_URL`, `GROGONI_LLAMA_API_KEY`                                                                                                                                                                 | Grogoni-hosted llama.cpp or other OpenAI-compatible server (`grogoni-llama`)                          |
+| `GROGONI_LLAMA_ALLOW_PRIVATE_NETWORK`, `GROGONI_LLAMA_ALLOW_HTTP`                                                                                                                                                 | Operator-only switches for a private-network llama-server                                       |
 | `INFERENCE_DEFAULT_PROVIDER`, `INFERENCE_DEFAULT_MODEL`                                                                                                                                                     | Used only when a binding names no model. There is no built-in commercial default.               |
 | `INFERENCE_REQUEST_TIMEOUT_MS` (60000), `INFERENCE_MAX_OUTPUT_TOKENS` (1024)                                                                                                                                | Request deadline and global output ceiling                                                      |
 | `INFERENCE_BUDGET_CURRENCY`, `INFERENCE_TENANT_DAILY_BUDGET`, `INFERENCE_USER_DAILY_BUDGET`, `INFERENCE_PROVIDER_MONTHLY_CEILINGS`, `INFERENCE_MAX_REQUESTS_PER_MINUTE`, `INFERENCE_MAX_TOKENS_PER_REQUEST` | Cost controls. Blank means unlimited.                                                           |
@@ -438,7 +438,7 @@ Deploy order:
 1. `pnpm db:migrate`, which applies 101 and 102 (catalog seeds). The API asserts the tables exist at boot, like
    fulfillment does.
 2. Deploy the API and web.
-3. Set whichever keys you want Soko to fund.
+3. Set whichever keys you want Grogoni to fund.
 4. Register catalog models.
 
 With no keys set, providers are BYOK-only and nothing else changes.
@@ -510,7 +510,7 @@ With no keys set, providers are BYOK-only and nothing else changes.
 Decided in [ADR-explicit-device-local-models.md](../adr/ADR-explicit-device-local-models.md).
 
 ```text
-member's chat ──POST /v1/messages (x-soko-turn-id)──► Soko API: binding → router → local provider
+member's chat ──POST /v1/messages (x-grogoni-turn-id)──► Grogoni API: binding → router → local provider
       │                                                       │ builds prompt, then waits
       │ GET /v1/ai/device-inference/jobs/next?turnId=… ◄──────┘ DeviceInferenceBroker
       ▼
@@ -541,12 +541,12 @@ member's chat ──POST /v1/messages (x-soko-turn-id)──► Soko API: bindin
 Every hosted model now streams reply text to the chat: the router (via the provider's native
 stream) and the Vercel adapter.
 
-1. The client names its turn with `x-soko-turn-id`.
+1. The client names its turn with `x-grogoni-turn-id`.
 2. `app.ts` runs the request inside an `AsyncLocalStorage` turn context.
 3. Adapters publish to `TurnStreamHub`, keyed by account and turn.
 4. `GET /v1/ai/turn-stream/:turnId` serves server-sent events.
 
-`createRuntimeReplyTextStream` (`@soko/tool-core`) streams only the `message` text of a JSON reply.
+`createRuntimeReplyTextStream` (`@grogoni/tool-core`) streams only the `message` text of a JSON reply.
 It never streams JSON syntax or a tool proposal. On an explicit-policy fallback, the preview is
 reset so two models' output is never spliced together.
 
@@ -566,7 +566,7 @@ replaces the bubble.
 
 Inputs are validated:
 
-- a shop cannot set provider ceilings, since those cap Soko-funded spend;
+- a shop cannot set provider ceilings, since those cap Grogoni-funded spend;
 - fallback models must be router models, and approved providers must exist;
 - provider URLs go through the SSRF policy at save time;
 - `credentialRef` must be `env:` or `secret://`, never a key.
@@ -592,7 +592,7 @@ skip-on-error stance as the HTTP rate limiter.
 
 ### 20.6 Also fixed along the way
 
-- **Budget precedence.** A shop's policy row can no longer _raise_ Soko's daily budget. The two
+- **Budget precedence.** A shop's policy row can no longer _raise_ Grogoni's daily budget. The two
   kinds of budget are now independent (§12).
 - **SSE header flush.** Node sends no headers until the first write, so the turn stream sends an
   initial comment frame. Without it a client would see nothing until the first token.
@@ -645,24 +645,24 @@ Decision record: [ADR-zeroclaw-default-agent-runtime.md](../adr/ADR-zeroclaw-def
   databases:
   - seeds the catalog row;
   - switches the `builtin:shopkeeper` definition to ZeroClaw;
-  - adds `builtin:shopkeeper-soko` (Shopkeeper on Soko's engine);
+  - adds `builtin:shopkeeper-grogoni` (Shopkeeper on Grogoni's engine);
   - rewrites the global default binding slot in place.
 - **ZeroClaw engine.** `agent-harness/zeroclaw-agent-runtime-adapter.ts` is always registered.
   - It calls the ZeroClaw gateway's `POST /webhook` with one fresh session per turn.
   - It rejects replies from any model other than the bound one.
-  - It returns plain text, which Soko parses and approval-gates like any other model output.
+  - It returns plain text, which Grogoni parses and approval-gates like any other model output.
 - **Delegated runs.** `InferenceRouter.delegate` covers a model call made by an external runtime
-  that holds Soko's platform key. It resolves the model (without a credential lookup), admits the
+  that holds Grogoni's platform key. It resolves the model (without a credential lookup), admits the
   call against budgets and rate limits, and runs it behind its own `delegated:<provider>` circuit.
   It records a `credentialScope: "platform"` run, with token counts estimated from text length
   because the gateway reports none.
-- **No gateway.** ZeroClaw is resolved to the `soko` engine once, at configuration time. This
+- **No gateway.** ZeroClaw is resolved to the `grogoni` engine once, at configuration time. This
   covers both the default policy and any agent definition that names `zeroclaw`, and it is logged
   as `runtime.default_engine_resolved`.
 - **Fixed along the way.** The zero-setup repair no longer attaches a hosted fallback behind an
   on-device primary model. With a cloud default, that fallback would have sent on-device
   conversations to the cloud when no device was online.
-- **Deployment.** `render.yaml` adds the private `soko-market-zeroclaw` service:
+- **Deployment.** `render.yaml` adds the private `grogoni-zeroclaw` service:
   - image `ghcr.io/zeroclaw-labs/zeroclaw:v0.8.5`;
   - `readonly` risk profile with all tools denied, and no session persistence;
   - generated webhook secret shared with the API.
@@ -674,5 +674,5 @@ Decision record: [ADR-zeroclaw-default-agent-runtime.md](../adr/ADR-zeroclaw-def
   - error mapping;
   - budget admission;
   - configuration parsing;
-  - resolution to the `soko` engine.
+  - resolution to the `grogoni` engine.
     Existing zero-setup, effective-runtime, catalog and switcher tests now assert the new default.

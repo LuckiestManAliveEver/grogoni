@@ -7,8 +7,8 @@
  * `LazyModuleErrorBoundary`, so recovery logic lives in exactly one place.
  */
 
-const recoveryKeyPrefix = "soko.lazy-module-recovery.v1";
-const deploymentRecoveryMarkerKey = "soko.deployment-recovery.v1";
+const recoveryKeyPrefix = "grogoni.lazy-module-recovery.v1";
+const deploymentRecoveryMarkerKey = "grogoni.deployment-recovery.v1";
 const deploymentRecoveryMarkerTtlMs = 5 * 60 * 1000;
 
 export const agentProfileModuleKeys = {
@@ -204,7 +204,7 @@ function runPreReloadFlushes(): void {
     try {
       hook();
     } catch (error) {
-      console.warn("[Soko.market] A pre-reload state flush failed; continuing recovery.", error);
+      console.warn("[Grogoni] A pre-reload state flush failed; continuing recovery.", error);
     }
   }
 }

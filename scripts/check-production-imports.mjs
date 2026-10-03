@@ -3,12 +3,12 @@ import { dirname, extname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const productionPackages = [
-  packageDefinition("@soko/shared-types", "packages/shared-types/package.json"),
-  packageDefinition("@soko/event-core", "packages/event-core/package.json"),
-  packageDefinition("@soko/tool-core", "packages/tool-core/package.json"),
-  packageDefinition("@soko/sync-core", "packages/sync-core/package.json"),
-  packageDefinition("@soko/business-core", "packages/business-core/package.json"),
-  packageDefinition("@soko/api", "services/api/package.json")
+  packageDefinition("@grogoni/shared-types", "packages/shared-types/package.json"),
+  packageDefinition("@grogoni/event-core", "packages/event-core/package.json"),
+  packageDefinition("@grogoni/tool-core", "packages/tool-core/package.json"),
+  packageDefinition("@grogoni/sync-core", "packages/sync-core/package.json"),
+  packageDefinition("@grogoni/business-core", "packages/business-core/package.json"),
+  packageDefinition("@grogoni/api", "services/api/package.json")
 ];
 
 const importPatterns = [

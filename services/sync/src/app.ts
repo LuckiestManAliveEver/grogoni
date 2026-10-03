@@ -1,5 +1,5 @@
 import Fastify from "fastify";
-import type { HealthResponse } from "@soko/shared-types";
+import type { HealthResponse } from "@grogoni/shared-types";
 
 export function buildSyncService() {
   const app = Fastify({

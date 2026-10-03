@@ -14,7 +14,7 @@ const fallbackModelId = "qwen2.5-0.5b-android";
 describe("zero-setup native runtime", () => {
   it("completes a brand-new user's first /v1/messages chat without a download or activation", async () => {
     const generate = vi.fn(async () =>
-      generation(primaryModelId, "Welcome to Soko AI.", "backend")
+      generation(primaryModelId, "Welcome to Grogoni AI.", "backend")
     );
     const store = createCp2Store({
       modelRuntimeAdapterResolver: ({ modelId, executionTarget }) =>
@@ -40,7 +40,7 @@ describe("zero-setup native runtime", () => {
 
       expect(response.statusCode).toBe(200);
       expect(response.json()).toMatchObject({
-        agentMessage: { content: { type: "text", text: "Welcome to Soko AI." } },
+        agentMessage: { content: { type: "text", text: "Welcome to Grogoni AI." } },
         runtime: {
           turn: {
             model: {
@@ -48,7 +48,7 @@ describe("zero-setup native runtime", () => {
               modelId: primaryModelId,
               executionTarget: "backend",
               agentId: actor.businessId,
-              agentAdapterId: "soko"
+              agentAdapterId: "grogoni"
             }
           }
         },
@@ -59,8 +59,8 @@ describe("zero-setup native runtime", () => {
       expect(
         store.snapshot().nativeRuntimeAgents.find((agent) => agent.id === actor.businessId)
       ).toMatchObject({
-        provider: "soko-business-agent",
-        configuration: { runtimeAdapterId: "soko", requiredModelCapabilities: ["chat"] }
+        provider: "grogoni-business-agent",
+        configuration: { runtimeAdapterId: "grogoni", requiredModelCapabilities: ["chat"] }
       });
       // There is no legacy cp2_agent_model_bindings representation left to duplicate this into -
       // the native runtime graph checked above is the sole source of truth for a first chat.
@@ -111,7 +111,7 @@ describe("zero-setup native runtime", () => {
       });
       expect(effectiveRuntime.statusCode).toBe(200);
       expect(effectiveRuntime.json()).toMatchObject({
-        agent: { id: "builtin:shopkeeper", runtimeAdapterId: "soko" },
+        agent: { id: "builtin:shopkeeper", runtimeAdapterId: "grogoni" },
         model: { id: primaryModelId },
         execution: { type: "backend", ready: true },
         source: "default",
@@ -133,7 +133,7 @@ describe("zero-setup native runtime", () => {
             status: "available",
             modelId: primaryModelId,
             executionTarget: "backend",
-            agentAdapterId: "soko"
+            agentAdapterId: "grogoni"
           }
         }
       });
@@ -206,7 +206,7 @@ describe("zero-setup native runtime", () => {
       expect(
         store.snapshot().nativeRuntimeAgents.find((agent) => agent.id === actor.businessId)
       ).toMatchObject({
-        provider: "soko-business-agent",
+        provider: "grogoni-business-agent",
         packageRef: null,
         configuration: { runtimeAdapterId: "beta", requiredModelCapabilities: ["chat"] }
       });
@@ -469,7 +469,7 @@ function adapter(
       provider: "test-hosted-adapter",
       executionTarget,
       latencyMs: 1,
-      responsePreview: "SOKO_MODEL_OK",
+      responsePreview: "GROGONI_MODEL_OK",
       errorCode: null,
       message: null,
       retryable: false

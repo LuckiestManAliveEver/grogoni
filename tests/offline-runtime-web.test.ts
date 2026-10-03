@@ -20,7 +20,7 @@ describe("Chat API offline adapter", () => {
       value: { estimate: async () => ({ quota: 2 ** 30, usage: 0 }) }
     });
     localStorage.setItem(
-      "soko.market.auth-bootstrap.v1",
+      "grogoni.auth-bootstrap.v1",
       JSON.stringify({
         account: { id: "account" },
         user: { id: "user" },
@@ -97,7 +97,7 @@ describe("Chat API offline adapter", () => {
       expect(network).toHaveBeenCalledTimes(1);
       expect(host.textContent).toContain("Sync and go back online");
       await act(async () => {
-        localStorage.removeItem("soko.offline-runtime.active.v1");
+        localStorage.removeItem("grogoni.offline-runtime.active.v1");
         window.dispatchEvent(new Event("storage"));
         await new Promise((resolve) => setTimeout(resolve, 30));
       });
@@ -121,7 +121,7 @@ describe("Chat API offline adapter", () => {
     const network = vi.fn();
     vi.stubGlobal("fetch", network);
     localStorage.setItem(
-      "soko.market.auth-bootstrap.v1",
+      "grogoni.auth-bootstrap.v1",
       JSON.stringify({
         account: { id: "account" },
         user: { id: "user" },
@@ -130,7 +130,7 @@ describe("Chat API offline adapter", () => {
       })
     );
     localStorage.setItem(
-      "soko.offline-runtime.active.v1",
+      "grogoni.offline-runtime.active.v1",
       JSON.stringify({ accountId: "account", storeId: "shop", deviceId: "device" })
     );
     const offline = await import("../apps/web/src/offline-runtime");
@@ -158,7 +158,7 @@ describe("Chat API offline adapter", () => {
       ).rejects.toThrow("unavailable offline");
       expect(network).not.toHaveBeenCalled();
       localStorage.setItem(
-        "soko.market.auth-bootstrap.v1",
+        "grogoni.auth-bootstrap.v1",
         JSON.stringify({
           account: { id: "other-account" },
           user: { id: "other" },

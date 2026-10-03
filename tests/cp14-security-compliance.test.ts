@@ -373,8 +373,8 @@ describe("CP14 security compliance", () => {
 
     expect(invalidDeletion.statusCode).toBe(400);
     expect(deletionResponse.statusCode).toBe(200);
-    expect(JSON.stringify(deletionResponse.headers["set-cookie"])).toContain("soko_session=");
-    expect(JSON.stringify(deletionResponse.headers["set-cookie"])).toContain("soko_refresh=");
+    expect(JSON.stringify(deletionResponse.headers["set-cookie"])).toContain("grogoni_session=");
+    expect(JSON.stringify(deletionResponse.headers["set-cookie"])).toContain("grogoni_refresh=");
     expect(deletion.status).toBe("scheduled");
     expect(deletion.deactivatedAt).toBeTruthy();
     expect(Date.parse(deletion.anonymizeAfter)).toBeGreaterThan(Date.parse(deletion.deactivatedAt));

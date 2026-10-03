@@ -1,5 +1,5 @@
 import type { PoolConfig } from "pg";
-import { positiveIntegerFromEnv } from "@soko/resource-control";
+import { positiveIntegerFromEnv } from "@grogoni/resource-control";
 
 /**
  * The one shared source of truth for every `pg.Pool` this process creates (`cp2_primary`,
@@ -23,7 +23,7 @@ export function buildPgPoolConfig(
     (connectionString.includes(".neon.tech") || connectionString.includes(".neon.database"));
 
   return {
-    application_name: process.env.DB_APPLICATION_NAME ?? "soko-market",
+    application_name: process.env.DB_APPLICATION_NAME ?? "grogoni",
     connectionString,
     connectionTimeoutMillis: positiveIntegerFromEnv("DB_CONNECTION_TIMEOUT_MS", 5000),
     idleTimeoutMillis: positiveIntegerFromEnv("DB_IDLE_TIMEOUT_MS", 30000),

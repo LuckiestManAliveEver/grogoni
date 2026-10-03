@@ -8,11 +8,11 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY packages/shared-types/package.json packages/shared-types/package.json
 COPY services/ai-runtime/package.json services/ai-runtime/package.json
 ENV HUSKY=0
-RUN pnpm install --frozen-lockfile --filter @soko/ai-runtime...
+RUN pnpm install --frozen-lockfile --filter @grogoni/ai-runtime...
 COPY packages/shared-types/ packages/shared-types/
 COPY services/ai-runtime/ services/ai-runtime/
-RUN pnpm --filter @soko/ai-runtime build \
-    && pnpm --filter @soko/ai-runtime deploy --legacy --prod /runtime \
+RUN pnpm --filter @grogoni/ai-runtime build \
+    && pnpm --filter @grogoni/ai-runtime deploy --legacy --prod /runtime \
     && rm -rf /runtime/node_modules/.pnpm/@node-llama-cpp+linux-x64-cuda* \
               /runtime/node_modules/.pnpm/@node-llama-cpp+linux-x64-vulkan*
 

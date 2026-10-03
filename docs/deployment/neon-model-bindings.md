@@ -5,13 +5,13 @@
 Use a pooled Neon connection for normal API and cron queries:
 
 ```dotenv
-DATABASE_URL=postgresql://...-pooler.../soko?sslmode=verify-full
+DATABASE_URL=postgresql://...-pooler.../grogoni?sslmode=verify-full
 ```
 
 Use a direct Neon connection for migrations:
 
 ```dotenv
-DIRECT_DATABASE_URL=postgresql://.../soko?sslmode=verify-full
+DIRECT_DATABASE_URL=postgresql://.../grogoni?sslmode=verify-full
 ```
 
 Production migrations refuse to run without `DIRECT_DATABASE_URL`. The connection helper upgrades
@@ -25,7 +25,7 @@ Render runs this in `preDeployCommand`:
 NODE_ENV=production pnpm db:migrate
 ```
 
-The runner takes the `soko.schema_migrations` advisory lock, validates checksums, and commits each
+The runner takes the `grogoni.schema_migrations` advisory lock, validates checksums, and commits each
 migration once. A failure rolls back that migration and fails the deployment. No destructive
 migration runs at API startup.
 
@@ -39,7 +39,7 @@ Verify migration 040 and its one-active-binding constraint:
 
 ```sql
 select filename, applied_at
-from soko_schema_migrations
+from grogoni_schema_migrations
 where filename = '040_agent_model_runtime_bindings.sql';
 
 select indexname, indexdef

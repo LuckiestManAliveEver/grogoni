@@ -1,4 +1,4 @@
-import { isLocalRuntimeHost } from "@soko/shared-types";
+import { isLocalRuntimeHost } from "@grogoni/shared-types";
 import { createHash } from "node:crypto";
 
 import type {
@@ -21,20 +21,20 @@ import type {
   NativeRuntimeResolutionSource,
   ResolvedNativeRuntimeBinding,
   ResolvedNativeRuntimeModel
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import {
   isModelExecutionTarget,
   repositoryDefaultRuntimePolicy,
   resolveRuntimeModel
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
 import { Cp2Error } from "../../cp2-error.js";
 import { runtimeAdapterIdForAgent } from "../../../agent-harness/agent-runtime-adapter.js";
 
 export const nativeRuntimeContractVersion = "1";
 export const builtinRuntimeAgentId = "builtin:pi:v1";
-export const legacyBuiltinRuntimeAgentId = "builtin:soko-agent:v1";
-export const globalDefaultRuntimeBindingId = "builtin:soko-default-runtime:v1";
+export const legacyBuiltinRuntimeAgentId = "builtin:grogoni-agent:v1";
+export const globalDefaultRuntimeBindingId = "builtin:grogoni-default-runtime:v1";
 
 export interface NativeRuntimeSnapshot {
   nativeRuntimeAgents?: NativeRuntimeAgentSummary[];
@@ -363,7 +363,7 @@ export class NativeRuntimeBindingStore {
       throw new Cp2Error(
         503,
         "RUNTIME_MODELS_UNAVAILABLE",
-        "Soko AI is temporarily unavailable because no execution host can run a compatible model.",
+        "Grogoni AI is temporarily unavailable because no execution host can run a compatible model.",
         true
       );
     }
@@ -1322,7 +1322,7 @@ function stableUuid(value: string): string {
 
 function hostName(target: ModelExecutionTarget): string {
   if (target === "remote-shop-device") return "Remote shop device runtime";
-  return "Soko backend inference runtime";
+  return "Grogoni backend inference runtime";
 }
 
 function incompatibleContract(
@@ -1343,7 +1343,7 @@ function incompatibleContract(
 function agentProviderFor(adapterId: string): string {
   if (adapterId === "pi") return "pi";
   if (adapterId === "zeroclaw") return "zeroclaw";
-  return "soko-business-agent";
+  return "grogoni-business-agent";
 }
 
 function agentPackageRefFor(adapterId: string): string | null {

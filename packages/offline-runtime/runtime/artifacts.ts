@@ -8,7 +8,7 @@ export async function cacheVerifiedArtifacts(
   const total = artifacts.reduce((sum, artifact) => sum + artifact.bytes, 0);
   let done = 0;
   for (const artifact of artifacts) {
-    const key = `https://offline.soko.invalid/artifacts/${artifact.sha256}`;
+    const key = `https://offline.grogoni.invalid/artifacts/${artifact.sha256}`;
     const cached = await cache.match(key);
     if (cached && (await verified(await cached.arrayBuffer(), artifact))) {
       done += artifact.bytes;
@@ -56,7 +56,7 @@ export async function cacheArtifactsByUrl(
       artifact.url,
       new Response(buffer, {
         headers: {
-          "content-type": new URL(artifact.url, "https://offline.soko.invalid").pathname.endsWith(
+          "content-type": new URL(artifact.url, "https://offline.grogoni.invalid").pathname.endsWith(
             ".js"
           )
             ? "application/javascript"

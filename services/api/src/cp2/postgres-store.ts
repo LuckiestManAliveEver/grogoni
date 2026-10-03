@@ -1,13 +1,13 @@
 import { randomUUID } from "node:crypto";
-import type { Metrics } from "@soko/observability";
+import type { Metrics } from "@grogoni/observability";
 import {
   ACCOUNT_SYNC_COLLECTIONS,
   isAccountSyncCollection,
   type AccountSyncCollection,
   type SyncRealtimeChangesAvailableEvent
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { Pool, type PoolClient, type QueryResultRow } from "pg";
-import { positiveIntegerFromEnv } from "@soko/resource-control";
+import { positiveIntegerFromEnv } from "@grogoni/resource-control";
 import { buildPgPoolConfig } from "../db-pool-config.js";
 import {
   createCp2Store,
@@ -26,7 +26,7 @@ import {
 import type {
   CloudModelArtifactSummary,
   InstalledOssAgentManifestSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import type { ConversationAttachmentRecord } from "./workspace-file-delivery.js";
 
 type SnapshotCollectionKey = keyof Cp2Snapshot;
@@ -43,7 +43,7 @@ export const normalizedCollections: NormalizedCollection[] = [
   { key: "deviceAccountBootstraps", tableName: "cp2_device_account_bootstraps" },
   { key: "deviceRecoveryCredentials", tableName: "cp2_device_recovery_credentials" },
   { key: "businesses", tableName: "cp2_businesses" },
-  { key: "sokoIdHistory", tableName: "cp2_soko_id_history" },
+  { key: "grogoniIdHistory", tableName: "cp2_grogoni_id_history" },
   { key: "memberships", tableName: "cp2_memberships" },
   { key: "sessionContexts", tableName: "cp2_session_contexts" },
   // Native runtime tables must persist before cp2_conversations: its generated
@@ -196,7 +196,7 @@ export const normalizedCollections: NormalizedCollection[] = [
   { key: "networkRoutes", tableName: "cp2_network_routes" },
   { key: "contactHashes", tableName: "cp2_contact_hashes" },
   { key: "externalIdentities", tableName: "cp2_external_identities" },
-  { key: "sokoIdentityLinks", tableName: "cp2_soko_identity_links" },
+  { key: "grogoniIdentityLinks", tableName: "cp2_grogoni_identity_links" },
   { key: "identityCandidates", tableName: "cp2_identity_candidates" },
   { key: "networkConnections", tableName: "cp2_network_connections" },
   { key: "auditEvents", tableName: "cp2_audit_events" }
@@ -315,13 +315,13 @@ const mutatingMethodNames = new Set([
   "deliverPendingMessageNotifications",
   "disconnectLoginAccount",
   "enqueueSyncMutation",
-  "getSokoSessionContext",
+  "getGrogoniSessionContext",
   "linkSalesAgentContact",
   "linkSupplierContact",
   "linkCustomerAccount",
   "listCustomerChannelEndpoints",
   "loginWithAccountPin",
-  "loginWithSokoIdPin",
+  "loginWithGrogoniIdPin",
   "logout",
   "logoutAll",
   "recoverAccountPin",
@@ -356,7 +356,7 @@ const mutatingMethodNames = new Set([
   "syncShopSystemCatalogue",
   "setConversationTyping",
   "updateBetaAccess",
-  "updateSokoSessionContext",
+  "updateGrogoniSessionContext",
   "updateBetaFeatureFlag",
   "updateBetaSupportTicketStatus",
   "updateCustomer",
@@ -531,7 +531,7 @@ const requiredAccountAiAssetsMigrationFilename = "066_account_ai_assets.sql";
 // Without 106 the session retention trigger revokes refreshable sessions, signing users out on
 // every restart, so the API refuses to boot until it is applied.
 const requiredSessionRetentionMigrationFilename = "106_session_retention_uses_refresh_lifetime.sql";
-const realtimeChannel = "soko_sync_changes";
+const realtimeChannel = "grogoni_sync_changes";
 const defaultPersistenceQueueWarningThresholdMs = 10_000;
 const defaultPersistenceRetryInitialDelayMs = 2_000;
 const defaultPersistenceRetryMaxDelayMs = 60_000;
@@ -1156,7 +1156,7 @@ export async function createPostgresCp2Store(
         select
           (
             select filename
-            from soko_schema_migrations
+            from grogoni_schema_migrations
             order by filename desc
             limit 1
           ) as latest_migration,
@@ -1462,7 +1462,7 @@ async function assertDatabaseMigrated(pool: Pool): Promise<void> {
       select exists(
         select 1
         from information_schema.tables
-        where table_schema = 'public' and table_name = 'soko_schema_migrations'
+        where table_schema = 'public' and table_name = 'grogoni_schema_migrations'
       ) as exists
     `
   );
@@ -1474,7 +1474,7 @@ async function assertDatabaseMigrated(pool: Pool): Promise<void> {
   }
 
   const result = await pool.query<{ applied: boolean }>(
-    "select exists(select 1 from soko_schema_migrations where filename = $1) as applied",
+    "select exists(select 1 from grogoni_schema_migrations where filename = $1) as applied",
     [requiredMigrationFilename]
   );
 
@@ -1485,7 +1485,7 @@ async function assertDatabaseMigrated(pool: Pool): Promise<void> {
   }
 
   const attachmentBlobMigration = await pool.query<{ applied: boolean }>(
-    "select exists(select 1 from soko_schema_migrations where filename = $1) as applied",
+    "select exists(select 1 from grogoni_schema_migrations where filename = $1) as applied",
     [requiredAttachmentBlobMigrationFilename]
   );
   if (attachmentBlobMigration.rows[0]?.applied !== true) {
@@ -1495,7 +1495,7 @@ async function assertDatabaseMigrated(pool: Pool): Promise<void> {
   }
 
   const accountAiAssetsMigration = await pool.query<{ applied: boolean }>(
-    "select exists(select 1 from soko_schema_migrations where filename = $1) as applied",
+    "select exists(select 1 from grogoni_schema_migrations where filename = $1) as applied",
     [requiredAccountAiAssetsMigrationFilename]
   );
   if (accountAiAssetsMigration.rows[0]?.applied !== true) {
@@ -1505,7 +1505,7 @@ async function assertDatabaseMigrated(pool: Pool): Promise<void> {
   }
 
   const sessionRetentionMigration = await pool.query<{ applied: boolean }>(
-    "select exists(select 1 from soko_schema_migrations where filename = $1) as applied",
+    "select exists(select 1 from grogoni_schema_migrations where filename = $1) as applied",
     [requiredSessionRetentionMigrationFilename]
   );
   if (sessionRetentionMigration.rows[0]?.applied !== true) {
@@ -1683,19 +1683,19 @@ async function loadRelationalCoreSnapshot(pool: Pool, snapshot: Cp2Snapshot): Pr
           id: string;
           name: string;
           language: string;
-          soko_id: string | null;
+          grogoni_id: string | null;
           timezone: string | null;
           created_at: Date;
         }>(
           pool,
           "load businesses",
-          "select id, name, language, soko_id, timezone, created_at from businesses order by id"
+          "select id, name, language, grogoni_id, timezone, created_at from businesses order by id"
         );
         snapshot.businesses = businessesResult.rows.map((row) => ({
           id: row.id,
           name: row.name,
           language: row.language,
-          sokoId: row.soko_id,
+          grogoniId: row.grogoni_id,
           timezone: row.timezone,
           createdAt: timestampToIso(row.created_at)
         })) as Cp2Snapshot["businesses"];
@@ -2572,7 +2572,7 @@ async function lockNormalizedStore(client: PoolClient): Promise<void> {
   // One simple-protocol round trip for both statements (no bind parameters): each round trip to
   // Neon costs up to ~450ms and this runs in both transactions of every save.
   await client.query(
-    `set local lock_timeout = '${normalizedStoreLockTimeoutMs}ms'; select pg_advisory_xact_lock(hashtext('soko.cp2.normalized_store'))`
+    `set local lock_timeout = '${normalizedStoreLockTimeoutMs}ms'; select pg_advisory_xact_lock(hashtext('grogoni.cp2.normalized_store'))`
   );
 }
 
@@ -2586,8 +2586,8 @@ const normalizedStoreLockTimeoutMs = 10_000;
 export const storeLockPredicate = `
   l.locktype = 'advisory'
   and l.database = (select oid from pg_database where datname = current_database())
-  and l.classid = ((hashtext('soko.cp2.normalized_store')::bigint >> 32) & 4294967295)::oid
-  and l.objid = (hashtext('soko.cp2.normalized_store')::bigint & 4294967295)::oid
+  and l.classid = ((hashtext('grogoni.cp2.normalized_store')::bigint >> 32) & 4294967295)::oid
+  and l.objid = (hashtext('grogoni.cp2.normalized_store')::bigint & 4294967295)::oid
   and l.objsubid = 1`;
 
 /**
@@ -3406,20 +3406,20 @@ export async function saveRelationalCoreRecords(
   for (const record of changed("businesses")) {
     await client.query(
       `
-        insert into businesses (id, name, language, soko_id, timezone, created_at)
+        insert into businesses (id, name, language, grogoni_id, timezone, created_at)
         values ($1, $2, $3, $4, $5, $6)
         on conflict (id) do update set
           name = excluded.name,
           language = excluded.language,
-          soko_id = excluded.soko_id,
+          grogoni_id = excluded.grogoni_id,
           timezone = excluded.timezone
-          where (businesses.name, businesses.language, businesses.soko_id, businesses.timezone) is distinct from (excluded.name, excluded.language, excluded.soko_id, excluded.timezone)
+          where (businesses.name, businesses.language, businesses.grogoni_id, businesses.timezone) is distinct from (excluded.name, excluded.language, excluded.grogoni_id, excluded.timezone)
       `,
       [
         requiredText(record, "id"),
         requiredText(record, "name"),
         requiredText(record, "language"),
-        firstText(record, ["sokoId"]),
+        firstText(record, ["grogoniId"]),
         firstText(record, ["timezone"]),
         now
       ]
@@ -4150,7 +4150,7 @@ async function deleteRemovedAccountRelationalGraph(
 
   await client.query(
     `
-      delete from soko_session_contexts
+      delete from grogoni_session_contexts
       where conversation_id in (
         select id from conversations
         where account_id = any($1::uuid[]) or active_shop_id = any($2::uuid[])
@@ -4818,7 +4818,7 @@ function emptySnapshot(): Cp2Snapshot {
     accounts: [],
     users: [],
     businesses: [],
-    sokoIdHistory: [],
+    grogoniIdHistory: [],
     memberships: [],
     sessionContexts: [],
     conversations: [],
@@ -4945,7 +4945,7 @@ function emptySnapshot(): Cp2Snapshot {
     networkRoutes: [],
     contactHashes: [],
     externalIdentities: [],
-    sokoIdentityLinks: [],
+    grogoniIdentityLinks: [],
     identityCandidates: [],
     networkConnections: [],
     externalRegistryConnections: [],

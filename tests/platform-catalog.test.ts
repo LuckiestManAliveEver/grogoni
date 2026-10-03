@@ -21,15 +21,15 @@ describe("DB-hosted platform model/agent catalog", () => {
         "qwen2.5-0.5b-android",
         "qwen2.5-1.5b-android",
         "qwen3-4b",
-        "sokoclaw-local",
+        "grogoniclaw-local",
         "llama-cpp-configured",
         // Multi-provider router seeds (migration 102): three on-device models and a disabled
-        // Soko Cloud entry.
+        // Grogoni Cloud entry.
         "smollm2-360m-device",
         "qwen2.5-0.5b-device",
         "qwen3-1.7b-device",
-        "qwen3-4b-soko-cloud",
-        // The Soko-funded platform default (migration 103).
+        "qwen3-4b-grogoni-cloud",
+        // The Grogoni-funded platform default (migration 103).
         "gpt-6-luna"
       ].sort()
     );
@@ -38,7 +38,7 @@ describe("DB-hosted platform model/agent catalog", () => {
         .listAgentCatalog()
         .map((agent) => agent.id)
         .sort()
-    ).toEqual(["builtin:pi-assistant", "builtin:shopkeeper", "builtin:shopkeeper-soko"].sort());
+    ).toEqual(["builtin:pi-assistant", "builtin:shopkeeper", "builtin:shopkeeper-grogoni"].sort());
   });
 
   it("lets an operator disable the hosted profile without bypassing deployment readiness gates", () => {
@@ -152,7 +152,7 @@ describe("DB-hosted platform model/agent catalog", () => {
 
       const removeCompatibilityModel = await app.inject({
         method: "DELETE",
-        url: "/v1/platform/model-catalog/sokoclaw-local",
+        url: "/v1/platform/model-catalog/grogoniclaw-local",
         headers: { cookie: operator.cookie }
       });
       expect(removeCompatibilityModel.statusCode).toBe(409);
@@ -207,7 +207,7 @@ describe("DB-hosted platform model/agent catalog", () => {
           "builtin:pi-assistant",
           "builtin:receptionist",
           "builtin:shopkeeper",
-          "builtin:shopkeeper-soko"
+          "builtin:shopkeeper-grogoni"
         ].sort()
       );
     } finally {
@@ -367,6 +367,6 @@ function agentPayload(overrides: { id: string }) {
     knowledge: "Use saved business records.",
     tools: ["Products"],
     skillIds: [],
-    runtimeAdapterId: "soko"
+    runtimeAdapterId: "grogoni"
   };
 }

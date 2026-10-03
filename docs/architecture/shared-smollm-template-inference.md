@@ -1,12 +1,12 @@
 # Shared SmolLM template inference
 
-Status: proposal. This document translates the shared SmolLM `.soko` template architecture into
-Soko's current native runtime graph.
+Status: proposal. This document translates the shared SmolLM `.grogoni.com` template architecture into
+Grogoni's current native runtime graph.
 
 ## Thesis
 
-Soko can run one shared small-model inference service while many merchants, customers, and business
-agents use different domain-specific `.soko` templates. The shared model is an execution target,
+Grogoni can run one shared small-model inference service while many merchants, customers, and business
+agents use different domain-specific `.grogoni.com` templates. The shared model is an execution target,
 not the durable unit of expertise. The durable unit is the validated recipe: context, tools,
 execution rules, evaluation evidence, vocabulary snapshot, and lineage.
 
@@ -14,7 +14,7 @@ This preserves the existing agent/model binding system:
 
 - Native runtime bindings remain authoritative for the selected agent adapter, model, artifact, and
   execution host.
-- `.soko` templates attach portable expertise to that runtime after authorization and tenant
+- `.grogoni.com` templates attach portable expertise to that runtime after authorization and tenant
   resolution.
 - SmolLM2-360M-Instruct is the initial shared default candidate, not a permanent dependency and not
   assumed capable of every task.
@@ -23,17 +23,17 @@ This preserves the existing agent/model binding system:
 
 ```text
 Unified chat
-  -> Soko API control plane
+  -> Grogoni API control plane
   -> identity, authorization, tenant isolation, conversation state
   -> native runtime binding resolution
-  -> promoted .soko template selection
+  -> promoted .grogoni.com template selection
   -> model/template compatibility check
   -> context, tool, and execution recipe assembly
   -> shared inference host
-  -> Soko validation, tool execution, persistence, and response streaming
+  -> Grogoni validation, tool execution, persistence, and response streaming
 ```
 
-The inference host does not own Soko business state. It receives bounded request context from the
+The inference host does not own Grogoni business state. It receives bounded request context from the
 API, runs the selected model, and streams generated text or structured output back. Neon remains the
 system of record for the model registry, runtime bindings, template manifests, approved
 vocabulary, business data, execution records, and evaluation evidence.
@@ -55,9 +55,9 @@ runtime graph's `ModelExecutionTarget` is the routing contract that matters.
 | Artifact           | GGUF, quantization recorded on the artifact row                   |
 | Host               | Resolved through native runtime binding and `ModelRuntimeAdapter` |
 | API access         | Private, authenticated service-to-service request                 |
-| Business data      | Supplied per request by the Soko API                              |
-| Template selection | Soko API only                                                     |
-| Tool execution     | Soko API only                                                     |
+| Business data      | Supplied per request by the Grogoni API                              |
+| Template selection | Grogoni API only                                                     |
+| Tool execution     | Grogoni API only                                                     |
 
 The model should be loaded once per warm inference worker and reused across requests when the host
 supports that cache. Loading a separate model instance for every template would erase the benefit of
@@ -75,10 +75,10 @@ Request C: model smollm2-360m, template order-processing, business Shop A
 All three reuse the same model identity and artifact but have separate context, permissions,
 vocabulary snapshots, execution records, and output validation.
 
-## `.soko` recipe model
+## `.grogoni.com` recipe model
 
-The canonical `.soko` format remains
-[`.soko` Model Template format v1](../specs/soko-model-template-v1.md). A template is a portable,
+The canonical `.grogoni.com` format remains
+[`.grogoni.com` Model Template format v1](../specs/grogoni-model-template-v1.md). A template is a portable,
 versioned recipe artifact. It does not embed model weights and does not replace native model
 activation.
 
@@ -86,7 +86,7 @@ For this architecture, each promoted template version contributes three runtime 
 
 - **Context recipe**: relevant catalog, business rules, conversation history, approved vocabulary,
   structured facts, ordering, and token allocation.
-- **Tool recipe**: registered Soko tool IDs, permitted operations, input/output schemas,
+- **Tool recipe**: registered Grogoni tool IDs, permitted operations, input/output schemas,
   tool-selection constraints, and permission requirements.
 - **Execution recipe**: task decomposition where supported, structured output requirements,
   verification, retry conditions, termination rules, and escalation behavior.
@@ -104,12 +104,12 @@ Shared-template inference follows the existing order from
 1. Authenticate the caller and resolve business, account, conversation, and agent scope.
 2. Resolve the active native runtime binding: agent adapter, model candidate, artifact, and
    execution host.
-3. Resolve the promoted `.soko` template for the business, agent, and task.
+3. Resolve the promoted `.grogoni.com` template for the business, agent, and task.
 4. Check template requirements against the selected model and host.
 5. Assemble the recipe-specific prompt/context/tool contract.
 6. Invoke the resolved `ModelRuntimeAdapter`.
 7. Parse and validate output in the API.
-8. Execute authorized tools through Soko, never through the inference host.
+8. Execute authorized tools through Grogoni, never through the inference host.
 9. Persist the message, execution record, template version, runtime binding, and validation result.
 
 This ordering is intentional. It lets a merchant keep an independently bound model, use fallback
@@ -118,7 +118,7 @@ incompatible, the request fails explicitly instead of silently dropping the temp
 
 ## Compatibility and validation
 
-SmolLM2-360M should be treated as a candidate to benchmark, not as proof that every Soko task is
+SmolLM2-360M should be treated as a candidate to benchmark, not as proof that every Grogoni task is
 solved. Product search, deterministic classification, and concise business actions are reasonable
 early targets. Complex planning, multilingual ambiguity, long-horizon negotiation, or high-risk
 transaction flows may require a stronger model or a different host.
@@ -147,7 +147,7 @@ combination. It does not make that model the only future execution target.
 ## Isolation and safety
 
 - Tenant context is assembled only after authenticated authorization.
-- Tool declarations inside a template are requests to Soko's tool policy pipeline, not authority.
+- Tool declarations inside a template are requests to Grogoni's tool policy pipeline, not authority.
 - The inference host receives no database credentials, storage credentials, or MCP credentials.
 - Vocabulary canonicalization remains deterministic and exact-match, per the canonical template
   spec.
@@ -169,11 +169,11 @@ The shared host should be operated as a bounded small-model service:
 
 The current native runtime graph already supports moving this service between Vercel,
 DigitalOcean, Render-private backend services, or future merchant-owned devices without changing
-the `.soko` contract.
+the `.grogoni.com` contract.
 
 ## Related documents
 
-- [`.soko` Model Template format v1](../specs/soko-model-template-v1.md)
+- [`.grogoni.com` Model Template format v1](../specs/grogoni-model-template-v1.md)
 - [Model Template expertise flywheel](model-template-flywheel.md)
 - [Runtime resolution](runtime-resolution.md)
 - [Inference runtime architecture](inference-runtime.md)

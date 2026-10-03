@@ -31,9 +31,9 @@ describe("Cp2Store.broadcastAppUpdateAvailable", () => {
 
     const summary = await store.broadcastAppUpdateAvailable({
       deployId: "evt-happy-path",
-      service: "soko-market",
-      title: "Soko update available",
-      body: "The Soko API and database just deployed a new version. Open Soko to refresh."
+      service: "grogoni",
+      title: "Grogoni update available",
+      body: "The Grogoni API and database just deployed a new version. Open Grogoni to refresh."
     });
 
     expect(summary).toEqual({ targeted: 1, sent: 1, expired: 0, failed: 0 });
@@ -42,9 +42,9 @@ describe("Cp2Store.broadcastAppUpdateAvailable", () => {
     expect(deliveries[0]?.payload).toEqual({
       type: "app.update_available",
       deployId: "evt-happy-path",
-      service: "soko-market",
-      title: "Soko update available",
-      body: "The Soko API and database just deployed a new version. Open Soko to refresh."
+      service: "grogoni",
+      title: "Grogoni update available",
+      body: "The Grogoni API and database just deployed a new version. Open Grogoni to refresh."
     });
 
     await app.close();
@@ -70,9 +70,9 @@ describe("Cp2Store.broadcastAppUpdateAvailable", () => {
 
     const summary = await store.broadcastAppUpdateAvailable({
       deployId: "evt-expired",
-      service: "soko-market",
-      title: "Soko update available",
-      body: "Soko just deployed a new version. Open Soko to refresh."
+      service: "grogoni",
+      title: "Grogoni update available",
+      body: "Grogoni just deployed a new version. Open Grogoni to refresh."
     });
 
     expect(summary).toEqual({ targeted: 1, sent: 0, expired: 1, failed: 0 });
@@ -85,8 +85,8 @@ describe("Cp2Store.broadcastAppUpdateAvailable", () => {
     const store = createCp2Store();
     const summary = await store.broadcastAppUpdateAvailable({
       deployId: "evt-no-sender",
-      service: "soko-market",
-      title: "Soko update available",
+      service: "grogoni",
+      title: "Grogoni update available",
       body: "Ignored."
     });
     expect(summary).toEqual({ targeted: 0, sent: 0, expired: 0, failed: 0 });
@@ -124,7 +124,7 @@ describe("POST /internal/render/deploy-webhook", () => {
       data: {
         id: `evt-${randomUUID()}`,
         serviceId: "srv-abc123",
-        serviceName: "soko-market",
+        serviceName: "grogoni",
         status: "succeeded"
       }
     });
@@ -134,7 +134,7 @@ describe("POST /internal/render/deploy-webhook", () => {
     expect(deliveries).toHaveLength(1);
     expect(deliveries[0]).toMatchObject({
       type: "app.update_available",
-      service: "soko-market"
+      service: "grogoni"
     });
 
     await app.close();
@@ -148,7 +148,7 @@ describe("POST /internal/render/deploy-webhook", () => {
     const timestamp = new Date();
     const body = JSON.stringify({
       type: "deploy_ended",
-      data: { id: eventId, serviceName: "soko-market", status: "succeeded" }
+      data: { id: eventId, serviceName: "grogoni", status: "succeeded" }
     });
     const response = await app.inject({
       method: "POST",
@@ -182,7 +182,7 @@ describe("POST /internal/render/deploy-webhook", () => {
       type: "deploy_ended",
       data: {
         id: `evt-${randomUUID()}`,
-        serviceName: "soko-market",
+        serviceName: "grogoni",
         status: "failed"
       }
     });
@@ -208,7 +208,7 @@ describe("POST /internal/render/deploy-webhook", () => {
       type: "deploy_ended",
       data: {
         id: `evt-${randomUUID()}`,
-        serviceName: "soko-market-db-backup",
+        serviceName: "grogoni-db-backup",
         status: "succeeded"
       }
     });
@@ -245,7 +245,7 @@ describe("POST /internal/render/deploy-webhook", () => {
       type: "deploy_ended",
       data: {
         id: `evt-${randomUUID()}`,
-        serviceName: "soko-market",
+        serviceName: "grogoni",
         status: "succeeded"
       }
     };

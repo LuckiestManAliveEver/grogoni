@@ -23,7 +23,7 @@ A shop could pick a personality (`AgentDefinition`) and, entirely independently,
 (`AgentRuntimeAdapter`) — two unrelated choices a user had to reconcile mentally, with no
 constraint stopping nonsensical combinations. Separately, the harness _registry_ let GitHub/Hugging
 Face search results be discovered and partially imported as `kind: "harness"` — a repository
-claiming to be a Soko-compatible adapter, validated only by a `soko.harness.json` manifest file,
+claiming to be a Grogoni-compatible adapter, validated only by a `grogoni.harness.json` manifest file,
 capped at `PROVISIONING` because no sandboxed runtime exists in this codebase to safely execute
 imported third-party code. That security boundary correctly stopped harness code from
 auto-activating, but it did nothing to fix the deeper problem: harness was never actually a
@@ -34,22 +34,22 @@ property of _anything_ a shop directly chose.
 1. **Engine choice becomes a field on `AgentDefinition`, not an independent dimension.**
    `AgentDefinition.runtimeAdapterId: string` (`packages/shared-types/src/index.ts`) declares which
    registered `AgentRuntimeAdapter` an agent definition runs on. `defaultAgentDefinition`
-   ("builtin:shopkeeper") declares `"soko"`; a second built-in, `piAgentDefinition`
+   ("builtin:shopkeeper") declares `"grogoni"`; a second built-in, `piAgentDefinition`
    ("builtin:pi-assistant"), declares `"pi"` so the Pi engine stays choosable. A shop swaps engines
    by picking a different agent definition (`PUT /businesses/:businessId/agent-profile`) — the same
    action that already changes personality and instructions — never by an independent activation
    parameter.
 2. **The harness-import pipeline is deleted, not reworked.** `RuntimeAssetKind` narrows to
-   `"agent" | "model"`. `soko.harness.json`, `harness-manifest.ts`, the GitHub harness-discovery
+   `"agent" | "model"`. `grogoni.harness.json`, `harness-manifest.ts`, the GitHub harness-discovery
    branch, and `importHarness()`'s hard-stop-at-`PROVISIONING` state machine are all removed.
-   Soko no longer supports importing third-party executable adapter code from GitHub/Hugging Face
-   at all. Only the two built-in adapters (`pi`, `soko`) exist; a new one is added by a human
+   Grogoni no longer supports importing third-party executable adapter code from GitHub/Hugging Face
+   at all. Only the two built-in adapters (`pi`, `grogoni`) exist; a new one is added by a human
    wiring code into `AgentRuntimeAdapterRegistry.register()`
    (`services/api/src/agent-harness/default-agent-runtime-adapters.ts`), never by an import flow.
    This is safe to remove outright rather than migrate: the feature never reached a state where
    third-party code actually ran, so nothing observable is lost by retiring it.
 3. **The `AgentRuntimeAdapter` execution mechanism itself is unchanged.** The interface
-   (`canRun`/`execute`), `AgentRuntimeAdapterRegistry`, `createSokoAgentRuntimeAdapter`,
+   (`canRun`/`execute`), `AgentRuntimeAdapterRegistry`, `createGrogoniAgentRuntimeAdapter`,
    `createPiAgentRuntimeAdapter`, and `NativeRuntimeAgentSummary.configuration.runtimeAdapterId`
    all still exist exactly as before. What changed is _who decides the value written there_:
    `finalizeVerifiedActivation` (`agent-runtime/store.ts`) now always resolves it from the
@@ -59,7 +59,7 @@ property of _anything_ a shop directly chose.
    ("pi", per `ADR-default-runtime-pi-smollm.md`) still governs the hosted-first bootstrap for a
    business that has never touched its agent definition — `ensureDefaultRuntimeForTurn` special-cases
    exactly this "untouched, still on `defaultAgentDefinitionId`" condition to use the platform
-   default, so the zero-setup guarantee is not silently downgraded to Shopkeeper's own `"soko"`
+   default, so the zero-setup guarantee is not silently downgraded to Shopkeeper's own `"grogoni"`
    engine before a business does anything explicit. Any other, explicitly chosen agent definition
    uses its own declared engine.
 5. **The two parallel display/selection catalogs are retired.** `AgentRuntimeAdapterDescriptor`,
@@ -97,7 +97,7 @@ so a future GitHub/Hugging-Face-imported _agent_ (config only, never executable 
 which of the two built-in engines it expects, validated the same way any other manifest field is.
 
 The trade-off: an explicit model-only activation on a business still using the platform-default
-agent definition now surfaces that definition's own declared engine (`"soko"`) instead of silently
+agent definition now surfaces that definition's own declared engine (`"grogoni"`) instead of silently
 preserving whatever the zero-setup bootstrap happened to provision (`"pi"`). This is a deliberate
 consequence of removing the independent-harness axis, not an oversight — see point 4 above for the
 one case (an untouched business, before any explicit action) where the old zero-setup behavior is
@@ -109,7 +109,7 @@ still preserved.
 `cp2_runtime_registry_imports` rows (operational data describing a retired capability, not decision
 history) and narrows that table's `kind` CHECK constraint to `'agent' | 'model'`.
 `infra/db/migrations/096_agent_definition_runtime_adapter.sql` backfills the existing
-`builtin:shopkeeper` `cp2_agent_catalog` row with `runtimeAdapterId: "soko"`, seeds the new
+`builtin:shopkeeper` `cp2_agent_catalog` row with `runtimeAdapterId: "grogoni"`, seeds the new
 `builtin:pi-assistant` row, and requires the field on every future row. No already-applied
 migration is edited. `packages/offline-runtime/db/migrations/003_drop_harness_version_pin_column.sql`
 drops the now-redundant `device_runtime_pins.harness_version` column (engine choice is implied by

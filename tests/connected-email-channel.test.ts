@@ -4,7 +4,7 @@ import type {
   ConversationView,
   RuntimeModelPrompt,
   RuntimeModelProvider
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { describe, expect, it } from "vitest";
 import { buildApi } from "../services/api/src/app";
 import { createCp2Store } from "../services/api/src/cp2/store";
@@ -207,9 +207,9 @@ describe("connected email channel", () => {
       sessionId: sessionIdFromCookie(owner.cookie),
       businessId: owner.business.id,
       customerId: customer.id,
-      provider: "soko",
-      externalUserId: "brian-soko",
-      externalConversationId: "brian-soko-thread"
+      provider: "grogoni",
+      externalUserId: "brian-grogoni",
+      externalConversationId: "brian-grogoni-thread"
     });
     const mailbox = await connectMailbox(store, owner, provider);
     const emailConversation = await postJson<ConversationView>(

@@ -8,7 +8,7 @@ Actual tag: not created. No `.repo.git` directory exists in this checkout; see t
 
 ## Purpose
 
-CP1 establishes the engineering foundation for Soko.market before product feature work begins.
+CP1 establishes the engineering foundation for Grogoni before product feature work begins.
 
 The goal is to create a stable, testable repository skeleton with clear runtime boundaries:
 
@@ -54,7 +54,7 @@ Out of scope:
 - merchant business setup flow
 - production payment integration
 - invoice, stock, customer, supplier, or report feature logic
-- full Sokoclaw runtime implementation
+- full Grogoniclaw runtime implementation
 - llama.cpp integration
 - marketplace or TIEL implementation
 

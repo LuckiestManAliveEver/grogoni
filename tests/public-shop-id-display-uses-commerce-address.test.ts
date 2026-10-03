@@ -3,15 +3,15 @@ import { describe, expect, it } from "vitest";
 
 /**
  * The commerce identity resolver (services/api/src/cp2/text-normalization.ts,
- * commerceAddressFromSokoId) introduced a friendlier public-facing "handle@soko.market" address
- * for a shop, meant to replace the raw internal sokoId ("soko.handle") wherever it was shown to a
+ * commerceAddressFromGrogoniId) introduced a friendlier public-facing "handle@grogoni.com" address
+ * for a shop, meant to replace the raw internal grogoniId ("grogoni.handle") wherever it was shown to a
  * human as the shop's identity/handle. PublicStorefrontChat.tsx and useNetworkState.ts render/share
  * that identity directly (not via a component prop, so they are not covered by a render test the
  * way PublicStorefrontPanel/StorefrontPreviewCard/MarketplaceModeCard/YourShopsPanel are) - this
  * pins their source to the fixed field/call so a future edit can't silently reintroduce the raw
- * sokoId there.
+ * grogoniId there.
  */
-describe("customer-facing shop identity display uses commerceAddress, not the raw sokoId", () => {
+describe("customer-facing shop identity display uses commerceAddress, not the raw grogoniId", () => {
   const publicStorefrontChat = readFileSync("apps/web/src/PublicStorefrontChat.tsx", "utf8");
   const useNetworkState = readFileSync("apps/web/src/hooks/useNetworkState.ts", "utf8");
 
@@ -25,15 +25,15 @@ describe("customer-facing shop identity display uses commerceAddress, not the ra
     expect(publicStorefrontChat).toContain(
       "checkout when you are ready. Use {storefront.commerceAddress} any time you want to"
     );
-    // createStorefrontUrl(storefront.sokoId) is a legitimate technical use (URL construction),
-    // not a display, so sokoId may still appear here - only assert the three display sites above
-    // no longer read storefront.sokoId directly.
+    // createStorefrontUrl(storefront.grogoniId) is a legitimate technical use (URL construction),
+    // not a display, so grogoniId may still appear here - only assert the three display sites above
+    // no longer read storefront.grogoniId directly.
   });
 
-  it("useNetworkState's owner storefront share text uses commerceAddressFromSokoId(deps.business.sokoId)", () => {
+  it("useNetworkState's owner storefront share text uses commerceAddressFromGrogoniId(deps.business.grogoniId)", () => {
     expect(useNetworkState).toContain(
-      "Soko Shop ID ${commerceAddressFromSokoId(deps.business.sokoId)}."
+      "Grogoni Shop ID ${commerceAddressFromGrogoniId(deps.business.grogoniId)}."
     );
-    expect(useNetworkState).not.toContain("Soko Shop ID ${deps.business.sokoId}.");
+    expect(useNetworkState).not.toContain("Grogoni Shop ID ${deps.business.grogoniId}.");
   });
 });

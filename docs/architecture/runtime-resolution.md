@@ -30,7 +30,7 @@ For a given `(businessId, agentId)`:
 2. **Shop/account binding** - the most recently active `NativeRuntimeBindingSummary` for this
    `(businessId, accountId, agentId)`, however it got there (explicit user activation via
    `activateVerifiedModel`, or zero-setup lazy provisioning below).
-3. **Platform default** - `builtin:soko-default-runtime:v1`, materialized by migration 077 as Pi +
+3. **Platform default** - `builtin:grogoni-default-runtime:v1`, materialized by migration 077 as Pi +
    SmolLM2 360M + the backend execution host. A conversation carrying this binding id is treated as
    inherited default, so a later account override still wins.
 
@@ -121,7 +121,7 @@ For an ordinary turn, once resolution succeeds:
    fallbacks in priority order).
 3. Execute through the provider-neutral `ModelRuntimeAdapter` interface
    (`services/api/src/inference/model-runtime.ts`) - for the backend target this is an HTTPS call
-   over Render's private network to the `soko-market-inference` service, which runs Ollama with
+   over Render's private network to the `grogoni-inference` service, which runs Ollama with
    `smollm2:360m-instruct-q4_0` in-container.
 4. On a retryable, pre-side-effect inference failure, add the candidate key to the attempted set and
    try the next candidate. The persisted finite role list bounds failover.

@@ -7,7 +7,7 @@ import {
   logClientEvent,
   sanitizeClientLogMetadata
 } from "../apps/web/src/chat-message-plumbing";
-import type { SessionResponse } from "../apps/web/src/soko-application-shared";
+import type { SessionResponse } from "../apps/web/src/grogoni-application-shared";
 
 function fakeSession(): SessionResponse {
   return {
@@ -25,7 +25,7 @@ describe("sanitizeClientLogMetadata", () => {
       accessToken: "tok",
       refreshToken: "tok",
       authorization: "Bearer tok",
-      cookie: "soko_session=abc",
+      cookie: "grogoni_session=abc",
       password: "hunter2",
       pin: "1234",
       passkey: "blob",

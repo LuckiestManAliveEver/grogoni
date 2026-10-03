@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { normalizeInternationalPhoneInput } from "@soko/shared-types";
+import { normalizeInternationalPhoneInput } from "@grogoni/shared-types";
 import type {
   AccountSummary,
   AuthenticatedActorView,
@@ -19,8 +19,8 @@ import type {
   SupplierContactRelationshipSummary,
   SupplierContactRole,
   SupplierSummary
-} from "@soko/shared-types";
-import type { BusinessPermission } from "@soko/business-core";
+} from "@grogoni/shared-types";
+import type { BusinessPermission } from "@grogoni/business-core";
 import { Cp2Error } from "../../cp2-error.js";
 import { roundMoney } from "../../money.js";
 
@@ -1265,7 +1265,7 @@ function normalizeContact(
   const normalizedPhone =
     parsedPhone?.valid === true ? parsedPhone.e164 : phone?.replace(/[^0-9+]/gu, "") || null;
   const source = raw.source ?? fallbackSource;
-  if (!["PHONEBOOK", "EMAIL", "SOCIAL", "MANUAL", "SOKO_ACCOUNT"].includes(source))
+  if (!["PHONEBOOK", "EMAIL", "SOCIAL", "MANUAL", "GROGONI_ACCOUNT"].includes(source))
     throw new Cp2Error(400, "contact_source_invalid", "Contact source is not supported.");
   return {
     displayName,

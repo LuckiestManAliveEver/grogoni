@@ -2,7 +2,7 @@ import type {
   BuyCheckoutItemInput,
   BuyResultSourceKind,
   RuntimePlannedAction
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
 import type { AgentRuntimeDomainDeps } from "./store.js";
 

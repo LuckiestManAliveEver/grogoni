@@ -85,7 +85,7 @@ then registered in `cp2_runtime_model_artifacts`:
 
 Migration `079_vercel_inference_artifacts.sql` seeds the platform default this way:
 `builtin:smollm2-360m:q4_0:gguf`, pointing at `models/smollm2-360m/SmolLM2-360M-Instruct-Q4_0.gguf`
-in the `soko-model-artifacts` bucket. The operator uploading that exact object with a matching
+in the `grogoni-model-artifacts` bucket. The operator uploading that exact object with a matching
 checksum before switching traffic to Vercel is a deployment prerequisite, not something the
 migration does for you - see [../deployment/vercel-inference.md](../deployment/vercel-inference.md).
 

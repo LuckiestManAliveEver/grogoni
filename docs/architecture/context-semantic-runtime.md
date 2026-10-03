@@ -1,6 +1,6 @@
 # Context Semantic Runtime
 
-This document describes Soko's existing agent-context runtime and the small,
+This document describes Grogoni's existing agent-context runtime and the small,
 bounded enhancements added to it (task-aware context narrowing and
 model-aware context budgeting). It complements
 [`docs/agent-context-instructions-personality.md`](../agent-context-instructions-personality.md)
@@ -28,7 +28,7 @@ every request.
   `assembleAgentInferenceMessage`
   (`services/api/src/cp2/agent-business-runtime.ts:119,188`) is the only
   place a prompt is built for this flow.
-- **One tool/MCP surface**: MCP's `soko.runtime_turn` tool
+- **One tool/MCP surface**: MCP's `grogoni.runtime_turn` tool
   (`services/api/src/mcp/routes.ts:146`) calls the same
   `Cp2Store.createRuntimeTurn` used by the REST endpoint — no parallel
   context or tool resolution path exists for MCP callers.
@@ -202,7 +202,7 @@ explicit, reviewable choice:
   the actual model behind each profile is chosen by an env var
   (`OPENAI_FAST_MODEL`/`OPENAI_REASONING_MODEL`) and can change without a
   code deploy, so its window is configured the same way.
-- `sokoclaw-local` (a deterministic, non-token-based fallback) and
+- `grogoniclaw-local` (a deterministic, non-token-based fallback) and
   `llama-cpp-configured` (an installed app's own model choice, unknown to
   the server) are explicitly `null`, as are dynamically discovered
   GitHub/Hugging Face catalog entries — all for the same reason: their true

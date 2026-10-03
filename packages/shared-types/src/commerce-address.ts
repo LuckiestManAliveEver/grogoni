@@ -1,25 +1,25 @@
 /**
- * Pure derivation of a shop's public-facing commerce address ("handle@soko.market") from its
- * internal sokoId ("soko.handle"). Shared between the API (which is the source of truth for a
- * business's sokoId) and the web app (which needs to display/derive the same address for shops
- * it already has a sokoId for, without an extra round trip) so the two never drift apart.
+ * Pure derivation of a shop's public-facing commerce address ("handle@grogoni.com") from its
+ * internal grogoniId ("grogoni.handle"). Shared between the API (which is the source of truth for a
+ * business's grogoniId) and the web app (which needs to display/derive the same address for shops
+ * it already has a grogoniId for, without an extra round trip) so the two never drift apart.
  */
-export function commerceAddressFromSokoId(sokoId: string): string {
-  const handle = sokoId
+export function commerceAddressFromGrogoniId(grogoniId: string): string {
+  const handle = grogoniId
     .trim()
     .toLowerCase()
-    .replace(/^soko\./u, "");
-  return `${handle}@soko.market`;
+    .replace(/^grogoni\./u, "");
+  return `${handle}@grogoni.com`;
 }
 
-export function sokoIdFromCommerceAddress(address: string): string {
+export function grogoniIdFromCommerceAddress(address: string): string {
   const normalized = address.trim().toLowerCase();
-  const handle = normalized.endsWith("@soko.market")
-    ? normalized.slice(0, -"@soko.market".length)
-    : normalized.replace(/^soko\./u, "");
-  return `soko.${handle}`;
+  const handle = normalized.endsWith("@grogoni.com")
+    ? normalized.slice(0, -"@grogoni.com".length)
+    : normalized.replace(/^grogoni\./u, "");
+  return `grogoni.${handle}`;
 }
 
 export function normalizeCommerceAddress(address: string): string {
-  return commerceAddressFromSokoId(sokoIdFromCommerceAddress(address));
+  return commerceAddressFromGrogoniId(grogoniIdFromCommerceAddress(address));
 }

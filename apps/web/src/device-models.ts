@@ -1,11 +1,11 @@
-import type { DeviceInferenceRuntime } from "@soko/shared-types";
+import type { DeviceInferenceRuntime } from "@grogoni/shared-types";
 
 /**
  * Lightweight on-device model facts that the chat and model switcher need synchronously. Kept
  * separate from device-model-engine.ts so loading them never pulls the engine (or WebLLM) into the
  * owner route chunk; the engine is imported lazily only when a model is installed or run.
  */
-const installedModelsStorageKey = "soko.device-models.v1";
+const installedModelsStorageKey = "grogoni.device-models.v1";
 
 export function isDeviceInferenceSupported(): boolean {
   return (
@@ -14,7 +14,7 @@ export function isDeviceInferenceSupported(): boolean {
   );
 }
 
-/** "installed-app" when Soko runs as an installed app (standalone display), else "browser-local". */
+/** "installed-app" when Grogoni runs as an installed app (standalone display), else "browser-local". */
 export function currentDeviceRuntime(): DeviceInferenceRuntime {
   const standalone =
     typeof window !== "undefined" &&

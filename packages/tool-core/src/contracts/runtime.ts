@@ -1,4 +1,4 @@
-import type { EventRiskLevel } from "@soko/event-core";
+import type { EventRiskLevel } from "@grogoni/event-core";
 
 export interface ToolDefinition<TInput extends Record<string, unknown> = Record<string, unknown>> {
   name: string;
@@ -231,7 +231,7 @@ export interface RuntimeToolDefinition {
    * Whether this tool is safe to expose through the MCP surface as its own callable tool. Every
    * entry below is currently false: today's MCP surface (services/api/src/mcp/routes.ts) only
    * exposes a small, separately-curated set of read tools plus the generic
-   * soko.runtime_turn/soko.confirm_runtime_action pair, which routes natural-language messages
+   * grogoni.runtime_turn/grogoni.confirm_runtime_action pair, which routes natural-language messages
    * through this exact same registry and createRuntimeTurn pipeline rather than calling any of
    * these tool names directly. This field exists so a future, deliberate decision to expose a
    * specific tool directly is a one-line, reviewable change instead of an accidental default.

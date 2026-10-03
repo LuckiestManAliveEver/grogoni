@@ -66,7 +66,7 @@ describe("provider endpoint SSRF policy", () => {
       "https://api.openai.com/v1",
       "https://api.anthropic.com/v1",
       "https://api.z.ai/api/paas/v4",
-      "https://inference.soko.market/v1",
+      "https://inference.grogoni.com/v1",
       "https://gateway.example.com:8443/openai/v1"
     ]) {
       expect(validateProviderEndpoint(url, strictEndpointPolicy).protocol).toBe("https:");
@@ -141,7 +141,7 @@ describe("provider endpoint SSRF policy", () => {
     const { fetch, requests } = scriptedFetch(() => jsonResponse({ data: [] }));
     const { platform } = createTestPlatform({ catalog: [], fetch });
     // Operators may allow per-credential endpoints on a compatible provider; users still cannot aim them inward.
-    const llama = platform.registry.get("soko-llama")!;
+    const llama = platform.registry.get("grogoni-llama")!;
     Object.assign(llama.config, { byokAllowed: true, allowCredentialEndpoint: true });
     for (const baseUrl of [
       "https://169.254.169.254/v1",
@@ -154,7 +154,7 @@ describe("provider endpoint SSRF policy", () => {
           tenantId: null,
           userId: "account-a",
           actorId: "user-a",
-          providerId: "soko-llama",
+          providerId: "grogoni-llama",
           apiKey: "custom-endpoint-key-0000000000",
           baseUrl
         })

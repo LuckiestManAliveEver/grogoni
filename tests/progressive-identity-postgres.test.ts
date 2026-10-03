@@ -33,7 +33,7 @@ describePostgres("progressive identity PostgreSQL persistence", () => {
     const first = await firstApp.inject({
       method: "POST",
       url: "/auth/continue",
-      headers: { "idempotency-key": idempotencyKey, "x-soko-device-id": "postgres-device" },
+      headers: { "idempotency-key": idempotencyKey, "x-grogoni-device-id": "postgres-device" },
       payload: { devicePublicKeyJwk }
     });
     expect(first.statusCode).toBe(200);
@@ -50,7 +50,7 @@ describePostgres("progressive identity PostgreSQL persistence", () => {
     const retried = await restoredApp.inject({
       method: "POST",
       url: "/auth/continue",
-      headers: { "idempotency-key": idempotencyKey, "x-soko-device-id": "postgres-device" },
+      headers: { "idempotency-key": idempotencyKey, "x-grogoni-device-id": "postgres-device" },
       payload: { devicePublicKeyJwk }
     });
     expect(retried.statusCode).toBe(200);
@@ -145,7 +145,7 @@ describePostgres("progressive identity PostgreSQL persistence", () => {
 
 function sessionCookie(header: string | string[] | undefined): string {
   const values = Array.isArray(header) ? header : header === undefined ? [] : [header];
-  const session = values.find((value) => value.startsWith("soko_session="));
-  if (session === undefined) throw new Error("Expected Soko session cookie.");
+  const session = values.find((value) => value.startsWith("grogoni_session="));
+  if (session === undefined) throw new Error("Expected Grogoni session cookie.");
   return session.split(";")[0] ?? session;
 }

@@ -5,7 +5,7 @@
  * stay a shared enum rather than ad hoc string literals drifting between call sites.
  *
  * - "critical": the commerce path a merchant/buyer is blocked on right now - auth, session
- *   restoration, conversation persistence, catalogue reads, order/payment state. Soko has no
+ *   restoration, conversation persistence, catalogue reads, order/payment state. Grogoni has no
  *   bounded-concurrency gate on this class today (see resource-isolation.md §0/§3) because the
  *   business store is in-process/in-memory and does not contend for the resources this module
  *   protects; the class still exists so call sites and telemetry have a name for "never shed this."

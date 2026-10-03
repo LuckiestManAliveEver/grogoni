@@ -1,7 +1,7 @@
-import type { AgentEvaluationSummary, AgentOwnerCorrection } from "@soko/shared-types";
+import type { AgentEvaluationSummary, AgentOwnerCorrection } from "@grogoni/shared-types";
 
 import { formatDate } from "./formatters";
-import type { AgentSettings } from "./soko-application-shared";
+import type { AgentSettings } from "./grogoni-application-shared";
 
 export interface AgentRetentionPanelProps {
   draftAgent: AgentSettings;

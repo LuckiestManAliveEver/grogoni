@@ -10,7 +10,7 @@ const backendRuntimeStatusMessages: Readonly<Record<string, string>> = {
   INFERENCE_AUTHENTICATION_FAILED: "The API could not authenticate with the inference service.",
   INFERENCE_ENGINE_UNREACHABLE:
     "The inference service is online, but its model engine cannot be reached.",
-  INFERENCE_SERVICE_UNREACHABLE: "The Soko inference service cannot currently be reached.",
+  INFERENCE_SERVICE_UNREACHABLE: "The Grogoni inference service cannot currently be reached.",
   INVALID_INFERENCE_RESPONSE: "The inference service returned an invalid response.",
   MODEL_PROBE_FAILED: "The backend model failed its inference test.",
   MODEL_HEALTH_CHECK_FAILED: "The backend model failed its health check."

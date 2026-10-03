@@ -23,8 +23,8 @@ bytes are sent only after the API authenticates the business and the signed malw
 
 ## Production deployment
 
-`render.yaml` declares `soko-market-ocr-worker` as a `type: pserv` (private, not internet-facing)
-Docker service built from `services/receipt-ocr-service/Dockerfile`. `soko-market`'s
+`render.yaml` declares `grogoni-ocr-worker` as a `type: pserv` (private, not internet-facing)
+Docker service built from `services/receipt-ocr-service/Dockerfile`. `grogoni`'s
 `OCR_WORKER_URL` is wired to it automatically via Render's `fromService`/`hostport` linking rather
 than a manually pasted value - `createOcrExtractionProcessorFromEnvironment`
 (`services/api/src/cp2/ocr-provider.ts`) normalizes the bare `host:port` Render provides into an
@@ -53,7 +53,7 @@ A future extractor (identity documents, invoices, and so on) should be a new con
 
 Title/price extraction and duplicate-catalogue matching for camera product capture are pure,
 deterministic functions (`captureField`, `firstProductCaptureTitle`, `visibleProductCapturePrice`,
-`productCaptureItemsFromFields`, `queryCatalogueProducts` in `@soko/business-core`). The online
+`productCaptureItemsFromFields`, `queryCatalogueProducts` in `@grogoni/business-core`). The online
 route and the offline capture path below both import the same functions rather than each keeping
 their own copy, so a photo produces the same title/price whether it was scanned server-side or
 on-device.

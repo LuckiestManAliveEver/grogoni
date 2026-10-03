@@ -1,4 +1,4 @@
-# Soko.market Terms of Service
+# Grogoni Terms of Service
 
 **Version:** 1.0 (Draft)
 **Effective Date:** [To Be Inserted]
@@ -9,11 +9,11 @@
 
 ## 1. Introduction
 
-Welcome to **Soko.market** ("**Soko**," "**we**," "**our**," or "**us**").
+Welcome to **Grogoni** ("**Grogoni**," "**we**," "**our**," or "**us**").
 
-These Terms of Service ("**Terms**") govern your access to and use of the Soko.market platform, including our websites, mobile applications, APIs, software, messaging services, artificial intelligence services, marketplace, business tools, storefront technology, and related products or services (collectively, the "**Services**").
+These Terms of Service ("**Terms**") govern your access to and use of the Grogoni platform, including our websites, mobile applications, APIs, software, messaging services, artificial intelligence services, marketplace, business tools, storefront technology, and related products or services (collectively, the "**Services**").
 
-Soko.market is an AI-powered commerce platform that enables individuals and businesses to create digital storefronts, operate AI business agents, communicate with customers, manage catalogues, process transactions, and deploy extensions or skills through an integrated marketplace.
+Grogoni is an AI-powered commerce platform that enables individuals and businesses to create digital storefronts, operate AI business agents, communicate with customers, manage catalogues, process transactions, and deploy extensions or skills through an integrated marketplace.
 
 By creating an account, accessing the Services, or using any part of the Services, you agree to be legally bound by these Terms.
 
@@ -23,7 +23,7 @@ If you do not agree to these Terms, you must not access or use the Services.
 
 ## 2. Purpose of the Platform
 
-Soko.market provides technology that allows users to:
+Grogoni provides technology that allows users to:
 
 - create AI-assisted business storefronts;
 - interact with customers through messaging interfaces;
@@ -36,7 +36,7 @@ Soko.market provides technology that allows users to:
 - access marketplace services;
 - create programmable commerce workflows.
 
-Unless expressly stated otherwise, Soko.market acts as a technology platform and does not become a party to transactions entered into between users.
+Unless expressly stated otherwise, Grogoni acts as a technology platform and does not become a party to transactions entered into between users.
 
 ---
 
@@ -130,7 +130,7 @@ A merchant offering goods, services, software, APIs, AI skills, or digital produ
 
 ### Services
 
-All software, websites, APIs, mobile applications, messaging tools, AI systems, marketplaces, storefront technology, and related services provided by Soko.market.
+All software, websites, APIs, mobile applications, messaging tools, AI systems, marketplaces, storefront technology, and related services provided by Grogoni.
 
 ---
 
@@ -240,7 +240,7 @@ Authentication methods may include:
 - social login providers;
 - multi-factor authentication;
 - enterprise identity providers;
-- other authentication methods made available by Soko.market.
+- other authentication methods made available by Grogoni.
 
 Certain authentication methods may require additional identity verification to comply with applicable laws or to protect users against fraud.
 
@@ -253,11 +253,11 @@ You are responsible for maintaining the confidentiality of your credentials.
 You agree to:
 
 - use strong authentication methods where available;
-- promptly notify Soko.market of unauthorized access;
+- promptly notify Grogoni of unauthorized access;
 - prevent unauthorized use of your account;
 - keep recovery information current.
 
-You remain responsible for activity occurring under your account unless the activity results directly from a security failure attributable to Soko.market.
+You remain responsible for activity occurring under your account unless the activity results directly from a security failure attributable to Grogoni.
 
 ---
 
@@ -283,7 +283,7 @@ Merchants are solely responsible for ensuring that business information remains 
 
 # 11. Business Agent Identifier
 
-Each business may receive a unique Soko.market Business Agent Identifier ("Business Agent ID") for identification across the Services.
+Each business may receive a unique Grogoni Business Agent Identifier ("Business Agent ID") for identification across the Services.
 
 A Business Agent ID is intended solely as a platform identifier. It is not:
 
@@ -292,7 +292,7 @@ A Business Agent ID is intended solely as a platform identifier. It is not:
 - evidence of licensing;
 - a government-issued identifier.
 
-Assignment, transfer, suspension, or retirement of Business Agent IDs remains at Soko.market's discretion.
+Assignment, transfer, suspension, or retirement of Business Agent IDs remains at Grogoni's discretion.
 
 ---
 
@@ -328,7 +328,7 @@ Verification measures will be proportionate to the risks identified and, where a
 
 # 14. Communication Preferences
 
-By creating an account, you agree that Soko.market may send communications necessary to provide the Services, including:
+By creating an account, you agree that Grogoni may send communications necessary to provide the Services, including:
 
 - authentication messages;
 - security alerts;

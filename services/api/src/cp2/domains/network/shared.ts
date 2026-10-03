@@ -4,7 +4,7 @@ import {
   normalizePhoneInput,
   type AccountSummary,
   type UserSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { getCountryCallingCode, isSupportedCountry, type CountryCode } from "libphonenumber-js";
 import { normalizeDestination } from "../../phone-identity.js";
 import { Cp2Error } from "../../cp2-error.js";

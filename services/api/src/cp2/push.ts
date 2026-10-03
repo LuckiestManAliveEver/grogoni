@@ -1,5 +1,5 @@
 import webPush from "web-push";
-import type { PushSubscriptionSummary } from "@soko/shared-types";
+import type { PushSubscriptionSummary } from "@grogoni/shared-types";
 import type { PushNotificationPayload, PushNotificationSender } from "./store.js";
 
 export interface WebPushConfiguration {

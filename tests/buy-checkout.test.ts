@@ -304,7 +304,7 @@ async function createOwnerBusiness(
   });
   expect(signup.statusCode, signup.body).toBe(200);
   const cookie = extractCookie(signup.headers["set-cookie"]);
-  const result = await postJson<{ business: { id: string; sokoId: string } }>(
+  const result = await postJson<{ business: { id: string; grogoniId: string } }>(
     app,
     "/businesses",
     { name, language: "en" },

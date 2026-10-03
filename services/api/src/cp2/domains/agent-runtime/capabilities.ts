@@ -4,7 +4,7 @@ import type {
   PaymentMethod,
   ProductFieldDefinition,
   RuntimePlannedAction
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
 import { Cp2Error } from "../../cp2-error.js";
 import { isChannelProvider, normalizeRuntimeLookup } from "./shared.js";
@@ -24,7 +24,7 @@ import {
   findRuntimeProductByName,
   findRuntimeSupplierByName
 } from "./runtime-entity-lookup.js";
-import { classifyComputerAction } from "@soko/tool-core";
+import { classifyComputerAction } from "@grogoni/tool-core";
 
 // findRuntimeUnknownEntityReferenceError lives in ./runtime-entity-lookup.js alongside the
 // by-name lookups it's built on, re-exported here since services/api/src/cp2/domains/agent-runtime

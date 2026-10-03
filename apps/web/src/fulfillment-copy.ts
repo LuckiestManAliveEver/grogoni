@@ -3,7 +3,7 @@ import type {
   DispatchFallbackAction,
   ManifestStatus,
   ManifestStopDeliveryStatus
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
 // English and Swahili copy for the corridor-fulfillment cards (field sales and operations). Field
 // staff often run the device in Swahili, so these cards follow the browser language instead of

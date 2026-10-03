@@ -1,7 +1,7 @@
 import type { ChatMessage } from "./app-shell";
 
 /**
- * The 4-second foreground poll (SokoApplication.tsx) remaps the whole conversation thread into a
+ * The 4-second foreground poll (GrogoniApplication.tsx) remaps the whole conversation thread into a
  * brand-new array on every tick, whether or not anything changed. Without this guard,
  * setChatMessages would hand ChatSurface a new array reference every 4 seconds even when the
  * conversation is unchanged - unnecessary churn while a generated card's own local form state
@@ -11,7 +11,7 @@ import type { ChatMessage } from "./app-shell";
  *
  * Deliberately dependency-free (only the ChatMessage type, erased at compile time) so it can be
  * imported and unit-tested directly - useChatInboxState.ts and its neighbors transitively import
- * soko-application-shared.ts, which reads module-level Vite build-time globals
+ * grogoni-application-shared.ts, which reads module-level Vite build-time globals
  * (window.location, __APP_NAME__) that the root vitest config doesn't define.
  */
 export function chatMessagesEqual(a: ChatMessage[], b: ChatMessage[]): boolean {

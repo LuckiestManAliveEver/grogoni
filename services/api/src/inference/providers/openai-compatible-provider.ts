@@ -88,7 +88,7 @@ export function createOpenAiCompatibleProvider(
     return {
       "content-type": "application/json",
       accept: stream ? "text/event-stream" : "application/json",
-      "user-agent": "soko-market-inference",
+      "user-agent": "grogoni-inference",
       ...(credential === null ? {} : { authorization: `Bearer ${credential.secret.reveal()}` })
     };
   }

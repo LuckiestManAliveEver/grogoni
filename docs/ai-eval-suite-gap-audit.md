@@ -12,7 +12,7 @@ updated tests proving them (CLAUDE.md: no fix without a regression test).
 | Fixture                                   | Consumed by                                                  | Source of truth                                                                                                                                                                                    |
 | ----------------------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `cp4-commands.ts`                         | `tests/cp4-rule-parser.test.ts`                              | `RuleIntent`/`ParserNextAction` in `packages/tool-core/src/contracts/runtime.ts`, rules in `packages/tool-core/src/parsers/merchant-command.ts`                                                    |
-| `cp10-runtime-commands.ts`                | `tests/cp10-sokoclaw-runtime.test.ts`                        | `RuntimeToolName` in `packages/shared-types/src`, `createRuntimeToolProposal` in `packages/tool-core/src/parsers/runtime-proposals.ts`, `runtimeToolRegistry` in `packages/tool-core/src/registry` |
+| `cp10-runtime-commands.ts`                | `tests/cp10-grogoniclaw-runtime.test.ts`                        | `RuntimeToolName` in `packages/shared-types/src`, `createRuntimeToolProposal` in `packages/tool-core/src/parsers/runtime-proposals.ts`, `runtimeToolRegistry` in `packages/tool-core/src/registry` |
 | `backend-runtime-status-scenarios.ts`     | `tests/backend-model-runtime-status.test.ts`                 | `apps/web/src/backend-model-runtime-status.ts`                                                                                                                                                     |
 | `agent-session-auth-scenarios.ts`         | `tests/native-session-integration.test.ts`                   | `AuthBootstrapState` in `packages/shared-types/src`, `hasServerAuthenticatedSession`/`isAuthBootstrapPending` in `apps/web/src/auth-bootstrap.ts`                                                  |
 | `postgres-persistence-queue-scenarios.ts` | `tests/cp2-postgres-store.test.ts`                           | persistence-queue behavior under `services/api/src/cp2`                                                                                                                                            |
@@ -91,7 +91,7 @@ it through the real parser/mapping (not guessed) before being added.
   output via a throwaway script before being committed to a fixture, not hand-derived from reading
   the rules alone.
 - `npx tsc --noEmit` has 426 pre-existing errors on `main` (unbuilt workspace package types,
-  `@soko/shared-types` etc. - CI's `ai-eval.yml` and `ci.yml` build packages first via
+  `@grogoni/shared-types` etc. - CI's `ai-eval.yml` and `ci.yml` build packages first via
   `pnpm -r --filter "./packages/**" --if-present build`); none of the touched files appear in that
   list, confirmed by diffing the error count against a clean stash of this change.
 

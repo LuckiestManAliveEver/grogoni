@@ -1,10 +1,10 @@
 import { Suspense, useState } from "react";
 
 import {
-  commerceAddressFromSokoId,
+  commerceAddressFromGrogoniId,
   type BuyFeedSummary,
   type BuyResultSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
 import { routes } from "./routes";
 import { StatusResultCard } from "./StatusResultCard";
@@ -13,7 +13,7 @@ import {
   type BuyCartItem,
   type PublicStorefrontSummary,
   UnifiedCartSummary
-} from "./soko-application-shared";
+} from "./grogoni-application-shared";
 
 export interface MarketplaceModeCardProps {
   businessName: string;
@@ -23,7 +23,7 @@ export interface MarketplaceModeCardProps {
   isLoadingStorefronts: boolean;
   productCount: number;
   publicStorefronts: PublicStorefrontSummary[];
-  sokoId: string;
+  grogoniId: string;
   buyFeed: BuyFeedSummary | null;
   isSearchingBuyFeed: boolean;
   buyCart: BuyCartItem[];
@@ -48,7 +48,7 @@ export function MarketplaceModeCard({
   isLoadingStorefronts,
   productCount,
   publicStorefronts,
-  sokoId,
+  grogoniId,
   buyFeed,
   isSearchingBuyFeed,
   buyCart,
@@ -69,7 +69,7 @@ export function MarketplaceModeCard({
     <section className="generated-card-message mode-card" aria-label="Explore the marketplace">
       <div className="mode-card-heading">
         <span className="mode-badge">Buy</span>
-        <h2>{isIntro ? "Buy on Soko" : "What are you looking for?"}</h2>
+        <h2>{isIntro ? "Buy on Grogoni" : "What are you looking for?"}</h2>
         <p>
           {isIntro
             ? "Find nearby shops, compare offers, and message sellers from this conversation."
@@ -202,7 +202,7 @@ export function MarketplaceModeCard({
             <span>Your shop</span>
             <h3>{businessName}</h3>
             <p>
-              {commerceAddressFromSokoId(sokoId)} · {productCount} catalogue{" "}
+              {commerceAddressFromGrogoniId(grogoniId)} · {productCount} catalogue{" "}
               {productCount === 1 ? "item" : "items"}
             </p>
           </button>

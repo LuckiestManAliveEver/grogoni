@@ -27,7 +27,7 @@ export interface RenderDeployWebhookOptions {
 }
 
 const defaultNotifiedServiceNames: Record<string, string> = {
-  "soko-market": "Soko"
+  "grogoni": "Grogoni"
 };
 
 // Render retries a webhook delivery on any non-2xx response, replaying the identical
@@ -112,8 +112,8 @@ export function registerRenderDeployWebhook(
       const summary = await options.store.broadcastAppUpdateAvailable({
         deployId: eventId,
         service: serviceName,
-        title: "Soko update available",
-        body: `${serviceLabel} just deployed a new version. Open Soko to refresh.`
+        title: "Grogoni update available",
+        body: `${serviceLabel} just deployed a new version. Open Grogoni to refresh.`
       });
 
       request.log.info(

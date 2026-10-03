@@ -7,7 +7,7 @@ import {
   initializeOwnerHistory,
   navigateToBrowserUrl,
   navigateToOwnerRoute,
-  readSokoHistoryState
+  readGrogoniHistoryState
 } from "../apps/web/src/browser-navigation";
 import {
   readOwnerNavigationSession,
@@ -29,7 +29,7 @@ describe("browser-native navigation", () => {
     expect(navigateToOwnerRoute({ mode: "seller", view: "products" })).toBe(true);
     expect(window.location.pathname).toBe("/catalogue");
     expect(window.history.length).toBe(initialLength + 1);
-    expect(readSokoHistoryState(window.history.state)).toMatchObject({
+    expect(readGrogoniHistoryState(window.history.state)).toMatchObject({
       depth: 1,
       mode: "seller",
       view: "products"
@@ -145,7 +145,7 @@ describe("browser-native navigation", () => {
   });
 
   it("keeps all application pushes behind the central adapter", () => {
-    const application = readFileSync("apps/web/src/SokoApplication.tsx", "utf8");
+    const application = readFileSync("apps/web/src/GrogoniApplication.tsx", "utf8");
     const chatInboxState = readFileSync("apps/web/src/hooks/useChatInboxState.ts", "utf8");
     const router = readFileSync("apps/web/src/AppRouter.tsx", "utf8");
     const worker = readFileSync("apps/web/public/sw.js", "utf8");

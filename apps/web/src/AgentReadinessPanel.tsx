@@ -1,7 +1,7 @@
-import type { AgentRuntimeReadiness, AgentRuntimeVersion } from "@soko/shared-types";
+import type { AgentRuntimeReadiness, AgentRuntimeVersion } from "@grogoni/shared-types";
 
 import { formatDate } from "./formatters";
-import type { ActiveBusiness, AgentSettings } from "./soko-application-shared";
+import type { ActiveBusiness, AgentSettings } from "./grogoni-application-shared";
 
 export interface AgentReadinessPanelProps {
   business: ActiveBusiness;

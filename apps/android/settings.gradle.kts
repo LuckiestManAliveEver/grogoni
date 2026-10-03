@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "SokoAndroid"
+rootProject.name = "GrogoniAndroid"
 include(":app")

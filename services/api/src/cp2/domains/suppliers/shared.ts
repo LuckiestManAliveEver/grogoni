@@ -4,7 +4,7 @@ import type {
   ReceiptOCRJobSummary,
   SalesAgentSummary,
   SupplierSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { roundMoney } from "../../money.js";
 import { normalizeDestination } from "../../phone-identity.js";
 

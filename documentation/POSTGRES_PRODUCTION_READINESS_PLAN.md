@@ -1,10 +1,10 @@
 # Postgres Production Readiness Plan
 
-This document defines the step-by-step plan to make Soko.market production-ready with an affordable persistent Postgres database.
+This document defines the step-by-step plan to make Grogoni production-ready with an affordable persistent Postgres database.
 
 ## Goal
 
-Move Soko.market from the current in-memory CP2 store to a persistent, auditable Postgres-backed runtime that can run safely on Render with Neon Postgres.
+Move Grogoni from the current in-memory CP2 store to a persistent, auditable Postgres-backed runtime that can run safely on Render with Neon Postgres.
 
 ## Decision
 
@@ -19,7 +19,7 @@ Recommended environments:
 Rationale:
 
 - The app already has `DATABASE_URL` and local Postgres conventions.
-- Core Soko data is relational: accounts, businesses, memberships, products, customers, invoices, payments, logistics, sessions, audit events, runtime turns, and sync queue records.
+- Core Grogoni data is relational: accounts, businesses, memberships, products, customers, invoices, payments, logistics, sessions, audit events, runtime turns, and sync queue records.
 - Postgres gives stronger transactional guarantees for business-changing workflows than a document database.
 - Neon provides pooled Postgres connection strings suitable for hosted/serverless-style application runtimes.
 
@@ -28,9 +28,9 @@ Rationale:
 ### 1. Create Neon staging database
 
 1. Sign in to Neon.
-2. Create a project named `soko-market-staging`.
-3. Create a database named `soko_market_staging`.
-4. Create an application role named `soko_app_staging`.
+2. Create a project named `grogoni-staging`.
+3. Create a database named `grogoni_market_staging`.
+4. Create an application role named `grogoni_app_staging`.
 5. Copy the pooled connection string.
 6. Store the value as `DATABASE_URL` in the staging API environment.
 
@@ -46,9 +46,9 @@ Do not use the direct connection string for Render unless a specific migration o
 
 Create this when real users begin onboarding.
 
-1. Create a Neon project named `soko-market-production`.
-2. Create a database named `soko_market`.
-3. Create an application role named `soko_app`.
+1. Create a Neon project named `grogoni-production`.
+2. Create a database named `grogoni_market`.
+3. Create an application role named `grogoni_app`.
 4. Copy the pooled connection string.
 5. Store the value as `DATABASE_URL` in the production API environment.
 6. Keep the direct/admin connection string outside Render and use it only for controlled migration/admin work.
@@ -69,7 +69,7 @@ Production must never share a database with staging or local development.
 
 In Render:
 
-1. Open the `soko-market` service.
+1. Open the `grogoni` service.
 2. Go to Environment.
 3. Add secret:
 
@@ -149,7 +149,7 @@ Requirements:
 Persist:
 
 - businesses
-- Soko Global Shop IDs
+- Grogoni Global Shop IDs
 - business settings
 - language preference
 - products
@@ -170,7 +170,7 @@ Requirements:
 - Use database transactions for business-changing workflows.
 - Invoice confirmation and inventory movement must commit atomically.
 - Payment updates and invoice balance updates must commit atomically.
-- Soko IDs must be unique.
+- Grogoni IDs must be unique.
 - Business IDs must scope every tenant-owned record.
 
 ### 4. Persist runtime and storefront records
@@ -217,7 +217,7 @@ Minimum event groups:
 
 - auth events
 - business creation/update events
-- Soko ID creation events
+- Grogoni ID creation events
 - product/customer/supplier mutations
 - invoice draft/confirmation events
 - payment events
@@ -308,7 +308,7 @@ After migration:
 - Confirm signup/login.
 - Confirm business creation.
 - Confirm product creation.
-- Confirm storefront lookup by Soko ID.
+- Confirm storefront lookup by Grogoni ID.
 - Confirm runtime turn can read business menu data.
 - Confirm audit events are recorded.
 
@@ -394,17 +394,17 @@ Rules:
 Run after every production deployment:
 
 ```bash
-curl https://soko.market/health
+curl https://grogoni.com/health
 ```
 
 Manual smoke test:
 
-- Open `https://soko.market`.
+- Open `https://grogoni.com`.
 - Create or log into an owner account.
 - Confirm PIN login works.
 - Create a test business only in staging, not production.
 - Add a product.
-- Open storefront by Soko ID.
+- Open storefront by Grogoni ID.
 - Send a storefront chat message.
 - Add product to storefront receipt.
 - Confirm audit event is stored.

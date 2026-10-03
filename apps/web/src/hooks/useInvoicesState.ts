@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { reportBackgroundLoadError } from "../background-load-error";
 
-import type { SyncMutationPayload, SyncMutationType } from "@soko/shared-types";
+import type { SyncMutationPayload, SyncMutationType } from "@grogoni/shared-types";
 
 import { getErrorMessage } from "../chat-message-plumbing";
 import { getJson, patchJson, postJson } from "../api-helpers";
@@ -11,7 +11,7 @@ import {
   type InvoiceFormState,
   type InvoicePreview,
   type InvoiceSummary
-} from "../soko-application-shared";
+} from "../grogoni-application-shared";
 
 interface UseInvoicesStateDeps {
   businessId: string | null;

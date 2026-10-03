@@ -9,7 +9,7 @@ import type {
   CatalogueDigest,
   ConversationMessageSummary,
   OfflineOrderIntent
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
 function memoryOutbox() {
   let queue: PeerQueuedMessage[] = [];

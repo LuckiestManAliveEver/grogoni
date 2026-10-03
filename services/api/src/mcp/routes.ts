@@ -7,7 +7,7 @@ import type {
   McpAccessScope,
   McpPrincipal,
   RuntimeSwapDimension
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { Cp2Error, readSessionCookie, type Cp2Store } from "../cp2/store.js";
 import type { FulfillmentService } from "../cp2/domains/fulfillment/service.js";
 import { mcpOAuthChallenge, mcpSecuritySchemes, registerMcpOAuthRoutes } from "./oauth.js";
@@ -137,9 +137,9 @@ export function registerMcpRoutes(app: FastifyInstance, options: McpRouteOptions
           result: {
             protocolVersion,
             capabilities: { tools: { listChanged: false } },
-            serverInfo: { name: "soko-market", version: "0.1.0" },
+            serverInfo: { name: "grogoni", version: "0.1.0" },
             instructions:
-              "Soko tools act as the authenticated account. Read credentials can browse shops, the marketplace, messages, and notifications. Act credentials can send messages, run permission-checked shop activities, and prepare purchases; checkout requires a separate confirmation call. fulfillment.* mutations run directly under the account's role permissions; each tool's description states what repeating it does, and tools that replay from an idempotency record require an idempotencyKey. Grams are decimal strings."
+              "Grogoni tools act as the authenticated account. Read credentials can browse shops, the marketplace, messages, and notifications. Act credentials can send messages, run permission-checked shop activities, and prepare purchases; checkout requires a separate confirmation call. fulfillment.* mutations run directly under the account's role permissions; each tool's description states what repeating it does, and tools that replay from an idempotency record require an idempotencyKey. Grams are decimal strings."
           }
         });
       }
@@ -185,9 +185,9 @@ function mcpToolsForPrincipal(principal: McpPrincipal, fulfillmentAvailable: boo
   if (principal.scopes.includes("mcp:read")) {
     tools.push(
       {
-        name: "soko.get_profile",
+        name: "grogoni.get_profile",
         description:
-          "Return the stable Soko account profile represented by the authenticated connection.",
+          "Return the stable Grogoni account profile represented by the authenticated connection.",
         securitySchemes: mcpSecuritySchemes(["mcp:read"]),
         inputSchema: { type: "object", additionalProperties: false, properties: {} },
         outputSchema: {
@@ -201,14 +201,14 @@ function mcpToolsForPrincipal(principal: McpPrincipal, fulfillmentAvailable: boo
         _meta: { "openai/profile": true }
       },
       {
-        name: "soko.list_shops",
-        description: "List shops the authenticated Soko account can access.",
+        name: "grogoni.list_shops",
+        description: "List shops the authenticated Grogoni account can access.",
         securitySchemes: mcpSecuritySchemes(["mcp:read"]),
         inputSchema: { type: "object", additionalProperties: false, properties: {} },
         annotations: { readOnlyHint: true, destructiveHint: false }
       },
       {
-        name: "soko.get_sync_changes",
+        name: "grogoni.get_sync_changes",
         description: "Read the account's durable incremental sync journal.",
         securitySchemes: mcpSecuritySchemes(["mcp:read"]),
         inputSchema: {
@@ -222,7 +222,7 @@ function mcpToolsForPrincipal(principal: McpPrincipal, fulfillmentAvailable: boo
         annotations: { readOnlyHint: true, destructiveHint: false }
       },
       {
-        name: "soko.query_catalogue",
+        name: "grogoni.query_catalogue",
         description:
           "Query canonical products in one authorized shop. Returns authoritative selling price, availability, and product IDs.",
         securitySchemes: mcpSecuritySchemes(["mcp:read"]),
@@ -239,7 +239,7 @@ function mcpToolsForPrincipal(principal: McpPrincipal, fulfillmentAvailable: boo
         annotations: { readOnlyHint: true, destructiveHint: false }
       },
       {
-        name: "soko.get_inbox",
+        name: "grogoni.get_inbox",
         description:
           "Receive the authenticated account's message inbox and one authorized shop's operational notifications. Returns unread items by default for polling agents.",
         securitySchemes: mcpSecuritySchemes(["mcp:read"]),
@@ -256,9 +256,9 @@ function mcpToolsForPrincipal(principal: McpPrincipal, fulfillmentAvailable: boo
         annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }
       },
       {
-        name: "soko.search_marketplace",
+        name: "grogoni.search_marketplace",
         description:
-          "Search public Soko catalogues and the buyer's connected commerce feed using authoritative prices and product identifiers.",
+          "Search public Grogoni catalogues and the buyer's connected commerce feed using authoritative prices and product identifiers.",
         securitySchemes: mcpSecuritySchemes(["mcp:read"]),
         inputSchema: {
           type: "object",
@@ -269,7 +269,7 @@ function mcpToolsForPrincipal(principal: McpPrincipal, fulfillmentAvailable: boo
         annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }
       },
       {
-        name: "soko.get_secure_channel",
+        name: "grogoni.get_secure_channel",
         description:
           "Return one authorized conversation and the current public encryption endpoints for every participant. Refresh immediately before encrypting to prevent stale-recipient delivery.",
         securitySchemes: mcpSecuritySchemes(["mcp:read"]),
@@ -282,7 +282,7 @@ function mcpToolsForPrincipal(principal: McpPrincipal, fulfillmentAvailable: boo
         annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }
       },
       {
-        name: "soko.runtime_status",
+        name: "grogoni.runtime_status",
         description:
           "Resolve a task's Runtime Handoff Protocol state: its current immutable checkpoint, task head, runtime instance health, and whether the runtime has drifted from the task head.",
         securitySchemes: mcpSecuritySchemes(["mcp:read"]),
@@ -300,9 +300,9 @@ function mcpToolsForPrincipal(principal: McpPrincipal, fulfillmentAvailable: boo
   if (principal.scopes.includes("mcp:act")) {
     tools.push(
       {
-        name: "soko.runtime_turn",
+        name: "grogoni.runtime_turn",
         description:
-          "Propose a deterministic Soko runtime action. Business mutations return needs_confirmation and are not executed yet.",
+          "Propose a deterministic Grogoni runtime action. Business mutations return needs_confirmation and are not executed yet.",
         securitySchemes: mcpSecuritySchemes(["mcp:act"]),
         inputSchema: {
           type: "object",
@@ -317,8 +317,8 @@ function mcpToolsForPrincipal(principal: McpPrincipal, fulfillmentAvailable: boo
         annotations: { readOnlyHint: false, destructiveHint: false }
       },
       {
-        name: "soko.confirm_runtime_action",
-        description: "Explicitly confirm one previously proposed Soko runtime action.",
+        name: "grogoni.confirm_runtime_action",
+        description: "Explicitly confirm one previously proposed Grogoni runtime action.",
         securitySchemes: mcpSecuritySchemes(["mcp:act"]),
         inputSchema: {
           type: "object",
@@ -333,7 +333,7 @@ function mcpToolsForPrincipal(principal: McpPrincipal, fulfillmentAvailable: boo
         annotations: { readOnlyHint: false, destructiveHint: true }
       },
       {
-        name: "soko.send_message",
+        name: "grogoni.send_message",
         description:
           "Send a text message in an existing conversation owned by the authenticated account. Repeating the same idempotencyKey does not duplicate the message.",
         securitySchemes: mcpSecuritySchemes(["mcp:act"]),
@@ -350,7 +350,7 @@ function mcpToolsForPrincipal(principal: McpPrincipal, fulfillmentAvailable: boo
         annotations: { readOnlyHint: false, destructiveHint: false }
       },
       {
-        name: "soko.register_secure_endpoint",
+        name: "grogoni.register_secure_endpoint",
         description:
           "Register this agent or model runtime's P-256 public encryption endpoint. Private keys must remain in the calling runtime.",
         securitySchemes: mcpSecuritySchemes(["mcp:act"]),
@@ -367,9 +367,9 @@ function mcpToolsForPrincipal(principal: McpPrincipal, fulfillmentAvailable: boo
         annotations: { readOnlyHint: false, destructiveHint: false }
       },
       {
-        name: "soko.create_secure_channel",
+        name: "grogoni.create_secure_channel",
         description:
-          "Create an authenticated direct channel to another Soko account for agent-to-agent, agent-to-model, or model-to-model communication. Messages require E2EE.",
+          "Create an authenticated direct channel to another Grogoni account for agent-to-agent, agent-to-model, or model-to-model communication. Messages require E2EE.",
         securitySchemes: mcpSecuritySchemes(["mcp:act"]),
         inputSchema: {
           type: "object",
@@ -384,9 +384,9 @@ function mcpToolsForPrincipal(principal: McpPrincipal, fulfillmentAvailable: boo
         annotations: { readOnlyHint: false, destructiveHint: false }
       },
       {
-        name: "soko.send_secure_message",
+        name: "grogoni.send_secure_message",
         description:
-          "Send a replay-safe E2EE message from the authenticated agent or model runtime. Encrypt locally for exactly the endpoints returned by soko.get_secure_channel, one envelope each. On e2ee_device_set_changed, refresh the channel and re-encrypt; on e2ee_recipient_unavailable, a participant has no endpoint yet.",
+          "Send a replay-safe E2EE message from the authenticated agent or model runtime. Encrypt locally for exactly the endpoints returned by grogoni.get_secure_channel, one envelope each. On e2ee_device_set_changed, refresh the channel and re-encrypt; on e2ee_recipient_unavailable, a participant has no endpoint yet.",
         securitySchemes: mcpSecuritySchemes(["mcp:act"]),
         inputSchema: {
           type: "object",
@@ -401,7 +401,7 @@ function mcpToolsForPrincipal(principal: McpPrincipal, fulfillmentAvailable: boo
         annotations: { readOnlyHint: false, destructiveHint: false }
       },
       {
-        name: "soko.prepare_checkout",
+        name: "grogoni.prepare_checkout",
         description:
           "Stage a buyer's selected marketplace items and return a short-lived confirmation token. This does not create an order; stock and prices are validated during confirmation.",
         securitySchemes: mcpSecuritySchemes(["mcp:act"]),
@@ -409,9 +409,9 @@ function mcpToolsForPrincipal(principal: McpPrincipal, fulfillmentAvailable: boo
         annotations: { readOnlyHint: false, destructiveHint: false }
       },
       {
-        name: "soko.confirm_checkout",
+        name: "grogoni.confirm_checkout",
         description:
-          "Create the previously prepared buyer checkout after explicit user confirmation. Stock and authoritative prices are revalidated by Soko.",
+          "Create the previously prepared buyer checkout after explicit user confirmation. Stock and authoritative prices are revalidated by Grogoni.",
         securitySchemes: mcpSecuritySchemes(["mcp:act"]),
         inputSchema: {
           type: "object",
@@ -422,7 +422,7 @@ function mcpToolsForPrincipal(principal: McpPrincipal, fulfillmentAvailable: boo
         annotations: { readOnlyHint: false, destructiveHint: true }
       },
       {
-        name: "soko.runtime_checkpoint",
+        name: "grogoni.runtime_checkpoint",
         description:
           "Record a Runtime Handoff Protocol checkpoint for a task - its goal, current state, completed/pending actions, and next action. Immutable once written; pass promote:true with expectedHandoffId to also move the task head.",
         securitySchemes: mcpSecuritySchemes(["mcp:act"]),
@@ -442,7 +442,7 @@ function mcpToolsForPrincipal(principal: McpPrincipal, fulfillmentAvailable: boo
         annotations: { readOnlyHint: false, destructiveHint: false }
       },
       {
-        name: "soko.runtime_resume",
+        name: "grogoni.runtime_resume",
         description:
           "Resume a task from its Runtime Handoff Protocol state (the authoritative checkpoint), never from conversation transcript replay.",
         securitySchemes: mcpSecuritySchemes(["mcp:act"]),
@@ -455,7 +455,7 @@ function mcpToolsForPrincipal(principal: McpPrincipal, fulfillmentAvailable: boo
         annotations: { readOnlyHint: false, destructiveHint: false }
       },
       {
-        name: "soko.runtime_rollback",
+        name: "grogoni.runtime_rollback",
         description:
           "Move a task's runtime head back to an earlier immutable checkpoint. Never mutates checkpoint history or the runtime binding.",
         securitySchemes: mcpSecuritySchemes(["mcp:act"]),
@@ -472,7 +472,7 @@ function mcpToolsForPrincipal(principal: McpPrincipal, fulfillmentAvailable: boo
         annotations: { readOnlyHint: false, destructiveHint: true }
       },
       {
-        name: "soko.runtime_merge",
+        name: "grogoni.runtime_merge",
         description:
           "Unify two or more diverged offline branch checkpoints into one new checkpoint and promote the task head to it. The first id in branchHandoffIds becomes the merge's primary parent; the rest are recorded as additional ancestors.",
         securitySchemes: mcpSecuritySchemes(["mcp:act"]),
@@ -492,7 +492,7 @@ function mcpToolsForPrincipal(principal: McpPrincipal, fulfillmentAvailable: boo
         annotations: { readOnlyHint: false, destructiveHint: true }
       },
       ...(["agent", "model", "host"] as const).map((dimension) => ({
-        name: `soko.${dimension === "host" ? "execution_host" : dimension}_swap`,
+        name: `grogoni.${dimension === "host" ? "execution_host" : dimension}_swap`,
         description: `Swap a task's ${dimension} to a new compatible ${dimension}, checkpointing current state first (Prepare -> Commit -> Activate). Task and conversation identity never change.`,
         securitySchemes: mcpSecuritySchemes(["mcp:act"]),
         inputSchema: {
@@ -533,13 +533,13 @@ async function callMcpTool(
   const fulfillmentTool = findFulfillmentMcpTool(name);
   try {
     let result: unknown;
-    if (name === "soko.get_profile") {
+    if (name === "grogoni.get_profile") {
       requireScope(principal, "mcp:read");
       result = { id: principal.accountId };
-    } else if (name === "soko.list_shops") {
+    } else if (name === "grogoni.list_shops") {
       requireScope(principal, "mcp:read");
       result = store.listAccountShopsForMcp({ principal });
-    } else if (name === "soko.get_sync_changes") {
+    } else if (name === "grogoni.get_sync_changes") {
       requireScope(principal, "mcp:read");
       const limit = optionalIntegerValue(args.limit, "limit");
       result = store.pullSyncChangesForMcp({
@@ -547,7 +547,7 @@ async function callMcpTool(
         cursor: optionalStringValue(args.cursor, "cursor"),
         ...(limit === undefined ? {} : { limit })
       });
-    } else if (name === "soko.query_catalogue") {
+    } else if (name === "grogoni.query_catalogue") {
       requireScope(principal, "mcp:read");
       const shopId = requiredShop(principal, args.shopId);
       const limit = optionalIntegerValue(args.limit, "limit");
@@ -557,7 +557,7 @@ async function callMcpTool(
         query: stringValue(args.query, "query"),
         ...(limit === undefined ? {} : { limit })
       });
-    } else if (name === "soko.get_inbox") {
+    } else if (name === "grogoni.get_inbox") {
       requireScope(principal, "mcp:read");
       const shopId = requiredShop(principal, args.shopId);
       const limit = optionalIntegerValue(args.limit, "limit");
@@ -569,19 +569,19 @@ async function callMcpTool(
           : { includeRead: booleanValue(args.includeRead, "includeRead") }),
         ...(limit === undefined ? {} : { limit })
       });
-    } else if (name === "soko.search_marketplace") {
+    } else if (name === "grogoni.search_marketplace") {
       requireScope(principal, "mcp:read");
       result = store.searchMarketplaceForMcp({
         principal,
         query: stringValue(args.query, "query")
       });
-    } else if (name === "soko.get_secure_channel") {
+    } else if (name === "grogoni.get_secure_channel") {
       requireScope(principal, "mcp:read");
       result = store.getSecureChannelForMcp({
         principal,
         conversationId: stringValue(args.conversationId, "conversationId")
       });
-    } else if (name === "soko.runtime_status") {
+    } else if (name === "grogoni.runtime_status") {
       requireScope(principal, "mcp:read");
       result = store.resolveRuntimeHandoffForMcp({
         principal,
@@ -599,7 +599,7 @@ async function callMcpTool(
           store
         })
       );
-    } else if (name === "soko.runtime_checkpoint") {
+    } else if (name === "grogoni.runtime_checkpoint") {
       requireScope(principal, "mcp:act");
       result = store.createRuntimeCheckpointForMcp({
         principal,
@@ -621,13 +621,13 @@ async function callMcpTool(
             : { expectedHandoffId: stringValue(args.expectedHandoffId, "expectedHandoffId") })
         }
       });
-    } else if (name === "soko.runtime_resume") {
+    } else if (name === "grogoni.runtime_resume") {
       requireScope(principal, "mcp:act");
       result = store.resumeRuntimeHandoffForMcp({
         principal,
         taskId: stringValue(args.taskId, "taskId")
       });
-    } else if (name === "soko.runtime_rollback") {
+    } else if (name === "grogoni.runtime_rollback") {
       requireScope(principal, "mcp:act");
       result = store.rollbackRuntimeHandoffForMcp({
         principal,
@@ -639,7 +639,7 @@ async function callMcpTool(
             : { expectedHandoffId: stringValue(args.expectedHandoffId, "expectedHandoffId") })
         }
       });
-    } else if (name === "soko.runtime_merge") {
+    } else if (name === "grogoni.runtime_merge") {
       requireScope(principal, "mcp:act");
       result = store.mergeRuntimeHandoffsForMcp({
         principal,
@@ -660,13 +660,13 @@ async function callMcpTool(
         }
       });
     } else if (
-      name === "soko.agent_swap" ||
-      name === "soko.model_swap" ||
-      name === "soko.execution_host_swap"
+      name === "grogoni.agent_swap" ||
+      name === "grogoni.model_swap" ||
+      name === "grogoni.execution_host_swap"
     ) {
       requireScope(principal, "mcp:act");
       const dimension: RuntimeSwapDimension =
-        name === "soko.agent_swap" ? "agent" : name === "soko.model_swap" ? "model" : "host";
+        name === "grogoni.agent_swap" ? "agent" : name === "grogoni.model_swap" ? "model" : "host";
       result = store.performRuntimeSwapForMcp({
         principal,
         swap: {
@@ -678,7 +678,7 @@ async function callMcpTool(
             : { expectedHandoffId: stringValue(args.expectedHandoffId, "expectedHandoffId") })
         }
       });
-    } else if (name === "soko.runtime_turn") {
+    } else if (name === "grogoni.runtime_turn") {
       requireScope(principal, "mcp:act");
       const shopId = requiredShop(principal, args.shopId);
       result = await store.createRuntimeTurnForMcp({
@@ -689,7 +689,7 @@ async function callMcpTool(
           ? {}
           : { runtimeSessionId: stringValue(args.runtimeSessionId, "runtimeSessionId") })
       });
-    } else if (name === "soko.confirm_runtime_action") {
+    } else if (name === "grogoni.confirm_runtime_action") {
       requireScope(principal, "mcp:act");
       const shopId = requiredShop(principal, args.shopId);
       result = await store.createRuntimeTurnForMcp({
@@ -699,7 +699,7 @@ async function callMcpTool(
         confirmationToken: stringValue(args.confirmationToken, "confirmationToken"),
         message: "Confirm the previously proposed MCP action."
       });
-    } else if (name === "soko.send_message") {
+    } else if (name === "grogoni.send_message") {
       requireScope(principal, "mcp:act");
       result = store.sendMessageForMcp({
         principal,
@@ -707,7 +707,7 @@ async function callMcpTool(
         text: stringValue(args.text, "text"),
         idempotencyKey: stringValue(args.idempotencyKey, "idempotencyKey")
       });
-    } else if (name === "soko.register_secure_endpoint") {
+    } else if (name === "grogoni.register_secure_endpoint") {
       requireScope(principal, "mcp:act");
       result = store.registerSecureEndpointForMcp({
         principal,
@@ -715,7 +715,7 @@ async function callMcpTool(
         label: stringValue(args.label, "label"),
         publicKey: e2eePublicKeyValue(args.publicKey, "publicKey")
       });
-    } else if (name === "soko.create_secure_channel") {
+    } else if (name === "grogoni.create_secure_channel") {
       requireScope(principal, "mcp:act");
       result = store.createSecureChannelForMcp({
         principal,
@@ -725,7 +725,7 @@ async function callMcpTool(
           ? {}
           : { runtimeBindingId: stringValue(args.runtimeBindingId, "runtimeBindingId") })
       });
-    } else if (name === "soko.send_secure_message") {
+    } else if (name === "grogoni.send_secure_message") {
       requireScope(principal, "mcp:act");
       result = store.sendSecureMessageForMcp({
         principal,
@@ -733,7 +733,7 @@ async function callMcpTool(
         idempotencyKey: stringValue(args.idempotencyKey, "idempotencyKey"),
         content: encryptedContentValue(args.content)
       });
-    } else if (name === "soko.prepare_checkout") {
+    } else if (name === "grogoni.prepare_checkout") {
       requireScope(principal, "mcp:act");
       const confirmationToken = randomUUID();
       const items = checkoutItemsValue(args.items);
@@ -751,7 +751,7 @@ async function callMcpTool(
         expiresAt: new Date(expiresAt).toISOString(),
         items
       };
-    } else if (name === "soko.confirm_checkout") {
+    } else if (name === "grogoni.confirm_checkout") {
       requireScope(principal, "mcp:act");
       const confirmationToken = stringValue(args.confirmationToken, "confirmationToken");
       const pending = pendingCheckouts.get(confirmationToken);
@@ -780,14 +780,14 @@ async function callMcpTool(
   } catch (error) {
     if (error instanceof Cp2Error) {
       const readTool =
-        name === "soko.get_profile" ||
-        name === "soko.list_shops" ||
-        name === "soko.get_sync_changes" ||
-        name === "soko.query_catalogue" ||
-        name === "soko.get_inbox" ||
-        name === "soko.search_marketplace" ||
-        name === "soko.get_secure_channel" ||
-        name === "soko.runtime_status";
+        name === "grogoni.get_profile" ||
+        name === "grogoni.list_shops" ||
+        name === "grogoni.get_sync_changes" ||
+        name === "grogoni.query_catalogue" ||
+        name === "grogoni.get_inbox" ||
+        name === "grogoni.search_marketplace" ||
+        name === "grogoni.get_secure_channel" ||
+        name === "grogoni.runtime_status";
       const fulfillmentReadTool = fulfillmentTool?.scope === "mcp:read";
       const challenge =
         error.code === "mcp_scope_forbidden"
@@ -832,7 +832,7 @@ function toolResult(value: unknown, isError: boolean, challenge?: string) {
       : {
           _meta: {
             "mcp/www_authenticate": [
-              `${challenge}, error="insufficient_scope", error_description="Authorize the required Soko permission"`
+              `${challenge}, error="insufficient_scope", error_description="Authorize the required Grogoni permission"`
             ]
           }
         })

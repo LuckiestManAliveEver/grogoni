@@ -16,7 +16,7 @@ import {
   type BuyCheckoutItemInput,
   type BuyResultSourceKind,
   type ProductCaptureImageContentType
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { Cp2Error } from "../../cp2-error.js";
 import { type Cp2Store, readSessionCookie } from "../../store.js";
 import type { BinaryUploadPipeline } from "../../binary-upload-pipeline.js";

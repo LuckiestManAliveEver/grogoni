@@ -1,7 +1,7 @@
 import type {
   InferenceProviderConnectionSummary,
   InferenceProviderSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
 /**
  * Pure presentation rules for the AI providers settings card (AiProvidersPanel.tsx). Everything
@@ -43,7 +43,7 @@ export function providerCardState(input: {
   const owned = input.connections.filter(
     (connection) => connection.providerId === provider.id && connection.status !== "REVOKED"
   );
-  // Same precedence the server uses: the shop's key, then the person's own key, then Soko's.
+  // Same precedence the server uses: the shop's key, then the person's own key, then Grogoni's.
   const connection =
     owned.find((entry) => entry.scope === "tenant" && entry.businessId === input.businessId) ??
     owned.find((entry) => entry.scope === "user") ??
@@ -65,8 +65,8 @@ export function providerCardState(input: {
     return {
       status: "Available",
       detail: provider.byokAllowed
-        ? "Provided by Soko. You can also connect your own key."
-        : "Provided by Soko.",
+        ? "Provided by Grogoni. You can also connect your own key."
+        : "Provided by Grogoni.",
       connection: null,
       canConnect: provider.byokAllowed
     };

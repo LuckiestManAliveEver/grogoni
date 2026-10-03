@@ -74,8 +74,8 @@ import {
   type LaunchIncidentStatusInput,
   type LaunchSettingsInput,
   type VerificationTierInput
-} from "@soko/business-core";
-import type { BusinessEvent } from "@soko/event-core";
+} from "@grogoni/business-core";
+import type { BusinessEvent } from "@grogoni/event-core";
 import type {
   AuthenticatedActorView,
   BetaAccessSummary,
@@ -91,7 +91,7 @@ import type {
   LaunchIncidentSummary,
   LaunchSettingsSummary,
   VerificationTierSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { Cp2Error, assertValid } from "../../cp2-error.js";
 import {
   betaFeatureFlagKeys,

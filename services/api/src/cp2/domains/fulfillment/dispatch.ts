@@ -27,7 +27,7 @@ import {
   percentOfTarget,
   type BusinessPermission,
   type ExplicitSelectionRejection
-} from "@soko/business-core";
+} from "@grogoni/business-core";
 import {
   formatGrams,
   parseGrams,
@@ -51,7 +51,7 @@ import {
   type ResolveOrderCorridorResultSummary,
   type AssignableDriverSummary,
   type BusinessRole
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { Cp2Error } from "../../cp2-error.js";
 import { FulfillmentRecheckConflict } from "./transaction.js";
 import { upsertFulfillmentOrder, type FulfillmentOrderRow } from "./order-rows.js";

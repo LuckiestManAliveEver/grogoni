@@ -1,5 +1,5 @@
-import type { AgentInstructions, AgentPersonality } from "@soko/shared-types";
-import type { AgentSettings } from "./soko-application-shared";
+import type { AgentInstructions, AgentPersonality } from "@grogoni/shared-types";
+import type { AgentSettings } from "./grogoni-application-shared";
 
 export interface AgentPolicyPanelProps {
   draftAgent: AgentSettings;

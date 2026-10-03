@@ -23,7 +23,7 @@ dashboard when creating/verifying the project, and confirm no Node engine warnin
 deploy log:
 
 ```text
-Repository:       LuckiestManAliveEver/soko.market
+Repository:       LuckiestManAliveEver/grogoni
 Root Directory:    services/ai-runtime
 Framework Preset:  Other
 Node.js Version:   22.x
@@ -80,7 +80,7 @@ is holding open.
 Vercel project environment (`services/ai-runtime/.env.example`):
 
 ```text
-SOKO_INFERENCE_SERVICE_TOKEN=<same value as Render's SOKO_INFERENCE_SERVICE_TOKEN>
+GROGONI_INFERENCE_SERVICE_TOKEN=<same value as Render's GROGONI_INFERENCE_SERVICE_TOKEN>
 INFERENCE_PROVIDER=huggingface
 HF_TOKEN=<Hugging Face access token>
 HF_MODEL_MAP={"smollm2-360m":"HuggingFaceTB/SmolLM2-1.7B-Instruct","gpt-oss-20b":"openai/gpt-oss-20b"}
@@ -94,25 +94,25 @@ INFERENCE_RUNTIME_CACHE_ENTRIES=1
 ```
 
 `INFERENCE_PROVIDER=huggingface` sends generations to Hugging Face Inference Providers through
-their OpenAI-compatible chat completions endpoint. `HF_MODEL_MAP` maps each Soko catalog model ID
+their OpenAI-compatible chat completions endpoint. `HF_MODEL_MAP` maps each Grogoni catalog model ID
 to its Hugging Face Hub model ID. The model selected by the runtime binding is looked up for every
-request, so models are swappable through Soko's existing model activation flow without redeploying
+request, so models are swappable through Grogoni's existing model activation flow without redeploying
 the inference service. Unmapped models are rejected unless `HF_MODEL_ID` defines an explicit
 fallback. In this mode the service does not download or load the GGUF artifact from the request;
-the artifact remains part of Soko's existing runtime-binding contract, but execution is delegated
+the artifact remains part of Grogoni's existing runtime-binding contract, but execution is delegated
 to Hugging Face.
 
 Set `INFERENCE_PROVIDER=llama-cpp` to use the older downloaded-GGUF path. Only that mode requires
 `MODEL_ARTIFACT_ALLOWED_HOSTS` and the Neon model-storage variables below to be populated.
 
-Render API environment (`render.yaml`'s `soko-market` service, `.env.example` at the repo
+Render API environment (`render.yaml`'s `grogoni` service, `.env.example` at the repo
 root):
 
 ```text
 VERCEL_INFERENCE_URL=https://<your-vercel-deployment>.vercel.app
 VERCEL_INFERENCE_TIMEOUT_MS=300000
 INFERENCE_REQUIRED=true
-SOKO_INFERENCE_SERVICE_TOKEN=<same value as Vercel's SOKO_INFERENCE_SERVICE_TOKEN>
+GROGONI_INFERENCE_SERVICE_TOKEN=<same value as Vercel's GROGONI_INFERENCE_SERVICE_TOKEN>
 NEON_MODEL_STORAGE_ENDPOINT=https://<neon-object-storage-host>
 NEON_MODEL_STORAGE_REGION=us-east-1
 NEON_MODEL_STORAGE_ACCESS_KEY_ID=<neon object-storage access key>
@@ -120,7 +120,7 @@ NEON_MODEL_STORAGE_SECRET_ACCESS_KEY=<neon object-storage secret key>
 MODEL_ARTIFACT_URL_TTL_SECONDS=900
 ```
 
-`SOKO_INFERENCE_SERVICE_TOKEN` must be identical on both sides and at least 32 characters. Render
+`GROGONI_INFERENCE_SERVICE_TOKEN` must be identical on both sides and at least 32 characters. Render
 and Vercel are separate platforms with no shared secret-linking mechanism (unlike `render.yaml`'s
 `fromService`), so this is a manual copy-paste step: generate the value in Render (or anywhere), set
 it in the Render dashboard, then paste the same value into the Vercel project's environment
@@ -140,7 +140,7 @@ switched to Vercel. See [../storage/model-artifacts.md](../storage/model-artifac
 `/health` and `/ready` are separate Vercel serverless functions (`api/health.ts`, `api/ready.ts`)
 with deliberately different, honest claims:
 
-- `/health` is unauthenticated bare liveness - `{ ok: true, service: "soko-ai-runtime" }` - and
+- `/health` is unauthenticated bare liveness - `{ ok: true, service: "grogoni-ai-runtime" }` - and
   never depends on configuration, so it cannot fail because an environment variable is missing. It
   proves nothing about whether inference can run.
 - `/ready` parses this function's own configuration (service token, artifact host allowlist, size/
@@ -175,7 +175,7 @@ Roll out in this order:
    estimated placeholder that would have made every real download fail `ARTIFACT_SIZE_MISMATCH`);
 2. deploy `services/ai-runtime` to Vercel; run `pnpm inference:health` against the new
    `VERCEL_INFERENCE_URL` to confirm the deployment is live;
-3. set `VERCEL_INFERENCE_URL`, `SOKO_INFERENCE_SERVICE_TOKEN`, and the `NEON_MODEL_STORAGE_*`
+3. set `VERCEL_INFERENCE_URL`, `GROGONI_INFERENCE_SERVICE_TOKEN`, and the `NEON_MODEL_STORAGE_*`
    variables on the Render API and deploy it;
 4. run `pnpm inference:probe` (hits Render's `/health/ai`) to prove the full path: Render resolves
    the binding, signs the artifact URL, and Vercel downloads/verifies/loads/generates;
@@ -189,22 +189,22 @@ Roll out in this order:
 
 ```sh
 pnpm build:production
-SOKO_LIVE_GGUF_PATH=/path/to/model.gguf pnpm inference:live-probe
+GROGONI_LIVE_GGUF_PATH=/path/to/model.gguf pnpm inference:live-probe
 VERCEL_INFERENCE_URL=https://<deployment>.vercel.app pnpm inference:health
-SOKO_API_URL=https://soko.market pnpm inference:probe
+GROGONI_API_URL=https://grogoni.com pnpm inference:probe
 pnpm verify:production-runtime
 ```
 
 `pnpm verify:production-runtime` proves the actual `POST /v1/messages` flow end to end, not only
-mocked adapter tests - it requires `SOKO_API_URL`, `VERCEL_INFERENCE_URL`, `SOKO_TEST_TOKEN`, and
-`SOKO_TEST_SHOP_ID` for a real authenticated account.
+mocked adapter tests - it requires `GROGONI_API_URL`, `VERCEL_INFERENCE_URL`, `GROGONI_TEST_TOKEN`, and
+`GROGONI_TEST_SHOP_ID` for a real authenticated account.
 
 ## Failure and rollback
 
 Production sets `INFERENCE_REQUIRED=true`, so API readiness fails while the promised zero-setup
 default host/model is unavailable. An emergency commerce-only rollback may explicitly set it to
 `false`; turns bound to the unavailable execution target then fail with normalized retryable
-runtime errors, and Soko does not silently substitute a provider/model.
+runtime errors, and Grogoni does not silently substitute a provider/model.
 
 Rollback options are independent:
 

@@ -49,7 +49,7 @@ describe("passkey is fallback-only, not a main-flow login method", () => {
 
   it("requires a password at signup and offers a passkey only as an optional backup afterward", () => {
     expect(signupSource).not.toContain("addPassword");
-    expect(signupSource).not.toContain("Passkeys are the preferred way to return to Soko");
+    expect(signupSource).not.toContain("Passkeys are the preferred way to return to Grogoni");
     expect(signupSource).not.toContain("passwordless account needs a passkey");
     expect(signupSource).toContain("password.length < 10");
     expect(signupSource).toContain("Create a passkey");

@@ -74,8 +74,8 @@ describe("service worker: app-update push notifications", () => {
     expect(handler).toBeDefined();
     const { event, settled } = pushEvent({
       type: "app.update_available",
-      title: "Soko update available",
-      body: "The Soko API and database just deployed a new version. Open Soko to refresh."
+      title: "Grogoni update available",
+      body: "The Grogoni API and database just deployed a new version. Open Grogoni to refresh."
     });
 
     handler?.(event);
@@ -83,10 +83,10 @@ describe("service worker: app-update push notifications", () => {
 
     expect(sw.self.registration.update).toHaveBeenCalledTimes(1);
     expect(sw.self.registration.showNotification).toHaveBeenCalledWith(
-      "Soko update available",
+      "Grogoni update available",
       expect.objectContaining({
-        body: "The Soko API and database just deployed a new version. Open Soko to refresh.",
-        tag: "soko-app-update",
+        body: "The Grogoni API and database just deployed a new version. Open Grogoni to refresh.",
+        tag: "grogoni-app-update",
         data: { type: "app.update_available", url: "/" }
       })
     );
@@ -108,7 +108,7 @@ describe("service worker: app-update push notifications", () => {
     expect(sw.self.registration.showNotification).toHaveBeenCalledWith(
       "New message from Amina",
       expect.objectContaining({
-        tag: "soko-message-msg-456",
+        tag: "grogoni-message-msg-456",
         data: { conversationId: "conv-123", url: "/marketplace/conversations/conv-123" }
       })
     );

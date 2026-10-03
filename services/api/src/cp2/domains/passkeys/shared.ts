@@ -31,7 +31,7 @@
  * `prunePasskeyPinRecoveryGrants` already self-heals once the underlying session is purged
  * (`getSession(sessionId, now) === null`), on top of the 5-minute TTL bounding the exposure.
  */
-import type { PasskeySummary } from "@soko/shared-types";
+import type { PasskeySummary } from "@grogoni/shared-types";
 
 export const passkeyCeremonyTtlMs = 5 * 60 * 1000;
 export const passkeyPinRecoveryGrantTtlMs = 5 * 60 * 1000;

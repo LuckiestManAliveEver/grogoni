@@ -1,6 +1,6 @@
 # Governed tool runtime
 
-This document describes how every Soko surface that can act on a business — native chat, MCP,
+This document describes how every Grogoni surface that can act on a business — native chat, MCP,
 browser-local inference, and cloud fallback — converges on one governed execution path, and what
 changed (and deliberately did not change) to strengthen that convergence. It complements, not
 replaces:
@@ -62,7 +62,7 @@ second model invocation can substitute for the stored token.
 | Surface        | Entry point                                                                                           | Converges via                                                                                                                                                                                                                                                   |
 | -------------- | ----------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Native chat    | `POST /businesses/:id/runtime/turns`                                                                  | calls `createRuntimeTurn` directly                                                                                                                                                                                                                              |
-| MCP            | `tools/call` → `soko.runtime_turn` / `soko.confirm_runtime_action` (`services/api/src/mcp/routes.ts`) | calls `store.createRuntimeTurn` with the same arguments a REST caller would use                                                                                                                                                                                 |
+| MCP            | `tools/call` → `grogoni.runtime_turn` / `grogoni.confirm_runtime_action` (`services/api/src/mcp/routes.ts`) | calls `store.createRuntimeTurn` with the same arguments a REST caller would use                                                                                                                                                                                 |
 | Browser-local  | `generateBrowserAgentResponse` (`apps/web/src/browser-inference-session.ts`)                          | structurally cannot execute a tool — its result type has no tool-proposal field (see `chat-tool-execution-boundary.md`); any actionable request is routed server-side before inference runs                                                                     |
 | Cloud fallback | `createCloudFallbackProvider` (`services/api/src/inference/cloud-fallback.ts`)                        | is a `RuntimeModelProvider`, one of several the _router_ (`Cp2Store.createRuntimeModelRoute`) may call — it proposes text/tool JSON like any other provider; the proposal still passes through the same registry and policy gate above before anything executes |
 
@@ -124,7 +124,7 @@ streaming (`RuntimeModelChunk`), a shared stream assembler, provider-neutral con
 with step/call budget limits). None of these were implemented.
 
 Why: the audit found `createRuntimeTurn` already implements one plan → one policy/confirmation
-gate → one execution per turn, is heavily tested (`tests/cp10-sokoclaw-runtime.test.ts`,
+gate → one execution per turn, is heavily tested (`tests/cp10-grogoniclaw-runtime.test.ts`,
 `tests/agent-business-runtime.test.ts`, and others), and every current inference adapter is
 non-streaming already (each `RuntimeModelProvider.complete()` call already returns one complete
 result — see "one adapter call = one provider attempt" below). Building a streaming protocol with
@@ -155,7 +155,7 @@ adapters only where they mix transport concerns with routing policy.
 - `tests/runtime-inference-error-taxonomy.test.ts` — every currently-shipping error code from all
   three inference surfaces normalizes to the expected category, and an unrecognized code
   normalizes to `UNKNOWN` rather than throwing.
-- `tests/cp10-sokoclaw-runtime.test.ts`, `tests/agent-business-runtime.test.ts`,
+- `tests/cp10-grogoniclaw-runtime.test.ts`, `tests/agent-business-runtime.test.ts`,
   `tests/cp11-local-model-adapter.test.ts`, `tests/receipt-ocr.test.ts` — unchanged, all still
   pass, confirming the registry metadata addition did not alter tool execution, confirmation, or
   policy behavior.

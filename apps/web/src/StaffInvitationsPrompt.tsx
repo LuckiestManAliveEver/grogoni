@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { AccountShopSummary, MyStaffInvitationSummary } from "@soko/shared-types";
+import type { AccountShopSummary, MyStaffInvitationSummary } from "@grogoni/shared-types";
 import { useAsyncActions } from "./hooks/useAsyncActions";
 import { fetchFreshJson, postJson } from "./api-helpers";
 import { getUserFacingErrorMessage } from "./user-facing-error";

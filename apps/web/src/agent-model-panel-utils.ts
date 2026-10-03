@@ -1,4 +1,4 @@
-import type { AiModelSummary } from "./soko-application-shared";
+import type { AiModelSummary } from "./grogoni-application-shared";
 
 export function isDownloadableCatalogModel(model: AiModelSummary): boolean {
   return model.source === "huggingface" || model.source === "github";

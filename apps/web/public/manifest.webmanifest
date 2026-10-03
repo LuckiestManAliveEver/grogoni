@@ -1,7 +1,7 @@
 {
-  "name": "Soko.market",
-  "short_name": "Soko",
-  "description": "Mobile-first business shell for Soko.market merchants.",
+  "name": "Grogoni",
+  "short_name": "Grogoni",
+  "description": "Mobile-first business shell for Grogoni merchants.",
   "id": "/",
   "start_url": "/",
   "scope": "/",
@@ -21,36 +21,36 @@
       "name": "Marketplace",
       "short_name": "Marketplace",
       "url": "/marketplace",
-      "icons": [{ "src": "/icons/soko-icon-192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/icons/grogoni-icon-192.png", "sizes": "192x192" }]
     },
     {
       "name": "Seller workspace",
       "short_name": "Workspace",
       "url": "/workspace",
-      "icons": [{ "src": "/icons/soko-icon-192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/icons/grogoni-icon-192.png", "sizes": "192x192" }]
     }
   ],
   "icons": [
     {
-      "src": "/icons/soko-icon.svg",
+      "src": "/icons/grogoni-icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"
     },
     {
-      "src": "/icons/soko-icon-192.png",
+      "src": "/icons/grogoni-icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icons/soko-icon-512.png",
+      "src": "/icons/grogoni-icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icons/soko-icon-maskable-512.png",
+      "src": "/icons/grogoni-icon-maskable-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"

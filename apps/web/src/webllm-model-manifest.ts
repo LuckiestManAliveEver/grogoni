@@ -15,7 +15,7 @@
 export const WEBLLM_PINNED_MODEL = {
   engine: "webllm",
   engineVersion: "0.2.85",
-  agentId: "soko-offline-assistant",
+  agentId: "grogoni-offline-assistant",
   agentVersion: "1",
   modelId: "Qwen2.5-0.5B-Instruct-q4f16_1-MLC",
   modelVersion: "q4f16_1",

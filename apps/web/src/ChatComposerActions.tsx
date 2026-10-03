@@ -1,9 +1,9 @@
-import type { SokoMode } from "./app-shell";
+import type { GrogoniMode } from "./app-shell";
 import { StackedModule } from "./StackedModule";
 
 interface ChatComposerActionsProps {
   draftHasText: boolean;
-  mode: SokoMode;
+  mode: GrogoniMode;
   open: boolean;
   sendViaLabel: string;
   onAttachFiles: () => void;

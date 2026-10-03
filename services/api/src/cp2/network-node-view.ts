@@ -1,4 +1,4 @@
-import type { NetworkNodeSummary } from "@soko/shared-types";
+import type { NetworkNodeSummary } from "@grogoni/shared-types";
 
 export function sanitizeNetworkNode(node: NetworkNodeSummary): NetworkNodeSummary {
   if (node.degree !== 2) {

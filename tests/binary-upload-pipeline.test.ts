@@ -116,7 +116,7 @@ describe("binary upload security pipeline", () => {
     expect(fetcher).toHaveBeenCalledTimes(2);
     expect(fetcher.mock.calls[0]?.[1]?.headers).toEqual(
       expect.objectContaining({
-        "x-soko-upload-signature": expect.stringMatching(/^sha256=[a-f0-9]{64}$/u)
+        "x-grogoni-upload-signature": expect.stringMatching(/^sha256=[a-f0-9]{64}$/u)
       })
     );
   });

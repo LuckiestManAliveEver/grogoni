@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { ComputerApproval, ComputerSession } from "@soko/shared-types";
+import type { ComputerApproval, ComputerSession } from "@grogoni/shared-types";
 import { apiCloudFetch, readApiBaseUrl } from "./lib/api";
 
 export function ComputerRuntimeCard(props: { businessId: string; conversationId: string }) {
@@ -226,7 +226,7 @@ export function ComputerRuntimeCard(props: { businessId: string; conversationId:
       <footer>
         <span>
           <i aria-hidden="true" />
-          {human ? "You are controlling" : "Soko is controlling"}
+          {human ? "You are controlling" : "Grogoni is controlling"}
         </span>
         <div>
           {human ? (
@@ -246,7 +246,7 @@ export function ComputerRuntimeCard(props: { businessId: string; conversationId:
                 )
               }
             >
-              Return to Soko
+              Return to Grogoni
             </button>
           ) : (
             <button

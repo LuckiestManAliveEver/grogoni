@@ -1,6 +1,6 @@
-import type { AgentContextSource } from "@soko/shared-types";
+import type { AgentContextSource } from "@grogoni/shared-types";
 
-import type { AgentSettings } from "./soko-application-shared";
+import type { AgentSettings } from "./grogoni-application-shared";
 
 const contextSourceTypeOptions: AgentContextSource["type"][] = [
   "policy",

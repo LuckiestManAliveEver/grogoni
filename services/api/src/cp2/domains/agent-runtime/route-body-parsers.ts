@@ -27,9 +27,9 @@ import {
   type PreferredExecutionMode,
   type OssAgentSummary,
   type RuntimeToolName
-} from "@soko/shared-types";
-import type { AiModelInferenceRouting } from "@soko/shared-types";
-import { runtimeToolRegistry } from "@soko/tool-core";
+} from "@grogoni/shared-types";
+import type { AiModelInferenceRouting } from "@grogoni/shared-types";
+import { runtimeToolRegistry } from "@grogoni/tool-core";
 import { Cp2Error } from "../../cp2-error.js";
 import { isSupportedLanguage } from "../../store.js";
 import { normalizeAdapterId } from "../../../agent-harness/agent-runtime-adapter.js";

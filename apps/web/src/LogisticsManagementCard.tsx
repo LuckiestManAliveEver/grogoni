@@ -3,7 +3,7 @@ import { useAsyncActions } from "./hooks/useAsyncActions";
 import { useApiMutationRevision } from "./hooks/useApiMutationRevision";
 import { getJson, patchJson } from "./api-helpers";
 import { getUserFacingErrorMessage } from "./user-facing-error";
-import type { FulfillmentStatus, LogisticsSummary } from "./soko-application-shared";
+import type { FulfillmentStatus, LogisticsSummary } from "./grogoni-application-shared";
 
 const openStatuses: FulfillmentStatus[] = ["pending", "ready", "out_for_delivery"];
 const nextStatuses: FulfillmentStatus[] = ["ready", "out_for_delivery", "completed", "cancelled"];

@@ -10,7 +10,7 @@ local development cache debugging only.
 ## Frontend and local URL
 
 This repository serves a React frontend with Vite from `apps/web`. The root development command
-starts both `@soko/api` and `@soko/web`.
+starts both `@grogoni/api` and `@grogoni/web`.
 
 Open the exact URL printed by Vite, normally:
 
@@ -20,7 +20,7 @@ http://127.0.0.1:5173
 
 The frontend now requires port `5173` instead of silently selecting another port. If startup says
 the port is already in use, stop the older Vite process before opening the browser. In browser
-DevTools, confirm `window.location.href` and the `[Soko.market] frontend boot` console message both
+DevTools, confirm `window.location.href` and the `[Grogoni] frontend boot` console message both
 show the expected URL.
 
 ## Restart and clear the Vite cache
@@ -54,7 +54,7 @@ pnpm dev:web:poll
 
 Vite Fast Refresh watches `apps/web/src` and imported workspace sources such as `packages/ui/src`.
 Development responses use `Cache-Control: no-store`, and the app unregisters its service worker and
-removes Soko PWA caches on development boot.
+removes Grogoni PWA caches on development boot.
 
 ## Hard-refresh the browser
 
@@ -67,14 +67,14 @@ After restarting Vite:
 If an older tab was opened before the automatic service-worker cleanup, close all tabs for the
 local origin, reopen `http://127.0.0.1:5173`, and hard-refresh once. In Chromium, the Application
 tab's Service Workers and Cache Storage sections can confirm no development worker or
-`soko-market-app-*` cache remains.
+`grogoni-app-*` cache remains.
 
 ## Confirm a live deployment changed
 
 Production builds emit hashed filenames under `assets/`, so changed source produces new asset URLs.
 To verify a deployment:
 
-1. Open DevTools Console and find `[Soko.market] frontend boot`.
+1. Open DevTools Console and find `[Grogoni] frontend boot`.
 2. Compare its `version` and `buildTimestamp` with the expected deployment.
 3. In the Network tab, reload and confirm the document references newly hashed `/assets/...` files.
 4. Check the hosting provider's deployment log or commit identifier and confirm the deployment

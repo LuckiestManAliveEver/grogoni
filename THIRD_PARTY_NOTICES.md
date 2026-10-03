@@ -24,8 +24,8 @@ Phone numbers are normalized only; the authentication system does not perform SM
 
 ## Optional on-device AI models
 
-Soko can download these optional GGUF weights directly from Hugging Face into private device
-storage. The weights are not distributed in this repository or uploaded to Soko:
+Grogoni can download these optional GGUF weights directly from Hugging Face into private device
+storage. The weights are not distributed in this repository or uploaded to Grogoni:
 
 - HuggingFaceTB SmolLM2 360M Instruct GGUF — Apache License 2.0.
 - Qwen Qwen2.5 0.5B Instruct GGUF — Apache License 2.0.

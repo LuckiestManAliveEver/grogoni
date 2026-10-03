@@ -35,7 +35,7 @@ idempotency keys. Terminal transfer updates are persisted before new active oper
 ## Capability discovery and host registration
 
 `GET /v1/runtime/:taskId/capabilities` is authenticated, scoped to the conversation and business,
-and never waits for an absent local executor. `x-soko-device-id` identifies the requesting device.
+and never waits for an absent local executor. `x-grogoni-device-id` identifies the requesting device.
 Example for an installation without a local executor:
 
 ```json
@@ -89,7 +89,7 @@ test adapters exercise the transition contract; they are not a live-device infer
 ## Transfer API and lifecycle
 
 All paths below have prefix `/v1/runtime/:taskId`. The task is the existing conversation ID.
-Mutation requests use the owning account's authenticated session and `x-soko-device-id`.
+Mutation requests use the owning account's authenticated session and `x-grogoni-device-id`.
 
 | Request                        | Contract                                                                                                                                   |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |

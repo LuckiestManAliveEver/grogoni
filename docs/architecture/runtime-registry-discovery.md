@@ -5,7 +5,7 @@ describes the resulting shape.
 
 ## Why this exists
 
-Users need to find agents and models from three sources — Soko's own catalog, GitHub, and Hugging
+Users need to find agents and models from three sources — Grogoni's own catalog, GitHub, and Hugging
 Face — without React ever talking to GitHub or Hugging Face directly, and without a search request
 downloading full model weights or cloning a repository merely to render results. Harness discovery
 (importing a third-party executable `AgentRuntimeAdapter`) was retired - see
@@ -18,7 +18,7 @@ All types live in `packages/shared-types/src/runtime-registry.ts`.
 
 ```text
 RuntimeRegistryAdapter
-  id: "soko" | "github" | "huggingface"
+  id: "grogoni" | "github" | "huggingface"
   search(query, context) → RuntimeRegistrySearchItem[]
   inspect(ref, context)  → RuntimeRegistryResourceDetails
 ```
@@ -28,7 +28,7 @@ provider access:
 
 | Adapter                      | Wraps                                                                   |
 | ---------------------------- | ----------------------------------------------------------------------- |
-| `SokoCatalogRegistryAdapter` | `cp2_model_catalog`, `cp2_agent_catalog`, `AgentRuntimeAdapterRegistry` |
+| `GrogoniCatalogRegistryAdapter` | `cp2_model_catalog`, `cp2_agent_catalog`, `AgentRuntimeAdapterRegistry` |
 | `GitHubRegistryAdapter`      | `github-model-catalog.ts`, `github-agent-catalog.ts`                    |
 | `HuggingFaceRegistryAdapter` | `huggingface-model-catalog.ts`, `huggingface-agent-catalog.ts`          |
 
@@ -47,7 +47,7 @@ provider concurrently and never lets one provider's failure fail the whole reque
 {
   "items": [/* normalized RuntimeRegistrySearchItem[] */],
   "providers": {
-    "soko": { "status": "ok" },
+    "grogoni": { "status": "ok" },
     "github": { "status": "error", "errorMessage": "..." },
     "huggingface": { "status": "ok" }
   }
@@ -98,9 +98,9 @@ credentials, and executable references), and on success registered as a plain de
 downloading it; on selection, its checksum/license/revision are captured as provenance before any
 provisioning step, and provisioning never routes the artifact through the browser.
 
-## What Soko independently validates
+## What Grogoni independently validates
 
 Provider metadata (stars, claimed license, README content) is discovery input, never authoritative
-runtime truth. Registration always re-validates structurally against Soko's own contracts
+runtime truth. Registration always re-validates structurally against Grogoni's own contracts
 (`PortableAgentManifest`, model artifact compatibility) regardless of what the source
 repository/model card claims.

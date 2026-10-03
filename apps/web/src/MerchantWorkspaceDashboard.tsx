@@ -1,4 +1,4 @@
-import type { InvoiceSummary, ProductSummary } from "./soko-application-shared";
+import type { InvoiceSummary, ProductSummary } from "./grogoni-application-shared";
 import { formatMoney } from "./formatters";
 import {
   catalogueForDashboard,

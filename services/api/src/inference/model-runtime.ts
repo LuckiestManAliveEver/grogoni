@@ -6,17 +6,17 @@ import type {
   RuntimeModelCompletionResult,
   RuntimeModelPrompt,
   RuntimeModelProvider
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import {
   renderRuntimeModelFewShotExamples,
   renderRuntimeModelOutputInstructions
-} from "@soko/tool-core";
+} from "@grogoni/tool-core";
 import {
   type Bulkhead,
   BulkheadRejectedError,
   type CircuitBreaker,
   CircuitOpenError
-} from "@soko/resource-control";
+} from "@grogoni/resource-control";
 
 import type { ModelArtifactStore } from "./model-artifact-store.js";
 import { currentTurnId, turnStreamHub } from "./turn-stream.js";
@@ -703,7 +703,7 @@ export function buildInferenceInstructions(prompt: RuntimeModelPrompt): string {
   const fewShotExamples = renderRuntimeModelFewShotExamples(prompt.allowedTools);
   const templateRecipe = renderModelTemplateRecipe(prompt);
   return [
-    "You are the model behind the Soko agent runtime.",
+    "You are the model behind the Grogoni agent runtime.",
     renderRuntimeModelOutputInstructions(prompt.allowedTools),
     ...(fewShotExamples === "" ? [] : [fewShotExamples]),
     ...(templateRecipe === "" ? [] : [templateRecipe])
@@ -725,7 +725,7 @@ function renderModelTemplateRecipe(prompt: RuntimeModelPrompt): string {
   const recipe = prompt.modelTemplate;
   if (recipe === undefined) return "";
   return [
-    "# Soko model template recipe",
+    "# Grogoni model template recipe",
     `Template: ${recipe.templateId}@${recipe.version} (${recipe.templateVersionId})`,
     ...(recipe.task === null ? [] : [`Task: ${recipe.task}`]),
     `Allowed template tools: ${recipe.allowedTools.join(", ") || "none"}`,

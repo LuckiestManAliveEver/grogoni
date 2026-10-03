@@ -6,7 +6,7 @@ Date passed: 2026-07-01
 
 ## Product Goal
 
-Build Soko.market as a mobile-first, offline-capable, AI-assisted business operating system for informal and small businesses.
+Build Grogoni as a mobile-first, offline-capable, AI-assisted business operating system for informal and small businesses.
 
 The user should be able to run core commerce workflows through chat, with structured mobile screens for review and confirmation.
 
@@ -56,7 +56,7 @@ Beta adds:
 - document import
 - expanded Swahili support
 - payment webhook hardening
-- full Sokoclaw adapter
+- full Grogoniclaw adapter
 - optional cloud fallback
 - reports
 - notifications

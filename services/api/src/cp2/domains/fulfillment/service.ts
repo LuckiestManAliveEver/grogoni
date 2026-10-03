@@ -6,7 +6,7 @@
  * writer: every read queries Postgres and every mutation commits inside its own request
  * transaction (`withFulfillmentTransaction`), so the A17 invariants are enforced by the database
  * before the caller gets a response. Pure rules (validation, weight) come from
- * @soko/business-core; authorization and shop existence come from the Cp2Store through the narrow
+ * @grogoni/business-core; authorization and shop existence come from the Cp2Store through the narrow
  * `FulfillmentServiceDeps` interface - this module never reaches into store internals.
  *
  * In `CP2_STORE=memory` mode there is no database, so `createUnavailableFulfillmentService`
@@ -21,7 +21,7 @@ import {
   validateVehicleInput,
   type BusinessPermission,
   type DispatchPolicyInput
-} from "@soko/business-core";
+} from "@grogoni/business-core";
 import {
   formatGrams,
   formatNullableGrams,
@@ -35,7 +35,7 @@ import {
   type ShopLocationSummary,
   type VehicleSummary,
   type BusinessRole
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { Cp2Error, assertValid } from "../../cp2-error.js";
 import {
   fulfillmentRequestHash,
@@ -281,7 +281,7 @@ export function createUnavailableFulfillmentService(): FulfillmentService {
 /** Fails fast at boot, like `assertDatabaseMigrated`, if migration 090 has not been applied. */
 export async function assertFulfillmentSchema(pool: Pool): Promise<void> {
   const result = await pool.query<{ applied: boolean }>(
-    "select exists (select 1 from soko_schema_migrations where filename = $1) as applied",
+    "select exists (select 1 from grogoni_schema_migrations where filename = $1) as applied",
     [fulfillmentFoundationMigration]
   );
   if (result.rows[0]?.applied !== true) {
@@ -1072,7 +1072,7 @@ async function lockShopLocation(
   customerId: string
 ): Promise<void> {
   await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [
-    `soko.fulfillment.shop_location:${businessId}:${customerId}`
+    `grogoni.fulfillment.shop_location:${businessId}:${customerId}`
   ]);
 }
 

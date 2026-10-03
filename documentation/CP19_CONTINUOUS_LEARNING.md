@@ -6,18 +6,18 @@ CP19 is a future expansion checkpoint based on the continuous learning architect
 
 Primary source:
 
-- `documentation/Soko.market_Continuous_Learning_Architecture_v1.pdf`
+- `documentation/Grogoni_Continuous_Learning_Architecture_v1.pdf`
 
-The concept defines a continual learning system for Soko.market and the Sokoclaw runtime. The platform should improve primarily through runtime, memory, skills, evaluation, and production feedback rather than through direct model fine-tuning.
+The concept defines a continual learning system for Grogoni and the Grogoniclaw runtime. The platform should improve primarily through runtime, memory, skills, evaluation, and production feedback rather than through direct model fine-tuning.
 
 ## Product Intent
 
-Soko.market should become better at commerce tasks as stores use it, while preserving tenant isolation, deterministic business execution, human review, and model replaceability.
+Grogoni should become better at commerce tasks as stores use it, while preserving tenant isolation, deterministic business execution, human review, and model replaceability.
 
 The core principle is:
 
 ```text
-The intelligence of Soko.market lives primarily in the runtime rather than the language model.
+The intelligence of Grogoni lives primarily in the runtime rather than the language model.
 ```
 
 Learning should improve:
@@ -63,7 +63,7 @@ User request
 
 ## Guardrails
 
-Continuous learning must not bypass Soko's deterministic business runtime.
+Continuous learning must not bypass Grogoni's deterministic business runtime.
 
 Required guardrails:
 
@@ -71,7 +71,7 @@ Required guardrails:
 - Do not train or promote private store data into shared assets without explicit policy and consent.
 - Do not let model output directly mutate products, invoices, payments, tax, inventory, or customer balances.
 - Require human review before deploying runtime improvement proposals.
-- Run every runtime improvement through SokoBench or equivalent commerce evaluations.
+- Run every runtime improvement through GrogoniBench or equivalent commerce evaluations.
 - Preserve audit traces for learning-derived changes.
 - Keep generated skills versioned, testable, reversible, and permissioned.
 
@@ -82,7 +82,7 @@ Required guardrails:
 - Outcome classifier for success, failure, and partial success.
 - Pattern discovery process for repeated successful and failed workflows.
 - Skill promotion workflow with tests, metadata, versioning, and rollback.
-- SokoBench commerce benchmark for runtime changes.
+- GrogoniBench commerce benchmark for runtime changes.
 - Human review queue for improvement proposals.
 - Production intelligence dashboard for clustered failures, successes, and candidate fixes.
 
@@ -91,7 +91,7 @@ Required guardrails:
 1. Trace collection.
 2. Unified memory engine.
 3. Automatic skill extraction.
-4. SokoBench.
+4. GrogoniBench.
 5. Runtime self-improvement assistant.
 6. Marketplace-wide learning.
 
@@ -103,7 +103,7 @@ CP19 can be considered complete when:
 - memory promotion rules are implemented and audited
 - skill candidates can be generated from repeated successful workflows
 - promoted skills are tested, versioned, and reversible
-- SokoBench blocks unsafe runtime changes
+- GrogoniBench blocks unsafe runtime changes
 - human review is required before production deployment
 - participating stores benefit from approved improvements without exposing private data
 

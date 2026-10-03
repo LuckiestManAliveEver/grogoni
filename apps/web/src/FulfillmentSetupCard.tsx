@@ -8,7 +8,7 @@ import {
   type DispatchPolicySummary,
   type FulfillmentSettingsSummary,
   type VehicleSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { useAsyncActions } from "./hooks/useAsyncActions";
 import { useApiMutationRevision } from "./hooks/useApiMutationRevision";
 import { fetchFreshJson, patchJson, postJson } from "./api-helpers";

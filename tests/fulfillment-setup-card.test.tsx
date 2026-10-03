@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { CorridorSummary, DispatchPolicySummary, VehicleSummary } from "@soko/shared-types";
+import type { CorridorSummary, DispatchPolicySummary, VehicleSummary } from "@grogoni/shared-types";
 
 const getJson = vi.fn();
 const postJson = vi.fn();

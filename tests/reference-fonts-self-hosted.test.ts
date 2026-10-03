@@ -1,4 +1,4 @@
-// Regression coverage for audit A03 ("Fonts", docs/audits/soko-home-2026-09-17/audit.md): the
+// Regression coverage for audit A03 ("Fonts", docs/audits/grogoni-home-2026-09-17/audit.md): the
 // reference loads Sora 500/600/700 and IBM Plex Sans 400/500/600, but production only referenced
 // those family names in CSS with no @font-face rule or font asset, so `document.fonts` stayed
 // empty and every browser fell back to a system font. This checks the real files exist and the

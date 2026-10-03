@@ -80,7 +80,7 @@ not global configuration.
 
 ### PRESERVE — five global/system tables
 
-- `soko_schema_migrations` — migration ledger.
+- `grogoni_schema_migrations` — migration ledger.
 - `identity_providers` — global login-provider definitions.
 - `database_backup_runs`, `database_restore_drills`, `database_health_checks` — database operations
   metadata.

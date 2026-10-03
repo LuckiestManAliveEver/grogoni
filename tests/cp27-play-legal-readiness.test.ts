@@ -49,7 +49,7 @@ describe("CP27 Google Play legal readiness", () => {
       renderBlueprint
     ] = await Promise.all([
       readJson<PlayLegalReadiness>("../config/play-legal-readiness.json"),
-      readFile(new URL("../apps/web/src/SokoApplication.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../apps/web/src/GrogoniApplication.tsx", import.meta.url), "utf8"),
       readFile(new URL("../apps/web/src/DeleteAccountPanel.tsx", import.meta.url), "utf8"),
       readFile(new URL("../apps/web/src/AppRouter.tsx", import.meta.url), "utf8"),
       readFile(new URL("../apps/web/src/routes.ts", import.meta.url), "utf8"),
@@ -59,7 +59,7 @@ describe("CP27 Google Play legal readiness", () => {
 
     expect(readiness.checkpoint).toBe("CP27");
     expect(readiness.accountDeletion).toMatchObject({
-      externalRequestUrl: "https://soko.market/account-deletion",
+      externalRequestUrl: "https://grogoni.com/account-deletion",
       inAppPath: "Account Settings > Delete account",
       authenticationRequired: true,
       androidAppRequired: false,
@@ -85,10 +85,10 @@ describe("CP27 Google Play legal readiness", () => {
 
     expect(readiness.readinessStatus).toBe("proposed");
     expect(readiness.legalDocuments).toMatchObject({
-      privacyPolicyUrl: "https://soko.market/privacy",
+      privacyPolicyUrl: "https://grogoni.com/privacy",
       privacyPolicyStatus: "draft",
       privacyPolicyEffectiveOn: null,
-      termsUrl: "https://soko.market/terms",
+      termsUrl: "https://grogoni.com/terms",
       termsStatus: "draft",
       termsEffectiveOn: null,
       legalApprovalReference: null

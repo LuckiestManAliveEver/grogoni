@@ -8,7 +8,7 @@ import {
   type SupplierFormState,
   type SupplierSummary,
   emptySupplierForm
-} from "./soko-application-shared";
+} from "./grogoni-application-shared";
 
 import { isExplicitOfflineMode } from "./offline-runtime";
 import { formatMoney } from "./formatters";

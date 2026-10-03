@@ -4,7 +4,7 @@ Social OAuth login is disabled. The signup and login UI do not show Google, Face
 Apple, GitHub, Microsoft, LinkedIn, or X. The API marks those providers disabled and rejects OAuth
 start/callback requests and the legacy `/auth/social/login` endpoint with `403`.
 
-Phone authentication uses Soko phone-plus-PIN routes. It does not create or link a social identity,
+Phone authentication uses Grogoni phone-plus-PIN routes. It does not create or link a social identity,
 and it sends no SMS.
 
 ## Available choices

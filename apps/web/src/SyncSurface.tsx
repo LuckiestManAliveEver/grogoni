@@ -4,7 +4,7 @@ import {
   type OfflineCacheSnapshot,
   type SyncQueueItem,
   type SyncQueueSummary
-} from "./soko-application-shared";
+} from "./grogoni-application-shared";
 
 import { EmptyStateSurface } from "./EmptyStateSurface";
 

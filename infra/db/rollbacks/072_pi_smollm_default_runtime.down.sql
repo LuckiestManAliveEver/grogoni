@@ -1,16 +1,16 @@
 -- Restores only the repository-owned global binding. Tenant/user runtime selections are untouched.
 update cp2_native_runtime_bindings
-set parent_id = 'builtin:soko-agent:v1',
+set parent_id = 'builtin:grogoni-agent:v1',
   record = record || jsonb_build_object(
-    'agentId', 'builtin:soko-agent:v1',
-    'name', 'Soko default runtime',
+    'agentId', 'builtin:grogoni-agent:v1',
+    'name', 'Grogoni default runtime',
     'status', 'draft',
     'configuration', jsonb_build_object('source', 'repository-default'),
     'updatedAt', now()::text,
     'updatedBy', 'system'
   ),
   updated_at = now()
-where entity_id = 'builtin:soko-default-runtime:v1'
+where entity_id = 'builtin:grogoni-default-runtime:v1'
   and parent_id = 'builtin:pi:v1'
   and record -> 'configuration' ->> 'source' = 'repository-default';
 

@@ -1,6 +1,6 @@
 import { AgentRuntimeAdapterRegistry } from "./agent-runtime-adapter.js";
 import { createPiAgentRuntimeAdapter } from "./pi-agent-runtime-adapter.js";
-import { createSokoAgentRuntimeAdapter } from "./soko-agent-runtime-adapter.js";
+import { createGrogoniAgentRuntimeAdapter } from "./grogoni-agent-runtime-adapter.js";
 import {
   createZeroClawAgentRuntimeAdapter,
   type ZeroClawAgentRuntimeOptions
@@ -16,6 +16,6 @@ export function createDefaultAgentRuntimeAdapterRegistry(
 ): AgentRuntimeAdapterRegistry {
   return new AgentRuntimeAdapterRegistry()
     .register(createZeroClawAgentRuntimeAdapter(options.zeroclaw ?? { gateway: null }))
-    .register(createSokoAgentRuntimeAdapter())
+    .register(createGrogoniAgentRuntimeAdapter())
     .register(createPiAgentRuntimeAdapter());
 }

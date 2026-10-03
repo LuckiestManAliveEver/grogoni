@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 //
 // Real-behavior regression for audit A01 ("Fresh visitors lose the composer",
-// docs/audits/soko-home-2026-09-17/audit.md). The existing coverage for continueToSoko
-// (tests/soko-home-progressive-entry.test.ts) only asserts that certain source strings are
-// present - it never exercises the actual request continueToSoko sends. The bug the audit found:
-// continueToSoko posted `body: {}` to /auth/continue, which
+// docs/audits/grogoni-home-2026-09-17/audit.md). The existing coverage for continueToGrogoni
+// (tests/grogoni-home-progressive-entry.test.ts) only asserts that certain source strings are
+// present - it never exercises the actual request continueToGrogoni sends. The bug the audit found:
+// continueToGrogoni posted `body: {}` to /auth/continue, which
 // services/api/src/cp2/domains/device-bootstrap/shared.ts's normalizeDeviceRecoveryPublicKey
 // rejects with 400 device_recovery_key_required for a genuinely fresh visitor (no session cookie
 // at all - services/api/src/cp2/domains/device-bootstrap/store.ts's continueWithDevice only skips
@@ -37,7 +37,7 @@ function freshDeviceSession(): unknown {
       primaryAuthDestination: "device:abc",
       identityLevel: "device"
     },
-    user: { id: "user-1", accountId: "device-account-1", displayName: "Soko user", language: "en" },
+    user: { id: "user-1", accountId: "device-account-1", displayName: "Grogoni user", language: "en" },
     session: { id: "session-1", expiresAt: "2099-01-01T00:00:00.000Z" },
     deviceRecoveryCredentialId: "cred-1"
   };
@@ -50,8 +50,8 @@ function Harness({ onReady }: { onReady: (api: AuthApi) => void }) {
     business: null,
     setBusiness: () => undefined,
     setSession: () => undefined,
-    sokoSessionContext: null,
-    setSokoSessionContext: () => undefined,
+    grogoniSessionContext: null,
+    setGrogoniSessionContext: () => undefined,
     setAgentSettings: () => undefined,
     setMode: () => undefined,
     setView: () => undefined,
@@ -146,7 +146,7 @@ describe("fresh visitor device continue (audit A01)", () => {
     });
 
     await act(async () => {
-      await latestApi!.continueToSoko();
+      await latestApi!.continueToGrogoni();
     });
 
     const { recoverDeviceAccount } = await import("../apps/web/src/device-recovery");

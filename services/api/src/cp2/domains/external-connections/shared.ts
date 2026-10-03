@@ -19,7 +19,7 @@ import type {
   ExternalRegistryConnection,
   ExternalRegistryConnectionStatus,
   ExternalRegistryProvider
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
 /**
  * Server-side record. Extends the public summary type with the encrypted token - this field must

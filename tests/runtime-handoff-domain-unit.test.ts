@@ -59,7 +59,7 @@ function buildModel(id: string, overrides: Partial<AiModelSummary> = {}): AiMode
   return {
     id,
     label: id,
-    provider: "soko",
+    provider: "grogoni",
     description: "Test model",
     capabilities: ["chat"],
     available: true,

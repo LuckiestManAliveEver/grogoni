@@ -23,7 +23,7 @@ import type {
   PublicStorefrontMessageSummary,
   MessageChannel,
   OrderSource
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import {
   createInvoicePaymentSummary,
   createInvoicePreview,
@@ -55,8 +55,8 @@ import {
   type PaymentInput,
   type ProductInput,
   type StockAdjustmentInput
-} from "@soko/business-core";
-import type { BusinessEvent } from "@soko/event-core";
+} from "@grogoni/business-core";
+import type { BusinessEvent } from "@grogoni/event-core";
 import { assertValid, Cp2Error } from "../../cp2-error.js";
 import { roundMoney } from "../../money.js";
 import {
@@ -667,7 +667,7 @@ export class SalesDomain {
       throw new Cp2Error(
         409,
         "customer_account_already_linked",
-        "This Soko account is already linked to another customer."
+        "This Grogoni account is already linked to another customer."
       );
     }
     const linked: CustomerSummary = {
@@ -1213,9 +1213,9 @@ export class SalesDomain {
       status: "draft",
       confirmedAt: null,
       now,
-      // A storefront order is placed in the Soko storefront chat by a guest, not a member.
-      source: "SOKO_CHAT",
-      sourceMessageChannel: "soko"
+      // A storefront order is placed in the Grogoni storefront chat by a guest, not a member.
+      source: "GROGONI_CHAT",
+      sourceMessageChannel: "grogoni"
     });
     this.invoices.set(invoice.id, invoice);
     const items = resolvedItems.map(({ product, quantity }) => ({

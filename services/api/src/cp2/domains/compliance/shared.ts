@@ -1,4 +1,4 @@
-import type { BetaFeatureFlagKey, LaunchChecklistKey } from "@soko/shared-types";
+import type { BetaFeatureFlagKey, LaunchChecklistKey } from "@grogoni/shared-types";
 
 export function deviceTrustKey(businessId: string, userId: string, deviceId: string): string {
   return `${businessId}:${userId}:${deviceId}`;

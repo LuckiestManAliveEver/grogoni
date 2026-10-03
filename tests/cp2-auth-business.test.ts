@@ -37,7 +37,7 @@ interface CreateBusinessResponse {
   business: {
     id: string;
     language: string;
-    sokoId: string;
+    grogoniId: string;
   };
   membership: {
     role: string;
@@ -60,7 +60,7 @@ interface ProductResponse {
 
 interface PublicStorefrontResponse {
   agentId: string;
-  sokoId: string;
+  grogoniId: string;
   commerceAddress: string;
   businessName: string;
   presence: { status: "online" | "private" | "offline"; updatedAt: string };
@@ -91,7 +91,7 @@ describe("CP2 auth and business creation", () => {
     const auth = verifyResponse.json<VerifyOtpResponse>();
 
     expect(verifyResponse.statusCode).toBe(200);
-    expect(sessionCookie).toContain("soko_session=");
+    expect(sessionCookie).toContain("grogoni_session=");
 
     const sessionResponse = await app.inject({
       method: "GET",
@@ -115,7 +115,7 @@ describe("CP2 auth and business creation", () => {
     );
 
     expect(business.business.language).toBe("sw");
-    expect(business.business.sokoId).toBe("soko.janes-shop");
+    expect(business.business.grogoniId).toBe("grogoni.janes-shop");
     expect(business.membership.role).toBe("owner");
 
     const ownerRole = await postJson<RoleCheckResponse>(
@@ -306,7 +306,7 @@ describe("CP2 auth and business creation", () => {
       challengeId: otpResponse.challengeId,
       code: otpResponse.devOtp
     });
-    const sessionCookie = `soko_session=${invalidRole.session.id}`;
+    const sessionCookie = `grogoni_session=${invalidRole.session.id}`;
     const createdBusiness = await app.inject({
       method: "POST",
       url: "/businesses",
@@ -384,7 +384,7 @@ describe("CP2 auth and business creation", () => {
     const sessionCookie = extractSessionCookie(verifyResponse.headers["set-cookie"]);
 
     expect(verifyResponse.statusCode).toBe(200);
-    expect(sessionCookie).toContain("soko_session=");
+    expect(sessionCookie).toContain("grogoni_session=");
 
     await app.close();
   });
@@ -436,7 +436,7 @@ describe("CP2 auth and business creation", () => {
       primaryAuthDestination: phone
     });
     expect(signupResult).not.toHaveProperty("recoveryCode");
-    expect(signupCookie).toContain("soko_session=");
+    expect(signupCookie).toContain("grogoni_session=");
     expect(store.snapshot().otpChallenges).toHaveLength(0);
     expect(store.snapshot().accountPinHashes[0]).toMatchObject({
       accountId: signupResult.account.id
@@ -480,7 +480,7 @@ describe("CP2 auth and business creation", () => {
     });
     expect(login.statusCode).toBe(200);
     const loginCookie = extractSessionCookie(login.headers["set-cookie"]);
-    expect(loginCookie).toContain("soko_session=");
+    expect(loginCookie).toContain("grogoni_session=");
 
     const retiredRecovery = await app.inject({
       method: "POST",
@@ -494,7 +494,7 @@ describe("CP2 auth and business creation", () => {
       })
     });
     expect(retiredRecovery.statusCode).toBe(404);
-    expect(loginCookie).toContain("soko_session=");
+    expect(loginCookie).toContain("grogoni_session=");
 
     await app.close();
   });
@@ -680,7 +680,7 @@ describe("CP2 auth and business creation", () => {
     const loginCookie = extractSessionCookie(login.headers["set-cookie"]);
 
     expect(login.statusCode).toBe(200);
-    expect(loginCookie).toContain("soko_session=");
+    expect(loginCookie).toContain("grogoni_session=");
     expect(login.json<VerifyOtpResponse>().account.id).toBe(
       verifyResponse.json<VerifyOtpResponse>().account.id
     );
@@ -810,7 +810,7 @@ describe("CP2 auth and business creation", () => {
       app,
       `/businesses/${business.business.id}/products`,
       {
-        name: "Soko Rice",
+        name: "Grogoni Rice",
         sku: "PRIVATE-SKU",
         unit: "2 kg bag",
         quantity: 4,
@@ -834,7 +834,7 @@ describe("CP2 auth and business creation", () => {
 
     const publicResponse = await app.inject({
       method: "GET",
-      url: `/public/storefronts/${encodeURIComponent(business.business.sokoId)}`
+      url: `/public/storefronts/${encodeURIComponent(business.business.grogoniId)}`
     });
     const privateProducts = await app.inject({
       method: "GET",
@@ -844,15 +844,15 @@ describe("CP2 auth and business creation", () => {
     expect(publicResponse.statusCode).toBe(200);
     expect(privateProducts.statusCode).toBe(401);
     expect(publicResponse.json<PublicStorefrontResponse>()).toEqual({
-      agentId: business.business.sokoId,
-      sokoId: business.business.sokoId,
-      commerceAddress: "public-shop@soko.market",
+      agentId: business.business.grogoniId,
+      grogoniId: business.business.grogoniId,
+      commerceAddress: "public-shop@grogoni.com",
       businessName,
       presence: { status: "online", updatedAt: "1970-01-01T00:00:00.000Z" },
       products: [
         {
           id: stockedProduct.id,
-          name: "Soko Rice",
+          name: "Grogoni Rice",
           unit: "2 kg bag",
           available: true,
           sellingPrice: 180,

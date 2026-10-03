@@ -3,7 +3,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ShopCapabilitiesSummary } from "@soko/shared-types";
+import type { ShopCapabilitiesSummary } from "@grogoni/shared-types";
 import { runtimeToolRegistry, shopModuleRegistry } from "../packages/tool-core/src";
 import { buildShopCapabilities } from "../services/api/src/cp2/domains/shop-hub/capabilities";
 
@@ -64,7 +64,7 @@ describe("ShopHub", () => {
         <ShopHub
           businessId="shop-a"
           businessName="Mama Wanjiru Duka"
-          sokoId="soko.mama-wanjiru"
+          grogoniId="grogoni.mama-wanjiru"
           language="en"
           onOpenSurface={onOpenSurface}
           onAskAgent={onAskAgent}
@@ -101,7 +101,7 @@ describe("ShopHub", () => {
       hub.categories.flatMap((category) => category.modules.map((module) => module.id))
     );
     expect(host.querySelector(".shop-hub-slug")?.textContent).toMatch(
-      /\/agent\/soko\.mama-wanjiru$/u
+      /\/agent\/grogoni\.mama-wanjiru$/u
     );
   });
 
@@ -208,7 +208,7 @@ describe("Shop Hub stays registry-driven", () => {
   });
 
   it("routes Go to my shop to the hub", () => {
-    const application = readFileSync("apps/web/src/SokoApplication.tsx", "utf8");
+    const application = readFileSync("apps/web/src/GrogoniApplication.tsx", "utf8");
     const onGoToShop = application.slice(application.indexOf("onGoToShop={() => {"));
     expect(onGoToShop.slice(0, 200)).toContain("openShopHub();");
     const navigation = readFileSync("apps/web/src/hooks/useNavigationState.ts", "utf8");

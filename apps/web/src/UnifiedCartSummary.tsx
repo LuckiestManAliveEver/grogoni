@@ -1,4 +1,4 @@
-import type { BuyResultSourceKind } from "@soko/shared-types";
+import type { BuyResultSourceKind } from "@grogoni/shared-types";
 
 export interface UnifiedCartItem {
   cartItemId: string;

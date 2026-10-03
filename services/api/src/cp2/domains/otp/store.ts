@@ -1,5 +1,5 @@
 import { randomInt, randomUUID } from "node:crypto";
-import type { AccountSummary, AuthChannel, SessionSummary, UserSummary } from "@soko/shared-types";
+import type { AccountSummary, AuthChannel, SessionSummary, UserSummary } from "@grogoni/shared-types";
 import { Cp2Error } from "../../cp2-error.js";
 import { normalizeDestination } from "../../phone-identity.js";
 import {
@@ -313,7 +313,7 @@ export class OtpDomain {
       throw new Cp2Error(
         404,
         "recovery_account_not_found",
-        "No Soko account is linked to this recovery contact."
+        "No Grogoni account is linked to this recovery contact."
       );
     }
 

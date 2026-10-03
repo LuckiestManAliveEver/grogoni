@@ -1,4 +1,4 @@
-import { Surface } from "@soko/ui";
+import { Surface } from "@grogoni/ui";
 import { LegalMarkdownBody, parseNumberedSections, type LegalSection } from "./LegalMarkdown";
 import partOneMarkdown from "./terms-v1-draft-part-i.md?raw";
 import partTwoMarkdown from "./terms-v1-draft-part-ii.md?raw";
@@ -45,15 +45,15 @@ const termsParts: TermsPart[] = [
 
 export default function TermsOfServicePage() {
   return (
-    <Surface title="Soko.market Terms of Service — Version 1.0 Draft">
+    <Surface title="Grogoni Terms of Service — Version 1.0 Draft">
       <a className="legal-skip-link" href="#terms-content">
         Skip to terms
       </a>
       <main className="legal-document-shell">
         <header className="legal-document-header">
-          <a className="legal-brand" href="/" aria-label="Back to Soko.market home">
+          <a className="legal-brand" href="/" aria-label="Back to Grogoni home">
             <AppIcon className="legal-brand-icon" />
-            <span>soko.market</span>
+            <span>grogoni</span>
           </a>
           <p className="eyebrow">Legal</p>
           <h1>Terms of Service</h1>
@@ -61,7 +61,7 @@ export default function TermsOfServicePage() {
           <p className="legal-effective-date">Effective Date: To Be Inserted</p>
           <p className="legal-intro">
             Commercial, security, enforcement, consumer-rights, liability, and general terms for use
-            of Soko.market.
+            of Grogoni.
           </p>
         </header>
 
@@ -131,7 +131,7 @@ export default function TermsOfServicePage() {
                 By creating an account, accessing, or using the Services, you acknowledge that you
                 have read, understood, and agree to be bound by these Terms of Service.
               </p>
-              <p>© Soko.market. All rights reserved.</p>
+              <p>© Grogoni. All rights reserved.</p>
             </footer>
           </article>
         </div>

@@ -2,7 +2,7 @@
 
 ## Context
 
-Soko had real, working resilience mechanisms scattered across the codebase - `@fastify/rate-limit`
+Grogoni had real, working resilience mechanisms scattered across the codebase - `@fastify/rate-limit`
 backed by Redis, per-boundary timeouts with `AbortController` propagation, a coalesced/retried
 async persistence queue, graceful shutdown, and correctly-separated liveness/readiness endpoints.
 What it did not have: any circuit breaker anywhere in the repository, a concurrency bound on
@@ -14,23 +14,23 @@ implementations with inconsistent timeout coverage (the inference artifact pool 
 and a production readiness probe (`/health/ready`) that ran a 12-full-table-scan parity check
 inline on every poll against the same pool serving live traffic.
 
-Soko's business store is also architecturally unusual for this kind of audit: `Cp2Store` loads the
+Grogoni's business store is also architecturally unusual for this kind of audit: `Cp2Store` loads the
 entire dataset into one process's memory at boot (`docs/single-instance-store-ceiling.md`), so the
 classic "a background query holds every DB connection, blocking a critical request" failure mode
 mostly doesn't apply to the request-handling critical path here - it applies to the async
 persistence path, the inference artifact path, and the health-check path instead. Any resource
-isolation work had to target Soko's actual contention points, not a generic template.
+isolation work had to target Grogoni's actual contention points, not a generic template.
 
 ## Decision
 
-Soko uses bulkhead isolation, bounded concurrency, explicit backpressure, timeouts, and circuit
+Grogoni uses bulkhead isolation, bounded concurrency, explicit backpressure, timeouts, and circuit
 breakers to prevent secondary workloads (inference, OCR, scheduled background jobs) from
 exhausting resources the critical commerce path depends on, and graceful degradation to keep that
 path available when a secondary workload is degraded or down.
 
 Concretely:
 
-- **One reusable bulkhead primitive** (`@soko/resource-control`'s `createBulkhead`: bounded
+- **One reusable bulkhead primitive** (`@grogoni/resource-control`'s `createBulkhead`: bounded
   concurrency + bounded wait queue, rejects instead of hanging), applied to inference (shared
   across every model on a given execution target, since `ai-runtime` enforces one shared budget
   regardless of model) and OCR (replacing its previously private semaphore).
@@ -62,7 +62,7 @@ Concretely:
   per-model budgets would only let one model starve another's share of the same underlying
   capacity, not add real isolation.
 - **Advisory-lock-based cross-instance coordination for the six scheduled runners**: rejected for
-  this pass. `render.yaml` deploys exactly one `soko-market` instance today, and
+  this pass. `render.yaml` deploys exactly one `grogoni` instance today, and
   `docs/single-instance-store-ceiling.md` explicitly says not to add a second instance until that
   document's ceiling is resolved. Building cross-instance locking against a deployment topology
   that does not exist, and that the repository's own architecture doc says not to introduce yet,
@@ -75,7 +75,7 @@ Concretely:
   (`INFERENCE_BUSY`, `INFERENCE_CIRCUIT_OPEN`) flow into that existing machinery unchanged.
 - **A hosted rate-limiting or queueing service (Redis Streams, a message broker)**: rejected -
   every mechanism in this pass is in-process. The existing Redis instance
-  (`soko-market-rate-limit-cache`) already backs `@fastify/rate-limit` for a different concern
+  (`grogoni-rate-limit-cache`) already backs `@fastify/rate-limit` for a different concern
   (HTTP request volume); resource isolation for expensive _workloads_ (not raw request count) does
   not need a second infrastructure dependency.
 - **Live-sampled Prometheus gauges for OCR's bulkhead/breaker state, matching inference's**:
@@ -107,7 +107,7 @@ resource-isolation.md §16) all have defaults matched to today's real traffic/ca
 independently fail-closed - misconfiguration is a startup error, not a silent bad default.
 
 Nothing in this pass changes the single-instance-store limitation
-(`docs/single-instance-store-ceiling.md`) - a second `soko-market` instance is still unsafe, for
+(`docs/single-instance-store-ceiling.md`) - a second `grogoni` instance is still unsafe, for
 reasons this pass did not attempt to fix, and the runbook says so explicitly.
 
 ## Security implications

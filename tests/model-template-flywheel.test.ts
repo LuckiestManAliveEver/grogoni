@@ -13,13 +13,13 @@ import { executeDeterministicRuleExpertise } from "../services/api/src/cp2/domai
 import type {
   ModelTemplateRecord,
   ModelTemplateVersionRecord,
-  SokoModelTemplateManifestV1,
+  GrogoniModelTemplateManifestV1,
   TemplateReportCard
 } from "../services/api/src/cp2/domains/model-templates/types";
 
 const baseModelId = "qwen2.5-0.5b-android";
 
-describe("Soko Model Templates expertise flywheel", () => {
+describe("Grogoni Model Templates expertise flywheel", () => {
   it("runs the deterministic recursive expertise demonstration end to end", async () => {
     const result = await runRetailProductExpertDemo();
 
@@ -41,7 +41,7 @@ describe("Soko Model Templates expertise flywheel", () => {
     expect(result.resolved?.compiledInstructions.join("\n")).toContain("pishori rice");
     expect(result.rollback.decision).toBe("ROLLED_BACK");
     expect(result.portable).toMatchObject({
-      fileName: "retail-product-classifier-1.1.0.soko",
+      fileName: "retail-product-classifier-1.1.0.grogoni.com",
       fileCount: 3
     });
     expect(result.telemetry.map((event) => event.event)).toEqual(
@@ -290,7 +290,7 @@ describe("Soko Model Templates expertise flywheel", () => {
     expect(prompts.at(-1)?.allowedTools).toEqual([]);
 
     const portable = await api<{
-      manifest: SokoModelTemplateManifestV1;
+      manifest: GrogoniModelTemplateManifestV1;
       manifestSha256: string;
       files: Record<string, string>;
     }>(
@@ -305,7 +305,7 @@ describe("Soko Model Templates expertise flywheel", () => {
         expectedManifestSha256: portable.manifestSha256,
         files: { ...portable.files, "runtime/prompt.txt": "tampered" }
       })
-    ).toThrowError(expect.objectContaining({ code: "SOKO_ARTIFACT_CHECKSUM_INVALID" }));
+    ).toThrowError(expect.objectContaining({ code: "GROGONI_ARTIFACT_CHECKSUM_INVALID" }));
 
     const crossTenant = await app.inject({
       method: "GET",
@@ -522,7 +522,7 @@ describe("Soko Model Templates expertise flywheel", () => {
     expect(() => validateManifest(valid)).not.toThrow();
     expect(() =>
       validateManifest({ ...valid, runtime: { ...valid.runtime, tools: ["shell.exec"] } })
-    ).toThrowError(expect.objectContaining({ code: "SOKO_MANIFEST_INVALID" }));
+    ).toThrowError(expect.objectContaining({ code: "GROGONI_MANIFEST_INVALID" }));
     expect(() =>
       validateManifest({
         ...valid,
@@ -541,7 +541,7 @@ describe("Soko Model Templates expertise flywheel", () => {
           ]
         }
       })
-    ).toThrowError(expect.objectContaining({ code: "SOKO_MANIFEST_INVALID" }));
+    ).toThrowError(expect.objectContaining({ code: "GROGONI_MANIFEST_INVALID" }));
   });
 
   it("adds a forward-only relational migration without reviving retired execution fabric tables", async () => {
@@ -558,9 +558,9 @@ describe("Soko Model Templates expertise flywheel", () => {
   });
 });
 
-function manifest(businessId: string, agentId: string): SokoModelTemplateManifestV1 {
+function manifest(businessId: string, agentId: string): GrogoniModelTemplateManifestV1 {
   return {
-    format: "soko-template",
+    format: "grogoni-template",
     formatVersion: 1,
     template: {
       id: "retail-template-test",

@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { ProductNestedEditor } from "../apps/web/src/CatalogueNestedCard";
-import { emptyProductForm } from "../apps/web/src/soko-application-shared";
+import { emptyProductForm } from "../apps/web/src/grogoni-application-shared";
 
 const fields = [
   { id: "name", label: "Name", inputType: "text" as const, required: true },

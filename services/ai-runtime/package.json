@@ -1,5 +1,5 @@
 {
-  "name": "@soko/ai-runtime",
+  "name": "@grogoni/ai-runtime",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -18,7 +18,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "pnpm --filter @soko/shared-types build && pnpm build:package",
+    "build": "pnpm --filter @grogoni/shared-types build && pnpm build:package",
     "build:package": "pnpm clean && tsc -p tsconfig.build.json",
     "clean": "rm -rf dist",
     "dev": "vercel dev",
@@ -27,7 +27,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@soko/shared-types": "workspace:*",
+    "@grogoni/shared-types": "workspace:*",
     "node-llama-cpp": "3.18.1"
   }
 }

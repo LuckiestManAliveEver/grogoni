@@ -1,11 +1,11 @@
-import { createEvent, type BusinessEvent } from "@soko/event-core";
+import { createEvent, type BusinessEvent } from "@grogoni/event-core";
 import type {
   CountryTaxConfigSummary,
   TaxCountryCode,
   VerificationTier,
   VerificationTierSummary
-} from "@soko/shared-types";
-import { invalid, type ValidationResult, valid } from "@soko/tool-core";
+} from "@grogoni/shared-types";
+import { invalid, type ValidationResult, valid } from "@grogoni/tool-core";
 
 import { roundMoney, isValidTaxRate } from "../shared/money.js";
 import { normalizeOptionalText, nullableText } from "../shared/text-normalization.js";

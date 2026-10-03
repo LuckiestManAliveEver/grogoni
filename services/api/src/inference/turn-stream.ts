@@ -1,11 +1,11 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
-import type { AgentTurnStreamEvent } from "@soko/shared-types";
-import { createRuntimeReplyTextStream } from "@soko/tool-core";
+import type { AgentTurnStreamEvent } from "@grogoni/shared-types";
+import { createRuntimeReplyTextStream } from "@grogoni/tool-core";
 
 /**
  * Per-turn reply streaming without touching the turn pipeline. A client that wants to watch a turn
- * sends `x-soko-turn-id` on the turn request (POST /v1/messages or /businesses/:id/runtime/turns);
+ * sends `x-grogoni-turn-id` on the turn request (POST /v1/messages or /businesses/:id/runtime/turns);
  * app.ts runs the whole request inside `turnContext`, so any model adapter deep in the pipeline
  * can find the turn id with `currentTurnId()` and publish reply text to the hub. The client reads
  * it from GET /v1/ai/turn-stream/:turnId (server-sent events). The final, validated reply still

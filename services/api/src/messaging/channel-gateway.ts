@@ -8,7 +8,7 @@ import type {
   ConversationChannelSummary,
   MessageChannel,
   PlatformIdentitySummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
 export type ChannelErrorCode =
   | "CHANNEL_NOT_CONNECTED"
@@ -229,10 +229,10 @@ export class ChannelGateway {
       return { endpoint: recent, reason: "most_recent_reachable_channel" };
     }
 
-    const soko = input.endpoints.find(
-      (endpoint) => endpoint.provider === "soko" && canSend(endpoint)
+    const grogoni = input.endpoints.find(
+      (endpoint) => endpoint.provider === "grogoni" && canSend(endpoint)
     );
-    if (soko !== undefined) return { endpoint: soko, reason: "soko_identity" };
+    if (grogoni !== undefined) return { endpoint: grogoni, reason: "grogoni_identity" };
 
     const eligible = input.endpoints.find(canSend);
     if (eligible !== undefined) {
@@ -373,7 +373,7 @@ export function createChannelGatewayFromEnvironment(
     );
   }
   return new ChannelGateway([
-    new SokoChannelAdapter(),
+    new GrogoniChannelAdapter(),
     new TelegramChannelAdapter({
       token: telegramToken,
       webhookSecret: telegramSecret,
@@ -435,7 +435,7 @@ export function createChannelGatewayFromEnvironment(
 
 export function providerToMessageChannel(provider: ChannelProvider): MessageChannel {
   const channels: Record<ChannelProvider, MessageChannel> = {
-    soko: "soko",
+    grogoni: "grogoni",
     telegram: "telegram",
     whatsapp: "whatsapp_business",
     messenger: "facebook_messenger",
@@ -449,8 +449,8 @@ export function providerToMessageChannel(provider: ChannelProvider): MessageChan
   return channels[provider];
 }
 
-class SokoChannelAdapter implements MessagingChannelAdapter {
-  readonly provider = "soko" as const;
+class GrogoniChannelAdapter implements MessagingChannelAdapter {
+  readonly provider = "grogoni" as const;
 
   readiness(): ChannelProviderReadiness {
     return {
@@ -589,7 +589,7 @@ class TelegramChannelAdapter implements MessagingChannelAdapter {
 }
 
 function disabledAdapter(
-  provider: Exclude<ChannelProvider, "soko" | "telegram">,
+  provider: Exclude<ChannelProvider, "grogoni" | "telegram">,
   capabilities: ChannelCapability[],
   requirement: string
 ): MessagingChannelAdapter {

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import type { WebSocket } from "ws";
-import type { SyncRealtimeChangesAvailableEvent, SyncRealtimeEvent } from "@soko/shared-types";
+import type { SyncRealtimeChangesAvailableEvent, SyncRealtimeEvent } from "@grogoni/shared-types";
 import { buildApi } from "../services/api/src/app";
 import { createCp2Store } from "../services/api/src/cp2/store";
 

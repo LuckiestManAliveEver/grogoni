@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { open, rename, stat, unlink } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
-import type { ResolvedModelArtifact } from "@soko/shared-types";
+import type { ResolvedModelArtifact } from "@grogoni/shared-types";
 
 import { InferenceServiceError } from "./service-error.js";
 
@@ -15,7 +15,7 @@ export async function downloadVerifiedArtifact(input: {
 }): Promise<{ path: string; downloadMs: number }> {
   validateArtifact(input.artifact, input.allowedHosts, input.maximumBytes);
   const cacheKey = input.artifact.sha256 ?? input.artifact.id.replace(/[^a-z0-9._-]/giu, "_");
-  const finalPath = join(tmpdir(), `soko-model-${cacheKey}.gguf`);
+  const finalPath = join(tmpdir(), `grogoni-model-${cacheKey}.gguf`);
   const existing = await stat(finalPath).catch(() => null);
   if (
     existing !== null &&

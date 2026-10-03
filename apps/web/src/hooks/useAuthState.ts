@@ -5,12 +5,12 @@ import type {
   AccountShopSummary,
   AuthBootstrapResponse,
   AuthBootstrapState,
-  SokoChatSurface,
-  SokoSessionContext
-} from "@soko/shared-types";
+  GrogoniChatSurface,
+  GrogoniSessionContext
+} from "@grogoni/shared-types";
 
 import type { AccountRestorationResult } from "../features/account-restoration/AccountRestorationPanel";
-import type { ShellView, SokoMode } from "../app-shell";
+import type { ShellView, GrogoniMode } from "../app-shell";
 import {
   clearCachedAuthSession,
   readCachedAuthSession,
@@ -62,7 +62,7 @@ import {
   type RoleCheckResponse,
   type SessionResponse,
   type SocialSignupProvider
-} from "../soko-application-shared";
+} from "../grogoni-application-shared";
 
 interface UseAuthStateDeps {
   business: ActiveBusiness | null;
@@ -70,14 +70,14 @@ interface UseAuthStateDeps {
   setSession: (
     session: SessionResponse | null | ((current: SessionResponse | null) => SessionResponse | null)
   ) => void;
-  sokoSessionContext: SokoSessionContext | null;
-  setSokoSessionContext: (context: SokoSessionContext | null) => void;
+  grogoniSessionContext: GrogoniSessionContext | null;
+  setGrogoniSessionContext: (context: GrogoniSessionContext | null) => void;
   setAgentSettings: (agent: AgentSettings) => void;
-  setMode: (mode: SokoMode) => void;
+  setMode: (mode: GrogoniMode) => void;
   setView: (view: ShellView) => void;
   setStatusMessage: (message: string) => void;
   setNetworkGraph: (graph: NetworkGraphSummary) => void;
-  navigateToView: (nextView: ShellView, options?: { replace?: boolean; mode?: SokoMode }) => void;
+  navigateToView: (nextView: ShellView, options?: { replace?: boolean; mode?: GrogoniMode }) => void;
   loadMarketplaceIntroState: () => Promise<void>;
   validateStoredBusiness: () => Promise<void>;
   accountDeletionIntent: boolean;
@@ -112,8 +112,8 @@ export function useAuthState(deps: UseAuthStateDeps) {
     business,
     setBusiness,
     setSession,
-    sokoSessionContext,
-    setSokoSessionContext,
+    grogoniSessionContext,
+    setGrogoniSessionContext,
     setAgentSettings,
     setMode,
     setView,
@@ -239,7 +239,7 @@ export function useAuthState(deps: UseAuthStateDeps) {
       });
 
       if (!roleCheck.allowed) {
-        setStatusMessage("This social profile is not linked to this Soko shop yet");
+        setStatusMessage("This social profile is not linked to this Grogoni shop yet");
         return;
       }
 
@@ -307,7 +307,7 @@ export function useAuthState(deps: UseAuthStateDeps) {
 
   const deviceContinueAttemptTtlMs = 10 * 60 * 1000;
 
-  // The one-tap "Continue to Soko" idempotency key (docs/authentication/progressive-identity.md):
+  // The one-tap "Continue to Grogoni" idempotency key (docs/authentication/progressive-identity.md):
   // a short-lived bearer retry capability, not an account ID or credential, kept only until the
   // attempt succeeds or this ten-minute window lapses so a relaunch mid-attempt resolves to the
   // same account instead of minting a second one.
@@ -348,10 +348,10 @@ export function useAuthState(deps: UseAuthStateDeps) {
    * public key - services/api/src/cp2/domains/device-bootstrap/shared.ts's
    * normalizeDeviceRecoveryPublicKey throws 400 device_recovery_key_required on an empty body.
    * prepareDeviceRecoveryCredential/commitDeviceRecoveryCredential already existed for this but
-   * had no caller (audit A01, docs/audits/soko-home-2026-09-17/audit.md): this was the missing
+   * had no caller (audit A01, docs/audits/grogoni-home-2026-09-17/audit.md): this was the missing
    * wiring, not a new capability.
    */
-  async function continueToSoko(): Promise<SessionResponse | null> {
+  async function continueToGrogoni(): Promise<SessionResponse | null> {
     const idempotencyKey = readDeviceContinueAttemptKey();
     try {
       const { publicKeyJwk } = await prepareDeviceRecoveryCredential();
@@ -424,7 +424,7 @@ export function useAuthState(deps: UseAuthStateDeps) {
             saveCachedAuthSession(recovered);
             setAuthBootstrapState("authenticated");
             setIsAuthOpen(false);
-            setStatusMessage("Soko restored this device account.");
+            setStatusMessage("Grogoni restored this device account.");
             await loadMarketplaceIntroState();
             await validateStoredBusiness();
             return recovered;
@@ -433,7 +433,7 @@ export function useAuthState(deps: UseAuthStateDeps) {
           if (isRetryableApiRequestError(recoveryError)) {
             setAuthBootstrapState("failed");
             setStatusMessage(
-              "Soko could not restore this device. Check your connection and retry."
+              "Grogoni could not restore this device. Check your connection and retry."
             );
             return null;
           }
@@ -443,7 +443,7 @@ export function useAuthState(deps: UseAuthStateDeps) {
       // Every non-deliberate cold boot - whether this is a genuinely fresh visitor, a returning
       // one whose session merely expired, or one whose very first /auth/bootstrap call hit a
       // transient network/server error (a cold start, a dropped connection, a 5xx) rather than a
-      // definitive "you're not logged in" - gets Soko's documented zero-form entry
+      // definitive "you're not logged in" - gets Grogoni's documented zero-form entry
       // (docs/authentication/progressive-identity.md) instead of a login wall: browsing and chat
       // work immediately on a real, cookie-backed device account, and identity (phone/PIN) is only
       // requested later, when an action actually needs it. Only an explicit deep link to /login or
@@ -453,7 +453,7 @@ export function useAuthState(deps: UseAuthStateDeps) {
         initialAuthenticationTarget !== null || accountDeletionIntent || accountRestorationIntent;
 
       if (!isDeliberateAuthFlow) {
-        const continued = await continueToSoko();
+        const continued = await continueToGrogoni();
         if (continued !== null) {
           if (initialOwnerAuth !== null) {
             setStatusMessage(
@@ -475,7 +475,7 @@ export function useAuthState(deps: UseAuthStateDeps) {
       if (isDeliberateAuthFlow) {
         requireReauthentication(
           initialAuthenticationTarget === "signup"
-            ? "Create your Soko account."
+            ? "Create your Grogoni account."
             : "Sign in to continue"
         );
         return null;
@@ -487,7 +487,7 @@ export function useAuthState(deps: UseAuthStateDeps) {
       if (cached !== null) setSession(cached);
       if (storedBusiness !== null) setBusiness(storedBusiness);
       setAuthBootstrapState("failed");
-      setStatusMessage("Soko could not restore this session. Check your connection and retry.");
+      setStatusMessage("Grogoni could not restore this session. Check your connection and retry.");
       return null;
     }
   }
@@ -558,12 +558,12 @@ export function useAuthState(deps: UseAuthStateDeps) {
   // domain hook (Phase 16), and this function's only external call site is a still-inline OwnerApp
   // effect that can supply it directly - same pattern used for Sync (Phase 7), Invoices/Logistics
   // (Phase 9), and Runtime history/Network (Phase 16).
-  async function loadSokoSessionContext(
+  async function loadGrogoniSessionContext(
     setActiveConversationId: (conversationId: string | null) => void
   ) {
     try {
-      const context = await apiFetch<SokoSessionContext>("/v1/session/context");
-      setSokoSessionContext(context);
+      const context = await apiFetch<GrogoniSessionContext>("/v1/session/context");
+      setGrogoniSessionContext(context);
       const activeShop =
         context.shops.find((shop) => shop.business.id === context.activeShopId) ?? context.shops[0];
       const restoredMode =
@@ -605,16 +605,16 @@ export function useAuthState(deps: UseAuthStateDeps) {
   }
 
   // Restores mode/shop for one specific conversation's own session context (Phase 2 data model),
-  // instead of the account-wide default loadSokoSessionContext restores on login. Used when
+  // instead of the account-wide default loadGrogoniSessionContext restores on login. Used when
   // switching between an account's own agent sessions so Buy/Sell mode is per-session, not shared.
   async function applySessionContextForConversation(
     conversationId: string
-  ): Promise<SokoMode | null> {
+  ): Promise<GrogoniMode | null> {
     try {
-      const context = await apiFetch<SokoSessionContext>(
+      const context = await apiFetch<GrogoniSessionContext>(
         `/v1/session/context?conversationId=${encodeURIComponent(conversationId)}`
       );
-      setSokoSessionContext(context);
+      setGrogoniSessionContext(context);
       const activeShop =
         context.shops.find((shop) => shop.business.id === context.activeShopId) ?? context.shops[0];
       const restoredMode =
@@ -627,31 +627,31 @@ export function useAuthState(deps: UseAuthStateDeps) {
     }
   }
 
-  async function patchSokoSessionContext(patch: {
-    mode?: SokoMode;
+  async function patchGrogoniSessionContext(patch: {
+    mode?: GrogoniMode;
     activeShopId?: string | null;
-    activeSurface?: SokoChatSurface;
+    activeSurface?: GrogoniChatSurface;
     conversationId?: string;
   }) {
-    if (sokoSessionContext === null) return;
-    const accountId = sokoSessionContext.accountId;
+    if (grogoniSessionContext === null) return;
+    const accountId = grogoniSessionContext.accountId;
     try {
       const updated = await applySessionContextPatchWithConflictRetry(
         patch,
-        sokoSessionContext.sessionVersion,
+        grogoniSessionContext.sessionVersion,
         {
-          patchContext: (body) => patchJson<SokoSessionContext>("/v1/session/context", body),
-          fetchLatestContext: () => apiFetch<SokoSessionContext>("/v1/session/context"),
+          patchContext: (body) => patchJson<GrogoniSessionContext>("/v1/session/context", body),
+          fetchLatestContext: () => apiFetch<GrogoniSessionContext>("/v1/session/context"),
           onDropped: (attempts) => {
             logClientEvent("session.context_update_dropped", {
               accountId,
-              conversationId: patch.conversationId ?? sokoSessionContext.conversationId,
+              conversationId: patch.conversationId ?? grogoniSessionContext.conversationId,
               attempts
             });
           }
         }
       );
-      if (updated !== null) setSokoSessionContext(updated);
+      if (updated !== null) setGrogoniSessionContext(updated);
     } catch {
       // Offline navigation remains available; the next connected state change retries sync.
     }
@@ -678,7 +678,7 @@ export function useAuthState(deps: UseAuthStateDeps) {
     shop: AccountShopSummary,
     setActiveConversationId: (conversationId: string | null) => void
   ) {
-    await loadSokoSessionContext(setActiveConversationId);
+    await loadGrogoniSessionContext(setActiveConversationId);
     switchActiveBusiness(shop);
   }
 
@@ -687,7 +687,7 @@ export function useAuthState(deps: UseAuthStateDeps) {
     setOauthProvidersLoaded(false);
     setIsAuthOpen(false);
     setIsAccountRestorationOpen(false);
-    setSokoSessionContext(null);
+    setGrogoniSessionContext(null);
   });
 
   return {
@@ -707,7 +707,7 @@ export function useAuthState(deps: UseAuthStateDeps) {
     handleOAuthCallback,
     loadOAuthProviders,
     acceptAuthenticatedSession,
-    continueToSoko,
+    continueToGrogoni,
     completePhoneFirstAuthentication,
     completeOAuthSession,
     refreshSession,
@@ -715,8 +715,8 @@ export function useAuthState(deps: UseAuthStateDeps) {
     rejectDefinitiveAuthenticationFailure,
     authenticateSocialProfile,
     completeAccountRestoration,
-    loadSokoSessionContext,
-    patchSokoSessionContext,
+    loadGrogoniSessionContext,
+    patchGrogoniSessionContext,
     applySessionContextForConversation,
     switchActiveBusiness,
     joinStaffShop

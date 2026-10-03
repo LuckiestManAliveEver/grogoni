@@ -1,8 +1,8 @@
-# Soko.market Documentation Readme
+# Grogoni Documentation Readme
 
-This folder contains the planning, architecture, runtime, product, and control documents for Soko.market.
+This folder contains the planning, architecture, runtime, product, and control documents for Grogoni.
 
-Soko.market is a mobile-first, offline-capable, AI-assisted business operating system for informal and small businesses. The core product goal is to let merchants manage products, customers, invoices, payments, inventory, debt, reports, and eventually marketplace skills through a chat-first interface that still exposes clear mobile screens for confirmation and review.
+Grogoni is a mobile-first, offline-capable, AI-assisted business operating system for informal and small businesses. The core product goal is to let merchants manage products, customers, invoices, payments, inventory, debt, reports, and eventually marketplace skills through a chat-first interface that still exposes clear mobile screens for confirmation and review.
 
 ## Optional malware scanning
 
@@ -23,42 +23,42 @@ documented in `docs/data-pipeline-infrastructure.md`.
 
 When documents disagree, follow this order:
 
-1. `Soko doc 5 June ctrl .pdf` and the matching `Soko_Master_Control_Document_v1*.docx` files
+1. `Grogoni doc 5 June ctrl .pdf` and the matching `Grogoni_Master_Control_Document_v1*.docx` files
    - Master Control Document.
    - Highest authority.
    - Resolves conflicts across Docs 1 to 3.
    - Defines unified sprint map, AI entry strategy, Definition of Done, sync conflict rules, performance targets, team model, and remaining gap fills.
 
-2. `Soko doc 2 June .pdf`
+2. `Grogoni doc 2 June .pdf`
    - Technical Architecture Specification.
    - Engineering implementation blueprint.
    - Defines repository layout, services, APIs, database schema, sync protocol, AI integration, tools, payments, documents, testing, deployment, and observability.
 
-3. `Soko doc 3 june.pdf`
+3. `Grogoni doc 3 june.pdf`
    - Product Requirements Document and Development Blueprint.
    - Defines users, product goals, epics, stories, backlog, QA, releases, success metrics, and team structure.
 
-4. `Soko doc 1 june.pdf`
+4. `Grogoni doc 1 june.pdf`
    - Master Architecture Document.
    - Defines vision, platform model, runtime separation, data models, business logic, AI architecture, sync, compliance, pricing, marketplace, and long-term roadmap.
 
-5. `Soko doc 4 June  (1).pdf`
-   - Sokoclaw Runtime Specification.
+5. `Grogoni doc 4 June  (1).pdf`
+   - Grogoniclaw Runtime Specification.
    - Defines the AI runtime lifecycle, components, state machine, model routing, memory, skills, tool execution, verification, telemetry, and deployment modes.
 
-6. `Soko doc 1.0 june (1).pdf`
+6. `Grogoni doc 1.0 june (1).pdf`
    - Trusted Identity Execution Layer base specification.
    - Defines Identity Authority, Trusted Identity Module, device trust levels, identity lifecycle, attestation, identity roaming, and AI agent identities.
 
-7. `Soko doc 1,1 june.pdf`
+7. `Grogoni doc 1,1 june.pdf`
    - TIEL implementation supplement.
    - Adds trust degradation handling, key recovery, federated Identity Authority, offline session tokens, local IA cache, and acceptance criteria.
 
-8. `Soko_Global_Shop_ID_Concept.docx` and `CP18_GLOBAL_SHOP_ID.md`
+8. `Grogoni_Global_Shop_ID_Concept.docx` and `CP18_GLOBAL_SHOP_ID.md`
    - CP18 frontend concept and kickoff brief.
-   - Defines the Soko Global Shop ID as the permanent Business Agent storefront identity.
+   - Defines the Grogoni Global Shop ID as the permanent Business Agent storefront identity.
 
-9. `Soko.market_Continuous_Learning_Architecture_v1.pdf` and `CP19_CONTINUOUS_LEARNING.md`
+9. `Grogoni_Continuous_Learning_Architecture_v1.pdf` and `CP19_CONTINUOUS_LEARNING.md`
    - Future expansion concept.
    - Defines continual learning through runtime traces, memory, skills, evaluation, and production feedback rather than direct model fine-tuning.
 
@@ -106,10 +106,10 @@ When documents disagree, follow this order:
     - Mobile UI references.
     - Show the desired operational style: clean cards, large tap targets, green primary actions, M-Pesa familiarity, quick actions, and payment confirmation screens.
 
-18. `Soko doc 4 June .pdf`
+18. `Grogoni doc 4 June .pdf`
     - Broken placeholder.
-    - Contains only `Soko.markeyl`.
-    - Do not treat as authoritative. Use `Soko doc 4 June  (1).pdf` instead.
+    - Contains only `Grogoni.markeyl`.
+    - Do not treat as authoritative. Use `Grogoni doc 4 June  (1).pdf` instead.
 
 19. `COMMERCE_SETTLEMENT_DECISION.md`
     - Settlement-model decision record for the status-broadcast sell flow
@@ -150,10 +150,10 @@ These principles should govern all implementation decisions:
    - Events power sync, audit logs, reports, notifications, and knowledge generation.
 
 7. Replaceable AI infrastructure
-   - Sokoclaw should be model-agnostic.
+   - Grogoniclaw should be model-agnostic.
    - A Pi/OpenClaw-style agent harness may implement the orchestration loop.
    - llama.cpp may provide local inference through a model adapter.
-   - Neither should own business data or bypass Soko tools.
+   - Neither should own business data or bypass Grogoni tools.
 
 ## Target System Shape
 
@@ -166,7 +166,7 @@ Mobile PWA / optional native shell
       -> offline queue
       -> sync status
 
-  -> Sokoclaw Runtime
+  -> Grogoniclaw Runtime
       -> conversation manager
       -> context builder
       -> intent router
@@ -207,14 +207,14 @@ Mobile PWA / optional native shell
 The current recursive expertise architecture is indexed in
 [`docs/README.md`](../docs/README.md). Start with the
 [Model Template flywheel](../docs/architecture/model-template-flywheel.md) and canonical
-[`.soko` v1 specification](../docs/specs/soko-model-template-v1.md). These documents supersede the
+[`.grogoni.com` v1 specification](../docs/specs/grogoni-model-template-v1.md). These documents supersede the
 older assumption that a marketplace model asset is only weights or a prompt; the existing native
 agent/model/runtime architecture remains authoritative for execution.
 
 Use a clean adapter boundary:
 
 ```text
-Sokoclaw Runtime API
+Grogoniclaw Runtime API
   -> AgentHarnessAdapter
       -> Pi/OpenClaw-style harness, if adopted
 
@@ -224,7 +224,7 @@ Sokoclaw Runtime API
       -> cloud model fallback
 
   -> ToolRegistry
-      -> Soko business tools only
+      -> Grogoni business tools only
 ```
 
 Rules:
@@ -232,7 +232,7 @@ Rules:
 - Do not fork llama.cpp unless a specific missing feature requires it.
 - Prefer `llama-server` or a thin native/mobile adapter behind `ModelProviderAdapter`.
 - Do not expose shell, browser, filesystem, or arbitrary host tools to merchant-facing agents.
-- Expose only Soko-owned tools such as `create_invoice`, `add_product`, `record_payment`, `check_stock`, `generate_report`, `import_document`, `send_invoice`, and `queue_sync`.
+- Expose only Grogoni-owned tools such as `create_invoice`, `add_product`, `record_payment`, `check_stock`, `generate_report`, `import_document`, `send_invoice`, and `queue_sync`.
 - Keep all sensitive actions behind confirmation and audit logging.
 
 ## UI Direction
@@ -263,7 +263,7 @@ User starts from chat or quick action
 
 ## Development Roadmap
 
-The roadmap below harmonizes the Master Control Document, Technical Specification, PRD, Architecture Document, and Sokoclaw Runtime Specification.
+The roadmap below harmonizes the Master Control Document, Technical Specification, PRD, Architecture Document, and Grogoniclaw Runtime Specification.
 
 Each checkpoint is a rollback point. A checkpoint is not passed until its exit criteria are met, tagged, backed up, and documented.
 
@@ -604,7 +604,7 @@ Rollback point:
 - Backup: object storage bucket state, document parser config, import mapping fixtures.
 - Rollback action: disable imports and preserve uploaded originals for later reprocessing.
 
-### CP10: Sokoclaw Runtime Full Adapter
+### CP10: Grogoniclaw Runtime Full Adapter
 
 Goal:
 
@@ -612,7 +612,7 @@ Goal:
 
 Deliverables:
 
-- Sokoclaw Runtime API.
+- Grogoniclaw Runtime API.
 - Conversation Manager.
 - Context Builder.
 - Intent Router.
@@ -634,7 +634,7 @@ Exit criteria:
 
 Rollback point:
 
-- Tag: `checkpoint/cp10-sokoclaw-runtime`
+- Tag: `checkpoint/cp10-grogoniclaw-runtime`
 - Backup: runtime config, prompt/tool registry, AI eval dataset version.
 - Rollback action: switch feature flag back to rule-based parser while preserving business tools.
 
@@ -880,7 +880,7 @@ Exit criteria:
 
 - First-party skill can be installed, disabled, and rolled back safely.
 - Skills cannot access raw database or tokens.
-- Skill actions use Soko tools and events.
+- Skill actions use Grogoni tools and events.
 
 Rollback point:
 
@@ -892,18 +892,18 @@ Rollback point:
 
 Goal:
 
-- Establish a permanent Soko Global Shop ID as the customer-facing identity for every Business Agent storefront.
+- Establish a permanent Grogoni Global Shop ID as the customer-facing identity for every Business Agent storefront.
 
 Source:
 
-- `documentation/Soko_Global_Shop_ID_Concept.docx` — original concept only. Superseded on format; see below.
+- `documentation/Grogoni_Global_Shop_ID_Concept.docx` — original concept only. Superseded on format; see below.
 - `documentation/CP18_GLOBAL_SHOP_ID.md`
-- `docs/architecture/soko-id-slug-system.md` — current authoritative spec for the implemented `sokoId` format and resolver.
+- `docs/architecture/grogoni-id-slug-system.md` — current authoritative spec for the implemented `grogoniId` format and resolver.
 
 Core concept (as originally proposed, not what shipped):
 
 ```text
-The BigFish soko: 254A12567835
+The BigFish grogoni: 254A12567835
 ```
 
 Where the original concept defined:
@@ -913,55 +913,55 @@ Where the original concept defined:
 - `12567835` as the unique global shop identifier.
 
 **Implemented format differs from the concept above.** `Cp2Store.createGlobalShopId`
-(`services/api/src/cp2/store.ts`) generates IDs as `soko.<handle>` (for example `soko.mama-mboga`,
-with numeric-suffix collision handling: `soko.mama-mboga-2`), where `<handle>` is a slugified
-business name, not a country-code/numeric identifier. `tests/sokoid-and-storefront.test.ts`
-explicitly asserts the original `254A########` shape is now invalid (`isSokoId("254A00000001")` is
+(`services/api/src/cp2/store.ts`) generates IDs as `grogoni.<handle>` (for example `grogoni.mama-mboga`,
+with numeric-suffix collision handling: `grogoni.mama-mboga-2`), where `<handle>` is a slugified
+business name, not a country-code/numeric identifier. `tests/grogoniid-and-storefront.test.ts`
+explicitly asserts the original `254A########` shape is now invalid (`isGrogoniId("254A00000001")` is
 `false`). The country-namespace concept was dropped during implementation and never reconciled back
-into this document or `CP18_GLOBAL_SHOP_ID.md` until now. Treat `docs/architecture/soko-id-slug-system.md`
+into this document or `CP18_GLOBAL_SHOP_ID.md` until now. Treat `docs/architecture/grogoni-id-slug-system.md`
 as authoritative for the current format, collision/rename/cooldown rules, and resolver behavior.
 
 Deliverables:
 
-- Stable global shop ID generation using the implemented `soko.<handle>` slug format (not the
+- Stable global shop ID generation using the implemented `grogoni.<handle>` slug format (not the
   originally proposed `countryA########` format — see note above).
 - Business Agent identity display in owner storefront/profile surfaces.
 - Public storefront display of the shop ID.
-- Customer conversation entry by Soko ID.
+- Customer conversation entry by Grogoni ID.
 - Copy/share affordances for packaging, receipts, QR codes, and storefront sharing.
 - Collision handling and audit events for ID creation.
 - Tests for ID creation, uniqueness, lookup, and storefront routing.
 
 Exit criteria:
 
-- Every business has a stable Soko Global Shop ID.
+- Every business has a stable Grogoni Global Shop ID.
 - Owner UI and public storefront UI both present the ID prominently.
 - Customers can use the ID to find or resume a storefront conversation.
 - Phone numbers remain contact details rather than primary shop identity.
 - Generated IDs are unique, auditable, and covered by tests.
-- Legacy storefront slugs continue to resolve while new URLs use the Soko ID.
+- Legacy storefront slugs continue to resolve while new URLs use the Grogoni ID.
 
 Rollback point:
 
 - Tag: `checkpoint/cp18-global-shop-id`
 - Backup: generated shop IDs, storefront routing map, and audit events.
-- Rollback action: hide Soko ID surfaces while preserving generated IDs and keeping existing storefront URLs/contact workflows active.
+- Rollback action: hide Grogoni ID surfaces while preserving generated IDs and keeping existing storefront URLs/contact workflows active.
 
 ### CP19: Continuous Learning Architecture
 
 Goal:
 
-- Prepare a future continual learning layer for Soko.market and the Sokoclaw runtime without making model fine-tuning the primary path for improvement.
+- Prepare a future continual learning layer for Grogoni and the Grogoniclaw runtime without making model fine-tuning the primary path for improvement.
 - Status: planned future expansion.
 
 Source:
 
-- `documentation/Soko.market_Continuous_Learning_Architecture_v1.pdf`
+- `documentation/Grogoni_Continuous_Learning_Architecture_v1.pdf`
 - `documentation/CP19_CONTINUOUS_LEARNING.md`
 
 Core concept:
 
-- The intelligence of Soko.market lives primarily in the runtime rather than the language model.
+- The intelligence of Grogoni lives primarily in the runtime rather than the language model.
 - Runtime traces, memory, skills, evaluation, and production feedback should improve the platform while deterministic business tools remain authoritative.
 
 Deliverables:
@@ -970,16 +970,16 @@ Deliverables:
 - Unified memory engine for shop, customer, supplier, inventory, market, and runtime memories.
 - Outcome classification for success, failure, and partial success.
 - Skill candidate detection and promotion workflow.
-- SokoBench commerce evaluation suite.
+- GrogoniBench commerce evaluation suite.
 - Human review queue for runtime improvement proposals.
 - Production intelligence dashboard for clustered failures and improvement candidates.
 
 Exit criteria:
 
 - Tenant data remains isolated and privacy-controlled.
-- Runtime improvements cannot bypass Soko business validators, confirmation gates, RBAC, audit logging, or rollback rules.
+- Runtime improvements cannot bypass Grogoni business validators, confirmation gates, RBAC, audit logging, or rollback rules.
 - Promoted skills are versioned, tested, permissioned, and reversible.
-- Every runtime improvement passes SokoBench before production deployment.
+- Every runtime improvement passes GrogoniBench before production deployment.
 - Human review is required before approved improvements benefit stores.
 
 Rollback point:
@@ -1088,7 +1088,7 @@ MVP excludes:
 Beta adds:
 
 - Document import.
-- Full Sokoclaw runtime adapter.
+- Full Grogoniclaw runtime adapter.
 - Cloud fallback.
 - Expanded Swahili support.
 - Payment webhook hardening.
@@ -1165,5 +1165,5 @@ The original CP1/CP2 planning list has been resolved or assigned to later checkp
 Open CP10:
 
 1. Create the CP10 baseline and decision log.
-2. Define the Sokoclaw Runtime adapter contract around existing deterministic business tools.
+2. Define the Grogoniclaw Runtime adapter contract around existing deterministic business tools.
 3. Keep model output behind confirmation and server-side validators.

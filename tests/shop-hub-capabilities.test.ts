@@ -1,6 +1,6 @@
 /**
  * Shop Hub (GET /businesses/:businessId/capabilities): the hub is a projection of the canonical
- * tool and module registries in @soko/tool-core, filtered by the caller's role, with each module's
+ * tool and module registries in @grogoni/tool-core, filtered by the caller's role, with each module's
  * setup state resolved from the same domain methods the app and agent use.
  */
 import { describe, expect, it } from "vitest";

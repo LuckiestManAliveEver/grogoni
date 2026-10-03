@@ -2,14 +2,14 @@
 
 ## Context
 
-Soko's native runtime graph already separated agents, models, bindings, installations, and hosts,
+Grogoni's native runtime graph already separated agents, models, bindings, installations, and hosts,
 but the default binding was a model-less draft and chat surfaced manual download/activation
 instructions. Client code also treated a ready downloaded agent/model as a prohibition on server
 fallback. Provider-specific `openai` values had historically leaked into execution-target data.
 
 ## Decision
 
-Hosted execution is the default connected experience. On first authenticated shop chat, Soko
+Hosted execution is the default connected experience. On first authenticated shop chat, Grogoni
 idempotently provisions a shop-scoped native binding from models that a configured generic adapter
 can actually run. `backend` and `remote-shop-device` are the only execution locations (`browser-local`
 and `installed-app` were retired by ADR-device-independent-runtime-and-registry-discovery.md; a
@@ -35,7 +35,7 @@ ordered, finite fallback chain.
 ## Consequences
 
 Connected merchants get first-chat AI without downloads. Operators must configure at least one
-hosted adapter for that guarantee; Soko does not manufacture an unavailable backend dependency.
+hosted adapter for that guarantee; Grogoni does not manufacture an unavailable backend dependency.
 Local models still offer privacy, offline execution, cost reduction, and sometimes lower latency.
 Deterministic IDs and a tenant-default database constraint make provisioning concurrency-safe.
 Existing explicit bindings and local-only preferences are preserved.

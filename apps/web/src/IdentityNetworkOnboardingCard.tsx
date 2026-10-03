@@ -12,7 +12,7 @@ import type {
   OAuthProviderSummary,
   SessionResponse,
   SocialSignupProvider
-} from "./soko-application-shared";
+} from "./grogoni-application-shared";
 
 export function IdentityNetworkOnboardingCard({
   session,
@@ -92,7 +92,7 @@ export function IdentityNetworkOnboardingCard({
       <div>
         <p className="eyebrow">Start your network</p>
         <h2 id="identity-network-title">Add your first contacts</h2>
-        <p>Choose which contacts Soko may add as the first point of your private network.</p>
+        <p>Choose which contacts Grogoni may add as the first point of your private network.</p>
       </div>
 
       <div className="identity-network-actions">

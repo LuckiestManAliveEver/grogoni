@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   InferenceProviderConnectionSummary,
   InferenceProviderSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
 const fetchFreshJson = vi.fn();
 const postJson = vi.fn();
@@ -68,8 +68,8 @@ const providers = [
     managedCredentialConfigured: true
   }),
   provider({
-    id: "soko-llama",
-    displayName: "Soko Cloud",
+    id: "grogoni-llama",
+    displayName: "Grogoni Cloud",
     type: "openai-compatible",
     byokAllowed: false,
     managedCredentialConfigured: true

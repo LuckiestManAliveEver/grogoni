@@ -7,7 +7,7 @@
  */
 import { createHash } from "node:crypto";
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import type { OcrBlockSummary, OcrEngine, OcrProfile } from "@soko/shared-types";
+import type { OcrBlockSummary, OcrEngine, OcrProfile } from "@grogoni/shared-types";
 import { Cp2Error } from "../../cp2-error.js";
 import { type Cp2Store, readSessionCookie } from "../../store.js";
 import type { BinaryUploadPipeline } from "../../binary-upload-pipeline.js";

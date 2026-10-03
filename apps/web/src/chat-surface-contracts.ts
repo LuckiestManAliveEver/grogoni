@@ -10,9 +10,9 @@ import type {
   NetworkInviteSummary,
   ProductFieldDefinition,
   RecycleBinStatusSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
-import type { ChatAttachment, ChatMessage, ShellView, SokoMode } from "./app-shell";
+import type { ChatAttachment, ChatMessage, ShellView, GrogoniMode } from "./app-shell";
 import type { NetworkConnectionAction } from "./hooks/useNetworkState";
 import type { DevicePhonebookContact } from "./phonebook-directory";
 import type { InviteOutcome } from "./phonebook-sync";
@@ -28,7 +28,7 @@ import type {
   PublicStorefrontSummary,
   ShopPresenceStatus,
   SocialSignupProvider
-} from "./soko-application-shared";
+} from "./grogoni-application-shared";
 
 export interface ChatSurfaceProps {
   activeConversationId: string | null;
@@ -109,7 +109,7 @@ export interface ChatSurfaceProps {
   onRetryMessages: () => void;
   onNavigate: (view: ShellView) => void;
   onOpenWorkspace: () => void;
-  onModeChange: (mode: SokoMode) => void;
+  onModeChange: (mode: GrogoniMode) => void;
   onOpenAgentProfile: () => void;
   onCompleteMarketplaceIntro: () => void;
   onProductEdit: (product: ProductSummary) => void;

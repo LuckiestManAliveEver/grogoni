@@ -1,7 +1,7 @@
-import type { ConversationMessageSummary } from "@soko/shared-types";
+import type { ConversationMessageSummary } from "@grogoni/shared-types";
 import { OfflineError, type CatalogueDigest, type OfflineOrderIntent } from "../types.js";
 import { validateOfflineOrderIntent } from "../offline-orders/intent.js";
-import type { SokoProvider } from "./types.js";
+import type { GrogoniProvider } from "./types.js";
 import type { LocalDatabase } from "../db/client.js";
 import type { Scope } from "../types.js";
 export interface PeerTransport {
@@ -53,10 +53,10 @@ const KIND_ORDER_INTENT = 2;
 const MAX_CATALOGUE_DIGEST_BYTES = 512;
 const MAX_ENVELOPE_BYTES = 64 * 1024;
 /** Experimental transport only. Never invokes a business operation or trusts a BLE name as
- *  identity - every OfflineOrderIntent this transport carries must already carry a real Soko
+ *  identity - every OfflineOrderIntent this transport carries must already carry a real Grogoni
  *  account/phone customer claim (see types.ts's OfflineOrderCustomerClaim); PeerProvider itself
  *  never inspects or trusts transport.discover()'s device ids as identity. */
-export class PeerProvider implements SokoProvider {
+export class PeerProvider implements GrogoniProvider {
   readonly name = "peer";
   private handlers = new Set<(envelope: ConversationMessageSummary) => void>();
   private deliveryFailedHandlers = new Set<(envelope: ConversationMessageSummary) => void>();

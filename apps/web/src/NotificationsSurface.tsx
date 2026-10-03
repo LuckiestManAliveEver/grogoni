@@ -2,12 +2,12 @@ import type {
   PublicCustomerCareRequestSummary,
   PublicOrderSummary,
   PublicStorefrontMessageSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
 import {
   type BusinessNotificationSummary,
   type NotificationInbox
-} from "./soko-application-shared";
+} from "./grogoni-application-shared";
 
 import { formatDate, formatCareRequestType } from "./formatters";
 

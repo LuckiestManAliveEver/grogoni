@@ -121,14 +121,14 @@ import type {
   RecycleBinStatusSummary,
   RuntimeModelConversationMessage,
   RuntimeTurnResult,
-  StoredSokoSessionContext,
+  StoredGrogoniSessionContext,
   SyncChange,
   SyncCollection,
   TrustedMessageAttachmentReference,
   UserSummary,
   WorkspaceDeliverResult
-} from "@soko/shared-types";
-import type { BusinessPermission } from "@soko/business-core";
+} from "@grogoni/shared-types";
+import type { BusinessPermission } from "@grogoni/business-core";
 import {
   ChannelGatewayError,
   createEmailChannelAdapter,
@@ -271,7 +271,7 @@ export interface MessagingDomainDeps {
     idempotencyKey: string;
     now: Date;
   }) => OfflineOrderIntentOutcome;
-  ensureSokoSessionContext: (session: AuthSessionView, now: Date) => StoredSokoSessionContext;
+  ensureGrogoniSessionContext: (session: AuthSessionView, now: Date) => StoredGrogoniSessionContext;
   createRuntimeTurn: (input: {
     sessionId: string | null;
     businessId: string;
@@ -540,7 +540,7 @@ export class MessagingDomain {
       const restored: ConversationMessageSummary = {
         ...message,
         idempotencyKey:
-          message.idempotencyKey ?? `soko:${message.conversationId}:${message.clientMessageId}`,
+          message.idempotencyKey ?? `grogoni:${message.conversationId}:${message.clientMessageId}`,
         queuedAt: message.queuedAt ?? null,
         sentAt:
           message.sentAt === undefined
@@ -554,19 +554,19 @@ export class MessagingDomain {
         failureCode: message.failureCode ?? null,
         retryCount: message.retryCount ?? 0,
         nextRetryAt: message.nextRetryAt ?? null,
-        selectedChannel: message.selectedChannel ?? "soko",
+        selectedChannel: message.selectedChannel ?? "grogoni",
         actualChannel:
           message.actualChannel === undefined
             ? message.status === "sent" ||
               message.status === "delivered" ||
               message.status === "read" ||
               message.status === undefined
-              ? "soko"
+              ? "grogoni"
               : null
             : message.actualChannel,
         providerMessageId: message.providerMessageId ?? null,
         provider:
-          message.provider ?? (message.selectedChannel === "telegram" ? "telegram" : "soko"),
+          message.provider ?? (message.selectedChannel === "telegram" ? "telegram" : "grogoni"),
         direction:
           message.direction ??
           (snapshot.platformIdentities?.some((identity) => identity.id === message.authorId)
@@ -681,10 +681,10 @@ export class MessagingDomain {
       recipientAccountId =
         this.deps.accountByDestination.get(destinationAccountKey(channel, destination)) ?? null;
       if (recipientAccountId === null) {
-        throw new Cp2Error(404, "recipient_not_found", "No Soko account matches that contact.");
+        throw new Cp2Error(404, "recipient_not_found", "No Grogoni account matches that contact.");
       }
       if (recipientAccountId === session.account.id) {
-        throw new Cp2Error(400, "recipient_invalid", "Choose another Soko account.");
+        throw new Cp2Error(400, "recipient_invalid", "Choose another Grogoni account.");
       }
     }
 
@@ -2387,7 +2387,7 @@ export class MessagingDomain {
         customerId: invoice.customerId,
         conversationId: null
       });
-      if (endpoints.every((endpoint) => endpoint.provider === "soko")) continue;
+      if (endpoints.every((endpoint) => endpoint.provider === "grogoni")) continue;
       await this.sendChannelMessage({
         sessionId: null,
         businessId: input.businessId,
@@ -2951,7 +2951,7 @@ export class MessagingDomain {
     }
 
     const idempotencyKey = (
-      input.idempotencyKey ?? `soko:${conversation.id}:${clientMessageId}`
+      input.idempotencyKey ?? `grogoni:${conversation.id}:${clientMessageId}`
     ).trim();
     if (idempotencyKey.length < 8 || idempotencyKey.length > 200) {
       throw new Cp2Error(
@@ -2960,15 +2960,15 @@ export class MessagingDomain {
         "idempotencyKey must be between 8 and 200 characters."
       );
     }
-    const selectedChannel = input.selectedChannel ?? "soko";
+    const selectedChannel = input.selectedChannel ?? "grogoni";
     const externalChannel =
-      selectedChannel === "soko"
+      selectedChannel === "grogoni"
         ? undefined
         : [...this.conversationChannels.values()].find(
             (channel) =>
               channel.conversationId === conversation.id && channel.provider === selectedChannel
           );
-    if (selectedChannel !== "soko" && externalChannel === undefined) {
+    if (selectedChannel !== "grogoni" && externalChannel === undefined) {
       throw new Cp2Error(
         400,
         "message_channel_unavailable",
@@ -2999,7 +2999,7 @@ export class MessagingDomain {
     }
     if (input.content.type === "owner-controls") {
       this.deps.requireMembership(input.content.shopId, session.user.id);
-      const context = this.deps.ensureSokoSessionContext(session, now);
+      const context = this.deps.ensureGrogoniSessionContext(session, now);
 
       if (context.mode !== "seller" || context.activeShopId !== input.content.shopId) {
         throw new Cp2Error(
@@ -3037,16 +3037,16 @@ export class MessagingDomain {
       author,
       authorId: author === "agent" ? `account-${session.account.id}-agent` : session.user.id,
       content: input.content,
-      status: selectedChannel === "soko" ? "delivered" : "queued",
-      queuedAt: input.queuedAt ?? (selectedChannel === "soko" ? null : now.toISOString()),
-      sentAt: selectedChannel === "soko" ? now.toISOString() : null,
-      deliveredAt: selectedChannel === "soko" ? now.toISOString() : null,
+      status: selectedChannel === "grogoni" ? "delivered" : "queued",
+      queuedAt: input.queuedAt ?? (selectedChannel === "grogoni" ? null : now.toISOString()),
+      sentAt: selectedChannel === "grogoni" ? now.toISOString() : null,
+      deliveredAt: selectedChannel === "grogoni" ? now.toISOString() : null,
       readAt: null,
-      failureCode: selectedChannel === "soko" ? null : "provider_adapter_unconfigured",
+      failureCode: selectedChannel === "grogoni" ? null : "provider_adapter_unconfigured",
       retryCount: 0,
       nextRetryAt: null,
       selectedChannel,
-      actualChannel: selectedChannel === "soko" ? "soko" : null,
+      actualChannel: selectedChannel === "grogoni" ? "grogoni" : null,
       providerMessageId: null,
       importedSource: null,
       importedExternalId: null,
@@ -3072,9 +3072,9 @@ export class MessagingDomain {
       provider: selectedChannel,
       attemptNumber: 1,
       requestedAt: now.toISOString(),
-      respondedAt: selectedChannel === "soko" ? now.toISOString() : null,
-      result: selectedChannel === "soko" ? "succeeded" : "transient_failure",
-      normalizedFailureCode: selectedChannel === "soko" ? null : "provider_adapter_unconfigured",
+      respondedAt: selectedChannel === "grogoni" ? now.toISOString() : null,
+      result: selectedChannel === "grogoni" ? "succeeded" : "transient_failure",
+      normalizedFailureCode: selectedChannel === "grogoni" ? null : "provider_adapter_unconfigured",
       providerResponseReference: null
     };
     this.messageDeliveryAttempts.set(attempt.id, attempt);
@@ -3203,7 +3203,7 @@ export class MessagingDomain {
         sessionId: input.sessionId,
         conversationId: conversation.id,
         clientMessageId: `agent-reply-${message.id}`,
-        idempotencyKey: `soko-agent-reply:${message.id}`,
+        idempotencyKey: `grogoni-agent-reply:${message.id}`,
         author: "agent",
         content: {
           type: "text",
@@ -3233,7 +3233,7 @@ export class MessagingDomain {
         sessionId: input.sessionId,
         conversationId: conversation.id,
         clientMessageId: `agent-reply-${message.id}`,
-        idempotencyKey: `soko-agent-reply:${message.id}`,
+        idempotencyKey: `grogoni-agent-reply:${message.id}`,
         author: "agent",
         content:
           confirmationToken === null
@@ -3923,7 +3923,7 @@ export class MessagingDomain {
     const externalUserId = normalizeRequiredBoundedText(input.visitorId, "visitorId", 100);
     let identity = [...this.platformIdentities.values()].find(
       (candidate) =>
-        candidate.provider === "soko" &&
+        candidate.provider === "grogoni" &&
         candidate.businessId === business.id &&
         candidate.externalUserId === externalUserId
     );
@@ -3931,13 +3931,13 @@ export class MessagingDomain {
       const customer = this.deps.createGuestCustomer({
         businessId: business.id,
         displayName: input.displayName ?? null,
-        provider: "soko",
+        provider: "grogoni",
         externalUserId,
         now
       });
       identity = {
         id: randomUUID(),
-        provider: "soko",
+        provider: "grogoni",
         externalUserId,
         accountId: null,
         customerId: customer.id,
@@ -3957,7 +3957,7 @@ export class MessagingDomain {
       const customer = this.deps.createGuestCustomer({
         businessId: business.id,
         displayName: input.displayName ?? identity.displayName,
-        provider: "soko",
+        provider: "grogoni",
         externalUserId,
         now
       });
@@ -3967,7 +3967,7 @@ export class MessagingDomain {
 
     let channel = [...this.conversationChannels.values()].find(
       (candidate) =>
-        candidate.provider === "soko" &&
+        candidate.provider === "grogoni" &&
         candidate.businessId === business.id &&
         candidate.externalConversationId === externalUserId
     );
@@ -4007,7 +4007,7 @@ export class MessagingDomain {
         id: randomUUID(),
         conversationId: conversation.id,
         businessId: business.id,
-        provider: "soko",
+        provider: "grogoni",
         externalConversationId: externalUserId,
         platformIdentityId: identity.id,
         capabilities: ["CAN_RECEIVE", "CAN_REPLY", "CAN_INITIATE", "SUPPORTS_PRODUCT_CARD"],
@@ -4077,12 +4077,12 @@ export class MessagingDomain {
     );
     const canonical = this.persistExternalConversationMessage({
       conversationId: principal.conversationId,
-      provider: "soko",
+      provider: "grogoni",
       author: "user",
       authorId: identity.id,
       body,
       attachmentNames,
-      idempotencyKey: `soko-storefront:${principal.id}:${randomUUID()}`,
+      idempotencyKey: `grogoni-storefront:${principal.id}:${randomUUID()}`,
       now
     });
     const message = this.publicMessageView(canonical, business.id, identity.externalUserId);
@@ -4166,7 +4166,7 @@ export class MessagingDomain {
       mimeType: "application/octet-stream",
       size: 0,
       category: "other" as const,
-      url: `https://soko.market/attachment-reference/${encodeURIComponent(name)}`
+      url: `https://grogoni.com/attachment-reference/${encodeURIComponent(name)}`
     }));
     const content: ConversationMessageContent = {
       type: "text",
@@ -4251,7 +4251,7 @@ export class MessagingDomain {
 
   persistExternalProductCard(input: {
     conversationId: string;
-    provider: "soko" | "telegram";
+    provider: "grogoni" | "telegram";
     product: CatalogueQueryResult["products"][number];
     runtimeTurnId: string;
     now: Date;
@@ -4412,7 +4412,7 @@ export class MessagingDomain {
         accountId: null,
         businessId: null,
         agentId: `account-${input.accountId}-agent`,
-        displayName: "Soko agent",
+        displayName: "Grogoni agent",
         createdAt: input.now.toISOString()
       }
     ];
@@ -4815,8 +4815,8 @@ export class MessagingDomain {
             type: "message.new",
             conversationId: delivery.conversationId,
             messageId: delivery.messageId,
-            title: conversation?.title?.trim() || "New Soko message",
-            body: "Open Soko to read your message."
+            title: conversation?.title?.trim() || "New Grogoni message",
+            body: "Open Grogoni to read your message."
           });
           if (outcome === "expired") {
             this.pushSubscriptions.delete(subscription.id);
@@ -4827,7 +4827,7 @@ export class MessagingDomain {
         delivery.destination !== null &&
         this.deps.messageEmailNotificationSender !== undefined
       ) {
-        const webBaseUrl = (this.deps.messageWebBaseUrl ?? "https://soko.market").replace(
+        const webBaseUrl = (this.deps.messageWebBaseUrl ?? "https://grogoni.com").replace(
           /\/+$/u,
           ""
         );

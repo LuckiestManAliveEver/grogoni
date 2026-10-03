@@ -1,6 +1,6 @@
 # Authentication architecture
 
-Soko uses a phone-first account model with one canonical account UUID. Phone and optional email
+Grogoni uses a phone-first account model with one canonical account UUID. Phone and optional email
 identities are normalized and linked to that account. Phone identifiers are not proof of phone
 ownership and are stored as unverified. A password is optional; passkeys, TOTP factors, recovery
 codes, and persistent device sessions are stored as separate account-scoped records.

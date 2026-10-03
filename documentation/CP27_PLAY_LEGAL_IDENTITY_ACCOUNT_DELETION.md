@@ -28,7 +28,7 @@ developer-account, ownership, or signing decisions.
 - `services/api/src/cp2/account-deletion-processors.ts` provides signed HTTPS deletion webhooks.
 - Migration 022 persists non-identifying completion proofs and processor receipts without an
   account foreign key.
-- The `soko-market-account-purge` Render cron runs expired deletion work daily and fails visibly if
+- The `grogoni-account-purge` Render cron runs expired deletion work daily and fails visibly if
   processors are unconfigured or any propagation attempt fails.
 - `tests/cp27-account-purge.test.ts` proves complete local removal, processor ordering, signed
   propagation, failure safety, and retry completion.
@@ -54,11 +54,11 @@ Policy requirements change. Revalidate these sources immediately before Play Con
 
 ## Public deletion resource
 
-Production URL: `https://soko.market/account-deletion`
+Production URL: `https://grogoni.com/account-deletion`
 
 The page:
 
-1. names Soko.market as the affected app;
+1. names Grogoni as the affected app;
 2. prominently offers a deletion-request action;
 3. opens secure web authentication rather than requiring the Android app;
 4. describes account and associated-data scope;
@@ -114,7 +114,7 @@ Configure the Render account-purge cron with:
 Each processor receives an HTTPS POST containing a stable request ID and the primary-auth/OAuth
 subjects it must delete. Requests include an idempotency key, timestamp, processor ID, and an
 HMAC-SHA256 signature over the timestamp and exact body. A processor must return HTTP 2xx and a
-non-empty `externalReference`. Soko stores only that reference, retry count, timestamps, status, and
+non-empty `externalReference`. Grogoni stores only that reference, retry count, timestamps, status, and
 a one-way subject digest in the completion proof.
 
 If any processor times out, rejects the signature, returns a non-2xx response, or omits its external

@@ -8,14 +8,14 @@ import {
 } from "../apps/web/src/stored-shop";
 
 const shop = (id: string, role: AccountShopSummary["membership"]["role"]): AccountShopSummary => ({
-  business: { id, name: `Shop ${id}`, language: "en", sokoId: `soko.${id}` },
+  business: { id, name: `Shop ${id}`, language: "en", grogoniId: `grogoni.${id}` },
   membership: { id: `m-${id}`, businessId: id, userId: "me", role }
 });
 const stored = {
   id: "a",
   name: "Old name",
   language: "en",
-  sokoId: "soko.a",
+  grogoniId: "grogoni.a",
   role: "owner"
 } as const;
 
@@ -28,7 +28,7 @@ describe("stored shop on a device", () => {
   it("opens a shop the account still has, with the server's current name and role", () => {
     expect(decideStoredShop(stored, [shop("a", "driver")])).toEqual({
       action: "open",
-      business: { id: "a", name: "Shop a", language: "en", sokoId: "soko.a", role: "driver" }
+      business: { id: "a", name: "Shop a", language: "en", grogoniId: "grogoni.a", role: "driver" }
     });
   });
 
@@ -56,7 +56,7 @@ describe("stored shop on a device", () => {
   it("at launch, opens a shop the account still has, with its current role", async () => {
     expect(await resolveStoredShopAtLaunch(stored, async () => [shop("a", "cashier")])).toEqual({
       action: "open",
-      business: { id: "a", name: "Shop a", language: "en", sokoId: "soko.a", role: "cashier" }
+      business: { id: "a", name: "Shop a", language: "en", grogoniId: "grogoni.a", role: "cashier" }
     });
   });
 

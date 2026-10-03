@@ -1,6 +1,6 @@
 # Durable Execution Plane
 
-This document describes Soko's durable, observable, resumable agent execution architecture: how a
+This document describes Grogoni's durable, observable, resumable agent execution architecture: how a
 request becomes a task, how that task's execution is durably logged, checkpointed, fenced, and
 handed off between runtimes, and how none of that requires a second execution engine. It is the
 target-state companion to [`durable-execution-audit.md`](durable-execution-audit.md) (what existed
@@ -69,7 +69,7 @@ aspiration - see §7 for the exact file/line seams.
 ## 3. Data model
 
 ```
-                          SOKO DURABLE EXECUTION PLANE
+                          GROGONI DURABLE EXECUTION PLANE
 
   Task (conversation)
        |
@@ -372,7 +372,7 @@ The chat path _is_ this architecture, not a second one beside it: `POST
 /businesses/:id/runtime/turns` → `Cp2Store.createRuntimeTurn` → `RuntimeHandoffDomain.acquireTurn`
 (fencing/mutual-exclusion) → `AgentRuntimeDomain.executeRuntimeTurn` (binding resolution → context
 resolution → capability resolution → execution, each now emitting durable events) →
-`RuntimeHandoffDomain.checkpointAfterTurn` (fenced checkpoint commit). MCP (`soko.runtime_turn`) and
+`RuntimeHandoffDomain.checkpointAfterTurn` (fenced checkpoint commit). MCP (`grogoni.runtime_turn`) and
 the storefront/public-agent path call the identical `createRuntimeTurn`. There is exactly one
 runtime system for chat and handoffs, as required.
 

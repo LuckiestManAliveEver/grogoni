@@ -53,7 +53,7 @@ This keeps production risk controlled while giving the social-auth domains first
 If the deployment fails before new writes are needed:
 
 ```bash
-pnpm --filter @soko/api db:rollback 015_social_auth_accounts_channels
+pnpm --filter @grogoni/api db:rollback 015_social_auth_accounts_channels
 ```
 
 If rollback tooling is unavailable, manually apply:

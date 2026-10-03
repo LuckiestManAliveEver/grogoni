@@ -6,7 +6,7 @@ Target tag: `checkpoint/cp26-android-release-identity`
 
 ## Objective
 
-CP26 establishes one reviewable source of truth for Soko.market's Google Play identity before an
+CP26 establishes one reviewable source of truth for Grogoni's Google Play identity before an
 Android project, signing key, Play Console application, or store listing is created. This prevents
 an irreversible package name or account ownership decision from being embedded in build files by
 accident.
@@ -28,19 +28,19 @@ After the package is registered in Play Console, `android.applicationId` is trea
 
 | Decision               | Proposed value        | State                       | Basis and consequence                                                     |
 | ---------------------- | --------------------- | --------------------------- | ------------------------------------------------------------------------- |
-| Product name           | `Soko.market`         | established                 | Matches the web application and PWA manifest.                             |
-| Launcher name          | `Soko`                | established                 | Matches `short_name` and fits launcher surfaces.                          |
-| Production origin      | `https://soko.market` | established                 | Declared by the Render production blueprint.                              |
-| Production API         | `https://soko.market` | established                 | Declared by the Render production blueprint.                              |
+| Product name           | `Grogoni`         | established                 | Matches the web application and PWA manifest.                             |
+| Launcher name          | `Grogoni`                | established                 | Matches `short_name` and fits launcher surfaces.                          |
+| Production origin      | `https://grogoni.com` | established                 | Declared by the Render production blueprint.                              |
+| Production API         | `https://grogoni.com` | established                 | Declared by the Render production blueprint.                              |
 | Android wrapper        | Trusted Web Activity  | proposed                    | Shortest path that preserves the existing PWA runtime.                    |
-| Application ID         | `market.soko.app`     | proposed—approval required  | Valid, brand-specific namespace; permanent after Play registration.       |
+| Application ID         | `market.grogoni.app`     | proposed—approval required  | Valid, brand-specific namespace; permanent after Play registration.       |
 | Developer account type | organization          | proposed—approval required  | Keeps the listing and signing authority with the operating entity.        |
 | First Play track       | internal              | proposed                    | Allows artifact and reviewer-access validation before broader testing.    |
 | Version name           | `0.1.0`               | established for first build | Matches the workspace package version.                                    |
 | Version code           | `1`                   | proposed                    | First Play artifact; every later upload must use a larger integer.        |
 | Minimum SDK            | 23                    | proposed                    | Preserves low-end Android reach while setting a defined support floor.    |
 | Target/compile SDK     | 35                    | policy baseline             | Meets the policy verified on 2026-07-15; must be rechecked before upload. |
-| Play App Signing       | enabled               | proposed                    | Google holds the app-signing key; Soko controls a separate upload key.    |
+| Play App Signing       | enabled               | proposed                    | Google holds the app-signing key; Grogoni controls a separate upload key.    |
 
 ## Permanent identity rule
 
@@ -50,8 +50,8 @@ or issue a production signing certificate until the application ID is explicitly
 Changing an application ID after publication creates a different Android application. It does not
 upgrade the original listing or preserve its install base. Approval must therefore confirm:
 
-1. `market.soko.app` is the intended permanent namespace.
-2. The approving organization controls the Soko.market brand and `soko.market` domain.
+1. `market.grogoni.app` is the intended permanent namespace.
+2. The approving organization controls the Grogoni brand and `grogoni` domain.
 3. No existing private or public Android application already uses the namespace within the
    organization.
 4. The same value will be used in Play Console, Android build files, signing certificates, and
@@ -156,7 +156,7 @@ CP26 passes only when:
 
 The following facts cannot be inferred safely from source code and remain owner decisions:
 
-- approval of `market.soko.app` as the permanent application ID;
+- approval of `market.grogoni.app` as the permanent application ID;
 - confirmation that the Play account will be an organization account;
 - exact Play developer and registered legal entity names;
 - Play developer account ID and Google verification status;

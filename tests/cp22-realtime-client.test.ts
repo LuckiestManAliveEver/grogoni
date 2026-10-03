@@ -15,7 +15,7 @@ describe("CP22 web realtime client", () => {
     const onChangesAvailable = vi.fn();
     const stop = subscribeToAccountRealtime({
       accountId: "account-1",
-      endpoint: "wss://soko.market/v1/realtime",
+      endpoint: "wss://grogoni.com/v1/realtime",
       reconnectDelayMs: 250,
       createSocket: () => {
         const socket = new FakeRealtimeSocket();

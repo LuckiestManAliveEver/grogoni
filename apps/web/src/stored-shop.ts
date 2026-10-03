@@ -1,5 +1,5 @@
-import type { AccountShopSummary } from "@soko/shared-types";
-import type { ActiveBusiness } from "./soko-application-shared";
+import type { AccountShopSummary } from "@grogoni/shared-types";
+import type { ActiveBusiness } from "./grogoni-application-shared";
 
 // What a device should do with the shop it last opened, given the account's shops as the server
 // reports them now (docs/architecture/staff-invitations.md). A staff member who was removed, or

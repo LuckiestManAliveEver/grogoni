@@ -10,7 +10,7 @@ if (databaseUrl === null) {
 
 const pool = new Pool(
   databasePoolConfig(databaseUrl, {
-    applicationName: "soko-market-db-health",
+    applicationName: "grogoni-db-health",
     poolMaxFallback: 2
   })
 );
@@ -24,11 +24,11 @@ try {
       current_user as database_user,
       (
         select count(*)
-        from soko_schema_migrations
+        from grogoni_schema_migrations
       )::integer as applied_migration_count,
       (
         select filename
-        from soko_schema_migrations
+        from grogoni_schema_migrations
         order by filename desc
         limit 1
       ) as latest_migration

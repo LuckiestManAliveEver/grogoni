@@ -56,8 +56,8 @@ export interface PlatformDefaultRuntimePolicy {
 
 /**
  * Before a shop swaps anything it runs the Shopkeeper agent on the ZeroClaw agent runtime with
- * OpenAI's GPT-6 Luna, paid for by Soko (docs/adr/ADR-zeroclaw-default-agent-runtime.md). A
- * deployment without a ZeroClaw gateway runs Shopkeeper on Soko's built-in engine instead.
+ * OpenAI's GPT-6 Luna, paid for by Grogoni (docs/adr/ADR-zeroclaw-default-agent-runtime.md). A
+ * deployment without a ZeroClaw gateway runs Shopkeeper on Grogoni's built-in engine instead.
  */
 export const repositoryDefaultRuntimePolicy: PlatformDefaultRuntimePolicy = {
   agentId: "builtin:shopkeeper:v1",
@@ -234,32 +234,32 @@ export interface BusinessSummary {
   id: string;
   name: string;
   language: SupportedLanguage;
-  sokoId: string;
+  grogoniId: string;
   /** IANA timezone (for example `Africa/Nairobi`) for cutoff and "next day" rules. Business data,
    *  never a code default; absent/null until the owner configures it. */
   timezone?: string | null;
 }
 
 /**
- * One retired `sokoId` (docs/architecture/soko-id-slug-system.md). `releasedAt` is null while the
+ * One retired `grogoniId` (docs/architecture/grogoni-id-slug-system.md). `releasedAt` is null while the
  * handle is in its post-rename cooldown (unavailable to any store, resolvable to the business
  * that used to hold it) and gets set once the cooldown job clears it, at which point the handle
  * becomes available for anyone to claim again.
  */
-export interface SokoIdHistorySummary {
+export interface GrogoniIdHistorySummary {
   id: string;
   businessId: string;
-  sokoId: string;
+  grogoniId: string;
   releasedAt: string | null;
   createdAt: string;
 }
 
 /**
  * The one shared result shape every channel (web storefront route, Telegram `/start`, any future
- * channel adapter) resolves a `sokoId` to - never a second, channel-specific lookup. `null` means
+ * channel adapter) resolves a `grogoniId` to - never a second, channel-specific lookup. `null` means
  * the id never existed and never will (not even in history).
  */
-export type SokoIdResolution =
+export type GrogoniIdResolution =
   | { status: "active"; business: BusinessSummary }
   | { status: "stale"; business: BusinessSummary; redirectTo: string };
 
@@ -267,9 +267,9 @@ export interface PublicCommerceIdentitySummary {
   canonicalBusinessId: string;
   displayName: string;
   commerceAddress: string;
-  sokoId: string;
+  grogoniId: string;
   storefront: {
-    sokoId: string;
+    grogoniId: string;
     publicUrlPath: string;
   };
   catalogue: {
@@ -365,9 +365,9 @@ export interface PasskeySummary {
   lastUsedAt: string | null;
 }
 
-export type SokoMode = "marketplace" | "seller";
+export type GrogoniMode = "marketplace" | "seller";
 
-export type SokoChatSurface =
+export type GrogoniChatSurface =
   "conversation" | "storefront" | "catalogue" | "product" | "order" | "receipt" | "owner-controls";
 
 export type ConversationKind = "personal" | "storefront" | "order";
@@ -375,7 +375,7 @@ export type ConversationKind = "personal" | "storefront" | "order";
 export type ConversationParticipantRole = "account" | "shop" | "agent" | "external";
 
 export type ChannelProvider =
-  | "soko"
+  | "grogoni"
   | "telegram"
   | "whatsapp"
   | "messenger"
@@ -421,7 +421,7 @@ export type ChannelEndpointStatus =
 export type ConversationMessageAuthor = "user" | "agent" | "system";
 
 export type MessageChannel =
-  | "soko"
+  | "grogoni"
   | "sms"
   | "mms"
   | "rcs_business"
@@ -435,7 +435,7 @@ export type MessageChannel =
   | "email";
 
 export type MessageComposerChannel =
-  "soko" | "sms_external_app" | "platform_share_sheet" | "sms_native" | "unsupported";
+  "grogoni" | "sms_external_app" | "platform_share_sheet" | "sms_native" | "unsupported";
 
 export type MessageHandoffChannel = "sms_external_app" | "platform_share_sheet";
 
@@ -661,7 +661,7 @@ export interface ChannelSelectionResult {
     | "preferred_channel"
     | "current_conversation_channel"
     | "most_recent_reachable_channel"
-    | "soko_identity"
+    | "grogoni_identity"
     | "eligible_linked_channel";
 }
 
@@ -969,7 +969,7 @@ export interface MarketplaceIntroStateSummary {
 
 /** Stable provider-registry key. Providers are runtime extensions, not a closed platform enum. */
 export type ModelProviderId = string;
-/** The Soko-funded default model: platform-included, every other model is merchant-funded. */
+/** The Grogoni-funded default model: platform-included, every other model is merchant-funded. */
 export const platformSharedModelId = "gpt-6-luna" as const;
 export type ModelCostResponsibility = "platform-included" | "merchant";
 
@@ -1005,7 +1005,7 @@ export interface AiModelSummary {
   contextWindow: number | null;
   /**
    * The provider's own model identifier (e.g. a Hugging Face Hub repo id), kept separate from
-   * `id` (Soko's internal registry id used for relationships/bindings). `null` when the model has
+   * `id` (Grogoni's internal registry id used for relationships/bindings). `null` when the model has
    * no external provider-specific id (the deterministic fallback, a device-bridge model).
    */
   canonicalModelId?: string | null;
@@ -1058,7 +1058,7 @@ export interface InferenceModelPricing {
 }
 
 export interface AiModelInferenceRouting {
-  /** Configured provider instance id (e.g. "openai", "anthropic", "zai-general", "soko-llama"). */
+  /** Configured provider instance id (e.g. "openai", "anthropic", "zai-general", "grogoni-llama"). */
   providerId: string;
   /** The id sent to the provider API; distinct from the catalog id so hosting can move. */
   providerModelId: string;
@@ -1084,7 +1084,7 @@ export interface InferenceProviderSummary {
   type: "openai" | "anthropic" | "zai" | "openai-compatible" | "local";
   executionTarget: InferenceExecutionTarget;
   enabled: boolean;
-  /** Soko-funded credential is configured server-side (the key itself is never exposed). */
+  /** Grogoni-funded credential is configured server-side (the key itself is never exposed). */
   managedCredentialConfigured: boolean;
   byokAllowed: boolean;
   allowCredentialEndpoint: boolean;
@@ -1221,9 +1221,9 @@ export type AgentModelBindingStatus =
   "inactive" | "verifying" | "active" | "failed" | "unavailable";
 
 /**
- * "vercel": Soko's hosted inference deployment (the platform default).
- * "backend": Soko-operated server-side execution; the multi-provider inference router (OpenAI,
- *   Anthropic, Z.ai, Soko-hosted llama.cpp, other OpenAI-compatible servers) runs here.
+ * "vercel": Grogoni's hosted inference deployment (the platform default).
+ * "backend": Grogoni-operated server-side execution; the multi-provider inference router (OpenAI,
+ *   Anthropic, Z.ai, Grogoni-hosted llama.cpp, other OpenAI-compatible servers) runs here.
  * "remote-shop-device": a shop-owned machine registered as an execution host (e.g. a merchant's
  *   laptop running Ollama), brokered by the owner-node protocol.
  * "browser-local" / "installed-app": the model runs on the chatting member's own device (WebLLM in
@@ -1281,7 +1281,7 @@ export const runtimeModels = {
     id: "qwen3-4b",
     displayName: "Qwen3-4B",
     provider: "huggingface",
-    // The Hugging Face Hub repository id, distinct from Soko's internal registry id above -
+    // The Hugging Face Hub repository id, distinct from Grogoni's internal registry id above -
     // this is what gets sent as `model` in the chat/completions request, never the internal id.
     providerModelId: "Qwen/Qwen3-4B",
     // Qwen3's published native context length (see the model card at
@@ -1471,7 +1471,7 @@ export interface AgentModelReadinessResult {
   checkedAt: string;
 }
 
-export interface SokoSessionContext {
+export interface GrogoniSessionContext {
   accountId: string;
   userId: string;
   sessionId: string;
@@ -1479,21 +1479,21 @@ export interface SokoSessionContext {
   activeShopId: string | null;
   agentId: string;
   activeModelId: string;
-  mode: SokoMode;
-  activeSurface: SokoChatSurface;
+  mode: GrogoniMode;
+  activeSurface: GrogoniChatSurface;
   permissions: string[];
   sessionVersion: number;
   shops: AccountShopSummary[];
 }
 
-export interface StoredSokoSessionContext {
+export interface StoredGrogoniSessionContext {
   accountId: string;
   sessionId?: string;
   conversationId: string;
   activeShopId: string | null;
   activeModelId: string;
-  mode: SokoMode;
-  activeSurface: SokoChatSurface;
+  mode: GrogoniMode;
+  activeSurface: GrogoniChatSurface;
   sessionVersion: number;
   updatedAt: string;
 }
@@ -1716,7 +1716,7 @@ export type NetworkVisibilityStatus = "direct" | "agent_mediated" | "private";
 export type NetworkConsentStatus =
   "granted" | "pending" | "agent_required" | "rejected" | "revoked";
 
-export type NetworkNodeKind = "soko_user" | "soko_shop" | "external_contact" | "external_social";
+export type NetworkNodeKind = "grogoni_user" | "grogoni_shop" | "external_contact" | "external_social";
 
 export type SocialNetworkProvider =
   | "facebook"
@@ -1740,7 +1740,7 @@ export interface ContactHashSummary {
 }
 
 /**
- * Distinguishes how an identity fact (an external identity, or a Soko-account link) entered the
+ * Distinguishes how an identity fact (an external identity, or a Grogoni-account link) entered the
  * phonebook, per docs/architecture/phonebook-identity-resolution.md - "user_entered" (the owner
  * typed it themselves), "imported" (came in through a phone/social contact sync), "observed" (a
  * ComputerRuntime browsing session saw it while completing some other task - never trusted enough
@@ -1760,7 +1760,7 @@ export interface ExternalIdentitySummary {
   createdAt: string;
 }
 
-export interface SokoIdentityLinkSummary {
+export interface GrogoniIdentityLinkSummary {
   id: string;
   ownerUserId: string;
   nodeId: string;
@@ -1773,7 +1773,7 @@ export interface SokoIdentityLinkSummary {
 }
 
 /**
- * A connection between two Soko users, discovered through one side's phonebook. One record per
+ * A connection between two Grogoni users, discovered through one side's phonebook. One record per
  * pair: whoever asked first is the requester. See docs/architecture/phonebook-identity-resolution.md.
  */
 export type NetworkConnectionStatus = "pending" | "accepted" | "declined";
@@ -1802,7 +1802,7 @@ export interface NetworkConnectionSummary {
   counterpartUserId: string;
   counterpartDisplayName: string;
   counterpartBusinessName: string | null;
-  counterpartSokoId: string | null;
+  counterpartGrogoniId: string | null;
   /** The viewer's own phonebook node for the counterpart, when they have one. */
   nodeId: string | null;
   createdAt: string;
@@ -1859,9 +1859,9 @@ export interface NetworkNodeSummary {
   sourceId: string | null;
   sourceType: NetworkSyncSourceType | "owner" | "manual";
   sourcePlatform: string | null;
-  sokoUserId: string | null;
-  sokoBusinessId: string | null;
-  sokoAgentId: string | null;
+  grogoniUserId: string | null;
+  grogoniBusinessId: string | null;
+  grogoniAgentId: string | null;
   contactHashIds: string[];
   externalIdentityIds: string[];
   visibilityStatus: NetworkVisibilityStatus;
@@ -1909,7 +1909,7 @@ export interface StatusBroadcastRecipientSummary {
  * A distinct, trackable commerce object posted from a confirmed product capture to a chosen set
  * of contacts - not a plain chat message (direct conversations between two human accounts must be
  * end-to-end encrypted, which a server-composed status card cannot honestly satisfy). Recipients
- * matched to an existing Soko account (`deliveryChannel: "in_app"`) can discover it by querying
+ * matched to an existing Grogoni account (`deliveryChannel: "in_app"`) can discover it by querying
  * their own received statuses; unmatched phone contacts (`"share_sheet_pending"`) are handed off
  * through the OS share sheet client-side, so their delivery is never claimed as guaranteed the way
  * in-app discovery is.
@@ -1931,13 +1931,13 @@ export interface StatusBroadcastSummary {
 
 /**
  * A phone contact eligible to receive a status broadcast. `defaultSelected` is true only for
- * contacts who are both a matched Soko account and an existing customer of this business - the
+ * contacts who are both a matched Grogoni account and an existing customer of this business - the
  * picker must never default to selecting every candidate.
  */
 export interface StatusBroadcastCandidateSummary {
   networkNodeId: string;
   displayName: string;
-  isSokoUser: boolean;
+  isGrogoniUser: boolean;
   isExistingCustomer: boolean;
   defaultSelected: boolean;
 }
@@ -2137,7 +2137,7 @@ export interface NetworkGraphSummary {
   sources: NetworkSyncSourceSummary[];
   routes: AgentRouteSummary[];
   permissions: NetworkPermissionSummary[];
-  identityLinks: SokoIdentityLinkSummary[];
+  identityLinks: GrogoniIdentityLinkSummary[];
   identityCandidates: IdentityCandidateSummary[];
   connections?: NetworkConnectionSummary[];
   /**
@@ -2534,7 +2534,7 @@ export interface LogisticsSummary {
   cancelledAt: string | null;
 }
 
-export type ContactSource = "PHONEBOOK" | "EMAIL" | "SOCIAL" | "MANUAL" | "SOKO_ACCOUNT";
+export type ContactSource = "PHONEBOOK" | "EMAIL" | "SOCIAL" | "MANUAL" | "GROGONI_ACCOUNT";
 
 export interface CanonicalContactSummary {
   id: string;
@@ -2794,7 +2794,7 @@ export type PublicShopPresenceSummary = Pick<ShopPresenceSummary, "status" | "up
 /** A shop whose owner opted its catalogue in to being browsed and duplicated by other shops. */
 export interface ShareableCatalogueSummary {
   businessId: string;
-  sokoId: string;
+  grogoniId: string;
   businessName: string;
   productCount: number;
   updatedAt: string;
@@ -4286,7 +4286,7 @@ export interface AgentDefinition {
   knowledge: string;
   tools: string[];
   skillIds: RuntimeToolName[];
-  /** Which registered AgentRuntimeAdapter executes this agent's turns (e.g. "pi", "soko") - fixed
+  /** Which registered AgentRuntimeAdapter executes this agent's turns (e.g. "pi", "grogoni") - fixed
    *  per definition, not independently swappable. Engine choice changes by picking a different
    *  agent definition, not by editing this field on an existing one. */
   runtimeAdapterId: string;
@@ -4329,7 +4329,7 @@ export const defaultAgentDefinition: AgentDefinition = {
   displayName: "Shopkeeper",
   role: "General shopkeeper and storefront attendant",
   description:
-    "Soko's default shop assistant, running on the ZeroClaw agent runtime. Also the safe fallback while the open-source agent catalogue is unavailable.",
+    "Grogoni's default shop assistant, running on the ZeroClaw agent runtime. Also the safe fallback while the open-source agent catalogue is unavailable.",
   operatingPattern: "Focused operator",
   workloadClass: "focused",
   minimumDeviceTier: "low",
@@ -4356,21 +4356,21 @@ export const defaultAgentDefinition: AgentDefinition = {
 };
 
 /**
- * Same built-in shopkeeper behavior as defaultAgentDefinition, running on Soko's built-in engine
+ * Same built-in shopkeeper behavior as defaultAgentDefinition, running on Grogoni's built-in engine
  * instead of ZeroClaw. Choosing it is how a shop swaps off ZeroClaw.
  */
-export const sokoEngineAgentDefinitionId: AgentDefinitionId = "builtin:shopkeeper-soko";
-export const sokoEngineAgentDefinition: AgentDefinition = {
+export const grogoniEngineAgentDefinitionId: AgentDefinitionId = "builtin:shopkeeper-grogoni";
+export const grogoniEngineAgentDefinition: AgentDefinition = {
   ...defaultAgentDefinition,
-  id: sokoEngineAgentDefinitionId,
-  displayName: "Shopkeeper (Soko engine)",
-  description: "Same shopkeeper behavior, running on Soko's built-in agent engine.",
-  runtimeAdapterId: "soko"
+  id: grogoniEngineAgentDefinitionId,
+  displayName: "Shopkeeper (Grogoni engine)",
+  description: "Same shopkeeper behavior, running on Grogoni's built-in agent engine.",
+  runtimeAdapterId: "grogoni"
 };
 
 /**
  * Same built-in shopkeeper behavior as defaultAgentDefinition, running on the Pi engine instead of
- * Soko's built-in one. Engine choice is a property of which agent definition is active (see
+ * Grogoni's built-in one. Engine choice is a property of which agent definition is active (see
  * AgentDefinition.runtimeAdapterId) - this is how a shop swaps engines: pick this definition
  * instead of defaultAgentDefinition, rather than toggling an adapter field independently.
  */
@@ -4498,7 +4498,7 @@ export type GroundingPolicyId = "none" | "require_evidence";
  * template, and every agent/template resolves the same recipe for the same recognized task.
  */
 export interface ContextRecipe {
-  /** `soko.<taskType>@<version>`, e.g. `soko.show_products@1`. */
+  /** `grogoni.<taskType>@<version>`, e.g. `grogoni.show_products@1`. */
   id: string;
   taskType: RuntimeParserIntent;
   version: number;
@@ -4930,7 +4930,7 @@ export interface InferenceExecutionRequest {
   generation: { maxTokens: number; temperature: number; jsonOutput: boolean };
   /**
    * Server-to-server only - this request never crosses a browser boundary (it travels from
-   * services/api to services/ai-runtime over the shared SOKO_INFERENCE_SERVICE_TOKEN bearer, both
+   * services/api to services/ai-runtime over the shared GROGONI_INFERENCE_SERVICE_TOKEN bearer, both
    * internal). When present, the business has explicitly authorized (POST
    * /v1/external-connections/:id/inference-authorization) using their own connected provider
    * credential for this call instead of the platform's; ai-runtime substitutes it for its own
@@ -5147,7 +5147,7 @@ export interface ShopCapabilityCategory {
 
 /**
  * GET /businesses/:businessId/capabilities - the Shop Hub, projected from the canonical tool and
- * module registries in @soko/tool-core and filtered by the caller's role in this business.
+ * module registries in @grogoni/tool-core and filtered by the caller's role in this business.
  */
 export interface ShopCapabilitiesSummary {
   businessId: string;

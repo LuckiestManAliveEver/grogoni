@@ -108,13 +108,13 @@ import type {
   RuntimeTurnSummary,
   ShopAgentRuntime,
   NativeRuntimeBindingSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import {
   defaultAgentDefinitionId,
   isModelExecutionTarget,
   modelExecutionTargets,
   platformSharedModelId
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import {
   createRuntimeToolProposal,
   createRuntimeToolProposalFromProductContextScript,
@@ -125,8 +125,8 @@ import {
   productContextScriptMatchToParseResult,
   receiptContextScriptMatchToParseResult,
   runtimeToolRegistry
-} from "@soko/tool-core";
-import { queryCatalogueProducts, roleCan, type BusinessPermission } from "@soko/business-core";
+} from "@grogoni/tool-core";
+import { queryCatalogueProducts, roleCan, type BusinessPermission } from "@grogoni/business-core";
 import { Cp2Error } from "../../cp2-error.js";
 import {
   asModelRuntimeError,
@@ -479,7 +479,7 @@ export class AgentRuntimeDomain {
       now
     );
     const stored = this.activeAiModels.get(input.businessId);
-    const preferredModelId = stored?.modelId ?? "sokoclaw-local";
+    const preferredModelId = stored?.modelId ?? "grogoniclaw-local";
     const modelId = resolveDefaultDeviceModelId(
       preferredModelId,
       this.deps.resolveCatalogModel(preferredModelId)
@@ -1463,7 +1463,7 @@ export class AgentRuntimeDomain {
       } else if (
         !downloadableAiModelIdPattern.test(effectiveProfile.modelId) &&
         this.deps.resolveCatalogModel(effectiveProfile.modelId)?.available !== true &&
-        effectiveProfile.modelId !== "sokoclaw-local"
+        effectiveProfile.modelId !== "grogoniclaw-local"
       ) {
         issues.push({
           code: "MODEL_UNAVAILABLE",
@@ -3142,7 +3142,7 @@ export class AgentRuntimeDomain {
       (this.deps.runtimeModelProviderResolver === undefined ||
       requestedModelId === selectedCloudFallbackModelId
         ? selectedCloudFallbackModelId
-        : "sokoclaw-local");
+        : "grogoniclaw-local");
     return { activeBinding, activeModelId, nativeResolution };
   }
 
@@ -3169,7 +3169,7 @@ export class AgentRuntimeDomain {
     // hosted-first zero-setup engine (Pi), matching the platform default model/execution target it
     // also gets below - this is a deployment-wide bootstrap choice, not a per-agent one. Any other,
     // explicitly chosen agent definition uses its own declared engine instead of being hardcoded to
-    // "soko" regardless of choice - this is how picking a different agent definition
+    // "grogoni" regardless of choice - this is how picking a different agent definition
     // (updateAgentProfile's agentDefinitionId) swaps engines, matching finalizeVerifiedActivation's
     // derivation for the explicit-activation path.
     const agentRuntimeAdapterId = usesPlatformDefaultAgent
@@ -3213,7 +3213,7 @@ export class AgentRuntimeDomain {
       businessId: input.businessId,
       accountId: input.accountId,
       name: agentName,
-      provider: agentRuntimeAdapterId === "pi" ? "pi" : "soko-business-agent",
+      provider: agentRuntimeAdapterId === "pi" ? "pi" : "grogoni-business-agent",
       packageRef: null,
       version: "1",
       runtimeContractVersion: "1",
@@ -3592,12 +3592,12 @@ export class AgentRuntimeDomain {
       businessId: input.shopRuntime.shopId,
       accountId: null,
       name: input.shopRuntime.identity.agentName,
-      provider: "soko-legacy-runtime",
+      provider: "grogoni-legacy-runtime",
       packageRef: null,
       version: String(input.shopRuntime.version),
       runtimeContractVersion: "1",
       capabilities: ["tools", "mcp"],
-      configuration: { runtimeAdapterId: "soko" },
+      configuration: { runtimeAdapterId: "grogoni" },
       status: "active",
       createdAt: input.now.toISOString(),
       updatedAt: input.now.toISOString()

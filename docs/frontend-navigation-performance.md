@@ -66,7 +66,7 @@ runtime.
 
 ## Timing instrumentation
 
-Development builds emit structured, token-free logs with the `[SOKO_PERF]` prefix for:
+Development builds emit structured, token-free logs with the `[GROGONI_PERF]` prefix for:
 
 - navigation click, route commit, and first visible render;
 - React route render duration;
@@ -90,7 +90,7 @@ On a low-end Android device with CPU throttling and Slow 4G:
 
 1. Move between Marketplace, Sell, Catalogue, Reports, Settings, and Back; confirm the header reacts
    immediately and no document reload occurs.
-2. Confirm `[SOKO_PERF] first-visible-render` is below 100 ms for warm routes.
+2. Confirm `[GROGONI_PERF] first-visible-render` is below 100 ms for warm routes.
 3. Open Settings without opening the model library; confirm no model registry or device storage
    request occurs.
 4. Open the model library; confirm its own pending state appears while account navigation remains

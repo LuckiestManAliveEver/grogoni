@@ -1,13 +1,13 @@
-# Soko.market Terms of Service
+# Grogoni Terms of Service
 
 **Version:** 1.0 (Draft)
 **Part II – Platform Services, AI Agents, Marketplace, Messaging, Skills, APIs, and User Responsibilities**
 
 ---
 
-# 15. The Soko.market Services
+# 15. The Grogoni Services
 
-Soko.market provides a unified commerce platform that enables users to create, manage, and operate digital storefronts using artificial intelligence, messaging technologies, automation, and marketplace services.
+Grogoni provides a unified commerce platform that enables users to create, manage, and operate digital storefronts using artificial intelligence, messaging technologies, automation, and marketplace services.
 
 Depending on your account type, subscription, geographic location, and applicable laws, the Services may include:
 
@@ -33,7 +33,7 @@ Certain Services may be experimental, region-specific, or subject to separate te
 
 # 16. AI Business Agents
 
-Soko.market enables merchants to configure AI Business Agents that may assist with customer interactions, business operations, and workflow automation.
+Grogoni enables merchants to configure AI Business Agents that may assist with customer interactions, business operations, and workflow automation.
 
 Depending on configuration, an AI Business Agent may:
 
@@ -59,7 +59,7 @@ Artificial intelligence systems generate probabilistic outputs and may produce i
 Accordingly:
 
 - AI-generated content should be reviewed before being relied upon for important decisions;
-- Soko.market does not guarantee the factual accuracy, completeness, or suitability of AI outputs;
+- Grogoni does not guarantee the factual accuracy, completeness, or suitability of AI outputs;
 - AI outputs should not be treated as legal, medical, financial, tax, engineering, or other regulated professional advice unless expressly provided by an appropriately qualified professional through the Services.
 
 Users remain responsible for decisions made based on AI-generated content.
@@ -68,9 +68,9 @@ Users remain responsible for decisions made based on AI-generated content.
 
 # 18. Model Availability
 
-Soko.market may make available one or more artificial intelligence models supplied by:
+Grogoni may make available one or more artificial intelligence models supplied by:
 
-- Soko.market;
+- Grogoni;
 - open-source communities;
 - third-party providers;
 - enterprise partners;
@@ -95,7 +95,7 @@ Where a particular model is discontinued, we will use reasonable efforts to prov
 
 # 19. Marketplace Services
 
-Soko.market may operate a marketplace through which users may discover, distribute, install, license, purchase, or sell digital products and services, including:
+Grogoni may operate a marketplace through which users may discover, distribute, install, license, purchase, or sell digital products and services, including:
 
 - AI Skills;
 - APIs;
@@ -106,9 +106,9 @@ Soko.market may operate a marketplace through which users may discover, distribu
 - extensions;
 - digital assets.
 
-Marketplace listings are created by Soko.market, third parties, or users.
+Marketplace listings are created by Grogoni, third parties, or users.
 
-Unless expressly identified otherwise, Soko.market acts as the platform operator and not as the publisher, creator, reseller, guarantor, or warrantor of third-party marketplace content.
+Unless expressly identified otherwise, Grogoni acts as the platform operator and not as the publisher, creator, reseller, guarantor, or warrantor of third-party marketplace content.
 
 ---
 
@@ -125,7 +125,7 @@ Skill publishers are responsible for ensuring that their Skills:
 - respect user privacy;
 - comply with applicable platform policies.
 
-Soko.market may review, suspend, reject, remove, or restrict Skills where necessary to protect users, comply with legal obligations, or preserve platform integrity.
+Grogoni may review, suspend, reject, remove, or restrict Skills where necessary to protect users, comply with legal obligations, or preserve platform integrity.
 
 ---
 
@@ -142,7 +142,7 @@ API users agree to:
 - protect API credentials;
 - use APIs only for lawful purposes.
 
-Soko.market may modify APIs to improve security, reliability, or functionality. Where reasonably practicable, advance notice will be provided for material changes affecting generally available APIs.
+Grogoni may modify APIs to improve security, reliability, or functionality. Where reasonably practicable, advance notice will be provided for material changes affecting generally available APIs.
 
 ---
 
@@ -154,9 +154,9 @@ When a user enables a third-party integration:
 
 - the user authorizes the exchange of information necessary for the integration to function;
 - the third-party provider's terms and privacy policies also apply;
-- Soko.market is not responsible for the availability, security, or functionality of third-party services.
+- Grogoni is not responsible for the availability, security, or functionality of third-party services.
 
-If a third-party provider changes or discontinues its services, corresponding integrations may become unavailable without liability to Soko.market.
+If a third-party provider changes or discontinues its services, corresponding integrations may become unavailable without liability to Grogoni.
 
 ---
 
@@ -183,7 +183,7 @@ Users must not use messaging functionality for unlawful, fraudulent, abusive, ha
 
 # 24. Storefront Services
 
-Soko.market enables merchants to establish digital storefronts through which they may present products and services to customers.
+Grogoni enables merchants to establish digital storefronts through which they may present products and services to customers.
 
 Merchants remain solely responsible for:
 
@@ -197,7 +197,7 @@ Merchants remain solely responsible for:
 - warranties;
 - customer communications.
 
-The existence of a storefront on the platform does not constitute endorsement or certification by Soko.market.
+The existence of a storefront on the platform does not constitute endorsement or certification by Grogoni.
 
 ---
 
@@ -205,7 +205,7 @@ The existence of a storefront on the platform does not constitute endorsement or
 
 Users retain ownership of the intellectual property rights they hold in User Content.
 
-By submitting User Content to the Services, the user grants Soko.market a worldwide, non-exclusive, royalty-free, sublicensable license to host, store, reproduce, process, transmit, display, and otherwise use that content solely as necessary to operate, secure, maintain, improve, and provide the Services, or as otherwise authorized by the user.
+By submitting User Content to the Services, the user grants Grogoni a worldwide, non-exclusive, royalty-free, sublicensable license to host, store, reproduce, process, transmit, display, and otherwise use that content solely as necessary to operate, secure, maintain, improve, and provide the Services, or as otherwise authorized by the user.
 
 This license terminates when the content is permanently deleted from the Services, except to the extent that retention is required by law, necessary for backup restoration, dispute resolution, fraud prevention, or the protection of legal rights.
 
@@ -249,7 +249,7 @@ Users may choose to synchronize contact information from supported sources, such
 
 Contact synchronization is optional.
 
-Where enabled, Soko.market processes synchronized information solely for the purposes described in the Privacy Policy and in accordance with applicable data protection laws.
+Where enabled, Grogoni processes synchronized information solely for the purposes described in the Privacy Policy and in accordance with applicable data protection laws.
 
 Users must ensure that they have an appropriate legal basis to provide contact information to the Services where required by applicable law.
 
@@ -310,7 +310,7 @@ Repeated or serious violations may result in suspension or termination of access
 
 # 32. Monitoring and Enforcement
 
-To protect users and maintain the integrity of the Services, Soko.market may investigate suspected violations of these Terms and take appropriate action, including:
+To protect users and maintain the integrity of the Services, Grogoni may investigate suspected violations of these Terms and take appropriate action, including:
 
 - requesting additional information;
 - restricting functionality;

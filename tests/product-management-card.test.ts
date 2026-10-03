@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const registry = readFileSync("apps/web/src/generated-surface-registry.tsx", "utf8");
-const soko = readFileSync("apps/web/src/soko-application-shared.ts", "utf8");
+const grogoni = readFileSync("apps/web/src/grogoni-application-shared.ts", "utf8");
 const chatRuntime = readFileSync("apps/web/src/hooks/useChatRuntimeState.ts", "utf8");
 const sharedTypes = readFileSync("packages/shared-types/src/index.ts", "utf8");
 const validation = readFileSync("services/api/src/cp2/domains/messaging/shared.ts", "utf8");
@@ -11,7 +11,7 @@ describe("products chat-invokable capability (Phase 4a)", () => {
   it("registers a product-management card in the generated-surface registry", () => {
     expect(registry).toContain('"product-management": (content) => {');
     expect(registry).toContain("<ProductManagementCard");
-    expect(soko).toContain(
+    expect(grogoni).toContain(
       'export const ProductManagementCard = lazy(() => import("./ProductManagementCard"));'
     );
   });

@@ -3,7 +3,7 @@
 Production routes inference through Vercel, declared as an independent deployment in
 `services/ai-runtime` (not a service block in `render.yaml`). The Render API holds only Vercel's
 public HTTPS URL (`VERCEL_INFERENCE_URL`) and a shared bearer token
-(`SOKO_INFERENCE_SERVICE_TOKEN`) - Vercel has no access to Postgres, business data, or tool
+(`GROGONI_INFERENCE_SERVICE_TOKEN`) - Vercel has no access to Postgres, business data, or tool
 credentials, and never receives a database connection string.
 
 The API remains the authenticated control plane for sessions, business data, message persistence,
@@ -13,8 +13,8 @@ from a signed Neon object-storage URL Render mints for it, runs inference, and s
 
 `pnpm check:render-inference-boundaries` enforces separation: API source cannot import
 `node-llama-cpp` or any local model engine, `render.yaml` must not declare a Render-hosted
-inference service (no `soko-market-inference`, no `BACKEND_INFERENCE_*`, no `type: pserv` on the
-API), the API service block must carry `VERCEL_INFERENCE_URL`/`SOKO_INFERENCE_SERVICE_TOKEN`, and
+inference service (no `grogoni-inference`, no `BACKEND_INFERENCE_*`, no `type: pserv` on the
+API), the API service block must carry `VERCEL_INFERENCE_URL`/`GROGONI_INFERENCE_SERVICE_TOKEN`, and
 no browser environment variable may contain the inference token or the Neon storage credentials.
 
 The default runtime is Pi plus canonical model `smollm2-360m`, executed on Vercel

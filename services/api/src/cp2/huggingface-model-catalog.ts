@@ -1,4 +1,4 @@
-import type { AiModelSummary } from "@soko/shared-types";
+import type { AiModelSummary } from "@grogoni/shared-types";
 
 export type HuggingFaceAiModelSummary = Omit<AiModelSummary, "source"> & {
   source: "huggingface";
@@ -334,7 +334,7 @@ function encodeRepositoryPath(value: string): string {
 function huggingFaceHeaders(token: string | undefined): HeadersInit {
   return {
     accept: "application/json",
-    "user-agent": "soko-market-on-device-model-catalog",
+    "user-agent": "grogoni-on-device-model-catalog",
     ...(token === undefined ? {} : { authorization: `Bearer ${token}` })
   };
 }

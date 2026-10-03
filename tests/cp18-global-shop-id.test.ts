@@ -7,7 +7,7 @@ interface CreateBusinessResponse {
     id: string;
     name: string;
     language: string;
-    sokoId: string;
+    grogoniId: string;
   };
 }
 
@@ -21,7 +21,7 @@ interface ProductResponse {
 
 interface PublicStorefrontResponse {
   agentId: string;
-  sokoId: string;
+  grogoniId: string;
   commerceAddress: string;
   businessName: string;
   presence: {
@@ -38,18 +38,18 @@ interface PublicStorefrontResponse {
   }>;
 }
 
-describe("CP18 Soko Storefront ID", () => {
-  it("creates readable unique shop IDs and resolves storefronts by Soko ID", async () => {
+describe("CP18 Grogoni Storefront ID", () => {
+  it("creates readable unique shop IDs and resolves storefronts by Grogoni ID", async () => {
     const store = createCp2Store();
     const app = buildApi({ cp2: { store } });
 
-    const first = await createOwnerBusiness(app, "254700000018", "BigFish soko", "Amina Seller");
-    const second = await createOwnerBusiness(app, "255700000018", "Dar Fish soko", "Amina Seller");
-    const third = await createOwnerBusiness(app, "256700000018", "Dar Fish soko");
+    const first = await createOwnerBusiness(app, "254700000018", "BigFish grogoni", "Amina Seller");
+    const second = await createOwnerBusiness(app, "255700000018", "Dar Fish grogoni", "Amina Seller");
+    const third = await createOwnerBusiness(app, "256700000018", "Dar Fish grogoni");
 
-    expect(first.business.sokoId).toBe("soko.amina-seller");
-    expect(second.business.sokoId).toBe("soko.dar-fish-soko");
-    expect(third.business.sokoId).toBe("soko.dar-fish-soko-2");
+    expect(first.business.grogoniId).toBe("grogoni.amina-seller");
+    expect(second.business.grogoniId).toBe("grogoni.dar-fish-grogoni");
+    expect(third.business.grogoniId).toBe("grogoni.dar-fish-grogoni-2");
 
     const stockedProduct = await postJson<ProductResponse>(
       app,
@@ -78,20 +78,20 @@ describe("CP18 Soko Storefront ID", () => {
 
     const storefront = await app.inject({
       method: "GET",
-      url: `/public/storefronts/${encodeURIComponent(first.business.sokoId)}`
+      url: `/public/storefronts/${encodeURIComponent(first.business.grogoniId)}`
     });
     const rawStorefront = await app.inject({
       method: "GET",
-      url: `/public/storefronts/${first.business.sokoId.toUpperCase()}`
+      url: `/public/storefronts/${first.business.grogoniId.toUpperCase()}`
     });
 
     expect(storefront.statusCode).toBe(200);
     expect(rawStorefront.statusCode).toBe(200);
     expect(storefront.json<PublicStorefrontResponse>()).toEqual({
-      agentId: first.business.sokoId,
-      sokoId: first.business.sokoId,
-      commerceAddress: "amina-seller@soko.market",
-      businessName: "BigFish soko",
+      agentId: first.business.grogoniId,
+      grogoniId: first.business.grogoniId,
+      commerceAddress: "amina-seller@grogoni.com",
+      businessName: "BigFish grogoni",
       presence: {
         status: "online",
         updatedAt: new Date(0).toISOString()
@@ -107,7 +107,7 @@ describe("CP18 Soko Storefront ID", () => {
         }
       ]
     });
-    expect(rawStorefront.json<PublicStorefrontResponse>().sokoId).toBe(first.business.sokoId);
+    expect(rawStorefront.json<PublicStorefrontResponse>().grogoniId).toBe(first.business.grogoniId);
     expect(storefront.json().products[0]).not.toHaveProperty("sku");
     expect(storefront.json().products[0]).not.toHaveProperty("buyingPrice");
     expect(store.snapshot().auditEvents.map((event) => event.type)).toEqual(

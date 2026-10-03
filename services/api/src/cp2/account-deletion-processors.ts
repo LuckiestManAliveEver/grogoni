@@ -56,9 +56,9 @@ export function createSignedDeletionWebhookProcessor(
         headers: {
           "content-type": "application/json",
           "idempotency-key": input.requestId,
-          "x-soko-deletion-processor": config.id,
-          "x-soko-deletion-signature": `sha256=${signature}`,
-          "x-soko-deletion-timestamp": timestamp
+          "x-grogoni-deletion-processor": config.id,
+          "x-grogoni-deletion-signature": `sha256=${signature}`,
+          "x-grogoni-deletion-timestamp": timestamp
         },
         body,
         signal: AbortSignal.timeout(15_000)

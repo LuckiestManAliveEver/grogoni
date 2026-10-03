@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { browserSupportsWebAuthn, startAuthentication } from "@simplewebauthn/browser";
-import type { AuthSessionView } from "@soko/shared-types";
-import { normalizePhoneInput, phoneNormalizationErrorMessage } from "@soko/shared-types";
+import type { AuthSessionView } from "@grogoni/shared-types";
+import { normalizePhoneInput, phoneNormalizationErrorMessage } from "@grogoni/shared-types";
 import { getCountryCallingCode, type CountryCode } from "libphonenumber-js";
 import { ApiRequestError, apiFetch } from "./lib/api";
 import { AppIcon } from "./AppIcon";
 import { PhoneNumberField, authenticationPhoneCountries } from "./PhoneNumberField";
 import { getUserFacingErrorMessage } from "./user-facing-error";
-import { isSokoId, normalizeSokoId } from "./sokoid-and-storefront";
+import { isGrogoniId, normalizeGrogoniId } from "./grogoniid-and-storefront";
 
 type Stage =
   | "entry"
@@ -91,10 +91,10 @@ export function PhoneFirstAuthentication({
       return { type: identifierType, identifier: trimmed };
     }
     if (identifierType === "store") {
-      if (!isSokoId(identifier)) {
-        throw new Error("Enter a valid Soko ID, e.g. soko.janes-shop.");
+      if (!isGrogoniId(identifier)) {
+        throw new Error("Enter a valid Grogoni ID, e.g. grogoni.janes-shop.");
       }
-      return { type: identifierType, identifier: normalizeSokoId(identifier) };
+      return { type: identifierType, identifier: normalizeGrogoniId(identifier) };
     }
     const normalized = normalizePhoneInput({
       rawInput: identifier,
@@ -152,7 +152,7 @@ export function PhoneFirstAuthentication({
         method: "POST",
         body:
           identifierType === "store"
-            ? { sokoId: normalized.identifier, pin }
+            ? { grogoniId: normalized.identifier, pin }
             : {
                 method: identifierType,
                 contact: normalized.identifier,
@@ -342,7 +342,7 @@ export function PhoneFirstAuthentication({
           </button>
           <div className="auth-wordmark">
             <AppIcon className="auth-wordmark-icon" />
-            <span>soko.market</span>
+            <span>grogoni</span>
           </div>
           <span className="auth-header-spacer" aria-hidden="true" />
         </header>
@@ -361,7 +361,7 @@ export function PhoneFirstAuthentication({
             <h1 id="auth-onboarding-title">{heading}</h1>
             <p>
               {stage === "entry"
-                ? "Use your phone number, email, or Soko ID to get back to your conversations."
+                ? "Use your phone number, email, or Grogoni ID to get back to your conversations."
                 : message}
             </p>
           </div>
@@ -382,7 +382,7 @@ export function PhoneFirstAuthentication({
                     setMessage("");
                   }}
                 >
-                  {method === "phone" ? "Phone" : method === "email" ? "Email" : "Soko ID"}
+                  {method === "phone" ? "Phone" : method === "email" ? "Email" : "Grogoni ID"}
                 </button>
               ))}
             </div>
@@ -422,13 +422,13 @@ export function PhoneFirstAuthentication({
                 </label>
               ) : (
                 <label>
-                  Soko ID
+                  Grogoni ID
                   <input
                     autoFocus
                     type="text"
                     autoComplete="off"
                     autoCapitalize="characters"
-                    placeholder="soko.janes-shop"
+                    placeholder="grogoni.janes-shop"
                     value={identifier}
                     onChange={(event) => setIdentifier(event.target.value)}
                   />
@@ -653,7 +653,7 @@ export function PhoneFirstAuthentication({
             </p>
           ) : null}
           <div className="auth-intent-switch">
-            <span>New to Soko?</span>
+            <span>New to Grogoni?</span>
             <button className="auth-text-button" type="button" disabled={busy} onClick={onSignUp}>
               Create an account
             </button>

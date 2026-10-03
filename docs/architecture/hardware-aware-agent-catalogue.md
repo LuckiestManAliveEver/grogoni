@@ -1,7 +1,7 @@
 # Hardware-aware OSS agent catalogue
 
 The owner agent selector discovers real open-source agent projects instead of maintaining a list
-of Soko-authored personas. Discovery has two sources:
+of Grogoni-authored personas. Discovery has two sources:
 
 - GitHub repositories returned by the official repository search API. Results must use a
   recognized open-source license, have at least 100 stars, carry the `ai-agents` topic, and not be
@@ -17,7 +17,7 @@ tokens to the browser.
 ## Execution boundary
 
 Repository discovery is not permission to execute third-party code. The catalogue records source,
-license, runtime, popularity, and hardware metadata, while the canonical Soko runtime retains its
+license, runtime, popularity, and hardware metadata, while the canonical Grogoni runtime retains its
 existing authorization, confirmation, context, and tool pipeline.
 
 ```text
@@ -26,7 +26,7 @@ GitHub/Hugging Face discovery
   -> execution-target compatibility ranking
   -> verified manifest cached on the device
   -> shop + device chat binding
-  -> existing versioned Soko runtime and model assignment
+  -> existing versioned Grogoni runtime and model assignment
 ```
 
 Hugging Face Gradio Spaces expose hosted APIs, so their server hardware is shown separately from

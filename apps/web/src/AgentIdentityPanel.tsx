@@ -1,11 +1,10 @@
 import { type FormEvent, useEffect, useState } from "react";
-import type { OssAgentSearchResult, OssAgentSummary } from "@soko/shared-types";
+import type { OssAgentSummary } from "@grogoni/shared-types";
 
 import { applyOssAgent, rankPortableOssAgents } from "./agent-catalog";
-import { getJson } from "./api-helpers";
 import { listInstalledOssAgentManifests } from "./oss-agent-installation";
 import { hydrateAccountOssAgentManifests, installOssAgentForAccount } from "./account-ai-assets";
-import type { AgentSettings, AiModelSummary } from "./soko-application-shared";
+import type { AgentSettings, AiModelSummary } from "./grogoni-application-shared";
 
 export interface AgentIdentityPanelProps {
   draftAgent: AgentSettings;
@@ -38,31 +37,16 @@ export function AgentIdentityPanel({
 
   async function loadOssAgents(search?: string) {
     setCatalogueLoading(true);
-    const query = search?.trim();
-    const suffix = query ? `?search=${encodeURIComponent(query)}` : "";
+    const query = normalizeSearchText(search ?? "");
     try {
-      const [github, huggingFace, accountManifests] = await Promise.all([
-        getJson<OssAgentSearchResult>(`/v1/oss-agents/github${suffix}`).catch(() => ({
-          agents: [],
-          status: "unavailable" as const,
-          connection: "public" as const,
-          message: "GitHub discovery is unavailable."
-        })),
-        getJson<OssAgentSearchResult>(`/v1/oss-agents/huggingface${suffix}`).catch(() => ({
-          agents: [],
-          status: "unavailable" as const,
-          connection: "public" as const,
-          message: "Hugging Face discovery is unavailable."
-        })),
-        hydrateAccountOssAgentManifests().catch(() => [])
-      ]);
+      const accountManifests = await hydrateAccountOssAgentManifests().catch(() => []);
       const merged = new Map<string, OssAgentSummary>();
-      for (const item of [
-        ...accountManifests.map((manifest) => manifest.agent),
-        ...huggingFace.agents,
-        ...github.agents
-      ]) {
-        merged.set(item.id, item);
+      for (const manifest of accountManifests) {
+        const item = manifest.agent;
+        const haystack = normalizeSearchText(`${item.label} ${item.description} ${item.runtime} ${item.capabilities.join(" ")}`);
+        if (query.length === 0 || haystack.includes(query)) {
+          merged.set(item.id, item);
+        }
       }
       setAgents([...merged.values()]);
       setInstalledAgentIds(
@@ -71,10 +55,10 @@ export function AgentIdentityPanel({
           ...accountManifests.map((manifest) => manifest.agent.id)
         ])
       );
-      setCatalogueMessage(`${huggingFace.message} ${github.message}`);
+      setCatalogueMessage("Showing locally installed agent definitions.");
     } catch {
       setAgents([]);
-      setCatalogueMessage("Open-source agent discovery is temporarily unavailable.");
+      setCatalogueMessage("Local agent catalogue is temporarily unavailable.");
     } finally {
       setCatalogueLoading(false);
     }
@@ -100,7 +84,7 @@ export function AgentIdentityPanel({
     }
   }
 
-  // Agent definitions are ranked by whether Soko can host/adapt them, never by the hardware of
+  // Agent definitions are ranked by whether Grogoni can host/adapt them, never by the hardware of
   // the phone or browser currently rendering this screen. A saved definition stays visible if a
   // deployment adapter later becomes unavailable so the owner can still manage the profile.
   const agentOptions = rankPortableOssAgents({ agents, backendAvailable }).filter(
@@ -117,8 +101,8 @@ export function AgentIdentityPanel({
         <div>
           <strong>Choose an open-source agent</strong>
           <small>
-            Live projects from GitHub and Hugging Face. Soko saves a portable definition and uses it
-            through the bounded Soko runtime; the model and execution host remain separate.
+            Local agent definitions saved to this account. Grogoni uses them through the bounded
+            runtime; the model and execution host remain separate.
           </small>
         </div>
         <span className="model-badge">Device independent</span>
@@ -131,7 +115,7 @@ export function AgentIdentityPanel({
           onChange={(event) => setAgentSearch(event.target.value)}
         />
         <button type="submit" className="secondary" disabled={catalogueLoading}>
-          {catalogueLoading ? "Searching…" : "Search GitHub + Hugging Face"}
+          {catalogueLoading ? "Searching…" : "Search local agents"}
         </button>
       </form>
       <small className="agent-catalog-message" role="status">
@@ -214,7 +198,7 @@ export function AgentIdentityPanel({
           aria-label="Current conversational model"
         />
         <small className="model-select-hint">
-          The selected model runs on the Soko backend, not on this device. It becomes active only
+          The selected model runs on the Grogoni backend, not on this device. It becomes active only
           after a real backend activation test succeeds.
         </small>
       </label>
@@ -228,4 +212,8 @@ export function AgentIdentityPanel({
       </label>
     </div>
   );
+}
+
+function normalizeSearchText(value: string): string {
+  return value.trim().toLowerCase();
 }

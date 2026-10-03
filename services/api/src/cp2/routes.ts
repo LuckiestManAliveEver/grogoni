@@ -1,20 +1,20 @@
 import { registerOfflineRuntimeRoutes } from "./offline-runtime-routes.js";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import type { BusinessPermission } from "@soko/business-core";
+import type { BusinessPermission } from "@grogoni/business-core";
 import type {
   AuthChannel,
   ShopPresenceStatus,
   SyncMutationPayload,
   SyncMutationType,
-  SokoChatSurface,
-  SokoMode,
+  GrogoniChatSurface,
+  GrogoniMode,
   SyncRealtimeReadyEvent,
   InferenceRequest,
   OwnerInferenceNodeMessage,
   RuntimeRegistryProviderId
-} from "@soko/shared-types";
-import { getStoreLinks } from "@soko/shared-types";
-import { isSyncMutationType } from "@soko/sync-core";
+} from "@grogoni/shared-types";
+import { getStoreLinks } from "@grogoni/shared-types";
+import { isSyncMutationType } from "@grogoni/sync-core";
 import {
   clearRefreshCookie,
   clearSessionCookie,
@@ -96,7 +96,7 @@ import type { BinaryUploadPipeline } from "./binary-upload-pipeline.js";
 import type { OwnerNodeBroker } from "../inference/owner-node-broker.js";
 import { readAuthRuntimeConfig } from "./auth-runtime-config.js";
 import { registerRuntimeRegistryRoutes } from "./runtime-registry/routes.js";
-import { createSokoCatalogRegistryAdapter } from "./runtime-registry/soko-adapter.js";
+import { createGrogoniCatalogRegistryAdapter } from "./runtime-registry/grogoni-adapter.js";
 import { createRuntimeRegistrySearchService } from "./runtime-registry/search.js";
 import { createRuntimeRegistryImportService } from "./runtime-registry/import-service.js";
 import {
@@ -122,7 +122,7 @@ export interface Cp2RouteOptions {
   store?: Cp2Store;
   vapidPublicKey?: string;
   /** Origin the web PWA is actually served from - used only to build the universal `/s/:slug`
-   *  redirect's absolute Location header (docs/architecture/soko-id-slug-system.md). Reuses the
+   *  redirect's absolute Location header (docs/architecture/grogoni-id-slug-system.md). Reuses the
    *  same value/env var (`WEB_PUBLIC_URL`) services/api/src/index.ts already threads through for
    *  message links, rather than introducing a second "where is the web app" setting. */
   webPublicUrl?: string;
@@ -160,7 +160,7 @@ interface PinLoginBody extends PinBody {
 }
 
 interface StoreLoginBody extends PinBody {
-  sokoId?: string;
+  grogoniId?: string;
 }
 
 interface IdentifierBody {
@@ -191,7 +191,7 @@ interface RoleCheckBody {
   permission?: string;
 }
 
-interface SokoIdRenameBody {
+interface GrogoniIdRenameBody {
   handle?: string;
 }
 
@@ -281,13 +281,13 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
           }
         : {})
     });
-  const webPublicUrl = (options.webPublicUrl ?? "https://soko.market").replace(/\/+$/u, "");
+  const webPublicUrl = (options.webPublicUrl ?? "https://grogoni.com").replace(/\/+$/u, "");
   const telegramBotUsername = options.telegramBotUsername ?? "";
   const binaryUploadPipeline = options.binaryUploadPipeline;
   const runtimeRegistryAdapters: Partial<
     Record<RuntimeRegistryProviderId, RuntimeRegistryAdapter>
   > = {
-    soko: createSokoCatalogRegistryAdapter({
+    grogoni: createGrogoniCatalogRegistryAdapter({
       listModels: () => store.listModelCatalog(),
       listAgents: () => store.listAgentCatalog()
     })
@@ -970,16 +970,16 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
     }
   });
 
-  // Lets a store owner sign in with their Soko Storefront ID instead of their own
+  // Lets a store owner sign in with their Grogoni Storefront ID instead of their own
   // phone/email - resolves the ID to the owning account and runs the same PIN check as any
-  // other PIN login. Login only: a Soko ID cannot be used to create a new account.
+  // other PIN login. Login only: a Grogoni ID cannot be used to create a new account.
   app.post(
     "/auth/pin/store-login",
     async (request: FastifyRequest<{ Body: StoreLoginBody }>, reply) => {
       try {
         enforceAuthIpRate(authAttemptsByIp, request, "store_login", 10);
-        const result = store.loginWithSokoIdPin({
-          sokoId: parseString(request.body.sokoId, "sokoId"),
+        const result = store.loginWithGrogoniIdPin({
+          grogoniId: parseString(request.body.grogoniId, "grogoniId"),
           pin: parseString(request.body.pin, "pin")
         });
         setAuthSessionCookies(reply, request, store, result.session.id);
@@ -1242,7 +1242,7 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
     async (request: FastifyRequest<{ Querystring: SessionContextQuery }>, reply) => {
       try {
         const conversationId = parseOptionalString(request.query.conversationId);
-        return store.getSokoSessionContext({
+        return store.getGrogoniSessionContext({
           sessionId: readSessionCookie(request.headers.cookie),
           ...(conversationId === undefined ? {} : { conversationId })
         });
@@ -1261,10 +1261,10 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
           "expectedSessionVersion"
         );
         const conversationId = parseOptionalString(request.body.conversationId);
-        const mode = parseOptionalSokoMode(request.body.mode);
+        const mode = parseOptionalGrogoniMode(request.body.mode);
         const activeShopId = parseOptionalNullableString(request.body.activeShopId);
-        const activeSurface = parseOptionalSokoChatSurface(request.body.activeSurface);
-        return store.updateSokoSessionContext({
+        const activeSurface = parseOptionalGrogoniChatSurface(request.body.activeSurface);
+        return store.updateGrogoniSessionContext({
           sessionId: readSessionCookie(request.headers.cookie),
           ...(mode === undefined ? {} : { mode }),
           ...(activeShopId === undefined ? {} : { activeShopId }),
@@ -1629,21 +1629,21 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
     }
   });
 
-  // Explicit merchant-initiated storefront id (sokoId) rename
-  // (docs/architecture/soko-id-slug-system.md). Pinned by default at creation - this is the only
+  // Explicit merchant-initiated storefront id (grogoniId) rename
+  // (docs/architecture/grogoni-id-slug-system.md). Pinned by default at creation - this is the only
   // way it ever changes.
   app.put(
-    "/businesses/:businessId/soko-id",
-    async (request: FastifyRequest<{ Params: BusinessParams; Body: SokoIdRenameBody }>, reply) => {
+    "/businesses/:businessId/grogoni-id",
+    async (request: FastifyRequest<{ Params: BusinessParams; Body: GrogoniIdRenameBody }>, reply) => {
       try {
-        const business = store.renameSokoId({
+        const business = store.renameGrogoniId({
           sessionId: readSessionCookie(request.headers.cookie),
           businessId: request.params.businessId,
           handle: parseString(request.body.handle, "handle")
         });
         return {
           business,
-          links: getStoreLinks(business.sokoId, { webOrigin: webPublicUrl, telegramBotUsername })
+          links: getStoreLinks(business.grogoniId, { webOrigin: webPublicUrl, telegramBotUsername })
         };
       } catch (error) {
         return sendCp2Error(reply, error);
@@ -1653,9 +1653,9 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
 
   // The channel-neutral fallback link (QR codes, flyers, anywhere the viewer's channel isn't
   // known) - resolves through the same shared resolver every channel uses, never a duplicate
-  // lookup (docs/architecture/soko-id-slug-system.md).
+  // lookup (docs/architecture/grogoni-id-slug-system.md).
   app.get("/s/:slug", async (request: FastifyRequest<{ Params: { slug: string } }>, reply) => {
-    const resolution = store.resolveBusinessBySokoId(request.params.slug);
+    const resolution = store.resolveBusinessByGrogoniId(request.params.slug);
     if (resolution === null) {
       return reply.code(404).send({
         code: "storefront_not_found",
@@ -1666,10 +1666,10 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
       return reply.code(410).send({
         code: "storefront_moved",
         message: "This shop has moved to a new storefront link.",
-        redirectTo: publicAgentUrl(webPublicUrl, resolution.business.sokoId)
+        redirectTo: publicAgentUrl(webPublicUrl, resolution.business.grogoniId)
       });
     }
-    return reply.redirect(publicAgentUrl(webPublicUrl, resolution.business.sokoId), 302);
+    return reply.redirect(publicAgentUrl(webPublicUrl, resolution.business.grogoniId), 302);
   });
 
   app.put("/account/phone", async (request: FastifyRequest<{ Body: OwnerPhoneBody }>, reply) => {
@@ -1843,7 +1843,7 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
       try {
         const sessionId = readSessionCookie(request.headers.cookie);
         const defaultCountry = parseOptionalString(request.body.defaultCountry);
-        const { invites, alreadyOnSokoCount, invalidCount } = store.createNetworkInvites({
+        const { invites, alreadyOnGrogoniCount, invalidCount } = store.createNetworkInvites({
           sessionId,
           businessId: request.params.businessId,
           contacts: parseNetworkInviteContacts(request.body.contacts),
@@ -1855,7 +1855,7 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
             businessId: request.params.businessId,
             inviteIds: invites.map((invite) => invite.id)
           }),
-          alreadyOnSokoCount,
+          alreadyOnGrogoniCount,
           invalidCount
         };
       } catch (error) {
@@ -2242,12 +2242,12 @@ function parseLanguage(value: string | undefined) {
 }
 
 /** Mirrors apps/web/src/routes.ts's `publicAgent`/`routeId` exactly (`/agent/${encodeURIComponent(id)}`)
- *  but as an absolute URL, since `GET /s/:slug` redirects across origins (soko.market ->
+ *  but as an absolute URL, since `GET /s/:slug` redirects across origins (grogoni ->
  *  the web app's own origin) rather than within one - services/api cannot import the web app's
  *  route module, so the same tiny path-building rule is replicated here rather than shared via a
  *  new cross-package dependency for one string template. */
-function publicAgentUrl(webPublicUrl: string, sokoId: string): string {
-  return `${webPublicUrl}/agent/${encodeURIComponent(sokoId)}`;
+function publicAgentUrl(webPublicUrl: string, grogoniId: string): string {
+  return `${webPublicUrl}/agent/${encodeURIComponent(grogoniId)}`;
 }
 
 function parseAccountDeletionBody(body: AccountDeletionBody | null | undefined) {
@@ -2259,7 +2259,7 @@ function parseAccountDeletionBody(body: AccountDeletionBody | null | undefined) 
   };
 }
 
-function parseSokoMode(value: unknown): SokoMode {
+function parseGrogoniMode(value: unknown): GrogoniMode {
   if (value === "marketplace" || value === "seller") {
     return value;
   }
@@ -2267,11 +2267,11 @@ function parseSokoMode(value: unknown): SokoMode {
   throw new Cp2Error(400, "mode_invalid", "mode must be marketplace or seller.");
 }
 
-function parseOptionalSokoMode(value: unknown): SokoMode | undefined {
-  return value === undefined ? undefined : parseSokoMode(value);
+function parseOptionalGrogoniMode(value: unknown): GrogoniMode | undefined {
+  return value === undefined ? undefined : parseGrogoniMode(value);
 }
 
-function parseSokoChatSurface(value: unknown): SokoChatSurface {
+function parseGrogoniChatSurface(value: unknown): GrogoniChatSurface {
   if (
     value === "conversation" ||
     value === "storefront" ||
@@ -2287,8 +2287,8 @@ function parseSokoChatSurface(value: unknown): SokoChatSurface {
   throw new Cp2Error(400, "surface_invalid", "activeSurface is not supported.");
 }
 
-function parseOptionalSokoChatSurface(value: unknown): SokoChatSurface | undefined {
-  return value === undefined ? undefined : parseSokoChatSurface(value);
+function parseOptionalGrogoniChatSurface(value: unknown): GrogoniChatSurface | undefined {
+  return value === undefined ? undefined : parseGrogoniChatSurface(value);
 }
 
 function parseOptionalNullableString(value: unknown): string | null | undefined {

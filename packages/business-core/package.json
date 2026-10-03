@@ -1,5 +1,5 @@
 {
-  "name": "@soko/business-core",
+  "name": "@grogoni/business-core",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -20,8 +20,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@soko/event-core": "workspace:*",
-    "@soko/shared-types": "workspace:*",
-    "@soko/tool-core": "workspace:*"
+    "@grogoni/event-core": "workspace:*",
+    "@grogoni/shared-types": "workspace:*",
+    "@grogoni/tool-core": "workspace:*"
   }
 }

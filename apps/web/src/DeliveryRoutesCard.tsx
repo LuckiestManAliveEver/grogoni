@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { DeliveryRouteStatus, DeliveryRouteSummary } from "@soko/shared-types";
+import type { DeliveryRouteStatus, DeliveryRouteSummary } from "@grogoni/shared-types";
 import { useAsyncActions } from "./hooks/useAsyncActions";
 import { useApiMutationRevision } from "./hooks/useApiMutationRevision";
 import { getJson, patchJson, postJson } from "./api-helpers";

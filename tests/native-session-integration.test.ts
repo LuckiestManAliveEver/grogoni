@@ -143,7 +143,7 @@ describe("native-style account session lifecycle", () => {
     const invalidCookie = await app.inject({
       method: "POST",
       url: "/auth/session/refresh",
-      headers: { ...deviceHeaders("device-one", false), cookie: "soko_refresh=not-a-real-token" }
+      headers: { ...deviceHeaders("device-one", false), cookie: "grogoni_refresh=not-a-real-token" }
     });
     expect(invalidCookie.statusCode).toBe(401);
     expect(invalidCookie.json()).toMatchObject({ code: "auth_refresh_revoked" });
@@ -238,8 +238,8 @@ describe("native-style account session lifecycle", () => {
 
     expect(logoutAll.statusCode).toBe(200);
     expect(logoutAll.json()).toMatchObject({ revoked: 2 });
-    expect(clearedCookies).toContain("soko_session=");
-    expect(clearedCookies).toContain("soko_refresh=");
+    expect(clearedCookies).toContain("grogoni_session=");
+    expect(clearedCookies).toContain("grogoni_refresh=");
     expect(first.statusCode).toBe(401);
     expect(second.statusCode).toBe(401);
     await app.close();
@@ -295,11 +295,11 @@ describe("frontend lifecycle state", () => {
 function deviceHeaders(deviceId: string, includeContentType = true): Record<string, string> {
   return {
     ...(includeContentType ? { "content-type": "application/json" } : {}),
-    "x-soko-device-id": deviceId,
-    "x-soko-device-name": `${deviceId} name`,
-    "x-soko-platform": "android",
-    "x-soko-client": "pwa",
-    "user-agent": "Soko test device"
+    "x-grogoni-device-id": deviceId,
+    "x-grogoni-device-name": `${deviceId} name`,
+    "x-grogoni-platform": "android",
+    "x-grogoni-client": "pwa",
+    "user-agent": "Grogoni test device"
   };
 }
 

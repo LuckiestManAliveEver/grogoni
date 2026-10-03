@@ -1,4 +1,4 @@
-import { createEvent, type BusinessEvent } from "@soko/event-core";
+import { createEvent, type BusinessEvent } from "@grogoni/event-core";
 import type {
   CatalogueQueryResult,
   CustomerSummary,
@@ -15,14 +15,14 @@ import type {
   ProductCaptureJobSummary,
   ProductImportDraft,
   ProductSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import {
   isGramsString,
   isOrderSource,
   type MessageChannel,
   type OrderSource
-} from "@soko/shared-types";
-import { invalid, type ValidationResult, valid } from "@soko/tool-core";
+} from "@grogoni/shared-types";
+import { invalid, type ValidationResult, valid } from "@grogoni/tool-core";
 
 import { parseFlexibleImportRecords, parseImportNumber } from "../shared/content-parsing.js";
 import {

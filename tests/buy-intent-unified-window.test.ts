@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest";
  * experience inside the same shell everyone else uses.
  */
 describe("buy intent, marketplace, and guest browsing share one window", () => {
-  const application = readFileSync("apps/web/src/SokoApplication.tsx", "utf8");
+  const application = readFileSync("apps/web/src/GrogoniApplication.tsx", "utf8");
   const chatSurface = readFileSync("apps/web/src/ChatSurface.tsx", "utf8");
   const chatComposer = readFileSync("apps/web/src/ChatComposer.tsx", "utf8");
   const marketplaceModeCard = readFileSync("apps/web/src/MarketplaceModeCard.tsx", "utf8");

@@ -9,7 +9,7 @@ produced by reading the actual code, not by assuming a generic architecture.
 
 ## 0. The one fact that reframes this whole audit
 
-Soko's API is **not** a stateless request/DB-query service. Per
+Grogoni's API is **not** a stateless request/DB-query service. Per
 [`docs/single-instance-store-ceiling.md`](../single-instance-store-ceiling.md),
 `createPostgresCp2Store` (`services/api/src/cp2/postgres-store.ts`) loads the entire business
 dataset into one process's memory at boot (`Cp2Store`, ~20k lines, ~100 collections) and every
@@ -17,7 +17,7 @@ read/mutation for auth, conversations, catalogue, and orders runs synchronously 
 `Map`/array state. Writes are mirrored to Postgres **asynchronously**, after the response, via a
 coalesced, retried persistence queue (`enqueueSave` → `saveNormalizedSnapshot`). This is a
 deliberate, documented, accepted limitation: single-instance only, memory-bound, not horizontally
-scaled — and `render.yaml` deploys exactly one `soko-market` instance today, with no
+scaled — and `render.yaml` deploys exactly one `grogoni` instance today, with no
 `numInstances`/autoscaling block anywhere in the file.
 
 Consequence for this audit: the classic failure mode this task describes — "a background query
@@ -35,16 +35,16 @@ The rest of this audit is organized around what's actually true here, not a gene
 
 ## 1. PostgreSQL connections
 
-Three separate `pg.Pool` instances exist in the `soko-market` process, all created in
+Three separate `pg.Pool` instances exist in the `grogoni` process, all created in
 `services/api/src/index.ts` / `services/api/src/cp2/postgres-store.ts`:
 
 | Pool                   | File:line                                                          | Max                                     | Timeouts configured?                                                                                           | Purpose                                                             |
 | ---------------------- | ------------------------------------------------------------------ | --------------------------------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
 | `cp2_primary`          | `postgres-store.ts:516` (`poolConfig()`, `postgres-store.ts:1206`) | `DB_POOL_MAX` (default 5)               | Yes — `connectionTimeoutMillis`, `idleTimeoutMillis`, `query_timeout`, `statement_timeout`, all env-driven     | Boot-time snapshot load, async persistence writes, `health()` reads |
-| `cp2_realtime`         | `postgres-store.ts:587`                                            | 1 (hardcoded, same `poolConfig()` base) | Yes (inherits `poolConfig()`)                                                                                  | Single dedicated connection holding `LISTEN soko_sync_changes`      |
+| `cp2_realtime`         | `postgres-store.ts:587`                                            | 1 (hardcoded, same `poolConfig()` base) | Yes (inherits `poolConfig()`)                                                                                  | Single dedicated connection holding `LISTEN grogoni_sync_changes`      |
 | `model_artifact_store` | `index.ts:63`                                                      | 2 (hardcoded)                           | **No** — only `{ connectionString, max: 2 }`, no `connectionTimeoutMillis`/`query_timeout`/`statement_timeout` | Resolves/verifies model artifacts on the inference path             |
 
-All three are registered with `@soko/observability`'s `instrumentPgPool()`
+All three are registered with `@grogoni/observability`'s `instrumentPgPool()`
 (`packages/observability/src/index.ts:176`), which wraps `pool.query` for per-pool query-duration
 histograms and exposes `pg_pool_total_connections` / `pg_pool_idle_connections` /
 `pg_pool_waiting_requests` / `pg_pool_max_connections` gauges, sampled live at scrape time. Nothing
@@ -60,7 +60,7 @@ query would hold one of only 2 connections indefinitely, no `query_timeout` to k
 `services/api/scripts/audit-phone-identities.ts:31` and `services/api/scripts/run-ai-eval.ts:55`
 have their own ad hoc `new Pool(...)` calls too.
 
-**Total budget:** with today's defaults, the `soko-market` process opens at most `5 + 1 + 2 = 8`
+**Total budget:** with today's defaults, the `grogoni` process opens at most `5 + 1 + 2 = 8`
 Postgres connections. Cron jobs (`db:backup`, `db:purge-shops`, `db:purge-accounts`, `db:health`)
 each run as a separate one-shot Render process with their own pool (`db:health`'s cron entry in
 `render.yaml` explicitly sets `DB_POOL_MAX=2`, the only place in the repo with intentional
@@ -68,7 +68,7 @@ per-workload pool sizing today) — they never contend with the API process for 
 they are different OS processes entirely, not because of any budget enforcement.
 
 **Neon pooling / serverless multiplication:** not applicable today — `render.yaml` deploys
-`soko-market` as a single `type: web`/`runtime: node` Render service (a long-lived container, not
+`grogoni` as a single `type: web`/`runtime: node` Render service (a long-lived container, not
 serverless functions), so there is exactly one pool instance per pool per deploy, not one per
 invocation. `services/ai-runtime` similarly runs as a container (`http-server.ts`) in production,
 with a Vercel edge/serverless handler (`vercel-handler.ts`) as an alternate deployment shape not
@@ -81,7 +81,7 @@ used by the current `render.yaml`.
 
 ```sql
 select
-  (select filename from soko_schema_migrations order by filename desc limit 1) as latest_migration,
+  (select filename from grogoni_schema_migrations order by filename desc limit 1) as latest_migration,
   (select count(*) from account_sync_changes)::text as sync_change_count,
   (select count(*) from otp_challenges)::text as otp_relational_count,
   (select md5(coalesce(string_agg(id::text, ',' order by id::text), '')) from otp_challenges) as otp_relational_checksum,
@@ -138,7 +138,7 @@ overload response shaped for the caller, and no protection against repeatedly ha
   correct HTTP semantics per §7 of the task spec) but only protects `ai-runtime` itself; nothing
   bounds how many `services/api` requests can be in flight toward it at once before that 503 fires.
 - HTTP request volume overall: `@fastify/rate-limit` (`services/api/src/app.ts:83-96`), global,
-  Redis-backed (`soko-market-rate-limit-cache`), 300 req/min default / 60 req/min for `/auth/*`,
+  Redis-backed (`grogoni-rate-limit-cache`), 300 req/min default / 60 req/min for `/auth/*`,
   keyed by IP. This is a real, working, already-correct backstop against request volume — not
   scoped per-workload, and not the mechanism this audit is about (queue/concurrency bounds for
   _expensive_ operations, not raw request counting).
@@ -238,14 +238,14 @@ Two distinct mechanisms, both already safe:
   active instance for that trigger.
 - **Six in-process `setInterval` runners** (`services/api/src/cp2/*-runner.ts`: connected-mailbox
   sync, notification delivery, conversation recycle-bin, agent-owner-correction retention,
-  sokoId cooldown, account deletion): every one follows an identical, already-correct shape —
+  grogoniId cooldown, account deletion): every one follows an identical, already-correct shape —
   `setInterval(() => void runNow(), intervalMs)`, `.unref()`'d, with a single `inFlight` promise
   guard so a tick that arrives while the previous run is still active collapses into the same
   in-flight promise rather than starting a second overlapping run. This _is_ the "prevent
   overlapping execution" requirement, already implemented, independently, six times.
 
 No `pg_advisory_lock`-based cross-instance job lock exists for these six runners — not a gap
-today (single instance, per §0), but would become one the day a second `soko-market` instance is
+today (single instance, per §0), but would become one the day a second `grogoni` instance is
 introduced. Documented as a known limitation, not fixed in this pass (fixing it now would add
 locking machinery whose only justification is a deployment topology that `render.yaml` does not
 have and `docs/single-instance-store-ceiling.md` explicitly says not to introduce yet — see
@@ -288,7 +288,7 @@ before the process exits. Not a gap; not touched in this pass.
 
 ## 15. Observability
 
-`@soko/observability` (`packages/observability/src/index.ts`) already provides, via
+`@grogoni/observability` (`packages/observability/src/index.ts`) already provides, via
 `@prometheus-io/client`: default Node metrics (RSS, CPU, event-loop lag), an HTTP request-duration
 histogram, a per-pool query-duration histogram plus total/idle/waiting/max connection gauges for
 every registered pool, and a model-request-duration histogram. `GET /metrics`
@@ -323,19 +323,19 @@ for; the HTTP-level limiter and the workload-level bulkhead are complementary, n
 
 ## 18. Deployment topology (render.yaml)
 
-- `soko-market` (`type: web`, `runtime: node`, `plan: starter`) — the API, single instance, no
+- `grogoni` (`type: web`, `runtime: node`, `plan: starter`) — the API, single instance, no
   autoscaling block. `healthCheckPath: /health/ready`.
-- `soko-market-rate-limit-cache` (`type: keyvalue`) — Redis, backs the rate limiter.
-- `soko-market-ocr-worker` (`type: pserv`, `runtime: docker`) — private network only, not
+- `grogoni-rate-limit-cache` (`type: keyvalue`) — Redis, backs the rate limiter.
+- `grogoni-ocr-worker` (`type: pserv`, `runtime: docker`) — private network only, not
   public-facing; the codebase's only existing example of a workload already isolated into its own
   Render service.
-- `soko-market-web-staging` (`type: web`, `runtime: static`) — unrelated to backend resources.
+- `grogoni-web-staging` (`type: web`, `runtime: static`) — unrelated to backend resources.
 - Four `type: cron` jobs (`db-backup`, `shop-purge`, `account-purge`, `db-health`) — each an
   isolated one-shot process; `db-health` is the only place with intentionally different
   (smaller) pool sizing (`DB_POOL_MAX=2`) than the main API today.
 
 Three of six background runners live **in-process inside the same web dyno as request
-handling** (connected-mailbox sync, notification delivery, sokoId cooldown are always-on by
+handling** (connected-mailbox sync, notification delivery, grogoniId cooldown are always-on by
 default; conversation recycle-bin and owner-correction retention likewise; account deletion is
 opt-in). This is consistent with §0: since the business-logic store is single-process and
 in-memory by design, these runners operate on that same in-memory store directly — they could not

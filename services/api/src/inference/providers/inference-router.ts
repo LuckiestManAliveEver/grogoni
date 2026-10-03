@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { createCircuitBreaker, type CircuitBreaker } from "@soko/resource-control";
+import { createCircuitBreaker, type CircuitBreaker } from "@grogoni/resource-control";
 
 import type {
   CredentialScope,
@@ -41,7 +41,7 @@ export interface InferenceCallContext {
   /** Narrows credential resolution to exactly one source (brief §11 "explicit request scope"). */
   explicitCredentialScope?: Exclude<CredentialScope, "explicit">;
   signal?: AbortSignal;
-  /** The client-visible turn id (x-soko-turn-id), used to route device jobs and reply streams. */
+  /** The client-visible turn id (x-grogoni-turn-id), used to route device jobs and reply streams. */
   turnId?: string | null;
   /**
    * Receives raw model text as it is generated, when the model streams. The router resets it
@@ -58,7 +58,7 @@ export interface ResolvedInferenceTarget {
   executionTarget: InferenceExecutionTarget;
   /**
    * Set only for delegated runs (see InferenceRouter.delegate): the external agent runtime holds
-   * the credential, so Soko resolves none but still knows who pays.
+   * the credential, so Grogoni resolves none but still knows who pays.
    */
   delegatedScope?: CredentialScope;
 }
@@ -159,7 +159,7 @@ export class InferenceRouter {
      */
     allowDeviceExecution?: boolean;
     /**
-     * Delegated runs only: an external agent runtime makes the provider call with Soko's own
+     * Delegated runs only: an external agent runtime makes the provider call with Grogoni's own
      * platform credential, which it holds itself. Step 8 is skipped and the run is platform-funded.
      */
     credentialHeldByDelegate?: boolean;
@@ -231,7 +231,7 @@ export class InferenceRouter {
         throw new InferenceError("LOCAL_EXECUTION_REQUIRED", { providerId: config.id, modelId });
       }
       // Delegated runs have their own circuit: an agent-runtime outage must not take the
-      // provider offline for Soko's direct calls, and vice versa.
+      // provider offline for Grogoni's direct calls, and vice versa.
       if (this.breakerFor(`delegated:${config.id}`).state() === "open") {
         throw new InferenceError("PROVIDER_UNAVAILABLE", {
           providerId: config.id,
@@ -374,7 +374,7 @@ export class InferenceRouter {
 
   /**
    * One generation whose provider call is made by an external agent runtime (ZeroClaw) rather
-   * than by Soko. Everything Soko owns still applies: the model must be in the catalog and
+   * than by Grogoni. Everything Grogoni owns still applies: the model must be in the catalog and
    * enabled, its provider enabled and not tripped, budgets and rate limits are admitted before the
    * call, and the run is recorded (platform-funded) afterwards. No fallback: a delegated run is
    * never moved to another model or runtime.

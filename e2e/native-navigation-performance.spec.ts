@@ -7,17 +7,17 @@ test.beforeEach(async ({ page }) => {
   await installDelayedApi(page);
   await page.addInitScript(() => {
     localStorage.setItem(
-      "soko.chatFirst.activeBusiness",
+      "grogoni.chatFirst.activeBusiness",
       JSON.stringify({
         id: "performance-shop",
         name: "Performance Shop",
         language: "en",
         role: "owner",
-        sokoId: "254P12345678"
+        grogoniId: "254P12345678"
       })
     );
-    localStorage.setItem("soko.chatFirst.mode", "seller");
-    localStorage.setItem("soko.market.marketplace-intro.completed.v1", "true");
+    localStorage.setItem("grogoni.chatFirst.mode", "seller");
+    localStorage.setItem("grogoni.marketplace-intro.completed.v1", "true");
   });
 });
 
@@ -62,7 +62,7 @@ test("primary navigation remains local while data refreshes slowly", async ({ pa
   await page.getByRole("button", { name: "Close Catalogue" }).click();
   await expect(page).toHaveURL(/\/sell$/);
 
-  console.log("[SOKO_NAV_BENCH]", JSON.stringify(timings));
+  console.log("[GROGONI_NAV_BENCH]", JSON.stringify(timings));
 });
 
 test("workspace and model settings do not replace the authenticated shell", async ({ page }) => {
@@ -80,7 +80,7 @@ test("workspace and model settings do not replace the authenticated shell", asyn
   await expect(page.getByRole("heading", { name: "Model library", exact: true })).toBeVisible({
     timeout: 30_000
   });
-  await expect(page.getByLabel("Soko backend models", { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("Grogoni backend models", { exact: true })).toHaveCount(0);
 
   expect(await page.locator(".app-frame").getAttribute("data-shell-instance")).toBe(shellId);
 });
@@ -99,7 +99,7 @@ test("backend model activation survives reload and can be removed", async ({ pag
   await expect(page).toHaveURL(/\/sell$/u);
   await page.locator(".settings-group-title", { hasText: "Model & inference" }).click();
   await page.getByRole("button", { name: "Open model library" }).click();
-  const backendModels = page.getByLabel("Soko backend models", { exact: true });
+  const backendModels = page.getByLabel("Grogoni backend models", { exact: true });
   await expect(backendModels).toBeVisible();
 
   await backendModels.getByRole("button", { name: "Use with agent", exact: true }).click();
@@ -206,7 +206,7 @@ async function installDelayedApi(page: Page): Promise<void> {
               id: "performance-shop",
               name: "Performance Shop",
               language: "en",
-              sokoId: "254P12345678"
+              grogoniId: "254P12345678"
             },
             membership: {
               id: "performance-membership",
@@ -227,7 +227,7 @@ async function installDelayedApi(page: Page): Promise<void> {
     if (url.pathname === "/v1/ai-models") return json({ models: [] });
     if (url.pathname.endsWith("/runtime/effective") && url.pathname.startsWith("/businesses/")) {
       return json({
-        agent: { id: "builtin:shopkeeper", name: "Soko AI", runtimeAdapterId: "soko" },
+        agent: { id: "builtin:shopkeeper", name: "Grogoni AI", runtimeAdapterId: "grogoni" },
         model: { id: "qwen2.5-0.5b-android", name: "Qwen2.5 0.5B (Android recommended)" },
         execution: { type: "backend", hostId: null, ready: true },
         binding: activeBinding !== null ? { id: activeBinding.id } : null,
@@ -291,7 +291,7 @@ async function installDelayedApi(page: Page): Promise<void> {
           provider: "ollama",
           executionTarget: "backend",
           latencyMs: 12,
-          responsePreview: "SOKO_MODEL_OK",
+          responsePreview: "GROGONI_MODEL_OK",
           errorCode: null,
           message: null,
           retryable: false,

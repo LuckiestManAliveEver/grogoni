@@ -2,7 +2,7 @@
 
 This document is a short addendum to
 [`context-semantic-runtime.md`](context-semantic-runtime.md), which remains the canonical
-description of Soko's context retrieval/assembly pipeline. It covers only what the MUSE-adoption
+description of Grogoni's context retrieval/assembly pipeline. It covers only what the MUSE-adoption
 change (see [`muse-adoption-audit.md`](muse-adoption-audit.md)) added on top of that pipeline:
 **diagnostics** and the **grounding gate**. Evidence provenance/confidence and context recipes have
 their own documents ([`evidence-graph.md`](evidence-graph.md), [`context-recipes.md`](context-recipes.md)).
@@ -15,7 +15,7 @@ before, plus a `ContextSelectionDiagnostics` object built in the same pass (no s
 
 ```ts
 interface ContextSelectionDiagnostics {
-  candidateNodes: number; // every source of this type/audience Soko holds for the business
+  candidateNodes: number; // every source of this type/audience Grogoni holds for the business
   selectedNodes: number; // items actually packed into the prompt
   rejectedNodes: number; // candidateNodes - selectedNodes
   estimatedTokens: number; // ~4 chars/token, matching contextCharacterBudgetForModel's own estimate

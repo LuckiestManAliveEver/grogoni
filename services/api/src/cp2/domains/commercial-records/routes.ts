@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import type { ContactSource, DeliveryRouteStatus, SupplierContactRole } from "@soko/shared-types";
+import type { ContactSource, DeliveryRouteStatus, SupplierContactRole } from "@grogoni/shared-types";
 import { Cp2Error } from "../../cp2-error.js";
 import { type Cp2Store, readSessionCookie } from "../../store.js";
 import {
@@ -307,7 +307,7 @@ function optionalNumber(value: unknown, name: string): number | null | undefined
 }
 function parseContactSource(value: unknown): ContactSource {
   const source = value === undefined ? "MANUAL" : parseString(value, "source").toUpperCase();
-  if (!["PHONEBOOK", "EMAIL", "SOCIAL", "MANUAL", "SOKO_ACCOUNT"].includes(source))
+  if (!["PHONEBOOK", "EMAIL", "SOCIAL", "MANUAL", "GROGONI_ACCOUNT"].includes(source))
     throw new Cp2Error(400, "contact_source_invalid", "Contact source is not supported.");
   return source as ContactSource;
 }

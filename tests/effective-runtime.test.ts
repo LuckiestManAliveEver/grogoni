@@ -19,8 +19,8 @@ describe("effective runtime API", () => {
 
       expect(response.statusCode).toBe(200);
       expect(response.json()).toMatchObject({
-        // No ZeroClaw gateway in tests, so Shopkeeper's ZeroClaw engine resolves to Soko's own.
-        agent: { id: "builtin:shopkeeper", name: "Shopkeeper", runtimeAdapterId: "soko" },
+        // No ZeroClaw gateway in tests, so Shopkeeper's ZeroClaw engine resolves to Grogoni's own.
+        agent: { id: "builtin:shopkeeper", name: "Shopkeeper", runtimeAdapterId: "grogoni" },
         model: { id: "gpt-6-luna", name: "GPT-6 Luna" },
         execution: { type: "backend", ready: true },
         source: "default",
@@ -45,7 +45,7 @@ describe("effective runtime API", () => {
 
       expect(response.statusCode).toBe(200);
       expect(response.json()).toMatchObject({
-        agent: { id: "builtin:shopkeeper", runtimeAdapterId: "soko" },
+        agent: { id: "builtin:shopkeeper", runtimeAdapterId: "grogoni" },
         model: { id: "gpt-6-luna" },
         execution: { type: "backend", hostId: null, ready: false },
         binding: null,
@@ -124,7 +124,7 @@ function adapter(modelId: string, executionTarget: "vercel" | "backend"): ModelR
       provider: "test-vercel",
       executionTarget,
       latencyMs: 1,
-      responsePreview: "SOKO_MODEL_OK",
+      responsePreview: "GROGONI_MODEL_OK",
       errorCode: null,
       message: null,
       retryable: false

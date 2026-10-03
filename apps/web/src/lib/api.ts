@@ -29,7 +29,7 @@ export type AuthenticationFailureCode =
   | "auth_reauthentication_required";
 
 const refreshPath = "/auth/session/refresh";
-const deviceIdStorageKey = "soko.market.device-id.v1";
+const deviceIdStorageKey = "grogoni.device-id.v1";
 const defaultRequestTimeoutMs = 20_000;
 let refreshInFlight: Promise<boolean> | null = null;
 
@@ -265,10 +265,10 @@ function deviceSessionHeaders(): Record<string, string> {
     browserNavigator?.platform ||
     "unknown";
   return {
-    "x-soko-device-id": readStableDeviceId(),
-    "x-soko-device-name": `${platform} device`,
-    "x-soko-platform": platform,
-    "x-soko-client":
+    "x-grogoni-device-id": readStableDeviceId(),
+    "x-grogoni-device-name": `${platform} device`,
+    "x-grogoni-platform": platform,
+    "x-grogoni-client":
       typeof window !== "undefined" && window.matchMedia?.("(display-mode: standalone)").matches
         ? "pwa"
         : "web"

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ProductSummary } from "@soko/shared-types";
+import type { ProductSummary } from "@grogoni/shared-types";
 import {
   matchOfflineOrderProducts,
   offlineOrderClarificationMessage,

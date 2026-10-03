@@ -3,7 +3,7 @@ import type {
   InferenceProvider,
   InferenceRequest,
   InferenceRouteDecision
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { mapInferenceError, type InferenceUserState } from "./error-mapping";
 
 export interface InferenceExecutionResult {

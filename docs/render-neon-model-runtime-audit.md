@@ -15,7 +15,7 @@ was not a deployable, authenticated inference gateway.
 That implementation used this boundary:
 
 ```text
-PWA -> public Soko API -> Render private soko-market-inference -> container-local Ollama
+PWA -> public Grogoni API -> Render private grogoni-inference -> container-local Ollama
                          |
                          +-> external Neon PostgreSQL
 ```
@@ -27,7 +27,7 @@ off by default.
 
 ### Runtime and deployment
 
-- `services/api/src/inference/model-runtime.ts` called Ollama directly instead of a private Soko
+- `services/api/src/inference/model-runtime.ts` called Ollama directly instead of a private Grogoni
   inference contract.
 - API configuration allowed a loopback default even though the Render API did not contain Ollama.
 - The registry ID `qwen2.5-0.5b-android` was not an Ollama model name. Provider mapping was spread
@@ -67,7 +67,7 @@ off by default.
 
 ## Historical corrections
 
-- One canonical mapping in `@soko/shared-types` maps `qwen2.5-0.5b-android` to
+- One canonical mapping in `@grogoni/shared-types` maps `qwen2.5-0.5b-android` to
   `qwen2.5:0.5b`; readiness, probes, generation, and metadata all validate it.
 - The private inference gateway exposes authenticated readiness, capability, probe, and generation
   routes with bounded requests and structured errors.

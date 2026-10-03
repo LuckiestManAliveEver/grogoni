@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 
-import type { ProductFieldDefinition, ProductFieldInputType } from "@soko/shared-types";
+import type { ProductFieldDefinition, ProductFieldInputType } from "@grogoni/shared-types";
 
 import {
   type ProductFieldDraft,
   type ProductFormState,
   type ProductSummary
-} from "./soko-application-shared";
+} from "./grogoni-application-shared";
 
 import { formatOptionalMoney } from "./formatters";
 

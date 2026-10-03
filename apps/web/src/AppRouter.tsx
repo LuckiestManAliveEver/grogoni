@@ -9,11 +9,11 @@ import { appRouteModuleKeys, loadLazyModuleWithRecovery } from "./lazy-module-re
 import { LazyModuleErrorBoundary } from "./LazyModuleErrorBoundary";
 import { recordComponentRender, recordRouteRender } from "./performance";
 import { readAuthenticationRoutePath, readOwnerRoute, routes } from "./routes";
-import { isSokoId, normalizeSokoId } from "./sokoid-and-storefront";
+import { isGrogoniId, normalizeGrogoniId } from "./grogoniid-and-storefront";
 
 const initialPathname = window.location.pathname;
-const initialSokoApplicationModule = shouldWarmOwnerRoute(initialPathname)
-  ? loadLazyModuleWithRecovery(appRouteModuleKeys.ownerApp, () => import("./SokoApplication"))
+const initialGrogoniApplicationModule = shouldWarmOwnerRoute(initialPathname)
+  ? loadLazyModuleWithRecovery(appRouteModuleKeys.ownerApp, () => import("./GrogoniApplication"))
   : null;
 
 const TermsOfServicePage = lazy(() =>
@@ -34,15 +34,15 @@ const AccountDeletionPage = lazy(() =>
     () => import("./legal/AccountDeletionPage")
   )
 );
-const OwnerApp = lazy(() => loadSokoApplication().then((module) => ({ default: module.OwnerApp })));
+const OwnerApp = lazy(() => loadGrogoniApplication().then((module) => ({ default: module.OwnerApp })));
 const PublicStorefront = lazy(() =>
-  loadSokoApplication().then((module) => ({ default: module.PublicStorefrontChat }))
+  loadGrogoniApplication().then((module) => ({ default: module.PublicStorefrontChat }))
 );
 
-function loadSokoApplication() {
+function loadGrogoniApplication() {
   return (
-    initialSokoApplicationModule ??
-    loadLazyModuleWithRecovery(appRouteModuleKeys.ownerApp, () => import("./SokoApplication"))
+    initialGrogoniApplicationModule ??
+    loadLazyModuleWithRecovery(appRouteModuleKeys.ownerApp, () => import("./GrogoniApplication"))
   );
 }
 
@@ -51,7 +51,7 @@ function shouldWarmOwnerRoute(pathname: string): boolean {
     readOwnerRoute(pathname) !== null ||
     readAuthenticationRoutePath(pathname) !== null ||
     pathname === routes.oauthCallback ||
-    /^\/(?:agent|shop|shops|soko)\//u.test(pathname)
+    /^\/(?:agent|shop|shops|grogoni)\//u.test(pathname)
   );
 }
 
@@ -118,14 +118,14 @@ export function AppRouter() {
       <main className="legal-placeholder">
         <AppIcon className="route-brand-icon" />
         <h1>Destination unavailable</h1>
-        <p>This address does not match a Soko.market page.</p>
+        <p>This address does not match a Grogoni page.</p>
         <a href={routes.marketplace}>Return to the marketplace</a>
       </main>
     );
   }
 
   return (
-    <LazyRoute moduleKey={appRouteModuleKeys.ownerApp} label="Soko.market" page={<OwnerApp />} />
+    <LazyRoute moduleKey={appRouteModuleKeys.ownerApp} label="Grogoni" page={<OwnerApp />} />
   );
 }
 
@@ -151,7 +151,7 @@ function LazyRoute({
           fallback={
             <main className="legal-placeholder" aria-busy="true">
               <AppIcon className="route-brand-icon" />
-              <p>Loading Soko.market…</p>
+              <p>Loading Grogoni…</p>
             </main>
           }
         >
@@ -200,7 +200,7 @@ export function readStorefrontRoute(): StorefrontRoute | null {
   const pathname = window.location.pathname;
   const match =
     pathname.match(/^\/agent\/([^/]+)(?:\/products\/([^/]+))?\/?$/) ??
-    pathname.match(/^\/(?:shop|shops|soko)\/([^/]+)\/?$/);
+    pathname.match(/^\/(?:shop|shops|grogoni)\/([^/]+)\/?$/);
 
   if (match === null) return null;
 
@@ -224,7 +224,7 @@ export function readStorefrontRoute(): StorefrontRoute | null {
   }
 
   if (!pathname.startsWith("/agent/")) {
-    const canonicalAgentId = isSokoId(agentId) ? normalizeSokoId(agentId) : agentId;
+    const canonicalAgentId = isGrogoniId(agentId) ? normalizeGrogoniId(agentId) : agentId;
     window.history.replaceState(
       null,
       "",

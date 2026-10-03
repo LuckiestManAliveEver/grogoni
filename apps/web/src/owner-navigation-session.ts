@@ -1,6 +1,6 @@
 import type { ChatMessage } from "./app-shell";
 
-const storagePrefix = "soko.market.owner-navigation.v1";
+const storagePrefix = "grogoni.owner-navigation.v1";
 const maxPersistedMessages = 80;
 const navigationWriteDelayMs = 180;
 const pendingWrites = new Map<
@@ -126,6 +126,6 @@ function isChatMessage(value: unknown): value is ChatMessage {
   return (
     typeof message.id === "string" &&
     typeof message.body === "string" &&
-    (message.author === "merchant" || message.author === "sokoclaw" || message.author === "contact")
+    (message.author === "merchant" || message.author === "grogoniclaw" || message.author === "contact")
   );
 }

@@ -1,4 +1,4 @@
-import type { BusinessEvent } from "@soko/event-core";
+import type { BusinessEvent } from "@grogoni/event-core";
 import type {
   LocalSyncRecord,
   LocalSyncSnapshot,
@@ -11,7 +11,7 @@ import type {
   SyncQueueItem,
   SyncQueueStatus,
   SyncQueueSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
 /**
  * Known business-error codes mapped to the conflict category they represent.

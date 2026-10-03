@@ -10,7 +10,7 @@ Enable the OpenAI provider, allow the model, and configure OPENAI_API_KEY.
 ```
 
 **Root architectural cause:** the native runtime graph (`services/api/src/cp2/domains/
-native-runtime/store.ts`) hard-coded OpenAI as Soko's built-in model. `builtinRuntimeModelId =
+native-runtime/store.ts`) hard-coded OpenAI as Grogoni's built-in model. `builtinRuntimeModelId =
 "openai-fast"` was a mandatory constant, `ensureGlobalDefault()` unconditionally seeded an
 `openai-fast` model, an `env:OPENAI_API_KEY`-credentialed execution host, and an installation for
 it, and `services/api/src/index.ts` synchronously health-checked that specific adapter and threw
@@ -18,7 +18,7 @@ before ever calling `app.listen` if it wasn't configured and healthy. `infra/db/
 065_retire_execution_fabric.sql` seeded the same dependency into the database: the repository
 global default binding's primary role pointed at `openai-fast` from the moment that migration ran.
 None of this matched the stated architecture - "agents, models, and execution hosts are
-independent, swappable slots; no model vendor is required for Soko to boot" - it was a real
+independent, swappable slots; no model vendor is required for Grogoni to boot" - it was a real
 regression against that goal, not a deliberate design choice.
 
 ## Permanent architecture
@@ -54,7 +54,7 @@ in `ModelExecutionTarget`. The dimensions are intentionally separate:
 `ModelProviderId` and `RuntimeModelProviderName` are extensible string registry keys, not closed
 vendor unions. Adding a provider registers metadata and an adapter; it does not require editing a
 platform provider enum. The web application imports `ModelExecutionTarget`, `ModelProviderId`, and
-`RuntimeModelProviderName` from `@soko/shared-types` rather than maintaining parallel unions.
+`RuntimeModelProviderName` from `@grogoni/shared-types` rather than maintaining parallel unions.
 
 The native execution targets are (as of ADR-device-independent-runtime-and-registry-discovery.md,
 `browser-local` and `installed-app` were retired — a client device never needs a private model copy
@@ -63,7 +63,7 @@ target):
 
 | Target               | Meaning                                                                                                                                                                               |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `vercel`             | Inference runs on Soko's Vercel deployment (`services/ai-runtime`) - the platform default. Render mints a signed model-artifact URL; Vercel downloads, verifies, and executes it.     |
+| `vercel`             | Inference runs on Grogoni's Vercel deployment (`services/ai-runtime`) - the platform default. Render mints a signed model-artifact URL; Vercel downloads, verifies, and executes it.     |
 | `backend`            | Reserved for a future self-hosted server-side execution path, dispatched through the same `ModelRuntimeAdapter` interface - not currently registered by any adapter in production.    |
 | `remote-shop-device` | Inference runs on a shop-owned machine registered as an execution host in the shop runtime graph (e.g. a merchant's laptop running Ollama) — never the currently-open browser/device. |
 
@@ -75,8 +75,8 @@ host/device = the concrete compute destination.
 ## Empty-slot semantics
 
 `ensureGlobalDefault()` (`services/api/src/cp2/domains/native-runtime/store.ts`) now creates only
-the two concepts genuinely built into Soko: the built-in agent (`builtin:soko-agent:v1`) and a
-global default runtime **binding** (`builtin:soko-default-runtime:v1`) with `status: "draft"` and
+the two concepts genuinely built into Grogoni: the built-in agent (`builtin:grogoni-agent:v1`) and a
+global default runtime **binding** (`builtin:grogoni-default-runtime:v1`) with `status: "draft"` and
 zero model assignments. `builtinRuntimeModelId` no longer exists.
 
 A `"draft"` binding is a first-class, valid, resolvable state - not an error:
@@ -172,7 +172,7 @@ normally; only an actual inference turn against it surfaces `RUNTIME_MODEL_NOT_C
 
 ## OpenAI's role now (removed)
 
-> **Update:** OpenAI, Anthropic, Z.ai and any OpenAI-compatible server (including Soko-hosted
+> **Update:** OpenAI, Anthropic, Z.ai and any OpenAI-compatible server (including Grogoni-hosted
 > llama.cpp) are now reachable again as _optional_ providers through the multi-provider inference
 > router, exposed to agents as ordinary `ModelRuntimeAdapter`s on the `backend` target. None is
 > required to boot and none is a default. See

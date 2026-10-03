@@ -47,11 +47,11 @@ function config(id: string): InferenceProviderConfig {
 function llamaConfig(): InferenceProviderConfig {
   return {
     ...config("openai"),
-    id: "soko-llama",
-    displayName: "Soko Cloud",
+    id: "grogoni-llama",
+    displayName: "Grogoni Cloud",
     type: "openai-compatible",
-    baseUrl: "https://inference.soko.example/v1",
-    billingProduct: "soko-hosted",
+    baseUrl: "https://inference.grogoni.example/v1",
+    billingProduct: "grogoni-hosted",
     source: "environment"
   };
 }
@@ -73,7 +73,7 @@ const toolRequest: InferenceRequest = {
   requestId: "req-1",
   modelId: "any",
   messages: [
-    { role: "system", content: "You are Soko." },
+    { role: "system", content: "You are Grogoni." },
     { role: "user", content: "show my products" },
     {
       role: "assistant",
@@ -419,11 +419,11 @@ describe("OpenAICompatibleProvider (llama.cpp and other self-hosted servers)", (
       transportFor: (policy) => transportFromFetch(fetch, policy)
     });
     const response = await provider.generate(toolRequest, {
-      model: model("soko-llama"),
+      model: model("grogoni-llama"),
       credential,
       timeoutMs: 1_000
     });
-    expect(requests[0]?.url).toBe("https://inference.soko.example/v1/chat/completions");
+    expect(requests[0]?.url).toBe("https://inference.grogoni.example/v1/chat/completions");
     expect(requests[0]?.body).toHaveProperty("max_tokens");
     expect(response.output.text).toBe("from llama");
   });
@@ -436,7 +436,7 @@ describe("OpenAICompatibleProvider (llama.cpp and other self-hosted servers)", (
       transportFor: (policy) => transportFromFetch(fetch, policy)
     });
     await provider.generate(toolRequest, {
-      model: model("soko-llama"),
+      model: model("grogoni-llama"),
       credential: null,
       timeoutMs: 1_000
     });
@@ -448,11 +448,11 @@ describe("OpenAICompatibleProvider (llama.cpp and other self-hosted servers)", (
     const provider = createOpenAiCompatibleProvider(llamaConfig(), {
       transportFor: (policy) => transportFromFetch(fetch, policy)
     });
-    const textOnly = model("soko-llama", { capabilities: { text: true } });
+    const textOnly = model("grogoni-llama", { capabilities: { text: true } });
     expect(await provider.supports(textOnly)).toBe(true);
     expect(await provider.supports(textOnly, toolRequest)).toBe(false);
     expect(await provider.supports(model("openai"))).toBe(false);
-    expect(await provider.supports(model("soko-llama", { executionTarget: "browser-local" }))).toBe(
+    expect(await provider.supports(model("grogoni-llama", { executionTarget: "browser-local" }))).toBe(
       false
     );
   });
@@ -479,7 +479,7 @@ describe("AnthropicProvider", () => {
         }
       ]
     });
-    expect(body.system).toContain("You are Soko.");
+    expect(body.system).toContain("You are Grogoni.");
     expect(body.system).toContain("JSON object");
     const messages = body.messages as Array<{
       role: string;

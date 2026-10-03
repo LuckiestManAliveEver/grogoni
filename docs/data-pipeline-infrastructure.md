@@ -56,8 +56,8 @@ The API sends a JSON `POST` containing schema version, business ID, file name, c
 length, SHA-256 checksum, and base64 content. Requests include:
 
 - `idempotency-key`: the SHA-256 checksum
-- `x-soko-upload-timestamp`: an ISO timestamp
-- `x-soko-upload-signature`: `sha256=` plus the hex HMAC-SHA256 of
+- `x-grogoni-upload-timestamp`: an ISO timestamp
+- `x-grogoni-upload-signature`: `sha256=` plus the hex HMAC-SHA256 of
   `<timestamp>.<exact JSON body>`
 
 The scanner must return JSON with `{"status":"clean"}` or `{"status":"infected"}`. Unknown

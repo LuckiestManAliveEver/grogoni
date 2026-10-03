@@ -412,7 +412,7 @@ describe("Runtime Handoff Protocol REST surface", () => {
     const statusResponse = await mcpPost(
       app,
       accessToken,
-      toolCall(2, "soko.runtime_status", { taskId }),
+      toolCall(2, "grogoni.runtime_status", { taskId }),
       mcpSessionId
     );
     const status = statusResponse.json().result.structuredContent as {
@@ -423,7 +423,7 @@ describe("Runtime Handoff Protocol REST surface", () => {
     const swapResponse = await mcpPost(
       app,
       accessToken,
-      toolCall(3, "soko.model_swap", {
+      toolCall(3, "grogoni.model_swap", {
         taskId,
         targetId: replacementModelId,
         expectedHandoffId: status.activeHandoff.id
@@ -640,7 +640,7 @@ function healthyAdapter(modelId: string): ModelRuntimeAdapter {
         provider: "test",
         executionTarget,
         latencyMs: 4,
-        responsePreview: "SOKO_MODEL_OK",
+        responsePreview: "GROGONI_MODEL_OK",
         errorCode: null,
         message: null,
         retryable: false
@@ -706,7 +706,7 @@ function initializeRequest() {
     params: {
       protocolVersion: "2025-11-25",
       capabilities: {},
-      clientInfo: { name: "soko-test", version: "1.0.0" }
+      clientInfo: { name: "grogoni-test", version: "1.0.0" }
     }
   };
 }
@@ -765,7 +765,7 @@ describe("runtime capability and transfer API", () => {
       const caps = await f.app.inject({
         method: "GET",
         url: `/v1/runtime/${f.taskId}/capabilities`,
-        headers: { cookie: f.owner.cookie, "x-soko-device-id": "device" }
+        headers: { cookie: f.owner.cookie, "x-grogoni-device-id": "device" }
       });
       expect(caps.json().handoff).toMatchObject({
         available: false,
@@ -782,7 +782,7 @@ describe("runtime capability and transfer API", () => {
           url: `/v1/runtime/${f.taskId}/handoffs`,
           headers: {
             ...jsonHeaders(f.owner.cookie),
-            "x-soko-device-id": "device",
+            "x-grogoni-device-id": "device",
             "idempotency-key": "missing-host"
           },
           payload: {
@@ -831,7 +831,7 @@ describe("runtime capability and transfer API", () => {
         const caps = await blocked.inject({
           method: "GET",
           url: `/v1/runtime/${f.taskId}/capabilities`,
-          headers: { cookie: f.owner.cookie, "x-soko-device-id": "device" }
+          headers: { cookie: f.owner.cookie, "x-grogoni-device-id": "device" }
         });
         expect(caps.statusCode).toBe(200);
 
@@ -891,7 +891,7 @@ describe("runtime capability and transfer API", () => {
         executionHostId: "registered-local"
       });
       f.store.hydrateSnapshot(snapshot);
-      const headers = { ...jsonHeaders(f.owner.cookie), "x-soko-device-id": "device" };
+      const headers = { ...jsonHeaders(f.owner.cookie), "x-grogoni-device-id": "device" };
       expect(
         (
           await f.app.inject({

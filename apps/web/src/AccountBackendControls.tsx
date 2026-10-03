@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { E2eeDeviceSummary } from "@soko/shared-types";
+import type { E2eeDeviceSummary } from "@grogoni/shared-types";
 import { ensureE2eeIdentity } from "./e2ee";
 import { useAsyncActions } from "./hooks/useAsyncActions";
 import { apiFetch } from "./lib/api";

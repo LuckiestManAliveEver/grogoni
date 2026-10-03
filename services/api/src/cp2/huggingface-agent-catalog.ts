@@ -1,4 +1,4 @@
-import type { AgentDefinitionId, OssAgentSearchResult, OssAgentSummary } from "@soko/shared-types";
+import type { AgentDefinitionId, OssAgentSearchResult, OssAgentSummary } from "@grogoni/shared-types";
 
 export interface HuggingFaceAgentCatalog {
   searchAgents: (search?: string) => Promise<OssAgentSearchResult>;
@@ -277,7 +277,7 @@ function normalizeSearch(search: string | undefined): string {
 function huggingFaceHeaders(token: string | undefined): HeadersInit {
   return {
     accept: "application/json",
-    "user-agent": "soko-market-oss-agent-catalog",
+    "user-agent": "grogoni-oss-agent-catalog",
     ...(token === undefined ? {} : { authorization: `Bearer ${token}` })
   };
 }

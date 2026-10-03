@@ -21,7 +21,7 @@ export function mcpSchemaForRuntimeTool(toolName: RuntimeToolName): {
     if (fieldSchema.required) required.push(field);
   }
   return {
-    name: `soko.${definition.name}`,
+    name: `grogoni.${definition.name}`,
     description: definition.description,
     inputSchema: {
       type: "object",

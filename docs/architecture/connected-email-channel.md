@@ -2,11 +2,11 @@
 
 ## Repository audit
 
-Soko's registered email is account identity data. `Cp2Store` normalizes it through the existing
+Grogoni's registered email is account identity data. `Cp2Store` normalizes it through the existing
 email identity and OTP flows in `services/api/src/cp2/store.ts`; the routes in
 `services/api/src/cp2/routes.ts` use it for sign-in, verification, recovery, and account linking.
 `services/api/src/cp2/email-provider.ts` is a transactional Resend adapter for OTP and account
-notifications. Neither record authorizes Soko to read or send mailbox mail.
+notifications. Neither record authorizes Grogoni to read or send mailbox mail.
 
 Google and Microsoft login OAuth already existed in `services/api/src/cp2/oauth.ts`, but its
 tokens and scopes represent login identities. Connected mailbox OAuth therefore uses separate
@@ -21,7 +21,7 @@ The implementation reuses the existing domain:
 - `conversationMessages` and provider update receipts for canonical messages and deduplication;
 - `messaging.send` in `packages/tool-core/src/index.ts`;
 - the adapter registry and selection policy in `services/api/src/messaging/channel-gateway.ts`;
-- the existing conversation inbox and composer in `apps/web/src/SokoApplication.tsx`.
+- the existing conversation inbox and composer in `apps/web/src/GrogoniApplication.tsx`.
 
 No email-specific customer, CRM, inbox, agent runtime, or top-level provider tool was added.
 
@@ -49,7 +49,7 @@ fields. Email sends stop at `sent`; the providers used here do not prove recipie
 Outbound:
 
 ```text
-Soko user or authorized agent proposal
+Grogoni user or authorized agent proposal
   -> messaging.send
   -> Cp2Store.sendChannelMessage
   -> ChannelGateway.send
@@ -79,11 +79,11 @@ and 100 messages at a time. Both paths exclude spam/junk, remove quoted thread t
 provider events.
 
 Automatic acknowledgements are disabled by default. A mailbox owner may explicitly enable a
-bounded acknowledgement, which is sent only for an established Soko email thread, never for mail
+bounded acknowledgement, which is sent only for an established Grogoni email thread, never for mail
 classified as automated, and at most once per thread every 24 hours. The acknowledgement uses the
 same canonical message, provider authorization, idempotency, audit, and delivery pipeline.
 
-Confirmed Soko invoices can be selected in the email composer. The API resolves the invoice in the
+Confirmed Grogoni invoices can be selected in the email composer. The API resolves the invoice in the
 current tenant, generates a bounded text document server-side, and passes only normalized bytes to
 Gmail or Microsoft Graph. Client paths and arbitrary attachment URLs are never accepted.
 
@@ -106,8 +106,8 @@ refresh failure marks the mailbox `REAUTHORIZATION_REQUIRED` and prevents more s
 - Bulk campaigns remain blocked because the repository has no marketing-consent or unsubscribe
   model. This channel is limited to canonical customer conversations.
 - Provider HTML is accepted but normalized to safe text; executable or arbitrary email HTML is
-  never rendered in Soko.
-- Attachments are limited to confirmed Soko invoices resolved server-side. Arbitrary files and
+  never rendered in Grogoni.
+- Attachments are limited to confirmed Grogoni invoices resolved server-side. Arbitrary files and
   paths remain rejected.
 - Live Gmail and Outlook behavior requires configured provider applications and test accounts; a
   fake adapter is used in automated integration tests.

@@ -4,18 +4,18 @@ Date: 2026-09-21
 
 Read-only audit performed before any implementation in this change. Every claim is anchored to a
 file (and line/section, where useful). This complements, and does not replace,
-[`soko-execution-fabric-audit.md`](soko-execution-fabric-audit.md) (the agent/model/device coupling
+[`grogoni-execution-fabric-audit.md`](grogoni-execution-fabric-audit.md) (the agent/model/device coupling
 audit from a prior change) — this document focuses specifically on what already exists for durable,
 resumable, fenced task execution, and what this change adds on top of it.
 
 ## 1. What already exists (do not rebuild)
 
-Soko already has almost every structural piece the "Google AX-inspired durable execution plane"
+Grogoni already has almost every structural piece the "Google AX-inspired durable execution plane"
 brief asks for, under repository-native names. The single biggest risk in this change was building
 a second, parallel version of something that already exists — this section exists to make that
 impossible.
 
-| Spec concept                                         | Existing Soko implementation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Spec concept                                         | Existing Grogoni implementation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Task                                                 | `cp2_conversations` (a conversation _is_ the unit of runtime execution; `taskId` throughout the handoff protocol is literally the conversation id — see `packages/shared-types/src/runtime-handoff.ts:10-14`)                                                                                                                                                                                                                                                                                                              |
 | Agent / Model / Runtime binding                      | `cp2_native_runtime_agents`, `cp2_native_runtime_models`, `cp2_native_runtime_bindings`, `cp2_native_runtime_binding_models` (migration `063_native_runtime_bindings.sql`), owned by `NativeRuntimeBindingStore`                                                                                                                                                                                                                                                                                                           |
@@ -27,7 +27,7 @@ impossible.
 | Idempotency primitive                                | `cp2_runtime_operation_dedup` — generic `(operationType, idempotencyKey)` dedup, used by every mutating `RuntimeHandoffDomain` method via `withIdempotency()`                                                                                                                                                                                                                                                                                                                                                              |
 | Capability gateway                                   | `runtimeToolRegistry` (`packages/tool-core/src/index.ts`) + `Cp2Store.createRuntimeTurn`/`executeRuntimeAction` — one canonical registry, one execution pipeline, every surface (chat, MCP, browser, storefront) converges on it (`docs/architecture/governed-tool-runtime.md`, `capability-first-runtime.md`)                                                                                                                                                                                                             |
 | Context runtime                                      | `retrieveAgentContext` / `assembleAgentInferenceMessage` (`docs/architecture/context-semantic-runtime.md`) — authorized-before-touched, task-narrowed, model-aware-budgeted, precedence-ordered assembly                                                                                                                                                                                                                                                                                                                   |
-| `.soko` artifact                                     | `docs/agents/soko-agent.schema.json` — already declares `capabilities`, `tools`, `modelRequirements`, `executionRequirements`, `permissions`, `memory`                                                                                                                                                                                                                                                                                                                                                                     |
+| `.grogoni.com` artifact                                     | `docs/agents/grogoni-agent.schema.json` — already declares `capabilities`, `tools`, `modelRequirements`, `executionRequirements`, `permissions`, `memory`                                                                                                                                                                                                                                                                                                                                                                     |
 | Single-writer execution                              | CP2Store is a single in-memory, synchronously-mutated store (one authoritative API writer by explicit deployment policy — `docs/single-instance-store-ceiling.md`); `RuntimeHandoffDomain.acquireTurn`'s `executingTasks` set gives per-task mutual exclusion between an in-flight turn and a handoff/transfer                                                                                                                                                                                                             |
 | Retired Execution Fabric                             | `infra/db/migrations/065_retire_execution_fabric.sql` — archives every legacy selection-preference/host/model row into the native runtime graph as `inactive`/`draft`/`unavailable`, then the source tables are dropped. **No parallel execution engine exists in this codebase today; nothing to remove for that reason.**                                                                                                                                                                                                |
 
@@ -69,7 +69,7 @@ at exactly 9 distinct lifecycle points: `turn.received`, `turn.rate_limited`, `c
 ## 3. Agent/model binding path
 
 Fully documented in `docs/architecture/native-agent-model-runtime.md` and
-`docs/architecture/soko-execution-fabric-audit.md`. Summary: `resolveActiveRuntimeModelId` prefers
+`docs/architecture/grogoni-execution-fabric-audit.md`. Summary: `resolveActiveRuntimeModelId` prefers
 a server-verified `AgentModelBindingSummary` (health-checked at activation time), falls back to the
 agent profile's legacy `modelId` field, then to the cloud-fallback `ActiveAiModelSummary`. The
 native runtime graph (`cp2_native_runtime_bindings` etc.) is the authoritative execution-chain
@@ -131,7 +131,7 @@ unauthorized context object anywhere on a checkpoint (`relevantContext` is refer
 
 ## 7. Existing MCP/tool execution
 
-`services/api/src/mcp/routes.ts` — `soko.runtime_turn`/`soko.confirm_runtime_action` call
+`services/api/src/mcp/routes.ts` — `grogoni.runtime_turn`/`grogoni.confirm_runtime_action` call
 `store.createRuntimeTurn` with the same arguments a REST caller would use; no parallel context or
 tool-resolution path. `RuntimeToolDefinition` (`packages/tool-core/src/index.ts`) carries
 `description`/`inputSchema`/`mcpExposable` (all `false` today) per `governed-tool-runtime.md`.
@@ -144,7 +144,7 @@ None beyond what migration `065_retire_execution_fabric.sql` already retired. No
 registry, no second checkpoint mechanism, no second runtime resolver. `resolveExecutionChain()` (a
 name referenced in some historical task briefs) does not exist under this or any similar name
 anywhere in the repository — confirmed by repo-wide grep, consistent with the prior
-`soko-execution-fabric-audit.md`'s same finding. This is not a gap to fill; it is a name that was
+`grogoni-execution-fabric-audit.md`'s same finding. This is not a gap to fill; it is a name that was
 never real in this codebase, and no new abstraction was invented to match it.
 
 ## 9. Confirmed gaps this change fills
@@ -172,7 +172,7 @@ never real in this codebase, and no new abstraction was invented to match it.
 `idempotencyKey`on`CommerceDomain.createUnifiedCheckout`, durable (stored on the already-persisted
 `UnifiedCheckoutSummary`row, no new table), wired from`commerce-capabilities.ts`using the same`action.id`-based key messaging already uses. This directly satisfies the mandatory "side-effect
    test" (an order must not be created twice because execution resumed).
-5. **`.soko` artifacts cannot declare `runtime.resumable`/`runtime.portable`/`context.recipe`.**
+5. **`.grogoni.com` artifacts cannot declare `runtime.resumable`/`runtime.portable`/`context.recipe`.**
    Added as additive, optional, non-breaking schema properties (schema stays `schemaVersion: "1"`;
    `additionalProperties: false` objects only ever reject genuinely unknown keys, and no existing
    required field changed).

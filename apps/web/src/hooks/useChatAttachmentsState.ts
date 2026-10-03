@@ -1,6 +1,6 @@
 import type { ChangeEvent } from "react";
 
-import type { ProductCaptureJobSummary } from "@soko/shared-types";
+import type { ProductCaptureJobSummary } from "@grogoni/shared-types";
 
 import { postJson } from "../api-helpers";
 import type { ChatAttachment, ChatMessage } from "../app-shell";
@@ -10,7 +10,7 @@ import {
   getErrorMessage,
   readFileAsDataUrl
 } from "../chat-message-plumbing";
-import type { ActiveBusiness } from "../soko-application-shared";
+import type { ActiveBusiness } from "../grogoni-application-shared";
 
 interface UseChatAttachmentsStateDeps {
   business: ActiveBusiness | null;

@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
-import { runtimeToolRegistry } from "@soko/tool-core";
+import { runtimeToolRegistry } from "@grogoni/tool-core";
 import { Cp2Error } from "../../cp2-error.js";
 import type {
   BaseModelDescriptor,
   JsonValue,
-  SokoModelTemplateManifestV1,
+  GrogoniModelTemplateManifestV1,
   TemplateBaseModelRequirements
 } from "./types.js";
 
@@ -29,7 +29,7 @@ export function sha256(value: string | Uint8Array): string {
   return `sha256:${createHash("sha256").update(value).digest("hex")}`;
 }
 
-export function manifestSha256(manifest: SokoModelTemplateManifestV1): string {
+export function manifestSha256(manifest: GrogoniModelTemplateManifestV1): string {
   return sha256(canonicalJson(manifest));
 }
 
@@ -39,9 +39,9 @@ export function estimatePromptTokens(prompt: string): number {
   return Math.max(1, Math.ceil(text.length / 4));
 }
 
-export function validateManifest(manifest: SokoModelTemplateManifestV1): void {
-  if (manifest.format !== "soko-template" || manifest.formatVersion !== 1) {
-    throw invalidManifest("Only soko-template formatVersion 1 is supported.");
+export function validateManifest(manifest: GrogoniModelTemplateManifestV1): void {
+  if (manifest.format !== "grogoni-template" || manifest.formatVersion !== 1) {
+    throw invalidManifest("Only grogoni-template formatVersion 1 is supported.");
   }
   if (!slugPattern.test(manifest.template.slug)) {
     throw invalidManifest("Template slug must be a lowercase kebab-case identifier.");
@@ -228,7 +228,7 @@ export function verifyExportChecksums(input: {
     if (!Object.hasOwn(input.files, path) || sha256(input.files[path]!) !== expected) {
       throw new Cp2Error(
         400,
-        "SOKO_ARTIFACT_CHECKSUM_INVALID",
+        "GROGONI_ARTIFACT_CHECKSUM_INVALID",
         `Artifact checksum failed for '${path}'.`
       );
     }
@@ -246,5 +246,5 @@ export function jsonValue(value: unknown): JsonValue {
 }
 
 function invalidManifest(message: string): Cp2Error {
-  return new Cp2Error(400, "SOKO_MANIFEST_INVALID", message);
+  return new Cp2Error(400, "GROGONI_MANIFEST_INVALID", message);
 }

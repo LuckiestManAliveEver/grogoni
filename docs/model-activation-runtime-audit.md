@@ -14,7 +14,7 @@ The exact broken link was between model selection and the server chat runtime:
   storage. They represented device readiness, not one active model for an agent.
 - `cp2_active_ai_models` represented only an optional OpenAI fallback.
 - Production's `runtimeModelProviderResolver` knew only configured OpenAI models.
-- `createRuntimeTurn` rewrote an unavailable requested model to `sokoclaw-local`, and an unavailable
+- `createRuntimeTurn` rewrote an unavailable requested model to `grogoniclaw-local`, and an unavailable
   provider fell through to the deterministic command parser.
 
 Consequently, an “Active” badge did not prove that a model was verified, persisted as the agent's
@@ -33,9 +33,9 @@ binding, and drives the backend model card's “Remove from agent” state from 
 
 | Stage                        | File and function                                                                                          | Input → output                                                                       | Persistent state                                                       | Failure boundary                                                                            |
 | ---------------------------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| 1. Marketplace rendering     | `apps/web/src/SokoApplication.tsx` — `AgentProfileSurface`, `serverBackendModels.map`                      | `AiModelSummary[]` plus `activeAgentModelBinding` → model cards and action labels    | Read only                                                              | Empty registry/search result; backend state load failure                                    |
-| 2. Use click                 | `SokoApplication.tsx` — `activateServerBackendModel`                                                       | Canonical catalogue `model.id` → activation task                                     | None                                                                   | Offline/busy guard                                                                          |
-| 3. Request construction      | `SokoApplication.tsx` — `postJson`; `apps/web/src/lib/api.ts` — `apiFetch`/`performFetch`                  | `agentId`, `shopId`, `modelId`, target, policy, permissions → credentialed JSON POST | None                                                                   | Timeout, 401 refresh failure, non-2xx `ApiRequestError`                                     |
+| 1. Marketplace rendering     | `apps/web/src/GrogoniApplication.tsx` — `AgentProfileSurface`, `serverBackendModels.map`                      | `AiModelSummary[]` plus `activeAgentModelBinding` → model cards and action labels    | Read only                                                              | Empty registry/search result; backend state load failure                                    |
+| 2. Use click                 | `GrogoniApplication.tsx` — `activateServerBackendModel`                                                       | Canonical catalogue `model.id` → activation task                                     | None                                                                   | Offline/busy guard                                                                          |
+| 3. Request construction      | `GrogoniApplication.tsx` — `postJson`; `apps/web/src/lib/api.ts` — `apiFetch`/`performFetch`                  | `agentId`, `shopId`, `modelId`, target, policy, permissions → credentialed JSON POST | None                                                                   | Timeout, 401 refresh failure, non-2xx `ApiRequestError`                                     |
 | 4. Activation API            | `services/api/src/cp2/routes.ts` — `POST /api/agents/:agentId/models/:modelId/activate`                    | Parsed path/body → `store.activateAgentModel`                                        | None directly                                                          | Invalid body or store `Cp2Error`                                                            |
 | 5. Authentication            | `services/api/src/cp2/store.ts` — `requireAuthorizedSession`                                               | Session cookie, shop, `membership:manage` → authenticated session                    | Session/membership read                                                | `auth_required`, expired session, membership/permission failure                             |
 | 6. Agent resolution          | `store.ts` — `requireBusinessAgent`                                                                        | Owned `businessId` and requested `agentId` → `BusinessAgentProfileSummary`           | Agent profile read/default resolution                                  | `AGENT_NOT_FOUND`                                                                           |
@@ -43,13 +43,13 @@ binding, and drives the backend model card's “Remove from agent” state from 
 | 8. Runtime eligibility       | `store.ts` — `requireModelRuntimeAdapter`; `services/api/src/inference/model-runtime.ts` — `healthCheck`   | Binding candidate → real readiness and inference probe                               | Failed attempt/audit diagnostic only; active binding unchanged         | `RUNTIME_UNAVAILABLE`, `MODEL_NOT_INSTALLED`, identity mismatch, timeout, probe failure     |
 | 9. Binding persistence       | `store.ts` — `activateAgentModel`; `services/api/src/cp2/postgres-store.ts` — mutation proxy/snapshot save | Passed health result → one active `AgentModelBindingSummary`                         | `cp2_agent_model_bindings`, agent profile/runtime version, audit event | Activation conflict or persistence failure; prior active binding remains on probe failure   |
 | 10. Runtime session          | `store.ts` — `createRuntimeTurn`/`createRuntimeSession`                                                    | Chat request without `runtimeSessionId` → lazy per-user runtime session              | `cp2_runtime_sessions` at chat time                                    | Foreign/expired session, turn limit                                                         |
-| 11. Chat submission          | `SokoApplication.tsx` — `sendChatDraft`; `routes.ts` — `POST /v1/messages`                                 | Conversation message plus agent request → `createAgentConversationMessage`           | User message and eventual assistant message                            | Invalid conversation/auth/content                                                           |
+| 11. Chat submission          | `GrogoniApplication.tsx` — `sendChatDraft`; `routes.ts` — `POST /v1/messages`                                 | Conversation message plus agent request → `createAgentConversationMessage`           | User message and eventual assistant message                            | Invalid conversation/auth/content                                                           |
 | 12. Agent runtime            | `store.ts` — `createAgentConversationMessage` → `createRuntimeTurn`                                        | Shop/message/history → compiled business-agent turn                                  | Runtime turn, telemetry, messages                                      | `AGENT_MODEL_NOT_CONFIGURED` after unbind; recoverable error guidance                       |
 | 13. Model/provider selection | `store.ts` — `resolveActiveRuntimeModelId`, `resolveRuntimeModelProvider`                                  | Agent profile → active verified binding → adapter-backed provider                    | Binding read                                                           | Missing adapter yields `AGENT_MODEL_UNAVAILABLE`; fallback requires saved permission/policy |
 | 14. Inference                | `store.ts` — `createRuntimeModelRoute`; `model-runtime.ts` — adapter `generate`                            | Existing context/personality/instructions/history/tools → typed completion           | Runtime telemetry                                                      | Provider exception, unavailable/malformed response, non-qualifying fallback                 |
 | 15. Response                 | `store.ts` — policy/tool handling and `storeRuntimeTurn`; `routes.ts` response                             | Parsed response/tool proposal → persisted assistant response and runtime trace       | Conversation message, runtime turn, telemetry/audit                    | Policy/confirmation/tool validation remains authoritative                                   |
 
-Canonical removal follows `SokoApplication.removeServerBackendModelFromAgent` →
+Canonical removal follows `GrogoniApplication.removeServerBackendModelFromAgent` →
 `DELETE /api/agents/:agentId/model-binding` → `Cp2Store.removeAgentModelBinding` → mark the active
 row inactive, revise the profile/runtime version, persist through the existing Postgres snapshot
 transaction, return `{ binding: null }`, and refetch/render from the same GET source. Activation does
@@ -99,7 +99,7 @@ state.
 
 - OpenAI: server-side Responses API provider with allowlist, timeout, budget, and circuit breaker.
 - Browser local: explicit lazy download with capability and cache checks.
-- Installed app: web bridge contract through `window.SokoAgentModelRuntime`; ordinary browsers
+- Installed app: web bridge contract through `window.GrogoniAgentModelRuntime`; ordinary browsers
   reject activation.
 - Remote shop device: authenticated, tenant/model/agent-bound owner-node broker with heartbeat,
   signed jobs, correlation IDs, replay checks, and timeout.
@@ -126,7 +126,7 @@ agent.
 ## Resulting runtime boundary
 
 When the server adapter system is configured, chat now requires an active verified binding. It no
-longer substitutes `sokoclaw-local` for an unbound agent and no longer uses the deterministic parser
+longer substitutes `grogoniclaw-local` for an unbound agent and no longer uses the deterministic parser
 after a bound model fails. The parser and protected tool loop still run after a successful model
 completion so existing confirmation gates remain authoritative.
 

@@ -10,8 +10,8 @@
  * (business-core/roles.ts): you may grant, change or remove only roles strictly below your own, so
  * a manager can never touch the owner or another manager, and the owner role is never grantable.
  *
- * Trust model: Soko signs people in by phone number, so a phone identity *is* the account; an
- * invite to +2547... is an invite to whichever Soko account signs in with that number. Emails only
+ * Trust model: Grogoni signs people in by phone number, so a phone identity *is* the account; an
+ * invite to +2547... is an invite to whichever Grogoni account signs in with that number. Emails only
  * match when verified. See the architecture doc for the squatting risk and its mitigations.
  *
  * This domain owns the `staffInvitations` collection. Memberships stay in the core store (they are
@@ -23,7 +23,7 @@ import {
   isBusinessRole,
   rolesGrantableBy,
   type BusinessPermission
-} from "@soko/business-core";
+} from "@grogoni/business-core";
 import type {
   AccountSummary,
   AuthenticatedActorView,
@@ -36,7 +36,7 @@ import type {
   StaffMemberSummary,
   StaffOverviewSummary,
   UserSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { Cp2Error } from "../../cp2-error.js";
 
 /** How long an invitation stays acceptable. */
@@ -637,7 +637,7 @@ export class StaffDomain {
   }
 
   /**
-   * The identities an account may accept an invitation created at `asOf` for. Soko signs people in
+   * The identities an account may accept an invitation created at `asOf` for. Grogoni signs people in
    * by phone without verifying it, so every phone the account signs in with is the account:
    * - its primary phone (sign-up), its `primaryAuthDestination` (accounts older than the identity
    *   ledger), and any verified phone always count;

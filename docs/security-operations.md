@@ -23,8 +23,8 @@
 The checked-in `render.yaml` supplies the safe feature flags and 15-minute/30-day/180-day session
 limits. In the Render dashboard, keep `COOKIE_SECURE=true`, `COOKIE_SAME_SITE=lax`,
 `SESSION_ROTATION_ENABLED=true`, and
-`SESSION_REUSE_DETECTION_ENABLED=true`. Set `WEBAUTHN_RP_ID=soko.market` and
-`WEBAUTHN_EXPECTED_ORIGINS=https://soko.market,https://www.soko.market` unless the actual domains
+`SESSION_REUSE_DETECTION_ENABLED=true`. Set `WEBAUTHN_RP_ID=grogoni` and
+`WEBAUTHN_EXPECTED_ORIGINS=https://grogoni.com,https://www.grogoni.com` unless the actual domains
 differ. If a cookie domain is needed, use a hostname only; host-only cookies are safer by default.
 
 Render must generate or securely store values of at least 32 characters for `OTP_HMAC_SECRET`,

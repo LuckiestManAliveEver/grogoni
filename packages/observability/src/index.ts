@@ -1,10 +1,10 @@
 import { Registry, Histogram, Gauge, Counter, collectDefaultMetrics } from "@prometheus-io/client";
-import type { Bulkhead, CircuitBreaker, CircuitState } from "@soko/resource-control";
+import type { Bulkhead, CircuitBreaker, CircuitState } from "@grogoni/resource-control";
 
 export type { Registry } from "@prometheus-io/client";
 
 /** The subset of a resource-control event this module cares about - a structural type so this
- *  package never imports `@soko/resource-control`'s bulkhead/circuit-breaker event unions just to
+ *  package never imports `@grogoni/resource-control`'s bulkhead/circuit-breaker event unions just to
  *  read three fields off them. */
 export type ResourceControlMetricEvent =
   | { type: "capacity_reached"; name: string; workloadClass: string }
@@ -217,7 +217,7 @@ export function createMetrics(options: CreateMetricsOptions): Metrics {
   });
   const providerRateLimits = new Counter({
     name: "provider_rate_limits",
-    help: "Requests rejected by a provider rate limit or a Soko budget/rate policy.",
+    help: "Requests rejected by a provider rate limit or a Grogoni budget/rate policy.",
     labelNames: ["provider", "code"],
     registers: [registry]
   });

@@ -35,7 +35,7 @@ describe("purchase and sale records card (permanent surface, no chat wiring)", (
 
   it("imports the shipped PurchaseRecordSummary/SaleRecordSummary types instead of redefining them", () => {
     expect(card).toContain(
-      'import type { PurchaseRecordSummary, SaleRecordSummary } from "@soko/shared-types"'
+      'import type { PurchaseRecordSummary, SaleRecordSummary } from "@grogoni/shared-types"'
     );
   });
 

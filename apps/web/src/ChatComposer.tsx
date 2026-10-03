@@ -1,15 +1,15 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 
-import type { ChannelEndpointSummary } from "@soko/shared-types";
-import { runtimeHashtagCapabilities, runtimeHashtagQuery } from "@soko/tool-core";
+import type { ChannelEndpointSummary } from "@grogoni/shared-types";
+import { runtimeHashtagCapabilities, runtimeHashtagQuery } from "@grogoni/tool-core";
 
-import type { ChatAttachment, SokoMode } from "./app-shell";
+import type { ChatAttachment, GrogoniMode } from "./app-shell";
 import {
   type ActiveBusiness,
   type AgentSettings,
   type InvoiceSummary,
   chatAttachmentAccept
-} from "./soko-application-shared";
+} from "./grogoni-application-shared";
 import { chatModuleCommands } from "./chat-module-commands";
 import { startVoiceInput } from "./chat-message-plumbing";
 import { formatChannelProvider } from "./formatters";
@@ -29,7 +29,7 @@ interface ChatComposerProps {
   isAuthenticated: boolean;
   isBrowserGenerating: boolean;
   isSending: boolean;
-  mode: SokoMode;
+  mode: GrogoniMode;
   activeAgentName: string;
   pendingAttachments: ChatAttachment[];
   replyToMessageId: string | null;
@@ -232,7 +232,7 @@ export function ChatComposer({
               }
             }}
             placeholder={
-              mode === "seller" ? "Ask your agent, or type # to call a capability" : "Ask Soko..."
+              mode === "seller" ? "Ask your agent, or type # to call a capability" : "Ask Grogoni..."
             }
           />
         </label>
@@ -298,8 +298,8 @@ export function ChatComposer({
           <small className="external-share-notice" role="status">
             {externalShareNotice}
             {pendingAttachments.length > 0
-              ? " Attachments remain in Soko and were not shared."
-              : " External messages are not covered by Soko end-to-end encryption."}
+              ? " Attachments remain in Grogoni and were not shared."
+              : " External messages are not covered by Grogoni end-to-end encryption."}
           </small>
         ) : null}
         {sendViaBluetooth && bluetoothError !== null ? (

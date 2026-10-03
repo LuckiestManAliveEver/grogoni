@@ -3,7 +3,7 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ExternalRegistryConnection } from "@soko/shared-types";
+import type { ExternalRegistryConnection } from "@grogoni/shared-types";
 
 const getJson = vi.fn();
 const postJson = vi.fn();

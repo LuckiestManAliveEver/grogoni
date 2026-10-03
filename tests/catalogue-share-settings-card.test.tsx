@@ -3,7 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { ShopPresenceSummary } from "@soko/shared-types";
+import type { ShopPresenceSummary } from "@grogoni/shared-types";
 
 const getJson = vi.fn();
 const patchJson = vi.fn();

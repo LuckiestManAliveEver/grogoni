@@ -1,4 +1,4 @@
-# Soko.market Privacy Policy
+# Grogoni Privacy Policy
 
 **Version:** 1.0 (Draft)
 **Part II – Legal Bases for Processing, How We Use Personal Data, AI Processing, Contact Synchronization, OCR Processing, Cookies, and Data Sharing**
@@ -7,7 +7,7 @@
 
 # 7. Legal Bases for Processing Personal Data
 
-Where the GDPR or similar laws apply, Soko.market processes Personal Data only where a lawful basis exists.
+Where the GDPR or similar laws apply, Grogoni processes Personal Data only where a lawful basis exists.
 
 Depending on the circumstances, processing may rely on one or more of the following legal bases.
 
@@ -138,7 +138,7 @@ The extent of processing depends upon:
 
 Although AI systems automate certain activities, users remain responsible for reviewing AI-generated content before relying upon it for important decisions.
 
-Soko.market may involve appropriately authorized personnel in reviewing AI interactions where necessary to:
+Grogoni may involve appropriately authorized personnel in reviewing AI interactions where necessary to:
 
 - investigate abuse;
 - resolve support requests;
@@ -154,8 +154,8 @@ Access is limited to personnel with a legitimate business need and subject to ap
 
 Depending on the Services used, AI requests may be processed:
 
-- using models operated by Soko.market;
-- through open-source models deployed by users or Soko.market;
+- using models operated by Grogoni;
+- through open-source models deployed by users or Grogoni;
 - by authorized third-party AI providers selected by the user or integrated into the platform.
 
 Where third-party AI providers process Personal Data on our behalf, appropriate contractual safeguards will be implemented where required by applicable law.
@@ -184,7 +184,7 @@ Users are responsible for ensuring they have an appropriate legal basis to share
 
 # 11. Social Media Integrations
 
-If users connect supported third-party platforms, Soko.market may process information necessary to:
+If users connect supported third-party platforms, Grogoni may process information necessary to:
 
 - authenticate users;
 - send or receive authorized messages;
@@ -345,7 +345,7 @@ Service providers processing Personal Data on our behalf are required, where app
 
 ## 18.2 Business Transfers
 
-If Soko.market undergoes a merger, acquisition, restructuring, financing, sale of assets, or similar corporate transaction, Personal Data may be transferred as part of that transaction, subject to applicable legal requirements.
+If Grogoni undergoes a merger, acquisition, restructuring, financing, sale of assets, or similar corporate transaction, Personal Data may be transferred as part of that transaction, subject to applicable legal requirements.
 
 Users will be informed where required by law.
 

@@ -1,15 +1,15 @@
 # Render unified application deployment
 
 The Vite frontend in `apps/web` and Fastify API in `services/api` ship together in the production
-Render service `soko-market`.
+Render service `grogoni`.
 
 `pnpm build:production` builds packages, the Vercel inference package, the web bundle, and the API.
 The API process then serves `apps/web/dist`; browser navigations fall back to `index.html`, while
 unknown API requests retain JSON 404 responses. Hashed `/assets/*` files are immutable, and HTML,
 the service worker, manifest, and icons revalidate on every request.
 
-Production uses `VITE_API_BASE_URL=https://soko.market`, so browser requests and session cookies
-are same-origin. The branch-specific `soko-market-web-staging` static service remains independent
+Production uses `VITE_API_BASE_URL=https://grogoni.com`, so browser requests and session cookies
+are same-origin. The branch-specific `grogoni-web-staging` static service remains independent
 and must be given its own API URL.
 
 ## Updating Without Disturbing Active Users
@@ -24,7 +24,7 @@ seconds and can be adjusted with `SHUTDOWN_GRACE_MS`.
 
 Use this path for routine changes:
 
-1. Push the change to `main` and let Render auto-deploy `soko-market`.
+1. Push the change to `main` and let Render auto-deploy `grogoni`.
 2. Watch the new deploy until `/health/ready` is healthy.
 3. Let Render drain the previous instance; avoid using a manual restart for ordinary code or
    frontend updates.

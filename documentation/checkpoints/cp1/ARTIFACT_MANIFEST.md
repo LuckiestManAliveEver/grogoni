@@ -71,5 +71,5 @@ Date passed: 2026-07-02
 - `pnpm build`
 - `docker compose up -d postgres redis`
 - `docker compose ps`
-- `pnpm --filter @soko/api start`
+- `pnpm --filter @grogoni/api start`
 - `pnpm health:api`

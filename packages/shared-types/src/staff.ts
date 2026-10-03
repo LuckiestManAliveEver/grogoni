@@ -43,7 +43,7 @@ export interface StaffInvitationSummary {
 
 /**
  * A pending invitation in the owner's list. `needsReinvite` is true when the invited number is now
- * linked to a Soko account only AFTER the invitation was created (someone added it to an existing
+ * linked to a Grogoni account only AFTER the invitation was created (someone added it to an existing
  * account): that account cannot accept this invitation, and the person cannot sign up with the
  * number any more, so the owner should revoke it and invite again.
  */

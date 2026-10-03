@@ -136,7 +136,7 @@ describe("CP11 local model adapter", () => {
           id: `test:${modelId}`,
           modelId,
           storageProvider: "neon-object-storage",
-          bucket: "soko-model-artifacts",
+          bucket: "grogoni-model-artifacts",
           objectKey: `models/${modelId}/model.gguf`,
           format: "gguf",
           quantization: "Q4_0",
@@ -151,7 +151,7 @@ describe("CP11 local model adapter", () => {
       async createDownloadUrl(artifact) {
         return {
           ...artifact,
-          downloadUrl: "https://storage.example.neon.tech/soko-model-artifacts/model.gguf",
+          downloadUrl: "https://storage.example.neon.tech/grogoni-model-artifacts/model.gguf",
           expiresAt: new Date(Date.now() + 60_000).toISOString()
         };
       },
@@ -509,7 +509,7 @@ describe("CP11 local model adapter", () => {
         message: "what is in stock?",
         agentProfile: {
           behavior: "Practical, polite, and inventory-first",
-          integrations: ["Soko.market storefront"],
+          integrations: ["Grogoni storefront"],
           knowledge: "Prioritize saved products and confirmed store records.",
           model: "qwen2.5-0.5b-android",
           role: "Store attendant",

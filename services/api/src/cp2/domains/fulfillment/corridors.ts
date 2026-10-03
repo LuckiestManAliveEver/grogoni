@@ -18,7 +18,7 @@ import {
   type BusinessPermission,
   type CorridorMatch,
   type CorridorResolution
-} from "@soko/business-core";
+} from "@grogoni/business-core";
 import type {
   ConfirmedOrderReference,
   CorridorGeometryVersionSummary,
@@ -30,7 +30,7 @@ import type {
   CorridorResolutionSummary,
   CorridorSummary,
   ResolveOrderCorridorResultSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { Cp2Error } from "../../cp2-error.js";
 import { FulfillmentRecheckConflict } from "./transaction.js";
 import { upsertFulfillmentOrder } from "./order-rows.js";

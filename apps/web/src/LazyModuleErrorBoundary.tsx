@@ -41,7 +41,7 @@ export class LazyModuleErrorBoundary extends Component<
   }
 
   override componentDidCatch(error: unknown, errorInfo: ErrorInfo): void {
-    console.error(`[Soko.market] Unable to render ${this.props.moduleKey}.`, error, errorInfo);
+    console.error(`[Grogoni] Unable to render ${this.props.moduleKey}.`, error, errorInfo);
     logDeploymentRecoveryEvent("frontend.chunk_load_failed", {
       component: this.props.moduleKey,
       route: typeof window === "undefined" ? "unknown" : window.location.pathname,

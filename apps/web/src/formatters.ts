@@ -2,14 +2,14 @@ import type {
   AgentModelBindingSummary,
   ChannelProvider,
   InferenceProvider
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { type ChatAttachment } from "./app-shell";
 
 import {
   type AgentSettings,
   type RuntimeTurnResult,
   type StorefrontCareRequestType
-} from "./soko-application-shared";
+} from "./grogoni-application-shared";
 
 export function formatMoney(value: number): string {
   return new Intl.NumberFormat("en-KE", {
@@ -74,7 +74,7 @@ export function formatModelParameters(parameters: number | null): string {
 
 export function formatChannelProvider(provider: ChannelProvider): string {
   const labels: Record<ChannelProvider, string> = {
-    soko: "Soko",
+    grogoni: "Grogoni",
     telegram: "Telegram",
     whatsapp: "WhatsApp",
     messenger: "Messenger",
@@ -140,11 +140,11 @@ export function formatExecutionTarget(value: AgentModelBindingSummary["execution
   return (
     {
       local: "this computer's local runtime",
-      vercel: "Soko backend",
-      backend: "Soko backend",
+      vercel: "Grogoni backend",
+      backend: "Grogoni backend",
       "remote-shop-device": "signed-in shop device",
       "browser-local": "this device's browser",
-      "installed-app": "the installed Soko app"
+      "installed-app": "the installed Grogoni app"
     } satisfies Record<AgentModelBindingSummary["executionTarget"], string>
   )[value];
 }

@@ -245,7 +245,7 @@ export async function connectMcp(
     params: {
       protocolVersion: "2025-11-25",
       capabilities: {},
-      clientInfo: { name: "soko-test", version: "1.0.0" }
+      clientInfo: { name: "grogoni-test", version: "1.0.0" }
     }
   });
   const sessionId = String(initialized.headers["mcp-session-id"]);

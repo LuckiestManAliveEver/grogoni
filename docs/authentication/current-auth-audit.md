@@ -52,7 +52,7 @@ existing implementation instead of adding an overlapping auth framework.
 - OAuth tokens are encrypted before persistence.
 - Existing OAuth state and CSRF validation remains in place.
 - Normal login uses a passkey, PIN, or connected social identity.
-- Phone OTP is rejected. Phone access uses a Soko PIN, while compulsory first-shop phone capture is
+- Phone OTP is rejected. Phone access uses a Grogoni PIN, while compulsory first-shop phone capture is
   stored as an unverified identity/support attribute.
 - Provider secrets stay in server environment variables and are not exposed to Vite.
 

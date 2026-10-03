@@ -414,7 +414,7 @@ describe("resolveNativeRuntimeModelProvider - own-account credential resolution 
 describe("zero-setup hosted-first runtime provisioning", () => {
   it("provisions a verified generic backend binding for first chat without manual activation", async () => {
     const backendGenerate = vi.fn(async () => ({
-      text: JSON.stringify({ type: "response", message: "Soko AI is ready." }),
+      text: JSON.stringify({ type: "response", message: "Grogoni AI is ready." }),
       modelId: "gpt-6-luna",
       provider: "test-hosted-adapter",
       executionTarget: "backend" as const,
@@ -478,7 +478,7 @@ describe("zero-setup hosted-first runtime provisioning", () => {
     expect(backendGenerate).toHaveBeenCalledOnce();
     expect(turn.json()).toMatchObject({
       turn: {
-        response: "Soko AI is ready.",
+        response: "Grogoni AI is ready.",
         model: {
           status: "available",
           modelId: "gpt-6-luna",
@@ -498,13 +498,13 @@ describe("zero-setup hosted-first runtime provisioning", () => {
     expect(provisioned[0]).toMatchObject({ status: "active", isDefault: true });
   });
 
-  // Regression for the production incident: a brand-new merchant's own "chat with Soko AI" turn
+  // Regression for the production incident: a brand-new merchant's own "chat with Grogoni AI" turn
   // never sends a conversationId (it uses runtimeSessionId, not a Conversation record). Resolution
   // used to hard-return null for every conversationId-less call, so this exact request threw
   // 409 NO_COMPATIBLE_EXECUTION_TARGET ("No execution target is configured for this model...") even
   // though the platform default (then Pi + SmolLM 360M) was fully provisionable. See
   // NativeRuntimeBindingStore.resolveRuntimeBinding and docs/architecture/runtime-resolution.md.
-  it("provisions and resolves the platform default for a conversation-free runtime turn (first chat with Soko AI)", async () => {
+  it("provisions and resolves the platform default for a conversation-free runtime turn (first chat with Grogoni AI)", async () => {
     const backendGenerate = vi.fn(async () => ({
       text: JSON.stringify({ type: "response", message: "Hi there!" }),
       modelId: "gpt-6-luna",
@@ -705,7 +705,7 @@ function nativeResolution(input: {
     businessId: shopId,
     accountId: "account-1",
     name: "Test agent",
-    provider: "soko",
+    provider: "grogoni",
     packageRef: null,
     version: "1",
     runtimeContractVersion: "1",

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { CountryCode } from "libphonenumber-js";
-import type { MessageHandoffStatus } from "@soko/shared-types";
+import type { MessageHandoffStatus } from "@grogoni/shared-types";
 import {
   isLongSmsBody,
   normalizeSmsRecipient,
@@ -75,7 +75,7 @@ export function SmsHandoffDialog({
 
   async function continueToSmsApp() {
     if (
-      selectMessageComposerChannel({ isSokoRecipient: false, smsRequested: true }) !==
+      selectMessageComposerChannel({ isGrogoniRecipient: false, smsRequested: true }) !==
       "sms_external_app"
     ) {
       return;
@@ -142,7 +142,7 @@ export function SmsHandoffDialog({
         {result === null ? (
           <>
             <p>
-              Soko will prepare this message in your phone&apos;s selected SMS app. Review it there
+              Grogoni will prepare this message in your phone&apos;s selected SMS app. Review it there
               and press Send yourself.
             </p>
             <label>
@@ -199,7 +199,7 @@ export function SmsHandoffDialog({
             ) : null}
             {hasAttachments ? (
               <div className="sms-handoff-warning" role="note">
-                SMS handoff is text-only. Your selected Soko attachments will stay in this draft and
+                SMS handoff is text-only. Your selected Grogoni attachments will stay in this draft and
                 will not be shared.
               </div>
             ) : null}
@@ -231,11 +231,11 @@ export function SmsHandoffDialog({
                   : "SMS app handoff requested"
                 : result.status === "no_sms_app"
                   ? "No compatible SMS application was found"
-                  : "Open Soko on a mobile phone to send an SMS"}
+                  : "Open Grogoni on a mobile phone to send an SMS"}
             </strong>
             <p>
               {result.status === "composer_opened"
-                ? "Soko cannot tell whether you send, deliver, or read the message. Your draft remains in Soko."
+                ? "Grogoni cannot tell whether you send, deliver, or read the message. Your draft remains in Grogoni."
                 : result.status === "no_sms_app"
                   ? "Install or enable a compatible SMS application, then try again."
                   : "Desktop browsers do not provide a compatible carrier SMS handler."}

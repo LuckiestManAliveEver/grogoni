@@ -5,7 +5,7 @@ import type {
   AuthSessionView,
   SessionSummary,
   UserSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { Cp2Error } from "../../cp2-error.js";
 import { normalizeDestination } from "../../phone-identity.js";
 import {
@@ -224,7 +224,7 @@ export class DeviceBootstrapDomain {
       "device"
     );
     const user = this.deps.requireUser(this.deps.userByAccount.get(account.id));
-    this.deps.users.set(user.id, { ...user, displayName: "Soko user" });
+    this.deps.users.set(user.id, { ...user, displayName: "Grogoni user" });
     const deviceCredential = this.ensureDeviceRecoveryCredential(
       account.id,
       devicePublicKeyJwk,

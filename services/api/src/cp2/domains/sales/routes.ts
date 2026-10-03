@@ -17,12 +17,12 @@
  * session/message routes use `StorefrontParams`).
  */
 import type { FastifyRequest, FastifyInstance } from "fastify";
-import { isPaymentMethod } from "@soko/business-core";
+import { isPaymentMethod } from "@grogoni/business-core";
 import type {
   ProductFieldDefinition,
   ProductFieldInputType,
   PublicCustomerCareRequestType
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import {
   GramsFormatError,
   formatGrams,
@@ -30,7 +30,7 @@ import {
   parsePositiveGrams,
   type FulfillmentMethod,
   type OrderSource
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { Cp2Error } from "../../cp2-error.js";
 import { type Cp2Store, readSessionCookie } from "../../store.js";
 import {

@@ -103,7 +103,7 @@ failures accumulate; it will open on its own.
 
 **Diagnose:**
 
-1. Is the OCR worker container (`soko-market-ocr-worker` on Render) itself slow/unhealthy? It has
+1. Is the OCR worker container (`grogoni-ocr-worker` on Render) itself slow/unhealthy? It has
    its own `OCR_CONCURRENCY` (default 1) semaphore independent of `services/api`'s - check the
    worker's own Render metrics (comment in render.yaml flags PaddleOCR's CPU inference as
    memory-hungry).
@@ -157,7 +157,7 @@ only makes overlap risk worse.
 
 **Known limitation, not fixed in this pass:** none of the six in-process runners use
 `pg_advisory_lock` or any cross-instance coordination. This is safe today only because
-`render.yaml` deploys exactly one `soko-market` instance - see
+`render.yaml` deploys exactly one `grogoni` instance - see
 `docs/single-instance-store-ceiling.md`. Do not add a second instance without first adding
 cross-instance locking to these six runners (or resolving the single-instance-store ceiling, which
 would let them move to a real worker process instead).
@@ -169,8 +169,8 @@ open within `*_CIRCUIT_BREAKER_FAILURE_THRESHOLD` consecutive failures and stay 
 `*_CIRCUIT_BREAKER_RESET_TIMEOUT_MS`, at which point one probe is allowed through automatically.
 No manual intervention is required for the circuit itself to recover once the dependency does.
 
-**What to actually check:** is the dependency really down, or is Soko's own config wrong (a
-rotated `SOKO_INFERENCE_SERVICE_TOKEN`, an expired `OCR_WORKER_URL`)? A circuit that never closes
+**What to actually check:** is the dependency really down, or is Grogoni's own config wrong (a
+rotated `GROGONI_INFERENCE_SERVICE_TOKEN`, an expired `OCR_WORKER_URL`)? A circuit that never closes
 even after the dependency reports healthy elsewhere is a config problem, not a capacity problem.
 
 ## High CPU / memory symptoms

@@ -1,6 +1,6 @@
 import type { Dispatch, SetStateAction } from "react";
 
-import type { ConversationInboxItem } from "@soko/shared-types";
+import type { ConversationInboxItem } from "@grogoni/shared-types";
 
 import { conversationMessageText } from "./chat-message-plumbing";
 import { formatMessageTime } from "./formatters";
@@ -150,7 +150,7 @@ export function ConversationListPanel({
             />
           </label>
           <small>
-            Soko chats require a registered user and are end-to-end encrypted. SMS and external apps
+            Grogoni chats require a registered user and are end-to-end encrypted. SMS and external apps
             use their own privacy and delivery rules.
           </small>
           <div className="new-conversation-actions">
@@ -221,11 +221,11 @@ export function ConversationListPanel({
                 }`}
                 aria-hidden="true"
               >
-                {(conversation.title ?? "Soko").trim().slice(0, 1).toUpperCase()}
+                {(conversation.title ?? "Grogoni").trim().slice(0, 1).toUpperCase()}
               </span>
               <span className="conversation-copy">
                 <span className="conversation-title-line">
-                  <strong>{conversation.title ?? "Soko agent"}</strong>
+                  <strong>{conversation.title ?? "Grogoni agent"}</strong>
                   <time dateTime={conversation.updatedAt}>
                     {formatMessageTime(conversation.updatedAt)}
                   </time>

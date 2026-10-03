@@ -1,4 +1,4 @@
-const endpoint = process.env.SOKO_HEALTH_URL ?? "http://127.0.0.1:4000/health";
+const endpoint = process.env.GROGONI_HEALTH_URL ?? "http://127.0.0.1:4000/health";
 
 const response = await fetch(endpoint);
 

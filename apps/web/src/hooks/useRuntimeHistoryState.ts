@@ -7,7 +7,7 @@ import {
   runtimeManager,
   type RuntimeSessionSummary,
   type RuntimeTurnSummary
-} from "../soko-application-shared";
+} from "../grogoni-application-shared";
 
 interface UseRuntimeHistoryStateDeps {
   business: { id: string } | null;

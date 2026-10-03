@@ -1,4 +1,4 @@
-# Soko Android native SMS node
+# Grogoni Android native SMS node
 
 This is the minimal Android execution node for the `native_sms` Channel Gateway provider. It is
 not a WebView bridge and the PWA never receives Android telephony privileges.
@@ -10,7 +10,7 @@ Gradle installation or import it into Android Studio. Override the API origin fo
 backend with:
 
 ```text
-./gradlew :app:assembleDebug -PSOKO_API_ORIGIN=https://your-api.example
+./gradlew :app:assembleDebug -PGROGONI_API_ORIGIN=https://your-api.example
 ```
 
 The configured origin must use HTTPS for a device build. Emulator-only cleartext networking is not
@@ -18,7 +18,7 @@ enabled by the manifest.
 
 ## Setup contract
 
-1. Sign in with a Soko phone number and PIN, then select a business.
+1. Sign in with a Grogoni phone number and PIN, then select a business.
 2. Tap **Enable native SMS**. Android must grant the SMS role before the app asks for restricted SMS
    permissions.
 3. Ensure Android has a deterministic default SMS subscription. The app does not choose SIM slot 0.
@@ -33,5 +33,5 @@ Play until that policy work is approved.
 
 Local JVM contracts live under `app/src/test`. Keystore/SQLite durability tests live under
 `app/src/androidTest` and require an Android device or emulator. A real carrier send/receive test
-also requires a physical Android phone, an active SIM, Soko selected as the default SMS app, and a
+also requires a physical Android phone, an active SIM, Grogoni selected as the default SMS app, and a
 review-safe build.

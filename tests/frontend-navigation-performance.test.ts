@@ -66,7 +66,7 @@ describe("frontend navigation performance contracts", () => {
     const performanceSource = readFileSync("apps/web/src/performance.ts", "utf8");
 
     expect(serviceWorker).not.toMatch(/APP_SHELL[\s\S]*\.gguf/i);
-    expect(performanceSource).toContain("[SOKO_PERF]");
+    expect(performanceSource).toContain("[GROGONI_PERF]");
     expect(performanceSource).toContain("performance.mark");
     expect(performanceSource).toContain("performance.measure");
     expect(performanceSource).toContain('"longtask"');

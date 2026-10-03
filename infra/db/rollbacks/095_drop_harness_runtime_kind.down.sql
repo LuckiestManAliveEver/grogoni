@@ -11,7 +11,7 @@ alter table cp2_runtime_registry_imports
     and record ->> 'id' = entity_id
     and record ->> 'accountId' = account_id
     and record ->> 'kind' in ('agent', 'harness', 'model')
-    and record ->> 'provider' in ('soko', 'github', 'huggingface')
+    and record ->> 'provider' in ('grogoni', 'github', 'huggingface')
     and record ->> 'state' in (
       'DISCOVERED', 'INSPECTING', 'VALIDATED', 'IMPORTING', 'REGISTERED', 'PROVISIONING',
       'READY', 'ACTIVE', 'INSPECTION_FAILED', 'VALIDATION_FAILED', 'IMPORT_FAILED',

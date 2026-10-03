@@ -54,9 +54,9 @@ Date passed: 2026-07-04
 
 Passed verification:
 
-- `pnpm --filter @soko/shared-types typecheck`
-- `pnpm --filter @soko/tool-core typecheck`
-- `pnpm --filter @soko/api typecheck`
-- `pnpm --filter @soko/ai-runtime typecheck`
+- `pnpm --filter @grogoni/shared-types typecheck`
+- `pnpm --filter @grogoni/tool-core typecheck`
+- `pnpm --filter @grogoni/api typecheck`
+- `pnpm --filter @grogoni/ai-runtime typecheck`
 - `pnpm vitest run tests/cp11-local-model-adapter.test.ts --reporter=dot`
 - `pnpm run ci`

@@ -22,17 +22,17 @@ bindings or re-run historical migrations for this hosting change.
 Use Node 22 and pnpm 10.28.2 from the repository root:
 
 ```sh
-pnpm --filter @soko/ai-runtime build
+pnpm --filter @grogoni/ai-runtime build
 pnpm exec vitest run tests/inference-http-server.test.ts tests/vercel-inference-service.test.ts
 pnpm check:render-inference-boundaries
-docker build --platform linux/amd64 -f services/ai-runtime/Dockerfile -t soko-inference .
+docker build --platform linux/amd64 -f services/ai-runtime/Dockerfile -t grogoni-inference .
 ```
 
 To smoke-test locally, create a private environment file outside the repository containing
-`SOKO_INFERENCE_SERVICE_TOKEN` (at least 32 characters) and `MODEL_ARTIFACT_ALLOWED_HOSTS`:
+`GROGONI_INFERENCE_SERVICE_TOKEN` (at least 32 characters) and `MODEL_ARTIFACT_ALLOWED_HOSTS`:
 
 ```sh
-docker run --rm --env-file /path/to/private/inference.env -p 127.0.0.1:8080:8080 soko-inference
+docker run --rm --env-file /path/to/private/inference.env -p 127.0.0.1:8080:8080 grogoni-inference
 ```
 
 In another terminal, check `http://127.0.0.1:8080/health` and `/ready`. Neither check loads a model.
@@ -42,7 +42,7 @@ Verify the actual model separately with the existing `pnpm inference:live-probe`
 ## 2. Create the DigitalOcean app
 
 1. Push the reviewed migration commit to the branch DigitalOcean will deploy.
-2. Connect `LuckiestManAliveEver/soko.market` in DigitalOcean App Platform. Import
+2. Connect `LuckiestManAliveEver/grogoni` in DigitalOcean App Platform. Import
    [`.do/inference.yaml`](../../.do/inference.yaml) as the app specification, or enter its settings
    in the dashboard: repository root build context, Dockerfile
    `services/ai-runtime/Dockerfile`, HTTP port `8080`, health check `/ready`.
@@ -51,7 +51,7 @@ Verify the actual model separately with the existing `pnpm inference:live-probe`
 
    | Variable                          | Value                                                                |
    | --------------------------------- | -------------------------------------------------------------------- |
-   | `SOKO_INFERENCE_SERVICE_TOKEN`    | Copy the existing API's value; store as an encrypted secret.         |
+   | `GROGONI_INFERENCE_SERVICE_TOKEN`    | Copy the existing API's value; store as an encrypted secret.         |
    | `MODEL_ARTIFACT_ALLOWED_HOSTS`    | Copy the existing Vercel allowlist: hostnames only, comma separated. |
    | `VERCEL_MAX_ARTIFACT_BYTES`       | `450000000`, matching the existing limit.                            |
    | `INFERENCE_MAX_INPUT_CHARACTERS`  | `64000`                                                              |
@@ -83,7 +83,7 @@ References: [App specification](https://docs.digitalocean.com/products/app-platf
 2. Check the new DigitalOcean `/health` and `/ready` endpoints. `/ready` checks configuration;
    real native-model execution must still be proven on DigitalOcean.
 3. Point a staging API with a test account and artifact metadata at the new URL, using the same
-   shared service token. Run `pnpm inference:probe` with that API's `SOKO_API_URL`. Check first-token
+   shared service token. Run `pnpm inference:probe` with that API's `GROGONI_API_URL`. Check first-token
    latency, completed streamed output, and a second turn with `cacheHit: true` in the container logs.
    This also verifies native llama.cpp works inside App Platform's container sandbox.
 4. Change **only** `VERCEL_INFERENCE_URL` on the production Render API to the new HTTPS base URL
@@ -93,12 +93,12 @@ References: [App specification](https://docs.digitalocean.com/products/app-platf
 
    ```sh
    VERCEL_INFERENCE_URL=https://YOUR-APP.ondigitalocean.app pnpm inference:health
-   SOKO_API_URL=https://soko.market pnpm inference:probe
+   GROGONI_API_URL=https://grogoni.com pnpm inference:probe
    pnpm verify:production-runtime
    ```
 
-   The last command requires `SOKO_API_URL`, the new `VERCEL_INFERENCE_URL`, `SOKO_TEST_TOKEN`, and
-   `SOKO_TEST_SHOP_ID` in your private environment. Use a designated test shop/account.
+   The last command requires `GROGONI_API_URL`, the new `VERCEL_INFERENCE_URL`, `GROGONI_TEST_TOKEN`, and
+   `GROGONI_TEST_SHOP_ID` in your private environment. Use a designated test shop/account.
 
 6. Verify a complete chat turn from the website. Confirm streaming, a warm second request, and
    acceptable behavior under overlapping requests before routing normal traffic to the service.

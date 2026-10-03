@@ -14,7 +14,7 @@ function positiveIntegerFromEnv(name, fallback, environment = process.env) {
 }
 
 // Filenames whose SQL text no longer byte-for-byte matches what a live database recorded in
-// `soko_schema_migrations` when the migration actually ran, together with every checksum
+// `grogoni_schema_migrations` when the migration actually ran, together with every checksum
 // verified to have been legitimately applied for that file. This is an explicit, audited
 // allowlist keyed by exact checksum - not a way to silence checksum drift in general. A
 // migration runner still fails closed for any applied checksum that is not exactly one of the
@@ -27,7 +27,7 @@ const legacyMigrationChecksums = new Map([
       "695019b487acf03ba6dfe87c64c5dd4204bbb52bfb9d551d8623cff2519560a6"
     ])
   ],
-  // 051_single_identity_single_store.sql: production's soko_schema_migrations row for this
+  // 051_single_identity_single_store.sql: production's grogoni_schema_migrations row for this
   // file was stamped with a checksum that does not match the current file's SHA-256. Verified
   // against the production database and added on 2026-08-15.
   [
@@ -70,7 +70,7 @@ export function readDatabaseUrl(environment = process.env) {
 export function databasePoolConfig(
   connectionString,
   {
-    applicationName = "soko-market-db-task",
+    applicationName = "grogoni-db-task",
     environment = process.env,
     max,
     poolMaxFallback = 1,

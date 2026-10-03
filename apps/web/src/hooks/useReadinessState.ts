@@ -28,7 +28,7 @@ import {
   type SecurityReviewSummary,
   type SessionResponse,
   type VerificationTierSummary
-} from "../soko-application-shared";
+} from "../grogoni-application-shared";
 
 interface UseReadinessStateDeps {
   business: ActiveBusiness | null;

@@ -39,8 +39,8 @@ export function estimateCost(
 export interface EffectiveUsagePolicy {
   currency: string;
   /**
-   * Soko's own spend caps (environment / global row). They apply only to Soko-funded requests,
-   * measured against Soko-funded spend - a shop paying with its own key is not limited by them.
+   * Grogoni's own spend caps (environment / global row). They apply only to Grogoni-funded requests,
+   * measured against Grogoni-funded spend - a shop paying with its own key is not limited by them.
    */
   platformTenantDailyBudget: number | null;
   platformUserDailyBudget: number | null;
@@ -110,7 +110,7 @@ export function createRedisRequestRateLimiter(
     async hit(key, limit, windowMs) {
       const at = now();
       const window = Math.floor(at / windowMs);
-      const redisKey = `soko:inference:rate:${key}:${window}`;
+      const redisKey = `grogoni:inference:rate:${key}:${window}`;
       try {
         const result = await redis
           .multi()
@@ -134,8 +134,8 @@ export function createRedisRequestRateLimiter(
  *
  * - Rate limits and token ceilings: the strictest defined value across environment, global,
  *   tenant and user rows - no row can loosen a stricter one.
- * - Budgets come in two kinds that are checked independently (both must pass): Soko's own caps
- *   on Soko-funded spend, and a shop's/person's own caps on all of their spend.
+ * - Budgets come in two kinds that are checked independently (both must pass): Grogoni's own caps
+ *   on Grogoni-funded spend, and a shop's/person's own caps on all of their spend.
  * - Fallback policy: the most specific row that sets one (tenant, then user, then global).
  */
 export class InferenceUsageGuard {
@@ -207,7 +207,7 @@ export class InferenceUsageGuard {
     tenantId: string | null;
     userId: string | null;
     providerId: string;
-    /** Who pays for this request: Soko's caps apply only when it is "platform". */
+    /** Who pays for this request: Grogoni's caps apply only when it is "platform". */
     credentialScope: CredentialScope | null;
     policy: EffectiveUsagePolicy;
   }): Promise<void> {
@@ -223,7 +223,7 @@ export class InferenceUsageGuard {
         throw new InferenceError("RATE_LIMITED", {
           providerId: input.providerId,
           retryAfterMs: verdict.retryAfterMs,
-          diagnostic: "Soko per-minute request limit reached."
+          diagnostic: "Grogoni per-minute request limit reached."
         });
       }
     }

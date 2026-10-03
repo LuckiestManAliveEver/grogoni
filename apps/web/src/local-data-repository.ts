@@ -35,7 +35,7 @@ export interface LocalDataRepository<T> {
   clearForLogout(): Promise<void>;
 }
 
-const databaseName = "soko-market-local-data";
+const databaseName = "grogoni-local-data";
 const databaseVersion = 1;
 const entriesStore = "entries";
 const scopeIndex = "by_scope";

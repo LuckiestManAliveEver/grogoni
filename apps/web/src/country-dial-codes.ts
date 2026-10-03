@@ -4,7 +4,7 @@ import {
   type CountryDialCode,
   type SocialSignupProvider,
   countryDialCodes
-} from "./soko-application-shared";
+} from "./grogoni-application-shared";
 
 export function getCountryDialCode(countryCode: CountryDialCode) {
   return (

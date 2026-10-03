@@ -6,7 +6,7 @@
 
 ## Current architecture
 
-Soko's PWA is a React 19 application built by Vite. `OwnerApp` owns the current account, business,
+Grogoni's PWA is a React 19 application built by Vite. `OwnerApp` owns the current account, business,
 chat, agent-profile, catalogue, and offline state through React state and refs; there is no global
 state library. The single `ChatSurface` sends customer messages through `/v1/messages` and agent
 turns through the CP2 runtime. The server chooses the configured llama.cpp, Ollama, or OpenAI
@@ -16,8 +16,8 @@ The existing on-device model work has two layers:
 
 - `ai-model-manager.ts` validates and stores GGUF files in OPFS and maintains a canonical
   device-scoped installation registry.
-- `agent-model-runtime.ts` exposes Soko's runtime interface and currently calls an optional
-  Android-injected `SokoAgentModelRuntime` bridge.
+- `agent-model-runtime.ts` exposes Grogoni's runtime interface and currently calls an optional
+  Android-injected `GrogoniAgentModelRuntime` bridge.
 
 The PWA already has a versioned IndexedDB sync repository for account-scoped records and queued
 mutations. The application service worker caches the app shell and notifications; it does not run
@@ -28,17 +28,17 @@ must extend these boundaries and must not introduce a second chat or agent.
 
 The existing chat resolver will choose exactly one route for each turn: browser-local, native local,
 or server. Browser inference is owned by a single page-session controller. The controller talks to
-a dedicated worker through a typed protocol and hides the third-party engine behind Soko's
+a dedicated worker through a typed protocol and hides the third-party engine behind Grogoni's
 `BrowserModelEngine` interface. The worker owns the tokenizer, generation pipeline, and live
 generation state.
 
-A deterministic Soko context manager builds bounded chat input from the protected system prefix,
+A deterministic Grogoni context manager builds bounded chat input from the protected system prefix,
 agent and shop identity, recent messages, a separately persisted rolling summary, relevant context
 scripts, and lexical catalogue retrieval. Required instructions and the latest user message are
 never dropped. The model is never treated as authoritative application state and cannot execute
 tools directly.
 
-A separate versioned `soko-browser-inference` IndexedDB database stores account-scoped model
+A separate versioned `grogoni-browser-inference` IndexedDB database stores account-scoped model
 metadata, download state, summaries, local chat cache, retrieval metadata, offline inference queue,
 and per-user settings. Model bytes remain in the engine-managed browser cache; IndexedDB records
 their approved model ID, state, and expected size without copying a large asset. Service-worker
@@ -56,14 +56,14 @@ It was selected because it:
 - packages with Vite and does not require an API key;
 - exposes model-loading progress and bounded generation controls.
 
-Soko code outside the worker must not import Transformers.js. This contains supply-chain and API
+Grogoni code outside the worker must not import Transformers.js. This contains supply-chain and API
 change risk at one replaceable adapter boundary. The initial model is
 `onnx-community/SmolLM2-360M-Instruct-ONNX`, derived from Apache-2.0
-`HuggingFaceTB/SmolLM2-360M-Instruct`, loaded at q4 and limited to a conservative 2,048-token Soko
+`HuggingFaceTB/SmolLM2-360M-Instruct`, loaded at q4 and limited to a conservative 2,048-token Grogoni
 context even though the model advertises a larger window.
 
 WebLLM was not selected because this phase requires a usable WASM fallback as well as WebGPU.
-Using raw ONNX Runtime Web would require Soko to independently maintain tokenizer, chat-template,
+Using raw ONNX Runtime Web would require Grogoni to independently maintain tokenizer, chat-template,
 streaming, and generation-loop behavior already supplied by Transformers.js.
 
 ## Security and privacy
@@ -76,18 +76,18 @@ streaming, and generation-loop behavior already supplied by Transformers.js.
   continue through authenticated server routes.
 - IndexedDB keys contain the authenticated user and tenant namespace. Logout terminates the worker,
   clears in-memory prompts, and deletes account-scoped summaries, queues, and settings.
-- Catalogue values in prompts are retrieved from Soko's current structured state and remain
+- Catalogue values in prompts are retrieved from Grogoni's current structured state and remain
   non-authoritative model context.
 - Browser inference never weakens backend authorization or confirmation rules.
 
 ## Storage implications
 
-The q4 model is a large explicit download and may consume hundreds of megabytes. Soko shows the
+The q4 model is a large explicit download and may consume hundreds of megabytes. Grogoni shows the
 approximate transfer and runtime-memory costs before consent, reports quota, handles quota errors,
 and supports deleting model cache metadata without deleting chat summaries. Persistent storage is
 requested only after the user chooses to download and is accompanied by an explanation.
 
-The engine may use Cache Storage for model files. Soko does not duplicate the binary in OPFS or
+The engine may use Cache Storage for model files. Grogoni does not duplicate the binary in OPFS or
 IndexedDB. IndexedDB schema upgrades preserve valid account data and service-worker activation does
 not delete inference storage.
 
@@ -119,7 +119,7 @@ the user's message remains queued until reconnection.
 
 ## Context management
 
-The stable prefix contains core Soko rules, privacy rules, and agent/shop identity and has a
+The stable prefix contains core Grogoni rules, privacy rules, and agent/shop identity and has a
 deterministic cache key. The dynamic suffix contains the current message, bounded recent history,
 intent-selected context scripts, lexical catalogue results, retrieved memory, and a rolling
 summary.
@@ -131,7 +131,7 @@ memory, catalogue, context scripts, oldest recent messages. It never presents a 
 an exact token count.
 
 Rolling summaries are stored separately from raw history, update after a defined threshold, retain
-facts and pending actions with source IDs, and never replace structured Soko state. Phase-one
+facts and pending actions with source IDs, and never replace structured Grogoni state. Phase-one
 summary extraction is deterministic; local model summarization can replace only the prose field
 later while retaining the structured facts.
 

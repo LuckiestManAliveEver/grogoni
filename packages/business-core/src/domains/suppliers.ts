@@ -1,9 +1,9 @@
-import { createEvent, type BusinessEvent } from "@soko/event-core";
+import { createEvent, type BusinessEvent } from "@grogoni/event-core";
 import type {
   DocumentImportPreviewRow,
   SupplierImportDraft,
   SupplierSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
 import { normalizeContactRecordInput, validateContactRecordInput } from "./contact-records.js";
 import { parseCsvRecords } from "../shared/content-parsing.js";

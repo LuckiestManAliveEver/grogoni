@@ -17,8 +17,8 @@ import {
   type InvoiceItemSummary,
   type WeightStatus,
   type WeightUnresolvedReason
-} from "@soko/shared-types";
-import { invalid, type ValidationResult, valid } from "@soko/tool-core";
+} from "@grogoni/shared-types";
+import { invalid, type ValidationResult, valid } from "@grogoni/tool-core";
 
 export type LineWeightResult =
   | { status: "RESOLVED"; totalWeightGrams: bigint }

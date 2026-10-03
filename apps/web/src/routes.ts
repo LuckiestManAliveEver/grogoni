@@ -1,4 +1,4 @@
-import type { ShellView, SokoMode } from "./app-shell";
+import type { ShellView, GrogoniMode } from "./app-shell";
 
 function routeId(value: string): string {
   const normalized = value.trim();
@@ -17,7 +17,7 @@ export const routes = {
   // (AppRouter's readStorefrontRoute) and /s/:slug is the API's universal short link.
   shopHub: "/sell/shop",
   workspace: "/workspace",
-  conversation: (conversationId: string, mode: SokoMode = "marketplace") =>
+  conversation: (conversationId: string, mode: GrogoniMode = "marketplace") =>
     `${mode === "seller" ? "/workspace" : routes.marketplace}/conversations/${routeId(conversationId)}`,
   catalogue: "/catalogue",
   product: (productId: string) => `/products/${routeId(productId)}`,
@@ -91,7 +91,7 @@ const viewPaths: Partial<Record<ShellView, string>> = {
 };
 
 export interface OwnerRoute {
-  mode: SokoMode;
+  mode: GrogoniMode;
   view: ShellView;
   conversationId?: string;
   productId?: string;
@@ -100,7 +100,7 @@ export interface OwnerRoute {
   panel?: "shop-hub";
 }
 
-export function pathForOwnerView(view: ShellView, mode: SokoMode): string {
+export function pathForOwnerView(view: ShellView, mode: GrogoniMode): string {
   if (view === "chat") {
     return mode === "seller" ? routes.sell : routes.marketplace;
   }

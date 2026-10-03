@@ -7,7 +7,7 @@ import type {
   AccountDeletionRequestSummary,
   ShopDeletionPreviewSummary,
   ShopDeletionRequestResult
-} from "./soko-application-shared";
+} from "./grogoni-application-shared";
 
 export function sanitizePin(value: string): string {
   return value.replace(/\D/g, "").slice(0, 4);
@@ -18,7 +18,7 @@ export function isValidPin(value: string): boolean {
 }
 
 export interface DeleteAccountPanelProps {
-  business: { id: string; name: string; sokoId: string };
+  business: { id: string; name: string; grogoniId: string };
   pendingProfileAction: string | null;
   runProfileAction: (key: string, action: () => Promise<void>) => Promise<void>;
   setProfileMessage: (message: string) => void;
@@ -161,7 +161,7 @@ export function DeleteAccountPanel({
         <h3>Delete account</h3>
       </div>
       <p className="security-warning">
-        Choose whether to delete only this shop or your entire Soko.market account.
+        Choose whether to delete only this shop or your entire Grogoni account.
       </p>
       {deletionStep === "idle" ? (
         <button
@@ -190,7 +190,7 @@ export function DeleteAccountPanel({
                 <strong>Delete this shop only</strong>
                 <p>
                   Hides {business.name} immediately and schedules its business data for purge. Your
-                  Soko login and other shops remain active.
+                  Grogoni login and other shops remain active.
                 </p>
               </div>
               <button type="button" onClick={() => setDeletionStep("shop-confirm")}>
@@ -200,7 +200,7 @@ export function DeleteAccountPanel({
             <article className="connected-social-card">
               <div>
                 <span>Entire account</span>
-                <strong>Delete your Soko.market account</strong>
+                <strong>Delete your Grogoni account</strong>
                 <p>
                   Disables your login, revokes every session, and schedules all associated personal
                   and shop data for deletion.
@@ -251,7 +251,7 @@ export function DeleteAccountPanel({
             <input
               value={deletionShopId}
               onChange={(event) => setDeletionShopId(event.target.value)}
-              placeholder={business.sokoId}
+              placeholder={business.grogoniId}
             />
           </label>
           <div className="row-actions">
@@ -260,7 +260,7 @@ export function DeleteAccountPanel({
             </button>
             <button
               type="button"
-              disabled={deletionShopId !== business.sokoId || pendingProfileAction !== null}
+              disabled={deletionShopId !== business.grogoniId || pendingProfileAction !== null}
               onClick={() => void runProfileAction("shop-deletion-start", startShopDeletion)}
               aria-busy={pendingProfileAction === "shop-deletion-start"}
             >

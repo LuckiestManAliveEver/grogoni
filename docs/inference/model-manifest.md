@@ -18,7 +18,7 @@ and the deployment's origin allow-list.
 
 Models are lazy-loaded after explicit user consent. Progress and cancellation are handled by the
 existing Worker engine. Ready model metadata is inventoried in the versioned
-`soko-browser-inference` IndexedDB database, while public model files remain in the Transformers
+`grogoni-browser-inference` IndexedDB database, while public model files remain in the Transformers
 browser cache. Conversation summaries use separate stores and must never be placed in the public
 model cache.
 

@@ -5,7 +5,7 @@ links do not silently point to obsolete setup instructions.
 
 The production API uses the Postgres adapter with `CP2_STORE=postgres`. The Render Blueprint now:
 
-- provisions `soko-market-db` as Render Postgres;
+- provisions `grogoni-db` as Render Postgres;
 - injects its private `connectionString` as `DATABASE_URL` and `DIRECT_DATABASE_URL`;
 - runs SQL migrations before the API starts; and
 - exposes database diagnostics at `/health/db`.

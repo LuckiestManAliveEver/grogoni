@@ -41,7 +41,7 @@ import type {
   OAuthProvider,
   OAuthSessionSummary,
   UserIdentitySummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import type { UserIdentityRecord } from "../../domain-contracts.js";
 export type { UserIdentityRecord } from "../../domain-contracts.js";
 

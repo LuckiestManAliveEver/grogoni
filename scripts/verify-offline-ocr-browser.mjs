@@ -10,7 +10,7 @@ import { build, loadConfigFromFile } from "vite";
 import { chromium } from "@playwright/test";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const temp = await mkdtemp(join(tmpdir(), "soko-ocr-browser-"));
+const temp = await mkdtemp(join(tmpdir(), "grogoni-ocr-browser-"));
 let browser;
 let server;
 try {
@@ -90,7 +90,7 @@ try {
     await window.ocr.ensureOcrEngineCached(() => {});
     await window.shell.prepareOfflineShell(() => {});
     localStorage.setItem(
-      "soko.market.auth-bootstrap.v1",
+      "grogoni.auth-bootstrap.v1",
       JSON.stringify({
         account: { id: "account" },
         user: { id: "user" },
@@ -167,7 +167,7 @@ try {
     3
   );
   await page.evaluate(async () => {
-    await (await caches.open("soko-ocr-engine-v1")).delete("/tesseract/worker.min.js");
+    await (await caches.open("grogoni-ocr-engine-v1")).delete("/tesseract/worker.min.js");
   });
   assert.equal(await page.evaluate(() => window.ocr.isOcrEngineCached()), false);
   // Even with connectivity restored, a missing asset must not cause a scan-time fetch.

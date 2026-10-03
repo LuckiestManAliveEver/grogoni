@@ -4,10 +4,10 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { MerchantWorkspaceDashboard } from "../apps/web/src/MerchantWorkspaceDashboard";
-import type { InvoiceSummary, ProductSummary } from "../apps/web/src/soko-application-shared";
+import type { InvoiceSummary, ProductSummary } from "../apps/web/src/grogoni-application-shared";
 
 // Regression coverage for audit A27 ("Merchant workspace",
-// docs/audits/soko-home-2026-09-17/audit.md): the reference is a single screen combining today's
+// docs/audits/grogoni-home-2026-09-17/audit.md): the reference is a single screen combining today's
 // numbers, recent orders, and catalogue; production's workspace was a modal hub of 18 separate
 // cards with no combined view. This mounts the real component end to end.
 function invoice(overrides: Partial<InvoiceSummary> = {}): InvoiceSummary {

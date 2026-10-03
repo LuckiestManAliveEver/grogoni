@@ -67,7 +67,7 @@ describe("network invite delivery pipeline", () => {
         method: "POST",
         headers: expect.objectContaining({
           "idempotency-key": "invite-0001",
-          "x-soko-invite-signature": expect.stringMatching(/^sha256=[a-f0-9]{64}$/u)
+          "x-grogoni-invite-signature": expect.stringMatching(/^sha256=[a-f0-9]{64}$/u)
         })
       })
     );

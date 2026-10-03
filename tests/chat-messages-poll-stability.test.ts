@@ -4,7 +4,7 @@ import { chatMessagesEqual } from "../apps/web/src/chat-messages-equal";
 import type { ChatMessage } from "../apps/web/src/app-shell";
 
 /**
- * The 4-second foreground poll (SokoApplication.tsx) remaps the whole conversation thread into a
+ * The 4-second foreground poll (GrogoniApplication.tsx) remaps the whole conversation thread into a
  * brand-new array on every tick, whether or not anything changed. Without a content-equality
  * guard, that new array reference alone was enough to churn chatMessages every 4 seconds while a
  * user might be mid-draft in a generated card (e.g. "Add product") sitting in the same render
@@ -15,7 +15,7 @@ import type { ChatMessage } from "../apps/web/src/app-shell";
 describe("chatMessagesEqual - poll stability guard", () => {
   const base: ChatMessage = {
     id: "message-1",
-    author: "sokoclaw",
+    author: "grogoniclaw",
     body: "Here is your product card"
   };
 

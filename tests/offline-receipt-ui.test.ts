@@ -30,7 +30,7 @@ describe("Receipt scan recovery in Suppliers", () => {
     const network = vi.fn();
     vi.stubGlobal("fetch", network);
     localStorage.setItem(
-      "soko.market.auth-bootstrap.v1",
+      "grogoni.auth-bootstrap.v1",
       JSON.stringify({
         account: { id: "account" },
         user: { id: "user" },
@@ -39,7 +39,7 @@ describe("Receipt scan recovery in Suppliers", () => {
       })
     );
     const scope = { accountId: "account", storeId: "shop", deviceId: "device" };
-    localStorage.setItem("soko.offline-runtime.active.v1", JSON.stringify(scope));
+    localStorage.setItem("grogoni.offline-runtime.active.v1", JSON.stringify(scope));
     const offline = await import("../apps/web/src/offline-runtime");
     const db = await offline.offlineDatabase();
     await db.transaction(scope, (state) => {
@@ -138,7 +138,7 @@ describe("Receipt scan recovery in Suppliers", () => {
         return Response.json([]);
       });
       await act(async () => {
-        localStorage.removeItem("soko.offline-runtime.active.v1");
+        localStorage.removeItem("grogoni.offline-runtime.active.v1");
         window.dispatchEvent(new Event(offline.offlineModeEvent));
         await new Promise((resolve) => setTimeout(resolve, 30));
       });

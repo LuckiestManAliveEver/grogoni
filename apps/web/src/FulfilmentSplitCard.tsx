@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { UnifiedCheckoutSummary } from "@soko/shared-types";
+import type { UnifiedCheckoutSummary } from "@grogoni/shared-types";
 import { apiFetch } from "./lib/api";
 import { getUserFacingErrorMessage } from "./user-facing-error";
 

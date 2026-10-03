@@ -3,7 +3,7 @@ import {
   type DocumentImportPreviewRow,
   type ProductImportDraft,
   type SupplierImportDraft
-} from "./soko-application-shared";
+} from "./grogoni-application-shared";
 
 export interface ImportRowEditorProps {
   importJobId: string;

@@ -1,6 +1,6 @@
 import { isIP } from "node:net";
 import { lookup } from "node:dns/promises";
-import type { ComputerNavigationPolicy } from "@soko/shared-types";
+import type { ComputerNavigationPolicy } from "@grogoni/shared-types";
 
 const privateV4 = /^(?:10\.|127\.|169\.254\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.)/u;
 

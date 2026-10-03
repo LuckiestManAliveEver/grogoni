@@ -1,9 +1,9 @@
-# Soko Agent Execution Fabric — Phase 2.5: Persist ExecutionFabricStore
+# Grogoni Agent Execution Fabric — Phase 2.5: Persist ExecutionFabricStore
 
 Status: complete. `ExecutionFabricStore`'s public interface is unchanged; nothing calling it (the
 Phase 2 planner-driven runtime route, the `ModelPreferencePanel` UI, the `/businesses/:id/model-preference`
 routes) required any change. This document assumes
-[Phase 0](soko-execution-fabric-audit.md), [Phase 1](agent-execution-fabric-phase1.md), and
+[Phase 0](grogoni-execution-fabric-audit.md), [Phase 1](agent-execution-fabric-phase1.md), and
 [Phase 2](agent-execution-fabric-phase2.md) as ground truth.
 
 ## 1. The pattern matched
@@ -149,7 +149,7 @@ maxConcurrentJobs, createdAt, updatedAt}` - no `online`/`lastHeartbeatAt` reache
 All 3 pass:
 
 ```
-CP2_POSTGRES_TEST_DATABASE_URL=postgres://soko:soko_dev_password@127.0.0.1:5432/soko_market \
+CP2_POSTGRES_TEST_DATABASE_URL=postgres://grogoni:grogoni_dev_password@127.0.0.1:5432/grogoni_market \
   npx vitest run tests/execution-fabric-postgres-persistence.test.ts
 Test Files  1 passed (1)
      Tests  3 passed (3)
@@ -188,7 +188,7 @@ thing" scope - flagged here as a genuine, newly-surfaced, pre-existing gap rathe
 left for someone else to rediscover.
 
 **Full monorepo typecheck** (all 11 workspace projects) and **both production builds**
-(`@soko/api`, `@soko/web`) pass clean.
+(`@grogoni/api`, `@grogoni/web`) pass clean.
 
 ## 8. Deliverable check
 

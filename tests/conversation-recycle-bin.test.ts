@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
-import type { ConversationSummary, RecycleBinStatusSummary } from "@soko/shared-types";
+import type { ConversationSummary, RecycleBinStatusSummary } from "@grogoni/shared-types";
 import { buildApi } from "../services/api/src/app";
 import { createCp2Store } from "../services/api/src/cp2/store";
 
 interface BusinessResponse {
-  business: { id: string; name: string; sokoId: string };
+  business: { id: string; name: string; grogoniId: string };
 }
 
 describe("conversation recycle bin", () => {

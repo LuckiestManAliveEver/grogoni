@@ -4,7 +4,7 @@
 
 A merchant device can now receive orders while offline, from two transports:
 
-- **BLE** - a nearby customer's own Soko app sends an order over `packages/offline-runtime/providers/peer-provider.ts`'s existing nearby-mesh transport.
+- **BLE** - a nearby customer's own Grogoni app sends an order over `packages/offline-runtime/providers/peer-provider.ts`'s existing nearby-mesh transport.
 - **SMS** - a remote customer texts the merchant's own SIM (the existing `native_sms` channel,
   `docs/architecture/android-native-sms-channel.md`); the text is parsed into structured order
   items when the buffered message finally reaches the server.
@@ -78,7 +78,7 @@ creation touches already flows through `Cp2Store.appendBusinessEvent` into
 ## Customer identity
 
 Every `OfflineOrderIntent.customerClaim` is either `{ type: "account", accountId }` (a BLE buyer's
-own authenticated Soko account) or `{ type: "phone", phone }` (an SMS sender's number) - never a
+own authenticated Grogoni account) or `{ type: "phone", phone }` (an SMS sender's number) - never a
 BLE device name or address, matching `peer-provider.ts`'s existing rule that a transport never
 supplies identity. An `account` claim is verified against a real registered account
 (`Cp2Store.requireAccount`, via `linkCustomerAccount`) before a customer record is created or

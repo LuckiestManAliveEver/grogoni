@@ -1,12 +1,12 @@
 -- AgentDefinition gains runtimeAdapterId (see ADR-collapse-harness-into-agent.md): which
 -- registered AgentRuntimeAdapter runs an agent's turns is now fixed per agent definition instead
 -- of an independently swappable "harness" dimension. Backfills the existing builtin:shopkeeper
--- row with its established default ("soko" - see legacyAgentRuntimeAdapterId), adds a second
+-- row with its established default ("grogoni" - see legacyAgentRuntimeAdapterId), adds a second
 -- built-in definition running on the Pi engine so it stays choosable, and requires the field on
 -- every future row.
 
 update cp2_agent_catalog
-set record = record || jsonb_build_object('runtimeAdapterId', 'soko'),
+set record = record || jsonb_build_object('runtimeAdapterId', 'grogoni'),
   updated_at = now()
 where entity_id = 'builtin:shopkeeper'
   and not (record ? 'runtimeAdapterId');

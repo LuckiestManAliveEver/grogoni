@@ -17,13 +17,13 @@ import type {
   ShareableCatalogueProductSummary,
   ShareableCatalogueSummary,
   ShopPresenceSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import {
   validateProductInput,
   type BusinessPermission,
   type ProductInput
-} from "@soko/business-core";
-import type { AuthenticatedActorView } from "@soko/shared-types";
+} from "@grogoni/business-core";
+import type { AuthenticatedActorView } from "@grogoni/shared-types";
 import { assertValid, Cp2Error } from "../../cp2-error.js";
 
 export interface CatalogueSharingDomainDeps {
@@ -83,7 +83,7 @@ export class CatalogueSharingDomain {
       .map((business) => this.shareableCatalogueSummary(business))
       .filter((summary) => {
         if (search.length === 0) return true;
-        return [summary.businessName, summary.sokoId].some((value) =>
+        return [summary.businessName, summary.grogoniId].some((value) =>
           value.toLowerCase().includes(search)
         );
       })
@@ -195,7 +195,7 @@ export class CatalogueSharingDomain {
     const presence = this.deps.shopPresenceForBusiness(business.id);
     return {
       businessId: business.id,
-      sokoId: business.sokoId,
+      grogoniId: business.grogoniId,
       businessName: business.name,
       productCount: this.deps.productsForBusiness(business.id).length,
       updatedAt: presence.updatedAt

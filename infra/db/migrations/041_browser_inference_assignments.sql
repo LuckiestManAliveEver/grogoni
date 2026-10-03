@@ -96,7 +96,7 @@ create table if not exists cp2_browser_inference_assignments (
         record #>> '{checkpointCompatibilityContract,schemaVersion}' = '1'
         and record #>> '{checkpointCompatibilityContract,checkpointKind}' = 'task-state'
         and record #>> '{checkpointCompatibilityContract,taskStateSchema}'
-          = 'soko.browser-task-state.v2'
+          = 'grogoni.browser-task-state.v2'
         and record #>> '{checkpointCompatibilityContract,sourceAdapterId}'
           in ('transformers-js', 'webllm')
         and record #>> '{checkpointCompatibilityContract,promptRepresentation}'

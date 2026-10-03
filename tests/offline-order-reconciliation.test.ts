@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
-import type { OfflineOrderIntent } from "@soko/offline-runtime";
+import type { OfflineOrderIntent } from "@grogoni/offline-runtime";
 import { buildApi } from "../services/api/src/app";
 import { createCp2Store } from "../services/api/src/cp2/store";
 
 const androidHeaders = {
-  "x-soko-device-id": "android-device-order-1",
-  "x-soko-device-name": "Pixel Test",
-  "x-soko-platform": "android",
-  "x-soko-client": "android-native"
+  "x-grogoni-device-id": "android-device-order-1",
+  "x-grogoni-device-name": "Pixel Test",
+  "x-grogoni-platform": "android",
+  "x-grogoni-client": "android-native"
 };
 
 describe("Offline order intent reconciliation", () => {

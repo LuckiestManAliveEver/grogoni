@@ -2,7 +2,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { NetworkConnectionSummary } from "@soko/shared-types";
+import type { NetworkConnectionSummary } from "@grogoni/shared-types";
 
 const fetchFreshJson = vi.fn();
 const postJson = vi.fn();
@@ -27,7 +27,7 @@ function connection(overrides: Partial<NetworkConnectionSummary>): NetworkConnec
     counterpartUserId: "u-eve",
     counterpartDisplayName: "Eve",
     counterpartBusinessName: "Eve Grocers",
-    counterpartSokoId: null,
+    counterpartGrogoniId: null,
     nodeId: null,
     createdAt: at,
     updatedAt: at,
@@ -67,11 +67,11 @@ describe("ConnectionRequestsPrompt", () => {
     });
     postJson.mockResolvedValue({ connection: connection({ status: "accepted" }) });
     const changed = vi.fn();
-    window.addEventListener("soko:network-changed", changed);
+    window.addEventListener("grogoni:network-changed", changed);
     await render();
 
     expect(fetchFreshJson).toHaveBeenCalledWith("/network/connections");
-    expect(container.textContent).toContain("Eve wants to connect on Soko");
+    expect(container.textContent).toContain("Eve wants to connect on Grogoni");
     expect(container.textContent).toContain("Eve Grocers");
     expect(container.textContent).not.toContain("Mine");
     expect(container.textContent).not.toContain("Friend");
@@ -107,7 +107,7 @@ describe("ConnectionRequestsPrompt", () => {
     fetchFreshJson.mockResolvedValue({ connections: [] });
     await act(async () =>
       window.dispatchEvent(
-        new CustomEvent("soko:network-changed", { detail: { source: "network-state" } })
+        new CustomEvent("grogoni:network-changed", { detail: { source: "network-state" } })
       )
     );
     expect(container.innerHTML).toBe("");

@@ -4,7 +4,7 @@ import { redactSecrets } from "./redaction.js";
 /**
  * Normalized provider-layer failure codes. Every adapter maps its vendor's HTTP status/body onto
  * one of these; the vendor's own error body is kept only as a redacted, internal `diagnostic`.
- * Each code is also registered in @soko/shared-types' normalizeInferenceErrorCode map so
+ * Each code is also registered in @grogoni/shared-types' normalizeInferenceErrorCode map so
  * telemetry/UI categorize it the same way as the pre-existing runtime codes.
  */
 export type InferenceErrorCode =
@@ -54,7 +54,7 @@ const safeMessages: Record<InferenceErrorCode, string> = {
   ENDPOINT_FORBIDDEN: "This provider endpoint is not allowed.",
   LOCAL_EXECUTION_REQUIRED: "This model runs on your device and cannot be run by the server.",
   LOCAL_DEVICE_UNAVAILABLE:
-    "No device with this on-device model is online. Open Soko on a device where the model is installed.",
+    "No device with this on-device model is online. Open Grogoni on a device where the model is installed.",
   INVALID_PROVIDER_RESPONSE: "The model provider returned an unexpected response."
 };
 

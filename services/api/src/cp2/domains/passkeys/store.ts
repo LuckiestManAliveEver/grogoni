@@ -15,7 +15,7 @@ import type {
   AuthSessionView,
   PasskeySummary,
   UserSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { Cp2Error } from "../../cp2-error.js";
 import {
   maxPendingPasskeyCeremonies,
@@ -188,7 +188,7 @@ export class PasskeyDomain {
     const userName = session.account.primaryAuthDestination;
     const displayName = session.user.displayName.trim() || userName;
     const options = await generateRegistrationOptions({
-      rpName: "Soko.market",
+      rpName: "Grogoni",
       rpID: input.rpId,
       userID: new TextEncoder().encode(session.account.id),
       userName,

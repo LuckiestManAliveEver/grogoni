@@ -8,7 +8,7 @@ describe("Google Contacts network seeding", () => {
     const provider = getOAuthProviderConfig("google");
     const payload = createOAuthStartPayload({
       provider,
-      redirectUri: "https://soko.example/auth/oauth/callback",
+      redirectUri: "https://grogoni.example/auth/oauth/callback",
       scopes: [...provider.scopes, googleContactsScope]
     });
     const authorizationUrl = new URL(payload.authorizationUrl);

@@ -99,13 +99,13 @@ describe("model selection spoof resistance", () => {
     const spoofedLocalSelection = await store.createRuntimeTurn({
       sessionId: auth.session.id,
       businessId: created.business.id,
-      message: "Keep this request on Soko.",
+      message: "Keep this request on Grogoni.",
       agentProfile: {
         behavior: "Concise",
         contextScripts: [],
         integrations: [],
         knowledge: "Use saved shop records.",
-        model: "sokoclaw-local",
+        model: "grogoniclaw-local",
         role: "Business assistant",
         instructions: "Help with shop operations.",
         tools: []

@@ -20,26 +20,26 @@ describe("database connection policy", () => {
     expect(
       readDatabaseUrl({
         DIRECT_DATABASE_URL: "  ",
-        DATABASE_URL: " postgres://pooled.example/soko?sslmode=require "
+        DATABASE_URL: " postgres://pooled.example/grogoni?sslmode=require "
       })
-    ).toBe("postgres://pooled.example/soko?sslmode=verify-full");
+    ).toBe("postgres://pooled.example/grogoni?sslmode=verify-full");
   });
 
   it("prefers a configured direct URL and normalizes transport security", () => {
     expect(
       readDatabaseUrl({
-        DIRECT_DATABASE_URL: "postgres://direct.example/soko?sslmode=verify-ca",
-        DATABASE_URL: "postgres://pooled.example/soko"
+        DIRECT_DATABASE_URL: "postgres://direct.example/grogoni?sslmode=verify-ca",
+        DATABASE_URL: "postgres://pooled.example/grogoni"
       })
-    ).toBe("postgres://direct.example/soko?sslmode=verify-full");
-    expect(normalizeDatabaseUrl(" postgres://db.example/soko?sslmode=prefer ")).toBe(
-      "postgres://db.example/soko?sslmode=verify-full"
+    ).toBe("postgres://direct.example/grogoni?sslmode=verify-full");
+    expect(normalizeDatabaseUrl(" postgres://db.example/grogoni?sslmode=prefer ")).toBe(
+      "postgres://db.example/grogoni?sslmode=verify-full"
     );
   });
 
   it("applies bounded pool settings and identifies connections", () => {
     expect(
-      databasePoolConfig("postgres://project.neon.tech/soko", {
+      databasePoolConfig("postgres://project.neon.tech/grogoni", {
         applicationName: "schema-audit",
         environment: {
           DB_CONNECTION_TIMEOUT_MS: "7000",

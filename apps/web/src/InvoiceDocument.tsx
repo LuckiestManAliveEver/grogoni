@@ -1,4 +1,4 @@
-import { type InvoicePreview, type InvoiceSummary } from "./soko-application-shared";
+import { type InvoicePreview, type InvoiceSummary } from "./grogoni-application-shared";
 
 import { formatMoney } from "./formatters";
 

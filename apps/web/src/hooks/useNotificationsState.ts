@@ -7,7 +7,7 @@ import {
   emptyNotificationSummary,
   type BusinessNotificationSummary,
   type NotificationInbox
-} from "../soko-application-shared";
+} from "../grogoni-application-shared";
 
 interface UseNotificationsStateDeps {
   businessId: string | null;

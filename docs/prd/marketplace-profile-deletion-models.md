@@ -2,8 +2,8 @@
 
 ## Product outcome
 
-Soko.market opens in buyer Marketplace mode without forcing account creation. A visitor can browse
-immediately. A visitor who chooses email verifies that email; phone signup uses a Soko PIN.
+Grogoni opens in buyer Marketplace mode without forcing account creation. A visitor can browse
+immediately. A visitor who chooses email verifies that email; phone signup uses a Grogoni PIN.
 First-shop registration is a separate step: once the account has an active session, the Sell button
 captures a compulsory unverified owner phone and then opens shop details without an OTP. Returning
 owners authenticate with a passkey or contact and PIN.

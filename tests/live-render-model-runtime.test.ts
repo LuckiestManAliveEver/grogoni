@@ -5,17 +5,17 @@ const enabled = process.env.RUN_LIVE_MODEL_RUNTIME_TEST === "true";
 
 describe.skipIf(!enabled)("live Render, Neon, and Vercel model runtime", () => {
   it("probes, activates, reloads, and chats through the deployed SmolLM binding", async () => {
-    const apiUrl = required("SOKO_API_URL").replace(/\/+$/u, "");
+    const apiUrl = required("GROGONI_API_URL").replace(/\/+$/u, "");
     const inferenceUrl = required("VERCEL_INFERENCE_URL").replace(/\/+$/u, "");
-    const sessionToken = required("SOKO_TEST_TOKEN");
-    const agentId = required("SOKO_TEST_AGENT_ID");
-    const shopId = required("SOKO_TEST_SHOP_ID");
-    const modelId = process.env.SOKO_MODEL_ID?.trim() || "smollm2-360m";
-    const cookie = sessionToken.includes("=") ? sessionToken : `soko_session=${sessionToken}`;
+    const sessionToken = required("GROGONI_TEST_TOKEN");
+    const agentId = required("GROGONI_TEST_AGENT_ID");
+    const shopId = required("GROGONI_TEST_SHOP_ID");
+    const modelId = process.env.GROGONI_MODEL_ID?.trim() || "smollm2-360m";
+    const cookie = sessionToken.includes("=") ? sessionToken : `grogoni_session=${sessionToken}`;
 
     const liveness = await request(`${inferenceUrl}/health`);
     expect(liveness.response.ok).toBe(true);
-    expect(liveness.body).toMatchObject({ ok: true, service: "soko-vercel-inference" });
+    expect(liveness.body).toMatchObject({ ok: true, service: "grogoni-vercel-inference" });
 
     // Vercel executes whatever fully-resolved request Render sends it - there is no per-model
     // probe endpoint on the Vercel side. Render's own diagnostic route proves the whole path

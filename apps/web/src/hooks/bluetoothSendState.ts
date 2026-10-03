@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import type { Scope } from "@soko/offline-runtime";
+import type { Scope } from "@grogoni/offline-runtime";
 
 import { getErrorMessage } from "../chat-message-plumbing";
 import {

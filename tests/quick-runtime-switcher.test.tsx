@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { QuickRuntimeSwitcher } from "../apps/web/src/QuickRuntimeSwitcher";
 import { clearApiRequestCache } from "../apps/web/src/api-request-cache";
-import type { ActiveBusiness, AgentSettings } from "../apps/web/src/soko-application-shared";
+import type { ActiveBusiness, AgentSettings } from "../apps/web/src/grogoni-application-shared";
 
 describe("quick runtime switcher", () => {
   let host: HTMLDivElement;
@@ -31,7 +31,7 @@ describe("quick runtime switcher", () => {
   });
 
   function business(id: string): ActiveBusiness {
-    return { id, role: "owner", sokoId: `soko.${id}` } as unknown as ActiveBusiness;
+    return { id, role: "owner", grogoniId: `grogoni.${id}` } as unknown as ActiveBusiness;
   }
 
   function agent(): AgentSettings {
@@ -188,7 +188,7 @@ describe("quick runtime switcher", () => {
         }),
       "/businesses/agent-shop-2/runtime/effective": () =>
         jsonResponse({
-          agent: { id: "builtin:shopkeeper", name: "Shopkeeper", runtimeAdapterId: "soko" },
+          agent: { id: "builtin:shopkeeper", name: "Shopkeeper", runtimeAdapterId: "grogoni" },
           model: { id: "gpt-6-luna", name: "GPT-6 Luna" },
           execution: { type: "backend", hostId: "host-1", ready: true },
           binding: { id: "binding-1" },
@@ -290,7 +290,7 @@ describe("quick runtime switcher", () => {
         }),
       [`/businesses/${shopId}/runtime/effective`]: () =>
         jsonResponse({
-          agent: { id: "builtin:shopkeeper", name: "Shopkeeper", runtimeAdapterId: "soko" },
+          agent: { id: "builtin:shopkeeper", name: "Shopkeeper", runtimeAdapterId: "grogoni" },
           model: { id: "gpt-6-luna", name: "GPT-6 Luna" },
           execution: { type: "backend", hostId: "host-1", ready: true },
           binding: { id: "binding-1" },
@@ -440,7 +440,7 @@ describe("quick runtime switcher", () => {
       ...merchantFundedModelsFixture(shopId),
       [`/businesses/${shopId}/runtime/effective`]: () =>
         jsonResponse({
-          agent: { id: "builtin:shopkeeper", name: "Shopkeeper", runtimeAdapterId: "soko" },
+          agent: { id: "builtin:shopkeeper", name: "Shopkeeper", runtimeAdapterId: "grogoni" },
           model: { id: "qwen3-4b", name: "Qwen3-4B" },
           execution: { type: "backend", hostId: "host-1", ready: true },
           binding: { id: "binding-1" },

@@ -72,9 +72,9 @@ class ResendEmailProvider implements EmailProvider {
   async sendOtp(input: EmailOtpInput): Promise<void> {
     await this.send({
       idempotencyKey: `otp-${input.challengeId}`,
-      subject: "Your Soko verification code",
+      subject: "Your Grogoni verification code",
       text:
-        `Your Soko verification code is ${input.code}.\n\n` +
+        `Your Grogoni verification code is ${input.code}.\n\n` +
         `It expires at ${input.expiresAt}. If you did not request this code, ignore this email.`,
       to: input.to
     });
@@ -86,11 +86,11 @@ class ResendEmailProvider implements EmailProvider {
     try {
       await this.send({
         idempotencyKey: `message-${input.messageId}`,
-        subject: "New end-to-end encrypted message on Soko",
+        subject: "New end-to-end encrypted message on Grogoni",
         text:
-          "You have a new end-to-end encrypted Soko message. " +
+          "You have a new end-to-end encrypted Grogoni message. " +
           "For your privacy, the message text is not included in this email.\n\n" +
-          `Open Soko to decrypt it: ${input.openUrl}`,
+          `Open Grogoni to decrypt it: ${input.openUrl}`,
         to: input.to
       });
       return "sent";
@@ -130,7 +130,7 @@ export function createEmailProviderFromEnvironment(
   env: NodeJS.ProcessEnv = process.env
 ): EmailProvider {
   const apiKey = env.RESEND_API_KEY?.trim();
-  const from = env.SOKO_EMAIL_FROM?.trim();
+  const from = env.GROGONI_EMAIL_FROM?.trim();
 
   if (apiKey && from) {
     return new ResendEmailProvider({ apiKey, from });

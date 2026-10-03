@@ -101,13 +101,13 @@ import type {
   RuntimeVerificationResult,
   ShopAgentRuntime,
   SupportedLanguage
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import {
   defaultAgentDefinition,
   defaultAgentDefinitionId,
   isAgentDefinitionId
-} from "@soko/shared-types";
-import { runtimeToolRegistry, type parseRuntimeModelOutput } from "@soko/tool-core";
+} from "@grogoni/shared-types";
+import { runtimeToolRegistry, type parseRuntimeModelOutput } from "@grogoni/tool-core";
 import { Cp2Error } from "../../cp2-error.js";
 import type { ModelRuntimeAdapter } from "../../../inference/model-runtime.js";
 import { isSupportedLanguage, normalizeRequiredBoundedText } from "../../text-normalization.js";
@@ -489,7 +489,7 @@ export function isChannelProvider(value: unknown): value is ChannelProvider {
   return (
     typeof value === "string" &&
     [
-      "soko",
+      "grogoni",
       "telegram",
       "whatsapp",
       "messenger",
@@ -556,7 +556,7 @@ export function createDefaultBusinessAgentProfile(input: {
     knowledge: definition.knowledge,
     tools: [...definition.tools],
     skillBindings: defaultAgentSkillBindings(toolNames),
-    integrations: ["Soko.market storefront"],
+    integrations: ["Grogoni storefront"],
     contextScripts: [...defaultBusinessAgentContextScripts],
     memoryPolicy: defaultAgentMemoryPolicy(),
     evaluationPolicy: defaultAgentEvaluationPolicy(),

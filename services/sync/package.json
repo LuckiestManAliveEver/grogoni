@@ -1,5 +1,5 @@
 {
-  "name": "@soko/sync",
+  "name": "@grogoni/sync",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -13,8 +13,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@soko/shared-types": "workspace:*",
-    "@soko/sync-core": "workspace:*",
+    "@grogoni/shared-types": "workspace:*",
+    "@grogoni/sync-core": "workspace:*",
     "fastify": "^5.2.1"
   }
 }

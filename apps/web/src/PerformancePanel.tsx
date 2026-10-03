@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import {
   isPerformanceDebugEnabled,
   subscribeToPerformanceEvents,
-  type SokoPerformanceEvent
+  type GrogoniPerformanceEvent
 } from "./performance";
 
 const eventLimit = 16;
@@ -30,7 +30,7 @@ const emptySummary: PerformanceSummary = {
 };
 
 export function PerformancePanel() {
-  const [events, setEvents] = useState<SokoPerformanceEvent[]>([]);
+  const [events, setEvents] = useState<GrogoniPerformanceEvent[]>([]);
   const [summary, setSummary] = useState<PerformanceSummary>(emptySummary);
   const [collapsed, setCollapsed] = useState(false);
   const enabled = isPerformanceDebugEnabled();
@@ -119,7 +119,7 @@ function Metric({ label, value, tone }: { label: string; value: string; tone?: "
 
 function reduceSummary(
   current: PerformanceSummary,
-  event: SokoPerformanceEvent
+  event: GrogoniPerformanceEvent
 ): PerformanceSummary {
   if (event.event === "api-request") {
     const durationMs = numericDetail(event, "durationMs");
@@ -175,7 +175,7 @@ function compactDetails(details: Record<string, unknown>): string {
     .join(" ");
 }
 
-function numericDetail(event: SokoPerformanceEvent, key: string): number | null {
+function numericDetail(event: GrogoniPerformanceEvent, key: string): number | null {
   const value = event.details[key];
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }

@@ -137,7 +137,7 @@ export default defineConfig(({ mode }) => {
       }
     },
     define: {
-      __APP_NAME__: JSON.stringify("Soko.market"),
+      __APP_NAME__: JSON.stringify("Grogoni"),
       __APP_VERSION__: JSON.stringify(appVersion),
       __BUILD_TIMESTAMP__: JSON.stringify(buildTimestamp),
       __DEPLOYMENT_ENV__: JSON.stringify(deploymentEnvironment),

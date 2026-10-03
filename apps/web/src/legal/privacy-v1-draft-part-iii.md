@@ -1,4 +1,4 @@
-# Soko.market Privacy Policy
+# Grogoni Privacy Policy
 
 **Version:** 1.0 (Draft)
 **Part III – International Data Transfers, Data Retention, Information Security, Data Subject Rights, Automated Decision-Making, and Children's Privacy**
@@ -7,7 +7,7 @@
 
 # 19. International Transfers of Personal Data
 
-Soko.market may process Personal Data in countries other than the country in which it was originally collected.
+Grogoni may process Personal Data in countries other than the country in which it was originally collected.
 
 Where Personal Data is transferred internationally, we will implement appropriate safeguards consistent with applicable law.
 
@@ -25,7 +25,7 @@ Where legally required, users may request additional information regarding appli
 
 # 20. Data Storage
 
-Personal Data may be stored using cloud infrastructure, data centers, or other secure processing environments operated by Soko.market or authorized service providers.
+Personal Data may be stored using cloud infrastructure, data centers, or other secure processing environments operated by Grogoni or authorized service providers.
 
 Storage locations may change over time to improve:
 
@@ -62,7 +62,7 @@ Retention periods vary depending upon:
 
 ## 21.1 Account Information
 
-Account information is generally retained for the duration of the user's relationship with Soko.market.
+Account information is generally retained for the duration of the user's relationship with Grogoni.
 
 Following account closure, information may be retained where necessary for:
 
@@ -130,7 +130,7 @@ Certain records may be retained beyond the recovery period where legally require
 
 # 22. Information Security
 
-Protecting Personal Data is a core responsibility of Soko.market.
+Protecting Personal Data is a core responsibility of Grogoni.
 
 We implement appropriate technical and organizational measures designed to protect the confidentiality, integrity, and availability of Personal Data.
 
@@ -172,7 +172,7 @@ The availability of these rights depends on applicable law and the circumstances
 
 ## 23.1 Right of Access
 
-Users may request confirmation regarding whether Personal Data is processed and obtain access to the Personal Data held by Soko.market, subject to applicable legal limitations.
+Users may request confirmation regarding whether Personal Data is processed and obtain access to the Personal Data held by Grogoni, subject to applicable legal limitations.
 
 ---
 
@@ -214,7 +214,7 @@ Where applicable, users may request a copy of certain Personal Data in a structu
 
 Users may object to processing carried out on the basis of legitimate interests or for direct marketing purposes where applicable.
 
-Soko.market will evaluate objections in accordance with applicable law.
+Grogoni will evaluate objections in accordance with applicable law.
 
 ---
 
@@ -236,9 +236,9 @@ Certain platform functionality may involve automated processing, including:
 - recommendation systems;
 - workflow automation.
 
-Where applicable law grants users rights relating to automated decision-making, Soko.market will provide appropriate safeguards, including opportunities for human review where legally required.
+Where applicable law grants users rights relating to automated decision-making, Grogoni will provide appropriate safeguards, including opportunities for human review where legally required.
 
-Soko.market does not intentionally use solely automated decision-making to produce legal or similarly significant effects on individuals unless authorized by applicable law and accompanied by appropriate safeguards.
+Grogoni does not intentionally use solely automated decision-making to produce legal or similarly significant effects on individuals unless authorized by applicable law and accompanied by appropriate safeguards.
 
 ---
 
@@ -256,7 +256,7 @@ Parents or guardians who believe a child has provided Personal Data unlawfully m
 
 # 26. Data Breach Response
 
-Soko.market maintains procedures for identifying, investigating, responding to, and mitigating personal data breaches.
+Grogoni maintains procedures for identifying, investigating, responding to, and mitigating personal data breaches.
 
 Where required by applicable law, we will:
 

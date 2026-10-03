@@ -1,5 +1,5 @@
-import type { RuntimeTurnSummary } from "@soko/shared-types";
-import { isLocalRuntimeHost } from "@soko/shared-types";
+import type { RuntimeTurnSummary } from "@grogoni/shared-types";
+import { isLocalRuntimeHost } from "@grogoni/shared-types";
 import type {
   NativeExecutionHostSummary,
   RuntimeCapabilities,
@@ -10,7 +10,7 @@ import type {
   RuntimeExecutionEvent,
   RuntimeExecutionEventType,
   RuntimeInspection
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 /**
  * Runtime Handoff Protocol domain (see docs/architecture/runtime-handoff-protocol.md).
  *
@@ -50,7 +50,7 @@ import type {
   RuntimeTaskInstance,
   RuntimeTaskInstanceStatus,
   RuntimeTestResults
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { Cp2Error } from "../../cp2-error.js";
 
 export interface RuntimeOperationDedupRecord {

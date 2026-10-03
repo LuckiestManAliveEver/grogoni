@@ -26,7 +26,7 @@
  * route-helpers.ts" home used for `StorefrontParams`/`CustomerParams`/`ContactRecordBody`.
  */
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import type { AuthChannel } from "@soko/shared-types";
+import type { AuthChannel } from "@grogoni/shared-types";
 import { Cp2Error } from "../../cp2-error.js";
 import { type Cp2Store } from "../../store.js";
 import type { EmailProvider } from "../../email-provider.js";

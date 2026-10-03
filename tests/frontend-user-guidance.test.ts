@@ -19,7 +19,7 @@ describe("frontend user guidance", () => {
       "runtime.turn_failed: private backend event"
     );
     expect(getUserFacingErrorMessage(new TypeError("Failed to fetch"))).toBe(
-      "Soko could not reach the server. Check your internet connection and try again."
+      "Grogoni could not reach the server. Check your internet connection and try again."
     );
     expect(
       await getResponseErrorMessage(
@@ -71,7 +71,7 @@ describe("frontend user guidance", () => {
   });
 
   it("keeps Messages beside Marketplace as a pill and labels the network card My Network", () => {
-    const application = readFileSync("apps/web/src/SokoApplication.tsx", "utf8");
+    const application = readFileSync("apps/web/src/GrogoniApplication.tsx", "utf8");
     const shopHubCopy = readFileSync("apps/web/src/shop-hub-copy.ts", "utf8");
     const styles = readFileSync("apps/web/src/styles.css", "utf8");
     const marketplaceIndex = application.indexOf('data-testid="marketplace-button"');
@@ -84,8 +84,8 @@ describe("frontend user guidance", () => {
   });
 
   it("refreshes the active owner view on a bounded foreground schedule", () => {
-    const application = readFileSync("apps/web/src/SokoApplication.tsx", "utf8");
-    const sharedModule = readFileSync("apps/web/src/soko-application-shared.ts", "utf8");
+    const application = readFileSync("apps/web/src/GrogoniApplication.tsx", "utf8");
+    const sharedModule = readFileSync("apps/web/src/grogoni-application-shared.ts", "utf8");
     const refreshEffect = application.slice(
       application.indexOf("async function refreshActiveView"),
       application.indexOf("async function resetClientToStartup")
@@ -114,7 +114,7 @@ describe("frontend user guidance", () => {
   });
 
   it("marks document uploads and includes the required model context", () => {
-    const sharedModule = readFileSync("apps/web/src/soko-application-shared.ts", "utf8");
+    const sharedModule = readFileSync("apps/web/src/grogoni-application-shared.ts", "utf8");
     const context = readFileSync("context/agent/document-upload.md", "utf8");
 
     expect(context).toContain("script: document_upload_guardrails");
@@ -168,7 +168,7 @@ describe("frontend user guidance", () => {
     // The permanent PrimaryNavigation tab bar was removed so the sessions list is the only fixed
     // shell nav (per the mockup's "nothing is a route" thesis) - the same destinations it used to
     // expose (Stock/Sales/Docs/Settings) now open from Shop Hub modules instead.
-    const application = readFileSync("apps/web/src/SokoApplication.tsx", "utf8");
+    const application = readFileSync("apps/web/src/GrogoniApplication.tsx", "utf8");
     const workspaceHub = readFileSync("apps/web/src/shop-hub-surfaces.ts", "utf8");
     const styles = readFileSync("apps/web/src/styles.css", "utf8");
 
@@ -183,7 +183,7 @@ describe("frontend user guidance", () => {
     expect(styles).not.toContain(".bottom-nav");
     expect(styles).not.toContain(".workspace-panel");
     expect(styles).not.toContain(".marketplace-placeholder");
-    expect(styles).toContain(".soko-surface > h1");
+    expect(styles).toContain(".grogoni-surface > h1");
     expect(styles).toContain("prefers-reduced-motion: reduce");
   });
 
@@ -198,8 +198,8 @@ describe("frontend user guidance", () => {
   });
 
   it("suppresses the redundant persistent agent error prompt", () => {
-    // The shell's status line lives in ShellNotices (extracted from SokoApplication).
-    const application = readFileSync("apps/web/src/SokoApplication.tsx", "utf8");
+    // The shell's status line lives in ShellNotices (extracted from GrogoniApplication).
+    const application = readFileSync("apps/web/src/GrogoniApplication.tsx", "utf8");
     const shellNotices = readFileSync("apps/web/src/ShellNotices.tsx", "utf8");
     const chatMessagePlumbing = readFileSync("apps/web/src/chat-message-plumbing.ts", "utf8");
 
@@ -259,7 +259,7 @@ describe("frontend user guidance", () => {
   });
 
   it("removes Firebase phone OTP and completes staged phone signup without SMS", () => {
-    const application = readFileSync("apps/web/src/SokoApplication.tsx", "utf8");
+    const application = readFileSync("apps/web/src/GrogoniApplication.tsx", "utf8");
     const phoneFirst = readFileSync("apps/web/src/PhoneFirstAuthentication.tsx", "utf8");
     const phoneSignup = readFileSync("apps/web/src/PhoneSignup.tsx", "utf8");
     const authRoutes = readFileSync("services/api/src/cp2/routes.ts", "utf8");
@@ -282,7 +282,7 @@ describe("frontend user guidance", () => {
   });
 
   it("uses one phone-first surface for login and account recovery", () => {
-    const application = readFileSync("apps/web/src/SokoApplication.tsx", "utf8");
+    const application = readFileSync("apps/web/src/GrogoniApplication.tsx", "utf8");
     const authState = readFileSync("apps/web/src/hooks/useAuthState.ts", "utf8");
     const phoneFirst = readFileSync("apps/web/src/PhoneFirstAuthentication.tsx", "utf8");
 
@@ -348,7 +348,7 @@ describe("frontend user guidance", () => {
   });
 
   it("keeps signup and login in the header while preserving separate end-to-end flows", () => {
-    const application = readFileSync("apps/web/src/SokoApplication.tsx", "utf8");
+    const application = readFileSync("apps/web/src/GrogoniApplication.tsx", "utf8");
     const chatSurface = readFileSync("apps/web/src/ChatSurface.tsx", "utf8");
     const phoneFirst = readFileSync("apps/web/src/PhoneFirstAuthentication.tsx", "utf8");
     const phoneSignup = readFileSync("apps/web/src/PhoneSignup.tsx", "utf8");
@@ -381,7 +381,7 @@ describe("frontend user guidance", () => {
   });
 
   it("links authentication requirements to the correct login or signup process", () => {
-    const application = readFileSync("apps/web/src/SokoApplication.tsx", "utf8");
+    const application = readFileSync("apps/web/src/GrogoniApplication.tsx", "utf8");
     const phoneFirst = readFileSync("apps/web/src/PhoneFirstAuthentication.tsx", "utf8");
     const actionMessage = readFileSync("apps/web/src/AuthenticationActionMessage.tsx", "utf8");
     const styles = readFileSync("apps/web/src/styles.css", "utf8");
@@ -426,7 +426,7 @@ describe("frontend user guidance", () => {
   });
 
   it("offers a read-only guest marketplace without forcing signup", () => {
-    const application = readFileSync("apps/web/src/SokoApplication.tsx", "utf8");
+    const application = readFileSync("apps/web/src/GrogoniApplication.tsx", "utf8");
     const navigationState = readFileSync("apps/web/src/hooks/useNavigationState.ts", "utf8");
     const marketplaceState = readFileSync("apps/web/src/hooks/useMarketplaceState.ts", "utf8");
     const marketplaceModeCard = readFileSync("apps/web/src/MarketplaceModeCard.tsx", "utf8");
@@ -445,7 +445,7 @@ describe("frontend user guidance", () => {
   });
 
   it("merges shop and full-account deletion under one Settings action", () => {
-    const application = readFileSync("apps/web/src/SokoApplication.tsx", "utf8");
+    const application = readFileSync("apps/web/src/GrogoniApplication.tsx", "utf8");
     const readinessState = readFileSync("apps/web/src/hooks/useReadinessState.ts", "utf8");
     const phoneFirst = readFileSync("apps/web/src/PhoneFirstAuthentication.tsx", "utf8");
     const complianceSurface = readFileSync("apps/web/src/ComplianceSurface.tsx", "utf8");
@@ -468,7 +468,7 @@ describe("frontend user guidance", () => {
   });
 
   it("exposes backend session, push, MCP, storefront inbox, invite, and product-field controls", () => {
-    const application = readFileSync("apps/web/src/SokoApplication.tsx", "utf8");
+    const application = readFileSync("apps/web/src/GrogoniApplication.tsx", "utf8");
     const productsState = readFileSync("apps/web/src/hooks/useProductsState.ts", "utf8");
     const networkState = readFileSync("apps/web/src/hooks/useNetworkState.ts", "utf8");
     const storefrontCareState = readFileSync(

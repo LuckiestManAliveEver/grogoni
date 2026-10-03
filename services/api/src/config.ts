@@ -2,7 +2,7 @@ import {
   repositoryDefaultRuntimePolicy,
   type EnvironmentConfig,
   type ModelExecutionTarget
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
 export function readEnvironment(): EnvironmentConfig {
   const runtimeMode = runtimeModeFromEnv();
@@ -23,7 +23,7 @@ export function readEnvironment(): EnvironmentConfig {
     ]),
     databaseUrl: stringFromEnv(
       "DATABASE_URL",
-      "postgres://soko:soko_dev_password@127.0.0.1:5432/soko_market"
+      "postgres://grogoni:grogoni_dev_password@127.0.0.1:5432/grogoni_market"
     ),
     inferenceRequired,
     inferenceTimeoutMs: numberFromEnv("LOCAL_INFERENCE_TIMEOUT_MS", 300_000),
@@ -31,7 +31,7 @@ export function readEnvironment(): EnvironmentConfig {
     inferenceMaxFallbacks: numberFromEnv("INFERENCE_MAX_FALLBACKS", 2),
     inferenceJobTimeoutMs: numberFromEnv("INFERENCE_JOB_TIMEOUT_MS", 120_000),
     workspaceDeliveryMaxFileBytes: numberFromEnv("WORKSPACE_DELIVERY_MAX_FILE_BYTES", 10_000_000),
-    workspaceRoot: stringFromEnv("SOKO_WORKSPACE_ROOT", "").trim(),
+    workspaceRoot: stringFromEnv("GROGONI_WORKSPACE_ROOT", "").trim(),
     redisUrl: readRedisUrl(),
     localCacheMode: localCacheModeFromEnv(),
     localInferenceProvider: "ollama",
@@ -73,7 +73,7 @@ function rejectRemovedCloudConfiguration(): void {
   const removed = [
     "VERCEL_INFERENCE_URL",
     "VERCEL_INFERENCE_TIMEOUT_MS",
-    "SOKO_INFERENCE_SERVICE_TOKEN",
+    "GROGONI_INFERENCE_SERVICE_TOKEN",
     "NEON_MODEL_STORAGE_ENDPOINT",
     "NEON_MODEL_STORAGE_REGION",
     "NEON_MODEL_STORAGE_ACCESS_KEY_ID",
@@ -108,7 +108,7 @@ function rejectRemovedCloudConfiguration(): void {
 }
 
 function runtimeModeFromEnv(): EnvironmentConfig["runtimeMode"] {
-  const configured = stringFromEnv("SOKO_RUNTIME_MODE", "").trim();
+  const configured = stringFromEnv("GROGONI_RUNTIME_MODE", "").trim();
   const fallback =
     process.env.NODE_ENV === "test"
       ? "test"
@@ -117,7 +117,7 @@ function runtimeModeFromEnv(): EnvironmentConfig["runtimeMode"] {
         : "local";
   const value = configured === "" ? fallback : configured;
   if (value === "local" || value === "production" || value === "test") return value;
-  throw new Error("SOKO_RUNTIME_MODE must be local, production, or test.");
+  throw new Error("GROGONI_RUNTIME_MODE must be local, production, or test.");
 }
 
 function numberFromEnv(name: string, fallback: number): number {

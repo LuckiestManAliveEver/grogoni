@@ -7,7 +7,7 @@ import {
 } from "../services/api/src/cp2/store";
 import type { NetworkConnectionSummary, NetworkGraphSummary } from "../packages/shared-types/src";
 
-// Phonebook sync, Soko discovery, user-to-user connections and invite filtering.
+// Phonebook sync, Grogoni discovery, user-to-user connections and invite filtering.
 // See docs/architecture/phonebook-identity-resolution.md ("Phonebook sync, discovery and connections").
 
 type App = ReturnType<typeof buildApi>;
@@ -82,8 +82,8 @@ describe("phonebook sync", () => {
   });
 });
 
-describe("Soko discovery", () => {
-  it("marks contacts who are on Soko, never the owner's own number, and finds late joiners", async () => {
+describe("Grogoni discovery", () => {
+  it("marks contacts who are on Grogoni, never the owner's own number, and finds late joiners", async () => {
     const app = buildApi({ cp2: { store: createCp2Store() } });
     const alice = await signUp(app, alicePhone, { business: true });
     const bob = await signUp(app, bobPhone);
@@ -94,16 +94,16 @@ describe("Soko discovery", () => {
       { name: "Carol", phone: carolPhone }
     ]);
     const byName = nodesByName(graph);
-    expect(byName.get("Bob")).toMatchObject({ kind: "soko_user", sokoUserId: bob.userId });
-    expect(byName.get("Me")).toMatchObject({ kind: "external_contact", sokoUserId: null });
-    expect(byName.get("Carol")).toMatchObject({ kind: "external_contact", sokoUserId: null });
+    expect(byName.get("Bob")).toMatchObject({ kind: "grogoni_user", grogoniUserId: bob.userId });
+    expect(byName.get("Me")).toMatchObject({ kind: "external_contact", grogoniUserId: null });
+    expect(byName.get("Carol")).toMatchObject({ kind: "external_contact", grogoniUserId: null });
 
     // Carol signs up after Alice synced her. No re-sync: the next graph load finds her.
     const carol = await signUp(app, carolPhone);
     const later = await getJson<NetworkGraphSummary>(app, "/network", alice.cookie);
     expect(nodesByName(later).get("Carol")).toMatchObject({
-      kind: "soko_user",
-      sokoUserId: carol.userId
+      kind: "grogoni_user",
+      grogoniUserId: carol.userId
     });
     expect(later.identityLinks?.filter((link) => link.linkedUserId === carol.userId)).toHaveLength(
       1
@@ -142,7 +142,7 @@ describe("connections", () => {
     );
     expect(again.id).toBe(requested.id);
 
-    // Bob does not have Alice in his phonebook: he sees her Soko name and her shop.
+    // Bob does not have Alice in his phonebook: he sees her Grogoni name and her shop.
     const incoming = await listConnections(app, bob.cookie);
     expect(incoming).toEqual([
       expect.objectContaining({
@@ -192,11 +192,11 @@ describe("connections", () => {
     ]);
     const bobNode = nodesByName(synced).get("Bob")!;
 
-    // Discovery says Bob is on Soko, not which shop is his.
+    // Discovery says Bob is on Grogoni, not which shop is his.
     expect(bobNode).toMatchObject({
-      sokoUserId: bob.userId,
-      sokoBusinessId: null,
-      sokoAgentId: null
+      grogoniUserId: bob.userId,
+      grogoniBusinessId: null,
+      grogoniAgentId: null
     });
     expect(synced.identityLinks.every((link) => link.linkedBusinessId === null)).toBe(true);
     const sent = await postJson<NetworkConnectionSummary>(
@@ -205,17 +205,17 @@ describe("connections", () => {
       { nodeId: bobNode.id },
       alice.cookie
     );
-    expect(sent).toMatchObject({ counterpartBusinessName: null, counterpartSokoId: null });
-    const resolved = await getJson<{ matches: Array<{ node: { sokoBusinessId: string | null } }> }>(
+    expect(sent).toMatchObject({ counterpartBusinessName: null, counterpartGrogoniId: null });
+    const resolved = await getJson<{ matches: Array<{ node: { grogoniBusinessId: string | null } }> }>(
       app,
       `/network/contacts/resolve?query=Bob`,
       alice.cookie
     );
-    expect(resolved.matches[0]?.node.sokoBusinessId).toBeNull();
+    expect(resolved.matches[0]?.node.grogoniBusinessId).toBeNull();
 
     await postJson(app, `/network/connections/${sent.id}/respond`, { accept: true }, bob.cookie);
     const after = await getJson<NetworkGraphSummary>(app, "/network", alice.cookie);
-    expect(nodesByName(after).get("Bob")?.sokoBusinessId).toBe(bob.businessId);
+    expect(nodesByName(after).get("Bob")?.grogoniBusinessId).toBe(bob.businessId);
     expect(after.connections?.[0]).toMatchObject({ counterpartBusinessName: "Bob Hardware" });
     await app.close();
   });
@@ -227,10 +227,10 @@ describe("connections", () => {
     await syncContacts(app, alice.cookie, "merge", [{ name: "Bob", phone: bobPhone }]);
 
     const found = await getJson<
-      Array<{ displayName: string; sokoBusinessId: string | null; sokoAgentId: string | null }>
+      Array<{ displayName: string; grogoniBusinessId: string | null; grogoniAgentId: string | null }>
     >(app, `/businesses/${alice.businessId}/suppliers/phonebook/search?q=Bob`, alice.cookie);
     expect(found).toEqual([
-      expect.objectContaining({ displayName: "Bob", sokoBusinessId: null, sokoAgentId: null })
+      expect.objectContaining({ displayName: "Bob", grogoniBusinessId: null, grogoniAgentId: null })
     ]);
     await app.close();
   });
@@ -245,8 +245,8 @@ describe("connections", () => {
     const bobNode = nodesByName(synced).get("Bob")!;
 
     const added = await postJson<{
-      sokoBusinessId: string | null;
-      sokoAgentId: string | null;
+      grogoniBusinessId: string | null;
+      grogoniAgentId: string | null;
       externalIdentityIds: string[];
     }>(
       app,
@@ -254,7 +254,7 @@ describe("connections", () => {
       { provider: "instagram", providerSubject: "@bobhardware" },
       alice.cookie
     );
-    expect(added).toMatchObject({ sokoBusinessId: null, sokoAgentId: null });
+    expect(added).toMatchObject({ grogoniBusinessId: null, grogoniAgentId: null });
     const removed = await request(
       app,
       "DELETE",
@@ -262,7 +262,7 @@ describe("connections", () => {
       alice.cookie
     );
     expect(removed.statusCode).toBe(200);
-    expect(removed.json()).toMatchObject({ sokoBusinessId: null, sokoAgentId: null });
+    expect(removed.json()).toMatchObject({ grogoniBusinessId: null, grogoniAgentId: null });
     await app.close();
   });
 
@@ -338,23 +338,23 @@ describe("connections", () => {
     await app.close();
   });
 
-  it("enforces ownership, Soko membership, self, and party rules", async () => {
+  it("enforces ownership, Grogoni membership, self, and party rules", async () => {
     const app = buildApi({ cp2: { store: createCp2Store() } });
     const alice = await signUp(app, alicePhone, { business: true });
     const bob = await signUp(app, bobPhone, { business: true });
     const mallory = await signUp(app, outsiderPhone, { business: true });
     const graph = await syncContacts(app, alice.cookie, "merge", [
       { name: "Bob", phone: bobPhone },
-      { name: "Not on Soko", phone: "+254722000777" },
+      { name: "Not on Grogoni", phone: "+254722000777" },
       { name: "Me", phone: alicePhone }
     ]);
     const byName = nodesByName(graph);
 
-    const notOnSoko = await request(app, "POST", "/network/connections", alice.cookie, {
-      nodeId: byName.get("Not on Soko")!.id
+    const notOnGrogoni = await request(app, "POST", "/network/connections", alice.cookie, {
+      nodeId: byName.get("Not on Grogoni")!.id
     });
-    expect(notOnSoko.statusCode).toBe(409);
-    expect(notOnSoko.json()).toMatchObject({ code: "network_contact_not_on_soko" });
+    expect(notOnGrogoni.statusCode).toBe(409);
+    expect(notOnGrogoni.json()).toMatchObject({ code: "network_contact_not_on_grogoni" });
 
     const self = await request(app, "POST", "/network/connections", alice.cookie, {
       nodeId: byName.get("Me")!.id
@@ -485,8 +485,8 @@ describe("connections", () => {
     const aliceAfter = store.getNetworkGraph({ sessionId: readSessionCookie(alice.cookie) });
     expect(nodesByName(aliceAfter).get("Bob")).toMatchObject({
       kind: "external_contact",
-      sokoUserId: null,
-      sokoBusinessId: null
+      grogoniUserId: null,
+      grogoniBusinessId: null
     });
     expect(aliceAfter.identityLinks).toEqual([]);
     await app.close();
@@ -494,7 +494,7 @@ describe("connections", () => {
 });
 
 describe("invites", () => {
-  it("never invites someone already on Soko, however the number or email is written", async () => {
+  it("never invites someone already on Grogoni, however the number or email is written", async () => {
     const sender = vi.fn<NetworkInviteSender>().mockResolvedValue({ status: "sent" });
     const app = buildApi({ cp2: { store: createCp2Store({ networkInviteSender: sender }) } });
     const alice = await signUp(app, alicePhone, { business: true });
@@ -503,7 +503,7 @@ describe("invites", () => {
 
     const response = await postJson<{
       invites: Array<{ destination: string }>;
-      alreadyOnSokoCount: number;
+      alreadyOnGrogoniCount: number;
     }>(
       app,
       `/businesses/${alice.businessId}/network/invites`,
@@ -520,7 +520,7 @@ describe("invites", () => {
     );
 
     // Bob's two spellings are one person (deduped first), plus Erin.
-    expect(response.alreadyOnSokoCount).toBe(2);
+    expect(response.alreadyOnGrogoniCount).toBe(2);
     expect(response.invites.map((invite) => invite.destination)).toEqual(["+254722000888"]);
     expect(sender).toHaveBeenCalledTimes(1);
     expect(sender).toHaveBeenCalledWith(expect.objectContaining({ destination: "+254722000888" }));
@@ -554,7 +554,7 @@ describe("invites", () => {
     expect(sender).toHaveBeenCalledTimes(1);
     await app.close();
   });
-  it("skips contacts it cannot read, and is not fooled by messy spellings of a Soko number", async () => {
+  it("skips contacts it cannot read, and is not fooled by messy spellings of a Grogoni number", async () => {
     const sender = vi.fn<NetworkInviteSender>().mockResolvedValue({ status: "sent" });
     const app = buildApi({ cp2: { store: createCp2Store({ networkInviteSender: sender }) } });
     const alice = await signUp(app, alicePhone, { business: true });
@@ -562,7 +562,7 @@ describe("invites", () => {
 
     const response = await postJson<{
       invites: unknown[];
-      alreadyOnSokoCount: number;
+      alreadyOnGrogoniCount: number;
       invalidCount: number;
     }>(
       app,
@@ -582,7 +582,7 @@ describe("invites", () => {
       alice.cookie
     );
 
-    expect(response).toMatchObject({ invites: [], alreadyOnSokoCount: 1, invalidCount: 1 });
+    expect(response).toMatchObject({ invites: [], alreadyOnGrogoniCount: 1, invalidCount: 1 });
     expect(sender).not.toHaveBeenCalled();
     await app.close();
   });
@@ -688,7 +688,7 @@ describe("invites", () => {
       contacts: [{ name: "Dan", phone: "0722000101", email: null }]
     });
     expect(again.statusCode).toBe(200);
-    // ...but an email alongside it is a new question about who is on Soko.
+    // ...but an email alongside it is a new question about who is on Grogoni.
     const probe = await request(app, "POST", url, alice.cookie, {
       contacts: [{ name: "Dan", phone: "0722000101", email: "someone@example.com" }]
     });

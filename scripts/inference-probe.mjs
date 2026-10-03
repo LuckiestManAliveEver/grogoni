@@ -5,7 +5,7 @@
 // is the correct probe target.
 import { randomUUID } from "node:crypto";
 
-const apiUrl = required("SOKO_API_URL").replace(/\/+$/u, "");
+const apiUrl = required("GROGONI_API_URL").replace(/\/+$/u, "");
 const response = await fetch(`${apiUrl}/health/ai`, {
   headers: {
     accept: "application/json",

@@ -2,7 +2,7 @@ import type {
   RuntimeReportCard,
   RuntimeReportCardKey,
   RuntimeTurnSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
 /**
  * MUSE-adoption brief §16/§17: groups already-recorded runtime turns by the actual

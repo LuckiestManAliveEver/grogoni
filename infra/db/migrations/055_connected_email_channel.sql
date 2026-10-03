@@ -8,7 +8,7 @@ alter table conversation_messages
   drop constraint if exists conversation_messages_provider_check,
   add constraint conversation_messages_provider_check check (
     provider in (
-      'soko', 'telegram', 'whatsapp', 'messenger', 'instagram', 'tiktok', 'x', 'sms',
+      'grogoni', 'telegram', 'whatsapp', 'messenger', 'instagram', 'tiktok', 'x', 'sms',
       'native_sms', 'email'
     )
   );

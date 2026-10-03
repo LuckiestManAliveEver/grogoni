@@ -7,7 +7,7 @@ import {
   type SecurityReviewSummary,
   type VerificationTier,
   type VerificationTierSummary
-} from "./soko-application-shared";
+} from "./grogoni-application-shared";
 
 import { ReportRow } from "./ReportRow";
 

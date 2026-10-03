@@ -3,7 +3,7 @@ import type {
   RuntimeModelCompletionResult,
   RuntimeModelPrompt,
   RuntimeModelProvider
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
 export interface AgentRuntimeAvailabilityInput {
   agent: NativeRuntimeAgentSummary;
@@ -64,8 +64,8 @@ export class AgentRuntimeAdapterRegistry {
   }
 }
 
-/** Old native records predate adapter metadata and execute through the original Soko harness. */
-export const legacyAgentRuntimeAdapterId = "soko";
+/** Old native records predate adapter metadata and execute through the original Grogoni harness. */
+export const legacyAgentRuntimeAdapterId = "grogoni";
 
 export function runtimeAdapterIdForAgent(agent: NativeRuntimeAgentSummary): string {
   const configured = agent.configuration.runtimeAdapterId;

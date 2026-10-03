@@ -16,7 +16,7 @@ const ollamaModel = env.OLLAMA_MODEL || "smollm2:360m";
 const checks = [];
 const optional = [];
 
-console.log("Soko Local Doctor\n");
+console.log("Grogoni Local Doctor\n");
 
 await record(checks, "Node 22.19+", async () => {
   const major = Number(process.versions.node.split(".")[0]);

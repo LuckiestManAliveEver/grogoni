@@ -2,9 +2,9 @@ import {
   isLocalRuntimeHost,
   type EffectiveRuntimeSummary,
   type RuntimeCapabilities
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { useEffect, useState } from "react";
-import type { LocalState } from "@soko/offline-runtime";
+import type { LocalState } from "@grogoni/offline-runtime";
 import { currentOfflineScope, getOfflineState, offlineModeEvent } from "../offline-runtime";
 import { apiCloudFetch, isRetryableApiRequestError, readStableDeviceId } from "../lib/api";
 import {

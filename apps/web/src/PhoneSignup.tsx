@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { browserSupportsWebAuthn, startRegistration } from "@simplewebauthn/browser";
-import type { AuthSessionView } from "@soko/shared-types";
-import { normalizePhoneInput, phoneNormalizationErrorMessage } from "@soko/shared-types";
+import type { AuthSessionView } from "@grogoni/shared-types";
+import { normalizePhoneInput, phoneNormalizationErrorMessage } from "@grogoni/shared-types";
 import { getCountryCallingCode, type CountryCode } from "libphonenumber-js";
 import { AppIcon } from "./AppIcon";
 import { ApiRequestError, apiFetch } from "./lib/api";
@@ -166,7 +166,7 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
           </button>
           <div className="auth-wordmark">
             <AppIcon className="auth-wordmark-icon" />
-            <span>soko.market</span>
+            <span>grogoni</span>
           </div>
           <span className="auth-header-spacer" aria-hidden="true" />
         </header>
@@ -192,7 +192,7 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
             </h1>
             <p>
               {stage === "phone"
-                ? "Your phone number becomes your Soko account identity. No SMS code is required."
+                ? "Your phone number becomes your Grogoni account identity. No SMS code is required."
                 : stage === "profile"
                   ? `Set up the account attached to ${normalizedPhone}.`
                   : "Optionally add a passkey as a backup way in if you ever lose access to your password."}

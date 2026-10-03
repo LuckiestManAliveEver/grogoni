@@ -32,12 +32,12 @@ if (!Number.isInteger(retentionDays) || retentionDays <= 0) {
 await mkdir(backupDir, { recursive: true });
 
 const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-const outputPath = resolve(backupDir, `soko-market-${stamp}.dump`);
+const outputPath = resolve(backupDir, `grogoni-${stamp}.dump`);
 const runId = randomUUID();
 const startedAt = new Date();
 const pool = new Pool(
   databasePoolConfig(databaseUrl, {
-    applicationName: "soko-market-backup",
+    applicationName: "grogoni-backup",
     max: 1
   })
 );
@@ -104,7 +104,7 @@ async function pruneOldLocalBackups() {
   const entries = await readdir(backupDir);
 
   for (const entry of entries) {
-    if (!entry.startsWith("soko-market-") || !entry.endsWith(".dump")) {
+    if (!entry.startsWith("grogoni-") || !entry.endsWith(".dump")) {
       continue;
     }
 

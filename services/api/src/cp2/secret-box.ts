@@ -71,7 +71,7 @@ function getTokenEncryptionKey(): Buffer {
   }
   const source =
     configured === undefined || configured.length < 32
-      ? "soko-market-local-oauth-token-encryption-key"
+      ? "grogoni-local-oauth-token-encryption-key"
       : configured;
 
   return createHash("sha256").update(source).digest();

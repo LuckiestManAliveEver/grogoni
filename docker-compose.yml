@@ -2,18 +2,18 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: soko_market
-      POSTGRES_PASSWORD: soko_dev_password
-      POSTGRES_USER: soko
+      POSTGRES_DB: grogoni_market
+      POSTGRES_PASSWORD: grogoni_dev_password
+      POSTGRES_USER: grogoni
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U soko -d soko_market"]
+      test: ["CMD-SHELL", "pg_isready -U grogoni -d grogoni_market"]
       interval: 5s
       timeout: 3s
       retries: 10
     ports:
       - "5432:5432"
     volumes:
-      - soko-postgres-data:/var/lib/postgresql/data
+      - grogoni-postgres-data:/var/lib/postgresql/data
 
   redis:
     image: redis:7-alpine
@@ -26,7 +26,7 @@ services:
     ports:
       - "6379:6379"
     volumes:
-      - soko-redis-data:/data
+      - grogoni-redis-data:/data
 
   computer-runtime:
     profiles: ["computer"]
@@ -34,7 +34,7 @@ services:
       context: .
       dockerfile: services/computer-runtime/Dockerfile
     environment:
-      COMPUTER_RUNTIME_SERVICE_TOKEN: ${COMPUTER_RUNTIME_SERVICE_TOKEN:-soko-computer-local-development}
+      COMPUTER_RUNTIME_SERVICE_TOKEN: ${COMPUTER_RUNTIME_SERVICE_TOKEN:-grogoni-computer-local-development}
       PORT: 8790
     init: true
     ipc: private
@@ -54,7 +54,7 @@ services:
           memory: 1G
 
   # Inference now runs as a Vercel serverless function (services/ai-runtime), not a container in
-  # this compose file. Run it locally with `pnpm --filter @soko/ai-runtime dev` (Vercel CLI dev
+  # this compose file. Run it locally with `pnpm --filter @grogoni/ai-runtime dev` (Vercel CLI dev
   # server) and point the API at it with VERCEL_INFERENCE_URL=http://127.0.0.1:3000 - see
   # docs/deployment/vercel-inference.md.
 
@@ -77,5 +77,5 @@ services:
       - "8090:8090"
 
 volumes:
-  soko-postgres-data:
-  soko-redis-data:
+  grogoni-postgres-data:
+  grogoni-redis-data:

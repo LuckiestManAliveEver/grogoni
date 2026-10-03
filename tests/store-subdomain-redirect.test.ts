@@ -20,7 +20,7 @@ async function createOwnerBusiness(
   app: ReturnType<typeof buildApi>,
   seed: number,
   name: string
-): Promise<{ businessId: string; sokoId: string; cookie: string }> {
+): Promise<{ businessId: string; grogoniId: string; cookie: string }> {
   const signup = await app.inject({
     method: "POST",
     url: "/auth/pin/signup",
@@ -36,43 +36,43 @@ async function createOwnerBusiness(
     payload: JSON.stringify({ name, language: "en" })
   });
   expect(business.statusCode).toBe(200);
-  const body = business.json<{ business: { id: string; sokoId: string } }>();
-  return { businessId: body.business.id, sokoId: body.business.sokoId, cookie };
+  const body = business.json<{ business: { id: string; grogoniId: string } }>();
+  return { businessId: body.business.id, grogoniId: body.business.grogoniId, cookie };
 }
 
-// Exercises the onRequest hook in services/api/src/app.ts (docs/architecture/soko-id-slug-system.md).
-// Nothing routes real traffic here until *.soko.market is registered as a wildcard custom domain
+// Exercises the onRequest hook in services/api/src/app.ts (docs/architecture/grogoni-id-slug-system.md).
+// Nothing routes real traffic here until *.grogoni.com is registered as a wildcard custom domain
 // against this service - these tests simulate that by setting the Host header directly, the same
 // way a request would arrive once that infra step is done.
-describe("store subdomain redirect (Host: {handle}.soko.market)", () => {
+describe("store subdomain redirect (Host: {handle}.grogoni.com)", () => {
   it("redirects an active store handle to its canonical storefront URL", async () => {
     const store = createCp2Store();
-    const app = buildApi({ cp2: { store, webPublicUrl: "https://soko.market" } });
+    const app = buildApi({ cp2: { store, webPublicUrl: "https://grogoni.com" } });
     const owner = await createOwnerBusiness(app, 1, "Subdomain Redirect Shop");
-    const bareHandle = owner.sokoId.replace(/^soko\./u, "");
+    const bareHandle = owner.grogoniId.replace(/^grogoni\./u, "");
 
     const response = await app.inject({
       method: "GET",
       url: "/",
-      headers: { host: `${bareHandle}.soko.market` }
+      headers: { host: `${bareHandle}.grogoni.com` }
     });
 
     expect(response.statusCode).toBe(302);
     expect(response.headers.location).toBe(
-      `https://soko.market/agent/${encodeURIComponent(owner.sokoId)}`
+      `https://grogoni.com/agent/${encodeURIComponent(owner.grogoniId)}`
     );
     await app.close();
   });
 
   it("redirects a retired, in-cooldown handle straight to the current one", async () => {
     const store = createCp2Store();
-    const app = buildApi({ cp2: { store, webPublicUrl: "https://soko.market" } });
+    const app = buildApi({ cp2: { store, webPublicUrl: "https://grogoni.com" } });
     const owner = await createOwnerBusiness(app, 2, "Renamed Subdomain Shop");
-    const oldBareHandle = owner.sokoId.replace(/^soko\./u, "");
+    const oldBareHandle = owner.grogoniId.replace(/^grogoni\./u, "");
 
     const rename = await app.inject({
       method: "PUT",
-      url: `/businesses/${owner.businessId}/soko-id`,
+      url: `/businesses/${owner.businessId}/grogoni-id`,
       headers: jsonHeaders(owner.cookie),
       payload: JSON.stringify({ handle: "new-subdomain-handle" })
     });
@@ -81,21 +81,21 @@ describe("store subdomain redirect (Host: {handle}.soko.market)", () => {
     const response = await app.inject({
       method: "GET",
       url: "/",
-      headers: { host: `${oldBareHandle}.soko.market` }
+      headers: { host: `${oldBareHandle}.grogoni.com` }
     });
     expect(response.statusCode).toBe(302);
-    expect(response.headers.location).toBe("https://soko.market/agent/soko.new-subdomain-handle");
+    expect(response.headers.location).toBe("https://grogoni.com/agent/grogoni.new-subdomain-handle");
     await app.close();
   });
 
   it("returns 404 for a handle that never existed", async () => {
     const store = createCp2Store();
-    const app = buildApi({ cp2: { store, webPublicUrl: "https://soko.market" } });
+    const app = buildApi({ cp2: { store, webPublicUrl: "https://grogoni.com" } });
 
     const response = await app.inject({
       method: "GET",
       url: "/",
-      headers: { host: "never-existed-shop.soko.market" }
+      headers: { host: "never-existed-shop.grogoni.com" }
     });
     expect(response.statusCode).toBe(404);
     expect(response.json()).toMatchObject({ code: "storefront_not_found" });
@@ -104,9 +104,9 @@ describe("store subdomain redirect (Host: {handle}.soko.market)", () => {
 
   it("routes normally for the apex and fixed api/www subdomains", async () => {
     const store = createCp2Store();
-    const app = buildApi({ cp2: { store, webPublicUrl: "https://soko.market" } });
+    const app = buildApi({ cp2: { store, webPublicUrl: "https://grogoni.com" } });
 
-    for (const host of ["soko.market", "api.soko.market", "www.soko.market"]) {
+    for (const host of ["grogoni", "api.grogoni.com", "www.grogoni.com"]) {
       const response = await app.inject({
         method: "GET",
         url: "/health/ready",
@@ -119,7 +119,7 @@ describe("store subdomain redirect (Host: {handle}.soko.market)", () => {
 
   it("does not intercept requests to an unrelated host", async () => {
     const store = createCp2Store();
-    const app = buildApi({ cp2: { store, webPublicUrl: "https://soko.market" } });
+    const app = buildApi({ cp2: { store, webPublicUrl: "https://grogoni.com" } });
 
     const response = await app.inject({
       method: "GET",

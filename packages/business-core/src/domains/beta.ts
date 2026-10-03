@@ -1,4 +1,4 @@
-import { createEvent, type BusinessEvent } from "@soko/event-core";
+import { createEvent, type BusinessEvent } from "@grogoni/event-core";
 import type {
   BetaAccessStatus,
   BetaAccessSummary,
@@ -13,8 +13,8 @@ import type {
   BetaSupportTicketSummary,
   BetaTelemetryEventSummary,
   BetaTelemetryKind
-} from "@soko/shared-types";
-import { invalid, type ValidationResult, valid } from "@soko/tool-core";
+} from "@grogoni/shared-types";
+import { invalid, type ValidationResult, valid } from "@grogoni/tool-core";
 
 import {
   normalizeOptionalText,

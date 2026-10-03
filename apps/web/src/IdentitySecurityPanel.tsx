@@ -8,7 +8,7 @@ import type {
   ConnectedMailboxSummary,
   ConnectedMailboxSyncSummary,
   PasskeySummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
 import { ConnectedSourcesPanel } from "./ConnectedSourcesPanel";
 import { normalizeOwnerPhoneInput } from "./phone-identity";
@@ -39,7 +39,7 @@ import {
   type SocialSignupProvider,
   pendingOAuthStorageKey,
   phoneCountryOptions
-} from "./soko-application-shared";
+} from "./grogoni-application-shared";
 
 export function passkeyDeviceLabel(): string {
   const platform =
@@ -208,7 +208,7 @@ export function IdentitySecurityPanel({
       `/businesses/${business.id}/mailboxes/${encodeURIComponent(mailboxId)}`
     );
     await loadConnectedMailboxes();
-    setProfileMessage("Connected mailbox disconnected. Your Soko account email was unchanged.");
+    setProfileMessage("Connected mailbox disconnected. Your Grogoni account email was unchanged.");
   }
 
   async function disconnectBusinessSocialAccount(identityId: string) {
@@ -341,7 +341,7 @@ export function IdentitySecurityPanel({
         setOwnerPhoneMergeRequired(true);
         setOwnerPhoneError("");
         setProfileMessage(
-          "That number belongs to your existing Soko account. Enter its PIN to verify ownership and join both accounts without losing data."
+          "That number belongs to your existing Grogoni account. Enter its PIN to verify ownership and join both accounts without losing data."
         );
         return;
       }
@@ -362,7 +362,7 @@ export function IdentitySecurityPanel({
     setOwnerPhoneMergeRequired(false);
     setOwnerPhoneMergePin("");
     onAccountMerged(response);
-    setProfileMessage("Identity verified. Both accounts and their Soko data are now joined.");
+    setProfileMessage("Identity verified. Both accounts and their Grogoni data are now joined.");
   }
 
   async function startEmailIdentityUpgrade() {
@@ -377,7 +377,7 @@ export function IdentitySecurityPanel({
     setEmailMergeRequired(response.mergeRequired);
     setProfileMessage(
       response.mergeRequired
-        ? "That email belongs to your existing Soko account. Enter the emailed code to verify ownership and join both accounts."
+        ? "That email belongs to your existing Grogoni account. Enter the emailed code to verify ownership and join both accounts."
         : "Check your email for the verification code."
     );
   }
@@ -392,7 +392,7 @@ export function IdentitySecurityPanel({
       setEmailChallengeId("");
       setEmailVerificationCode("");
       setEmailMergeRequired(false);
-      setProfileMessage("Email verified. Both accounts and their Soko data are now joined.");
+      setProfileMessage("Email verified. Both accounts and their Grogoni data are now joined.");
       return;
     }
     const result = await postJson<{
@@ -414,7 +414,7 @@ export function IdentitySecurityPanel({
     setEmailChallengeId("");
     setEmailVerificationCode("");
     setEmailMergeRequired(false);
-    setProfileMessage("Email verified. Your existing Soko account is now recoverable by email.");
+    setProfileMessage("Email verified. Your existing Grogoni account is now recoverable by email.");
   }
 
   async function registerPasskey() {
@@ -789,7 +789,7 @@ export function IdentitySecurityPanel({
         {ownerPhoneMergeRequired ? (
           <div className="record-form" role="group" aria-label="Join existing phone account">
             <p className="shell-note">
-              Verify the PIN for this phone number. Soko will move this device account’s chats,
+              Verify the PIN for this phone number. Grogoni will move this device account’s chats,
               shops, and records into the verified account and keep this device signed in.
             </p>
             <label>
@@ -1175,13 +1175,13 @@ export function IdentitySecurityPanel({
         <h4>Mailboxes for customer conversations</h4>
         <p>
           These are authorized business mailboxes used to send and receive customer email. They are
-          separate from the email used to sign in to or recover your Soko account.
+          separate from the email used to sign in to or recover your Grogoni account.
         </p>
       </div>
       <div className="connected-social-list" role="list" aria-label="Connected mailboxes">
         <article className="connected-social-card" role="listitem">
           <div>
-            <span>Soko account email</span>
+            <span>Grogoni account email</span>
             <strong>{registeredEmail ?? "No account email registered"}</strong>
             <p>Identity and recovery only. This address is not an email channel.</p>
           </div>
@@ -1320,7 +1320,7 @@ export function IdentitySecurityPanel({
                 <div>
                   <span>{provider.displayName}</span>
                   <strong>{alreadyConnected ? "Add another mailbox" : "Not connected"}</strong>
-                  <p>Authorize with OAuth. Soko never stores your mailbox password.</p>
+                  <p>Authorize with OAuth. Grogoni never stores your mailbox password.</p>
                 </div>
                 <button
                   type="button"

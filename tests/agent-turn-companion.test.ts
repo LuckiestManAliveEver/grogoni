@@ -29,7 +29,7 @@ describe("agent turn companion", () => {
     });
     await settle();
     companion.stop();
-    expect(companion.headers["x-soko-turn-id"]).toBe(companion.turnId);
+    expect(companion.headers["x-grogoni-turn-id"]).toBe(companion.turnId);
     expect(previews.at(-1)).toBe("Hello there");
     expect(previews).toContain("");
   });

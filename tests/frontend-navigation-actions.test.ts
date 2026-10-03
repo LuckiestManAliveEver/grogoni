@@ -15,7 +15,7 @@ describe("frontend navigation and action contracts", () => {
     expect(routes.beta).toBe("/beta");
     expect(routes.launch).toBe("/launch");
     expect(routes.product("sugar / 1")).toBe("/products/sugar%20%2F%201");
-    expect(routes.shop("soko.janes-shop")).toBe("/shops/soko.janes-shop");
+    expect(routes.shop("grogoni.janes-shop")).toBe("/shops/grogoni.janes-shop");
     expect(routes.agent("agent@example.com")).toBe("/agents/agent%40example.com");
     expect(routes.conversation("conversation / 1", "seller")).toBe(
       "/workspace/conversations/conversation%20%2F%201"

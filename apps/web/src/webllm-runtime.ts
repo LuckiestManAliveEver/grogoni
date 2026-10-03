@@ -4,7 +4,7 @@ import {
   OfflineError,
   type InstalledRuntimeAdapter,
   type RuntimeBinding
-} from "@soko/offline-runtime";
+} from "@grogoni/offline-runtime";
 // Type-only: erased at compile time, so this does not pull the ~6 MB webllm bundle into the main
 // chunk. The real module is always loaded lazily via the dynamic import()s below.
 import type * as WebLLM from "@mlc-ai/web-llm";
@@ -22,7 +22,7 @@ export interface OfflineAssistantReply {
   answeredOffline: true;
 }
 
-const cacheName = "soko-webllm-runtime-v1";
+const cacheName = "grogoni-webllm-runtime-v1";
 type MLCEngine = Awaited<ReturnType<typeof WebLLM.CreateMLCEngine>>;
 let enginePromise: Promise<MLCEngine> | null = null;
 let loadedModelId: string | null = null;
@@ -179,7 +179,7 @@ async function infer(binding: RuntimeBinding, args: unknown): Promise<unknown> {
       {
         role: "system",
         content:
-          "You are Soko's offline shop assistant, answering entirely on-device while this device " +
+          "You are Grogoni's offline shop assistant, answering entirely on-device while this device " +
           "has no connection. You have no access to live catalogue, order, customer or account " +
           "data while offline - never claim otherwise, and tell the merchant to reconnect for " +
           "anything that needs current data."

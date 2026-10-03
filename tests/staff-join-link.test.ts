@@ -20,13 +20,13 @@ function memoryStorage() {
 
 describe("staff join links", () => {
   it("builds a root link that needs no server route", () => {
-    expect(buildJoinLink("https://soko.market", "inv 1", "a+b/c")).toBe(
-      "https://soko.market/?staffInvite=inv+1&t=a%2Bb%2Fc"
+    expect(buildJoinLink("https://grogoni.com", "inv 1", "a+b/c")).toBe(
+      "https://grogoni.com/?staffInvite=inv+1&t=a%2Bb%2Fc"
     );
   });
 
   it("addresses SMS, WhatsApp and email to the exact invitee with the text encoded", () => {
-    const body = "Join Shop & Co: https://soko.market/?staffInvite=1&t=x";
+    const body = "Join Shop & Co: https://grogoni.com/?staffInvite=1&t=x";
     expect(smsLink("+254712345678", body)).toBe(
       `sms:+254712345678?&body=${encodeURIComponent(body)}`
     );
@@ -46,7 +46,7 @@ describe("staff join links", () => {
     const storage = memoryStorage();
     const history = { state: { keep: true }, replaceState: vi.fn() };
     const captured = captureJoinLink(
-      { href: "https://soko.market/?staffInvite=inv-1&t=secret&utm=x#top" },
+      { href: "https://grogoni.com/?staffInvite=inv-1&t=secret&utm=x#top" },
       storage,
       history,
       1_000
@@ -62,11 +62,11 @@ describe("staff join links", () => {
     const storage = memoryStorage();
     const history = { state: null, replaceState: vi.fn() };
     expect(
-      captureJoinLink({ href: "https://soko.market/?staffInvite=inv-1" }, storage, history)
+      captureJoinLink({ href: "https://grogoni.com/?staffInvite=inv-1" }, storage, history)
     ).toBeNull();
     expect(history.replaceState).not.toHaveBeenCalled();
-    captureJoinLink({ href: "https://soko.market/?staffInvite=i&t=s" }, storage, history, 0);
+    captureJoinLink({ href: "https://grogoni.com/?staffInvite=i&t=s" }, storage, history, 0);
     expect(readPendingJoin(storage, 8 * 24 * 60 * 60 * 1000)).toBeNull();
-    expect(storage.getItem("soko.staffInvite.pending")).toBeNull();
+    expect(storage.getItem("grogoni.staffInvite.pending")).toBeNull();
   });
 });

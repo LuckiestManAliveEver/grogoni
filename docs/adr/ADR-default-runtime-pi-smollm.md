@@ -8,7 +8,7 @@ Accepted.
 
 The native runtime graph and model adapter boundary already supported hosted-first provisioning,
 but the repository default was a Qwen-oriented catalog preference and every turn entered a single
-Soko orchestration implementation. `services/ai-runtime` and its Ollama image existed but Render
+Grogoni orchestration implementation. `services/ai-runtime` and its Ollama image existed but Render
 explicitly did not deploy them. A new merchant therefore had no guaranteed first-chat backend.
 
 The platform needs a zero-download default without turning an agent harness, model, provider or
@@ -25,18 +25,18 @@ Model:           smollm2-360m
 Target:          backend
 Provider:        ollama
 Provider model:  smollm2:360m-instruct-q4_0
-Host:            Render private soko-market-inference service
+Host:            Render private grogoni-inference service
 ```
 
 Pi is selected because its small MIT-licensed agent core provides an explicit model transport,
 state, cancellation and event-oriented agent-loop boundary without requiring the coding-agent
-CLI or its filesystem/shell tools. Soko registers it behind `AgentRuntimeAdapter`; Pi receives a
+CLI or its filesystem/shell tools. Grogoni registers it behind `AgentRuntimeAdapter`; Pi receives a
 resolved model callback and no database credentials or direct business tools.
 
 SmolLM2 360M Instruct Q4_0 is selected as a lightweight CPU bootstrap model. Its purpose is a
 low-cost always-present baseline, not a claim that it is the best model for every shop. Its model
 contract is chat generation; structured tool interpretation and protected execution belong to the
-agent/runtime and Soko policy respectively.
+agent/runtime and Grogoni policy respectively.
 
 The shared SmolLM runtime is included as the starting point. Store owners may replace it with a
 compatible custom model, but custom model usage, storage, and hosting are merchant-funded. The
@@ -58,24 +58,24 @@ mapping and the host's installed artifact, not the agent. Changing target/host c
 role and model adapter, not the agent or model identity.
 
 Explicit user and tenant bindings always win. Unavailability does not rewrite preferences. The
-pre-existing `soko` agent adapter remains available for rollback and explicit bindings.
+pre-existing `grogoni` agent adapter remains available for rollback and explicit bindings.
 
 ## Node and dependency decision
 
 The selected current Pi package is `@earendil-works/pi-agent-core` 0.84.4, licensed MIT. It depends
 on `@earendil-works/pi-ai`, telemetry, TypeBox, YAML and small utility packages; the coding-agent,
 TUI, filesystem tools and SQLite backend are not installed. The package requires Node
-`>=22.19.0`. Soko therefore upgrades its backend/build/runtime pin from Node 20 to Node 22.19 LTS
+`>=22.19.0`. Grogoni therefore upgrades its backend/build/runtime pin from Node 20 to Node 22.19 LTS
 rather than adding an orchestration sidecar only to bridge Node versions. The upgrade is accepted
 only with all repository gates, production builds and runtime smoke tests passing.
 
 ## Alternatives rejected
 
-- Keep one implicit Soko turn implementation: it cannot prove agent/runtime swappability.
+- Keep one implicit Grogoni turn implementation: it cannot prove agent/runtime swappability.
 - Encode Pi branches in chat code: it spreads a default into permanent architecture.
 - Put Pi executable/runtime fields in portable manifests: it couples identity to installation and
   weakens manifest security.
-- Let Pi execute Soko write tools directly: Pi has no built-in business permission system and
+- Let Pi execute Grogoni write tools directly: Pi has no built-in business permission system and
   cannot replace deterministic authorization and confirmation.
 - Keep Qwen solely because it was the former catalog default: defaults are policy, not migration
   constraints.
@@ -89,7 +89,7 @@ only with all repository gates, production builds and runtime smoke tests passin
 ## Rollback
 
 If the inference host is unhealthy, keep the API online and disable backend default provisioning.
-If Pi regresses, change the platform agent/adapter to `soko` or another registered adapter without
+If Pi regresses, change the platform agent/adapter to `grogoni` or another registered adapter without
 database reconstruction. If SmolLM quality is inadequate, change the platform model and install
 the replacement without replacing Pi. Existing tenant/conversation bindings remain intact unless
 an operator deliberately updates them.

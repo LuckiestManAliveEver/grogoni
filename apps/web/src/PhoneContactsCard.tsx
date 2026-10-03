@@ -1,6 +1,6 @@
 import { useMemo, useState, type ChangeEvent } from "react";
 
-import type { NetworkConnectionSummary, NetworkInviteSummary } from "@soko/shared-types";
+import type { NetworkConnectionSummary, NetworkInviteSummary } from "@grogoni/shared-types";
 
 import { AuthenticationActionMessage } from "./AuthenticationActionMessage";
 import { parseVcardContacts } from "./phonebook-vcard";
@@ -14,20 +14,20 @@ import {
 import {
   buildPhonebookDirectory,
   type DevicePhonebookContact,
-  type OnSokoEntry
+  type OnGrogoniEntry
 } from "./phonebook-directory";
 import type {
   ContactPickerContact,
   ContactPickerNavigator,
   NetworkGraphSummary
-} from "./soko-application-shared";
+} from "./grogoni-application-shared";
 
 /** Rows rendered per section; search narrows a longer phonebook. */
 const sectionRowLimit = 200;
 
 /**
  * Phone Contacts: sync the phonebook (device contact picker, or a vCard/CSV export where the
- * picker is unavailable), then connect with contacts already on Soko and invite the rest.
+ * picker is unavailable), then connect with contacts already on Grogoni and invite the rest.
  */
 export function PhoneContactsCard({
   graph,
@@ -130,14 +130,14 @@ export function PhoneContactsCard({
       (contact) => contactPickerContactToSyncContact(contact) !== null
     ).length;
     const synced = new Set(syncedIds);
-    const onSoko = next.nodes.filter(
-      (node) => synced.has(node.id) && node.sokoUserId != null
+    const onGrogoni = next.nodes.filter(
+      (node) => synced.has(node.id) && node.grogoniUserId != null
     ).length;
     // A large phonebook goes up in batches; say so when only part of it made it.
     setMessage(
       syncedIds.length < syncable
-        ? `Synced ${syncedIds.length} of ${syncable} contacts (${onSoko} on Soko). Sync again to add the rest.`
-        : `Synced ${syncable} contact${syncable === 1 ? "" : "s"}: ${onSoko} already on Soko.`
+        ? `Synced ${syncedIds.length} of ${syncable} contacts (${onGrogoni} on Grogoni). Sync again to add the rest.`
+        : `Synced ${syncable} contact${syncable === 1 ? "" : "s"}: ${onGrogoni} already on Grogoni.`
     );
   }
 
@@ -177,7 +177,7 @@ export function PhoneContactsCard({
 
   const hasContacts =
     directory.requests.length +
-      directory.onSoko.length +
+      directory.onGrogoni.length +
       directory.invite.length +
       directory.unreachable.length >
     0;
@@ -191,7 +191,7 @@ export function PhoneContactsCard({
         <div>
           <h3>Phone Contacts</h3>
           <p>
-            Find the people you know on Soko and invite the rest. Soko reads only the contacts you
+            Find the people you know on Grogoni and invite the rest. Grogoni reads only the contacts you
             pick, and keeps only a fingerprint and the last few digits of each number, never the
             full number.
           </p>
@@ -226,7 +226,7 @@ export function PhoneContactsCard({
       {hasContacts || search.length > 0 ? (
         <div className="phone-contact-manager">
           <p className="phonebook-summary">
-            <strong>{directory.onSoko.length}</strong> on Soko ·{" "}
+            <strong>{directory.onGrogoni.length}</strong> on Grogoni ·{" "}
             <strong>{directory.invite.length}</strong> to invite
             {directory.requests.length > 0 ? (
               <>
@@ -262,17 +262,17 @@ export function PhoneContactsCard({
               ))}
             </section>
           ) : null}
-          <section className="network-contact-group" aria-label="On Soko">
-            <h4>On Soko ({directory.onSoko.length})</h4>
-            {directory.onSoko.length === 0 ? (
+          <section className="network-contact-group" aria-label="On Grogoni">
+            <h4>On Grogoni ({directory.onGrogoni.length})</h4>
+            {directory.onGrogoni.length === 0 ? (
               <p className="shell-note">
-                None of your synced contacts are on Soko yet. Invite them below.
+                None of your synced contacts are on Grogoni yet. Invite them below.
               </p>
             ) : (
-              directory.onSoko
+              directory.onGrogoni
                 .slice(0, sectionRowLimit)
                 .map((entry) => (
-                  <OnSokoRow
+                  <OnGrogoniRow
                     key={entry.key}
                     busy={busyKey === entry.key}
                     entry={entry}
@@ -281,9 +281,9 @@ export function PhoneContactsCard({
                 ))
             )}
           </section>
-          <section className="network-contact-group" aria-label="Invite to Soko">
+          <section className="network-contact-group" aria-label="Invite to Grogoni">
             <div className="phonebook-group-header">
-              <h4>Invite to Soko ({directory.invite.length})</h4>
+              <h4>Invite to Grogoni ({directory.invite.length})</h4>
               {invitable.length > 0 ? (
                 <div className="phonebook-row-actions">
                   <button
@@ -312,8 +312,8 @@ export function PhoneContactsCard({
             {directory.invite.length === 0 ? (
               <p className="shell-note">
                 {deviceContacts.length === 0 && (graph?.nodes.length ?? 0) > 1
-                  ? "Sync contacts on this device to invite people who are not on Soko."
-                  : "Everyone you synced is on Soko."}
+                  ? "Sync contacts on this device to invite people who are not on Grogoni."
+                  : "Everyone you synced is on Grogoni."}
               </p>
             ) : (
               directory.invite.slice(0, sectionRowLimit).map((entry) => (
@@ -345,7 +345,7 @@ export function PhoneContactsCard({
               ))}
             </details>
           ) : null}
-          {[directory.onSoko, directory.invite, directory.requests].some(
+          {[directory.onGrogoni, directory.invite, directory.requests].some(
             (list) => list.length > sectionRowLimit
           ) ? (
             <p className="shell-note">
@@ -354,7 +354,7 @@ export function PhoneContactsCard({
           ) : null}
         </div>
       ) : (
-        <p className="shell-note">Sync your contacts to see who is already on Soko.</p>
+        <p className="shell-note">Sync your contacts to see who is already on Grogoni.</p>
       )}
       {message.length > 0 ? (
         <p className="setup-status" role="status">
@@ -378,7 +378,7 @@ function RequestRow({
     <div className="phonebook-row">
       <span>
         <strong>{request.counterpartDisplayName}</strong>
-        <small>{request.counterpartBusinessName ?? "On Soko"}</small>
+        <small>{request.counterpartBusinessName ?? "On Grogoni"}</small>
       </span>
       <div className="phonebook-row-actions">
         <button type="button" disabled={busy} onClick={() => onRespond(true)}>
@@ -397,12 +397,12 @@ function RequestRow({
   );
 }
 
-function OnSokoRow({
+function OnGrogoniRow({
   entry,
   busy,
   onAction
 }: {
-  entry: OnSokoEntry;
+  entry: OnGrogoniEntry;
   busy: boolean;
   onAction: (action: NetworkConnectionAction) => void;
 }) {
@@ -411,7 +411,7 @@ function OnSokoRow({
       ? "Connected"
       : entry.state === "requested"
         ? "Request sent"
-        : (entry.businessName ?? "On Soko");
+        : (entry.businessName ?? "On Grogoni");
 
   return (
     <div className="phonebook-row">

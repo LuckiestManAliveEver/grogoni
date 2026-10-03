@@ -1,4 +1,4 @@
-import type { CorridorLineString } from "@soko/shared-types";
+import type { CorridorLineString } from "@grogoni/shared-types";
 
 // Turns the route an owner types or pastes into a GeoJSON LineString. People copy points from a
 // maps app as "latitude, longitude" (Google Maps' "-1.2921, 36.8219"), one per line; GeoJSON wants

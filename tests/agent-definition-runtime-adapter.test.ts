@@ -53,14 +53,14 @@ describe("engine choice travels with the agent definition, not an independent ax
     }
   });
 
-  it("runs Shopkeeper on Soko's built-in engine where no ZeroClaw gateway is connected", async () => {
+  it("runs Shopkeeper on Grogoni's built-in engine where no ZeroClaw gateway is connected", async () => {
     const store = createCp2Store({ modelRuntimeAdapterResolver: () => adapter() });
     const app = buildApi({ cp2: { store } });
     try {
       const actor = await createActorAndShop(app, "+254700009304", "No Gateway Shop");
       expect((await effective(app, actor)).agent).toMatchObject({
         id: "builtin:shopkeeper",
-        runtimeAdapterId: "soko"
+        runtimeAdapterId: "grogoni"
       });
       const activated = await app.inject({
         method: "POST",
@@ -76,7 +76,7 @@ describe("engine choice travels with the agent definition, not an independent ax
       expect(activated.statusCode).toBe(200);
       expect((await effective(app, actor)).agent).toMatchObject({
         id: "builtin:shopkeeper",
-        runtimeAdapterId: "soko"
+        runtimeAdapterId: "grogoni"
       });
     } finally {
       await app.close();
@@ -176,7 +176,7 @@ function adapter(): ModelRuntimeAdapter {
       provider: "test-vercel",
       executionTarget: "backend",
       latencyMs: 1,
-      responsePreview: "SOKO_MODEL_OK",
+      responsePreview: "GROGONI_MODEL_OK",
       errorCode: null,
       message: null,
       retryable: false

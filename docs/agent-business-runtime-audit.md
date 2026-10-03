@@ -5,7 +5,7 @@ Revision audited: `3d8d577`
 
 ## Executive finding
 
-Soko.market already has the beginnings of a model-independent business runtime. The API owns a
+Grogoni already has the beginnings of a model-independent business runtime. The API owns a
 business-scoped agent profile, runtime sessions and turns, deterministic context-script routing,
 tool validation, role checks, confirmation gates, business-record access, model-provider adapters,
 runtime telemetry, and audit events. The browser has a separate bounded context builder for local
@@ -88,7 +88,7 @@ Security gap:
 - Server model prompts are constructed by `formatRuntimeModelMessage` and
   `buildRuntimeModelPrompt`.
 - Browser-local prompts are separately constructed by `buildBrowserModelContext`, while the
-  frontend also builds local/native prompt strings in `SokoApplication.tsx` and
+  frontend also builds local/native prompt strings in `GrogoniApplication.tsx` and
   `agent-model-runtime.ts`.
 - Server prompts include profile role, behavior, instructions, tools, integrations, knowledge, and
   context files.

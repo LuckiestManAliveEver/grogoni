@@ -3,7 +3,7 @@ import {
   type InvoiceSummary,
   type LogisticsFormState,
   type LogisticsSummary
-} from "./soko-application-shared";
+} from "./grogoni-application-shared";
 import CorridorDispatchCard from "./CorridorDispatchCard";
 import DeliveryRoutesCard from "./DeliveryRoutesCard";
 import FulfillmentSetupCard from "./FulfillmentSetupCard";

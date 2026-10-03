@@ -56,7 +56,7 @@ Out of scope:
 - document import
 - marketplace behavior
 - TIEL
-- local LLM, cloud model, Pi/OpenClaw, or full Sokoclaw runtime integration
+- local LLM, cloud model, Pi/OpenClaw, or full Grogoniclaw runtime integration
 
 ## Target Flow
 

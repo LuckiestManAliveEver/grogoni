@@ -7,7 +7,7 @@
  * (extracted first, in row 5) rather than duplicated.
  */
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import type { ProductImportDraft, SupplierImportDraft } from "@soko/shared-types";
+import type { ProductImportDraft, SupplierImportDraft } from "@grogoni/shared-types";
 import { Cp2Error } from "../../cp2-error.js";
 import { type Cp2Store, readSessionCookie } from "../../store.js";
 import {

@@ -1,7 +1,7 @@
 /**
- * Soko-user-to-Soko-user connections discovered through the phonebook. Owned by NetworkDomain
+ * Grogoni-user-to-Grogoni-user connections discovered through the phonebook. Owned by NetworkDomain
  * (store.ts), which injects the maps this reads. A connection can only be requested from one of
- * the requester's own phonebook nodes that auto-linked to another Soko account, so asking to
+ * the requester's own phonebook nodes that auto-linked to another Grogoni account, so asking to
  * connect requires already holding that person's number or email.
  *
  * One record per pair of users, whoever asked first is the requester:
@@ -26,7 +26,7 @@ import type {
   NetworkConnectionSummary,
   NetworkNodeSummary,
   UserSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { Cp2Error } from "../../cp2-error.js";
 
 export const maxPendingOutgoingConnections = 100;
@@ -57,17 +57,17 @@ export function requestNetworkConnection(
     throw new Cp2Error(404, "network_node_not_found", "Contact was not found in your network.");
   }
 
-  const targetUserId = node.sokoUserId;
+  const targetUserId = node.grogoniUserId;
 
   if (targetUserId === null) {
     throw new Cp2Error(
       409,
-      "network_contact_not_on_soko",
-      "This contact is not on Soko yet. Invite them instead."
+      "network_contact_not_on_grogoni",
+      "This contact is not on Grogoni yet. Invite them instead."
     );
   }
 
-  // Defense in depth: discovery never links the owner's own number (findSokoIdentityLink), so
+  // Defense in depth: discovery never links the owner's own number (findGrogoniIdentityLink), so
   // this and the users check below only fire if a node was linked some other way.
   if (targetUserId === input.userId) {
     throw new Cp2Error(409, "network_connection_self", "You cannot connect with yourself.");
@@ -76,8 +76,8 @@ export function requestNetworkConnection(
   if (!deps.users.has(targetUserId)) {
     throw new Cp2Error(
       409,
-      "network_contact_not_on_soko",
-      "This contact is not on Soko yet. Invite them instead."
+      "network_contact_not_on_grogoni",
+      "This contact is not on Grogoni yet. Invite them instead."
     );
   }
 
@@ -263,7 +263,7 @@ function isVisibleTo(connection: NetworkConnectionRecord, userId: string): boole
   return connection.recipientUserId === userId && connection.status === "pending";
 }
 
-/** The viewer's direct contacts, by the Soko user each one is linked to. */
+/** The viewer's direct contacts, by the Grogoni user each one is linked to. */
 function phonebookNodesByUser(
   deps: NetworkConnectionDeps,
   viewerUserId: string
@@ -273,10 +273,10 @@ function phonebookNodesByUser(
     if (
       node.ownerUserId === viewerUserId &&
       node.degree === 1 &&
-      node.sokoUserId !== null &&
-      !nodes.has(node.sokoUserId)
+      node.grogoniUserId !== null &&
+      !nodes.has(node.grogoniUserId)
     ) {
-      nodes.set(node.sokoUserId, node);
+      nodes.set(node.grogoniUserId, node);
     }
   }
   return nodes;
@@ -306,10 +306,10 @@ function summarizeConnection(
       direction === "outgoing" && connection.status === "declined" ? "pending" : connection.status,
     direction,
     counterpartUserId,
-    // The viewer's own name for this person wins; otherwise the name they chose on Soko.
-    counterpartDisplayName: phonebookNode?.displayName ?? counterpart?.displayName ?? "Soko user",
+    // The viewer's own name for this person wins; otherwise the name they chose on Grogoni.
+    counterpartDisplayName: phonebookNode?.displayName ?? counterpart?.displayName ?? "Grogoni user",
     counterpartBusinessName: business?.name ?? null,
-    counterpartSokoId: business?.sokoId ?? null,
+    counterpartGrogoniId: business?.grogoniId ?? null,
     nodeId: phonebookNode?.id ?? null,
     createdAt: connection.createdAt,
     updatedAt: connection.updatedAt,

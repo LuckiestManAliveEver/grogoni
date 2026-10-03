@@ -8,8 +8,8 @@ import type {
   SessionSummary,
   UserIdentitySummary,
   UserSummary
-} from "@soko/shared-types";
-import type { BusinessPermission } from "@soko/business-core";
+} from "@grogoni/shared-types";
+import type { BusinessPermission } from "@grogoni/business-core";
 import {
   assertOAuthSecretMatches,
   decryptOAuthToken,
@@ -414,7 +414,7 @@ export class OAuthDomain {
     }
     const primaryDestination =
       normalizedEmail ??
-      `${input.provider}.${oauthEmailLocalPart(providerSubject)}@oauth.soko.local`;
+      `${input.provider}.${oauthEmailLocalPart(providerSubject)}@oauth.grogoni.local`;
     const account =
       accountId === undefined
         ? this.deps.createAccount("email", primaryDestination, now)

@@ -3,7 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { AgentSettings } from "../apps/web/src/soko-application-shared";
+import type { AgentSettings } from "../apps/web/src/grogoni-application-shared";
 import { PublicStorefrontPanel } from "../apps/web/src/PublicStorefrontPanel";
 
 const draftAgent = { language: "en" } as AgentSettings;
@@ -26,13 +26,13 @@ describe("PublicStorefrontPanel", () => {
     host.remove();
   });
 
-  it("shows the public commerce address, not the raw sokoId, under Public shop ID", () => {
+  it("shows the public commerce address, not the raw grogoniId, under Public shop ID", () => {
     act(() => {
       root = createRoot(host);
       root.render(
         <PublicStorefrontPanel
-          business={{ sokoId: "soko.mama-mboga" }}
-          storefrontUrl="https://soko.market/public/storefronts/soko.mama-mboga"
+          business={{ grogoniId: "grogoni.mama-mboga" }}
+          storefrontUrl="https://grogoni.com/public/storefronts/grogoni.mama-mboga"
           ownerLabel="Jane"
           draftAgent={draftAgent}
           isEditing={false}
@@ -42,23 +42,23 @@ describe("PublicStorefrontPanel", () => {
       );
     });
 
-    expect(host.querySelector(".soko-id-card strong")?.textContent).toBe("mama-mboga@soko.market");
+    expect(host.querySelector(".grogoni-id-card strong")?.textContent).toBe("mama-mboga@grogoni.com");
     expect(host.textContent).toContain("Public shop ID");
     expect(host.textContent).not.toContain("Permanent shop identity");
-    // The technical "Storefront ID" input below still shows the raw sokoId - that's the value
+    // The technical "Storefront ID" input below still shows the raw grogoniId - that's the value
     // embedded in the actual storefront URL, a distinct field from the merchant-facing public ID.
-    expect(host.querySelector('input[value="soko.mama-mboga"]')).not.toBeNull();
+    expect(host.querySelector('input[value="grogoni.mama-mboga"]')).not.toBeNull();
   });
 
-  it("copies the public commerce address, not the raw sokoId", async () => {
+  it("copies the public commerce address, not the raw grogoniId", async () => {
     const copyStorefrontValue = vi.fn().mockResolvedValue(undefined);
 
     act(() => {
       root = createRoot(host);
       root.render(
         <PublicStorefrontPanel
-          business={{ sokoId: "soko.mama-mboga" }}
-          storefrontUrl="https://soko.market/public/storefronts/soko.mama-mboga"
+          business={{ grogoniId: "grogoni.mama-mboga" }}
+          storefrontUrl="https://grogoni.com/public/storefronts/grogoni.mama-mboga"
           ownerLabel="Jane"
           draftAgent={draftAgent}
           isEditing={false}
@@ -76,7 +76,7 @@ describe("PublicStorefrontPanel", () => {
       await Promise.resolve();
     });
 
-    expect(copyStorefrontValue).toHaveBeenCalledWith("mama-mboga@soko.market", "Public ID");
+    expect(copyStorefrontValue).toHaveBeenCalledWith("mama-mboga@grogoni.com", "Public ID");
   });
 
   it("opens the native share sheet with the canonical storefront link", async () => {
@@ -87,8 +87,8 @@ describe("PublicStorefrontPanel", () => {
       root = createRoot(host);
       root.render(
         <PublicStorefrontPanel
-          business={{ sokoId: "soko.mama-mboga" }}
-          storefrontUrl="https://soko.market/public/storefronts/soko.mama-mboga"
+          business={{ grogoniId: "grogoni.mama-mboga" }}
+          storefrontUrl="https://grogoni.com/public/storefronts/grogoni.mama-mboga"
           ownerLabel="Mama Mboga"
           draftAgent={draftAgent}
           isEditing={false}
@@ -107,9 +107,9 @@ describe("PublicStorefrontPanel", () => {
     });
 
     expect(share).toHaveBeenCalledWith({
-      title: "Mama Mboga's shop on Soko.market",
-      text: "Browse and message Mama Mboga's shop on Soko.market.",
-      url: "https://soko.market/public/storefronts/soko.mama-mboga"
+      title: "Mama Mboga's shop on Grogoni",
+      text: "Browse and message Mama Mboga's shop on Grogoni.",
+      url: "https://grogoni.com/public/storefronts/grogoni.mama-mboga"
     });
   });
 
@@ -120,8 +120,8 @@ describe("PublicStorefrontPanel", () => {
       root = createRoot(host);
       root.render(
         <PublicStorefrontPanel
-          business={{ sokoId: "soko.mama-mboga" }}
-          storefrontUrl="https://soko.market/public/storefronts/soko.mama-mboga"
+          business={{ grogoniId: "grogoni.mama-mboga" }}
+          storefrontUrl="https://grogoni.com/public/storefronts/grogoni.mama-mboga"
           ownerLabel="Mama Mboga"
           draftAgent={draftAgent}
           isEditing={false}
@@ -140,7 +140,7 @@ describe("PublicStorefrontPanel", () => {
     });
 
     expect(copyStorefrontValue).toHaveBeenCalledWith(
-      "https://soko.market/public/storefronts/soko.mama-mboga",
+      "https://grogoni.com/public/storefronts/grogoni.mama-mboga",
       "Storefront URL"
     );
   });

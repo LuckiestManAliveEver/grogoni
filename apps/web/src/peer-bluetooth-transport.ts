@@ -1,15 +1,15 @@
-import type { PeerTransport } from "@soko/offline-runtime";
+import type { PeerTransport } from "@grogoni/offline-runtime";
 
 /**
- * Soko's nearby-messaging GATT layout. A device advertising this service is a Soko-compatible
+ * Grogoni's nearby-messaging GATT layout. A device advertising this service is a Grogoni-compatible
  * peer: the RX characteristic is where it notifies frames it wants to send us, the TX
  * characteristic is where we write frames for it to receive. Any future native peripheral
  * (Android BLE, a companion device) must expose this same service/characteristic layout to be
  * reachable from here.
  */
-export const SOKO_NEARBY_SERVICE_UUID = "6c9b7a00-9d2e-4f3a-8b1c-2f6a5e9d0a01";
-export const SOKO_NEARBY_TX_CHARACTERISTIC_UUID = "6c9b7a01-9d2e-4f3a-8b1c-2f6a5e9d0a01";
-export const SOKO_NEARBY_RX_CHARACTERISTIC_UUID = "6c9b7a02-9d2e-4f3a-8b1c-2f6a5e9d0a01";
+export const GROGONI_NEARBY_SERVICE_UUID = "6c9b7a00-9d2e-4f3a-8b1c-2f6a5e9d0a01";
+export const GROGONI_NEARBY_TX_CHARACTERISTIC_UUID = "6c9b7a01-9d2e-4f3a-8b1c-2f6a5e9d0a01";
+export const GROGONI_NEARBY_RX_CHARACTERISTIC_UUID = "6c9b7a02-9d2e-4f3a-8b1c-2f6a5e9d0a01";
 
 /**
  * A safe, conservative frame size for `writeValueWithoutResponse`. The Web Bluetooth API does
@@ -27,7 +27,7 @@ export function webBluetoothSupported(): boolean {
 /**
  * PeerTransport backed by Web Bluetooth. Browsers only expose the GATT *central* role to page
  * script - there is no API for a web page to advertise or act as a peripheral - so this can only
- * ever connect outward to one explicitly user-picked Soko-compatible BLE peripheral at a time.
+ * ever connect outward to one explicitly user-picked Grogoni-compatible BLE peripheral at a time.
  * It cannot discover or link two browser tabs to each other, and it never scans in the
  * background: every connection starts from `discover()`, which must run inside a user gesture
  * and opens the browser's own device chooser. This is the real ceiling of the platform, not a
@@ -52,14 +52,14 @@ export class WebBluetoothPeerTransport implements PeerTransport {
     }
   }
 
-  /** Opens the browser's own device picker scoped to Soko-compatible peripherals. Must be
+  /** Opens the browser's own device picker scoped to Grogoni-compatible peripherals. Must be
    *  called from a user gesture (a click), or the browser rejects it. Returns the chosen
    *  device's id, which is stable for `connect()` only as long as the browser still remembers
    *  the grant (Chrome persists it; some browsers drop it on restart). */
   async discover(): Promise<string[]> {
     if (!this.bluetooth) throw new Error("This browser does not support Web Bluetooth.");
     const device = await this.bluetooth.requestDevice({
-      filters: [{ services: [SOKO_NEARBY_SERVICE_UUID] }]
+      filters: [{ services: [GROGONI_NEARBY_SERVICE_UUID] }]
     });
     return [device.id];
   }
@@ -75,10 +75,10 @@ export class WebBluetoothPeerTransport implements PeerTransport {
     this.teardown();
     const server = await device.gatt?.connect();
     if (!server) throw new Error("Could not open a Bluetooth connection to that device.");
-    const service = await server.getPrimaryService(SOKO_NEARBY_SERVICE_UUID);
+    const service = await server.getPrimaryService(GROGONI_NEARBY_SERVICE_UUID);
     const [tx, rx] = await Promise.all([
-      service.getCharacteristic(SOKO_NEARBY_TX_CHARACTERISTIC_UUID),
-      service.getCharacteristic(SOKO_NEARBY_RX_CHARACTERISTIC_UUID)
+      service.getCharacteristic(GROGONI_NEARBY_TX_CHARACTERISTIC_UUID),
+      service.getCharacteristic(GROGONI_NEARBY_RX_CHARACTERISTIC_UUID)
     ]);
     await rx.startNotifications();
     rx.addEventListener("characteristicvaluechanged", this.handleNotification);

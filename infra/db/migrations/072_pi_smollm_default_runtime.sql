@@ -33,6 +33,6 @@ set parent_id = 'builtin:pi:v1',
     'updatedBy', 'system'
   ),
   updated_at = now()
-where entity_id = 'builtin:soko-default-runtime:v1'
-  and parent_id = 'builtin:soko-agent:v1'
+where entity_id = 'builtin:grogoni-default-runtime:v1'
+  and parent_id = 'builtin:grogoni-agent:v1'
   and record -> 'configuration' ->> 'source' = 'repository-default';

@@ -23,7 +23,7 @@ export function useChatThreadState(deps: UseChatThreadStateDeps) {
     deps.initialNavigationSession !== null &&
     (deps.initialNavigationSession.chatMessages?.length ?? 0) > 0
       ? (deps.initialNavigationSession.chatMessages as ChatMessage[])
-      : createInitialChatMessages(deps.initialBusiness?.name ?? "Soko.market")
+      : createInitialChatMessages(deps.initialBusiness?.name ?? "Grogoni")
   );
   const [replyToMessageId, setReplyToMessageId] = useState<string | null>(null);
 
@@ -31,7 +31,7 @@ export function useChatThreadState(deps: UseChatThreadStateDeps) {
     setChatDraft("");
     setPendingAttachments([]);
     setRuntimeSessionId(null);
-    setChatMessages(createInitialChatMessages("Soko.market"));
+    setChatMessages(createInitialChatMessages("Grogoni"));
     setReplyToMessageId(null);
   });
 

@@ -1,4 +1,4 @@
-import { type ShopPresenceStatus } from "./soko-application-shared";
+import { type ShopPresenceStatus } from "./grogoni-application-shared";
 
 export function ShopPresenceButtons({
   activeStatus,

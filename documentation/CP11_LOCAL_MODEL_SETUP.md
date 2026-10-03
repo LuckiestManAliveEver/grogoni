@@ -10,7 +10,7 @@ itself.
 ## Android 2GB Profile
 
 Use a predownloaded small open-source GGUF model outside this repository. The
-default Soko local profile is:
+default Grogoni local profile is:
 
 ```text
 tinyllama-1.1b-chat-q4-k-m-android
@@ -38,7 +38,7 @@ llama-server \
 ```
 
 For local development, the recommended path is the self-contained `ai-runtime` gateway (Ollama plus
-the authenticated `@soko/ai-runtime` service in one container), not a bare `ollama serve`. Start it
+the authenticated `@grogoni/ai-runtime` service in one container), not a bare `ollama serve`. Start it
 alongside the rest of local dev infra:
 
 ```bash
@@ -46,13 +46,13 @@ docker compose up -d ai-runtime
 ```
 
 This builds `services/ai-runtime/Dockerfile` (the same image production runs as the private
-`soko-market-inference` Render service), pulls the configured model into a persistent Docker
+`grogoni-inference` Render service), pulls the configured model into a persistent Docker
 volume on first boot, and serves it on `http://127.0.0.1:4002`. `.env.example` already points
 `BACKEND_INFERENCE_*` at that gateway with the default `smollm2-360m` model - `pnpm dev`/`pnpm
 dev:api` load `.env` automatically (via `--env-file-if-exists`), so no other setup is needed.
 To swap the active model, either activate a different enabled canonical model for an agent
 through the existing model-activation API/UI (`services/api/src/cp2/domains/agent-runtime`), or
-change `BACKEND_INFERENCE_MODEL_ID`/`SOKO_PRIMARY_MODEL_ID` and `SOKO_PRIMARY_PROVIDER_MODEL_ID`
+change `BACKEND_INFERENCE_MODEL_ID`/`GROGONI_PRIMARY_MODEL_ID` and `GROGONI_PRIMARY_PROVIDER_MODEL_ID`
 to another entry in `runtimeModels` (`packages/shared-types/src/index.ts`) and pull it into the
 running container: `docker compose exec ai-runtime ollama pull <providerModelId>`.
 
@@ -103,7 +103,7 @@ OPENAI_REASONING_MODEL=gpt-5.2
 ```
 
 The API key remains server-side. `OPENAI_FAST_MODEL` and `OPENAI_REASONING_MODEL` are optional and
-allow operators to change the concrete model behind each stable Soko profile.
+allow operators to change the concrete model behind each stable Grogoni profile.
 
 ## Output Contract
 

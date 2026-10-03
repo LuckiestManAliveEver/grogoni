@@ -6,9 +6,9 @@ import type {
   ProductFieldSchemaSummary,
   SyncMutationPayload,
   SyncMutationType
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
-import type { ShellView, SokoMode } from "../app-shell";
+import type { ShellView, GrogoniMode } from "../app-shell";
 import { getErrorMessage } from "../chat-message-plumbing";
 import { deleteJson, getJson, patchJson, postJson } from "../api-helpers";
 import {
@@ -21,7 +21,7 @@ import {
   type ProductFormState,
   type ProductSummary,
   type StockAdjustmentResponse
-} from "../soko-application-shared";
+} from "../grogoni-application-shared";
 
 interface UseProductsStateDeps {
   businessId: string | null;
@@ -38,7 +38,7 @@ interface UseProductsStateDeps {
   getNavigationHelpers: () => {
     routedProductId: string | null;
     setRoutedProductId: (productId: string | null) => void;
-    navigateToView: (nextView: ShellView, options?: { replace?: boolean; mode?: SokoMode }) => void;
+    navigateToView: (nextView: ShellView, options?: { replace?: boolean; mode?: GrogoniMode }) => void;
   };
   registerReset: (domainKey: string, fn: () => void) => void;
   registerRefresh: (

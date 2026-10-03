@@ -3,7 +3,7 @@ import {
   formatKilogramsForDisplay,
   type ManifestStopSummary,
   type ManifestSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { useAsyncActions } from "./hooks/useAsyncActions";
 import { useApiMutationRevision } from "./hooks/useApiMutationRevision";
 import { fetchFreshJson, postJson } from "./api-helpers";

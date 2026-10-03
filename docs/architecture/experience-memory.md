@@ -2,7 +2,7 @@
 
 ## The slot this fills
 
-Before this change, Soko's type system, telemetry vocabulary, and prompt-assembly wiring for a
+Before this change, Grogoni's type system, telemetry vocabulary, and prompt-assembly wiring for a
 recall subsystem all already existed and were live:
 
 - `AgentContextSourceType` includes `"recall"` (`packages/shared-types`).

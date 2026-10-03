@@ -175,8 +175,8 @@ async function signedRequest(
       headers: {
         "content-type": "application/json",
         "idempotency-key": idempotencyKey,
-        "x-soko-upload-signature": `sha256=${signature}`,
-        "x-soko-upload-timestamp": timestamp
+        "x-grogoni-upload-signature": `sha256=${signature}`,
+        "x-grogoni-upload-timestamp": timestamp
       },
       body,
       signal: AbortSignal.timeout(30_000)

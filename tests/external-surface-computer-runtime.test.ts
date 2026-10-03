@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { AuthSessionView, ComputerAction, ComputerSession } from "@soko/shared-types";
+import type { AuthSessionView, ComputerAction, ComputerSession } from "@grogoni/shared-types";
 import { resolveCapabilityRoute } from "../packages/tool-core/src";
 import { ComputerRuntimeDomain } from "../services/api/src/cp2/domains/computer-runtime/store";
 import type { ComputerWorkerClient } from "../services/api/src/computer-runtime/client";

@@ -43,7 +43,7 @@ describe("services/ai-runtime deployment boundary", () => {
       dependencies?: Record<string, string>;
     };
     expect(Object.keys(manifest.dependencies ?? {}).sort()).toEqual([
-      "@soko/shared-types",
+      "@grogoni/shared-types",
       "node-llama-cpp"
     ]);
   });

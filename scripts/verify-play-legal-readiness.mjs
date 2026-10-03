@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 const workspaceRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const requireApproved = process.argv.includes("--require-approved");
 const readiness = readJson("config/play-legal-readiness.json");
-const applicationSource = readText("apps/web/src/SokoApplication.tsx");
+const applicationSource = readText("apps/web/src/GrogoniApplication.tsx");
 const routerSource = readText("apps/web/src/AppRouter.tsx");
 const routesSource = readText("apps/web/src/routes.ts");
 const deletionPage = readText("apps/web/src/legal/AccountDeletionPage.tsx");
@@ -22,14 +22,14 @@ check(readiness.checkpoint === "CP27", "checkpoint must be CP27");
 check(readiness.$schema === "./play-legal-readiness.schema.json", "$schema is invalid");
 check(isDate(readiness.lastReviewedOn), "lastReviewedOn must be an ISO calendar date");
 check(["proposed", "approved"].includes(readiness.readinessStatus), "readinessStatus is invalid");
-check(readiness.product?.appName === "Soko.market", "appName must be Soko.market");
+check(readiness.product?.appName === "Grogoni", "appName must be Grogoni");
 check(
-  readiness.legalDocuments?.privacyPolicyUrl === "https://soko.market/privacy",
+  readiness.legalDocuments?.privacyPolicyUrl === "https://grogoni.com/privacy",
   "privacy policy URL is invalid"
 );
-check(readiness.legalDocuments?.termsUrl === "https://soko.market/terms", "terms URL is invalid");
+check(readiness.legalDocuments?.termsUrl === "https://grogoni.com/terms", "terms URL is invalid");
 check(
-  readiness.accountDeletion?.externalRequestUrl === "https://soko.market/account-deletion",
+  readiness.accountDeletion?.externalRequestUrl === "https://grogoni.com/account-deletion",
   "external account-deletion URL is invalid"
 );
 check(readiness.accountDeletion?.androidAppRequired === false, "Android app must not be required");
@@ -59,7 +59,7 @@ check(
   applicationSource.includes('get("intent") === "account-deletion"'),
   "secure deletion intent is missing"
 );
-check(deletionPage.includes("Soko.market account"), "deletion resource must name the app");
+check(deletionPage.includes("Grogoni account"), "deletion resource must name the app");
 check(deletionPage.includes("associated"), "deletion resource must explain associated data");
 check(deletionPage.includes("up to 30 days"), "deletion resource must explain recovery timing");
 check(privacyPage.includes("Privacy Policy"), "privacy policy page is missing");
@@ -68,7 +68,7 @@ check(
   renderBlueprint.includes("source: /*\n        destination: /index.html"),
   "SPA route rewrite is missing"
 );
-check(renderBlueprint.includes("name: soko-market-account-purge"), "account purge cron is missing");
+check(renderBlueprint.includes("name: grogoni-account-purge"), "account purge cron is missing");
 check(
   renderBlueprint.includes("ACCOUNT_DELETION_PROCESSORS_JSON"),
   "processor configuration secret is missing"

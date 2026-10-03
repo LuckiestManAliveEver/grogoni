@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://grogoni.com/schemas/grogoni-agent-v1.json",
+  "title": "Grogoni portable agent manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "agent",
+    "instructions",
+    "capabilities",
+    "tools",
+    "modelRequirements",
+    "executionRequirements"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1" },
+    "agent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "version"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 220,
+          "pattern": "^(?:(?:builtin|portable):[a-z0-9][a-z0-9_-]{0,79}|(?:github|huggingface):[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)$"
+        },
+        "name": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "description": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "version": { "type": "string", "minLength": 1, "maxLength": 80 }
+      }
+    },
+    "instructions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "system": { "type": "string", "minLength": 1, "maxLength": 32000 },
+        "files": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240,
+            "pattern": "^(?!/)(?![A-Za-z]:[\\\\/])(?!.*(?:^|[\\\\/])\\.\\.(?:[\\\\/]|$))(?![A-Za-z][A-Za-z0-9+.-]*:).+$"
+          }
+        }
+      }
+    },
+    "capabilities": { "$ref": "#/$defs/identifierArray" },
+    "tools": {
+      "type": "array",
+      "maxItems": 128,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "required"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+          },
+          "required": { "type": "boolean" }
+        }
+      }
+    },
+    "modelRequirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["localAllowed", "hostedAllowed"],
+      "properties": {
+        "preferredModelId": { "type": "string", "minLength": 1, "maxLength": 220 },
+        "requiredCapabilities": { "$ref": "#/$defs/identifierArray" },
+        "minimumContextWindow": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000000
+        },
+        "localAllowed": { "type": "boolean" },
+        "hostedAllowed": { "type": "boolean" }
+      },
+      "anyOf": [
+        { "properties": { "localAllowed": { "const": true } } },
+        { "properties": { "hostedAllowed": { "const": true } } }
+      ]
+    },
+    "executionRequirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requiresNetwork", "requiresFilesystem", "requiresNativeBridge"],
+      "properties": {
+        "preferredTargets": {
+          "type": "array",
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": {
+            "enum": ["backend", "remote-shop-device"]
+          }
+        },
+        "requiresNetwork": { "type": "boolean" },
+        "requiresFilesystem": { "type": "boolean" },
+        "requiresNativeBridge": { "type": "boolean" }
+      }
+    },
+    "memory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scope"],
+      "properties": {
+        "scope": { "enum": ["conversation", "user", "shop", "agent"] }
+      }
+    },
+    "permissions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["toolApproval", "network", "filesystem"],
+      "properties": {
+        "toolApproval": { "enum": ["always", "writes", "never"] },
+        "network": { "enum": ["none", "restricted", "allowed"] },
+        "filesystem": { "enum": ["none", "sandboxed"] }
+      }
+    },
+    "runtime": {
+      "description": "Durable-execution requirements (docs/architecture/durable-execution-plane.md). A declaration of requirements, not credentials or infrastructure ownership - the runtime resolver decides how they are fulfilled. Optional and additive: an artifact without this property behaves exactly as it did before this property existed.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resumable": {
+          "description": "Whether this agent's tasks may be checkpointed and resumed by a different runtime binding after a suspend/handoff.",
+          "type": "boolean"
+        },
+        "portable": {
+          "description": "Whether this agent's execution may be handed off to a different execution host (see RuntimeHandoff).",
+          "type": "boolean"
+        }
+      }
+    },
+    "context": {
+      "description": "Which context-assembly recipe (docs/architecture/context-semantic-runtime.md) this agent expects the runtime to use. Optional; omitting it means the platform default recipe.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["recipe"],
+      "properties": {
+        "recipe": { "type": "string", "minLength": 1, "maxLength": 160 }
+      }
+    },
+    "metadata": { "type": "object" }
+  },
+  "$defs": {
+    "identifierArray": {
+      "type": "array",
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1, "maxLength": 100 }
+    }
+  }
+}

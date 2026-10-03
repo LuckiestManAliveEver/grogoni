@@ -5,7 +5,7 @@ import type {
   ComputerObservation,
   ComputerSession,
   ComputerExecutionMetadata
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
 export interface ComputerWorkerClient {
   createSession(input: {

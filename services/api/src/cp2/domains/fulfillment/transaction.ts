@@ -16,7 +16,7 @@
  */
 import { createHash } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
-import { positiveIntegerFromEnv } from "@soko/resource-control";
+import { positiveIntegerFromEnv } from "@grogoni/resource-control";
 import { Cp2Error } from "../../cp2-error.js";
 
 const retryableSqlStates = new Set(["40001", "40P01", "55P03"]);

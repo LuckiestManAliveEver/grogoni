@@ -8,7 +8,7 @@ Actual tag: not created. No `.repo.git` directory exists in this checkout; see t
 
 ## Purpose
 
-CP3 establishes the first usable mobile-first Soko.market product surface.
+CP3 establishes the first usable mobile-first Grogoni product surface.
 
 The checkpoint turns the CP2 account and business creation flow into an application shell that a merchant can navigate after signing in:
 

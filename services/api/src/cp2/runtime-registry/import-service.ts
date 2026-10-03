@@ -8,11 +8,11 @@ import type {
   RuntimeRegistryProviderId,
   RuntimeRegistryResourceDetails,
   RuntimeRegistryResourceRef
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import {
   portableAgentManifestFromOssAgent,
   validatePortableAgentManifest
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { Cp2Error } from "../cp2-error.js";
 import type { RuntimeRegistryAdapter } from "./types.js";
 import {
@@ -125,7 +125,7 @@ type TransitionFn = (
 ) => Promise<RuntimeRegistryImport>;
 
 // ---------------------------------------------------------------------------
-// Agent: discover -> inspect -> validate (soko.agent.json if present, else synthesize) -> REGISTERED
+// Agent: discover -> inspect -> validate (grogoni.agent.json if present, else synthesize) -> REGISTERED
 // ---------------------------------------------------------------------------
 
 async function importAgent(
@@ -152,14 +152,14 @@ async function importAgent(
     );
   }
 
-  const declaredManifest = readEmbeddedManifest(details, "sokoAgentManifest");
+  const declaredManifest = readEmbeddedManifest(details, "grogoniAgentManifest");
   const manifestValidation =
     declaredManifest === undefined ? null : validatePortableAgentManifest(declaredManifest);
   if (manifestValidation !== null && !manifestValidation.valid) {
     return transition(
       record,
       "VALIDATION_FAILED",
-      `soko.agent.json failed validation: ${manifestValidation.issues
+      `grogoni.agent.json failed validation: ${manifestValidation.issues
         .map((issue) => `${issue.path} ${issue.message}`)
         .join("; ")}`
     );
@@ -262,8 +262,8 @@ function readChecksum(details: RuntimeRegistryResourceDetails): string | undefin
   return undefined;
 }
 
-/** GitHub agent inspect() surfaces a repository-authored soko.agent.json (when present) under
- *  providerMetadata.sokoAgentManifest - see github-adapter.ts. Absent for every other provider. */
+/** GitHub agent inspect() surfaces a repository-authored grogoni.agent.json (when present) under
+ *  providerMetadata.grogoniAgentManifest - see github-adapter.ts. Absent for every other provider. */
 function readEmbeddedManifest(
   details: RuntimeRegistryResourceDetails,
   key: string

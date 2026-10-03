@@ -63,7 +63,7 @@ describe("CP26 Android release identity", () => {
       launcherName: manifest.short_name
     });
     expect(identity.android).toMatchObject({
-      applicationId: "market.soko.app",
+      applicationId: "market.grogoni.app",
       applicationIdStatus: "proposed",
       wrapper: "trusted-web-activity",
       firstTrack: "internal",
@@ -74,15 +74,15 @@ describe("CP26 Android release identity", () => {
       compileSdk: 35
     });
     expect(identity.web).toEqual({
-      origin: "https://soko.market",
-      startUrl: "https://soko.market/",
-      scope: "https://soko.market/",
-      manifestUrl: "https://soko.market/manifest.webmanifest",
-      digitalAssetLinksUrl: "https://soko.market/.well-known/assetlinks.json",
-      apiOrigin: "https://soko.market"
+      origin: "https://grogoni.com",
+      startUrl: "https://grogoni.com/",
+      scope: "https://grogoni.com/",
+      manifestUrl: "https://grogoni.com/manifest.webmanifest",
+      digitalAssetLinksUrl: "https://grogoni.com/.well-known/assetlinks.json",
+      apiOrigin: "https://grogoni.com"
     });
-    expect(renderBlueprint).toContain("domains:\n      - soko.market");
-    expect(renderBlueprint).toContain("value: https://soko.market");
+    expect(renderBlueprint).toContain("domains:\n      - grogoni");
+    expect(renderBlueprint).toContain("value: https://grogoni.com");
     expect(identity.signing).toMatchObject({
       playAppSigning: true,
       privateKeysCommitted: false

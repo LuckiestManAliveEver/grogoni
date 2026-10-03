@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
-import type { RuntimeRegistryImport } from "@soko/shared-types";
+import type { RuntimeRegistryImport } from "@grogoni/shared-types";
 
 /**
  * Persists RuntimeRegistryImport rows. Two implementations, same interface: an in-memory one (used

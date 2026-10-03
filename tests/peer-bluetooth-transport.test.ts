@@ -2,9 +2,9 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   WebBluetoothPeerTransport,
-  SOKO_NEARBY_SERVICE_UUID,
-  SOKO_NEARBY_TX_CHARACTERISTIC_UUID,
-  SOKO_NEARBY_RX_CHARACTERISTIC_UUID,
+  GROGONI_NEARBY_SERVICE_UUID,
+  GROGONI_NEARBY_TX_CHARACTERISTIC_UUID,
+  GROGONI_NEARBY_RX_CHARACTERISTIC_UUID,
   webBluetoothSupported
 } from "../apps/web/src/peer-bluetooth-transport";
 
@@ -32,8 +32,8 @@ class FakeCharacteristic extends EventTarget {
 
 class FakeService {
   characteristics = new Map<string, FakeCharacteristic>([
-    [SOKO_NEARBY_TX_CHARACTERISTIC_UUID, new FakeCharacteristic()],
-    [SOKO_NEARBY_RX_CHARACTERISTIC_UUID, new FakeCharacteristic()]
+    [GROGONI_NEARBY_TX_CHARACTERISTIC_UUID, new FakeCharacteristic()],
+    [GROGONI_NEARBY_RX_CHARACTERISTIC_UUID, new FakeCharacteristic()]
   ]);
   async getCharacteristic(uuid: string): Promise<FakeCharacteristic> {
     const characteristic = this.characteristics.get(uuid);
@@ -53,7 +53,7 @@ class FakeServer {
     this.connected = false;
   }
   async getPrimaryService(uuid: string): Promise<FakeService> {
-    if (uuid !== SOKO_NEARBY_SERVICE_UUID) throw new Error("Unknown service.");
+    if (uuid !== GROGONI_NEARBY_SERVICE_UUID) throw new Error("Unknown service.");
     return this.service;
   }
 }
@@ -78,13 +78,13 @@ describe("WebBluetoothPeerTransport", () => {
     expect(webBluetoothSupported()).toBe(false);
   });
 
-  it("discovers through the browser's own device picker, scoped to the Soko service", async () => {
+  it("discovers through the browser's own device picker, scoped to the Grogoni service", async () => {
     const device = new FakeDevice("device-1");
     const bluetooth = fakeBluetooth(device);
     const transport = new WebBluetoothPeerTransport(bluetooth);
     await expect(transport.discover()).resolves.toEqual(["device-1"]);
     expect(bluetooth.requestDevice).toHaveBeenCalledWith({
-      filters: [{ services: [SOKO_NEARBY_SERVICE_UUID] }]
+      filters: [{ services: [GROGONI_NEARBY_SERVICE_UUID] }]
     });
   });
 
@@ -107,13 +107,13 @@ describe("WebBluetoothPeerTransport", () => {
     const received: Uint8Array[] = [];
     const unsubscribe = transport.subscribe((frame) => received.push(frame));
     device.gatt.service.characteristics
-      .get(SOKO_NEARBY_RX_CHARACTERISTIC_UUID)!
+      .get(GROGONI_NEARBY_RX_CHARACTERISTIC_UUID)!
       .emit(new Uint8Array([1, 2, 3]));
     expect(received).toHaveLength(1);
     expect([...received[0]!]).toEqual([1, 2, 3]);
 
     await transport.broadcast(new Uint8Array([9, 8, 7]));
-    const tx = device.gatt.service.characteristics.get(SOKO_NEARBY_TX_CHARACTERISTIC_UUID)!;
+    const tx = device.gatt.service.characteristics.get(GROGONI_NEARBY_TX_CHARACTERISTIC_UUID)!;
     expect(tx.writes).toHaveLength(1);
     expect([...tx.writes[0]!]).toEqual([9, 8, 7]);
 
@@ -132,7 +132,7 @@ describe("WebBluetoothPeerTransport", () => {
 
     await transport.connect("device-1");
     device.gatt.service.characteristics
-      .get(SOKO_NEARBY_RX_CHARACTERISTIC_UUID)!
+      .get(GROGONI_NEARBY_RX_CHARACTERISTIC_UUID)!
       .emit(new Uint8Array([1]));
     expect(received).toHaveLength(1);
 
@@ -143,7 +143,7 @@ describe("WebBluetoothPeerTransport", () => {
     await transport.connect("device-1");
     expect(await transport.available()).toBe(true);
     device.gatt.service.characteristics
-      .get(SOKO_NEARBY_RX_CHARACTERISTIC_UUID)!
+      .get(GROGONI_NEARBY_RX_CHARACTERISTIC_UUID)!
       .emit(new Uint8Array([2]));
     expect(received).toHaveLength(2);
     expect([...received[1]!]).toEqual([2]);
@@ -156,7 +156,7 @@ describe("WebBluetoothPeerTransport", () => {
     const backing = new Uint8Array([1, 2, 3, 4, 5, 6]);
     const view = backing.subarray(2, 4);
     await transport.broadcast(view);
-    const tx = device.gatt.service.characteristics.get(SOKO_NEARBY_TX_CHARACTERISTIC_UUID)!;
+    const tx = device.gatt.service.characteristics.get(GROGONI_NEARBY_TX_CHARACTERISTIC_UUID)!;
     expect([...tx.writes[0]!]).toEqual([3, 4]);
   });
 
@@ -164,7 +164,7 @@ describe("WebBluetoothPeerTransport", () => {
     const device = new FakeDevice("device-1");
     const transport = new WebBluetoothPeerTransport(fakeBluetooth(device));
     await transport.connect("device-1");
-    const tx = device.gatt.service.characteristics.get(SOKO_NEARBY_TX_CHARACTERISTIC_UUID)!;
+    const tx = device.gatt.service.characteristics.get(GROGONI_NEARBY_TX_CHARACTERISTIC_UUID)!;
     let release!: () => void;
     tx.writeGate = new Promise<void>((resolve) => {
       release = resolve;

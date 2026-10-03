@@ -10,13 +10,13 @@ import {
   type ContactRecordInput,
   type StockAdjustmentInput,
   type InvoiceInput
-} from "@soko/business-core";
+} from "@grogoni/business-core";
 import {
   productCaptureImageContentTypes,
   type ProductCaptureImageContentType,
   type ProductSummary,
   type CustomerSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import type { LocalDatabase } from "../db/client.js";
 import { recordOperation } from "../sync/writer.js";
 import {
@@ -31,7 +31,7 @@ import {
 } from "../types.js";
 import { receiptOcrJobEntity } from "./receipt-ocr-entity.js";
 import { productCaptureJobEntity } from "./product-capture-entity.js";
-import type { SokoProvider } from "./types.js";
+import type { GrogoniProvider } from "./types.js";
 
 export const localReads: Record<string, Collection> = {
   "catalogue.list": "products",
@@ -56,7 +56,7 @@ export type ReceiptOcrEngine = (input: {
   contentType: string;
   contentBase64: string;
 }) => Promise<ReceiptOcrExtraction>;
-export class LocalProvider implements SokoProvider {
+export class LocalProvider implements GrogoniProvider {
   readonly name = "local";
   constructor(
     private db: LocalDatabase,

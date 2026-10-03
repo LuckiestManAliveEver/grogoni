@@ -55,7 +55,7 @@ describe("compulsory owner phone identity", () => {
 
     const publicShop = await app.inject({
       method: "GET",
-      url: `/public/storefronts/${firstShop.business.sokoId}`
+      url: `/public/storefronts/${firstShop.business.grogoniId}`
     });
     expect(publicShop.statusCode).toBe(200);
     expect(JSON.stringify(publicShop.json())).not.toContain("+254712345678");
@@ -210,7 +210,7 @@ async function createShop(
   app: ReturnType<typeof buildApi>,
   cookie: string,
   name: string
-): Promise<{ business: { id: string; sokoId: string } }> {
+): Promise<{ business: { id: string; grogoniId: string } }> {
   const response = await app.inject({
     method: "POST",
     url: "/businesses",

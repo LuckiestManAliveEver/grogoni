@@ -5,10 +5,10 @@ import { createCp2Store } from "../services/api/src/cp2/store";
 
 const deviceHeaders = {
   "idempotency-key": "progressive-identity-request-key-000000000001",
-  "x-soko-device-id": "test-device-progressive-identity",
-  "x-soko-device-name": "Test device",
-  "x-soko-platform": "test",
-  "x-soko-client": "web"
+  "x-grogoni-device-id": "test-device-progressive-identity",
+  "x-grogoni-device-name": "Test device",
+  "x-grogoni-platform": "test",
+  "x-grogoni-client": "web"
 };
 const deviceKeyPair = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
 const devicePublicKeyJwk = deviceKeyPair.publicKey.export({ format: "jwk" });
@@ -84,14 +84,14 @@ describe("one-tap signup and progressive identity", () => {
   it("recovers the same device account after its session cookies are erased", async () => {
     const store = createCp2Store();
     const app = buildApi({ cp2: { store } });
-    const continued = await continueToSoko(app, "progressive-device-recovery-0000000001");
+    const continued = await continueToGrogoni(app, "progressive-device-recovery-0000000001");
     const initial = continued.response.json<ContinueResponse>();
     const credentialId = initial.deviceRecoveryCredentialId;
     expect(credentialId).toMatch(/^[0-9a-f-]{36}$/u);
 
     const issuedAt = Date.now();
     const nonce = "device-recovery-nonce-0000000000000001";
-    const payload = `soko-device-recovery:v1:${credentialId}:${issuedAt}:${nonce}`;
+    const payload = `grogoni-device-recovery:v1:${credentialId}:${issuedAt}:${nonce}`;
     const signature = sign("sha256", Buffer.from(payload), {
       key: deviceKeyPair.privateKey,
       dsaEncoding: "ieee-p1363"
@@ -112,7 +112,7 @@ describe("one-tap signup and progressive identity", () => {
   it("revokes device recovery credentials during logout-all", async () => {
     const store = createCp2Store();
     const app = buildApi({ cp2: { store } });
-    const continued = await continueToSoko(app, "progressive-device-revoke-000000000001");
+    const continued = await continueToGrogoni(app, "progressive-device-revoke-000000000001");
     const credentialId = continued.response.json<ContinueResponse>().deviceRecoveryCredentialId;
     const logout = await app.inject({
       method: "POST",
@@ -123,7 +123,7 @@ describe("one-tap signup and progressive identity", () => {
 
     const issuedAt = Date.now();
     const nonce = "device-recovery-revoked-00000000000001";
-    const payload = `soko-device-recovery:v1:${credentialId}:${issuedAt}:${nonce}`;
+    const payload = `grogoni-device-recovery:v1:${credentialId}:${issuedAt}:${nonce}`;
     const signature = sign("sha256", Buffer.from(payload), {
       key: deviceKeyPair.privateKey,
       dsaEncoding: "ieee-p1363"
@@ -142,7 +142,7 @@ describe("one-tap signup and progressive identity", () => {
   it("upgrades phone and PIN on the same account and preserves existing PIN login", async () => {
     const store = createCp2Store();
     const app = buildApi({ cp2: { store } });
-    const continued = await continueToSoko(app, "progressive-phone-pin-key-000000000001");
+    const continued = await continueToGrogoni(app, "progressive-phone-pin-key-000000000001");
     const initial = continued.response.json<ContinueResponse>();
 
     const phone = await app.inject({
@@ -191,7 +191,7 @@ describe("one-tap signup and progressive identity", () => {
   it("links and verifies email on the existing device account", async () => {
     const store = createCp2Store();
     const app = buildApi({ cp2: { store } });
-    const continued = await continueToSoko(app, "progressive-email-key-0000000000000001");
+    const continued = await continueToGrogoni(app, "progressive-email-key-0000000000000001");
     const accountId = continued.response.json<ContinueResponse>().account.id;
 
     const start = await app.inject({
@@ -235,7 +235,7 @@ describe("one-tap signup and progressive identity", () => {
     });
     expect(existing.statusCode).toBe(200);
     const existingAccountId = existing.json<ContinueResponse>().account.id;
-    const device = await continueToSoko(app, "progressive-collision-key-000000000001");
+    const device = await continueToGrogoni(app, "progressive-collision-key-000000000001");
     const deviceAccountId = device.response.json<ContinueResponse>().account.id;
 
     const collision = await app.inject({
@@ -278,7 +278,7 @@ describe("one-tap signup and progressive identity", () => {
     });
     expect(existing.statusCode).toBe(200);
     const existingAccountId = existing.json<ContinueResponse>().account.id;
-    const device = await continueToSoko(app, "progressive-email-merge-key-0000000001");
+    const device = await continueToGrogoni(app, "progressive-email-merge-key-0000000001");
 
     const start = await app.inject({
       method: "POST",
@@ -329,7 +329,7 @@ interface ContinueResponse {
   deviceRecoveryCredentialId: string;
 }
 
-async function continueToSoko(app: ReturnType<typeof buildApi>, idempotencyKey: string) {
+async function continueToGrogoni(app: ReturnType<typeof buildApi>, idempotencyKey: string) {
   const response = await app.inject({
     method: "POST",
     url: "/auth/continue",
@@ -349,7 +349,7 @@ function jsonHeaders(cookie?: string) {
 
 function sessionCookie(header: string | string[] | undefined): string {
   const values = Array.isArray(header) ? header : header === undefined ? [] : [header];
-  const session = values.find((value) => value.startsWith("soko_session="));
-  if (session === undefined) throw new Error("Expected Soko session cookie.");
+  const session = values.find((value) => value.startsWith("grogoni_session="));
+  if (session === undefined) throw new Error("Expected Grogoni session cookie.");
   return session.split(";")[0] ?? session;
 }

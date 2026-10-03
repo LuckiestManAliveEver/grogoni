@@ -24,7 +24,7 @@
  * used for `deleteShopOwnedData`'s OAuth-token redaction (row 12) and for the mutable getters
  * `CommerceDomain`/`MessagingDomain` hold onto `SalesDomain`'s Maps (row 9).
  */
-import type { AuthChannel, AuthSessionView } from "@soko/shared-types";
+import type { AuthChannel, AuthSessionView } from "@grogoni/shared-types";
 
 export const maxOtpAttempts = 5;
 export const maxPendingOtpChallenges = 10_000;

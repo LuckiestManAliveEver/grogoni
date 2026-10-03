@@ -3,9 +3,9 @@ import type {
   ConversationMessageContent,
   E2eeDeviceSummary,
   E2eePublicKey
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
-const databaseName = "soko-messaging-keys-v1";
+const databaseName = "grogoni-messaging-keys-v1";
 const storeName = "identities";
 const algorithm = "ECDH-P256-HKDF-SHA256-AES-256-GCM" as const;
 
@@ -181,11 +181,11 @@ async function deriveMessageKey(
 }
 
 function encryptionContext(conversationId: string, deviceId: string): Uint8Array<ArrayBuffer> {
-  return new TextEncoder().encode(`soko-e2ee-v1:${conversationId}:${deviceId}`);
+  return new TextEncoder().encode(`grogoni-e2ee-v1:${conversationId}:${deviceId}`);
 }
 
 function contentContext(conversationId: string): Uint8Array<ArrayBuffer> {
-  return new TextEncoder().encode(`soko-e2ee-v1:${conversationId}:content`);
+  return new TextEncoder().encode(`grogoni-e2ee-v1:${conversationId}:content`);
 }
 
 function publicKeyFromJwk(jwk: JsonWebKey): E2eePublicKey {

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import type { DeviceSessionSummary } from "@soko/shared-types";
+import type { DeviceSessionSummary } from "@grogoni/shared-types";
 
 import { deleteJson, getJson } from "./api-helpers";
 import { getErrorMessage } from "./chat-message-plumbing";

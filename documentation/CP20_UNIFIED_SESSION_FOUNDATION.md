@@ -1,6 +1,6 @@
 # CP20 Unified Account, Conversation, and Session Foundation
 
-CP20 implements Phase 1 of the refined cross-platform Soko architecture. It establishes the
+CP20 implements Phase 1 of the refined cross-platform Grogoni architecture. It establishes the
 server-authoritative identity and conversation contracts that Android, iOS, web, realtime, sync,
 and MCP clients will share.
 
@@ -39,11 +39,11 @@ enter seller mode and returns the effective permission set.
 
 ## Shared Contracts
 
-CP20 adds language-neutral domain shapes to `@soko/shared-types` for:
+CP20 adds language-neutral domain shapes to `@grogoni/shared-types` for:
 
-- `SokoMode`
-- `SokoChatSurface`
-- `SokoSessionContext`
+- `GrogoniMode`
+- `GrogoniChatSurface`
+- `GrogoniSessionContext`
 - account shop and membership summaries
 - conversations and participants
 - idempotent conversation messages
@@ -86,7 +86,7 @@ Migration `017_cp20_unified_session_conversations.sql` adds:
 - conversations
 - conversation participants
 - conversation messages
-- Soko session contexts
+- Grogoni session contexts
 - unique per-conversation client-message identifiers
 - compatibility persistence collections used by the current CP2 store adapter
 

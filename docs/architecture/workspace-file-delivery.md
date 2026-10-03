@@ -1,6 +1,6 @@
 # Workspace file delivery
 
-Soko agents deliver generated or located workspace files with the canonical runtime capability:
+Grogoni agents deliver generated or located workspace files with the canonical runtime capability:
 
 ```text
 #workspace.deliver {"path":"exports/orders.csv"}
@@ -31,10 +31,10 @@ store only managed attachment IDs and safe metadata in message content.
 
 ## Workspace ownership and security
 
-Set `SOKO_WORKSPACE_ROOT` to the server runtime's workspace base. The active workspace is always:
+Set `GROGONI_WORKSPACE_ROOT` to the server runtime's workspace base. The active workspace is always:
 
 ```text
-<SOKO_WORKSPACE_ROOT>/<trusted-business-id>
+<GROGONI_WORKSPACE_ROOT>/<trusted-business-id>
 ```
 
 The model cannot select either value. The resolver canonicalizes both the root and requested file,
@@ -69,7 +69,7 @@ deduplicated, and failed delivery phases without recording source paths.
 - PNG, JPEG, WebP, and GIF render inline with a download action.
 - PDF and safe text/code files provide Preview and Download actions.
 - DOCX, XLSX, PPTX, archives, and unknown binaries render as download-only cards.
-- HTML, SVG, and unknown active/binary content are never injected into the Soko page.
+- HTML, SVG, and unknown active/binary content are never injected into the Grogoni page.
 
 Filename metadata is normalized and stripped of path separators and control characters before it
 is persisted or used in `Content-Disposition`.
@@ -80,10 +80,10 @@ When a file should be given to the user, agents call `workspace.deliver` and the
 to the delivered attachment. They must not expose the local path. Server and client-first model
 inference share the same tool proposal and backend execution contract.
 
-Backend runtimes resolve the file under `<SOKO_WORKSPACE_ROOT>/<businessId>`. Browser-local
-runtimes resolve app-owned files under OPFS `soko-workspaces/<businessId>/`. Application services
+Backend runtimes resolve the file under `<GROGONI_WORKSPACE_ROOT>/<businessId>`. Browser-local
+runtimes resolve app-owned files under OPFS `grogoni-workspaces/<businessId>/`. Application services
 can write that workspace with `writeBrowserWorkspaceFile`. The installed-app bridge can implement
-`SokoAgentModelRuntime.readWorkspaceFile({ businessId, path })` to supply its workspace bytes.
+`GrogoniAgentModelRuntime.readWorkspaceFile({ businessId, path })` to supply its workspace bytes.
 
 Local bytes travel only with the authenticated client inference completion. The API independently
 parses the model output, requires an exact path match, checks SHA-256 and size, determines MIME

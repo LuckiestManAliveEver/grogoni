@@ -3,7 +3,7 @@ import type {
   AuthSessionView,
   ExternalRegistryConnection,
   ExternalRegistryProvider
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { decryptOAuthToken, encryptOAuthToken } from "../../oauth.js";
 import { Cp2Error } from "../../cp2-error.js";
 import {
@@ -306,7 +306,7 @@ export class ExternalConnectionsDomain {
         headers: {
           authorization: `Bearer ${token}`,
           accept: "application/vnd.github+json",
-          "user-agent": "soko-market"
+          "user-agent": "grogoni"
         }
       });
     } catch {
@@ -356,7 +356,7 @@ export class ExternalConnectionsDomain {
       response = await doFetch("https://huggingface.co/api/whoami-v2", {
         headers: {
           authorization: `Bearer ${token}`,
-          "user-agent": "soko-market"
+          "user-agent": "grogoni"
         }
       });
     } catch {

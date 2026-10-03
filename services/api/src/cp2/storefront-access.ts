@@ -1,4 +1,4 @@
-import type { BusinessSummary } from "@soko/shared-types";
+import type { BusinessSummary } from "@grogoni/shared-types";
 import { Cp2Error } from "./cp2-error.js";
 import { normalizeStorefrontLookupId } from "./text-normalization.js";
 
@@ -9,7 +9,7 @@ export function requirePublicStorefrontBusiness(
 ): BusinessSummary {
   const storefrontId = normalizeStorefrontLookupId(agentId);
   const business = [...businesses.values()].find(
-    (candidate) => normalizeStorefrontLookupId(candidate.sokoId) === storefrontId
+    (candidate) => normalizeStorefrontLookupId(candidate.grogoniId) === storefrontId
   );
   if (business === undefined || quarantinedBusinessIds.has(business.id)) {
     throw new Cp2Error(404, "storefront_not_found", "Storefront was not found.");

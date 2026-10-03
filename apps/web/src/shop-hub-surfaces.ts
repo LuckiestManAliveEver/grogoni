@@ -1,4 +1,4 @@
-import type { ShopModuleId } from "@soko/tool-core";
+import type { ShopModuleId } from "@grogoni/tool-core";
 
 import type { ShellView } from "./app-shell";
 import type { ShopHubSurfaceLabel } from "./shop-hub-copy";

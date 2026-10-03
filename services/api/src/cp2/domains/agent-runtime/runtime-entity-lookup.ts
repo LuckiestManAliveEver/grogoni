@@ -3,7 +3,7 @@ import type {
   ProductSummary,
   RuntimeToolName,
   SupplierSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
 import { normalizeRuntimeLookup } from "./shared.js";
 import type { AgentRuntimeDomainDeps } from "./store.js";

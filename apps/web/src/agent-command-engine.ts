@@ -3,7 +3,7 @@ import {
   parseProductContextScriptCommand,
   productContextScriptMatchToParseResult,
   type ParseResult
-} from "@soko/tool-core";
+} from "@grogoni/tool-core";
 
 import { quickActions, type ShellView } from "./app-shell";
 
@@ -13,7 +13,7 @@ import {
   type CustomerSummary,
   type InvoiceSummary,
   type ProductSummary
-} from "./soko-application-shared";
+} from "./grogoni-application-shared";
 
 import { formatAgentDisplayName } from "./formatters";
 

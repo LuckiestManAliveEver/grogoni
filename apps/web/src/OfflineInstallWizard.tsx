@@ -5,7 +5,7 @@ import {
   pickRemovableDevice,
   type StorageTarget
 } from "./offline-runtime";
-import type { InstallStep } from "@soko/offline-runtime";
+import type { InstallStep } from "@grogoni/offline-runtime";
 
 const stepLabel: Record<InstallStep, string> = {
   storage: "Checking storage",

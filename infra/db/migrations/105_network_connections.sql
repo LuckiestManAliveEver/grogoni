@@ -1,5 +1,5 @@
 -- Network connections (docs/architecture/phonebook-identity-resolution.md): one record per pair of
--- Soko users who asked to connect after finding each other through the phonebook. Same generic Cp2
+-- Grogoni users who asked to connect after finding each other through the phonebook. Same generic Cp2
 -- collection shape as the other snapshot collections (023_storefront_interaction_contracts.sql):
 -- the record is the NetworkConnectionRecord JSON.
 create table if not exists cp2_network_connections (
@@ -27,4 +27,4 @@ create index if not exists cp2_network_connections_recipient_idx
   on cp2_network_connections ((record ->> 'recipientUserId'));
 
 comment on table cp2_network_connections is
-  'Soko user-to-user connection requests and accepted connections discovered through the phonebook.';
+  'Grogoni user-to-user connection requests and accepted connections discovered through the phonebook.';

@@ -11,7 +11,7 @@ declare global {
   const __GIT_COMMIT_SHA__: string;
 
   interface Window {
-    SokoAndroid?: AndroidSmsComposerBridge;
+    GrogoniAndroid?: AndroidSmsComposerBridge;
   }
 }
 

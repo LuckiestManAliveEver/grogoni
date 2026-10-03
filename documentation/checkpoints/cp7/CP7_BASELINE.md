@@ -8,11 +8,11 @@ Actual tag: not created. No `.repo.git` directory exists in this checkout; see t
 
 ## Purpose
 
-CP7 introduces the offline-first data foundation for Soko.market.
+CP7 introduces the offline-first data foundation for Grogoni.
 
 The goal is to let the app keep useful business data available when connectivity is unreliable, queue supported local mutations durably, replay them through server-side business rules, and surface deterministic conflict states when the server rejects or supersedes local work.
 
-CP7 is an offline local data and sync queue checkpoint. It is not a payments, debt tracking, M-Pesa, document import, marketplace, full Sokoclaw runtime, local model adapter, or compliance checkpoint.
+CP7 is an offline local data and sync queue checkpoint. It is not a payments, debt tracking, M-Pesa, document import, marketplace, full Grogoniclaw runtime, local model adapter, or compliance checkpoint.
 
 ## Formal Entry From CP6
 
@@ -48,7 +48,7 @@ Out of scope:
 - payment recording, debt status, M-Pesa, card, or cash reconciliation
 - document import and OCR/parsing workflows
 - marketplace behavior
-- full Sokoclaw runtime adapter
+- full Grogoniclaw runtime adapter
 - llama.cpp or local model adapter
 - production-grade distributed conflict resolution beyond deterministic conflict surfacing
 - background push notification infrastructure

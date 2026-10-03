@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import mammoth from "mammoth";
 import { PDFParse } from "pdf-parse";
 import * as XLSX from "xlsx";
-import type { DocumentImportSourceInput } from "@soko/business-core";
+import type { DocumentImportSourceInput } from "@grogoni/business-core";
 import { Cp2Error } from "./store.js";
 
 const maxDocumentBytes = 10 * 1024 * 1024;

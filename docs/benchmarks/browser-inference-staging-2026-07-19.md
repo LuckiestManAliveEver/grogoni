@@ -75,7 +75,7 @@ portable Android working-set measurement.
 
 ## Required completion run
 
-1. Sync `soko-market-web-staging` in Render and supply an isolated staging API URL.
+1. Sync `grogoni-web-staging` in Render and supply an isolated staging API URL.
 2. Run the benchmark command from `docs/render-frontend-deployment.md`.
 3. Run WebGPU and WASM as separate browser processes so a timed-out WebGPU queue cannot contaminate
    WASM wall time.

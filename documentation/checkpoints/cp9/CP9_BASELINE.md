@@ -12,7 +12,7 @@ CP9 introduces document import so merchants can reduce manual data entry from ex
 
 The goal is to let an authorized owner upload or provide structured source files, preview extracted records, correct mappings, and confirm writes into existing product, customer, supplier, invoice, payment, and debt workflows without trusting extracted data as business truth before confirmation.
 
-CP9 is a document import checkpoint. It is not a live OCR platform, automated accounting engine, M-Pesa reconciliation checkpoint, marketplace ingestion system, TIEL checkpoint, local model checkpoint, or full Sokoclaw runtime checkpoint.
+CP9 is a document import checkpoint. It is not a live OCR platform, automated accounting engine, M-Pesa reconciliation checkpoint, marketplace ingestion system, TIEL checkpoint, local model checkpoint, or full Grogoniclaw runtime checkpoint.
 
 ## Formal Entry From CP8
 
@@ -61,7 +61,7 @@ Out of scope:
 - production accounting export/general ledger behavior
 - marketplace catalog ingestion
 - TIEL
-- local LLM, cloud model, Pi/OpenClaw, or full Sokoclaw runtime integration
+- local LLM, cloud model, Pi/OpenClaw, or full Grogoniclaw runtime integration
 - broad compliance retention policies beyond the checkpoint's source metadata and audit events
 
 ## Target Flow
@@ -133,6 +133,6 @@ Rollback trigger examples:
 
 Next checkpoint:
 
-- CP10: Sokoclaw Runtime Full Adapter
+- CP10: Grogoniclaw Runtime Full Adapter
 
 CP10 should build on stable deterministic import and business tool contracts without allowing model output to mutate records directly.

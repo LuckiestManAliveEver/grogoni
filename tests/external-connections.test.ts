@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import type { ExternalRegistryConnection } from "@soko/shared-types";
+import type { ExternalRegistryConnection } from "@grogoni/shared-types";
 import { buildApi } from "../services/api/src/app";
 import { createCp2Store } from "../services/api/src/cp2/store";
 

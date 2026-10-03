@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { StatusBroadcastSummary } from "@soko/shared-types";
+import type { StatusBroadcastSummary } from "@grogoni/shared-types";
 import { apiFetch } from "./lib/api";
 import { getUserFacingErrorMessage } from "./user-facing-error";
 

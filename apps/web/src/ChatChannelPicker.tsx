@@ -1,4 +1,4 @@
-import type { ChannelEndpointSummary, ChannelProvider } from "@soko/shared-types";
+import type { ChannelEndpointSummary, ChannelProvider } from "@grogoni/shared-types";
 
 import { formatChannelProvider } from "./formatters";
 import { StackedModule } from "./StackedModule";

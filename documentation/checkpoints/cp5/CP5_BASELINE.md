@@ -54,7 +54,7 @@ Out of scope:
 - full staff invitation and role management UI
 - marketplace behavior
 - TIEL
-- local LLM, cloud model, Pi/OpenClaw, or full Sokoclaw runtime integration
+- local LLM, cloud model, Pi/OpenClaw, or full Grogoniclaw runtime integration
 
 ## Target Flow
 

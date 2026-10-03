@@ -1,15 +1,15 @@
 /**
  * The Shop Hub projection (GET /businesses/:businessId/capabilities). Everything a merchant sees
- * comes from the canonical registries in @soko/tool-core - tools join a module through their own
+ * comes from the canonical registries in @grogoni/tool-core - tools join a module through their own
  * `hub` metadata - so a newly registered tool appears here with no change in this file or the web
  * app. This module only filters by role and attaches each module's setup state.
  */
-import { roleCan, type BusinessPermission } from "@soko/business-core";
+import { roleCan, type BusinessPermission } from "@grogoni/business-core";
 import type {
   BusinessRole,
   ShopCapabilitiesSummary,
   ShopCapabilityCategory
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import {
   runtimeToolRegistry,
   shopCategories,
@@ -21,7 +21,7 @@ import {
   type ShopModuleId,
   type ShopSetupCheckId,
   type ShopSetupState
-} from "@soko/tool-core";
+} from "@grogoni/tool-core";
 
 export interface ShopHubRegistries {
   tools: Readonly<Record<string, RuntimeToolDefinition>>;

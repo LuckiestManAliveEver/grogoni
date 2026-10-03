@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { RuntimeModelCompletionResult } from "@soko/shared-types";
+import type { RuntimeModelCompletionResult } from "@grogoni/shared-types";
 
 import {
   asModelRuntimeError,
@@ -24,16 +24,16 @@ import type { AgentRuntimeAdapter } from "./agent-runtime-adapter.js";
  *             { "message": "...", "stream": false }
  *   response  200 { "response": "...", "model": "<model ZeroClaw used>" }
  *
- * ZeroClaw holds Soko's platform provider key and calls the model itself, so Soko pays. Everything
- * Soko owns still applies, through InferenceRouter.delegate: the bound model must be an enabled,
+ * ZeroClaw holds Grogoni's platform provider key and calls the model itself, so Grogoni pays. Everything
+ * Grogoni owns still applies, through InferenceRouter.delegate: the bound model must be an enabled,
  * provider-routed catalog model; shop budgets, platform budgets and rate limits are admitted before
  * the call; and the run is recorded as platform-funded usage afterwards.
  *
  * Boundaries:
- * - Output is plain model text. Soko parses it exactly like any other model's output, so a Soko
- *   tool call is only ever a proposal that goes through Soko's validation, permission, confirmation
- *   and approval path. ZeroClaw is given no Soko credentials and cannot act on Soko data.
- * - Each turn uses a fresh ZeroClaw session: Soko already sends the conversation, and no shop's
+ * - Output is plain model text. Grogoni parses it exactly like any other model's output, so a Grogoni
+ *   tool call is only ever a proposal that goes through Grogoni's validation, permission, confirmation
+ *   and approval path. ZeroClaw is given no Grogoni credentials and cannot act on Grogoni data.
+ * - Each turn uses a fresh ZeroClaw session: Grogoni already sends the conversation, and no shop's
  *   conversation is kept in ZeroClaw's memory for another turn (or another shop) to read.
  * - ZeroClaw must answer with the bound model. Any other model is rejected, never accepted
  *   silently (docs/adr/ADR-zeroclaw-default-agent-runtime.md).
@@ -224,8 +224,8 @@ async function callZeroClaw(input: {
         accept: "application/json",
         ...(gateway.token === "" ? {} : { authorization: `Bearer ${gateway.token}` }),
         ...(gateway.webhookSecret === "" ? {} : { "x-webhook-secret": gateway.webhookSecret }),
-        // A fresh session per turn: Soko supplies the conversation itself.
-        "x-session-id": `soko-${input.requestId}`,
+        // A fresh session per turn: Grogoni supplies the conversation itself.
+        "x-session-id": `grogoni-${input.requestId}`,
         "x-idempotency-key": input.requestId
       },
       body: requestBody
@@ -342,11 +342,11 @@ export function readZeroClawGatewayConfig(env: NodeJS.ProcessEnv): ZeroClawGatew
 }
 
 /** Engine used where an agent names ZeroClaw but this deployment has no ZeroClaw gateway. */
-export const zeroClawUnconnectedFallbackAdapterId = "soko";
+export const zeroClawUnconnectedFallbackAdapterId = "grogoni";
 
 /**
  * ZeroClaw is the first-choice engine. A deployment without a ZeroClaw gateway resolves it to
- * Soko's built-in engine once, at configuration time - never per turn - and the effective runtime
+ * Grogoni's built-in engine once, at configuration time - never per turn - and the effective runtime
  * reports the engine actually used, so the choice is always visible.
  */
 export function connectedAgentRuntimeAdapterId(

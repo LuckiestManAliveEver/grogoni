@@ -24,7 +24,7 @@ describe("passkey authentication", () => {
       ceremonyId: expect.any(String),
       options: {
         challenge: expect.any(String),
-        rp: { name: "Soko.market" },
+        rp: { name: "Grogoni" },
         authenticatorSelection: {
           residentKey: "required",
           userVerification: "required"
@@ -180,7 +180,7 @@ describe("passkey authentication", () => {
     });
     expect(recovered.statusCode).toBe(200);
     expect(recovered.cookies.map((cookie) => cookie.name)).toEqual(
-      expect.arrayContaining(["soko_session", "soko_refresh"])
+      expect.arrayContaining(["grogoni_session", "grogoni_refresh"])
     );
 
     const reusedGrant = await app.inject({
@@ -251,7 +251,7 @@ describe("passkey authentication", () => {
 
     const authentication = await authenticatePasskey(app, "pin_recovery");
     expect(authentication.cookieNames).toEqual(
-      expect.arrayContaining(["soko_session", "soko_refresh"])
+      expect.arrayContaining(["grogoni_session", "grogoni_refresh"])
     );
     const status = await app.inject({
       method: "GET",
@@ -282,7 +282,7 @@ describe("passkey authentication", () => {
     });
     expect(setup.statusCode).toBe(200);
     expect(setup.cookies.map((cookie) => cookie.name)).toEqual(
-      expect.arrayContaining(["soko_session", "soko_refresh"])
+      expect.arrayContaining(["grogoni_session", "grogoni_refresh"])
     );
     const consumedGrant = await app.inject({
       method: "POST",

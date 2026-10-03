@@ -3,7 +3,7 @@ import type {
   ChannelCapability,
   ChannelEndpointSummary,
   ChannelProvider
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { describe, expect, it, vi } from "vitest";
 import { buildApi } from "../services/api/src/app";
 import { createCp2Store } from "../services/api/src/cp2/store";
@@ -25,7 +25,7 @@ describe("omnichannel messaging gateway", () => {
       {
         TELEGRAM_BOT_TOKEN: "test-token",
         TELEGRAM_WEBHOOK_SECRET: "test-webhook-secret",
-        TELEGRAM_BOT_USERNAME: "soko_test_bot"
+        TELEGRAM_BOT_USERNAME: "grogoni_test_bot"
       },
       fetcher
     );
@@ -44,7 +44,7 @@ describe("omnichannel messaging gateway", () => {
       { provider: "telegram", automaticRepliesEnabled: false },
       owner.cookie
     );
-    expect(grant.linkUrl).toContain("https://t.me/soko_test_bot?start=");
+    expect(grant.linkUrl).toContain("https://t.me/grogoni_test_bot?start=");
 
     const webhookPayload = {
       update_id: 5501,
@@ -194,15 +194,15 @@ describe("omnichannel messaging gateway", () => {
       externalUserId: "shared-external-id",
       externalConversationId: "telegram-thread"
     });
-    const soko = store.createProviderConversation({
+    const grogoni = store.createProviderConversation({
       sessionId,
       businessId: owner.business.id,
       customerId: first.id,
-      provider: "soko",
+      provider: "grogoni",
       externalUserId: "browser-id",
       externalConversationId: "browser-thread"
     });
-    expect(soko.channel.conversationId).toBe(telegram.channel.conversationId);
+    expect(grogoni.channel.conversationId).toBe(telegram.channel.conversationId);
     const whatsapp = store.createProviderConversation({
       sessionId,
       businessId: owner.business.id,
@@ -248,21 +248,21 @@ describe("omnichannel messaging gateway", () => {
     const recent = endpoint("instagram", ["CAN_REPLY", "REQUIRES_EXISTING_THREAD"], {
       lastInboundAt: "2026-08-13T13:00:00.000Z"
     });
-    const soko = endpoint("soko", ["CAN_REPLY", "CAN_INITIATE"]);
+    const grogoni = endpoint("grogoni", ["CAN_REPLY", "CAN_INITIATE"]);
 
     expect(
-      gateway.select({ endpoints: [recent, soko, current], currentProvider: "telegram" })
+      gateway.select({ endpoints: [recent, grogoni, current], currentProvider: "telegram" })
     ).toMatchObject({ endpoint: { provider: "telegram" }, reason: "current_conversation_channel" });
-    expect(gateway.select({ endpoints: [current, recent, soko] })).toMatchObject({
+    expect(gateway.select({ endpoints: [current, recent, grogoni] })).toMatchObject({
       endpoint: { provider: "instagram" },
       reason: "most_recent_reachable_channel"
     });
     expect(
       gateway.select({
-        endpoints: [current, recent, soko],
-        preferredProvider: "soko"
+        endpoints: [current, recent, grogoni],
+        preferredProvider: "grogoni"
       })
-    ).toMatchObject({ endpoint: { provider: "soko" }, reason: "preferred_channel" });
+    ).toMatchObject({ endpoint: { provider: "grogoni" }, reason: "preferred_channel" });
 
     expectGatewayCode(
       () =>

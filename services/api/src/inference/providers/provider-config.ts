@@ -37,7 +37,7 @@ export interface InferenceProviderConfig {
   /** Provider-level ceiling on model capabilities (e.g. a gateway that strips tool calling). */
   capabilities: Partial<ModelCapabilities>;
   /**
-   * Soko-managed credential reference. "env:NAME" reads a server environment variable;
+   * Grogoni-managed credential reference. "env:NAME" reads a server environment variable;
    * "secret://<credential-id>" reads a platform-scoped row from inference_provider_credentials.
    * Never a secret value.
    */

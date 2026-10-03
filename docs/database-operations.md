@@ -1,6 +1,6 @@
 # Database operations
 
-Soko.market uses Postgres with Drizzle-managed SQL migrations. Production runtime must not create or mutate schema at API startup; schema changes are applied through the migration command before the API starts.
+Grogoni uses Postgres with Drizzle-managed SQL migrations. Production runtime must not create or mutate schema at API startup; schema changes are applied through the migration command before the API starts.
 
 ## Required environment variables
 
@@ -18,6 +18,18 @@ DIRECT_DATABASE_URL=postgresql://...
 
 If `DIRECT_DATABASE_URL` is not set, migration, backup, and restore commands fall back to `DATABASE_URL`.
 
+## Brand rename
+
+For a database created before the Grogoni rename, stop API writers and run this maintenance task before deploying the renamed API or running its migrations:
+
+```bash
+node --env-file=.env --env-file=.env.local services/api/scripts/rename-brand.mjs
+```
+
+The task renames public tables, columns, constraints, indexes, defaults, and writable text and JSON records in one transaction. It verifies applied migration checksums against the recorded pre-rename hashes before updating the migration ledger. An error rolls back the transaction. Immutable execution events and handoff records retain their historical contents.
+
+Update hosted environment variables to the `GROGONI_` names in `.env.example` and deploy the matching API and web builds together. Existing browser storage and Android installs use different names after the rename.
+
 ## Run migrations
 
 ```bash
@@ -27,7 +39,7 @@ pnpm db:migrate
 The migration runner:
 
 - reads SQL files from `infra/db/migrations`;
-- records applied files in `soko_schema_migrations`;
+- records applied files in `grogoni_schema_migrations`;
 - verifies checksums on already-applied migrations;
 - uses an advisory lock so two deploys do not apply migrations concurrently.
 
@@ -58,7 +70,7 @@ DIRECT_DATABASE_URL=postgresql://... pnpm db:backup
 Backups are written to `backups/` and ignored by Git. Production backups must leave ephemeral runtime storage. Set:
 
 ```bash
-BACKUP_UPLOAD_COMMAND='aws s3 cp {file} s3://your-private-bucket/soko-market/'
+BACKUP_UPLOAD_COMMAND='aws s3 cp {file} s3://your-private-bucket/grogoni/'
 BACKUP_RETENTION_DAYS=14
 ```
 
@@ -66,12 +78,12 @@ BACKUP_RETENTION_DAYS=14
 
 For production, create a backup before every migration that changes tables, constraints, indexes, or data shape.
 
-Render also defines a daily `soko-market-db-backup` cron service. It intentionally fails in production unless `BACKUP_UPLOAD_COMMAND` is configured.
+Render also defines a daily `grogoni-db-backup` cron service. It intentionally fails in production unless `BACKUP_UPLOAD_COMMAND` is configured.
 
 ## Verify a backup
 
 ```bash
-DB_BACKUP_FILE=backups/soko-market-YYYY-MM-DD.dump pnpm db:backup:verify
+DB_BACKUP_FILE=backups/grogoni-YYYY-MM-DD.dump pnpm db:backup:verify
 ```
 
 This runs `pg_restore --list` and records the operational path for restore drills. A production restore drill should be performed against a disposable database branch at least monthly.
@@ -81,7 +93,7 @@ This runs `pg_restore --list` and records the operational path for restore drill
 Restores are destructive. Use only against the intended target database.
 
 ```bash
-DIRECT_DATABASE_URL=postgresql://... DB_RESTORE_FILE=backups/soko-market-YYYY-MM-DD.dump pnpm db:restore
+DIRECT_DATABASE_URL=postgresql://... DB_RESTORE_FILE=backups/grogoni-YYYY-MM-DD.dump pnpm db:restore
 ```
 
 The restore command uses `pg_restore --clean --if-exists --no-owner`.
@@ -96,7 +108,7 @@ To roll back the latest migration:
 ALLOW_DB_ROLLBACK=true DB_ROLLBACK_STEPS=1 DIRECT_DATABASE_URL=postgresql://... pnpm db:rollback
 ```
 
-Rollback deletes the corresponding row from `soko_schema_migrations` and records the rollback in `soko_schema_rollbacks`.
+Rollback deletes the corresponding row from `grogoni_schema_migrations` and records the rollback in `grogoni_schema_rollbacks`.
 
 If a deployment fails after a migration:
 
@@ -107,7 +119,7 @@ If a deployment fails after a migration:
 5. Redeploy the last known-good API commit.
 6. Preserve the failed database until the incident review is complete.
 
-Do not manually delete rows from `soko_schema_migrations` in production unless you are restoring the whole database to a known snapshot.
+Do not manually delete rows from `grogoni_schema_migrations` in production unless you are restoring the whole database to a known snapshot.
 
 ## Runtime persistence policy
 

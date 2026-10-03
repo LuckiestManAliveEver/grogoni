@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import type { CustomerSummary, ProductSummary } from "@soko/shared-types";
-import type { PurchaseRecordSummary, SaleRecordSummary } from "@soko/shared-types";
+import type { CustomerSummary, ProductSummary } from "@grogoni/shared-types";
+import type { PurchaseRecordSummary, SaleRecordSummary } from "@grogoni/shared-types";
 import { useAsyncActions } from "./hooks/useAsyncActions";
 import { useApiMutationRevision } from "./hooks/useApiMutationRevision";
 import { getJson, postJson } from "./api-helpers";
 import { getUserFacingErrorMessage } from "./user-facing-error";
-import type { SupplierBusinessCardSummary } from "./soko-application-shared";
+import type { SupplierBusinessCardSummary } from "./grogoni-application-shared";
 
 interface PurchaseDraft {
   supplierId: string;

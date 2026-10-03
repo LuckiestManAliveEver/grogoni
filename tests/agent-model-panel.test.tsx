@@ -10,7 +10,7 @@ import type {
   ActiveBusiness,
   AgentSettings,
   AiModelSummary
-} from "../apps/web/src/soko-application-shared";
+} from "../apps/web/src/grogoni-application-shared";
 
 // AgentModelPanel is the "advanced" counterpart to QuickRuntimeSwitcher.tsx and shares the exact
 // same pre-existing gap this feature fixed: it sent costResponsibility: "merchant" to the model
@@ -40,7 +40,7 @@ describe("AgentModelPanel merchant-funded activation confirmation", () => {
   });
 
   function business(id: string): ActiveBusiness {
-    return { id, role: "owner", sokoId: `soko.${id}` } as unknown as ActiveBusiness;
+    return { id, role: "owner", grogoniId: `grogoni.${id}` } as unknown as ActiveBusiness;
   }
 
   function agent(): AgentSettings {
@@ -102,7 +102,7 @@ describe("AgentModelPanel merchant-funded activation confirmation", () => {
       [`/api/agents/${shopId}/model-binding`]: () => jsonResponse({ binding: null }),
       [`/businesses/${shopId}/runtime/effective`]: () =>
         jsonResponse({
-          agent: { id: "builtin:shopkeeper", name: "Shopkeeper", runtimeAdapterId: "soko" },
+          agent: { id: "builtin:shopkeeper", name: "Shopkeeper", runtimeAdapterId: "grogoni" },
           model: { id: "gpt-6-luna", name: "GPT-6 Luna" },
           execution: { type: "backend", hostId: "host-1", ready: true },
           binding: { id: "binding-1" },

@@ -1,4 +1,4 @@
-import type { BulkheadEvent, CircuitBreakerEvent } from "@soko/resource-control";
+import type { BulkheadEvent, CircuitBreakerEvent } from "@grogoni/resource-control";
 
 /**
  * The one event union every bounded workload (OCR, inference - see

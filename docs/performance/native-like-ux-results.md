@@ -60,7 +60,7 @@ are `N/A` rather than fabricated.
 | ------------------------------------- | ------------: | ---------: | -----: |
 | Bootstrap entry                       |       1.08 KB |    1.08 KB |   0.0% |
 | Main React/router chunk               |      62.58 KB |   66.80 KB |  +6.7% |
-| Authenticated `SokoApplication` chunk |     149.88 KB |  152.79 KB |  +1.9% |
+| Authenticated `GrogoniApplication` chunk |     149.88 KB |  152.79 KB |  +1.9% |
 | Initial CSS                           |      13.42 KB |   14.01 KB |  +4.4% |
 | Authenticated startup path            |     213.54 KB |  220.67 KB |  +3.3% |
 
@@ -93,7 +93,7 @@ not claimed. Persistent data hydration reduces repeat data dependence, not the s
 
 ### Data and synchronization
 
-- `soko-market-local-data` is a versioned IndexedDB store scoped by account/business and domain.
+- `grogoni-local-data` is a versioned IndexedDB store scoped by account/business and domain.
 - Repositories expose cached read, write, refresh, invalidation, subscription, and logout clearing.
 - Repository state distinguishes hydrated, stale, refreshing, offline, failed, and empty.
 - In-flight reads deduplicate, and sequence numbers prevent stale responses from replacing newer
@@ -146,7 +146,7 @@ a representative device or browser trace and remain manual validation.
 
 Core implementation:
 
-- `apps/web/src/SokoApplication.tsx`
+- `apps/web/src/GrogoniApplication.tsx`
 - `apps/web/src/api-request-cache.ts`
 - `apps/web/src/local-data-repository.ts`
 - `apps/web/src/connectivity.ts`
@@ -201,5 +201,5 @@ preserved; this report does not attribute those files or their tests to the perf
 No commit was created because the worktree contained user changes. The safest rollback is to commit
 this performance patch separately and use `git revert <commit>` if needed. Before a commit exists,
 review `git diff` and reverse only the performance paths/hunks listed above; a blanket
-`git restore` of `SokoApplication.tsx`, `browser-model-engine.ts`, or `sw.js` could discard the
+`git restore` of `GrogoniApplication.tsx`, `browser-model-engine.ts`, or `sw.js` could discard the
 pre-existing model-activation work.

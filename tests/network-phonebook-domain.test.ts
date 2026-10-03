@@ -102,7 +102,7 @@ describe("phonebook normalization", () => {
 
     const graph = sync("alice", [
       { name: "Bob", phone: "0711 000 002" },
-      // Soko knows this person by their second number.
+      // Grogoni knows this person by their second number.
       { name: "Two Phones", phone: "0722000999", phones: ["+254 733 000 003"] },
       { name: "Abroad", phone: "+1 (415) 555-0123" },
       // A bad number or email loses that value, not the contact and not the whole sync.
@@ -110,11 +110,11 @@ describe("phonebook normalization", () => {
     ]);
 
     const byName = directByName(graph);
-    expect(byName.get("Bob")?.sokoUserId).toBe("bob");
-    expect(byName.get("Two Phones")?.sokoUserId).toBe("work");
+    expect(byName.get("Bob")?.grogoniUserId).toBe("bob");
+    expect(byName.get("Two Phones")?.grogoniUserId).toBe("work");
     expect(byName.get("Two Phones")?.contactHashIds).toHaveLength(2);
-    expect(byName.get("Abroad")?.sokoUserId).toBe("yank");
-    expect(byName.get("Garbage")).toMatchObject({ sokoUserId: null, contactHashIds: [] });
+    expect(byName.get("Abroad")?.grogoniUserId).toBe("yank");
+    expect(byName.get("Garbage")).toMatchObject({ grogoniUserId: null, contactHashIds: [] });
   });
 
   it("derives the owner's country from their own number when none is stored", () => {
@@ -125,7 +125,7 @@ describe("phonebook normalization", () => {
       { id: "bob", phone: "+254711000002" }
     ]);
     expect(
-      directByName(sync("alice", [{ name: "Bob", phone: "0711000002" }])).get("Bob")?.sokoUserId
+      directByName(sync("alice", [{ name: "Bob", phone: "0711000002" }])).get("Bob")?.grogoniUserId
     ).toBe("bob");
   });
 });
@@ -150,10 +150,10 @@ describe("phonebook number cleaning and owner country", () => {
       messy.map((phone, index) => ({ name: `Bob ${index}`, phone }))
     );
 
-    // All seven spellings are Bob's one number: one contact, found on Soko.
+    // All seven spellings are Bob's one number: one contact, found on Grogoni.
     const direct = graph.nodes.filter((node) => node.degree === 1);
     expect(direct).toHaveLength(1);
-    expect(direct[0]?.sokoUserId).toBe("bob");
+    expect(direct[0]?.grogoniUserId).toBe("bob");
   });
 
   it("reads any script's digits and any dash", () => {
@@ -175,7 +175,7 @@ describe("phonebook number cleaning and owner country", () => {
     );
     const direct = graph.nodes.filter((node) => node.degree === 1);
     expect(direct).toHaveLength(1);
-    expect(direct[0]?.sokoUserId).toBe("bob");
+    expect(direct[0]?.grogoniUserId).toBe("bob");
   });
 
   it("uses the owner's own number, then the device region, to read national numbers", () => {
@@ -189,7 +189,7 @@ describe("phonebook number cleaning and owner country", () => {
     ]);
     expect(
       directByName(fromOwnNumber.sync("alice", [{ name: "Bob", phone: "0711000002" }])).get("Bob")
-        ?.sokoUserId
+        ?.grogoniUserId
     ).toBe("bob");
 
     const emailOwner = () =>
@@ -203,18 +203,18 @@ describe("phonebook number cleaning and owner country", () => {
     // No country known and none sent: a national number cannot be read.
     expect(
       directByName(emailOwner().sync("erin", [{ name: "Bob", phone: "0711000002" }])).get("Bob")
-        ?.sokoUserId
+        ?.grogoniUserId
     ).toBeNull();
     expect(
       directByName(
         emailOwner().sync("erin", [{ name: "Bob", phone: "0711000002" }], "merge", "ke")
-      ).get("Bob")?.sokoUserId
+      ).get("Bob")?.grogoniUserId
     ).toBe("bob");
     // A bogus region is ignored rather than trusted.
     expect(
       directByName(
         emailOwner().sync("erin", [{ name: "Bob", phone: "0711000002" }], "merge", "ZZ")
-      ).get("Bob")?.sokoUserId
+      ).get("Bob")?.grogoniUserId
     ).toBeNull();
   });
 
@@ -268,10 +268,10 @@ describe("discovery", () => {
         { name: "Suspended", phone: "+254711000023" }
       ])
     );
-    expect(byName.get("Device verified")?.sokoUserId).toBe("device-verified");
-    expect(byName.get("Device unverified")?.sokoUserId).toBeNull();
-    expect(byName.get("Email verified")?.sokoUserId).toBe("email-verified");
-    expect(byName.get("Suspended")?.sokoUserId).toBeNull();
+    expect(byName.get("Device verified")?.grogoniUserId).toBe("device-verified");
+    expect(byName.get("Device unverified")?.grogoniUserId).toBeNull();
+    expect(byName.get("Email verified")?.grogoniUserId).toBe("email-verified");
+    expect(byName.get("Suspended")?.grogoniUserId).toBeNull();
 
     accounts.set("acct-device-verified", {
       ...accounts.get("acct-device-verified")!,
@@ -280,7 +280,7 @@ describe("discovery", () => {
     const after = domain.getNetworkGraph({ sessionId: "alice" });
     expect(directByName(after).get("Device verified")).toMatchObject({
       kind: "external_contact",
-      sokoUserId: null
+      grogoniUserId: null
     });
     expect(after.identityLinks.some((link) => link.linkedUserId === "device-verified")).toBe(false);
   });
@@ -310,7 +310,7 @@ describe("connection rules", () => {
     const ownerNode = graph.nodes.find((node) => node.degree === 0)!;
     const secondDegree = graph.nodes.find((node) => node.degree === 2)!;
 
-    expect(ownerNode.sokoUserId).toBe("alice");
+    expect(ownerNode.grogoniUserId).toBe("alice");
     expect(() => request("alice", ownerNode.id)).toThrow(
       expect.objectContaining({ statusCode: 404 })
     );
@@ -473,7 +473,7 @@ describe("identity endpoints", () => {
         deps: { memberships: Map<string, unknown>; businesses: Map<string, unknown> };
       }
     ).deps;
-    deps.businesses.set("biz-bob", { id: "biz-bob", sokoId: "soko.bob", name: "Bob Hardware" });
+    deps.businesses.set("biz-bob", { id: "biz-bob", grogoniId: "grogoni.bob", name: "Bob Hardware" });
     deps.memberships.set("m-bob", {
       id: "m-bob",
       userId: "bob",
@@ -493,7 +493,7 @@ describe("identity endpoints", () => {
       sessionId: "alice",
       candidateId: candidate.id
     });
-    expect(confirmed).toMatchObject({ sokoUserId: "bob", sokoBusinessId: null, sokoAgentId: null });
+    expect(confirmed).toMatchObject({ grogoniUserId: "bob", grogoniBusinessId: null, grogoniAgentId: null });
   });
 });
 
@@ -509,7 +509,7 @@ describe("shops of discovered contacts", () => {
       }
     ).deps;
     const giveShop = (id: string, name: string) => {
-      deps.businesses.set(`biz-${id}`, { id: `biz-${id}`, sokoId: `soko.${id}`, name });
+      deps.businesses.set(`biz-${id}`, { id: `biz-${id}`, grogoniId: `grogoni.${id}`, name });
       deps.memberships.set(`m-${id}`, {
         id: `m-${id}`,
         userId: "bob",
@@ -524,13 +524,13 @@ describe("shops of discovered contacts", () => {
     const { domain, sync, giveShop } = withShops();
     const nodeId = sync("alice", [{ name: "Bob", phone: "+254711000002" }])
       .syncedContactNodeIds![0]!;
-    expect(domain.networkNodesMap.get(nodeId)?.sokoBusinessId).toBeNull();
+    expect(domain.networkNodesMap.get(nodeId)?.grogoniBusinessId).toBeNull();
 
     giveShop("hardware", "Bob Hardware");
     domain.getNetworkGraph({ sessionId: "alice" });
     expect(domain.networkNodesMap.get(nodeId)).toMatchObject({
-      sokoBusinessId: "biz-hardware",
-      sokoAgentId: "soko.hardware"
+      grogoniBusinessId: "biz-hardware",
+      grogoniAgentId: "grogoni.hardware"
     });
   });
 
@@ -542,7 +542,7 @@ describe("shops of discovered contacts", () => {
     domain.respondToConnection({ sessionId: "bob", connectionId: sent.id, accept: true });
 
     expect(list("alice")[0]).toMatchObject({ counterpartBusinessName: "Bob First" });
-    expect(domain.networkNodesMap.get(sent.nodeId!)?.sokoBusinessId).toBe("biz-first");
+    expect(domain.networkNodesMap.get(sent.nodeId!)?.grogoniBusinessId).toBe("biz-first");
   });
 });
 
@@ -560,7 +560,7 @@ describe("account purge", () => {
     // Xavier works at Yusuf's shop: that shop is his primary one.
     deps.businesses.set("biz-yusuf", {
       id: "biz-yusuf",
-      sokoId: "soko.yusuf",
+      grogoniId: "grogoni.yusuf",
       name: "Yusuf Traders"
     });
     deps.memberships.set("m-x", {
@@ -571,17 +571,17 @@ describe("account purge", () => {
     });
     const nodeId = sync("zara", [{ name: "Xavier", phone: "+254711000003" }])
       .syncedContactNodeIds![0]!;
-    expect(domain.networkNodesMap.get(nodeId)?.sokoBusinessId).toBe("biz-yusuf");
+    expect(domain.networkNodesMap.get(nodeId)?.grogoniBusinessId).toBe("biz-yusuf");
 
     // Yusuf's account is purged: his shop is in the purge scope, Xavier is not.
     expect(domain.detachPurgedUsers(new Set(["yusuf", "biz-yusuf"]), new Date())).toBe(1);
     expect(domain.networkNodesMap.get(nodeId)).toMatchObject({
-      sokoUserId: null,
-      sokoBusinessId: null,
-      sokoAgentId: null,
+      grogoniUserId: null,
+      grogoniBusinessId: null,
+      grogoniAgentId: null,
       kind: "external_contact"
     });
-    expect([...domain.sokoIdentityLinksMap.values()]).toEqual([]);
+    expect([...domain.grogoniIdentityLinksMap.values()]).toEqual([]);
   });
 });
 
@@ -826,7 +826,7 @@ describe("abuse limits", () => {
     for (const person of people) {
       deps.businesses.set(`b-${person.id}`, {
         id: `b-${person.id}`,
-        sokoId: `soko.${person.id}`,
+        grogoniId: `grogoni.${person.id}`,
         name: person.id
       });
       deps.memberships.set(`m-${person.id}`, {
@@ -845,7 +845,7 @@ describe("abuse limits", () => {
     const graph = domain.getNetworkGraph({ sessionId: "alice" });
 
     expect(
-      graph.nodes.filter((node) => node.sokoUserId !== null && node.degree === 1)
+      graph.nodes.filter((node) => node.grogoniUserId !== null && node.degree === 1)
     ).toHaveLength(60);
     expect(values.mock.calls.length).toBeLessThanOrEqual(2);
   });
@@ -884,7 +884,7 @@ describe("abuse limits", () => {
     ]);
     expect(
       directByName(sync("alice", [{ name: "Bob", email: "bob@example.com" }])).get("Bob")
-        ?.sokoUserId
+        ?.grogoniUserId
     ).toBeNull();
   });
   it("replaces changed links in one pass over identity links, however many contacts relink", () => {
@@ -897,14 +897,14 @@ describe("abuse limits", () => {
       "alice",
       numbers.map((phone, index) => ({ name: `Late ${index}`, phone }))
     );
-    // All 300 join Soko after being synced: the next graph load relinks every one of them.
+    // All 300 join Grogoni after being synced: the next graph load relinks every one of them.
     numbers.forEach((phone, index) => add({ id: `late${index}`, phone }));
 
-    const entries = vi.spyOn(domain.sokoIdentityLinksMap, "entries");
+    const entries = vi.spyOn(domain.grogoniIdentityLinksMap, "entries");
     const graph = domain.getNetworkGraph({ sessionId: "alice" });
 
     expect(
-      graph.nodes.filter((node) => node.degree === 1 && node.sokoUserId !== null)
+      graph.nodes.filter((node) => node.degree === 1 && node.grogoniUserId !== null)
     ).toHaveLength(300);
     expect(entries.mock.calls.length).toBeLessThanOrEqual(1);
     entries.mockRestore();
@@ -926,7 +926,7 @@ describe("abuse limits", () => {
     ]);
   });
 
-  it("links name-only contacts that gain Soko numbers within the sync itself", () => {
+  it("links name-only contacts that gain Grogoni numbers within the sync itself", () => {
     const people = Array.from({ length: 50 }, (_, index) => ({
       id: `p${index}`,
       phone: `+2547550${String(index).padStart(5, "0")}`
@@ -943,13 +943,13 @@ describe("abuse limits", () => {
       people.map((person) => ({ name: person.id, phone: person.phone }))
     );
     expect(
-      upgraded.nodes.filter((node) => node.degree === 1 && node.sokoUserId !== null)
+      upgraded.nodes.filter((node) => node.degree === 1 && node.grogoniUserId !== null)
     ).toHaveLength(50);
     expect(upgraded.identityLinks).toHaveLength(50);
 
     // Linked by the sync's own (single) relink pass: the next graph load has nothing to relink,
     // so re-sending the same phonebook cannot force repeated relinking work.
-    const entries = vi.spyOn(domain.sokoIdentityLinksMap, "entries");
+    const entries = vi.spyOn(domain.grogoniIdentityLinksMap, "entries");
     domain.getNetworkGraph({ sessionId: "alice" });
     expect(entries).not.toHaveBeenCalled();
     entries.mockRestore();

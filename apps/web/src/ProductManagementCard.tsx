@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import type { ProductPurchasePriceSummary, ProductSummary } from "@soko/shared-types";
+import type { ProductPurchasePriceSummary, ProductSummary } from "@grogoni/shared-types";
 import { useAsyncActions } from "./hooks/useAsyncActions";
 import { useApiMutationRevision } from "./hooks/useApiMutationRevision";
 import { deleteJson, getJson, patchJson, postJson } from "./api-helpers";
 import { getUserFacingErrorMessage } from "./user-facing-error";
-import type { StockAdjustmentResponse } from "./soko-application-shared";
+import type { StockAdjustmentResponse } from "./grogoni-application-shared";
 import CatalogueBrowsePanel from "./CatalogueBrowsePanel";
 import CatalogueShareSettingsCard from "./CatalogueShareSettingsCard";
 
@@ -40,7 +40,7 @@ function draftFromProduct(product: ProductSummary): ProductDraft {
 // Self-contained generated-surface card for the products domain (Phase 4a) - fetches its own data
 // from businessId alone, same shape as ProductCaptureItemsCard/StatusBroadcastCard, rather than
 // reusing useProductsState/ProductSurface, which need 8 injected deps tied to sibling hooks in
-// SokoApplication.tsx. See docs/frontend/frontend.md Phase 4a for why.
+// GrogoniApplication.tsx. See docs/frontend/frontend.md Phase 4a for why.
 export default function ProductManagementCard(props: { businessId: string; productId?: string }) {
   const productsPath = `/businesses/${props.businessId}/products`;
   const mutationRevision = useApiMutationRevision(productsPath);

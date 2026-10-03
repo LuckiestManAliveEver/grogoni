@@ -8,7 +8,7 @@ Actual tag: `checkpoint/cp15-closed-beta`
 
 ## Purpose
 
-CP15 prepares Soko.market for selected merchant usage by hardening the product, runtime, offline behavior, payment workflows, sync reliability, support process, and telemetry before public launch.
+CP15 prepares Grogoni for selected merchant usage by hardening the product, runtime, offline behavior, payment workflows, sync reliability, support process, and telemetry before public launch.
 
 The goal is to make the current core commerce system practical for a small closed beta while keeping risky launch, marketplace, and full TIEL work out of scope.
 
@@ -28,7 +28,7 @@ CP15 starts from:
 - CP7 offline cache, sync queue, idempotent replay, and conflict surfacing
 - CP8 payment records, invoice settlement, and customer debt summaries
 - CP9 supplier document import preview, correction, confirmation, and import lifecycle events
-- CP10 Sokoclaw runtime sessions, turns, planning, confirmation gates, telemetry, and rate limits
+- CP10 Grogoniclaw runtime sessions, turns, planning, confirmation gates, telemetry, and rate limits
 - CP11 optional local model adapter with deterministic fallback and bounded output parsing
 - CP12 reports, notifications, bounded knowledge summaries, and owner report UI
 - CP13 deterministic logistics records, lifecycle validation, bounded runtime/report context, and sync replay behavior

@@ -59,7 +59,7 @@ Those are deployment/policy/security failures rather than device-installation pr
 
 ## Remaining boundaries
 
-This change supplies the Soko-manifest importer and safe OSS-catalog conversion foundation; it does
+This change supplies the Grogoni-manifest importer and safe OSS-catalog conversion foundation; it does
 not execute arbitrary framework repositories. Future framework adapters must produce the same
 validated manifest and require a separately configured isolated runtime adapter before repository
 code can run. Offline chat still requires a previously installed local model/runtime by definition.

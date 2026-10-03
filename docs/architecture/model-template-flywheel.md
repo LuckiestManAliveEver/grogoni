@@ -2,7 +2,7 @@
 
 ## Product thesis
 
-Foundation models provide intelligence. `.soko` Model Templates provide expertise. The durable
+Foundation models provide intelligence. `.grogoni.com` Model Templates provide expertise. The durable
 asset is the domain specification, examples, evaluation evidence, tools, corrections, and lineage.
 A base model is a swappable execution dependency.
 
@@ -12,7 +12,7 @@ A base model is a swappable execution dependency.
 Chat/UI
   -> tenant-scoped Model Template APIs
   -> existing AgentRuntimeDomain and tool harness
-  -> promoted .soko template version
+  -> promoted .grogoni.com template version
   -> source expertise + optional compiled expertise
   -> existing native runtime binding
   -> compatible base model
@@ -55,7 +55,7 @@ and creates a candidate semantic version. `CONTEXT_GISTING`, `DATASET_DISTILLATI
 
 ## Runtime integration
 
-For a normal authenticated runtime turn, Soko first resolves the existing agent, native runtime
+For a normal authenticated runtime turn, Grogoni first resolves the existing agent, native runtime
 binding, model, and host. It then looks up the promoted template for that business and agent and
 checks the actually selected model against template requirements. Compiled instructions join the
 existing `ShopAgentRuntime` policy before `assembleAgentInferenceMessage`. Tool authorization and

@@ -1,6 +1,6 @@
 /**
  * Runtime-asset search + import routes, mounted from services/api/src/cp2/routes.ts. Local-first
- * mode accepts only the Soko catalogue provider; GitHub and Hugging Face are rejected with
+ * mode accepts only the Grogoni catalogue provider; GitHub and Hugging Face are rejected with
  * runtime_registry_provider_invalid (see docs/local-first-cloud-audit.md).
  */
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -9,7 +9,7 @@ import type {
   RuntimeRegistryContext,
   RuntimeRegistryProviderId,
   RuntimeRegistryResourceRef
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { Cp2Error } from "../cp2-error.js";
 import { readSessionCookie } from "../store.js";
 import { parseString, sendCp2Error } from "../route-helpers.js";
@@ -21,7 +21,7 @@ import {
 import type { RuntimeRegistrySearchService } from "./search.js";
 import type { createRuntimeRegistryImportService } from "./import-service.js";
 
-const providerIds: readonly RuntimeRegistryProviderId[] = ["soko"];
+const providerIds: readonly RuntimeRegistryProviderId[] = ["grogoni"];
 const assetKinds: readonly RuntimeAssetKind[] = ["agent", "model"];
 
 export interface RuntimeRegistryRouteDeps {
@@ -223,7 +223,7 @@ function parseProviderId(value: unknown): RuntimeRegistryProviderId {
   if (typeof value === "string" && (providerIds as readonly string[]).includes(value)) {
     return value as RuntimeRegistryProviderId;
   }
-  throw new Cp2Error(400, "runtime_registry_provider_invalid", "provider must be soko.");
+  throw new Cp2Error(400, "runtime_registry_provider_invalid", "provider must be grogoni.");
 }
 
 function parseKind(value: unknown): RuntimeAssetKind {

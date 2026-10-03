@@ -4,7 +4,7 @@ import {
   type InvoicePreview,
   type InvoiceSummary,
   type ProductSummary
-} from "./soko-application-shared";
+} from "./grogoni-application-shared";
 
 import { formatMoney } from "./formatters";
 

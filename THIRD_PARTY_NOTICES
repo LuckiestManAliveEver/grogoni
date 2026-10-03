@@ -3,8 +3,8 @@
 Playwright 1.61.1
 License: Apache License 2.0
 Upstream: https://github.com/microsoft/playwright
-Use: Chromium automation behind Soko's isolated ComputerRuntime worker adapter.
-Source copied: No. Soko uses the published package and official container image API.
+Use: Chromium automation behind Grogoni's isolated ComputerRuntime worker adapter.
+Source copied: No. Grogoni uses the published package and official container image API.
 Required attribution: Copyright notices and Apache-2.0 license supplied by the distribution.
 
 The implementation reviewed Stagehand, Browser Use, Browser Use Web UI, Open Operator, Skyvern, and BrowserCode as architectural references only. No source code was copied.

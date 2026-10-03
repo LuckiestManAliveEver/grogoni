@@ -219,8 +219,8 @@ export const shopSetupChecks: Record<ShopSetupCheckId, ShopSetupCheckDefinition>
   channels_linked: {
     id: "channels_linked",
     needsSetup: {
-      en: "Connect a channel so customers can reach you outside Soko.",
-      sw: "Unganisha njia ili wateja wakufikie nje ya Soko."
+      en: "Connect a channel so customers can reach you outside Grogoni.",
+      sw: "Unganisha njia ili wateja wakufikie nje ya Grogoni."
     },
     unavailable: {
       en: "No outside channels are available yet.",

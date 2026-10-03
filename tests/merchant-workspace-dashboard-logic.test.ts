@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { InvoiceSummary } from "../apps/web/src/soko-application-shared";
+import type { InvoiceSummary } from "../apps/web/src/grogoni-application-shared";
 import {
   catalogueForDashboard,
   catalogueStockLabel,
@@ -13,7 +13,7 @@ import {
 } from "../apps/web/src/merchant-workspace-dashboard";
 
 // Regression coverage for audit A27 ("Merchant workspace",
-// docs/audits/soko-home-2026-09-17/audit.md): the reference's single-screen dashboard shows
+// docs/audits/grogoni-home-2026-09-17/audit.md): the reference's single-screen dashboard shows
 // "Orders today"/"Revenue today"/"Pending"/recent orders/catalogue, but no backend aggregate is
 // scoped to "today" - only all-time totals exist (BusinessReportSummary). These pure functions
 // derive "today" from real per-invoice timestamps instead of a fabricated number, so they are the

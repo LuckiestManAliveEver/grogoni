@@ -1,6 +1,6 @@
 import Fastify from "fastify";
 import { describe, expect, it } from "vitest";
-import type { RuntimeRegistryContext, RuntimeRegistryResourceDetails } from "@soko/shared-types";
+import type { RuntimeRegistryContext, RuntimeRegistryResourceDetails } from "@grogoni/shared-types";
 import { registerRuntimeRegistryRoutes } from "./routes.js";
 import { createRuntimeRegistrySearchService } from "./search.js";
 import { createRuntimeRegistryImportService } from "./import-service.js";
@@ -9,7 +9,7 @@ import type { RuntimeRegistryAdapter } from "./types.js";
 
 const publicContext: RuntimeRegistryContext = { accountId: "public", connected: false };
 
-function fakeAdapter(id: "github" | "soko", externalId: string): RuntimeRegistryAdapter {
+function fakeAdapter(id: "github" | "grogoni", externalId: string): RuntimeRegistryAdapter {
   return {
     id,
     displayName: id,
@@ -57,14 +57,14 @@ function fakeAdapter(id: "github" | "soko", externalId: string): RuntimeRegistry
 describe("registerRuntimeRegistryRoutes", () => {
   it("exposes GET /v1/runtime-registry/search, applying the minimum-query-length short circuit", async () => {
     const github = fakeAdapter("github", "gh-widget");
-    const soko = fakeAdapter("soko", "soko-widget");
+    const grogoni = fakeAdapter("grogoni", "grogoni-widget");
     const app = Fastify();
     registerRuntimeRegistryRoutes(app, {
-      searchService: createRuntimeRegistrySearchService({ adapters: { github, soko } }),
-      adapters: { github, soko },
+      searchService: createRuntimeRegistrySearchService({ adapters: { github, grogoni } }),
+      adapters: { github, grogoni },
       importService: createRuntimeRegistryImportService({
         store: createMemoryRuntimeRegistryImportStore(),
-        adapters: { github, soko }
+        adapters: { github, grogoni }
       }),
       resolveContext: () => publicContext,
       requireAccount: () => ({ accountId: "acct-1", userId: "user-1" })
@@ -80,7 +80,7 @@ describe("registerRuntimeRegistryRoutes", () => {
         .json()
         .items.map((item: { externalId: string }) => item.externalId)
         .sort()
-    ).toEqual(["gh-widget", "soko-widget"]);
+    ).toEqual(["gh-widget", "grogoni-widget"]);
 
     const tooShortResponse = await app.inject({
       method: "GET",
@@ -93,14 +93,14 @@ describe("registerRuntimeRegistryRoutes", () => {
   });
 
   it("exposes GET /v1/runtime-registry/resources/:provider/:id", async () => {
-    const soko = fakeAdapter("soko", "example/agent-repo");
+    const grogoni = fakeAdapter("grogoni", "example/agent-repo");
     const app = Fastify();
     registerRuntimeRegistryRoutes(app, {
-      searchService: createRuntimeRegistrySearchService({ adapters: { soko } }),
-      adapters: { soko },
+      searchService: createRuntimeRegistrySearchService({ adapters: { grogoni } }),
+      adapters: { grogoni },
       importService: createRuntimeRegistryImportService({
         store: createMemoryRuntimeRegistryImportStore(),
-        adapters: { soko }
+        adapters: { grogoni }
       }),
       resolveContext: () => publicContext,
       requireAccount: () => ({ accountId: "acct-1", userId: "user-1" })
@@ -108,14 +108,14 @@ describe("registerRuntimeRegistryRoutes", () => {
 
     const response = await app.inject({
       method: "GET",
-      url: "/v1/runtime-registry/resources/soko/example%2Fagent-repo?kind=agent"
+      url: "/v1/runtime-registry/resources/grogoni/example%2Fagent-repo?kind=agent"
     });
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toMatchObject({ provider: "soko", externalId: "example/agent-repo" });
+    expect(response.json()).toMatchObject({ provider: "grogoni", externalId: "example/agent-repo" });
 
     const missingKind = await app.inject({
       method: "GET",
-      url: "/v1/runtime-registry/resources/soko/example%2Fagent-repo"
+      url: "/v1/runtime-registry/resources/grogoni/example%2Fagent-repo"
     });
     expect(missingKind.statusCode).toBe(400);
 
@@ -123,15 +123,15 @@ describe("registerRuntimeRegistryRoutes", () => {
   });
 
   it("starts and polls an import through POST/GET /v1/runtime-registry/imports", async () => {
-    const soko = fakeAdapter("soko", "example/agent-repo");
+    const grogoni = fakeAdapter("grogoni", "example/agent-repo");
     const app = Fastify();
     const importStore = createMemoryRuntimeRegistryImportStore();
     registerRuntimeRegistryRoutes(app, {
-      searchService: createRuntimeRegistrySearchService({ adapters: { soko } }),
-      adapters: { soko },
+      searchService: createRuntimeRegistrySearchService({ adapters: { grogoni } }),
+      adapters: { grogoni },
       importService: createRuntimeRegistryImportService({
         store: importStore,
-        adapters: { soko }
+        adapters: { grogoni }
       }),
       resolveContext: () => publicContext,
       requireAccount: () => ({ accountId: "acct-1", userId: "user-1" })
@@ -140,7 +140,7 @@ describe("registerRuntimeRegistryRoutes", () => {
     const startResponse = await app.inject({
       method: "POST",
       url: "/v1/runtime-registry/imports",
-      payload: { provider: "soko", kind: "agent", externalId: "example/agent-repo" }
+      payload: { provider: "grogoni", kind: "agent", externalId: "example/agent-repo" }
     });
     expect(startResponse.statusCode).toBe(200);
     const started = startResponse.json();
@@ -166,15 +166,15 @@ describe("registerRuntimeRegistryRoutes", () => {
     await app.close();
   });
 
-  it("rejects GitHub and Hugging Face providers now that local mode is Soko-catalog only", async () => {
-    const soko = fakeAdapter("soko", "example/agent-repo");
+  it("rejects GitHub and Hugging Face providers now that local mode is Grogoni-catalog only", async () => {
+    const grogoni = fakeAdapter("grogoni", "example/agent-repo");
     const app = Fastify();
     registerRuntimeRegistryRoutes(app, {
-      searchService: createRuntimeRegistrySearchService({ adapters: { soko } }),
-      adapters: { soko },
+      searchService: createRuntimeRegistrySearchService({ adapters: { grogoni } }),
+      adapters: { grogoni },
       importService: createRuntimeRegistryImportService({
         store: createMemoryRuntimeRegistryImportStore(),
-        adapters: { soko }
+        adapters: { grogoni }
       }),
       resolveContext: () => publicContext,
       requireAccount: () => ({ accountId: "acct-1", userId: "user-1" })

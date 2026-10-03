@@ -4,7 +4,7 @@ Status: active
 Date opened: 2026-07-12
 Target tag: `checkpoint/cp23-mcp-tool-gateway`
 
-CP23 executes Phase 4 of the refined cross-platform Soko architecture. It exposes a deliberately
+CP23 executes Phase 4 of the refined cross-platform Grogoni architecture. It exposes a deliberately
 small Model Context Protocol gateway without granting models direct access to databases, host
 tools, or unchecked business mutations.
 
@@ -15,17 +15,17 @@ tools, or unchecked business mutations.
 3. Issue short-lived, revocable MCP tokens whose hashes—not plaintext values—are persisted.
 4. Scope tokens to `mcp:read`, `mcp:act`, and optionally one shop.
 5. Require a PIN-verified app session before issuing an action-capable token.
-6. Route proposed and confirmed actions through the existing Sokoclaw runtime.
+6. Route proposed and confirmed actions through the existing Grogoniclaw runtime.
 7. Preserve deterministic RBAC, validation, idempotency, audit, and confirmation gates.
 
 ## Exposed Tools
 
 | Tool                          | Scope      | Behavior                                                        |
 | ----------------------------- | ---------- | --------------------------------------------------------------- |
-| `soko.list_shops`             | `mcp:read` | Lists server-authorized shop memberships.                       |
-| `soko.get_sync_changes`       | `mcp:read` | Reads the durable account catch-up journal.                     |
-| `soko.runtime_turn`           | `mcp:act`  | Produces a runtime plan; high-risk mutations remain unexecuted. |
-| `soko.confirm_runtime_action` | `mcp:act`  | Confirms exactly one pending action for the same actor/shop.    |
+| `grogoni.list_shops`             | `mcp:read` | Lists server-authorized shop memberships.                       |
+| `grogoni.get_sync_changes`       | `mcp:read` | Reads the durable account catch-up journal.                     |
+| `grogoni.runtime_turn`           | `mcp:act`  | Produces a runtime plan; high-risk mutations remain unexecuted. |
+| `grogoni.confirm_runtime_action` | `mcp:act`  | Confirms exactly one pending action for the same actor/shop.    |
 
 No shell, filesystem, browser, arbitrary HTTP, arbitrary SQL, sampling, prompt export, or generic
 host execution tool is exposed.
@@ -47,7 +47,7 @@ host execution tool is exposed.
 The initial gateway uses JSON responses over the MCP Streamable HTTP endpoint and does not offer an
 SSE listening stream. OAuth 2.1 authorization-code discovery for third-party public clients remains
 a later deployment capability; CP23 tokens are first-party credentials provisioned from an existing
-authenticated Soko session.
+authenticated Grogoni session.
 
 ## Exit Criteria
 

@@ -179,41 +179,41 @@ create index if not exists conversations_runtime_binding_idx on conversations (r
 -- runtime that is executable without assuming an optional provider or an installed device.
 insert into cp2_native_runtime_agents (entity_id, record)
 values (
-  'builtin:soko-agent:v1',
-  '{"id":"builtin:soko-agent:v1","businessId":null,"accountId":null,"name":"Soko built-in agent","provider":"soko","packageRef":null,"version":"1","runtimeContractVersion":"1","capabilities":["deterministic-tools","mcp"],"configuration":{"requiredModelCapabilities":[]},"status":"active","createdAt":"2026-08-27T00:00:00.000Z","updatedAt":"2026-08-27T00:00:00.000Z"}'::jsonb
+  'builtin:grogoni-agent:v1',
+  '{"id":"builtin:grogoni-agent:v1","businessId":null,"accountId":null,"name":"Grogoni built-in agent","provider":"grogoni","packageRef":null,"version":"1","runtimeContractVersion":"1","capabilities":["deterministic-tools","mcp"],"configuration":{"requiredModelCapabilities":[]},"status":"active","createdAt":"2026-08-27T00:00:00.000Z","updatedAt":"2026-08-27T00:00:00.000Z"}'::jsonb
 ) on conflict (entity_id) do nothing;
 
 insert into cp2_native_runtime_models (entity_id, record)
 values (
-  'sokoclaw-local',
-  '{"id":"sokoclaw-local","name":"Soko deterministic compatibility fallback","provider":"soko","providerModelId":"sokoclaw-local","runtimeContractVersion":"1","capabilities":["tool-routing","offline"],"configuration":{"executionTarget":"backend","deterministic":true},"status":"active","createdAt":"2026-08-27T00:00:00.000Z","updatedAt":"2026-08-27T00:00:00.000Z"}'::jsonb
+  'grogoniclaw-local',
+  '{"id":"grogoniclaw-local","name":"Grogoni deterministic compatibility fallback","provider":"grogoni","providerModelId":"grogoniclaw-local","runtimeContractVersion":"1","capabilities":["tool-routing","offline"],"configuration":{"executionTarget":"backend","deterministic":true},"status":"active","createdAt":"2026-08-27T00:00:00.000Z","updatedAt":"2026-08-27T00:00:00.000Z"}'::jsonb
 ) on conflict (entity_id) do nothing;
 
 insert into cp2_native_execution_hosts (entity_id, record)
 values (
   '20b0f146-aa96-4d03-91e2-6a58049883c8',
-  '{"id":"20b0f146-aa96-4d03-91e2-6a58049883c8","businessId":null,"accountId":null,"type":"in-process","name":"Soko API process","endpoint":null,"status":"available","capabilities":["backend","deterministic-tools"],"configuration":{},"credentialReference":null,"lastKnownHealthyAt":"2026-08-27T00:00:00.000Z","createdAt":"2026-08-27T00:00:00.000Z","updatedAt":"2026-08-27T00:00:00.000Z"}'::jsonb
+  '{"id":"20b0f146-aa96-4d03-91e2-6a58049883c8","businessId":null,"accountId":null,"type":"in-process","name":"Grogoni API process","endpoint":null,"status":"available","capabilities":["backend","deterministic-tools"],"configuration":{},"credentialReference":null,"lastKnownHealthyAt":"2026-08-27T00:00:00.000Z","createdAt":"2026-08-27T00:00:00.000Z","updatedAt":"2026-08-27T00:00:00.000Z"}'::jsonb
 ) on conflict (entity_id) do nothing;
 
 insert into cp2_native_model_installations (entity_id, parent_id, record)
 values (
   '27cf0dc8-7e1f-4848-8dfe-0dbace223125',
   '20b0f146-aa96-4d03-91e2-6a58049883c8',
-  '{"id":"27cf0dc8-7e1f-4848-8dfe-0dbace223125","modelId":"sokoclaw-local","executionHostId":"20b0f146-aa96-4d03-91e2-6a58049883c8","status":"available","configuration":{},"lastKnownHealthyAt":"2026-08-27T00:00:00.000Z","createdAt":"2026-08-27T00:00:00.000Z","updatedAt":"2026-08-27T00:00:00.000Z"}'::jsonb
+  '{"id":"27cf0dc8-7e1f-4848-8dfe-0dbace223125","modelId":"grogoniclaw-local","executionHostId":"20b0f146-aa96-4d03-91e2-6a58049883c8","status":"available","configuration":{},"lastKnownHealthyAt":"2026-08-27T00:00:00.000Z","createdAt":"2026-08-27T00:00:00.000Z","updatedAt":"2026-08-27T00:00:00.000Z"}'::jsonb
 ) on conflict (entity_id) do nothing;
 
 insert into cp2_native_runtime_bindings (entity_id, parent_id, record)
 values (
-  'builtin:soko-default-runtime:v1',
-  'builtin:soko-agent:v1',
-  '{"id":"builtin:soko-default-runtime:v1","businessId":null,"accountId":null,"agentId":"builtin:soko-agent:v1","name":"Soko default runtime","status":"active","isDefault":true,"configuration":{"source":"repository-default"},"runtimeContractVersion":"1","createdAt":"2026-08-27T00:00:00.000Z","updatedAt":"2026-08-27T00:00:00.000Z","updatedBy":"system"}'::jsonb
+  'builtin:grogoni-default-runtime:v1',
+  'builtin:grogoni-agent:v1',
+  '{"id":"builtin:grogoni-default-runtime:v1","businessId":null,"accountId":null,"agentId":"builtin:grogoni-agent:v1","name":"Grogoni default runtime","status":"active","isDefault":true,"configuration":{"source":"repository-default"},"runtimeContractVersion":"1","createdAt":"2026-08-27T00:00:00.000Z","updatedAt":"2026-08-27T00:00:00.000Z","updatedBy":"system"}'::jsonb
 ) on conflict (entity_id) do nothing;
 
 insert into cp2_native_runtime_binding_models (entity_id, parent_id, record)
 values (
   'fa44cb93-7206-4265-88b9-d8493db05f21',
-  'builtin:soko-default-runtime:v1',
-  '{"id":"fa44cb93-7206-4265-88b9-d8493db05f21","runtimeBindingId":"builtin:soko-default-runtime:v1","modelId":"sokoclaw-local","role":"primary","priority":0,"executionHostId":"20b0f146-aa96-4d03-91e2-6a58049883c8","configuration":{},"enabled":true,"createdAt":"2026-08-27T00:00:00.000Z","updatedAt":"2026-08-27T00:00:00.000Z"}'::jsonb
+  'builtin:grogoni-default-runtime:v1',
+  '{"id":"fa44cb93-7206-4265-88b9-d8493db05f21","runtimeBindingId":"builtin:grogoni-default-runtime:v1","modelId":"grogoniclaw-local","role":"primary","priority":0,"executionHostId":"20b0f146-aa96-4d03-91e2-6a58049883c8","configuration":{},"enabled":true,"createdAt":"2026-08-27T00:00:00.000Z","updatedAt":"2026-08-27T00:00:00.000Z"}'::jsonb
 ) on conflict (entity_id) do nothing;
 
 -- Safe legacy backfill. A verified AgentModelBinding has enough information to map one primary
@@ -224,7 +224,7 @@ select distinct on (record ->> 'agentId')
   record ->> 'agentId', business_id, account_id,
   jsonb_build_object(
     'id', record ->> 'agentId', 'businessId', business_id, 'accountId', account_id,
-    'name', 'Soko business agent', 'provider', 'soko-business-agent', 'packageRef', null,
+    'name', 'Grogoni business agent', 'provider', 'grogoni-business-agent', 'packageRef', null,
     'version', '1', 'runtimeContractVersion', '1', 'capabilities', jsonb_build_array('tools','mcp'),
     'configuration', jsonb_build_object('requiredModelCapabilities', jsonb_build_array('tool-routing')),
     'status', 'active', 'createdAt', record ->> 'createdAt', 'updatedAt', record ->> 'updatedAt'
@@ -256,7 +256,7 @@ on conflict (entity_id) do nothing;
 -- Existing conversations receive the real global default unless a later script maps a verified
 -- business binding. This is intentionally JSON-authoritative for the CP2 normalized store.
 update cp2_conversations
-set record = jsonb_set(record, '{runtimeBindingId}', to_jsonb('builtin:soko-default-runtime:v1'::text), true)
+set record = jsonb_set(record, '{runtimeBindingId}', to_jsonb('builtin:grogoni-default-runtime:v1'::text), true)
 where record ->> 'runtimeBindingId' is null;
-update conversations set runtime_binding_id = 'builtin:soko-default-runtime:v1'
+update conversations set runtime_binding_id = 'builtin:grogoni-default-runtime:v1'
 where runtime_binding_id is null;

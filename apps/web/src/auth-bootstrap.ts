@@ -1,6 +1,6 @@
-import type { AuthBootstrapState, AuthSessionView } from "@soko/shared-types";
+import type { AuthBootstrapState, AuthSessionView } from "@grogoni/shared-types";
 
-const cachedSessionKey = "soko.market.auth-bootstrap.v1";
+const cachedSessionKey = "grogoni.auth-bootstrap.v1";
 
 export interface CachedAuthSession {
   account: AuthSessionView["account"];
@@ -43,7 +43,7 @@ export function readCachedAuthSession(): CachedAuthSession | null {
 export function clearCachedAuthSession(): void {
   localStorage.removeItem(cachedSessionKey);
   // Retain unsynced data under its account key; remove the active routing grant on sign-out.
-  localStorage.removeItem("soko.offline-runtime.active.v1");
+  localStorage.removeItem("grogoni.offline-runtime.active.v1");
 }
 
 export function bootstrapProgressMessage(
@@ -56,7 +56,7 @@ export function bootstrapProgressMessage(
   if (state === "refreshing-session") return "Refreshing your secure session…";
   if (hasBusiness && !hasAgent) return "Starting your agent…";
   if (hasBusiness) return "Loading local model…";
-  return "Opening Soko.market…";
+  return "Opening Grogoni…";
 }
 
 function isCachedAuthSession(value: unknown): value is CachedAuthSession {

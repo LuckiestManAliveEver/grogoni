@@ -2,7 +2,7 @@ import type {
   ContactPickerContact,
   NetworkGraphSummary,
   NetworkInvitesResponse
-} from "./soko-application-shared";
+} from "./grogoni-application-shared";
 
 /**
  * The device's region ("en-KE" -> "KE"), sent with syncs and invites so the server can read
@@ -17,7 +17,7 @@ export function browserDefaultCountry(
 }
 
 /** Dispatched on window when the network changed outside useNetworkState (e.g. a request answered). */
-export const networkChangedEvent = "soko:network-changed";
+export const networkChangedEvent = "grogoni:network-changed";
 
 /** Server limits: contacts per sync request, and contacts per invite request. */
 export const phonebookSyncBatchSize = 5000;
@@ -79,7 +79,7 @@ export async function syncPhonebookInBatches(
 
 export interface InviteOutcome {
   invited: number;
-  alreadyOnSoko: number;
+  alreadyOnGrogoni: number;
   /** Contacts whose number and email could not be read; nothing was sent to them. */
   invalid: number;
   /** No shop to send invites from: the device share sheet was offered instead. */
@@ -92,7 +92,7 @@ export async function sendInvitesInBatches(
   ) => Promise<NetworkInvitesResponse>,
   contacts: Array<{ name: string; phone: string | null; email: string | null }>
 ): Promise<InviteOutcome> {
-  const outcome: InviteOutcome = { invited: 0, alreadyOnSoko: 0, invalid: 0, shared: false };
+  const outcome: InviteOutcome = { invited: 0, alreadyOnGrogoni: 0, invalid: 0, shared: false };
 
   for (let start = 0; start < contacts.length; start += inviteBatchSize) {
     const response = await post(
@@ -101,7 +101,7 @@ export async function sendInvitesInBatches(
         .map(({ name, phone, email }) => ({ name, phone, email }))
     );
     outcome.invited += response.invites.length;
-    outcome.alreadyOnSoko += response.alreadyOnSokoCount ?? 0;
+    outcome.alreadyOnGrogoni += response.alreadyOnGrogoniCount ?? 0;
     outcome.invalid += response.invalidCount ?? 0;
   }
 
@@ -111,23 +111,23 @@ export async function sendInvitesInBatches(
 export function describeInviteOutcome(outcome: InviteOutcome): string {
   if (outcome.shared) return "Share the invite link with the people you picked.";
 
-  const onSoko =
-    outcome.alreadyOnSoko === 0
+  const onGrogoni =
+    outcome.alreadyOnGrogoni === 0
       ? ""
-      : outcome.alreadyOnSoko === 1
-        ? " 1 is already on Soko: connect with them instead."
-        : ` ${outcome.alreadyOnSoko} are already on Soko: connect with them instead.`;
+      : outcome.alreadyOnGrogoni === 1
+        ? " 1 is already on Grogoni: connect with them instead."
+        : ` ${outcome.alreadyOnGrogoni} are already on Grogoni: connect with them instead.`;
 
   const invalid =
-    outcome.invalid === 0 ? "" : ` ${outcome.invalid} had no number or email Soko could read.`;
+    outcome.invalid === 0 ? "" : ` ${outcome.invalid} had no number or email Grogoni could read.`;
 
   if (outcome.invited === 0) {
-    return outcome.alreadyOnSoko > 0
-      ? `Nobody to invite.${onSoko}${invalid}`
+    return outcome.alreadyOnGrogoni > 0
+      ? `Nobody to invite.${onGrogoni}${invalid}`
       : `No invites were sent.${invalid}`;
   }
 
-  return `${outcome.invited} invite${outcome.invited === 1 ? "" : "s"} sent.${onSoko}${invalid}`;
+  return `${outcome.invited} invite${outcome.invited === 1 ? "" : "s"} sent.${onGrogoni}${invalid}`;
 }
 
 function cleanList(values: string[] | undefined): string[] {

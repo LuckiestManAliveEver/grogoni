@@ -1,4 +1,4 @@
-import type { InferencePolicySummary } from "@soko/shared-types";
+import type { InferencePolicySummary } from "@grogoni/shared-types";
 
 import { ProviderConnectionError } from "./connections.js";
 import { isInferenceExecutionTarget, type ModelDefinition } from "./contract.js";
@@ -58,7 +58,7 @@ function idList(value: unknown, name: string, max: number): string[] {
 
 /**
  * Builds a policy row from an API body. `scope` decides what may be set: provider monthly ceilings
- * cap Soko-funded spend, so only the platform (global) scope may set them.
+ * cap Grogoni-funded spend, so only the platform (global) scope may set them.
  */
 export function parsePolicyInput(
   body: unknown,

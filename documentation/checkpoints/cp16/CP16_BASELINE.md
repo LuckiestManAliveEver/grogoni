@@ -8,7 +8,7 @@ Actual tag: not created. No `.repo.git` directory exists in this checkout; see t
 
 ## Purpose
 
-CP16 prepares Soko.market for a controlled public launch after CP15 closed beta hardening passed.
+CP16 prepares Grogoni for a controlled public launch after CP15 closed beta hardening passed.
 
 The goal is to convert the beta-ready product into a launch-ready product with public onboarding, launch operations, production readiness checks, support coverage, safety monitoring, and rollback controls.
 
@@ -28,7 +28,7 @@ CP16 starts from:
 - CP7 offline cache, sync queue, idempotent replay, and conflict surfacing
 - CP8 payment records, invoice settlement, and customer debt summaries
 - CP9 supplier document import preview, correction, confirmation, and import lifecycle events
-- CP10 Sokoclaw runtime sessions, turns, planning, confirmation gates, telemetry, and rate limits
+- CP10 Grogoniclaw runtime sessions, turns, planning, confirmation gates, telemetry, and rate limits
 - CP11 optional local model adapter with deterministic fallback and bounded output parsing
 - CP12 reports, notifications, bounded knowledge summaries, and owner report UI
 - CP13 deterministic logistics records, lifecycle validation, bounded runtime/report context, and sync replay behavior

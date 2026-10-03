@@ -5,16 +5,16 @@ import path from "node:path";
 // cross-package correctness still runs in CI (`pnpm typecheck`), this is a fast local gate, not a
 // CI replica.
 const workspacesByPrefix = [
-  ["apps/web/", "@soko/web"],
-  ["services/api/", "@soko/api"],
-  ["services/ai-runtime/", "@soko/ai-runtime"],
-  ["services/sync/", "@soko/sync"],
-  ["packages/shared-types/", "@soko/shared-types"],
-  ["packages/sync-core/", "@soko/sync-core"],
-  ["packages/tool-core/", "@soko/tool-core"],
-  ["packages/business-core/", "@soko/business-core"],
-  ["packages/event-core/", "@soko/event-core"],
-  ["packages/ui/", "@soko/ui"]
+  ["apps/web/", "@grogoni/web"],
+  ["services/api/", "@grogoni/api"],
+  ["services/ai-runtime/", "@grogoni/ai-runtime"],
+  ["services/sync/", "@grogoni/sync"],
+  ["packages/shared-types/", "@grogoni/shared-types"],
+  ["packages/sync-core/", "@grogoni/sync-core"],
+  ["packages/tool-core/", "@grogoni/tool-core"],
+  ["packages/business-core/", "@grogoni/business-core"],
+  ["packages/event-core/", "@grogoni/event-core"],
+  ["packages/ui/", "@grogoni/ui"]
 ];
 
 function workspaceForFile(relativePath) {

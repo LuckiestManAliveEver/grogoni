@@ -14,7 +14,7 @@ alter table conversation_messages
 update conversation_messages
 set provider = case
       when selected_channel = 'telegram' then 'telegram'
-      else 'soko'
+      else 'grogoni'
     end,
     direction = case
       when imported_source is not null and author = 'user' then 'inbound'
@@ -27,21 +27,21 @@ alter table conversation_messages
   alter column direction set not null,
   drop constraint if exists conversation_messages_provider_check,
   add constraint conversation_messages_provider_check check (
-    provider in ('soko', 'telegram', 'whatsapp', 'messenger', 'instagram', 'tiktok', 'x', 'sms')
+    provider in ('grogoni', 'telegram', 'whatsapp', 'messenger', 'instagram', 'tiktok', 'x', 'sms')
   ),
   drop constraint if exists conversation_messages_direction_check,
   add constraint conversation_messages_direction_check check (direction in ('inbound', 'outbound')),
   drop constraint if exists conversation_messages_selected_channel_check,
   add constraint conversation_messages_selected_channel_check check (
     selected_channel in (
-      'soko', 'sms', 'mms', 'rcs_business', 'whatsapp_business', 'telegram',
+      'grogoni', 'sms', 'mms', 'rcs_business', 'whatsapp_business', 'telegram',
       'facebook_messenger', 'instagram_messaging', 'tiktok_business', 'x_dm', 'email'
     )
   ),
   drop constraint if exists conversation_messages_actual_channel_check,
   add constraint conversation_messages_actual_channel_check check (
     actual_channel is null or actual_channel in (
-      'soko', 'sms', 'mms', 'rcs_business', 'whatsapp_business', 'telegram',
+      'grogoni', 'sms', 'mms', 'rcs_business', 'whatsapp_business', 'telegram',
       'facebook_messenger', 'instagram_messaging', 'tiktok_business', 'x_dm', 'email'
     )
   );

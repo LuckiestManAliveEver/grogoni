@@ -1,4 +1,4 @@
-import type { DocumentImportSourceSummary } from "@soko/shared-types";
+import type { DocumentImportSourceSummary } from "@grogoni/shared-types";
 
 export interface DocumentImportSourceRecord extends DocumentImportSourceSummary {
   content: string;

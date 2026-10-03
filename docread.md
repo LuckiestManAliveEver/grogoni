@@ -1,7 +1,7 @@
 # DocRead Format
 
 Status: repository implementation reference
-Scope: Soko.market document ingestion, text extraction, structured mapping, OCR, review, and persistence
+Scope: Grogoni document ingestion, text extraction, structured mapping, OCR, review, and persistence
 Last verified: 2026-07-17
 
 ## 1. Scope and naming
@@ -1022,7 +1022,7 @@ validation, retry behavior, and Python worker startup/health syntax.
 ### Integration dependencies
 
 1. Image/PDF OCR requires the worker container and `OCR_WORKER_URL`; `render.yaml` now deploys
-   the worker as a private service (`soko-market-ocr-worker`) and wires `OCR_WORKER_URL`
+   the worker as a private service (`grogoni-ocr-worker`) and wires `OCR_WORKER_URL`
    automatically (see "Production deployment" in `docs/receipt-ocr.md`), but its `starter` plan and
    lack of a persistent model-weights disk have not yet been load-tested against real traffic.
 2. Legacy binary DOC and ODT text extraction remain unsupported.
@@ -1093,7 +1093,7 @@ validation, retry behavior, and Python worker startup/health syntax.
 
 Primary implementation files:
 
-- `apps/web/src/SokoApplication.tsx`
+- `apps/web/src/GrogoniApplication.tsx`
   - generic import UI;
   - file-to-text handling;
   - receipt upload UI;

@@ -64,13 +64,13 @@ describe("createIntervalRunner", () => {
     ) => Promise<R>;
     const run = vi.fn(async () => "ok");
     const runner = createIntervalRunner({
-      job: "sokoid_cooldown",
+      job: "grogoniid_cooldown",
       intervalMs: 60_000,
       run,
       timeScheduledJob
     });
     await runner.runNow();
-    expect(timeScheduledJobMock).toHaveBeenCalledWith("sokoid_cooldown", run);
+    expect(timeScheduledJobMock).toHaveBeenCalledWith("grogoniid_cooldown", run);
     await runner.stop();
   });
 

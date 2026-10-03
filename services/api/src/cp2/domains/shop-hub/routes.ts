@@ -31,7 +31,7 @@ export function registerShopHubRoutes(
           channels_linked: async () => {
             const external = store
               .listChannelProviderReadiness(actor)
-              .filter((provider) => provider.provider !== "soko");
+              .filter((provider) => provider.provider !== "grogoni");
             if (external.some((provider) => provider.status === "available")) return "ready";
             return external.some((provider) => provider.status === "authorization_required")
               ? "needs_setup"

@@ -1,7 +1,7 @@
 # Backend inference host (superseded)
 
 This document described the retired topology: `services/ai-runtime` as a Render-private Ollama
-facade (`Soko PWA -> public Soko API -> private authenticated ai-runtime -> loopback Ollama ->
+facade (`Grogoni PWA -> public Grogoni API -> private authenticated ai-runtime -> loopback Ollama ->
 model`).
 
 `services/ai-runtime` is now a standalone Vercel deployment running `node-llama-cpp` against a

@@ -32,7 +32,7 @@ describe("delivery routes card (permanent surface, no chat wiring)", () => {
 
   it("imports the shipped DeliveryRouteSummary/DeliveryRouteStatus types instead of redefining them", () => {
     expect(card).toContain(
-      'import type { DeliveryRouteStatus, DeliveryRouteSummary } from "@soko/shared-types"'
+      'import type { DeliveryRouteStatus, DeliveryRouteSummary } from "@grogoni/shared-types"'
     );
   });
 

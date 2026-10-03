@@ -10,7 +10,7 @@ alter table invoices
   add column if not exists created_by_user_id uuid,
   add constraint invoices_source_valid check (
     source is null or source in (
-      'FIELD_SALES', 'RETAIL_SALES', 'SOKO_CHAT', 'WHATSAPP', 'TELEGRAM', 'TIKTOK', 'INSTAGRAM',
+      'FIELD_SALES', 'RETAIL_SALES', 'GROGONI_CHAT', 'WHATSAPP', 'TELEGRAM', 'TIKTOK', 'INSTAGRAM',
       'PHONE', 'MANUAL', 'API'
     )
   );

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { installOfflineRuntime, type InstallStep, type LocalState } from "@soko/offline-runtime";
-import type { ConversationMessageSummary } from "@soko/shared-types";
+import { installOfflineRuntime, type InstallStep, type LocalState } from "@grogoni/offline-runtime";
+import type { ConversationMessageSummary } from "@grogoni/shared-types";
 import { SettingsGroup } from "./SettingsGroup";
 import { OfflineInstallWizard } from "./OfflineInstallWizard";
 import { prepareOfflineShell } from "./offline-shell";
@@ -384,7 +384,7 @@ export function OfflineRuntimeSettings({
         <section aria-labelledby="nearby-messaging-title">
           <h4 id="nearby-messaging-title">Message a nearby device (Bluetooth, experimental)</h4>
           <p>
-            Connects directly to one nearby Soko-compatible device over Bluetooth - no internet, no
+            Connects directly to one nearby Grogoni-compatible device over Bluetooth - no internet, no
             server in between. This is separate from your regular conversations: messages sent here
             only reach the device you are connected to, only while connected, and are not saved to
             any conversation history.

@@ -9,12 +9,12 @@ the pre-existing architecture — this doc does not repeat that reasoning, only 
 
 ```
 User
-  -> Soko unified chat (apps/web: QuickRuntimeSwitcher.tsx / AgentModelPanel.tsx)
+  -> Grogoni unified chat (apps/web: QuickRuntimeSwitcher.tsx / AgentModelPanel.tsx)
   -> Selected agent (AgentDefinition, unchanged by a model switch)
   -> Native runtime binding resolver (NativeRuntimeBindingStore.resolveRuntimeBinding)
   -> Model + provider (runtimeModels / aiModelRegistry, ModelRuntimeAdapter)
   -> Execution environment (the `vercel` execution target: services/ai-runtime on Vercel)
-  -> Model response -> Soko tool-authorization boundary (packages/tool-core, unchanged) -> chat
+  -> Model response -> Grogoni tool-authorization boundary (packages/tool-core, unchanged) -> chat
 ```
 
 Agent, model, provider and execution environment are four independently swappable dimensions,

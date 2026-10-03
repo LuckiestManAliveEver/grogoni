@@ -5,8 +5,8 @@ import type {
   ConversationView,
   MessageDeliveryAttemptSummary,
   MessageHandoffSummary,
-  SokoSessionContext
-} from "@soko/shared-types";
+  GrogoniSessionContext
+} from "@grogoni/shared-types";
 import { buildApi } from "../services/api/src/app";
 import { createCp2Store } from "../services/api/src/cp2/store";
 
@@ -14,7 +14,7 @@ interface BusinessResponse {
   business: {
     id: string;
     name: string;
-    sokoId: string;
+    grogoniId: string;
   };
 }
 
@@ -75,7 +75,7 @@ describe("CP20 unified account, conversation, and session foundation", () => {
       method: "PUT",
       url: `/businesses/${shop.business.id}/ai-model`,
       headers: { "content-type": "application/json", cookie: sessionCookie },
-      payload: JSON.stringify({ modelId: "sokoclaw-local" })
+      payload: JSON.stringify({ modelId: "grogoniclaw-local" })
     });
     expect(localFallbackSelection.statusCode).toBe(400);
     expect(localFallbackSelection.json().code).toBe("cloud_model_unavailable");
@@ -129,7 +129,7 @@ describe("CP20 unified account, conversation, and session foundation", () => {
     const app = buildApi({ cp2: { store } });
     const sessionCookie = await createAccountSession(app, "254700000020");
 
-    const initialContext = await getJson<SokoSessionContext>(
+    const initialContext = await getJson<GrogoniSessionContext>(
       app,
       "/v1/session/context",
       sessionCookie
@@ -186,7 +186,7 @@ describe("CP20 unified account, conversation, and session foundation", () => {
       sessionCookie
     );
     expect(sellerContextResponse.statusCode).toBe(200);
-    const sellerContext = sellerContextResponse.json<SokoSessionContext>();
+    const sellerContext = sellerContextResponse.json<GrogoniSessionContext>();
     expect(sellerContext).toMatchObject({
       activeShopId: firstShop.business.id,
       mode: "seller",
@@ -223,7 +223,7 @@ describe("CP20 unified account, conversation, and session foundation", () => {
     const ownerCookie = await createAccountSession(app, "254700000024");
     const shop = await createBusiness(app, ownerCookie, "Two Contexts Shop");
 
-    const personalContext = await getJson<SokoSessionContext>(
+    const personalContext = await getJson<GrogoniSessionContext>(
       app,
       "/v1/session/context",
       ownerCookie
@@ -248,7 +248,7 @@ describe("CP20 unified account, conversation, and session foundation", () => {
       ownerCookie
     );
 
-    const storefrontContext = await getJson<SokoSessionContext>(
+    const storefrontContext = await getJson<GrogoniSessionContext>(
       app,
       `/v1/session/context?conversationId=${storefrontConversation.conversation.id}`,
       ownerCookie
@@ -274,13 +274,13 @@ describe("CP20 unified account, conversation, and session foundation", () => {
       ownerCookie
     );
     expect(storefrontUpdate.statusCode).toBe(200);
-    expect(storefrontUpdate.json<SokoSessionContext>()).toMatchObject({
+    expect(storefrontUpdate.json<GrogoniSessionContext>()).toMatchObject({
       conversationId: storefrontConversation.conversation.id,
       activeSurface: "catalogue",
       sessionVersion: 2
     });
 
-    const personalContextAfter = await getJson<SokoSessionContext>(
+    const personalContextAfter = await getJson<GrogoniSessionContext>(
       app,
       "/v1/session/context",
       ownerCookie
@@ -363,7 +363,7 @@ describe("CP20 unified account, conversation, and session foundation", () => {
     const phone = "254700000023";
     const firstDeviceCookie = await createAccountSession(app, phone);
     const firstShop = await createBusiness(app, firstDeviceCookie, "Everywhere Shop");
-    const initial = await getJson<SokoSessionContext>(
+    const initial = await getJson<GrogoniSessionContext>(
       app,
       "/v1/session/context",
       firstDeviceCookie
@@ -389,7 +389,7 @@ describe("CP20 unified account, conversation, and session foundation", () => {
     });
     expect(secondLogin.statusCode).toBe(200);
     const secondDeviceCookie = extractSessionCookie(secondLogin.headers["set-cookie"]);
-    const restored = await getJson<SokoSessionContext>(
+    const restored = await getJson<GrogoniSessionContext>(
       app,
       "/v1/session/context",
       secondDeviceCookie
@@ -414,7 +414,7 @@ describe("CP20 unified account, conversation, and session foundation", () => {
       secondDeviceCookie
     );
     expect(partialUpdate.statusCode).toBe(200);
-    expect(partialUpdate.json<SokoSessionContext>()).toMatchObject({
+    expect(partialUpdate.json<GrogoniSessionContext>()).toMatchObject({
       activeShopId: firstShop.business.id,
       mode: "seller",
       activeSurface: "catalogue",
@@ -422,7 +422,7 @@ describe("CP20 unified account, conversation, and session foundation", () => {
       sessionVersion: restored.sessionVersion + 1
     });
 
-    const visibleOnFirstDevice = await getJson<SokoSessionContext>(
+    const visibleOnFirstDevice = await getJson<GrogoniSessionContext>(
       app,
       "/v1/session/context",
       firstDeviceCookie
@@ -444,7 +444,7 @@ describe("CP20 unified account, conversation, and session foundation", () => {
     const ownerCookie = await createAccountSession(app, "254700000021");
     const strangerCookie = await createAccountSession(app, "254700000022");
     const shop = await createBusiness(app, ownerCookie, "Conversation Shop");
-    const context = await getJson<SokoSessionContext>(app, "/v1/session/context", ownerCookie);
+    const context = await getJson<GrogoniSessionContext>(app, "/v1/session/context", ownerCookie);
 
     const conversation = await postJson<ConversationView>(
       app,
@@ -463,7 +463,7 @@ describe("CP20 unified account, conversation, and session foundation", () => {
       content: { type: "text", text: "Do you have 10 kg of maize flour?" },
       clientTimestamp: "2026-07-11T21:04:27+03:00",
       queuedAt: "2026-07-11T18:04:20.000Z",
-      selectedChannel: "soko"
+      selectedChannel: "grogoni"
     };
     const firstMessage = await postJson<ConversationMessageSummary>(
       app,
@@ -485,8 +485,8 @@ describe("CP20 unified account, conversation, and session foundation", () => {
       sentAt: expect.any(String),
       deliveredAt: expect.any(String),
       retryCount: 0,
-      selectedChannel: "soko",
-      actualChannel: "soko",
+      selectedChannel: "grogoni",
+      actualChannel: "grogoni",
       failureCode: null
     });
     const attempts = await getJson<{ attempts: MessageDeliveryAttemptSummary[] }>(
@@ -499,8 +499,8 @@ describe("CP20 unified account, conversation, and session foundation", () => {
         accountId: context.accountId,
         conversationId: conversation.conversation.id,
         messageId: firstMessage.id,
-        channel: "soko",
-        provider: "soko",
+        channel: "grogoni",
+        provider: "grogoni",
         attemptNumber: 1,
         result: "succeeded"
       })
@@ -601,8 +601,8 @@ describe("CP20 unified account, conversation, and session foundation", () => {
     expect(restored.messages[0]?.id).toBe(firstMessage.id);
     expect(restored.messages[0]).toMatchObject({
       idempotencyKey: payload.idempotencyKey,
-      selectedChannel: "soko",
-      actualChannel: "soko"
+      selectedChannel: "grogoni",
+      actualChannel: "grogoni"
     });
     expect(hydratedStore.snapshot().messageDeliveryAttempts).toHaveLength(1);
     const hydratedAuditEvents = hydratedStore.snapshot().auditEvents;

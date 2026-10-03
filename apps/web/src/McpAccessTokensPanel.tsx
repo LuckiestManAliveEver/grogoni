@@ -4,7 +4,7 @@ import type {
   McpAccessScope,
   McpAccessTokenCreated,
   McpAccessTokenSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
 import { deleteJson, getJson, postJson } from "./api-helpers";
 import { getErrorMessage } from "./chat-message-plumbing";
@@ -31,7 +31,7 @@ function modelLabSetup(
     const apiBaseUrl = shopConnectionUrl.replace(/\/mcp\?shopId=.*$/u, "/v1/shop-system");
     return {
       instructions:
-        "Use the token as a Bearer credential. PUT catalogue updates, GET incoming Soko Chat orders, and PATCH order status after your system accepts or fulfils them.",
+        "Use the token as a Bearer credential. PUT catalogue updates, GET incoming Grogoni Chat orders, and PATCH order status after your system accepts or fulfils them.",
       configuration: JSON.stringify(
         {
           catalogue: { method: "PUT", url: `${apiBaseUrl}/catalogue` },
@@ -47,12 +47,12 @@ function modelLabSetup(
   if (modelLabId === "external_agent") {
     return {
       instructions:
-        "Use this with any MCP-capable agent UI, including Muse, Instinct, ChatGPT, Claude, or another model app. Paste the URL as the remote MCP server and send the Soko secret as a Bearer credential. With the permissions you grant, the agent can monitor and send messages, establish end-to-end encrypted agent and model channels, handle shop work, browse the marketplace, and prepare purchases for your confirmation.",
+        "Use this with any MCP-capable agent UI, including Muse, Instinct, ChatGPT, Claude, or another model app. Paste the URL as the remote MCP server and send the Grogoni secret as a Bearer credential. With the permissions you grant, the agent can monitor and send messages, establish end-to-end encrypted agent and model channels, handle shop work, browse the marketplace, and prepare purchases for your confirmation.",
       configuration: JSON.stringify(
         {
           transport: "streamable-http",
           server: {
-            name: "soko_shop",
+            name: "grogoni_shop",
             url: shopConnectionUrl,
             headers: { Authorization: `Bearer ${accessToken}` }
           },
@@ -69,11 +69,11 @@ function modelLabSetup(
   if (modelLabId === "openai") {
     return {
       instructions:
-        "Add this object as an MCP tool in an OpenAI Responses API request. The authorization value is the Soko connection secret, not your OpenAI API key.",
+        "Add this object as an MCP tool in an OpenAI Responses API request. The authorization value is the Grogoni connection secret, not your OpenAI API key.",
       configuration: JSON.stringify(
         {
           type: "mcp",
-          server_label: "soko_shop",
+          server_label: "grogoni_shop",
           server_url: shopConnectionUrl,
           authorization: accessToken,
           require_approval: "always"
@@ -86,18 +86,18 @@ function modelLabSetup(
   if (modelLabId === "anthropic") {
     return {
       instructions:
-        "Merge these fields into an Anthropic Messages API request. The authorization_token is the Soko connection secret, not your Anthropic API key.",
+        "Merge these fields into an Anthropic Messages API request. The authorization_token is the Grogoni connection secret, not your Anthropic API key.",
       configuration: JSON.stringify(
         {
           mcp_servers: [
             {
               type: "url",
-              name: "soko_shop",
+              name: "grogoni_shop",
               url: shopConnectionUrl,
               authorization_token: accessToken
             }
           ],
-          tools: [{ type: "mcp_toolset", mcp_server_name: "soko_shop" }],
+          tools: [{ type: "mcp_toolset", mcp_server_name: "grogoni_shop" }],
           betas: ["mcp-client-2025-11-20"]
         },
         null,
@@ -108,11 +108,11 @@ function modelLabSetup(
   if (modelLabId === "google") {
     return {
       instructions:
-        "Add this object to tools in a Gemini Interactions API request. Keep your Gemini API key separate from the Soko Authorization header.",
+        "Add this object to tools in a Gemini Interactions API request. Keep your Gemini API key separate from the Grogoni Authorization header.",
       configuration: JSON.stringify(
         {
           type: "mcp_server",
-          name: "soko_shop",
+          name: "grogoni_shop",
           url: shopConnectionUrl,
           headers: { Authorization: `Bearer ${accessToken}` }
         },
@@ -123,7 +123,7 @@ function modelLabSetup(
   }
   return {
     instructions:
-      "Add a remote Streamable HTTP MCP server with this URL and send the Soko secret in its Authorization header.",
+      "Add a remote Streamable HTTP MCP server with this URL and send the Grogoni secret in its Authorization header.",
     configuration: JSON.stringify(
       {
         url: shopConnectionUrl,
@@ -228,7 +228,7 @@ export function McpAccessTokensPanel({
     modelLabOptions.find((option) => option.id === modelLabId) ?? modelLabOptions[0];
   const selectedModelLabSetup = modelLabSetup(modelLabId, shopConnectionUrl, newMcpAccessToken);
   const connectionBundle = [
-    `Soko shop: ${businessId}`,
+    `Grogoni shop: ${businessId}`,
     `Provider: ${selectedModelLab.label}`,
     `Permissions: ${[
       ...(newMcpAccessScopes.includes("mcp:read") ? ["read shop data"] : []),

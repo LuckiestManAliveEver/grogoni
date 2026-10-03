@@ -1,7 +1,7 @@
 import {
   type BusinessKnowledgeSummary,
   type BusinessReportSummary
-} from "./soko-application-shared";
+} from "./grogoni-application-shared";
 
 import { formatMoney, formatPercent } from "./formatters";
 

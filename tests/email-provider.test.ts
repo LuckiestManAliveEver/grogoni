@@ -24,7 +24,7 @@ describe("transactional email API", () => {
     const provider = createEmailProviderFromEnvironment({
       NODE_ENV: "production",
       RESEND_API_KEY: "re_mock_api_key",
-      SOKO_EMAIL_FROM: "Soko <messages@soko.test>"
+      GROGONI_EMAIL_FROM: "Grogoni <messages@grogoni.test>"
     });
 
     await provider.sendOtp({
@@ -37,7 +37,7 @@ describe("transactional email API", () => {
       provider.sendEncryptedMessageNotification({
         conversationId: "conversation-email-1",
         messageId: "message-email-1",
-        openUrl: "https://soko.market/?conversation=conversation-email-1",
+        openUrl: "https://grogoni.com/?conversation=conversation-email-1",
         to: "email-user@example.test"
       })
     ).resolves.toBe("sent");
@@ -50,15 +50,15 @@ describe("transactional email API", () => {
     });
     const otpBody = JSON.parse(String(requests[0]?.init.body)) as Record<string, unknown>;
     expect(otpBody).toMatchObject({
-      from: "Soko <messages@soko.test>",
+      from: "Grogoni <messages@grogoni.test>",
       to: ["email-user@example.test"],
-      subject: "Your Soko verification code"
+      subject: "Your Grogoni verification code"
     });
     expect(otpBody.text).toContain("483921");
 
     const notificationBody = JSON.parse(String(requests[1]?.init.body)) as Record<string, unknown>;
     expect(notificationBody.text).toContain("end-to-end encrypted");
-    expect(notificationBody.text).toContain("https://soko.market/?conversation=");
+    expect(notificationBody.text).toContain("https://grogoni.com/?conversation=");
     expect(notificationBody.text).not.toContain("private phone to email message");
   });
 

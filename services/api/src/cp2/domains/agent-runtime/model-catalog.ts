@@ -1,5 +1,5 @@
-import type { AiModelSummary } from "@soko/shared-types";
-import { platformSharedModelId, resolveRuntimeModel } from "@soko/shared-types";
+import type { AiModelSummary } from "@grogoni/shared-types";
+import { platformSharedModelId, resolveRuntimeModel } from "@grogoni/shared-types";
 
 export const defaultAiModelId = platformSharedModelId;
 export const downloadableAiModelIdPattern =
@@ -76,7 +76,7 @@ export function computeModelAvailability(modelId: string, storedAvailable: boole
 }
 
 /**
- * On-device (browser-local) and Soko Cloud router models - also seeded into existing databases by
+ * On-device (browser-local) and Grogoni Cloud router models - also seeded into existing databases by
  * infra/db/migrations/102_inference_catalog_seeds.sql and 103_shopkeeper_zeroclaw_default.sql,
  * which must stay in step with this list.
  */
@@ -203,11 +203,11 @@ export const inferenceRouterSeedModels: AiModelSummary[] = [
     }
   },
   {
-    id: "qwen3-4b-soko-cloud",
-    label: "Qwen3-4B (Soko Cloud)",
-    provider: "soko-llama",
+    id: "qwen3-4b-grogoni-cloud",
+    label: "Qwen3-4B (Grogoni Cloud)",
+    provider: "grogoni-llama",
     description:
-      "Qwen3-4B served by Soko's own llama.cpp inference server. Available once an operator configures SOKO_LLAMA_BASE_URL and enables this entry.",
+      "Qwen3-4B served by Grogoni's own llama.cpp inference server. Available once an operator configures GROGONI_LLAMA_BASE_URL and enables this entry.",
     capabilities: ["chat", "multilingual", "reasoning"],
     available: false,
     source: "hosted",
@@ -225,7 +225,7 @@ export const inferenceRouterSeedModels: AiModelSummary[] = [
     supportsToolCalling: false,
     supportsStructuredOutput: false,
     inference: {
-      providerId: "soko-llama",
+      providerId: "grogoni-llama",
       providerModelId: "qwen3-4b",
       executionTarget: "remote-inference",
       capabilities: {
@@ -239,7 +239,7 @@ export const inferenceRouterSeedModels: AiModelSummary[] = [
     }
   },
   {
-    // The platform default model (repositoryDefaultRuntimePolicy): Soko-funded, run by the
+    // The platform default model (repositoryDefaultRuntimePolicy): Grogoni-funded, run by the
     // Shopkeeper agent on the ZeroClaw runtime (ADR-zeroclaw-default-agent-runtime.md). Pricing is
     // OpenAI's published short-context rate at seeding time; operators re-verify it through
     // PUT /v1/platform/model-catalog/gpt-6-luna when it changes.
@@ -247,7 +247,7 @@ export const inferenceRouterSeedModels: AiModelSummary[] = [
     label: "GPT-6 Luna",
     provider: "openai",
     description:
-      "OpenAI's efficient model for focused, high-volume tasks. Included with Soko: the platform pays for it within Soko's usage limits.",
+      "OpenAI's efficient model for focused, high-volume tasks. Included with Grogoni: the platform pays for it within Grogoni's usage limits.",
     capabilities: ["chat", "multilingual", "reasoning", "instruction-following"],
     available: true,
     source: "hosted",
@@ -386,7 +386,7 @@ export const aiModelRegistry: AiModelSummary[] = [
     id: "smollm2-360m",
     label: "SmolLM2 360M Instruct Q4_0",
     provider: "local",
-    description: "Small Apache-2.0 instruction model served by Soko's Vercel inference host.",
+    description: "Small Apache-2.0 instruction model served by Grogoni's Vercel inference host.",
     capabilities: ["chat", "english", "instruction-following"],
     available: true,
     source: "hosted",
@@ -442,8 +442,8 @@ export const aiModelRegistry: AiModelSummary[] = [
     contextWindow: 32_768
   },
   {
-    id: "sokoclaw-local",
-    label: "Soko deterministic compatibility fallback",
+    id: "grogoniclaw-local",
+    label: "Grogoni deterministic compatibility fallback",
     provider: "local",
     description:
       "Built-in deterministic agent behavior for compatibility; not a general-purpose language model.",
@@ -466,7 +466,7 @@ export const aiModelRegistry: AiModelSummary[] = [
     id: "llama-cpp-configured",
     label: "Installed app llama.cpp bridge",
     provider: "local",
-    description: "Optional native model runtime exposed by a supported installed Soko application.",
+    description: "Optional native model runtime exposed by a supported installed Grogoni application.",
     capabilities: ["chat", "tool-routing", "llama.cpp", "native-bridge"],
     available: false,
     source: "builtin",
@@ -491,7 +491,7 @@ export const aiModelRegistry: AiModelSummary[] = [
  * conversation history, and the model's output allowance, so only a fraction of the window is
  * spent here. Uses a conservative ~4 characters-per-token estimate since no exact tokenizer is
  * wired into this service. Models outside the backend runtime registry (cloud fallback, the
- * deterministic "sokoclaw-local" compatibility mode) have no declared context window here, so a
+ * deterministic "grogoniclaw-local" compatibility mode) have no declared context window here, so a
  * fixed conservative default is used instead.
  */
 export const defaultContextCharacterBudget = 6_000;
@@ -522,5 +522,5 @@ export function resolveDefaultDeviceModelId(
   if (preferredModel?.source === "hosted" && preferredModel.available) {
     return preferredModel.id;
   }
-  return "sokoclaw-local";
+  return "grogoniclaw-local";
 }

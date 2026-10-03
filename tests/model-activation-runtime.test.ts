@@ -59,12 +59,12 @@ describe("agent model activation runtime", () => {
       payload: JSON.stringify({
         kind: "personal",
         activeShopId: owner.businessId,
-        runtimeBindingId: "builtin:soko-default-runtime:v1"
+        runtimeBindingId: "builtin:grogoni-default-runtime:v1"
       })
     });
     expect(createdConversation.statusCode).toBe(200);
     expect(createdConversation.json()).toMatchObject({
-      conversation: { runtimeBindingId: "builtin:soko-default-runtime:v1" }
+      conversation: { runtimeBindingId: "builtin:grogoni-default-runtime:v1" }
     });
     const conversationId = createdConversation.json<{ conversation: { id: string } }>().conversation
       .id;
@@ -93,7 +93,7 @@ describe("agent model activation runtime", () => {
         ok: true,
         modelId: primaryModelId,
         executionTarget: "backend",
-        responsePreview: "SOKO_MODEL_OK"
+        responsePreview: "GROGONI_MODEL_OK"
       }
     });
 
@@ -602,7 +602,7 @@ describe("agent model activation runtime", () => {
   });
 
   it("uses the persisted in-process global default for an otherwise unbound conversation - provider-neutral, not hardcoded to OpenAI", async () => {
-    const globalDefaultModelId = "soko-local-default";
+    const globalDefaultModelId = "grogoni-local-default";
     const store = createCp2Store({
       modelRuntimeAdapterResolver: ({ modelId, executionTarget }) =>
         modelId === globalDefaultModelId && executionTarget === "backend"
@@ -616,7 +616,7 @@ describe("agent model activation runtime", () => {
     store.activateGlobalDefaultModel({
       model: {
         id: globalDefaultModelId,
-        label: "Soko local default",
+        label: "Grogoni local default",
         provider: "local",
         description: "A non-OpenAI model proving the global default is not vendor-locked.",
         capabilities: ["chat", "tool-routing"],
@@ -1013,7 +1013,7 @@ function fakeArtifactStore(): ModelArtifactStore {
         id: `test:${modelId}`,
         modelId,
         storageProvider: "neon-object-storage",
-        bucket: "soko-model-artifacts",
+        bucket: "grogoni-model-artifacts",
         objectKey: `models/${modelId}/model.gguf`,
         format: "gguf",
         quantization: "Q4_0",
@@ -1028,7 +1028,7 @@ function fakeArtifactStore(): ModelArtifactStore {
     async createDownloadUrl(artifact) {
       return {
         ...artifact,
-        downloadUrl: "https://storage.example.neon.tech/soko-model-artifacts/model.gguf",
+        downloadUrl: "https://storage.example.neon.tech/grogoni-model-artifacts/model.gguf",
         expiresAt: new Date(Date.now() + 60_000).toISOString()
       };
     },
@@ -1071,7 +1071,7 @@ function vercelInferenceFetch(
           {
             type: "result",
             requestId: overrides.resultRequestId ?? requestId,
-            text: overrides.text ?? "SOKO_MODEL_OK",
+            text: overrides.text ?? "GROGONI_MODEL_OK",
             finishReason: "stop",
             usage: { inputTokens: 7, outputTokens: 3 },
             metrics: {}
@@ -1112,7 +1112,7 @@ function healthyAdapter(
         provider: "test",
         executionTarget,
         latencyMs: 4,
-        responsePreview: ok ? "SOKO_MODEL_OK" : "not ready",
+        responsePreview: ok ? "GROGONI_MODEL_OK" : "not ready",
         errorCode: ok ? null : "MODEL_HEALTH_CHECK_FAILED",
         message: ok ? null : "The model did not pass readiness.",
         retryable: !ok

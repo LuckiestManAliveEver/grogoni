@@ -1,12 +1,12 @@
-import { assertStorage } from "@soko/offline-runtime";
-const cacheName = "soko-offline-shell-v1";
-const activeKey = "/__soko_offline_active__";
+import { assertStorage } from "@grogoni/offline-runtime";
+const cacheName = "grogoni-offline-shell-v1";
+const activeKey = "/__grogoni_offline_active__";
 export async function prepareOfflineShell(
   progress: (completed: number, total: number) => void
 ): Promise<void> {
   if (import.meta.env.DEV) return;
   if (!navigator.serviceWorker?.controller)
-    throw new Error("Reload Soko once to activate offline support, then try again.");
+    throw new Error("Reload Grogoni once to activate offline support, then try again.");
   const response = await fetch("/offline-manifest.json", { cache: "no-store" });
   if (!response.ok) throw new Error("The offline application manifest is unavailable.");
   const manifest = (await response.json()) as { files: string[]; bytes: number };

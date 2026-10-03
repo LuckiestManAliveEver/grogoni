@@ -52,10 +52,10 @@ textarea {
 }
 
 button {
-  background: var(--soko-accent);
+  background: var(--grogoni-accent);
   border: 0;
   border-radius: 8px;
-  color: var(--soko-accent-ink);
+  color: var(--grogoni-accent-ink);
   cursor: pointer;
   font-weight: 700;
   min-height: 24px;
@@ -117,18 +117,18 @@ button:disabled {
   width: 1px;
 }
 
-/* Emitted by the shared @soko/ui Surface component used by the legal routes. */
-.soko-surface {
+/* Emitted by the shared @grogoni/ui Surface component used by the legal routes. */
+.grogoni-surface {
   background: #2b3621;
   min-height: 100vh;
   padding: 0;
 }
 
-.soko-surface > h1 {
+.grogoni-surface > h1 {
   display: none;
 }
 
-.soko-surface p {
+.grogoni-surface p {
   font-size: 15px;
   line-height: 1.45;
   margin: 0;
@@ -137,7 +137,7 @@ button:disabled {
 /* The legal-markdown body (Terms/Privacy/account-deletion) renders plain <a> tags with no class of
    their own, so they fell through to the browser's default link blue - fine against the old
    near-white page background, unreadable (1.35:1) against this dark one. */
-.soko-surface a {
+.grogoni-surface a {
   color: #85eec3;
 }
 
@@ -1820,8 +1820,8 @@ button:disabled {
 }
 
 .local-gallery-panel {
-  background: color-mix(in srgb, var(--soko-paper-dim, #213625) 72%, #ffffff 8%);
-  border: 1px solid color-mix(in srgb, var(--soko-line, #344636) 80%, transparent);
+  background: color-mix(in srgb, var(--grogoni-paper-dim, #213625) 72%, #ffffff 8%);
+  border: 1px solid color-mix(in srgb, var(--grogoni-line, #344636) 80%, transparent);
   border-radius: 12px;
   display: grid;
   gap: 12px;
@@ -1836,8 +1836,8 @@ button:disabled {
 
 .local-gallery-grid button {
   align-content: start;
-  background: color-mix(in srgb, var(--soko-sell-tint, #273f2c) 75%, transparent);
-  border: 1px solid color-mix(in srgb, var(--soko-sell, #2f7d46) 22%, transparent);
+  background: color-mix(in srgb, var(--grogoni-sell-tint, #273f2c) 75%, transparent);
+  border: 1px solid color-mix(in srgb, var(--grogoni-sell, #2f7d46) 22%, transparent);
   border-radius: 10px;
   color: inherit;
   display: grid;
@@ -1848,8 +1848,8 @@ button:disabled {
 }
 
 .local-gallery-grid button.active {
-  border-color: var(--soko-sell, #2f7d46);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--soko-sell, #2f7d46) 20%, transparent);
+  border-color: var(--grogoni-sell, #2f7d46);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--grogoni-sell, #2f7d46) 20%, transparent);
 }
 
 .local-gallery-grid img {
@@ -2667,7 +2667,7 @@ a.button-like {
     0 0 0 4px #113f67;
 }
 
-.message.sokoclaw {
+.message.grogoniclaw {
   background: #213624;
 }
 
@@ -2719,7 +2719,7 @@ a.button-like {
   max-width: min(84%, 720px);
 }
 
-.message.sokoclaw {
+.message.grogoniclaw {
   background: #213624;
   border: 1px solid #314936;
 }
@@ -3592,9 +3592,9 @@ a.button-like {
 
 .phonebook-file-button {
   align-items: center;
-  background: var(--soko-accent);
+  background: var(--grogoni-accent);
   border-radius: 8px;
-  color: var(--soko-accent-ink);
+  color: var(--grogoni-accent-ink);
   cursor: pointer;
   display: inline-flex;
   font-weight: 700;
@@ -4629,7 +4629,7 @@ details.nested-form-section summary {
   padding: 10px;
 }
 
-.soko-id-card {
+.grogoni-id-card {
   background: #213628;
   border: 1px solid #2b4f3a;
   border-radius: 8px;
@@ -4638,19 +4638,19 @@ details.nested-form-section summary {
   padding: 12px;
 }
 
-.soko-id-card span {
+.grogoni-id-card span {
   color: #9daea4;
   font-size: 12px;
   font-weight: 800;
 }
 
-.soko-id-card strong {
+.grogoni-id-card strong {
   color: #a3f0d1;
   font-size: 22px;
   overflow-wrap: anywhere;
 }
 
-.soko-id-card p {
+.grogoni-id-card p {
   color: #9daea4;
   margin: 0;
 }
@@ -5734,7 +5734,7 @@ details.nested-form-section summary {
 }
 
 @media (max-width: 430px) {
-  .soko-surface {
+  .grogoni-surface {
     padding: 0;
   }
 
@@ -5982,11 +5982,11 @@ details.nested-form-section summary {
   .top-bar,
   .record-form,
   .record-list,
-  .soko-surface > h1 {
+  .grogoni-surface > h1 {
     display: none;
   }
 
-  .soko-surface,
+  .grogoni-surface,
   .invoice-preview {
     border: 0;
     padding: 0;
@@ -6140,17 +6140,17 @@ details.nested-form-section summary {
 }
 
 .welcome-auth-actions button {
-  background: var(--soko-accent);
-  color: var(--soko-accent-ink);
+  background: var(--grogoni-accent);
+  color: var(--grogoni-accent-ink);
   font-size: 13px;
   min-height: 36px;
   padding: 7px 14px;
 }
 
 .welcome-auth-actions button.secondary {
-  background: var(--soko-paper-dim);
-  border: 1px solid var(--soko-line);
-  color: var(--soko-ink);
+  background: var(--grogoni-paper-dim);
+  border: 1px solid var(--grogoni-line);
+  color: var(--grogoni-ink);
 }
 
 .messenger-thread {
@@ -6508,30 +6508,30 @@ details.nested-form-section summary {
   }
 }
 
-/* Soko Home shell --------------------------------------------------
+/* Grogoni Home shell --------------------------------------------------
    Visual language shared by the shell, BUY flow, and SELL/status flow -
-   the "Soko Home" design system (dark ink, saffron accent, green/clay modes). */
+   the "Grogoni Home" design system (dark ink, saffron accent, green/clay modes). */
 :root {
-  --soko-paper: #12151c;
-  --soko-paper-dim: #1b202b;
-  --soko-ink: #f4f2ee;
-  --soko-ink-soft: #c7cbd4;
-  --soko-ink-faint: #8b93a3;
-  --soko-line: #323a48;
-  --soko-line-strong: #454e60;
-  --soko-accent: #e3a13c;
-  --soko-accent-ink: #3a2707;
-  --soko-accent-soft: #2f2010;
-  --soko-buy: #2f6b56;
-  --soko-buy-soft: #1f4438;
-  --soko-buy-tint: #142520;
-  --soko-sell: #c2543f;
-  --soko-sell-soft: #3a1f18;
-  --soko-sell-tint: #241612;
-  --soko-bezel: #05060a;
-  --soko-display-font: "Sora", "Avenir Next", Avenir, Inter, ui-sans-serif, system-ui, sans-serif;
-  --soko-mono-font: "IBM Plex Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  --soko-serif-font:
+  --grogoni-paper: #12151c;
+  --grogoni-paper-dim: #1b202b;
+  --grogoni-ink: #f4f2ee;
+  --grogoni-ink-soft: #c7cbd4;
+  --grogoni-ink-faint: #8b93a3;
+  --grogoni-line: #323a48;
+  --grogoni-line-strong: #454e60;
+  --grogoni-accent: #e3a13c;
+  --grogoni-accent-ink: #3a2707;
+  --grogoni-accent-soft: #2f2010;
+  --grogoni-buy: #2f6b56;
+  --grogoni-buy-soft: #1f4438;
+  --grogoni-buy-tint: #142520;
+  --grogoni-sell: #c2543f;
+  --grogoni-sell-soft: #3a1f18;
+  --grogoni-sell-tint: #241612;
+  --grogoni-bezel: #05060a;
+  --grogoni-display-font: "Sora", "Avenir Next", Avenir, Inter, ui-sans-serif, system-ui, sans-serif;
+  --grogoni-mono-font: "IBM Plex Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --grogoni-serif-font:
     Georgia, "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, "Times New Roman",
     serif;
 }
@@ -6539,26 +6539,26 @@ details.nested-form-section summary {
 body {
   background:
     radial-gradient(circle at 12% 5%, rgb(227 161 60 / 8%), transparent 32rem),
-    radial-gradient(circle at 88% 100%, rgb(47 107 86 / 9%), transparent 34rem), var(--soko-bezel);
-  color: var(--soko-ink);
+    radial-gradient(circle at 88% 100%, rgb(47 107 86 / 9%), transparent 34rem), var(--grogoni-bezel);
+  color: var(--grogoni-ink);
   font-family: "IBM Plex Sans", Inter, ui-sans-serif, system-ui, sans-serif;
 }
 
 .app-frame:not(.auth-frame) {
-  background: var(--soko-paper);
+  background: var(--grogoni-paper);
   grid-template-rows: auto auto minmax(0, 1fr) auto;
 }
 
 .app-frame:not(.auth-frame)[data-commerce-mode="buy"] .chat-workspace-shell {
-  background: var(--soko-buy-tint);
+  background: var(--grogoni-buy-tint);
 }
 
 .app-frame:not(.auth-frame)[data-commerce-mode="sell"] .chat-workspace-shell {
-  background: var(--soko-sell-tint);
+  background: var(--grogoni-sell-tint);
 }
 
 .app-frame:not(.auth-frame) .top-bar {
-  background: color-mix(in srgb, var(--soko-paper) 94%, transparent);
+  background: color-mix(in srgb, var(--grogoni-paper) 94%, transparent);
   border-bottom: 0;
   display: grid;
   grid-template-columns: 44px minmax(0, 1fr) 44px;
@@ -6581,7 +6581,7 @@ body {
 .shell-menu-button span,
 .shell-menu-button span::before,
 .shell-menu-button span::after {
-  background: var(--soko-ink);
+  background: var(--grogoni-ink);
   border-radius: 99px;
   content: "";
   display: block;
@@ -6618,32 +6618,32 @@ body {
 }
 
 .app-frame:not(.auth-frame) .brand-lockup strong {
-  color: var(--soko-ink);
-  font-family: var(--soko-display-font);
+  color: var(--grogoni-ink);
+  font-family: var(--grogoni-display-font);
   font-size: 17px;
   font-weight: 700;
   letter-spacing: 0.18em;
 }
 
 /* A customer with no shop yet sees the plain auth-brand-title lockup (no business name to show)
-   even outside the auth screens themselves - restyle it to the Soko Home palette instead of the
+   even outside the auth screens themselves - restyle it to the Grogoni Home palette instead of the
    legacy light-theme green it inherits by default. */
 .app-frame:not(.auth-frame) .auth-brand-title {
-  color: var(--soko-ink);
-  font-family: var(--soko-display-font);
+  color: var(--grogoni-ink);
+  font-family: var(--grogoni-display-font);
 }
 
 .app-frame:not(.auth-frame) .auth-header-icon {
-  background: var(--soko-paper-dim);
-  border-color: var(--soko-line);
+  background: var(--grogoni-paper-dim);
+  border-color: var(--grogoni-line);
 }
 
 .shell-agent-button.icon-button {
-  background: linear-gradient(145deg, var(--soko-accent), #a86a1f);
+  background: linear-gradient(145deg, var(--grogoni-accent), #a86a1f);
   border: 2px solid rgb(244 242 238 / 35%);
   border-radius: 999px;
   box-shadow: 0 4px 12px rgb(5 6 10 / 35%);
-  color: var(--soko-accent-ink);
+  color: var(--grogoni-accent-ink);
   height: 40px;
   min-height: 40px;
   min-width: 40px;
@@ -6651,15 +6651,15 @@ body {
   width: 40px;
 }
 
-/* Soko Home's persistent merchant entry point ("open your shop"): a plain icon button matching
+/* Grogoni Home's persistent merchant entry point ("open your shop"): a plain icon button matching
    the header's other affordances, not the colorful agent-profile avatar above, since it opens the
    shop-registration flow rather than representing an already-set-up account. */
 .shell-agent-button.shop-entry-button {
-  background: var(--soko-paper-dim);
-  border: 1px solid var(--soko-line);
+  background: var(--grogoni-paper-dim);
+  border: 1px solid var(--grogoni-line);
   border-radius: 12px;
   box-shadow: none;
-  color: var(--soko-ink);
+  color: var(--grogoni-ink);
 }
 
 .shop-entry-icon {
@@ -6684,15 +6684,15 @@ body {
 }
 
 .shell-capability-trace-button {
-  background: var(--soko-paper-dim);
-  border: 1px solid var(--soko-line);
-  color: var(--soko-ink-soft);
+  background: var(--grogoni-paper-dim);
+  border: 1px solid var(--grogoni-line);
+  color: var(--grogoni-ink-soft);
 }
 
 .shell-capability-trace-button.on {
-  background: var(--soko-buy-soft);
-  border-color: var(--soko-buy);
-  color: var(--soko-ink);
+  background: var(--grogoni-buy-soft);
+  border-color: var(--grogoni-buy);
+  color: var(--grogoni-ink);
 }
 
 .capability-trace-icon {
@@ -6715,16 +6715,16 @@ body {
   width: 4px;
 }
 
-/* Soko Home's "trace" affordance (ChatSurface.tsx capabilityTraceLabel): names the capability
+/* Grogoni Home's "trace" affordance (ChatSurface.tsx capabilityTraceLabel): names the capability
    behind a generated card. Hidden by default; the header's capability-trace toggle reveals it by
    adding .capability-trace-visible to .app-frame. */
 .capability-trace {
-  background: var(--soko-buy-soft);
-  border: 1px solid var(--soko-buy);
+  background: var(--grogoni-buy-soft);
+  border: 1px solid var(--grogoni-buy);
   border-radius: 6px;
   color: #8fd8bd;
   display: none;
-  font-family: var(--soko-mono-font);
+  font-family: var(--grogoni-mono-font);
   font-size: 10px;
   margin-top: 2px;
   padding: 2px 7px;
@@ -6743,30 +6743,30 @@ body {
 }
 
 .home-suggestion-chips button {
-  background: var(--soko-paper-dim);
-  border: 1px solid var(--soko-line);
+  background: var(--grogoni-paper-dim);
+  border: 1px solid var(--grogoni-line);
   border-radius: 999px;
-  color: var(--soko-ink);
+  color: var(--grogoni-ink);
   font-size: 13px;
   padding: 8px 14px;
   white-space: nowrap;
 }
 
 .home-suggestion-chips button:hover {
-  border-color: var(--soko-accent);
+  border-color: var(--grogoni-accent);
 }
 
-/* Soko Home's "recognized device" pill (SokoApplication.tsx recognizedDeviceLabel): a sticky,
+/* Grogoni Home's "recognized device" pill (GrogoniApplication.tsx recognizedDeviceLabel): a sticky,
    tappable invite back into a stronger identity this device remembers, shown only on an
    untouched marketplace thread - it has nothing left to say once a message starts the flow. */
 .recognized-device-pill {
   align-items: center;
   justify-self: center;
-  background: var(--soko-paper-dim);
-  border: 1px solid var(--soko-accent);
+  background: var(--grogoni-paper-dim);
+  border: 1px solid var(--grogoni-accent);
   border-radius: 999px;
   box-shadow: 0 8px 20px -10px rgb(5 6 10 / 60%);
-  color: var(--soko-ink);
+  color: var(--grogoni-ink);
   display: inline-flex;
   font-size: 12.5px;
   gap: 7px;
@@ -6779,7 +6779,7 @@ body {
 }
 
 .recognized-device-dot {
-  background: var(--soko-accent);
+  background: var(--grogoni-accent);
   border-radius: 50%;
   flex-shrink: 0;
   height: 7px;
@@ -6788,8 +6788,8 @@ body {
 
 .shell-mode-bar {
   align-items: center;
-  background: color-mix(in srgb, var(--soko-paper) 96%, transparent);
-  border-bottom: 1px solid var(--soko-line);
+  background: color-mix(in srgb, var(--grogoni-paper) 96%, transparent);
+  border-bottom: 1px solid var(--grogoni-line);
   display: flex;
   gap: 10px;
   min-height: 58px;
@@ -6799,29 +6799,29 @@ body {
 }
 
 .commerce-mode-toggle {
-  background: var(--soko-paper-dim);
-  border: 1px solid var(--soko-line);
+  background: var(--grogoni-paper-dim);
+  border: 1px solid var(--grogoni-line);
   border-radius: 999px;
-  color: var(--soko-ink-soft);
+  color: var(--grogoni-ink-soft);
   flex: 0 0 auto;
-  font-family: var(--soko-display-font);
+  font-family: var(--grogoni-display-font);
   font-size: 13px;
   min-height: 36px;
   padding: 7px 18px;
 }
 
 .commerce-mode-toggle.mode-active {
-  background: var(--soko-accent);
+  background: var(--grogoni-accent);
   box-shadow: 0 3px 10px rgb(5 6 10 / 35%);
-  color: var(--soko-accent-ink);
+  color: var(--grogoni-accent-ink);
 }
 
 .header-action-button.messages {
-  background: var(--soko-paper);
-  border: 1px solid var(--soko-line-strong);
-  color: var(--soko-ink);
+  background: var(--grogoni-paper);
+  border: 1px solid var(--grogoni-line-strong);
+  color: var(--grogoni-ink);
   flex: 0 0 auto;
-  font-family: var(--soko-display-font);
+  font-family: var(--grogoni-display-font);
   font-size: 13px;
   min-height: 36px;
   min-width: 86px;
@@ -6844,24 +6844,24 @@ body {
 .shell-secondary-actions .header-action-button,
 .shell-secondary-actions .header-auth-button {
   background: transparent;
-  border: 1px solid var(--soko-line-strong);
+  border: 1px solid var(--grogoni-line-strong);
   border-radius: 999px;
-  color: var(--soko-ink-soft);
+  color: var(--grogoni-ink-soft);
   font-size: 11px;
   min-height: 36px;
   padding: 7px 11px;
 }
 
 .shell-secondary-actions .workspace {
-  background: var(--soko-accent);
-  border-color: var(--soko-accent);
-  color: var(--soko-accent-ink);
+  background: var(--grogoni-accent);
+  border-color: var(--grogoni-accent);
+  color: var(--grogoni-accent-ink);
 }
 
 .app-frame:not(.auth-frame) .app-credits {
-  background: var(--soko-paper);
-  color: var(--soko-ink-faint);
-  font-family: var(--soko-mono-font);
+  background: var(--grogoni-paper);
+  color: var(--grogoni-ink-faint);
+  font-family: var(--grogoni-mono-font);
   font-size: 9px;
   letter-spacing: 0.08em;
   padding: 5px 14px calc(7px + env(safe-area-inset-bottom, 0px));
@@ -6874,12 +6874,12 @@ body {
 
 /* Session list and conversation */
 .app-frame:not(.auth-frame) .chat-surface {
-  color: var(--soko-ink);
+  color: var(--grogoni-ink);
 }
 
 .app-frame:not(.auth-frame) .messenger-inbox {
-  background: var(--soko-paper);
-  border-color: var(--soko-line);
+  background: var(--grogoni-paper);
+  border-color: var(--grogoni-line);
 }
 
 .messenger-inbox-heading {
@@ -6888,8 +6888,8 @@ body {
 }
 
 .messenger-inbox-heading h2 {
-  color: var(--soko-ink);
-  font-family: var(--soko-serif-font);
+  color: var(--grogoni-ink);
+  font-family: var(--grogoni-serif-font);
   font-size: 30px;
   font-weight: 700;
   letter-spacing: -0.01em;
@@ -6899,9 +6899,9 @@ body {
 .inbox-icon-button {
   align-items: center;
   background: transparent;
-  border: 1px solid var(--soko-line);
+  border: 1px solid var(--grogoni-line);
   border-radius: 999px;
-  color: var(--soko-ink-soft);
+  color: var(--grogoni-ink-soft);
   display: inline-flex;
   flex: 0 0 auto;
   justify-content: center;
@@ -6925,8 +6925,8 @@ body {
 .new-direct-message-link {
   background: none;
   border: 0;
-  color: var(--soko-accent);
-  font-family: var(--soko-mono-font);
+  color: var(--grogoni-accent);
+  font-family: var(--grogoni-mono-font);
   font-size: 10px;
   letter-spacing: 0.02em;
   margin-top: 8px;
@@ -6941,7 +6941,7 @@ body {
 }
 
 .inbox-search-icon {
-  border: 1.5px solid var(--soko-ink-faint);
+  border: 1.5px solid var(--grogoni-ink-faint);
   border-radius: 50%;
   height: 12px;
   left: 15px;
@@ -6951,7 +6951,7 @@ body {
 }
 
 .inbox-search-icon::after {
-  background: var(--soko-ink-faint);
+  background: var(--grogoni-ink-faint);
   bottom: -6px;
   content: "";
   height: 7px;
@@ -6964,10 +6964,10 @@ body {
 .messenger-inbox-tools input,
 .new-conversation-form input,
 .new-session-form input {
-  background: var(--soko-paper-dim);
-  border: 1px solid var(--soko-line);
+  background: var(--grogoni-paper-dim);
+  border: 1px solid var(--grogoni-line);
   border-radius: 999px;
-  color: var(--soko-ink);
+  color: var(--grogoni-ink);
   min-height: 44px;
   padding: 8px 16px;
   width: 100%;
@@ -6982,19 +6982,19 @@ body {
 }
 
 .conversation-item {
-  border-bottom: 1px solid var(--soko-line);
+  border-bottom: 1px solid var(--grogoni-line);
   gap: 0;
   padding: 4px;
 }
 
 .conversation-item.active {
-  background: color-mix(in srgb, var(--soko-accent-soft) 62%, transparent);
+  background: color-mix(in srgb, var(--grogoni-accent-soft) 62%, transparent);
   border-radius: 13px;
 }
 
 .conversation-select {
   align-items: center;
-  color: var(--soko-ink);
+  color: var(--grogoni-ink);
   display: grid;
   gap: 10px;
   grid-template-columns: 40px minmax(0, 1fr) auto auto;
@@ -7008,12 +7008,12 @@ body {
 .cart-item-thumb,
 .status-contact-avatar {
   align-items: center;
-  background: linear-gradient(135deg, var(--soko-line-strong), var(--soko-paper-dim));
+  background: linear-gradient(135deg, var(--grogoni-line-strong), var(--grogoni-paper-dim));
   border-radius: 11px;
   color: #fff;
   display: inline-flex;
   flex: 0 0 auto;
-  font-family: var(--soko-display-font);
+  font-family: var(--grogoni-display-font);
   font-size: 13px;
   font-weight: 700;
   height: 40px;
@@ -7025,19 +7025,19 @@ body {
 .thread-avatar.buy,
 .buy-result-thumb-contact,
 .cart-item-thumb-contact {
-  background: linear-gradient(135deg, var(--soko-buy), #1a3d31);
+  background: linear-gradient(135deg, var(--grogoni-buy), #1a3d31);
 }
 
 .conversation-avatar.sell,
 .thread-avatar.sell,
 .buy-result-thumb-catalogue,
 .cart-item-thumb-catalogue {
-  background: linear-gradient(135deg, var(--soko-sell), #6e2e21);
+  background: linear-gradient(135deg, var(--grogoni-sell), #6e2e21);
 }
 
 .conversation-avatar.chat,
 .status-contact-avatar {
-  background: linear-gradient(135deg, var(--soko-accent), #8a5a1f);
+  background: linear-gradient(135deg, var(--grogoni-accent), #8a5a1f);
 }
 
 /* Merged chat mockup: conversation/thread avatars read as circular contact
@@ -7063,7 +7063,7 @@ body {
 }
 
 .conversation-title-line strong {
-  font-family: var(--soko-display-font);
+  font-family: var(--grogoni-display-font);
   font-size: 13px;
   font-weight: 650;
   overflow: hidden;
@@ -7072,15 +7072,15 @@ body {
 }
 
 .conversation-title-line time {
-  color: var(--soko-ink-faint);
-  font-family: var(--soko-mono-font);
+  color: var(--grogoni-ink-faint);
+  font-family: var(--grogoni-mono-font);
   font-size: 9px;
   font-weight: 500;
   white-space: nowrap;
 }
 
 .conversation-select small {
-  color: var(--soko-ink-soft);
+  color: var(--grogoni-ink-soft);
   font-size: 11px;
   max-width: none;
 }
@@ -7088,7 +7088,7 @@ body {
 .session-badge {
   align-self: center;
   border-radius: 999px;
-  font-family: var(--soko-mono-font);
+  font-family: var(--grogoni-mono-font);
   font-size: 8px;
   font-weight: 600;
   letter-spacing: 0.07em;
@@ -7097,25 +7097,25 @@ body {
 }
 
 .session-badge.buy {
-  background: var(--soko-buy-soft);
-  color: var(--soko-buy);
+  background: var(--grogoni-buy-soft);
+  color: var(--grogoni-buy);
 }
 
 .session-badge.sell {
-  background: var(--soko-sell-soft);
-  color: var(--soko-sell);
+  background: var(--grogoni-sell-soft);
+  color: var(--grogoni-sell);
 }
 
 .session-badge.chat {
-  background: var(--soko-accent-soft);
-  color: var(--soko-accent);
+  background: var(--grogoni-accent-soft);
+  color: var(--grogoni-accent);
 }
 
 .conversation-select b {
   align-self: center;
   grid-column: 4;
-  background: var(--soko-accent);
-  font-family: var(--soko-mono-font);
+  background: var(--grogoni-accent);
+  font-family: var(--grogoni-mono-font);
   font-size: 9px;
 }
 
@@ -7137,11 +7137,11 @@ body {
 
 .new-chat-fab {
   align-items: center;
-  background: var(--soko-accent);
+  background: var(--grogoni-accent);
   border-radius: 999px;
   bottom: 18px;
   box-shadow: 0 10px 26px rgb(5 6 10 / 45%);
-  color: var(--soko-accent-ink);
+  color: var(--grogoni-accent-ink);
   display: inline-flex;
   font-size: 13px;
   font-weight: 700;
@@ -7202,7 +7202,7 @@ body {
 
 .messenger-inbox.sessions-view .conversation-title-line time,
 .messenger-inbox-module.sessions-view .conversation-title-line time {
-  color: var(--soko-ink-faint);
+  color: var(--grogoni-ink-faint);
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
   font-size: 12px;
   font-weight: 400;
@@ -7220,14 +7220,14 @@ body {
 }
 
 .new-session-form {
-  border-bottom: 1px solid var(--soko-line);
+  border-bottom: 1px solid var(--grogoni-line);
   display: grid;
   gap: 8px;
   padding: 4px 12px 12px;
 }
 
 .new-session-form label {
-  color: var(--soko-ink-soft);
+  color: var(--grogoni-ink-soft);
   display: grid;
   font-size: 11px;
   font-weight: 700;
@@ -7239,8 +7239,8 @@ body {
 }
 
 .messenger-thread-header {
-  background: color-mix(in srgb, var(--soko-paper) 90%, transparent);
-  border-color: var(--soko-line);
+  background: color-mix(in srgb, var(--grogoni-paper) 90%, transparent);
+  border-color: var(--grogoni-line);
   justify-content: flex-start;
   min-height: 59px;
   padding: 8px 16px;
@@ -7258,7 +7258,7 @@ body {
 }
 
 .messenger-thread-header strong {
-  font-family: var(--soko-display-font);
+  font-family: var(--grogoni-display-font);
   font-size: 13px;
 }
 
@@ -7279,35 +7279,35 @@ body {
 }
 
 .thread-topic-form input {
-  background: var(--soko-paper-dim);
-  border: 1px solid var(--soko-line-strong);
+  background: var(--grogoni-paper-dim);
+  border: 1px solid var(--grogoni-line-strong);
   border-radius: 999px;
-  color: var(--soko-ink);
-  font-family: var(--soko-display-font);
+  color: var(--grogoni-ink);
+  font-family: var(--grogoni-display-font);
   font-size: 13px;
   min-height: 28px;
   padding: 3px 10px;
 }
 
 .thread-topic-form button {
-  color: var(--soko-accent);
-  font-family: var(--soko-mono-font);
+  color: var(--grogoni-accent);
+  font-family: var(--grogoni-mono-font);
   font-size: 9px;
 }
 
 .messenger-thread-header small,
 .message-meta,
 .message-context {
-  color: var(--soko-ink-faint);
-  font-family: var(--soko-mono-font);
+  color: var(--grogoni-ink-faint);
+  font-family: var(--grogoni-mono-font);
   font-size: 9px;
 }
 
 .messenger-thread-header > button {
   background: transparent;
-  border: 1px solid var(--soko-line);
+  border: 1px solid var(--grogoni-line);
   border-radius: 999px;
-  color: var(--soko-ink-soft);
+  color: var(--grogoni-ink-soft);
   font-size: 9px;
   min-height: 31px;
   padding: 5px 9px;
@@ -7324,17 +7324,17 @@ body {
   padding: 12px 14px;
 }
 
-.message.sokoclaw,
+.message.grogoniclaw,
 .message.contact {
-  background: var(--soko-paper-dim);
-  border: 1px solid var(--soko-line);
+  background: var(--grogoni-paper-dim);
+  border: 1px solid var(--grogoni-line);
   box-shadow: 0 7px 22px rgb(5 6 10 / 20%);
 }
 
 .message.merchant {
-  background: var(--soko-accent);
-  border: 1px solid var(--soko-accent);
-  color: var(--soko-accent-ink);
+  background: var(--grogoni-accent);
+  border: 1px solid var(--grogoni-accent);
+  color: var(--grogoni-accent-ink);
 }
 
 /* Merged chat mockup: give bubbles a tail corner toward the sender's avatar
@@ -7343,7 +7343,7 @@ body {
   border-radius: 16px 16px 4px 16px;
 }
 
-.message.sokoclaw,
+.message.grogoniclaw,
 .message.contact {
   border-radius: 16px 16px 16px 4px;
 }
@@ -7355,25 +7355,25 @@ body {
 }
 
 .message p {
-  color: var(--soko-ink-soft);
+  color: var(--grogoni-ink-soft);
   font-size: 13px;
   line-height: 1.55;
 }
 
 .message-author {
-  color: var(--soko-ink);
-  font-family: var(--soko-display-font);
+  color: var(--grogoni-ink);
+  font-family: var(--grogoni-display-font);
   font-size: 10px !important;
 }
 
 .message.merchant .message-author {
-  color: var(--soko-accent-ink);
+  color: var(--grogoni-accent-ink);
 }
 
 .message-actions button,
 .conversation-actions button {
-  color: var(--soko-accent);
-  font-family: var(--soko-mono-font);
+  color: var(--grogoni-accent);
+  font-family: var(--grogoni-mono-font);
   font-size: 9px;
 }
 
@@ -7382,8 +7382,8 @@ body {
    bar (like the app's search field and new-chat FAB) instead of three
    separately-outlined controls sitting in a row. */
 .app-frame:not(.auth-frame) .composer {
-  background: var(--soko-paper);
-  border: 1px solid var(--soko-line);
+  background: var(--grogoni-paper);
+  border: 1px solid var(--grogoni-line);
   border-radius: 26px;
   margin: 0 10px calc(8px + env(safe-area-inset-bottom, 0px));
   gap: 6px;
@@ -7394,27 +7394,27 @@ body {
   background: transparent;
   border: none;
   border-radius: 999px;
-  color: var(--soko-ink-soft);
+  color: var(--grogoni-ink-soft);
   min-height: 38px;
   min-width: 38px;
 }
 
 .app-frame:not(.auth-frame) .composer-pill {
   background: transparent;
-  border-color: var(--soko-line);
-  color: var(--soko-ink-soft);
+  border-color: var(--grogoni-line);
+  color: var(--grogoni-ink-soft);
 }
 
 .app-frame:not(.auth-frame) .composer-pill:hover,
 .app-frame:not(.auth-frame) .composer-pill:focus-visible {
-  background: color-mix(in srgb, var(--soko-accent) 12%, transparent);
-  border-color: var(--soko-accent);
-  color: var(--soko-ink);
+  background: color-mix(in srgb, var(--grogoni-accent) 12%, transparent);
+  border-color: var(--grogoni-accent);
+  color: var(--grogoni-ink);
 }
 
 .composer-input span {
-  color: var(--soko-ink-faint);
-  font-family: var(--soko-mono-font);
+  color: var(--grogoni-ink-faint);
+  font-family: var(--grogoni-mono-font);
   font-size: 8px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -7424,7 +7424,7 @@ body {
   background: transparent;
   border: none;
   border-radius: 0;
-  color: var(--soko-ink);
+  color: var(--grogoni-ink);
   height: auto;
   min-height: 38px;
   max-height: 120px;
@@ -7433,10 +7433,10 @@ body {
 }
 
 .composer .send-button {
-  background: var(--soko-accent);
+  background: var(--grogoni-accent);
   border-radius: 999px;
   box-shadow: 0 5px 14px rgb(227 161 60 / 30%);
-  color: var(--soko-accent-ink);
+  color: var(--grogoni-accent-ink);
   min-height: 38px;
   min-width: 38px;
   padding: 6px;
@@ -7449,42 +7449,42 @@ body {
 }
 
 .stacked-module {
-  background: var(--soko-paper);
+  background: var(--grogoni-paper);
   border: 1px solid rgb(255 255 255 / 50%);
   border-radius: 22px 22px 0 0;
   box-shadow: 0 -22px 70px rgb(5 6 10 / 22%);
-  color: var(--soko-ink);
+  color: var(--grogoni-ink);
 }
 
 .stacked-module.buy-module {
-  background: var(--soko-buy-tint);
+  background: var(--grogoni-buy-tint);
 }
 
 .stacked-module.sell-module {
-  background: var(--soko-sell-tint);
+  background: var(--grogoni-sell-tint);
 }
 
 .stacked-module-heading {
-  background: color-mix(in srgb, var(--soko-paper) 91%, transparent);
-  border-color: var(--soko-line);
+  background: color-mix(in srgb, var(--grogoni-paper) 91%, transparent);
+  border-color: var(--grogoni-line);
   padding-inline: 18px;
 }
 
 .stacked-module-heading h2 {
-  color: var(--soko-ink);
-  font-family: var(--soko-display-font);
+  color: var(--grogoni-ink);
+  font-family: var(--grogoni-display-font);
   font-size: 16px;
 }
 
 .stacked-module-heading button {
   background: transparent;
-  border: 1px solid var(--soko-line);
+  border: 1px solid var(--grogoni-line);
   border-radius: 999px;
-  color: var(--soko-ink);
+  color: var(--grogoni-ink);
 }
 
 .stacked-module-drag-handle {
-  background: var(--soko-line-strong);
+  background: var(--grogoni-line-strong);
 }
 
 .stacked-module-content {
@@ -7496,8 +7496,8 @@ body {
 .record-list,
 .shop-discovery-card,
 .public-shop-card {
-  background: var(--soko-paper-dim);
-  border-color: var(--soko-line);
+  background: var(--grogoni-paper-dim);
+  border-color: var(--grogoni-line);
   border-radius: 14px;
   box-shadow: 0 9px 28px rgb(5 6 10 / 5%);
 }
@@ -7509,22 +7509,22 @@ body {
 
 .mode-card-heading h2,
 .section-heading h3 {
-  color: var(--soko-ink);
-  font-family: var(--soko-display-font);
+  color: var(--grogoni-ink);
+  font-family: var(--grogoni-display-font);
   letter-spacing: -0.025em;
 }
 
 .mode-card-heading p,
 .section-heading p,
 .shell-note {
-  color: var(--soko-ink-soft);
+  color: var(--grogoni-ink-soft);
 }
 
 .mode-badge {
-  background: var(--soko-buy-soft);
+  background: var(--grogoni-buy-soft);
   border-radius: 999px;
   color: #8fd8bd;
-  font-family: var(--soko-mono-font);
+  font-family: var(--grogoni-mono-font);
   font-size: 9px;
   justify-self: start;
   letter-spacing: 0.08em;
@@ -7534,10 +7534,10 @@ body {
 .product-capture-card .eyebrow,
 .status-broadcast-card .eyebrow,
 .status-broadcast-composer .eyebrow {
-  background: var(--soko-sell-soft);
+  background: var(--grogoni-sell-soft);
   border-radius: 999px;
   color: #e8ab98;
-  font-family: var(--soko-mono-font);
+  font-family: var(--grogoni-mono-font);
   font-size: 9px;
   justify-self: start;
   letter-spacing: 0.08em;
@@ -7546,7 +7546,7 @@ body {
 
 /* BUY: search, mixed-source results, and unified cart */
 .buy-search-form {
-  background: var(--soko-paper-dim);
+  background: var(--grogoni-paper-dim);
   border-radius: 14px;
   display: grid;
   gap: 8px;
@@ -7570,7 +7570,7 @@ body {
 .buy-search-form button,
 .buy-result-card > button,
 .unified-cart-summary > button {
-  background: var(--soko-buy);
+  background: var(--grogoni-buy);
   border-radius: 10px;
   color: #fff;
   font-size: 11px;
@@ -7586,8 +7586,8 @@ body {
 
 .buy-result-card {
   align-items: center;
-  background: var(--soko-paper-dim);
-  border: 1px solid var(--soko-line);
+  background: var(--grogoni-paper-dim);
+  border: 1px solid var(--grogoni-line);
   border-radius: 13px;
   display: grid;
   gap: 11px;
@@ -7607,13 +7607,13 @@ body {
 }
 
 .buy-result-copy > strong {
-  font-family: var(--soko-display-font);
+  font-family: var(--grogoni-display-font);
   font-size: 12px;
 }
 
 .buy-source-badge {
-  color: var(--soko-ink-faint);
-  font-family: var(--soko-mono-font);
+  color: var(--grogoni-ink-faint);
+  font-family: var(--grogoni-mono-font);
   font-size: 8px;
   font-weight: 600;
   letter-spacing: 0.07em;
@@ -7621,23 +7621,23 @@ body {
 }
 
 .buy-source-contact {
-  color: var(--soko-accent);
+  color: var(--grogoni-accent);
 }
 
 .buy-source-catalogue {
-  color: var(--soko-buy);
+  color: var(--grogoni-buy);
 }
 
 .buy-result-price,
 .cart-item-price {
-  color: var(--soko-buy);
-  font-family: var(--soko-mono-font);
+  color: var(--grogoni-buy);
+  font-family: var(--grogoni-mono-font);
   font-size: 11px;
   font-weight: 700;
 }
 
 .unified-cart-summary {
-  background: var(--soko-paper-dim);
+  background: var(--grogoni-paper-dim);
   gap: 8px;
 }
 
@@ -7648,8 +7648,8 @@ body {
 }
 
 .cart-source-group > .buy-source-badge {
-  border-bottom: 1px dashed var(--soko-line-strong);
-  color: var(--soko-ink-faint);
+  border-bottom: 1px dashed var(--grogoni-line-strong);
+  color: var(--grogoni-ink-faint);
   padding: 0 2px 7px;
 }
 
@@ -7673,50 +7673,50 @@ body {
 }
 
 .cart-item-copy strong {
-  font-family: var(--soko-display-font);
+  font-family: var(--grogoni-display-font);
   font-size: 11px;
 }
 
 .cart-item-copy small {
-  color: var(--soko-ink-faint);
+  color: var(--grogoni-ink-faint);
   font-size: 9px;
 }
 
 .cart-item-row button.secondary {
   background: transparent;
-  border: 1px solid var(--soko-line);
+  border: 1px solid var(--grogoni-line);
   border-radius: 999px;
-  color: var(--soko-ink-soft);
+  color: var(--grogoni-ink-soft);
   min-height: 27px;
   min-width: 27px;
   padding: 0;
 }
 
 .cart-total-row {
-  border-top: 1px dashed var(--soko-line-strong);
-  color: var(--soko-ink);
+  border-top: 1px dashed var(--grogoni-line-strong);
+  color: var(--grogoni-ink);
   display: flex;
-  font-family: var(--soko-display-font);
+  font-family: var(--grogoni-display-font);
   justify-content: space-between;
   margin-top: 4px;
   padding: 14px 2px 7px;
 }
 
 .cart-total-row strong:last-child {
-  color: var(--soko-buy);
-  font-family: var(--soko-mono-font);
+  color: var(--grogoni-buy);
+  font-family: var(--grogoni-mono-font);
 }
 
 .fulfilment-split-card {
-  background: var(--soko-paper-dim);
-  border-color: color-mix(in srgb, var(--soko-buy) 22%, transparent);
+  background: var(--grogoni-paper-dim);
+  border-color: color-mix(in srgb, var(--grogoni-buy) 22%, transparent);
 }
 
 .fulfilment-split-card .eyebrow {
-  background: var(--soko-buy-soft);
+  background: var(--grogoni-buy-soft);
   border-radius: 999px;
   color: #8fd8bd;
-  font-family: var(--soko-mono-font);
+  font-family: var(--grogoni-mono-font);
   font-size: 9px;
   justify-self: start;
   letter-spacing: 0.08em;
@@ -7725,8 +7725,8 @@ body {
 
 .fulfilment-handoff-row {
   align-items: center;
-  background: var(--soko-buy-tint);
-  border: 1px solid color-mix(in srgb, var(--soko-buy) 18%, transparent);
+  background: var(--grogoni-buy-tint);
+  border: 1px solid color-mix(in srgb, var(--grogoni-buy) 18%, transparent);
   border-radius: 11px;
   display: flex;
   gap: 10px;
@@ -7735,10 +7735,10 @@ body {
 }
 
 .fulfilment-handoff-row > span:last-child {
-  background: var(--soko-buy-soft);
+  background: var(--grogoni-buy-soft);
   border-radius: 999px;
   color: #8fd8bd;
-  font-family: var(--soko-mono-font);
+  font-family: var(--grogoni-mono-font);
   font-size: 8px;
   font-weight: 700;
   padding: 5px 7px;
@@ -7746,7 +7746,7 @@ body {
 }
 
 .fulfilment-failures {
-  background: var(--soko-sell-soft);
+  background: var(--grogoni-sell-soft);
   border: 1px solid rgb(194 84 63 / 35%);
   border-radius: 11px;
   display: grid;
@@ -7758,26 +7758,26 @@ body {
 .product-capture-card,
 .status-broadcast-composer,
 .status-broadcast-card {
-  background: var(--soko-paper-dim);
-  border-color: color-mix(in srgb, var(--soko-sell) 24%, transparent);
+  background: var(--grogoni-paper-dim);
+  border-color: color-mix(in srgb, var(--grogoni-sell) 24%, transparent);
 }
 
 .product-capture-card input,
 .product-capture-card select,
 .product-capture-card textarea,
 .status-broadcast-composer input {
-  border-color: var(--soko-line);
+  border-color: var(--grogoni-line);
   border-radius: 10px;
 }
 
 .product-capture-preview {
-  border-color: var(--soko-line);
+  border-color: var(--grogoni-line);
   border-radius: 13px;
 }
 
 .product-capture-item {
-  background: var(--soko-sell-tint);
-  border: 1px solid color-mix(in srgb, var(--soko-sell) 22%, transparent);
+  background: var(--grogoni-sell-tint);
+  border: 1px solid color-mix(in srgb, var(--grogoni-sell) 22%, transparent);
   border-radius: 12px;
   display: grid;
   gap: 9px;
@@ -7787,7 +7787,7 @@ body {
 }
 
 .product-capture-item-pin {
-  border: 2px solid var(--soko-accent);
+  border: 2px solid var(--grogoni-accent);
   border-radius: 6px;
   opacity: 0.25;
   pointer-events: none;
@@ -7797,7 +7797,7 @@ body {
 .sell-module .record-form button:not(.secondary):not(.model-use-button),
 .product-capture-card button:not(.secondary),
 .status-broadcast-composer button:not(.secondary) {
-  background: var(--soko-sell);
+  background: var(--grogoni-sell);
   border-radius: 10px;
   color: #fff;
 }
@@ -7811,8 +7811,8 @@ body {
 
 .pos-catalogue,
 .pos-checkout {
-  background: var(--soko-paper-dim);
-  border: 1px solid var(--soko-line);
+  background: var(--grogoni-paper-dim);
+  border: 1px solid var(--grogoni-line);
   border-radius: 14px;
   box-shadow: 0 9px 28px rgb(5 6 10 / 5%);
   display: grid;
@@ -7829,7 +7829,7 @@ body {
 }
 
 .pos-terminal .section-heading > p:last-child {
-  color: var(--soko-ink-soft);
+  color: var(--grogoni-ink-soft);
   font-size: 12px;
   margin: 3px 0 0;
 }
@@ -7837,7 +7837,7 @@ body {
 .pos-search,
 .pos-details label,
 .pos-line-fields label {
-  color: var(--soko-ink-soft);
+  color: var(--grogoni-ink-soft);
   display: grid;
   font-size: 11px;
   font-weight: 700;
@@ -7848,10 +7848,10 @@ body {
 .pos-details input,
 .pos-details select,
 .pos-line-fields input {
-  background: var(--soko-paper-dim);
-  border: 1px solid var(--soko-line-strong);
+  background: var(--grogoni-paper-dim);
+  border: 1px solid var(--grogoni-line-strong);
   border-radius: 10px;
-  color: var(--soko-ink);
+  color: var(--grogoni-ink);
   min-height: 42px;
   padding: 8px 10px;
   width: 100%;
@@ -7865,10 +7865,10 @@ body {
 
 .pos-product-button {
   align-items: center;
-  background: var(--soko-sell-tint);
-  border: 1px solid color-mix(in srgb, var(--soko-sell) 22%, transparent);
+  background: var(--grogoni-sell-tint);
+  border: 1px solid color-mix(in srgb, var(--grogoni-sell) 22%, transparent);
   border-radius: 12px;
-  color: var(--soko-ink);
+  color: var(--grogoni-ink);
   display: flex;
   gap: 12px;
   justify-content: space-between;
@@ -7888,21 +7888,21 @@ body {
 }
 
 .pos-product-button small {
-  color: var(--soko-ink-faint);
+  color: var(--grogoni-ink-faint);
   font-size: 9px;
 }
 
 .pos-product-button > span:last-child strong {
-  color: var(--soko-sell);
-  font-family: var(--soko-mono-font);
+  color: var(--grogoni-sell);
+  font-family: var(--grogoni-mono-font);
   font-size: 11px;
 }
 
 .pos-message {
-  background: var(--soko-sell-tint);
-  border: 1px solid color-mix(in srgb, var(--soko-sell) 20%, transparent);
+  background: var(--grogoni-sell-tint);
+  border: 1px solid color-mix(in srgb, var(--grogoni-sell) 20%, transparent);
   border-radius: 10px;
-  color: var(--soko-ink-soft);
+  color: var(--grogoni-ink-soft);
   font-size: 11px;
   line-height: 1.45;
   margin: 0;
@@ -7910,8 +7910,8 @@ body {
 }
 
 .pos-empty-cart {
-  background: var(--soko-paper);
-  border: 1px dashed var(--soko-line-strong);
+  background: var(--grogoni-paper);
+  border: 1px dashed var(--grogoni-line-strong);
   border-radius: 11px;
   padding: 16px;
 }
@@ -7927,8 +7927,8 @@ body {
 }
 
 .pos-cart-line {
-  background: var(--soko-paper);
-  border: 1px solid var(--soko-line);
+  background: var(--grogoni-paper);
+  border: 1px solid var(--grogoni-line);
   border-radius: 11px;
   display: grid;
   gap: 9px;
@@ -7944,7 +7944,7 @@ body {
 
 .pos-cart-line-heading button {
   background: transparent;
-  color: var(--soko-ink-soft);
+  color: var(--grogoni-ink-soft);
   font-size: 9px;
   min-height: 28px;
   padding: 4px 7px;
@@ -7958,15 +7958,15 @@ body {
 }
 
 .pos-line-fields > strong {
-  color: var(--soko-sell);
-  font-family: var(--soko-mono-font);
+  color: var(--grogoni-sell);
+  font-family: var(--grogoni-mono-font);
   font-size: 11px;
   padding-bottom: 12px;
 }
 
 .pos-payment-toggle {
-  background: var(--soko-paper);
-  border: 1px solid var(--soko-line);
+  background: var(--grogoni-paper);
+  border: 1px solid var(--grogoni-line);
   border-radius: 10px;
   font-size: 11px;
   font-weight: 700;
@@ -7974,11 +7974,11 @@ body {
 }
 
 .pos-payment-toggle input {
-  accent-color: var(--soko-sell);
+  accent-color: var(--grogoni-sell);
 }
 
 .pos-totals {
-  border-top: 1px dashed var(--soko-line-strong);
+  border-top: 1px dashed var(--grogoni-line-strong);
   display: grid;
   gap: 7px;
   margin: 0;
@@ -7997,19 +7997,19 @@ body {
 }
 
 .pos-totals dd {
-  font-family: var(--soko-mono-font);
+  font-family: var(--grogoni-mono-font);
   font-weight: 700;
 }
 
 .pos-totals .pos-grand-total {
-  color: var(--soko-ink);
-  font-family: var(--soko-display-font);
+  color: var(--grogoni-ink);
+  font-family: var(--grogoni-display-font);
   font-size: 15px;
   padding-top: 4px;
 }
 
 .pos-grand-total dd {
-  color: var(--soko-sell);
+  color: var(--grogoni-sell);
 }
 
 .pos-actions {
@@ -8018,7 +8018,7 @@ body {
 }
 
 .pos-actions button {
-  background: var(--soko-sell);
+  background: var(--grogoni-sell);
   border-radius: 10px;
   color: #fff;
   font-weight: 800;
@@ -8027,9 +8027,9 @@ body {
 }
 
 .pos-actions button.secondary {
-  background: var(--soko-paper);
-  border: 1px solid var(--soko-line);
-  color: var(--soko-ink-soft);
+  background: var(--grogoni-paper);
+  border: 1px solid var(--grogoni-line);
+  color: var(--grogoni-ink-soft);
 }
 
 @media (max-width: 820px) {
@@ -8059,8 +8059,8 @@ body {
 }
 
 .status-broadcast-composer .checkbox-row {
-  background: var(--soko-paper);
-  border: 1px solid var(--soko-line);
+  background: var(--grogoni-paper);
+  border: 1px solid var(--grogoni-line);
   border-radius: 11px;
   display: grid;
   gap: 9px;
@@ -8069,7 +8069,7 @@ body {
 }
 
 .status-broadcast-composer .checkbox-row input {
-  accent-color: var(--soko-sell);
+  accent-color: var(--grogoni-sell);
   height: 17px;
   min-height: 17px;
   width: 17px;
@@ -8087,14 +8087,14 @@ body {
 }
 
 .status-contact-copy strong {
-  color: var(--soko-ink);
-  font-family: var(--soko-display-font);
+  color: var(--grogoni-ink);
+  font-family: var(--grogoni-display-font);
   font-size: 11px;
 }
 
 .status-contact-copy small {
-  color: var(--soko-ink-faint);
-  font-family: var(--soko-mono-font);
+  color: var(--grogoni-ink-faint);
+  font-family: var(--grogoni-mono-font);
   font-size: 8px;
   text-transform: uppercase;
 }
@@ -8106,10 +8106,10 @@ body {
 }
 
 .status-broadcast-counters span {
-  background: var(--soko-sell-soft);
+  background: var(--grogoni-sell-soft);
   border-radius: 10px;
-  color: var(--soko-sell);
-  font-family: var(--soko-mono-font);
+  color: var(--grogoni-sell);
+  font-family: var(--grogoni-mono-font);
   font-size: 10px;
   font-weight: 700;
   padding: 10px 8px;
@@ -8129,7 +8129,7 @@ body {
   }
 }
 
-/* Soko Home's hamburger menu drawer (MenuDrawer.tsx): repositions StackedModule's shared
+/* Grogoni Home's hamburger menu drawer (MenuDrawer.tsx): repositions StackedModule's shared
    bottom-sheet layout into a left-edge slide-in panel, matching the mockup's navigation drawer
    without needing a bespoke overlay implementation. Placed after the widths above so it wins
    over .stacked-module's own sizing at every viewport. */
@@ -8151,7 +8151,7 @@ body {
   background: transparent;
   border: none;
   border-radius: 10px;
-  color: var(--soko-ink);
+  color: var(--grogoni-ink);
   display: flex;
   font-size: 14.5px;
   gap: 12px;
@@ -8161,12 +8161,12 @@ body {
 }
 
 .menu-item:hover {
-  background: var(--soko-paper-dim);
+  background: var(--grogoni-paper-dim);
 }
 
 .menu-item-icon {
   align-items: center;
-  color: var(--soko-ink-soft);
+  color: var(--grogoni-ink-soft);
   display: inline-flex;
   flex-shrink: 0;
   height: 20px;
@@ -8175,7 +8175,7 @@ body {
 }
 
 .menu-divider {
-  background: var(--soko-line);
+  background: var(--grogoni-line);
   height: 1px;
   margin: 6px 0;
   width: 100%;
@@ -8477,10 +8477,10 @@ body {
 }
 
 /* Shop Hub ----------------------------------------------------------
-   "Go to my shop": every registry module as a tile, on the Soko Home tokens. Tiles and skeletons
+   "Go to my shop": every registry module as a tile, on the Grogoni Home tokens. Tiles and skeletons
    share one min-height so loading never shifts layout; two columns hold down to 280px. */
 .shop-hub {
-  color: var(--soko-ink);
+  color: var(--grogoni-ink);
   display: grid;
   gap: 18px;
   min-width: 0;
@@ -8493,8 +8493,8 @@ body {
 }
 
 .shop-hub-header {
-  background: var(--soko-paper-dim);
-  border: 1px solid var(--soko-line);
+  background: var(--grogoni-paper-dim);
+  border: 1px solid var(--grogoni-line);
   border-radius: 16px;
   display: grid;
   gap: 12px;
@@ -8509,9 +8509,9 @@ body {
 }
 
 .shop-hub-kiondo {
-  background: var(--soko-accent-soft);
+  background: var(--grogoni-accent-soft);
   border-radius: 12px;
-  color: var(--soko-accent);
+  color: var(--grogoni-accent);
   display: grid;
   flex: none;
   height: 44px;
@@ -8529,7 +8529,7 @@ body {
 }
 
 .shop-hub-identity-text h3 {
-  font-family: var(--soko-display-font);
+  font-family: var(--grogoni-display-font);
   font-size: 18px;
   line-height: 1.2;
   margin: 0;
@@ -8537,8 +8537,8 @@ body {
 }
 
 .shop-hub-slug {
-  color: var(--soko-ink-faint);
-  font-family: var(--soko-mono-font);
+  color: var(--grogoni-ink-faint);
+  font-family: var(--grogoni-mono-font);
   font-size: 12px;
   margin: 2px 0 0;
   overflow: hidden;
@@ -8555,9 +8555,9 @@ body {
 
 .shop-hub-action {
   background: transparent;
-  border: 1px solid var(--soko-line-strong);
+  border: 1px solid var(--grogoni-line-strong);
   border-radius: 999px;
-  color: var(--soko-ink);
+  color: var(--grogoni-ink);
   font-size: 13px;
   font-weight: 600;
   min-height: 40px;
@@ -8565,13 +8565,13 @@ body {
 }
 
 .shop-hub-action.primary {
-  background: var(--soko-accent);
-  border-color: var(--soko-accent);
-  color: var(--soko-accent-ink);
+  background: var(--grogoni-accent);
+  border-color: var(--grogoni-accent);
+  color: var(--grogoni-accent-ink);
 }
 
 .shop-hub-link-notice {
-  color: var(--soko-ink-soft);
+  color: var(--grogoni-ink-soft);
   font-size: 12px;
   margin: 0;
   min-height: 1em;
@@ -8584,7 +8584,7 @@ body {
 
 .shop-hub-notice {
   align-items: center;
-  border: 1px solid var(--soko-line);
+  border: 1px solid var(--grogoni-line);
   border-radius: 12px;
   display: flex;
   flex-wrap: wrap;
@@ -8595,7 +8595,7 @@ body {
 
 .shop-hub-notice p,
 .shop-hub-empty {
-  color: var(--soko-ink-soft);
+  color: var(--grogoni-ink-soft);
   font-size: 13px;
   margin: 0;
 }
@@ -8606,7 +8606,7 @@ body {
 }
 
 .shop-hub-section-label {
-  color: var(--soko-ink-faint);
+  color: var(--grogoni-ink-faint);
   font-size: 11.5px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -8615,8 +8615,8 @@ body {
 }
 
 .shop-hub-attention ul {
-  background: var(--soko-accent-soft);
-  border: 1px solid color-mix(in srgb, var(--soko-accent) 40%, transparent);
+  background: var(--grogoni-accent-soft);
+  border: 1px solid color-mix(in srgb, var(--grogoni-accent) 40%, transparent);
   border-radius: 14px;
   list-style: none;
   margin: 0;
@@ -8625,7 +8625,7 @@ body {
 
 .shop-hub-attention li {
   align-items: center;
-  color: var(--soko-ink);
+  color: var(--grogoni-ink);
   display: flex;
   font-size: 13.5px;
   gap: 10px;
@@ -8633,7 +8633,7 @@ body {
 }
 
 .shop-hub-attention li + li {
-  border-top: 1px solid color-mix(in srgb, var(--soko-accent) 25%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--grogoni-accent) 25%, transparent);
 }
 
 .shop-hub-attention li span {
@@ -8643,9 +8643,9 @@ body {
 
 .shop-hub-fix {
   background: transparent;
-  border: 1px solid var(--soko-accent);
+  border: 1px solid var(--grogoni-accent);
   border-radius: 999px;
-  color: var(--soko-accent);
+  color: var(--grogoni-accent);
   flex: none;
   font-size: 13px;
   font-weight: 700;
@@ -8667,10 +8667,10 @@ body {
 
 .shop-hub-tile {
   align-content: start;
-  background: var(--soko-paper-dim);
-  border: 1px solid var(--soko-line);
+  background: var(--grogoni-paper-dim);
+  border: 1px solid var(--grogoni-line);
   border-radius: 14px;
-  color: var(--soko-ink);
+  color: var(--grogoni-ink);
   display: grid;
   gap: 6px;
   min-height: 118px;
@@ -8681,7 +8681,7 @@ body {
 
 .shop-hub-tile:hover,
 .shop-hub-tile:focus-visible {
-  border-color: var(--soko-line-strong);
+  border-color: var(--grogoni-line-strong);
 }
 
 .shop-hub-tile strong {
@@ -8690,16 +8690,16 @@ body {
 }
 
 .shop-hub-tile small {
-  color: var(--soko-ink-faint);
+  color: var(--grogoni-ink-faint);
   font-size: 12px;
   line-height: 1.35;
   overflow-wrap: anywhere;
 }
 
 .shop-hub-tile-icon {
-  background: var(--soko-paper);
+  background: var(--grogoni-paper);
   border-radius: 10px;
-  color: var(--soko-accent);
+  color: var(--grogoni-accent);
   display: grid;
   height: 34px;
   place-items: center;
@@ -8716,13 +8716,13 @@ body {
 }
 
 .shop-hub-badge.needs_setup {
-  background: var(--soko-accent-soft);
-  color: var(--soko-accent);
+  background: var(--grogoni-accent-soft);
+  color: var(--grogoni-accent);
 }
 
 .shop-hub-badge.unavailable {
-  background: var(--soko-paper);
-  color: var(--soko-ink-faint);
+  background: var(--grogoni-paper);
+  color: var(--grogoni-ink-faint);
 }
 
 .shop-hub-skeleton {
@@ -8731,7 +8731,7 @@ body {
 }
 
 .shop-hub-skeleton-label {
-  background: var(--soko-line);
+  background: var(--grogoni-line);
   border-radius: 4px;
   display: block;
   height: 10px;
@@ -8766,7 +8766,7 @@ body {
 
 .shop-hub-detail-description,
 .shop-hub-detail-intro {
-  color: var(--soko-ink-soft);
+  color: var(--grogoni-ink-soft);
   font-size: 13.5px;
 }
 
@@ -8775,7 +8775,7 @@ body {
 }
 
 .shop-hub-tools {
-  border: 1px solid var(--soko-line);
+  border: 1px solid var(--grogoni-line);
   border-radius: 12px;
   list-style: none;
   margin: 0;
@@ -8791,7 +8791,7 @@ body {
 }
 
 .shop-hub-tools li + li {
-  border-top: 1px solid var(--soko-line);
+  border-top: 1px solid var(--grogoni-line);
 }
 
 .shop-hub-tools li > span {
@@ -8802,15 +8802,15 @@ body {
 }
 
 .shop-hub-tools small {
-  color: var(--soko-ink-faint);
+  color: var(--grogoni-ink-faint);
   font-size: 11.5px;
 }
 
 .shop-hub-ask {
   background: transparent;
-  border: 1px solid var(--soko-line-strong);
+  border: 1px solid var(--grogoni-line-strong);
   border-radius: 999px;
-  color: var(--soko-accent);
+  color: var(--grogoni-accent);
   flex: none;
   font-size: 12.5px;
   font-weight: 600;
@@ -8820,10 +8820,10 @@ body {
 
 .shop-hub-entry-button {
   align-items: center;
-  background: var(--soko-paper-dim);
-  border: 1px solid var(--soko-line);
+  background: var(--grogoni-paper-dim);
+  border: 1px solid var(--grogoni-line);
   border-radius: 14px;
-  color: var(--soko-ink);
+  color: var(--grogoni-ink);
   display: flex;
   gap: 12px;
   max-width: 360px;
@@ -8838,7 +8838,7 @@ body {
 }
 
 .shop-hub-entry-button small {
-  color: var(--soko-ink-faint);
+  color: var(--grogoni-ink-faint);
   font-size: 12px;
 }
 
@@ -8851,7 +8851,7 @@ body {
 .shop-hub-detail-heading h3 {
   align-items: center;
   display: flex;
-  font-family: var(--soko-display-font);
+  font-family: var(--grogoni-display-font);
   font-size: 18px;
   gap: 10px;
   margin: 0;
@@ -8859,9 +8859,9 @@ body {
 
 .shop-hub-back {
   background: transparent;
-  border: 1px solid var(--soko-line-strong);
+  border: 1px solid var(--grogoni-line-strong);
   border-radius: 999px;
-  color: var(--soko-ink);
+  color: var(--grogoni-ink);
   font-size: 13px;
   min-height: 40px;
   padding: 6px 14px;

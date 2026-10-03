@@ -5,7 +5,7 @@
  * These only shape and type-check input; the domain rules themselves (policy invariants, geometry,
  * capacity) stay in business-core and the fulfillment service.
  */
-import type { DispatchPolicyInput } from "@soko/business-core";
+import type { DispatchPolicyInput } from "@grogoni/business-core";
 import {
   GramsFormatError,
   parseNullableGrams,
@@ -14,7 +14,7 @@ import {
   type DispatchFallbackAction,
   type DispatchOverflowStrategy,
   type ManifestStatus
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { Cp2Error } from "../../cp2-error.js";
 import {
   parseBoolean,

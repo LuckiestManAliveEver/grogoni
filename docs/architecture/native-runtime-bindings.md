@@ -2,7 +2,7 @@
 
 ## Repository architecture before cutover
 
-Soko had three overlapping persisted concepts. `cp2_agent_model_bindings` held one verified
+Grogoni had three overlapping persisted concepts. `cp2_agent_model_bindings` held one verified
 server model and one optional OpenAI fallback. The feature-flagged Execution Fabric held
 preferences, host identities, and installations in separate CP2 envelopes. Conversations and
 runtime sessions did not reference either concept. With `EXECUTION_FABRIC_ENABLED=true`, the
@@ -78,8 +78,8 @@ endpoint-shaped data by migration constraints and are never copied into binding 
 
 ## Default and activation
 
-The global default is an unconfigured provider-neutral binding for `builtin:soko-agent:v1`. It has
-no mandatory model, provider, host, or installation. Soko therefore starts without a configured
+The global default is an unconfigured provider-neutral binding for `builtin:grogoni-agent:v1`. It has
+no mandatory model, provider, host, or installation. Grogoni therefore starts without a configured
 model vendor; attempting inference before a model is assigned returns
 `RUNTIME_MODEL_NOT_CONFIGURED` at turn time. Verified activation can assign any compatible model
 and one of the four provider-neutral targets. Provider-backed backend models, browser models,

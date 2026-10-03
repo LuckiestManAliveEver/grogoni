@@ -1,4 +1,4 @@
-/* Customer home from soko-home.html, with real application actions. */
+/* Customer home from grogoni-home.html, with real application actions. */
 .app-frame:not(.auth-frame) .top-bar {
   grid-template-columns: 38px minmax(0, 1fr) 38px 38px;
   gap: 6px;
@@ -31,7 +31,7 @@
   border-radius: 9px;
   background: linear-gradient(155deg, #e3a13c, #c97f1f);
   color: #3a2707;
-  font-family: var(--soko-display-font);
+  font-family: var(--grogoni-display-font);
   font-size: 15px;
   font-weight: 700;
 }
@@ -46,16 +46,16 @@
   min-width: 38px;
   min-height: 38px;
   padding: 0;
-  border: 1px solid var(--soko-line);
+  border: 1px solid var(--grogoni-line);
   border-radius: 12px;
-  background: var(--soko-paper-dim);
-  color: var(--soko-ink);
+  background: var(--grogoni-paper-dim);
+  color: var(--grogoni-ink);
   box-shadow: none;
 }
 .app-frame:not(.auth-frame) .top-bar > .shell-capability-trace-button.on {
-  background: var(--soko-accent);
-  color: var(--soko-accent-ink);
-  border-color: var(--soko-accent);
+  background: var(--grogoni-accent);
+  color: var(--grogoni-accent-ink);
+  border-color: var(--grogoni-accent);
 }
 .app-frame:not(.auth-frame)[data-commerce-mode="buy"] {
   display: flex;
@@ -68,7 +68,7 @@
 .app-frame:not(.auth-frame)[data-commerce-mode="buy"] .chat-workspace-shell {
   flex: 1;
   height: auto;
-  background: var(--soko-paper);
+  background: var(--grogoni-paper);
 }
 .app-frame[data-commerce-mode="buy"] .chat-surface {
   grid-template-rows: minmax(0, 1fr);
@@ -92,15 +92,15 @@
   order: 1;
 }
 .home-welcome h1 {
-  color: var(--soko-ink);
-  font-family: var(--soko-display-font);
+  color: var(--grogoni-ink);
+  font-family: var(--grogoni-display-font);
   font-size: 22px;
   font-weight: 600;
   line-height: 1.4;
   margin: 0 0 8px;
 }
 .home-welcome p {
-  color: var(--soko-ink-faint);
+  color: var(--grogoni-ink-faint);
   font-size: 14px;
   line-height: 1.5;
   margin: 0;
@@ -128,7 +128,7 @@
   margin: 0;
   padding: 10px 14px calc(20px + env(safe-area-inset-bottom, 0px));
   border: 0;
-  border-top: 1px solid var(--soko-line);
+  border-top: 1px solid var(--grogoni-line);
   border-radius: 0;
 }
 .app-frame[data-commerce-mode="buy"] .composer-bottom-row {
@@ -147,8 +147,8 @@
   display: none;
 }
 .app-frame[data-commerce-mode="buy"] .composer-input textarea {
-  background: var(--soko-paper-dim);
-  border: 1px solid var(--soko-line);
+  background: var(--grogoni-paper-dim);
+  border: 1px solid var(--grogoni-line);
   border-radius: 22px;
   font-size: 14.5px;
   line-height: 20px;
@@ -157,7 +157,7 @@
   width: 100%;
 }
 .app-frame[data-commerce-mode="buy"] .composer-input textarea:focus {
-  outline: 1px solid var(--soko-accent);
+  outline: 1px solid var(--grogoni-accent);
   outline-offset: -1px;
 }
 .app-frame[data-commerce-mode="buy"] .composer-bottom-row-trailing {
@@ -169,9 +169,9 @@
   width: 40px;
   height: 40px;
   min-width: 40px;
-  background: var(--soko-paper-dim);
-  border: 1px solid var(--soko-line);
-  color: var(--soko-ink);
+  background: var(--grogoni-paper-dim);
+  border: 1px solid var(--grogoni-line);
+  color: var(--grogoni-ink);
 }
 .app-frame[data-commerce-mode="buy"] .composer .send-button {
   width: 40px;

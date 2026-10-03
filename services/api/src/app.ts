@@ -3,8 +3,8 @@ import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import rateLimit from "@fastify/rate-limit";
 import fastifyStatic from "@fastify/static";
 import websocket from "@fastify/websocket";
-import type { Metrics } from "@soko/observability";
-import type { HealthResponse, RuntimeModelDiagnostic } from "@soko/shared-types";
+import type { Metrics } from "@grogoni/observability";
+import type { HealthResponse, RuntimeModelDiagnostic } from "@grogoni/shared-types";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { registerCp2Routes, type Cp2RouteOptions } from "./cp2/routes.js";
@@ -72,7 +72,7 @@ export function buildApi(options: BuildApiOptions = {}) {
   // plugin (so this is always assigned) before it accepts its first real request or `.inject()`
   // call resolves. See the onRequest hook right after this for why it needs to be set this early.
   let cp2Store: Cp2Store | undefined;
-  const webPublicUrl = (options.cp2?.webPublicUrl ?? "https://soko.market").replace(/\/+$/u, "");
+  const webPublicUrl = (options.cp2?.webPublicUrl ?? "https://grogoni.com").replace(/\/+$/u, "");
   const storefrontApexHostname = new URL(webPublicUrl).hostname;
 
   void app.register(websocket, {
@@ -97,11 +97,11 @@ export function buildApi(options: BuildApiOptions = {}) {
   });
 
   // Per-turn context (services/api/src/inference/turn-stream.ts): a client that watches a turn's
-  // reply stream, or whose device runs an on-device model, names the turn in x-soko-turn-id. The
+  // reply stream, or whose device runs an on-device model, names the turn in x-grogoni-turn-id. The
   // rest of the request runs inside that context so model adapters deep in the pipeline can find
   // it without the turn pipeline carrying it. Callback-style so the context spans the handler.
   app.addHook("onRequest", (request, _reply, done) => {
-    const turnId = request.headers["x-soko-turn-id"];
+    const turnId = request.headers["x-grogoni-turn-id"];
     if (isValidTurnId(turnId)) {
       turnContext.run({ turnId }, done);
       return;
@@ -109,13 +109,13 @@ export function buildApi(options: BuildApiOptions = {}) {
     done();
   });
 
-  // Store subdomain redirect (docs/architecture/soko-id-slug-system.md): once a wildcard
-  // *.soko.market custom domain is registered against this service, a request that arrives with
-  // Host: {handle}.soko.market resolves to that business's canonical storefront and redirects
+  // Store subdomain redirect (docs/architecture/grogoni-id-slug-system.md): once a wildcard
+  // *.grogoni.com custom domain is registered against this service, a request that arrives with
+  // Host: {handle}.grogoni.com resolves to that business's canonical storefront and redirects
   // there. Without the wildcard domain/DNS record actually pointed at this service, no such
   // request ever reaches it, so this hook is inert (and does nothing at all) until that one
   // infrastructure step is done. Fixed infrastructure aliases are reserved and never interpreted
-  // as store handles; api.soko.market temporarily keeps cached pre-migration clients working.
+  // as store handles; api.grogoni.com temporarily keeps cached pre-migration clients working.
   app.addHook("onRequest", async (request, reply) => {
     if (cp2Store === undefined) return;
     const requestHostname = request.hostname;
@@ -124,7 +124,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (handle.length === 0 || handle.includes(".") || reservedStorefrontSubdomains.has(handle))
       return;
 
-    const resolution = cp2Store.resolveBusinessBySokoId(`soko.${handle}`);
+    const resolution = cp2Store.resolveBusinessByGrogoniId(`grogoni.${handle}`);
     if (resolution === null) {
       return reply.code(404).send({
         code: "storefront_not_found",
@@ -132,7 +132,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       });
     }
     return reply.redirect(
-      `${webPublicUrl}/agent/${encodeURIComponent(resolution.business.sokoId)}`,
+      `${webPublicUrl}/agent/${encodeURIComponent(resolution.business.grogoniId)}`,
       302
     );
   });
@@ -147,11 +147,11 @@ export function buildApi(options: BuildApiOptions = {}) {
       reply.header("access-control-allow-methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
       reply.header(
         "access-control-allow-headers",
-        "content-type,x-request-id,idempotency-key,x-soko-device-id,x-soko-device-name,x-soko-platform,x-soko-client,x-soko-turn-id"
+        "content-type,x-request-id,idempotency-key,x-grogoni-device-id,x-grogoni-device-name,x-grogoni-platform,x-grogoni-client,x-grogoni-turn-id"
       );
       reply.header(
         "access-control-expose-headers",
-        "server-timing,x-soko-response-budget-ms,x-soko-response-budget-class"
+        "server-timing,x-grogoni-response-budget-ms,x-grogoni-response-budget-class"
       );
     }
 
@@ -339,9 +339,9 @@ export function buildApi(options: BuildApiOptions = {}) {
     const budgetClass = responseBudgetClass(request.method, request.url);
     const elapsedMs = Math.max(0, reply.elapsedTime);
     reply.header("server-timing", `app;dur=${elapsedMs.toFixed(1)}`);
-    reply.header("x-soko-response-budget-class", budgetClass);
+    reply.header("x-grogoni-response-budget-class", budgetClass);
     if (budgetClass === "interactive") {
-      reply.header("x-soko-response-budget-ms", String(interactiveResponseBudgetMs));
+      reply.header("x-grogoni-response-budget-ms", String(interactiveResponseBudgetMs));
     }
     return payload;
   });
@@ -525,7 +525,7 @@ export function buildApi(options: BuildApiOptions = {}) {
           "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; " +
             "form-action 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; " +
             "font-src 'self' data:; manifest-src 'self'; worker-src 'self'; child-src 'self'; " +
-            "connect-src 'self' https://*.soko.market wss://*.soko.market; upgrade-insecure-requests"
+            "connect-src 'self' https://*.grogoni.com wss://*.grogoni.com; upgrade-insecure-requests"
         );
         response.setHeader("Cross-Origin-Embedder-Policy", "credentialless");
         response.setHeader("Cross-Origin-Opener-Policy", "same-origin");

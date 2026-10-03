@@ -45,6 +45,6 @@ Opening verification:
 
 Passed verification:
 
-- `pnpm --filter @soko/api typecheck`
+- `pnpm --filter @grogoni/api typecheck`
 - `pnpm vitest run tests/cp3-shell.test.ts tests/cp12-reports-knowledge.test.ts tests/cp13-logistics.test.ts tests/cp14-security-compliance.test.ts tests/cp15-beta-hardening.test.ts tests/cp16-public-launch.test.ts --reporter=dot`
 - `pnpm run ci`

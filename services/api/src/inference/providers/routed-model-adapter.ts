@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
-import type { ModelExecutionTarget, RuntimeModelPrompt, RuntimeToolName } from "@soko/shared-types";
-import { runtimeToolRegistry } from "@soko/tool-core";
+import type { ModelExecutionTarget, RuntimeModelPrompt, RuntimeToolName } from "@grogoni/shared-types";
+import { runtimeToolRegistry } from "@grogoni/tool-core";
 
 import {
   buildInferenceInstructions,
@@ -27,7 +27,7 @@ import { currentTurnId, turnStreamHub } from "../turn-stream.js";
  * pipeline, runtime handoff, tool execution and approvals are unchanged, and none of them learn
  * which provider served a turn.
  *
- * Tool calls: when the model is verified tool-capable, Soko's tool definitions are sent in the
+ * Tool calls: when the model is verified tool-capable, Grogoni's tool definitions are sent in the
  * provider's native format; a returned tool call is converted back into the canonical
  * `{"type":"tool",...}` JSON that parseRuntimeModelOutput already understands. From there the call
  * goes through the same validation, permission, confirmation and approval path as every other
@@ -114,7 +114,7 @@ export function createRoutedModelRuntimeAdapter(input: {
         provider: model.providerId,
         executionTarget,
         latencyMs: health.latencyMs ?? Date.now() - startedAt,
-        responsePreview: ok ? "SOKO_MODEL_OK" : null,
+        responsePreview: ok ? "GROGONI_MODEL_OK" : null,
         retryable: health.status === "UNAVAILABLE" || health.status === "RATE_LIMITED"
       };
     },
@@ -165,7 +165,7 @@ export function createRoutedModelRuntimeAdapter(input: {
 }
 
 /**
- * RuntimeModelPrompt (Soko's agent prompt) -> canonical chat request. The system message carries
+ * RuntimeModelPrompt (Grogoni's agent prompt) -> canonical chat request. The system message carries
  * the same instructions every other model gets; history becomes real chat turns. Business context
  * that the agent runtime already minimized (compiled instructions, retrieved context) arrives
  * inside `prompt.message` exactly as for the Vercel adapter - nothing extra is added here.

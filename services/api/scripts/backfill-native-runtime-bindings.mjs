@@ -50,8 +50,8 @@ export function planNativeRuntimeBackfill(input) {
         id: binding.agentId,
         businessId: binding.shopId,
         accountId: binding.accountId,
-        name: "Soko business agent",
-        provider: "soko-business-agent",
+        name: "Grogoni business agent",
+        provider: "grogoni-business-agent",
         packageRef: null,
         version: "1",
         runtimeContractVersion: "1",
@@ -130,7 +130,7 @@ export function planNativeRuntimeBackfill(input) {
         businessId,
         accountId,
         name: `Retired ${preference.scope} preference holder`,
-        provider: "soko-migrated-preference",
+        provider: "grogoni-migrated-preference",
         packageRef: null,
         version: "1",
         runtimeContractVersion: "1",
@@ -373,7 +373,7 @@ const tableForKind = {
 async function applyPlan(client, plan) {
   await client.query("begin");
   try {
-    await client.query("select pg_advisory_xact_lock(hashtext('soko.native_runtime_backfill'))");
+    await client.query("select pg_advisory_xact_lock(hashtext('grogoni.native_runtime_backfill'))");
     await client.query("set constraints all deferred");
     for (const item of plan.actions) {
       const table = tableForKind[item.kind];

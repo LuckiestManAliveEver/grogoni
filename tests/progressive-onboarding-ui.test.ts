@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 describe("progressive onboarding UI", () => {
   it("opens the current phone-first signup instead of the legacy continue screen", async () => {
     const [applicationSource, authStateSource, signupSource, styles] = await Promise.all([
-      readFile(new URL("../apps/web/src/SokoApplication.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../apps/web/src/GrogoniApplication.tsx", import.meta.url), "utf8"),
       readFile(new URL("../apps/web/src/hooks/useAuthState.ts", import.meta.url), "utf8"),
       readFile(new URL("../apps/web/src/PhoneSignup.tsx", import.meta.url), "utf8"),
       readFile(new URL("../apps/web/src/styles.css", import.meta.url), "utf8")
@@ -30,7 +30,7 @@ describe("progressive onboarding UI", () => {
       readFile(new URL("../apps/web/src/hooks/useAuthState.ts", import.meta.url), "utf8")
     ]);
 
-    expect(recoverySource).toContain('const databaseName = "soko-device-recovery-v1"');
+    expect(recoverySource).toContain('const databaseName = "grogoni-device-recovery-v1"');
     expect(recoverySource).toContain("indexedDB.open(databaseName, 1)");
     expect(recoverySource).toContain('name: "ECDSA"');
     expect(recoverySource).toContain('namedCurve: "P-256"');

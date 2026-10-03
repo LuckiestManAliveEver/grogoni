@@ -22,7 +22,7 @@ test("messaging is locked until the visitor chooses signup or login", async ({ p
     });
   });
   await page.addInitScript(() => {
-    localStorage.setItem("soko.market.marketplace-intro.completed.v1", "true");
+    localStorage.setItem("grogoni.marketplace-intro.completed.v1", "true");
   });
   // Zero-form entry (docs/authentication/progressive-identity.md): a non-deliberate cold boot at
   // /marketplace lands straight on the chat shell with its inline welcome message, not behind a

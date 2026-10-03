@@ -1,7 +1,7 @@
 /**
- * Soko tool names contain dots ("products.list"); OpenAI and Anthropic function names must match
+ * Grogoni tool names contain dots ("products.list"); OpenAI and Anthropic function names must match
  * ^[a-zA-Z0-9_-]{1,64}$. Adapters encode on the way out and decode on the way back so the rest of
- * Soko only ever sees canonical names. The encoding is reversible and collision-free for the
+ * Grogoni only ever sees canonical names. The encoding is reversible and collision-free for the
  * registry's actual names (dots -> "__", and no registry name contains "__").
  */
 export function encodeToolName(name: string): string {

@@ -136,11 +136,11 @@ export const businesses = pgTable(
     id: uuid("id").primaryKey(),
     name: text("name").notNull(),
     language: text("language").notNull(),
-    sokoId: text("soko_id"),
+    grogoniId: text("grogoni_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull()
   },
   (table) => ({
-    sokoIdUnique: uniqueIndex("businesses_soko_id_unique_idx").on(table.sokoId)
+    grogoniIdUnique: uniqueIndex("businesses_grogoni_id_unique_idx").on(table.grogoniId)
   })
 );
 
@@ -388,7 +388,7 @@ export const conversationMessages = pgTable(
     failureCode: text("failure_code"),
     retryCount: integer("retry_count").notNull().default(0),
     nextRetryAt: timestamp("next_retry_at", { withTimezone: true }),
-    selectedChannel: text("selected_channel").notNull().default("soko"),
+    selectedChannel: text("selected_channel").notNull().default("grogoni"),
     actualChannel: text("actual_channel"),
     providerMessageId: text("provider_message_id"),
     provider: text("provider").notNull(),
@@ -480,7 +480,7 @@ export const mcpAccessTokens = pgTable(
   })
 );
 
-export const sokoSessionContexts = pgTable("soko_session_contexts", {
+export const grogoniSessionContexts = pgTable("grogoni_session_contexts", {
   accountId: uuid("account_id")
     .primaryKey()
     .references(() => accounts.id, { onDelete: "cascade" }),

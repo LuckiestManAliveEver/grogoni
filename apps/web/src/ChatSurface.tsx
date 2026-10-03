@@ -1,9 +1,9 @@
 import { Fragment, Suspense, lazy, useEffect, useRef, useState } from "react";
 
 import type { CountryCode } from "libphonenumber-js";
-import type { Scope } from "@soko/offline-runtime";
+import type { Scope } from "@grogoni/offline-runtime";
 
-import type { ConversationMessageContent, MessageDeliveryAttemptSummary } from "@soko/shared-types";
+import type { ConversationMessageContent, MessageDeliveryAttemptSummary } from "@grogoni/shared-types";
 
 import { readStableDeviceId } from "./lib/api";
 
@@ -18,7 +18,7 @@ import { ChatComposer } from "./ChatComposer";
 import { ConversationAttachmentCard } from "./ConversationAttachmentCard";
 import { ConversationListPanel } from "./ConversationListPanel";
 
-import { SmsHandoffDialog } from "./soko-application-shared";
+import { SmsHandoffDialog } from "./grogoni-application-shared";
 import { renderGeneratedSurface } from "./generated-surface-registry";
 
 import { getJson } from "./api-helpers";
@@ -55,7 +55,7 @@ const ShopHub = lazy(() =>
   )
 );
 
-// Soko Home's "trace" affordance (hidden by default, toggled by the header's capability-trace
+// Grogoni Home's "trace" affordance (hidden by default, toggled by the header's capability-trace
 // button): names the real capability that produced a generated card, instead of the mockup's
 // scripted stand-in text. Content types with no capability behind them (plain text, confirmation
 // prompts, the owner-controls menu) intentionally return null and show no trace.
@@ -190,7 +190,7 @@ export function ChatSurface({
   const businessName = business?.name ?? "Your shop";
   const hasBusiness = business !== null;
   const isAuthenticated = session !== null;
-  const sokoId = business?.sokoId ?? "Not set up yet";
+  const grogoniId = business?.grogoniId ?? "Not set up yet";
   const smsDefaultCountry = (session?.user.phoneCountryCode as CountryCode | undefined) ?? "KE";
   // Bluetooth "Send via" only makes sense for a business's own device pairing (see
   // peer-messaging.ts) - a signed-out or business-less session never surfaces the option.
@@ -321,7 +321,7 @@ export function ChatSurface({
           const query = inboxSearch.trim().toLowerCase();
           if (!query) return true;
           return (
-            (conversation.title ?? "Soko agent").toLowerCase().includes(query) ||
+            (conversation.title ?? "Grogoni agent").toLowerCase().includes(query) ||
             (conversation.lastMessage === null
               ? false
               : conversationMessageText(conversation.lastMessage).toLowerCase().includes(query))
@@ -548,7 +548,7 @@ export function ChatSurface({
           {showBlankSessionState && !isHomeEmpty ? (
             <div className="blank-session-state" role="status">
               <h3>Start a new chat</h3>
-              <p>Ask your Soko agent anything, or pick a chat from the list.</p>
+              <p>Ask your Grogoni agent anything, or pick a chat from the list.</p>
               <button
                 type="button"
                 onClick={() => (isAuthenticated ? onCreateAgentSession() : onRequireSignIn())}
@@ -602,13 +602,13 @@ export function ChatSurface({
                   <small className="message-context">Forwarded</small>
                 ) : null}
                 <p className={message.deletedAt ? "deleted-message" : undefined}>
-                  {message.author === "sokoclaw" ? (
+                  {message.author === "grogoniclaw" ? (
                     <AuthenticationActionMessage message={message.body} />
                   ) : (
                     message.body
                   )}
                 </p>
-                {message.author === "sokoclaw" && capabilityTraceLabel(message.content) !== null ? (
+                {message.author === "grogoniclaw" && capabilityTraceLabel(message.content) !== null ? (
                   <span className="capability-trace" aria-hidden="true">
                     {capabilityTraceLabel(message.content)}
                   </span>
@@ -693,7 +693,7 @@ export function ChatSurface({
                     </button>
                     {activeMessageMenuId === message.id ? (
                       <div className="message-action-menu" role="menu">
-                        {message.author === "sokoclaw" ? (
+                        {message.author === "grogoniclaw" ? (
                           <>
                             <button
                               type="button"
@@ -823,7 +823,7 @@ export function ChatSurface({
                             setForwardingMessageId(null);
                           }}
                         >
-                          {conversation.title ?? "Soko agent"}
+                          {conversation.title ?? "Grogoni agent"}
                         </button>
                       ))}
                     <button type="button" onClick={() => setForwardingMessageId(null)}>
@@ -849,7 +849,7 @@ export function ChatSurface({
           moduleId="owner-management"
           className={mode === "seller" ? "sell-module" : "buy-module"}
           open={activeModuleView !== null}
-          title={activeModuleView === null ? "Soko" : viewLabel(activeModuleView)}
+          title={activeModuleView === null ? "Grogoni" : viewLabel(activeModuleView)}
           onClose={onBackToChat}
         >
           {children}
@@ -865,7 +865,7 @@ export function ChatSurface({
             <StorefrontPreviewCard
               businessName={businessName}
               products={products}
-              sokoId={sokoId}
+              grogoniId={grogoniId}
               onBack={() => setWorkspaceCardView("cards")}
               onOpenProfile={onOpenAgentProfile}
               onAddToOrder={(product) =>
@@ -883,7 +883,7 @@ export function ChatSurface({
               isLoadingStorefronts={publicStorefrontsLoading}
               productCount={productCount}
               publicStorefronts={publicStorefronts}
-              sokoId={sokoId}
+              grogoniId={grogoniId}
               buyFeed={buyFeed}
               isSearchingBuyFeed={isSearchingBuyFeed}
               buyCart={buyCart}
@@ -918,7 +918,7 @@ export function ChatSurface({
                   <ShopHub
                     businessId={businessId}
                     businessName={businessName}
-                    sokoId={sokoId}
+                    grogoniId={grogoniId}
                     onOpenSurface={openShopHubSurface}
                     onAskAgent={(draft) => {
                       commitDraft(draft);
@@ -959,7 +959,7 @@ export function ChatSurface({
             <StorefrontPreviewCard
               businessName={businessName}
               products={products}
-              sokoId={sokoId}
+              grogoniId={grogoniId}
               onBack={() => setWorkspaceCardView("cards")}
               onOpenProfile={onOpenAgentProfile}
               onAddToOrder={(product) =>
@@ -1030,7 +1030,7 @@ export function ChatSurface({
                       <article className="conversation-item" key={item.conversation.id}>
                         <span className="conversation-copy">
                           <span className="conversation-title-line">
-                            <strong>{item.title ?? "Soko agent"}</strong>
+                            <strong>{item.title ?? "Grogoni agent"}</strong>
                           </span>
                           <small>
                             Deleted {formatMessageTime(item.deletedAt)} · Permanently deleted{" "}

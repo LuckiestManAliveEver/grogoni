@@ -2,7 +2,7 @@
 
 ## The problem this closes
 
-Soko's runtime already grounds most read-oriented tasks by construction: a recognized intent like
+Grogoni's runtime already grounds most read-oriented tasks by construction: a recognized intent like
 `show_products`/`check_debt` deterministically resolves to a tool proposal
 (`createRuntimeToolProposal`, `packages/tool-core`) that executes against live data
 (`products.list`, `payments.debtors`, ...) - the tool's result _is_ the evidence, independent of

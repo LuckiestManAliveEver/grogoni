@@ -50,7 +50,7 @@ insert into cp2_runtime_model_artifacts (
   'builtin:smollm2-360m:q4_0:gguf',
   'smollm2-360m',
   'neon-object-storage',
-  'soko-model-artifacts',
+  'grogoni-model-artifacts',
   'models/smollm2-360m/SmolLM2-360M-Instruct-Q4_0.gguf',
   'gguf',
   'Q4_0',
@@ -75,7 +75,7 @@ insert into cp2_runtime_model_artifacts (
 
 insert into cp2_native_execution_hosts (entity_id, record, updated_at) values (
   'builtin:vercel-inference:v1',
-  '{"id":"builtin:vercel-inference:v1","businessId":null,"accountId":null,"type":"vercel","name":"Vercel inference","endpoint":null,"status":"available","capabilities":["vercel","gguf","streaming","pi"],"configuration":{"executionTarget":"vercel"},"credentialReference":"env:SOKO_INFERENCE_SERVICE_TOKEN","lastKnownHealthyAt":null,"createdAt":"2026-08-31T00:00:00.000Z","updatedAt":"2026-08-31T00:00:00.000Z"}'::jsonb,
+  '{"id":"builtin:vercel-inference:v1","businessId":null,"accountId":null,"type":"vercel","name":"Vercel inference","endpoint":null,"status":"available","capabilities":["vercel","gguf","streaming","pi"],"configuration":{"executionTarget":"vercel"},"credentialReference":"env:GROGONI_INFERENCE_SERVICE_TOKEN","lastKnownHealthyAt":null,"createdAt":"2026-08-31T00:00:00.000Z","updatedAt":"2026-08-31T00:00:00.000Z"}'::jsonb,
   now()
 ) on conflict (entity_id) do update set record = excluded.record, updated_at = excluded.updated_at;
 
@@ -100,7 +100,7 @@ set parent_id = excluded.parent_id, record = excluded.record, updated_at = exclu
 update cp2_native_runtime_binding_models
 set record = jsonb_set(record, '{executionHostId}', '"builtin:vercel-inference:v1"'::jsonb, true),
   updated_at = now()
-where parent_id = 'builtin:soko-default-runtime:v1' and role = 'primary';
+where parent_id = 'builtin:grogoni-default-runtime:v1' and role = 'primary';
 
 -- The superseded Render backend host/install remain historical runtime records but are explicitly
 -- unavailable, so no binding can silently fail over to Render-hosted model execution.

@@ -1,6 +1,6 @@
 # Vercel inference migration audit
 
-Phase 0 deliverable for moving Soko's inference execution off Render and onto Vercel, keeping
+Phase 0 deliverable for moving Grogoni's inference execution off Render and onto Vercel, keeping
 Render as the control plane and Neon as the store for both application state and model-artifact
 metadata. This documents the actual repository state found, what was reused, what was removed, and
 the resulting architecture - not a plan written before the code existed.
@@ -18,14 +18,14 @@ Chat client
                 -> Fastify app (services/ai-runtime/src/app.ts)
                 -> Ollama engine (services/ai-runtime/src/inference-engine.ts,
                    services/ai-runtime/src/ollama-model.ts) against a Render persistent disk
-                   (/var/lib/soko-models), OR
+                   (/var/lib/grogoni-models), OR
                 -> optional OpenAI cloud fallback (services/api/src/inference/openai-provider.ts)
         <- normalized completion
     -> tool execution, persistence, response
 ```
 
-`render.yaml` declared `soko-market-inference` as a Render private (`pserv`) Docker service running
-`services/ai-runtime/Dockerfile`, with a 5 GB persistent disk mounted at `/var/lib/soko-models` and
+`render.yaml` declared `grogoni-inference` as a Render private (`pserv`) Docker service running
+`services/ai-runtime/Dockerfile`, with a 5 GB persistent disk mounted at `/var/lib/grogoni-models` and
 Ollama bound to loopback inside the container. The API received the service's private
 `hostport`/token through Render's `fromService` linking and never had a public inference endpoint.
 
@@ -78,7 +78,7 @@ native-runtime-routing.ts`) - already fully generic over `ModelExecutionTarget`,
   `createVercelModelAdapter` / `createVercelInferenceClient`.
 - `resolveOllamaModelName` and the `BACKEND_INFERENCE_*` / `INFERENCE_CLOUD_*` / `OPENAI_*` /
   `INFERENCE_ENGINE` environment variables (`services/api/src/config.ts`).
-- The `soko-market-inference` Render Blueprint service, its persistent disk, and every
+- The `grogoni-inference` Render Blueprint service, its persistent disk, and every
   `BACKEND_INFERENCE_*` env var on the API service.
 
 ## New components
@@ -116,7 +116,7 @@ Migration `079_vercel_inference_artifacts.sql`:
   per model. GGUF bytes are never stored in Postgres.
 - Seeds `builtin:smollm2-360m:q4_0:gguf` as the available artifact for the platform default model,
   and a `builtin:vercel-inference:v1` row in `cp2_native_execution_hosts` (`type: "vercel"`,
-  `credentialReference: "env:SOKO_INFERENCE_SERVICE_TOKEN"`).
+  `credentialReference: "env:GROGONI_INFERENCE_SERVICE_TOKEN"`).
 - Points `cp2_native_runtime_models` for `smollm2-360m` at `executionTarget: "vercel"` and the new
   artifact, adds a `cp2_native_model_installations` row binding model to host, and repoints the
   default runtime binding's primary role at the Vercel host.
@@ -157,7 +157,7 @@ registers adapters under `vercel:*` keys, these were live production bugs, not j
   conversation with no explicit shop scope once `ensureDefaultRuntimeForTurn` started actually
   running (previously masked because that function always bailed out early). Fixed to match.
 - Three call sites in `apps/web/src/AgentModelPanel.tsx` and `QuickRuntimeSwitcher.tsx` sent
-  `executionTarget: "backend"` when a merchant activated or tested a "Soko backend" model from the
+  `executionTarget: "backend"` when a merchant activated or tested a "Grogoni backend" model from the
   UI - this would have made every UI-driven activation fail its own health probe. Fixed to send
   `"vercel"`.
 
@@ -241,7 +241,7 @@ verified it with real inference rather than a compiled build:
 - **Reverse deployment boundary was unchecked.** `scripts/check-render-inference-boundaries.mjs`
   only checked that Render doesn't depend on a local inference engine; nothing checked the other
   direction. Added a dependency-allowlist and import-scan check for `services/ai-runtime` (must
-  depend on nothing but `@soko/shared-types` and `node-llama-cpp`, must never import
+  depend on nothing but `@grogoni/shared-types` and `node-llama-cpp`, must never import
   `services/api`/`apps/web`), plus a standalone `tests/ai-runtime-deployment-boundary.test.ts` that
   asserts the same invariant independently of the script.
 - **Wrong artifact size found by actually running inference.** Downloading the real upstream GGUF

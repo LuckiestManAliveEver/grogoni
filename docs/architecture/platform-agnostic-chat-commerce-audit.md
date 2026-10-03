@@ -33,7 +33,7 @@ deep-link grant flow, Telegram renderer/sender, or live bot validation. Those ga
 Telegram adapter phase; native commerce and camera publication do not depend on Telegram
 configuration.
 
-Soko has strong canonical product, business, authorization, agent-runtime, MCP, conversation,
+Grogoni has strong canonical product, business, authorization, agent-runtime, MCP, conversation,
 receipt-OCR, and storefront foundations. The full channel rollout is not safe yet because the
 customer-facing storefront message and order paths are parallel JSON-record collections rather
 than the canonical `conversations` / `conversation_messages` and invoice/payment paths.
@@ -62,7 +62,7 @@ The safe prerequisite was implemented after this audit:
 - query results expose canonical product ID, business ID, name, unit, selling price, availability,
   and the current null image placeholder without exposing buying cost or raw stock quantity;
 - zero results are explicit in both structured output and runtime response;
-- authenticated MCP clients can call `soko.query_catalogue`; scope, session, membership, and
+- authenticated MCP clients can call `grogoni.query_catalogue`; scope, session, membership, and
   shop-token binding are enforced before the catalogue service runs;
 - product selection tests pass the returned canonical ID into the existing storefront order
   request flow.
@@ -98,7 +98,7 @@ Status meanings are those requested by the platform-agnostic chat-commerce PRD.
 | Business tenancy                  | PRESENT     | Products, invoices, payments, OCR jobs, runtime state, and public requests carry business scope; service methods enforce membership/permissions.                                                                |
 | External handoff                  | PRESENT     | Share sheet and SMS composer handoff are implemented and explicitly non-authoritative.                                                                                                                          |
 | External identities               | CONFLICTING | `ExternalIdentitySummary` exists for an owner-scoped social-network graph, not provider participants. `connected_channels` exists only in an old migration and is absent from the current Drizzle schema/store. |
-| Channel/provider abstractions     | UNUSED      | `MessageChannel` includes Telegram and provider delivery metadata exists, but message creation rejects every selected channel except `soko`; no transport interface routes inbound/outbound messages.           |
+| Channel/provider abstractions     | UNUSED      | `MessageChannel` includes Telegram and provider delivery metadata exists, but message creation rejects every selected channel except `grogoni`; no transport interface routes inbound/outbound messages.           |
 | Webhook infrastructure            | PARTIAL     | Signed outbound/integration patterns and Fastify routes exist, but there is no general inbound provider webhook registry.                                                                                       |
 | Idempotency infrastructure        | PRESENT     | Canonical messages enforce conversation/client and conversation/idempotency uniqueness; sync and signed uploads also use idempotency keys. There is no provider-update uniqueness boundary.                     |
 | Realtime inbox updates            | PRESENT     | Conversation/message sync journals, WebSocket notification, unread state, and realtime client support exist.                                                                                                    |
@@ -130,7 +130,7 @@ the in-memory snapshot.
 
 ### Chat message to agent
 
-Authenticated Soko agent chat calls `createAgentConversationMessage`. It first persists a canonical
+Authenticated Grogoni agent chat calls `createAgentConversationMessage`. It first persists a canonical
 user message through `createConversationMessage`, builds canonical history, calls
 `createRuntimeTurn`, then persists the agent response as a canonical message. Direct human chats are
 excluded from agent processing. A storefront visitor uses `createPublicStorefrontMessage`, which
@@ -141,7 +141,7 @@ writes a different collection and calls `attemptPublicAgentReply`.
 The in-process agent runtime parses or asks a configured model for a typed `RuntimeToolProposal`,
 validates it against `runtimeToolRegistry`, business policy, role permissions, rate limits, and
 confirmation rules, then calls `executeRuntimeAction`. It does not make an HTTP MCP round trip.
-External MCP clients call `soko.runtime_turn`, which enters that same runtime.
+External MCP clients call `grogoni.runtime_turn`, which enters that same runtime.
 
 ### MCP to business service
 
@@ -152,7 +152,7 @@ calls the same `Cp2Store` service methods used by HTTP routes.
 ### Product rendering
 
 The storefront derives `PublicStorefrontProductSummary` from canonical products and renders tiles
-and a product detail card in `SokoApplication.tsx`. The current public projection exposes ID, name,
+and a product detail card in `GrogoniApplication.tsx`. The current public projection exposes ID, name,
 unit, and boolean availability, not price or image. Runtime tool results are rendered primarily as
 text/navigation state, not canonical conversation product-card content.
 
@@ -198,7 +198,7 @@ records bypass that flow and have a separate seller endpoint/view.
 3. **Parallel order facts:** public order requests do not enter invoice/payment orchestration. There
    is no existing checkout/payment handoff for a channel adapter to reuse.
 4. **External participant shape:** the existing external identity is owner-network data, not a
-   global/provider identity that may participate without a Soko account. Reusing it would conflate
+   global/provider identity that may participate without a Grogoni account. Reusing it would conflate
    relationship discovery with authentication.
 5. **Channel migration drift:** `connected_channels` is present in migration 015 but absent from the
    current Drizzle schema, store snapshot, routes, and authorization model.

@@ -10,7 +10,7 @@ import type {
   ManifestSummary,
   ShopLocationStatusSummary,
   VehicleSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
 const getJson = vi.fn();
 const postJson = vi.fn();

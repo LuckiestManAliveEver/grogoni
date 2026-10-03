@@ -1,4 +1,4 @@
-import type { AiModelSummary } from "@soko/shared-types";
+import type { AiModelSummary } from "@grogoni/shared-types";
 
 export type GitHubAiModelSummary = Omit<AiModelSummary, "source"> & {
   source: "github";
@@ -312,7 +312,7 @@ function normalizeGitHubSearch(search: string | undefined): string {
 function githubHeaders(token: string | undefined): HeadersInit {
   return {
     accept: "application/vnd.github+json",
-    "user-agent": "soko-market-on-device-model-catalog",
+    "user-agent": "grogoni-on-device-model-catalog",
     "x-github-api-version": "2022-11-28",
     ...(token === undefined ? {} : { authorization: `Bearer ${token}` })
   };

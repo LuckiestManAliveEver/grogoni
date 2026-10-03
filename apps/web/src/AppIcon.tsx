@@ -8,7 +8,7 @@ export function AppIcon({ className }: AppIconProps) {
       aria-hidden="true"
       className={className}
       draggable="false"
-      src="/icons/soko-icon.svg"
+      src="/icons/grogoni-icon.svg"
       alt=""
     />
   );

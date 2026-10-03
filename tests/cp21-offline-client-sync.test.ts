@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
-import type { LocalSyncMutation, LocalSyncSnapshot, SyncPullPage } from "@soko/shared-types";
+import type { LocalSyncMutation, LocalSyncSnapshot, SyncPullPage } from "@grogoni/shared-types";
 import { applySyncPullPage } from "../packages/sync-core/src/index";
 import {
   catchUpAccountSync,
@@ -149,7 +149,7 @@ describe("CP21 offline client sync", () => {
     const result = await flushLocalSyncMutations({
       accountId: "account-1",
       repository,
-      apiBaseUrl: "https://soko.market/",
+      apiBaseUrl: "https://grogoni.com/",
       fetcher: async (input, init) => {
         const url = String(input);
         const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
@@ -171,9 +171,9 @@ describe("CP21 offline client sync", () => {
       remaining: 0
     });
     expect(requests.map((request) => request.url)).toEqual([
-      "https://soko.market/businesses/business-1/sync-queue",
-      "https://soko.market/businesses/business-1/sync-queue",
-      "https://soko.market/businesses/business-1/sync-queue/replay"
+      "https://grogoni.com/businesses/business-1/sync-queue",
+      "https://grogoni.com/businesses/business-1/sync-queue",
+      "https://grogoni.com/businesses/business-1/sync-queue/replay"
     ]);
     expect(requests.slice(0, 2).map((request) => request.body.mutationType)).toEqual([
       "product.create",

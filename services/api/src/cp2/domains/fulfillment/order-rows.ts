@@ -6,7 +6,7 @@
  */
 import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
-import type { ConfirmedOrderReference } from "@soko/shared-types";
+import type { ConfirmedOrderReference } from "@grogoni/shared-types";
 
 export type FulfillmentOrderState = "POOLED" | "ALLOCATED" | "DELIVERED" | "CANCELLED" | "ORPHANED";
 

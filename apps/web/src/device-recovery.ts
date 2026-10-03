@@ -1,7 +1,7 @@
-import type { AuthSessionView } from "@soko/shared-types";
+import type { AuthSessionView } from "@grogoni/shared-types";
 import { ApiRequestError, apiFetch } from "./lib/api";
 
-const databaseName = "soko-device-recovery-v1";
+const databaseName = "grogoni-device-recovery-v1";
 const storeName = "credentials";
 const primaryRecordKey = "primary";
 
@@ -51,7 +51,7 @@ export async function recoverDeviceAccount(): Promise<AuthSessionView | null> {
 
   const issuedAt = Date.now();
   const nonce = createRandomValue(24);
-  const payload = `soko-device-recovery:v1:${credential.credentialId}:${issuedAt}:${nonce}`;
+  const payload = `grogoni-device-recovery:v1:${credential.credentialId}:${issuedAt}:${nonce}`;
   const signature = await crypto.subtle.sign(
     { name: "ECDSA", hash: "SHA-256" },
     credential.privateKey,

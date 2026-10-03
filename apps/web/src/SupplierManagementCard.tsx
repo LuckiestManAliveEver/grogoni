@@ -3,7 +3,7 @@ import { useAsyncActions } from "./hooks/useAsyncActions";
 import { useApiMutationRevision } from "./hooks/useApiMutationRevision";
 import { deleteJson, getJson, patchJson, postJson } from "./api-helpers";
 import { getUserFacingErrorMessage } from "./user-facing-error";
-import type { SupplierBusinessCardSummary, SupplierSummary } from "./soko-application-shared";
+import type { SupplierBusinessCardSummary, SupplierSummary } from "./grogoni-application-shared";
 
 interface SupplierDraft {
   name: string;
@@ -26,7 +26,7 @@ function draftFromSupplier(supplier: SupplierBusinessCardSummary): SupplierDraft
 // Self-contained generated-surface card for the suppliers domain (Phase 4b), mirroring
 // ProductManagementCard's shape: fetches its own data from businessId alone rather than reusing
 // useSuppliersState, which needs loadReports/registerReset/registerRefresh tied to sibling hooks
-// in SokoApplication.tsx. See docs/frontend/frontend.md Phase 4b.
+// in GrogoniApplication.tsx. See docs/frontend/frontend.md Phase 4b.
 export default function SupplierManagementCard(props: { businessId: string; supplierId?: string }) {
   const suppliersPath = `/businesses/${props.businessId}/suppliers`;
   const mutationRevision = useApiMutationRevision(suppliersPath);

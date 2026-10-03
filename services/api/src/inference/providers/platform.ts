@@ -1,4 +1,4 @@
-import type { AiModelSummary, ModelExecutionTarget } from "@soko/shared-types";
+import type { AiModelSummary, ModelExecutionTarget } from "@grogoni/shared-types";
 
 import { DeviceInferenceBroker } from "../device-inference-broker.js";
 import type { ModelRuntimeAdapter } from "../model-runtime.js";

@@ -6,7 +6,7 @@ import type {
   RuntimePlannedAction,
   RuntimeTelemetryEvent,
   RuntimeToolName
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
 import {
   hydrateBusinessAgentProfile,

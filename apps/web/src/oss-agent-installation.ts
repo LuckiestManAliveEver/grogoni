@@ -1,6 +1,6 @@
-import { isAgentDefinitionId, type OssAgentSummary } from "@soko/shared-types";
+import { isAgentDefinitionId, type OssAgentSummary } from "@grogoni/shared-types";
 
-const installationStorageKey = "soko.oss-agent-installations.v1";
+const installationStorageKey = "grogoni.oss-agent-installations.v1";
 
 export interface InstalledOssAgentManifest {
   manifestVersion: 1;

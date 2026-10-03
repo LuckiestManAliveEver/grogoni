@@ -6,7 +6,7 @@ import {
   type OssAgentSummary,
   type PortableAgentManifest
 } from "../packages/shared-types/src";
-import { SokoManifestAgentImporter } from "../services/api/src/cp2/domains/agent-runtime/portable-agent-importer";
+import { GrogoniManifestAgentImporter } from "../services/api/src/cp2/domains/agent-runtime/portable-agent-importer";
 import { hydrateAccountAgentManifest } from "../services/api/src/cp2/account-ai-asset-store";
 
 const manifest: PortableAgentManifest = {
@@ -18,7 +18,7 @@ const manifest: PortableAgentManifest = {
     version: "1.0.0"
   },
   instructions: {
-    system: "Help the shop owner using only authorized Soko tools.",
+    system: "Help the shop owner using only authorized Grogoni tools.",
     files: ["context/catalogue.md"]
   },
   capabilities: ["conversation", "commerce"],
@@ -63,7 +63,7 @@ const discoveredAgent: OssAgentSummary = {
   updatedAt: "2026-08-29T00:00:00.000Z"
 };
 
-describe("portable Soko agent manifests", () => {
+describe("portable Grogoni agent manifests", () => {
   it("validates a provider- and device-independent manifest", () => {
     expect(validatePortableAgentManifest(manifest)).toEqual({
       valid: true,
@@ -92,14 +92,14 @@ describe("portable Soko agent manifests", () => {
     );
   });
 
-  it("imports the canonical Soko manifest through the adapter boundary", async () => {
-    const importer = new SokoManifestAgentImporter();
-    await expect(importer.inspect({ kind: "soko-manifest", manifest })).resolves.toMatchObject({
+  it("imports the canonical Grogoni manifest through the adapter boundary", async () => {
+    const importer = new GrogoniManifestAgentImporter();
+    await expect(importer.inspect({ kind: "grogoni-manifest", manifest })).resolves.toMatchObject({
       supported: true,
       valid: true,
       agentId: "portable:shop-assistant"
     });
-    await expect(importer.convert({ kind: "soko-manifest", manifest })).resolves.toEqual(manifest);
+    await expect(importer.convert({ kind: "grogoni-manifest", manifest })).resolves.toEqual(manifest);
   });
 
   it("converts OSS discovery metadata into a declarative portable definition", () => {

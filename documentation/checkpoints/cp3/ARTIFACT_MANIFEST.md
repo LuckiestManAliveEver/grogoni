@@ -17,7 +17,7 @@ Date passed: 2026-07-02
 | Path                                   | Purpose                                                        |
 | -------------------------------------- | -------------------------------------------------------------- |
 | `apps/web/public/manifest.webmanifest` | PWA install metadata.                                          |
-| `apps/web/public/icons/soko-icon.svg`  | Lightweight app icon for install metadata and browser tab.     |
+| `apps/web/public/icons/grogoni-icon.svg`  | Lightweight app icon for install metadata and browser tab.     |
 | `apps/web/index.html`                  | Links PWA manifest and app icon.                               |
 | `apps/web/src/cp3-shell.ts`            | CP3 quick action, empty state, and chat placeholder contract.  |
 | `apps/web/src/main.tsx`                | Authenticated mobile shell, home, chat, and placeholder views. |

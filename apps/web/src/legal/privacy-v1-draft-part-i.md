@@ -1,11 +1,11 @@
-# Soko.market Privacy Policy
+# Grogoni Privacy Policy
 
 **Version:** 1.0 (Draft)
 **Effective Date:** [To Be Inserted]
 
 **Data Controller:** [Legal Entity Name]
 **Registered Office:** [Registered Address]
-**Privacy Contact:** [privacy@soko.market](mailto:privacy@soko.market) _(placeholder)_
+**Privacy Contact:** [privacy@grogoni.com](mailto:privacy@grogoni.com) _(placeholder)_
 
 ---
 
@@ -13,11 +13,11 @@
 
 ## 1. Introduction
 
-Welcome to **Soko.market** ("**Soko**," "**we**," "**our**," or "**us**").
+Welcome to **Grogoni** ("**Grogoni**," "**we**," "**our**," or "**us**").
 
 Your privacy is important to us.
 
-This Privacy Policy explains how Soko.market collects, uses, stores, shares, protects, and otherwise processes Personal Data when you use our websites, applications, APIs, AI services, messaging platform, storefront technology, marketplace, and related services (collectively, the "**Services**").
+This Privacy Policy explains how Grogoni collects, uses, stores, shares, protects, and otherwise processes Personal Data when you use our websites, applications, APIs, AI services, messaging platform, storefront technology, marketplace, and related services (collectively, the "**Services**").
 
 This Privacy Policy is intended to satisfy applicable data protection laws, including, where applicable:
 
@@ -26,7 +26,7 @@ This Privacy Policy is intended to satisfy applicable data protection laws, incl
 - the ePrivacy rules applicable in relevant jurisdictions;
 - national data protection legislation implementing or supplementing these laws.
 
-This Privacy Policy should be read together with the Soko.market Terms of Service and any additional notices provided for specific products or features.
+This Privacy Policy should be read together with the Grogoni Terms of Service and any additional notices provided for specific products or features.
 
 ---
 
@@ -34,7 +34,7 @@ This Privacy Policy should be read together with the Soko.market Terms of Servic
 
 This Privacy Policy applies whenever you:
 
-- create a Soko.market account;
+- create a Grogoni account;
 - browse our website;
 - use our mobile applications;
 - communicate with AI Business Agents;
@@ -58,7 +58,7 @@ For purposes of this Privacy Policy:
 
 ### Account
 
-A registered Soko.market user profile.
+A registered Grogoni user profile.
 
 ---
 
@@ -76,7 +76,7 @@ An account used for commercial purposes.
 
 ### Business Agent ID
 
-The unique identifier assigned to a business agent within the Soko.market platform.
+The unique identifier assigned to a business agent within the Grogoni platform.
 
 ---
 
@@ -100,13 +100,13 @@ An identified or identifiable natural person whose Personal Data is processed.
 
 ### Marketplace
 
-The Soko.market platform through which digital products, APIs, Skills, extensions, templates, and related services may be offered or obtained.
+The Grogoni platform through which digital products, APIs, Skills, extensions, templates, and related services may be offered or obtained.
 
 ---
 
 ### Merchant
 
-A business user offering products or services through Soko.market.
+A business user offering products or services through Grogoni.
 
 ---
 
@@ -132,7 +132,7 @@ A person or organization processing Personal Data on behalf of a Controller.
 
 ### Services
 
-The websites, applications, APIs, messaging services, marketplace, storefront technology, AI systems, and related products provided by Soko.market.
+The websites, applications, APIs, messaging services, marketplace, storefront technology, AI systems, and related products provided by Grogoni.
 
 ---
 
@@ -154,9 +154,9 @@ Registered Office:
 
 Email:
 
-[privacy@soko.market](mailto:privacy@soko.market) _(placeholder)_
+[privacy@grogoni.com](mailto:privacy@grogoni.com) _(placeholder)_
 
-Where required by applicable law, Soko.market will designate a Data Protection Officer ("DPO") or other appropriate privacy contact.
+Where required by applicable law, Grogoni will designate a Data Protection Officer ("DPO") or other appropriate privacy contact.
 
 Certain processing activities may involve joint controllers or independent controllers, such as payment providers or social media platforms. Where applicable, their own privacy notices also apply.
 
@@ -357,7 +357,7 @@ We may receive limited payment-related information such as:
 - currency;
 - invoice information.
 
-Unless expressly stated otherwise, Soko.market does not store complete payment card information.
+Unless expressly stated otherwise, Grogoni does not store complete payment card information.
 
 ---
 

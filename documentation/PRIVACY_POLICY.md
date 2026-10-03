@@ -2,7 +2,7 @@
 
 ## Current status
 
-The web app publishes the supplied Soko.market Privacy Policy Version 1.0 Draft, Parts I–IV and
+The web app publishes the supplied Grogoni Privacy Policy Version 1.0 Draft, Parts I–IV and
 Annexes A–D, at `/privacy`. The page is responsive, keyboard navigable, printable, and uses
 semantic headings, lists, landmarks, definitions, and anchored navigation.
 

@@ -2,7 +2,7 @@ export interface ClientInferencePreferences {
   ownerNodeAllowed: boolean;
 }
 
-const storageKey = "soko.client-inference-preferences.v1";
+const storageKey = "grogoni.client-inference-preferences.v1";
 
 export function readClientInferencePreferences(
   accountId: string,

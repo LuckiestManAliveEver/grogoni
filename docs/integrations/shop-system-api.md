@@ -1,6 +1,6 @@
 # Shop system API
 
-The shop system API connects an existing commerce or ERP system to a Soko shop. Create a
+The shop system API connects an existing commerce or ERP system to a Grogoni shop. Create a
 shop-bound connection under **Agent settings → Shop API**, copy the secret when it is shown, and
 send it as an HTTP bearer token. Tokens are stored as hashes, expire after 30 days, and can be
 revoked from the same screen.
@@ -11,11 +11,11 @@ revoked from the same screen.
 - `mcp:act` allows catalogue synchronization and order-status updates. Creating an action-capable
   token requires the owner's PIN.
 
-The token cannot access another shop. Customer checkout still goes through Soko Chat's explicit
+The token cannot access another shop. Customer checkout still goes through Grogoni Chat's explicit
 confirmation gate before an order becomes visible to the connected system.
 
 These endpoints are classified as interactive and carry a 150 ms server-response budget. Responses
-include `Server-Timing`, `X-Soko-Response-Budget-Class`, and `X-Soko-Response-Budget-Ms` headers;
+include `Server-Timing`, `X-Grogoni-Response-Budget-Class`, and `X-Grogoni-Response-Budget-Ms` headers;
 production logs emit `http.response_budget_exceeded` whenever the server misses that budget.
 
 ## Synchronize catalogue
@@ -43,7 +43,7 @@ number or `null`.
 
 ## Read and update orders
 
-`GET /v1/shop-system/orders` returns orders created by confirmed Soko Chat checkouts for the bound
+`GET /v1/shop-system/orders` returns orders created by confirmed Grogoni Chat checkouts for the bound
 shop, newest first.
 
 `PATCH /v1/shop-system/orders/{orderId}` accepts one of these statuses:

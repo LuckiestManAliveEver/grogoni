@@ -1,6 +1,6 @@
 # Evidence graph (MUSE-adoption addendum)
 
-Soko does not have, and this change does not add, a graph database. Evidence lives in Postgres
+Grogoni does not have, and this change does not add, a graph database. Evidence lives in Postgres
 JSONB envelope tables exactly as it did before ([`context-semantic-runtime.md`](context-semantic-runtime.md)),
 via `AgentContextSource` (`packages/shared-types`, persisted as `cp2_agent_context_sources`). This
 document covers the one thing this change added to that existing type: typed **provenance** and

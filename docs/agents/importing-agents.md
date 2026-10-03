@@ -1,6 +1,6 @@
 # Importing portable agents
 
-Soko imports logical definitions, not repository executables. An import passes through the
+Grogoni imports logical definitions, not repository executables. An import passes through the
 `AgentImporter` boundary:
 
 1. `supports` selects an adapter for the source format.
@@ -10,7 +10,7 @@ Soko imports logical definitions, not repository executables. An import passes t
 5. The existing native runtime resolver later combines that definition with a compatible model and
    authorized execution host.
 
-`SokoManifestAgentImporter` is the first canonical adapter. GitHub and Hugging Face discovery
+`GrogoniManifestAgentImporter` is the first canonical adapter. GitHub and Hugging Face discovery
 records are also converted to portable manifests when saved to an account. Repository runtime
 labels are retained only as provenance metadata; no Python, Node, Docker, Gradio, shell command,
 binary path, endpoint, or API key is imported into the runtime contract.

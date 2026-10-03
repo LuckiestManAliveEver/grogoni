@@ -1,12 +1,12 @@
 # P2P transport research and prototype
 
-Bitchat uses nearby Bluetooth links to relay framed messages, with bounded forwarding and deduplication. Its project describes private messaging and protocol-level encryption; these are separate concerns from simply discovering a radio. The Soko prototype borrows the transport separation and bounded relay approach, without copying Bitchat source. Sources: [Bitchat repository](https://github.com/permissionlesstech/bitchat) and [protocol whitepaper](https://github.com/permissionlesstech/bitchat/blob/main/WHITEPAPER.md), also mirrored locally at `eval docs/WHITEPAPER.md`.
+Bitchat uses nearby Bluetooth links to relay framed messages, with bounded forwarding and deduplication. Its project describes private messaging and protocol-level encryption; these are separate concerns from simply discovering a radio. The Grogoni prototype borrows the transport separation and bounded relay approach, without copying Bitchat source. Sources: [Bitchat repository](https://github.com/permissionlesstech/bitchat) and [protocol whitepaper](https://github.com/permissionlesstech/bitchat/blob/main/WHITEPAPER.md), also mirrored locally at `eval docs/WHITEPAPER.md`.
 
 Web Bluetooth exposes selected GATT peripherals and requires browser support and permission. It is not a portable peer advertising/background mesh API. MDN marks the API as limited availability and secure-context restricted. Source: [Web Bluetooth API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Bluetooth_API).
 
 ## Envelope and framing
 
-Soko's existing `ConversationMessageSummary` in packages/shared-types/src/index.ts carries id, conversationId, clientMessageId, idempotencyKey, author, authorId, content and delivery metadata. A full JSON envelope cannot be assumed to fit a BLE packet. The adapter serializes UTF-8 JSON once, fragments bytes into transport-MTU-sized frames and reassembles them without altering the canonical object. Version 2 uses a 27-byte binary header containing protocol version, hop budget, message kind, a random transfer ID, fragment index/count and CRC32. The checksum deliberately excludes TTL so relays can decrement it. Receivers continue to accept the 23-byte v1 header during rollout. Payloads are limited to 64 KiB; files need another transport.
+Grogoni's existing `ConversationMessageSummary` in packages/shared-types/src/index.ts carries id, conversationId, clientMessageId, idempotencyKey, author, authorId, content and delivery metadata. A full JSON envelope cannot be assumed to fit a BLE packet. The adapter serializes UTF-8 JSON once, fragments bytes into transport-MTU-sized frames and reassembles them without altering the canonical object. Version 2 uses a 27-byte binary header containing protocol version, hop budget, message kind, a random transfer ID, fragment index/count and CRC32. The checksum deliberately excludes TTL so relays can decrement it. Receivers continue to accept the 23-byte v1 header during rollout. Payloads are limited to 64 KiB; files need another transport.
 
 The prototype supports discovery and authenticated connection through an injected native transport. Its persistent outbox interface retains messages until explicit application acknowledgement, with a 24-hour expiry and a 100-message cap. Incomplete incoming transfers expire after 60 seconds, with bounded reassembly/deduplication tables and a seven-hop budget. No invoice, catalogue or payment operation is peer-capable. The resolver can accept this provider only for `conversations.message.send`.
 
@@ -21,7 +21,7 @@ Proceed with native-device experiments only. Keep PWA rollout limited to local b
 The current BitChat protocol was reviewed at the repository and whitepaper level. Its BLE layer
 uses TTL-bounded controlled flooding, short randomized relay jitter, duplicate-triggered relay
 cancellation, bounded fragment assembly, persistent sender outboxes, delivery receipts and
-authenticated Noise sessions. Soko now adopts the pieces that fit its existing transport boundary:
+authenticated Noise sessions. Grogoni now adopts the pieces that fit its existing transport boundary:
 
 - v2 frames carry a per-fragment CRC32, so corrupted headers or payloads are rejected before
   reassembly or application parsing;
@@ -32,7 +32,7 @@ authenticated Noise sessions. Soko now adopts the pieces that fit its existing t
 - v1 decoding remains covered by a compatibility test, avoiding a flag-day upgrade.
 
 BitChat's dual central/peripheral topology, adaptive fanout, source routes, Noise XX sessions and
-courier storage were not transplanted. Web Bluetooth cannot advertise as a peripheral, and Soko's
+courier storage were not transplanted. Web Bluetooth cannot advertise as a peripheral, and Grogoni's
 `PeerTransport` contract already requires the native transport to authenticate and encrypt peers.
 Implementing cryptography above that boundary would duplicate responsibilities and could imply
 security guarantees the browser adapter cannot provide.
@@ -46,11 +46,11 @@ is wired to a real, working transport and exposed as an explicit, off-by-default
   `PEER_OUTBOX_RESEND_CAP` (8, matching whitepaper §6.1) transmit attempts is dropped and reported
   through a new `onDeliveryFailed` handler, instead of retrying forever with no visible failure.
 - **Concrete transport: Web Bluetooth.** `apps/web/src/peer-bluetooth-transport.ts` implements
-  `PeerTransport` over the browser's Web Bluetooth API against a fixed Soko GATT layout
-  (`SOKO_NEARBY_SERVICE_UUID` with TX/RX characteristics). This is real, tested code, not a
+  `PeerTransport` over the browser's Web Bluetooth API against a fixed Grogoni GATT layout
+  (`GROGONI_NEARBY_SERVICE_UUID` with TX/RX characteristics). This is real, tested code, not a
   simulation - but it inherits Web Bluetooth's actual ceiling: browsers expose the **central**
-  role only, never peripheral/server, so a Soko web tab can connect outward to one
-  explicitly-picked Soko-compatible BLE peripheral per session (a future native Android/iOS host
+  role only, never peripheral/server, so a Grogoni web tab can connect outward to one
+  explicitly-picked Grogoni-compatible BLE peripheral per session (a future native Android/iOS host
   implementing the same GATT layout, or a physical device), never to another browser tab, and
   never in the background - `discover()` opens the browser's own device chooser and must run
   inside a user gesture. This is the platform's real limit, not a simplification made for this

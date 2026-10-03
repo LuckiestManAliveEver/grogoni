@@ -77,7 +77,7 @@ No vision/detection model is connected. The backend therefore returns one explic
 `pending_review` placeholder, `detectionAvailable: false`, and no fabricated bounding box. The UI
 states that detection is unavailable and lets the seller edit, confirm through the canonical
 product mutation path, or reject the item. The contact candidate endpoint defaults to previously
-relevant contacts or none—never select-all. Only chosen matched Soko contacts receive an in-app
+relevant contacts or none—never select-all. Only chosen matched Grogoni contacts receive an in-app
 status; unmatched contacts remain an explicit share-sheet handoff.
 
 ## BUY/cart/checkout audit
@@ -99,7 +99,7 @@ The binding settlement record is
 Current checkout moves no money because live M-Pesa/card/bank capture is deferred. It creates
 source-specific orders: catalogue items use draft invoices, while contact pickups settle directly
 between buyer and contact. Once a live rail is approved, the recommendation is Option A (separate
-source payments behind one checkout action) so Soko does not hold funds. Option B would add custody,
+source payments behind one checkout action) so Grogoni does not hold funds. Option B would add custody,
 refund, reconciliation, and regulatory obligations and is not implemented.
 
 ## Verification contracts

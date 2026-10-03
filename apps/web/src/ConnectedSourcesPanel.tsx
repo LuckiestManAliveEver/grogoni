@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { ExternalRegistryConnection, ExternalRegistryProvider } from "@soko/shared-types";
+import type { ExternalRegistryConnection, ExternalRegistryProvider } from "@grogoni/shared-types";
 
 import { deleteJson, getJson, postJson } from "./api-helpers";
 import { getErrorMessage } from "./chat-message-plumbing";
@@ -112,7 +112,7 @@ export function ConnectedSourcesPanel() {
         <h3>Connected sources</h3>
         <p>
           Connect a personal access token to raise API rate limits and reach private or gated
-          resources when searching GitHub and Hugging Face from Soko. Tokens are encrypted at rest
+          resources when searching GitHub and Hugging Face from Grogoni. Tokens are encrypted at rest
           and never shown again once saved.
         </p>
       </div>

@@ -4,7 +4,7 @@ import type {
   InferenceProviderConnectionScope,
   InferenceProviderConnectionSummary,
   InferenceProviderConnectionTestResult
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
 import type { ResolvedCredential } from "./contract.js";
 import type { SecretCipher } from "./credentials.js";

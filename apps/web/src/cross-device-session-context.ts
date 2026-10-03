@@ -1,8 +1,8 @@
-import type { SokoChatSurface, SokoMode, SokoSessionContext } from "@soko/shared-types";
+import type { GrogoniChatSurface, GrogoniMode, GrogoniSessionContext } from "@grogoni/shared-types";
 import type { ShellView } from "./app-shell";
 import { ApiRequestError } from "./lib/api";
 
-export function surfaceForShellView(view: ShellView, mode: SokoMode): SokoChatSurface {
+export function surfaceForShellView(view: ShellView, mode: GrogoniMode): GrogoniChatSurface {
   if (mode === "marketplace") return "conversation";
   if (view === "chat") return "conversation";
   if (view === "products") return "catalogue";
@@ -13,7 +13,7 @@ export function surfaceForShellView(view: ShellView, mode: SokoMode): SokoChatSu
   return "owner-controls";
 }
 
-export function shellViewForSurface(surface: SokoChatSurface, mode: SokoMode): ShellView {
+export function shellViewForSurface(surface: GrogoniChatSurface, mode: GrogoniMode): ShellView {
   if (mode === "marketplace") return "chat";
   if (surface === "catalogue" || surface === "product") return "products";
   if (surface === "order") return "invoices";
@@ -22,10 +22,10 @@ export function shellViewForSurface(surface: SokoChatSurface, mode: SokoMode): S
   return "chat";
 }
 
-export interface SokoSessionContextPatch {
-  mode?: SokoMode;
+export interface GrogoniSessionContextPatch {
+  mode?: GrogoniMode;
   activeShopId?: string | null;
-  activeSurface?: SokoChatSurface;
+  activeSurface?: GrogoniChatSurface;
   conversationId?: string;
 }
 
@@ -40,14 +40,14 @@ export interface SokoSessionContextPatch {
 export const SESSION_CONTEXT_PATCH_MAX_ATTEMPTS = 3;
 
 export async function applySessionContextPatchWithConflictRetry(
-  patch: SokoSessionContextPatch,
+  patch: GrogoniSessionContextPatch,
   initialSessionVersion: number,
   deps: {
-    patchContext: (body: Record<string, unknown>) => Promise<SokoSessionContext>;
-    fetchLatestContext: () => Promise<SokoSessionContext>;
+    patchContext: (body: Record<string, unknown>) => Promise<GrogoniSessionContext>;
+    fetchLatestContext: () => Promise<GrogoniSessionContext>;
     onDropped?: (attempts: number) => void;
   }
-): Promise<SokoSessionContext | null> {
+): Promise<GrogoniSessionContext | null> {
   let expectedSessionVersion = initialSessionVersion;
 
   for (let attempt = 1; attempt <= SESSION_CONTEXT_PATCH_MAX_ATTEMPTS; attempt++) {

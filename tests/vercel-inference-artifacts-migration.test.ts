@@ -48,7 +48,7 @@ describe("cp2_model_artifacts / cp2_runtime_model_artifacts migration ownership 
   it("preserves the verified SmolLM2 artifact location and checksum in the seed row", async () => {
     const migration = await migrationSql("079_vercel_inference_artifacts.sql");
     expect(migration).toContain("'builtin:smollm2-360m:q4_0:gguf'");
-    expect(migration).toContain("'soko-model-artifacts'");
+    expect(migration).toContain("'grogoni-model-artifacts'");
     expect(migration).toContain("'models/smollm2-360m/SmolLM2-360M-Instruct-Q4_0.gguf'");
     expect(migration).toContain(
       "'c3608933eb6e5763b87f769bda40c204dc158333668c7af214644fe39da58627'"
@@ -197,7 +197,7 @@ describePostgres("post-migration schema (Test D, live Postgres)", () => {
       expect(result.rows[0]).toMatchObject({
         model_id: "smollm2-360m",
         storage_provider: "neon-object-storage",
-        bucket: "soko-model-artifacts",
+        bucket: "grogoni-model-artifacts",
         object_key: "models/smollm2-360m/SmolLM2-360M-Instruct-Q4_0.gguf",
         status: "available"
       });

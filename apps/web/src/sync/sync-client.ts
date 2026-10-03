@@ -5,7 +5,7 @@ import type {
   SyncMutationType,
   SyncPullPage,
   SyncQueueItem
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { readApiBaseUrl } from "../lib/api";
 
 export interface AccountSyncRepository {

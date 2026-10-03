@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import type { InferenceExecutionRequest, RuntimeModelPrompt } from "@soko/shared-types";
-import { createBulkhead, createCircuitBreaker } from "@soko/resource-control";
+import type { InferenceExecutionRequest, RuntimeModelPrompt } from "@grogoni/shared-types";
+import { createBulkhead, createCircuitBreaker } from "@grogoni/resource-control";
 import {
   boundModelRuntimeAdapter,
   createVercelModelAdapter,
@@ -317,7 +317,7 @@ describe("createVercelModelAdapter (requiresArtifact defaults to true - unchange
       id: "builtin:smollm2-360m:q4_0:gguf",
       modelId: "smollm2-360m",
       storageProvider: "neon-object-storage",
-      bucket: "soko-model-artifacts",
+      bucket: "grogoni-model-artifacts",
       objectKey: "models/smollm2-360m/SmolLM2-360M-Instruct-Q4_0.gguf",
       format: "gguf",
       quantization: "Q4_0",

@@ -19,29 +19,29 @@ describe("production workspace build pipeline", () => {
       scripts: Record<string, string>;
     };
 
-    expect(apiManifest.dependencies).not.toHaveProperty("@soko/ai-runtime");
+    expect(apiManifest.dependencies).not.toHaveProperty("@grogoni/ai-runtime");
     expect(rootManifest.scripts["build:production"]).toContain("pnpm build:production:workspace");
     expect(rootManifest.scripts["build:production"]).toContain("pnpm check:production-imports");
-    expect(rootManifest.scripts["build:production"]).not.toContain("@soko/api^...");
+    expect(rootManifest.scripts["build:production"]).not.toContain("@grogoni/api^...");
     expect(rootManifest.scripts["build:production:workspace"]).toContain("pnpm -r");
     expect(rootManifest.scripts["build:production:workspace"]).toContain(
       '--filter "./packages/**"'
     );
     expect(rootManifest.scripts["build:production:workspace"]).toContain(
-      "pnpm --filter @soko/ai-runtime build:package"
+      "pnpm --filter @grogoni/ai-runtime build:package"
     );
     expect(rootManifest.scripts["build:production:workspace"]).toContain(
-      "pnpm --filter @soko/api build"
+      "pnpm --filter @grogoni/api build"
     );
     expect(rootManifest.scripts["build:production:workspace"]).toContain(
-      "pnpm --filter @soko/web build"
+      "pnpm --filter @grogoni/web build"
     );
     expect(rootManifest.scripts["build:production:workspace"]).toContain("--if-present build");
-    expect(rootManifest.scripts["inference:build"]).toBe("pnpm --filter @soko/ai-runtime build");
+    expect(rootManifest.scripts["inference:build"]).toBe("pnpm --filter @grogoni/ai-runtime build");
     expect(runtimeManifest.main).toBe("./dist/index.js");
     expect(runtimeManifest.types).toBe("./dist/index.d.ts");
     expect(runtimeManifest.exports).toHaveProperty(".");
-    expect(runtimeManifest.scripts.build).toContain("pnpm --filter @soko/shared-types build");
+    expect(runtimeManifest.scripts.build).toContain("pnpm --filter @grogoni/shared-types build");
     expect(runtimeManifest.scripts.build).toContain("pnpm build:package");
     expect(runtimeManifest.scripts["build:package"]).toContain("tsc -p tsconfig.build.json");
     // Loads a local .env when present (Render production has none - --env-file-if-exists is a
@@ -53,7 +53,7 @@ describe("production workspace build pipeline", () => {
 
   it("uses the same production command in the Render API service", async () => {
     const blueprint = await readFile("render.yaml", "utf8");
-    const apiStart = blueprint.indexOf("name: soko-market");
+    const apiStart = blueprint.indexOf("name: grogoni");
     const apiEnd = blueprint.indexOf("\n  - type:", apiStart);
     const apiService = blueprint.slice(apiStart, apiEnd);
 
@@ -62,7 +62,7 @@ describe("production workspace build pipeline", () => {
     expect(apiService).toContain("corepack pnpm build:production");
     expect(apiService).not.toContain("services/ai-runtime/**");
     expect(apiService).not.toContain("preDeployCommand:");
-    expect(apiService).toContain("corepack pnpm --filter @soko/api start");
+    expect(apiService).toContain("corepack pnpm --filter @grogoni/api start");
   });
 
   it("emits the AI runtime from src into dist with declarations", async () => {

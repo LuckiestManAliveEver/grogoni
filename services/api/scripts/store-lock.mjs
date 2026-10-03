@@ -1,5 +1,5 @@
 // Inspects (and with --release, frees) the CP2 persistence advisory lock
-// `hashtext('soko.cp2.normalized_store')`. Builds before the transaction-scoped lock took it with a
+// `hashtext('grogoni.cp2.normalized_store')`. Builds before the transaction-scoped lock took it with a
 // session-level pg_advisory_lock through Neon's transaction-mode PgBouncer, which could leak it onto
 // an idle pooled backend that never closes. See docs/runbooks/cp2-store-lock-leak.md.
 //
@@ -25,7 +25,7 @@ target.hostname = target.hostname.replace("-pooler.", ".");
 // Printed first so it is obvious which database is being inspected (.env.local can override .env).
 console.log(`Target: ${target.hostname}${target.pathname}`);
 const pool = new pg.Pool(
-  databasePoolConfig(target.toString(), { applicationName: "soko-store-lock" })
+  databasePoolConfig(target.toString(), { applicationName: "grogoni-store-lock" })
 );
 try {
   const { holders, waiters } = await findStoreLockHolders(pool);

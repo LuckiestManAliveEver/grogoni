@@ -2,17 +2,17 @@
 
 > People are entities. Applications are capabilities. Identifiers are attributes.
 
-Soko does not require an email or social integration as a prerequisite for building a
+Grogoni does not require an email or social integration as a prerequisite for building a
 relationship graph. The user's phone/social contact graph, already owned by
 `NetworkDomain` (`services/api/src/cp2/domains/network/store.ts`), is the seed. Email, social
-handles, and Soko accounts are identities attached to a phonebook contact, not the foundation of
+handles, and Grogoni accounts are identities attached to a phonebook contact, not the foundation of
 the contact model.
 
 ## Existing architecture reused
 
 This is not a new store. `NetworkDomain` already modeled almost everything this needed:
 `networkNodes` (the phonebook contacts, called nodes for historical reasons -
-`requirePhonebookNode` predates this doc), `externalIdentities`, and `sokoIdentityLinks`. What was
+`requirePhonebookNode` predates this doc), `externalIdentities`, and `grogoniIdentityLinks`. What was
 missing was the fine-grained capability surface and the provenance/confirmation rules for identity
 facts that don't come from an owner-initiated sync. This change extends that same domain: no
 parallel phonebook was created. See `docs/architecture/commercial-history.md`'s "Existing
@@ -22,14 +22,14 @@ one (personal, user-scoped). Neither should be confused with the other or merged
 
 ## Provenance
 
-Every `ExternalIdentitySummary` and `SokoIdentityLinkSummary` carries an `IdentityProvenance`:
+Every `ExternalIdentitySummary` and `GrogoniIdentityLinkSummary` carries an `IdentityProvenance`:
 
 - `user_entered` - the owner typed it themselves (`addManualIdentity`). Trusted immediately; no
   confirmation step, because the owner's own input already is the confirmation.
 - `imported` - came from a phone or social contact sync the owner explicitly triggered
-  (`syncPhoneContacts`, `syncSocialNetwork`) or from auto-linking a contact to an existing Soko
+  (`syncPhoneContacts`, `syncSocialNetwork`) or from auto-linking a contact to an existing Grogoni
   account by matching a hashed phone/email against that account's primary auth destination
-  (`findSokoIdentityLink`).
+  (`findGrogoniIdentityLink`).
 - `verified` - came from an OAuth-authenticated provider connection (`syncConnectedSocialProvider`,
   or a Google Contacts fetch using a stored OAuth token).
 - `observed` - came from an external observation the owner did not directly initiate - today, a
@@ -88,13 +88,13 @@ All are user-scoped (`requirePinVerifiedSession`, no `businessId`), matching eve
 | `network.identity.add`     | `addManualIdentity`        | Directly attach an owner-authored identity (provenance `user_entered`).                                                                                                     |
 
 `NetworkNodeSummary.externalIdentityIds` is an array (not a single nullable id) precisely so one
-contact can accumulate a phone, an email, an Instagram handle, a WhatsApp number, and a linked Soko
+contact can accumulate a phone, an email, an Instagram handle, a WhatsApp number, and a linked Grogoni
 account without becoming multiple phonebook entries.
 
 ## Phonebook sync, discovery and connections
 
 Connecting a phonebook does three things: sync the contacts, show which of them are already on
-Soko so the owner can connect with them, and invite the rest. Contacts never become a second store:
+Grogoni so the owner can connect with them, and invite the rest. Contacts never become a second store:
 they stay `networkNodes` in `NetworkDomain`, and connections are one new collection next to them.
 
 ### Sync modes
@@ -111,7 +111,7 @@ In both modes a contact whose phone or email hash is already in the source updat
 with a number is upgraded in place.
 
 Each contact may carry every number and email it has (`phones`, `emails`, up to 10 each, in
-addition to `phone`/`email`), so someone is found by whichever number they use on Soko.
+addition to `phone`/`email`), so someone is found by whichever number they use on Grogoni.
 Phonebook entries are messy, so each number is first cleaned (`cleanPhonebookNumber`: Unicode
 NFKC for full-width digits, any script's decimal digits (Arabic-Indic, Devanagari, ...) mapped to
 ASCII, every dash and minus sign read as a hyphen, invisible direction marks removed, `tel:` prefixes, extensions and
@@ -137,13 +137,13 @@ Limits (all in `services/api/src/cp2/domains/network/store.ts`):
 | ---------------------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Contacts per request         | 5,000          | Request size. The web app sends larger phonebooks in 5,000-contact merge batches.                                                                                                                                                                                                                                                                                                                                                 |
 | Contacts per phonebook       | 20,000         | Checked before any write, counting only contacts that would be new (a re-synced contact is an update), so a sync is never half applied. Applies to the phone source only: social sources are separate sources and do not count toward it (what they discover is still charged to the budget below).                                                                                                                               |
-| Numbers asked about per user | 25,000 per day | Every sync, social profile list (client-submitted or a provider fetch such as Google Contacts, whose contents the owner controls) and invite request reveals which numbers are on Soko. Charged per number or email the owner has not asked about before, so re-syncing a phonebook is free; only requests that succeed are charged. Kept in API process memory, so each API instance has its own window and a restart resets it. |
+| Numbers asked about per user | 25,000 per day | Every sync, social profile list (client-submitted or a provider fetch such as Google Contacts, whose contents the owner controls) and invite request reveals which numbers are on Grogoni. Charged per number or email the owner has not asked about before, so re-syncing a phonebook is free; only requests that succeed are charged. Kept in API process memory, so each API instance has its own window and a restart resets it. |
 | Unanswered requests          | 100 per user   | Spam. Applies to a new request, re-asking after a cancel, and asking back after the other side cancelled.                                                                                                                                                                                                                                                                                                                         |
 
 Every request does a fixed number of passes over the shared maps, never one pass per contact:
 one discovery pass (accounts, users and memberships, `discoveryPass`), one scan of the owner's
 second-degree edges to dedupe nested connections (at most 50 per contact and 5,000 per request),
-and one pass over identity links to replace the links of contacts whose Soko account changed.
+and one pass over identity links to replace the links of contacts whose Grogoni account changed.
 Values are hashed without re-parsing once they are canonical (`hashCanonicalContact`). Gate tests
 in `tests/network-phonebook-domain.test.ts` count these passes, so a per-contact scan fails CI.
 
@@ -153,32 +153,32 @@ Measured on the in-memory store:
 | ------------------------------------------------------------------------- | ------- |
 | Sync 5,000 national-format contacts, 20,000 users each with a shop        | ~0.8 s  |
 | Graph load, 5,000 linked contacts, 20,000 users with shops                | ~0.1 s  |
-| First graph load after 3,000 contacts joined Soko, 100,000 identity links | ~0.1 s  |
+| First graph load after 3,000 contacts joined Grogoni, 100,000 identity links | ~0.1 s  |
 | Merge sync relinking 1,000 contacts, 100,000 identity links               | ~0.15 s |
 | Sync with 200 contacts × 10 nested connections, 50,000 other edges        | ~0.1 s  |
 | 100 invites against 20,000 existing invites                               | ~50 ms  |
 
 ### Discovery
 
-`NetworkDomain.sokoDiscoveryIndex` maps `phone:<hash>` / `email:<hash>` (the same hash as
-`ContactHashSummary`) to a Soko user for every active account: its primary login destination, plus
+`NetworkDomain.grogoniDiscoveryIndex` maps `phone:<hash>` / `email:<hash>` (the same hash as
+`ContactHashSummary`) to a Grogoni user for every active account: its primary login destination, plus
 the user's verified phone and verified email, so a device-first account with a verified phone is
 found too. Suspended, locked, pending-deletion and deleted accounts are not discoverable.
 The owner's own number is never linked.
 
 Discovery re-runs on every sync, every `GET /network`, and every connection request
-(`refreshSokoDiscovery`). A contact who signs up after being synced turns into a `soko_user` node
+(`refreshGrogoniDiscovery`). A contact who signs up after being synced turns into a `grogoni_user` node
 without another sync, and a contact whose account is gone, or who no longer holds that number, is
 unlinked again.
 
 The hashes are unsalted SHA-256 of canonical numbers. They keep raw numbers out of the database
 and its backups, but phone numbers have little entropy, so they are not secret against someone
-with database access. The card says only what is true: Soko keeps a fingerprint and the last few
+with database access. The card says only what is true: Grogoni keeps a fingerprint and the last few
 digits of each number (`displayHint`), never the full number.
 
-Discovery reveals that a number belongs to someone on Soko, not which shop they run. The graph,
+Discovery reveals that a number belongs to someone on Grogoni, not which shop they run. The graph,
 `network.contacts.resolve`, the supplier phonebook search, the identity endpoints
-(`network.identity.add`, `.confirm`, `.unlink`) and identity links return `sokoBusinessId`/`sokoAgentId` (and
+(`network.identity.add`, `.confirm`, `.unlink`) and identity links return `grogoniBusinessId`/`grogoniAgentId` (and
 `linkedBusinessId`/`linkedAgentId`) only for people the owner is connected with; a connection
 summary names the other side's shop only once connected, or when they asked the owner (they chose
 to be seen).
@@ -186,15 +186,15 @@ to be seen).
 ### Connections
 
 `NetworkConnectionRecord` (`cp2_network_connections`, migration 105, unique per pair of users)
-holds one record per pair of Soko users; whoever asked first is the requester. Rules live in
+holds one record per pair of Grogoni users; whoever asked first is the requester. Rules live in
 `services/api/src/cp2/domains/network/connections.ts`:
 
 | Endpoint                                   | Rule                                                                                                                                                                          |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `POST /network/connections {nodeId}`       | The node must be the caller's own direct contact and discovered as another Soko user. Asking again returns the same record. If the other side already asked, this accepts it. |
+| `POST /network/connections {nodeId}`       | The node must be the caller's own direct contact and discovered as another Grogoni user. Asking again returns the same record. If the other side already asked, this accepts it. |
 | `POST /network/connections/:id/respond`    | Recipient only. `accept: true` connects; `false` declines.                                                                                                                    |
 | `DELETE /network/connections/:id`          | Requester: cancels (withdraws) an unanswered request. Recipient: declines a pending one. Either side: removes an accepted connection.                                         |
-| `GET /network/connections`, `GET /network` | Viewer-relative `NetworkConnectionSummary` (`direction`, counterpart name, shop). The owner's own phonebook name for the person wins over their Soko display name.            |
+| `GET /network/connections`, `GET /network` | Viewer-relative `NetworkConnectionSummary` (`direction`, counterpart name, shop). The owner's own phonebook name for the person wins over their Grogoni display name.            |
 
 A decline is private. Nothing the requester can read changes: status stays `pending`, and
 `updatedAt` and `respondedAt` do not move. The recipient no longer sees the request, and can still
@@ -224,23 +224,23 @@ Audit events: `network.connection_requested`, `network.connection_accepted` (`vi
 
 `POST /businesses/:businessId/network/invites` cleans and reads numbers the same way as sync
 (owner's country, else `defaultCountry`), charges each number and email it checks to the
-discovery budget above (it answers "is this person on Soko" just like a sync does), except a
+discovery budget above (it answers "is this person on Grogoni" just like a sync does), except a
 value that is itself the destination of an open invite from this shop (re-sending an invite
 asks nothing new; any other number or email on that contact is still charged), then skips any contact whose phone or email belongs to a
-Soko user and reports how many in `alreadyOnSokoCount`; they are connected with, not invited. A
+Grogoni user and reports how many in `alreadyOnGrogoniCount`; they are connected with, not invited. A
 contact whose number and email both fail to parse is skipped and reported in `invalidCount`:
 nothing is sent to a value nobody can check. Invites dedupe on the normalized number, so
 "+254 722 000 101" and "0722000101" are one invite, including against older invites stored as
 typed, and new invites store E.164. The server takes 100 contacts per request; the web app sends
-larger selections in batches of 100. The card lists only non-users under "Invite to Soko" and
+larger selections in batches of 100. The card lists only non-users under "Invite to Grogoni" and
 marks contacts already invited. Without a shop, the web app offers the device share sheet with a
-Soko link instead (and reports nothing shared if the sheet is cancelled).
+Grogoni link instead (and reports nothing shared if the sheet is cancelled).
 
 ### The device copy
 
-The web app lists a contact under "Invite to Soko" only while its server node still exists: a
+The web app lists a contact under "Invite to Grogoni" only while its server node still exists: a
 contact whose node is gone (the phonebook was disconnected, or replaced from another device) is
-not known to be off Soko, so it is not offered. Disconnecting the phonebook also clears the device
+not known to be off Grogoni, so it is not offered. Disconnecting the phonebook also clears the device
 copy, and logging out clears it for every user.
 
 ## What this deliberately does not do

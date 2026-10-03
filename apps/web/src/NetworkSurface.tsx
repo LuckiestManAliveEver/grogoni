@@ -1,10 +1,10 @@
-import type { NetworkInviteSummary } from "@soko/shared-types";
+import type { NetworkInviteSummary } from "@grogoni/shared-types";
 
 import {
   type NetworkGraphSummary,
   type OAuthProviderSummary,
   type SocialSignupProvider
-} from "./soko-application-shared";
+} from "./grogoni-application-shared";
 
 import { formatDate } from "./formatters";
 
@@ -44,7 +44,7 @@ export function NetworkSurface(props: NetworkSurfaceProps) {
             <p className="eyebrow">Commerce graph</p>
             <h3>Network</h3>
             <p className="shell-note">
-              Your contacts help Soko build your first commerce network. Social connections expand
+              Your contacts help Grogoni build your first commerce network. Social connections expand
               it; friends-of-friends are reached through friends' agents.
             </p>
           </div>

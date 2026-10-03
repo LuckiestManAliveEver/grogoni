@@ -2,13 +2,13 @@
 
 ## Supported runtime
 
-Soko integrates `@mlc-ai/web-llm` 0.2.84 as a lazy-loaded, dedicated Web Worker adapter. It is
+Grogoni integrates `@mlc-ai/web-llm` 0.2.84 as a lazy-loaded, dedicated Web Worker adapter. It is
 available only when the capability layer selects WebGPU. WebLLM is not imported by the Render API
 and does not require a persistent inference service.
 
 The initial approved profiles are:
 
-| Soko profile                   | WebLLM model ID                     | Weight revision                            |
+| Grogoni profile                   | WebLLM model ID                     | Weight revision                            |
 | ------------------------------ | ----------------------------------- | ------------------------------------------ |
 | `smollm2-360m-instruct-webllm` | `SmolLM2-360M-Instruct-q4f16_1-MLC` | `3a622fd89e0216e8bb10c410c007c786baa8a033` |
 | `qwen2.5-0.5b-instruct-webllm` | `Qwen2.5-0.5B-Instruct-q4f16_1-MLC` | `32ff081fe7e4dfe4ffb167b94c66fdf11e02b8ad` |
@@ -21,7 +21,7 @@ The MLC weights and model library are different artifacts. Both must remain pinn
 
 ## Runtime contract
 
-`BrowserRuntimeContract` is the stable Soko boundary:
+`BrowserRuntimeContract` is the stable Grogoni boundary:
 
 ```ts
 interface BrowserRuntimeContract {
@@ -40,7 +40,7 @@ interface BrowserRuntimeContract {
 ```
 
 WebLLM 0.2.84 does not expose a supported tokenizer-count API through
-`MLCEngineInterface`, so Soko advertises `tokenCounting: "estimated"` and uses a conservative
+`MLCEngineInterface`, so Grogoni advertises `tokenCounting: "estimated"` and uses a conservative
 message estimate. Its real generation still runs within the selected profile's context, output,
 memory, and wall-time budgets.
 
@@ -52,7 +52,7 @@ memory, and wall-time budgets.
 interface BrowserCheckpointCompatibilityContract {
   schemaVersion: 1;
   checkpointKind: "task-state";
-  taskStateSchema: "soko.browser-task-state.v2";
+  taskStateSchema: "grogoni.browser-task-state.v2";
   modelFamilyId: string;
   sourceModelId: string;
   sourceModelRevision: string;
@@ -66,7 +66,7 @@ A checkpoint can be restored through another adapter only when:
 
 1. it is an unexpired interrupted task-state checkpoint;
 2. account, shop, conversation, request, and objective scopes match;
-3. both contracts use `soko.browser-task-state.v2`;
+3. both contracts use `grogoni.browser-task-state.v2`;
 4. model family and role/content representation match.
 
 The source model ID, revision, and adapter remain recorded for auditability but do not prevent
@@ -83,14 +83,14 @@ The following are not portable contracts:
 - GGUF files;
 - sampler state not represented in the task checkpoint.
 
-Soko therefore publishes only `checkpointKinds: ["task-state"]` and
+Grogoni therefore publishes only `checkpointKinds: ["task-state"]` and
 `nativeStateFormat: null`. A future native or token-replay format must receive a new schema,
 compatibility validator, corruption checks, and runtime-specific conformance tests before it can
 be advertised.
 
 ## Lifecycle
 
-1. Soko selects a compatible WebLLM profile.
+1. Grogoni selects a compatible WebLLM profile.
 2. The adapter builds an app configuration from WebLLM's pinned package catalogue.
 3. Weight and model-library URLs are rewritten to immutable revisions.
 4. `CreateWebWorkerMLCEngine` loads the profile in a dedicated worker.

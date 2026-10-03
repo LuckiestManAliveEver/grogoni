@@ -123,14 +123,14 @@ export const testSecrets = {
   llama: "llama-test-managed-key-0000000000000DDDD"
 } as const;
 
-/** Environment with every Soko-managed provider configured (fake keys) plus a llama.cpp host. */
+/** Environment with every Grogoni-managed provider configured (fake keys) plus a llama.cpp host. */
 export function managedEnvironment(extra: Record<string, string> = {}) {
   return readInferenceEnvironment({
     OPENAI_API_KEY: testSecrets.openai,
     ANTHROPIC_API_KEY: testSecrets.anthropic,
     ZAI_API_KEY: testSecrets.zai,
-    SOKO_LLAMA_BASE_URL: "https://inference.soko.example/v1",
-    SOKO_LLAMA_API_KEY: testSecrets.llama,
+    GROGONI_LLAMA_BASE_URL: "https://inference.grogoni.example/v1",
+    GROGONI_LLAMA_API_KEY: testSecrets.llama,
     INFERENCE_REQUEST_TIMEOUT_MS: "2000",
     ...extra
   });

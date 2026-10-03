@@ -19,7 +19,7 @@ interface SessionResponse {
 interface BusinessResponse {
   business: {
     id: string;
-    sokoId: string;
+    grogoniId: string;
   };
 }
 
@@ -109,7 +109,7 @@ describe("Shop profile lifecycle", () => {
     const deletion = await postJson<ShopDeletionRequestResponse>(
       app,
       `/businesses/${shop.business.id}/shop-deletion/request`,
-      { shopId: shop.business.sokoId },
+      { shopId: shop.business.grogoniId },
       ownerCookie
     );
     const quarantined = await postJson<{ status: string }>(
@@ -175,7 +175,7 @@ describe("Shop profile lifecycle", () => {
         ...jsonHeaders(),
         cookie: extractSessionCookie(nonOwner.setCookie)
       },
-      payload: JSON.stringify({ shopId: firstShop.business.sokoId })
+      payload: JSON.stringify({ shopId: firstShop.business.grogoniId })
     });
     expect(nonOwnerRequest.statusCode).toBe(403);
 
@@ -194,7 +194,7 @@ describe("Shop profile lifecycle", () => {
     const deletion = await postJson<ShopDeletionRequestResponse>(
       app,
       `/businesses/${firstShop.business.id}/shop-deletion/request`,
-      { shopId: firstShop.business.sokoId },
+      { shopId: firstShop.business.grogoniId },
       ownerCookie
     );
     expect(deletion.request.status).toBe("PENDING_VERIFICATION");

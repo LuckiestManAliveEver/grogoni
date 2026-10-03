@@ -18,7 +18,7 @@ export interface AccountRestorationResult {
     id: string;
     name: string;
     language: "en" | "sw";
-    sokoId: string;
+    grogoniId: string;
   };
   membership: { role: string };
 }

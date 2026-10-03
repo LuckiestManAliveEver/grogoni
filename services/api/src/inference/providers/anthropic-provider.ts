@@ -57,7 +57,7 @@ export function createAnthropicProvider(
       accept: stream ? "text/event-stream" : "application/json",
       "anthropic-version": version,
       "x-api-key": credential.secret.reveal(),
-      "user-agent": "soko-market-inference"
+      "user-agent": "grogoni-inference"
     };
   }
 

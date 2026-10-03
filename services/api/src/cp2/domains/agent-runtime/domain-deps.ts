@@ -3,7 +3,7 @@ import type {
   RuntimeTurnSummary,
   RuntimeExecutionEvent,
   RuntimeExecutionEventType
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import type {
   ActiveNativeAgentBinding,
   AgentDefinition,
@@ -29,8 +29,8 @@ import type {
   RuntimePlannedAction,
   RuntimeModelProvider,
   UnifiedCheckoutSummary
-} from "@soko/shared-types";
-import type { BusinessPermission } from "@soko/business-core";
+} from "@grogoni/shared-types";
+import type { BusinessPermission } from "@grogoni/business-core";
 
 import type { ModelRuntimeAdapter } from "../../../inference/model-runtime.js";
 import type { AgentRuntimeAdapter } from "../../../agent-harness/agent-runtime-adapter.js";

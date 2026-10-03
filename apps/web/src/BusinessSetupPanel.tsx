@@ -11,7 +11,7 @@ import {
   type CountryDialCode,
   type SupportedLanguage,
   phoneCountryOptions
-} from "./soko-application-shared";
+} from "./grogoni-application-shared";
 
 import { getCountryDialCode, getCountryDialCodeByCountry } from "./country-dial-codes";
 

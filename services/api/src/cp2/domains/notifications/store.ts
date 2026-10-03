@@ -37,14 +37,14 @@
  * `./shared.ts` - used everywhere the index is rebuilt, not just here.
  */
 import { randomUUID } from "node:crypto";
-import type { BusinessPermission } from "@soko/business-core";
+import type { BusinessPermission } from "@grogoni/business-core";
 import type {
   AuthenticatedActorView,
   BusinessNotificationStatus,
   BusinessNotificationSummary,
   BusinessReportSummary,
   NotificationInbox
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { Cp2Error } from "../../cp2-error.js";
 import { notificationRuleKey, summarizeNotifications } from "./shared.js";
 

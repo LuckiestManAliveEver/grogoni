@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const application = readFileSync("apps/web/src/SokoApplication.tsx", "utf8");
-const sharedModule = readFileSync("apps/web/src/soko-application-shared.ts", "utf8");
+const application = readFileSync("apps/web/src/GrogoniApplication.tsx", "utf8");
+const sharedModule = readFileSync("apps/web/src/grogoni-application-shared.ts", "utf8");
 const agentProfileSurface = readFileSync("apps/web/src/AgentProfileSurface.tsx", "utf8");
 const identitySecurityPanel = readFileSync("apps/web/src/IdentitySecurityPanel.tsx", "utf8");
 const agentPolicyPanels = readFileSync("apps/web/src/AgentPolicyPanels.tsx", "utf8");

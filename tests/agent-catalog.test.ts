@@ -6,7 +6,7 @@ import {
   rankPortableOssAgents,
   selectLeastMemoryOssAgent
 } from "../apps/web/src/agent-catalog";
-import type { AgentSettings } from "../apps/web/src/soko-application-shared";
+import type { AgentSettings } from "../apps/web/src/grogoni-application-shared";
 
 const hostedAgent: OssAgentSummary = {
   id: "huggingface:example/store-agent",
@@ -106,7 +106,7 @@ describe("device-independent OSS agent catalogue", () => {
       instructionPolicy: { generalOperatingRules: ["Help the shop."] },
       knowledge: "Saved records",
       tools: ["Products"],
-      integrations: ["Soko.market storefront"],
+      integrations: ["Grogoni storefront"],
       skillBindings: [{ skillId: "invoice.draft", enabled: true }]
     } as AgentSettings;
 

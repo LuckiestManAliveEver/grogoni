@@ -16,7 +16,7 @@ audit event (`staff.invitation_created`, `staff.invitation_accepted`, `staff.inv
 
 | Question                      | Decision                                                                                                                                              |
 | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Relation to network invites   | A new membership-invitation concept. Network invites stay "join the Soko network" (customer outreach); staff invitations are "join my business as X". |
+| Relation to network invites   | A new membership-invitation concept. Network invites stay "join the Grogoni network" (customer outreach); staff invitations are "join my business as X". |
 | How access is granted         | Explicit accept by the invitee. Nothing is granted by inviting.                                                                                       |
 | Who invites and manages roles | Owner and manager.                                                                                                                                    |
 
@@ -52,16 +52,16 @@ audit event (`staff.invitation_created`, `staff.invitation_accepted`, `staff.inv
   24 hours (no invitation spam).
 - Membership loss heals the app: a session context whose active shop the person no longer belongs
   to (removed, left, shop quarantined) is reset to the marketplace on the next read
-  (`ensureSokoSessionContext`), and the web app forgets a stored shop the account no longer has,
+  (`ensureGrogoniSessionContext`), and the web app forgets a stored shop the account no longer has,
   both when the session context loads and when it restores the shop it last opened at launch
   (`stored-shop.ts`). The same heal applies to an owner whose shop enters the deletion quarantine;
   restoring the shop does not switch them back automatically, they reopen it from "Your shops".
 
 ## Trust model
 
-Soko signs people in by phone number without verifying it (PIN sign-up and linking a phone to a
+Grogoni signs people in by phone number without verifying it (PIN sign-up and linking a phone to a
 one-tap account are both unverified), and login resolves any phone identity of an account. So an
-invitation to `+2547…` is an invitation to the Soko account that signs in with that number, which
+invitation to `+2547…` is an invitation to the Grogoni account that signs in with that number, which
 is exactly the trust the rest of the product already places in that account.
 
 What may accept an invitation (`identitiesOf` in `domains/staff/store.ts`):
@@ -80,8 +80,8 @@ this invitation either: the owner's staff list flags it (`needsReinvite`, "Revok
 again"), and the new invitation, being newer than the link, works. The staff list shows each
 member's sign-in phone, not the editable profile phone, so the owner sees which account joined.
 
-The remaining risk is squatting at sign-up: someone creating a Soko account with the invited number
-before its real owner does. Once that happens the number belongs to that account for every Soko
+The remaining risk is squatting at sign-up: someone creating a Grogoni account with the invited number
+before its real owner does. Once that happens the number belongs to that account for every Grogoni
 purpose (the real person can no longer sign up with it), so the invitation adds no new exposure.
 Mitigations: nothing is granted without an explicit accept; the owner sees who joined (display
 name and sign-in phone); removal is one confirmed tap and effective immediately; invitations expire

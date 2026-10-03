@@ -1,5 +1,5 @@
 {
-  "name": "@soko/resource-control",
+  "name": "@grogoni/resource-control",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -20,6 +20,6 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@soko/shared-types": "workspace:*"
+    "@grogoni/shared-types": "workspace:*"
   }
 }

@@ -2,7 +2,7 @@
 
 ## Existing Architecture
 
-Soko already routes chat work through `AgentRuntimeDomain.createRuntimeTurn`, the canonical runtime tool registry in `packages/tool-core`, and `executeRuntimeCapability` in `services/api/src/cp2/domains/agent-runtime/capabilities.ts`.
+Grogoni already routes chat work through `AgentRuntimeDomain.createRuntimeTurn`, the canonical runtime tool registry in `packages/tool-core`, and `executeRuntimeCapability` in `services/api/src/cp2/domains/agent-runtime/capabilities.ts`.
 
 The native runtime graph is provider-neutral and lives in `cp2_native_runtime_agents`, `cp2_native_runtime_models`, `cp2_native_execution_hosts`, `cp2_native_model_installations`, `cp2_native_runtime_bindings`, and `cp2_native_runtime_binding_models` from migration `063_native_runtime_bindings.sql`.
 
@@ -40,7 +40,7 @@ Execution Fabric tables were retired. Computer use should extend the native runt
 
 ## Integration Points
 
-This implementation adds provider-neutral `ComputerRuntime` domain types in `@soko/shared-types`, registers `computer.*` runtime capabilities in `@soko/tool-core`, adds validation, and adds a policy classifier that hashes exact proposed actions. The API dispatcher fails closed until a real isolated provider is configured.
+This implementation adds provider-neutral `ComputerRuntime` domain types in `@grogoni/shared-types`, registers `computer.*` runtime capabilities in `@grogoni/tool-core`, adds validation, and adds a policy classifier that hashes exact proposed actions. The API dispatcher fails closed until a real isolated provider is configured.
 
 Computer checkpoints should be represented as `RuntimeAction.metadata`, `RuntimeContextReference` entries, and `RuntimeArtifactReference` rows, with `RuntimeTaskHead` remaining the single mutable active-checkpoint pointer.
 

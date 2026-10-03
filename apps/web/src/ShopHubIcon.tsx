@@ -1,6 +1,6 @@
-import type { ShopModuleIcon } from "@soko/tool-core";
+import type { ShopModuleIcon } from "@grogoni/tool-core";
 
-// Stroke glyphs for Shop Hub modules, drawn in currentColor so they follow the Soko Home tokens.
+// Stroke glyphs for Shop Hub modules, drawn in currentColor so they follow the Grogoni Home tokens.
 // Keyed by the registry's icon ids; an id this build does not know yet falls back to the kiondo.
 const paths: Record<ShopModuleIcon | "kiondo", string> = {
   kiondo:

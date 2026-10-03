@@ -48,4 +48,4 @@ marks the candidate failed. Success demotes the prior production version to `PAS
 candidate's runtime binding, and retains both histories. Production is never overwritten.
 
 Judge quality, real hardware memory, provider billing, and noisy latency require external
-infrastructure. Their nullable fields are intentional; Soko must not fabricate them.
+infrastructure. Their nullable fields are intentional; Grogoni must not fabricate them.

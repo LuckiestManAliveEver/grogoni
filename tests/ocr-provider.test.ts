@@ -112,7 +112,7 @@ describe("OCR provider", () => {
     globalThis.fetch = fetcher;
     try {
       const processor = createOcrExtractionProcessorFromEnvironment({
-        OCR_WORKER_URL: "soko-market-ocr-worker:8090"
+        OCR_WORKER_URL: "grogoni-ocr-worker:8090"
       });
       await processor?.process({
         fileName: "receipt.png",
@@ -124,7 +124,7 @@ describe("OCR provider", () => {
     }
 
     expect(fetcher).toHaveBeenCalledWith(
-      "http://soko-market-ocr-worker:8090/scan",
+      "http://grogoni-ocr-worker:8090/scan",
       expect.anything()
     );
   });

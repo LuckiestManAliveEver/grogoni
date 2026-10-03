@@ -8,7 +8,7 @@ import {
   type ManifestStopSummary,
   type ManifestSummary,
   type VehicleSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { useAsyncActions } from "./hooks/useAsyncActions";
 import { useApiMutationRevision } from "./hooks/useApiMutationRevision";
 import { getJson, postJson } from "./api-helpers";

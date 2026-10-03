@@ -22,14 +22,14 @@ describe("public chat commerce foundation", () => {
       };
     }>(
       app,
-      `/public/commerce-identities/${owner.business.sokoId.replace("soko.", "")}@soko.market`
+      `/public/commerce-identities/${owner.business.grogoniId.replace("grogoni.", "")}@grogoni.com`
     );
 
     expect(resolved).toMatchObject({
       status: "active",
       identity: {
         canonicalBusinessId: owner.business.id,
-        commerceAddress: `${owner.business.sokoId.replace("soko.", "")}@soko.market`,
+        commerceAddress: `${owner.business.grogoniId.replace("grogoni.", "")}@grogoni.com`,
         displayName: "Identity Shop",
         entryPoints: expect.arrayContaining([expect.objectContaining({ type: "conversation" })])
       }
@@ -38,7 +38,7 @@ describe("public chat commerce foundation", () => {
 
     const availability = await getJson<{ available: boolean; reason: string }>(
       app,
-      `/public/commerce-identities/availability?address=${owner.business.sokoId.replace("soko.", "")}@soko.market`
+      `/public/commerce-identities/availability?address=${owner.business.grogoniId.replace("grogoni.", "")}@grogoni.com`
     );
     expect(availability).toEqual(expect.objectContaining({ available: false, reason: "taken" }));
     await app.close();
@@ -64,14 +64,14 @@ describe("public chat commerce foundation", () => {
     );
     const customer = await postJson<{ conversationId: string; capabilityToken: string }>(
       app,
-      `/public/storefronts/${first.business.sokoId}/sessions`,
+      `/public/storefronts/${first.business.grogoniId}/sessions`,
       { visitorId: "browser-visitor-501", displayName: "Amina" }
     );
 
     const reply = await postJson<{
       conversationId: string;
       agentReply: { body: string };
-    }>(app, `/public/storefronts/${first.business.sokoId}/messages`, {
+    }>(app, `/public/storefronts/${first.business.grogoniId}/messages`, {
       capabilityToken: customer.capabilityToken,
       body: "find product nyanya",
       attachmentNames: []
@@ -120,7 +120,7 @@ describe("public chat commerce foundation", () => {
 
     const wrongShop = await app.inject({
       method: "POST",
-      url: `/public/storefronts/${second.business.sokoId}/messages`,
+      url: `/public/storefronts/${second.business.grogoniId}/messages`,
       headers: { "content-type": "application/json" },
       payload: JSON.stringify({
         capabilityToken: customer.capabilityToken,
@@ -144,14 +144,14 @@ describe("public chat commerce foundation", () => {
     );
     const customer = await postJson<{ capabilityToken: string; conversationId: string }>(
       app,
-      `/public/storefronts/${owner.business.sokoId}/sessions`,
+      `/public/storefronts/${owner.business.grogoniId}/sessions`,
       { visitorId: "browser-visitor-503" }
     );
     const order = await postJson<{
       invoiceId: string;
       conversationId: string;
       payment: { status: string; paidTotal: number; balanceDue: number };
-    }>(app, `/public/storefronts/${owner.business.sokoId}/orders`, {
+    }>(app, `/public/storefronts/${owner.business.grogoniId}/orders`, {
       capabilityToken: customer.capabilityToken,
       customerName: "Amina",
       phone: "+254700000504",
@@ -227,7 +227,7 @@ describe("camera catalogue publication", () => {
 
     const storefront = await getJson<{
       products: Array<{ id: string; sellingPrice: number; image: string }>;
-    }>(app, `/public/storefronts/${owner.business.sokoId}`);
+    }>(app, `/public/storefronts/${owner.business.grogoniId}`);
     expect(storefront.products).toEqual([
       expect.objectContaining({
         id: published.product.id,
@@ -368,7 +368,7 @@ async function createOwnerBusiness(
   });
   expect(signup.statusCode, signup.body).toBe(200);
   const cookie = extractCookie(signup.headers["set-cookie"]);
-  const result = await postJson<{ business: { id: string; sokoId: string } }>(
+  const result = await postJson<{ business: { id: string; grogoniId: string } }>(
     app,
     "/businesses",
     { name, language: "en" },

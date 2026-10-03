@@ -7,7 +7,7 @@ import type { Cp2Store } from "../../services/api/src/cp2/store";
  * *something* - because they inject their own `runtimeModelProvider`/`modelRuntimeAdapterResolver`
  * and don't care which modelId is selected - can use this instead of constructing their own
  * `AiModelSummary` fixture. See services/api/src/cp2/domains/native-runtime/store.ts and
- * docs/architecture/provider-neutral-runtime.md (no model vendor is required for Soko to boot;
+ * docs/architecture/provider-neutral-runtime.md (no model vendor is required for Grogoni to boot;
  * this mirrors an operator choosing one, not a startup requirement).
  */
 export function activateGenericGlobalDefaultModel(store: Cp2Store, checkedAt: string): void {

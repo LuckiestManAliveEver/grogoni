@@ -5,7 +5,7 @@ import {
   type CustomerFormState,
   type CustomerSummary,
   type SupplierBusinessCardSummary
-} from "./soko-application-shared";
+} from "./grogoni-application-shared";
 
 import { escapeCsvCell } from "./formatters";
 

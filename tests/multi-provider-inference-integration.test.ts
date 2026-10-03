@@ -23,8 +23,8 @@ import {
 const providerModels: AiModelSummary[] = [
   catalogModel({
     id: "qwen3-4b-cloud",
-    label: "Qwen (Soko Cloud)",
-    providerId: "soko-llama",
+    label: "Qwen (Grogoni Cloud)",
+    providerId: "grogoni-llama",
     providerModelId: "qwen3-4b"
   }),
   catalogModel({
@@ -75,7 +75,7 @@ function vendors(state: { failZai: boolean }) {
         })
       );
     }
-    if (host === "inference.soko.example") {
+    if (host === "inference.grogoni.example") {
       return jsonResponse(openAiCompletion({ content: "Reply from Qwen." }));
     }
     if (host === "api.openai.com") {
@@ -240,7 +240,7 @@ describe("multi-provider inference through the agent runtime", () => {
         .conversations[0]!.id;
 
       const expected: Array<[string, string, string]> = [
-        ["qwen3-4b-cloud", "inference.soko.example", "Reply from Qwen."],
+        ["qwen3-4b-cloud", "inference.grogoni.example", "Reply from Qwen."],
         ["glm-test", "api.z.ai", "Reply from GLM."],
         ["claude-test", "api.anthropic.com", "Reply from Claude."],
         ["gpt-test", "api.openai.com", "Reply from GPT."]
@@ -291,7 +291,7 @@ describe("multi-provider inference through the agent runtime", () => {
       // Usage was recorded per provider, with no prompt text and no key material.
       const runs = context.repositories.runsSnapshot().filter((run) => run.status === "succeeded");
       expect(runs.map((run) => run.providerId)).toEqual([
-        "soko-llama",
+        "grogoni-llama",
         "zai-general",
         "anthropic",
         "openai"
@@ -351,7 +351,7 @@ describe("multi-provider inference through the agent runtime", () => {
     }
   });
 
-  it("returns provider-native tool calls to Soko's tool runtime and approval engine", async () => {
+  it("returns provider-native tool calls to Grogoni's tool runtime and approval engine", async () => {
     const context = await setup("+254700008103");
     try {
       await activate(context, "gpt-test");
@@ -394,7 +394,7 @@ describe("multi-provider inference through the agent runtime", () => {
       const proposed = await turn("please ask the local model to update inventory sugar", {
         runtimeSessionId: created.session.id
       });
-      // ...but a consequential call still stops at Soko's confirmation gate. The provider did not execute it.
+      // ...but a consequential call still stops at Grogoni's confirmation gate. The provider did not execute it.
       expect(proposed.turn).toMatchObject({
         status: "needs_confirmation",
         plan: { toolName: "product.update", executedAt: null }
@@ -482,7 +482,7 @@ describe("multi-provider inference through the agent runtime", () => {
     }
   });
 
-  it("uses a tenant's own key once connected, and Soko's key otherwise", async () => {
+  it("uses a tenant's own key once connected, and Grogoni's key otherwise", async () => {
     const context = await setup("+254700008104");
     try {
       await activate(context, "claude-test");

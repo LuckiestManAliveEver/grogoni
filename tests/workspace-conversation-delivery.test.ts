@@ -7,7 +7,7 @@ import type {
   ConversationMessageSummary,
   ConversationView,
   RuntimeTurnResult
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { buildApi } from "../services/api/src/app";
 import type { ConversationAttachmentBlobStore } from "../services/api/src/cp2/conversation-attachment-blob-store";
 import { createCp2Store } from "../services/api/src/cp2/store";
@@ -23,7 +23,7 @@ afterEach(async () => {
 
 describe("workspace.deliver conversation integration", () => {
   it("delivers multiple files as cards in one assistant turn", async () => {
-    const workspaceRoot = await mkdtemp(join(tmpdir(), "soko-conversation-batch-"));
+    const workspaceRoot = await mkdtemp(join(tmpdir(), "grogoni-conversation-batch-"));
     temporaryRoots.push(workspaceRoot);
     const store = createCp2Store({ workspaceRoot, workspaceDeliveryMaxFileBytes: 1_000_000 });
     // Global default model/host are seeded unavailable until a verified health check runs (see
@@ -92,7 +92,7 @@ describe("workspace.deliver conversation integration", () => {
   });
 
   it("persists PNG, PDF, and XLSX cards and serves authorized preview/download bytes", async () => {
-    const workspaceRoot = await mkdtemp(join(tmpdir(), "soko-conversation-workspaces-"));
+    const workspaceRoot = await mkdtemp(join(tmpdir(), "grogoni-conversation-workspaces-"));
     temporaryRoots.push(workspaceRoot);
     const store = createCp2Store({ workspaceRoot, workspaceDeliveryMaxFileBytes: 1_000_000 });
     // Global default model/host are seeded unavailable until a verified health check runs (see
@@ -104,7 +104,7 @@ describe("workspace.deliver conversation integration", () => {
     const businessWorkspace = join(workspaceRoot, business.id);
     await mkdir(join(businessWorkspace, "generated"), { recursive: true });
     const png = Buffer.from("89504e470d0a1a0a00000000", "hex");
-    const pdf = Buffer.from("%PDF-1.7\nSoko report\n");
+    const pdf = Buffer.from("%PDF-1.7\nGrogoni report\n");
     const xlsx = Buffer.from("504b03040000536f6b6f", "hex");
     await writeFile(join(businessWorkspace, "generated", "catalogue.png"), png);
     await writeFile(join(businessWorkspace, "generated", "sales-report.pdf"), pdf);
@@ -221,7 +221,7 @@ describe("workspace.deliver conversation integration", () => {
   });
 
   it("does not let a client fabricate a managed attachment and deduplicates a retried agent message", async () => {
-    const workspaceRoot = await mkdtemp(join(tmpdir(), "soko-conversation-workspaces-"));
+    const workspaceRoot = await mkdtemp(join(tmpdir(), "grogoni-conversation-workspaces-"));
     temporaryRoots.push(workspaceRoot);
     const store = createCp2Store({ workspaceRoot });
     // Global default model/host are seeded unavailable until a verified health check runs (see
@@ -285,7 +285,7 @@ describe("workspace.deliver conversation integration", () => {
   });
 
   it("rolls back every stored blob when a batch storage write fails", async () => {
-    const workspaceRoot = await mkdtemp(join(tmpdir(), "soko-conversation-storage-"));
+    const workspaceRoot = await mkdtemp(join(tmpdir(), "grogoni-conversation-storage-"));
     temporaryRoots.push(workspaceRoot);
     const blobs = new Map<string, Buffer>();
     let writes = 0;

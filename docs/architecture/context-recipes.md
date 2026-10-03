@@ -15,7 +15,7 @@ snapshots for one template version) - not evidence requirements.
 
 ```ts
 export interface ContextRecipe {
-  id: string; // "soko.<taskType>@<version>", e.g. "soko.show_products@1"
+  id: string; // "grogoni.<taskType>@<version>", e.g. "grogoni.show_products@1"
   taskType: RuntimeParserIntent;
   version: number;
   requiredEvidence: AgentContextSourceType[];

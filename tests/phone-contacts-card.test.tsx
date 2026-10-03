@@ -2,7 +2,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { NetworkConnectionSummary } from "@soko/shared-types";
+import type { NetworkConnectionSummary } from "@grogoni/shared-types";
 
 import { PhoneContactsCard } from "../apps/web/src/PhoneContactsCard";
 import {
@@ -10,7 +10,7 @@ import {
   readDevicePhonebook,
   writeDevicePhonebook
 } from "../apps/web/src/phonebook-device-cache";
-import type { NetworkGraphSummary } from "../apps/web/src/soko-application-shared";
+import type { NetworkGraphSummary } from "../apps/web/src/grogoni-application-shared";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -22,7 +22,7 @@ const request: NetworkConnectionSummary = {
   counterpartUserId: "u-eve",
   counterpartDisplayName: "Eve",
   counterpartBusinessName: "Eve Grocers",
-  counterpartSokoId: null,
+  counterpartGrogoniId: null,
   nodeId: null,
   createdAt: at,
   updatedAt: at,
@@ -40,7 +40,7 @@ const graph: NetworkGraphSummary = {
       sourceId: "s",
       sourceType: "phone_contact",
       sourcePlatform: "phone",
-      sokoUserId: "u-bob",
+      grogoniUserId: "u-bob",
       visibilityStatus: "direct",
       consentStatus: "pending"
     },
@@ -51,7 +51,7 @@ const graph: NetworkGraphSummary = {
       sourceId: "s",
       sourceType: "phone_contact",
       sourcePlatform: "phone",
-      sokoUserId: null,
+      grogoniUserId: null,
       visibilityStatus: "direct",
       consentStatus: "pending"
     }
@@ -93,7 +93,7 @@ function renderCard(overrides: Partial<Parameters<typeof PhoneContactsCard>[0]> 
       .mockResolvedValue({ ok: true, message: "Connection request sent to Bob." }),
     onInvite: vi
       .fn()
-      .mockResolvedValue({ invited: 1, alreadyOnSoko: 0, invalid: 0, shared: false }),
+      .mockResolvedValue({ invited: 1, alreadyOnGrogoni: 0, invalid: 0, shared: false }),
     ...overrides
   };
   act(() => root.render(<PhoneContactsCard {...props} />));
@@ -109,15 +109,15 @@ function button(label: string): HTMLButtonElement {
 }
 
 describe("PhoneContactsCard", () => {
-  it("shows requests, Soko contacts with Connect, and invites only non-users", async () => {
+  it("shows requests, Grogoni contacts with Connect, and invites only non-users", async () => {
     const props = renderCard();
 
     expect(container.querySelector('[aria-label="Connection requests"]')?.textContent).toContain(
       "Eve Grocers"
     );
-    const onSoko = container.querySelector('[aria-label="On Soko"]')?.textContent ?? "";
-    expect(onSoko).toContain("Bob");
-    const invite = container.querySelector('[aria-label="Invite to Soko"]')?.textContent ?? "";
+    const onGrogoni = container.querySelector('[aria-label="On Grogoni"]')?.textContent ?? "";
+    expect(onGrogoni).toContain("Bob");
+    const invite = container.querySelector('[aria-label="Invite to Grogoni"]')?.textContent ?? "";
     expect(invite).toContain("Frank");
     expect(invite).not.toContain("Bob");
 
@@ -158,7 +158,7 @@ describe("PhoneContactsCard", () => {
     ];
     const props = renderCard({ graph: { ...graph, connections } });
 
-    expect(container.querySelector('[aria-label="On Soko"]')?.textContent).toContain(
+    expect(container.querySelector('[aria-label="On Grogoni"]')?.textContent).toContain(
       "Request sent"
     );
     await act(async () => button("Cancel").click());
@@ -174,15 +174,15 @@ describe("PhoneContactsCard", () => {
     expect(container.querySelector('[aria-label="Connection requests"]')).toBeNull();
   });
 
-  it("reports the invite outcome, including people already on Soko and failures", async () => {
+  it("reports the invite outcome, including people already on Grogoni and failures", async () => {
     const props = renderCard({
       onInvite: vi
         .fn()
-        .mockResolvedValue({ invited: 0, alreadyOnSoko: 1, invalid: 0, shared: false })
+        .mockResolvedValue({ invited: 0, alreadyOnGrogoni: 1, invalid: 0, shared: false })
     });
     await act(async () => button("Select all").click());
     await act(async () => button("Invite (1)").click());
-    expect(container.textContent).toContain("Nobody to invite. 1 is already on Soko");
+    expect(container.textContent).toContain("Nobody to invite. 1 is already on Grogoni");
 
     (props.onInvite as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("x"));
     await act(async () => button("Select all").click());
@@ -229,7 +229,7 @@ describe("device phonebook cache", () => {
   it("keeps contacts per user, drops malformed rows, and clears on logout", () => {
     writeDevicePhonebook("u1", [{ name: "A", phone: "1", email: null, nodeId: null }]);
     writeDevicePhonebook("u2", [{ name: "B", phone: "2", email: null, nodeId: "n" }]);
-    localStorage.setItem("soko.phonebook.v1:u3", JSON.stringify([{ name: 5 }, "junk"]));
+    localStorage.setItem("grogoni.phonebook.v1:u3", JSON.stringify([{ name: 5 }, "junk"]));
     localStorage.setItem("unrelated", "keep");
 
     expect(readDevicePhonebook("u1").map((entry) => entry.name)).toEqual(["A"]);

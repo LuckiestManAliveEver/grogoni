@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://soko.market/schemas/play-legal-readiness.schema.json",
-  "title": "Soko.market Google Play legal readiness",
+  "$id": "https://grogoni.com/schemas/play-legal-readiness.schema.json",
+  "title": "Grogoni Google Play legal readiness",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -34,7 +34,7 @@
         "registrationNumber"
       ],
       "properties": {
-        "appName": { "const": "Soko.market" },
+        "appName": { "const": "Grogoni" },
         "playDeveloperName": { "type": ["string", "null"] },
         "legalEntityName": { "type": ["string", "null"] },
         "registeredAddress": { "type": ["string", "null"] },
@@ -66,10 +66,10 @@
         "legalApprovalReference"
       ],
       "properties": {
-        "privacyPolicyUrl": { "const": "https://soko.market/privacy" },
+        "privacyPolicyUrl": { "const": "https://grogoni.com/privacy" },
         "privacyPolicyStatus": { "enum": ["draft", "approved"] },
         "privacyPolicyEffectiveOn": { "type": ["string", "null"], "format": "date" },
-        "termsUrl": { "const": "https://soko.market/terms" },
+        "termsUrl": { "const": "https://grogoni.com/terms" },
         "termsStatus": { "enum": ["draft", "approved"] },
         "termsEffectiveOn": { "type": ["string", "null"], "format": "date" },
         "legalApprovalReference": { "type": ["string", "null"] }
@@ -93,7 +93,7 @@
         "privacyOwner"
       ],
       "properties": {
-        "externalRequestUrl": { "const": "https://soko.market/account-deletion" },
+        "externalRequestUrl": { "const": "https://grogoni.com/account-deletion" },
         "inAppPath": { "type": "string", "minLength": 1 },
         "authenticationRequired": { "const": true },
         "androidAppRequired": { "const": false },

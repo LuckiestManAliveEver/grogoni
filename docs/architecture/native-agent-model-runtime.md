@@ -7,7 +7,7 @@
 > registered as an execution host, never the currently-open browser/device. Kept as historical
 > record where it describes the retired paths.
 
-Soko AI is zero-setup for an eligible signed-in shop when at least one server-reachable inference
+Grogoni AI is zero-setup for an eligible signed-in shop when at least one server-reachable inference
 adapter is configured. A merchant can open chat and send a first message without installing an
 agent, downloading a model, or activating a binding. A shop-registered execution host remains an
 optional optimization; a private per-device model copy is not part of the architecture.
@@ -24,7 +24,7 @@ flowchart TD
   HR --> BL[Browser local]
   HR --> IA[Installed app]
   HR --> RD[Remote shop device]
-  HR --> BE[Soko hosted backend]
+  HR --> BE[Grogoni hosted backend]
   BL --> P[Server-authorized tool/output pipeline]
   IA --> P
   RD --> P
@@ -57,7 +57,7 @@ The catalog of _what models and agent templates exist_ is DB-hosted, not code-ho
 
 Both are seeded by the migration with today's exact bootstrap content (the former hardcoded
 `aiModelRegistry` array and `defaultAgentDefinition` constant, still present in
-`services/api/src/cp2/domains/agent-runtime/model-catalog.ts` and `@soko/shared-types` as the
+`services/api/src/cp2/domains/agent-runtime/model-catalog.ts` and `@grogoni/shared-types` as the
 _bootstrap default_, not the runtime source of truth). `Cp2Store.seedCatalogDefaultsIfEmpty`
 supplies those same constants in memory whenever it finds either loaded collection empty, so a
 fresh test store or recovery from an unexpectedly empty table is never stranded.
@@ -87,7 +87,7 @@ especially important for revocation, so no running instance retains stale author
 
 `Cp2Store.requirePlatformOperator` gates `PUT`/`DELETE /v1/platform/model-catalog/:modelId` and the
 `/v1/platform/agent-catalog/:agentDefinitionId` equivalents. `qwen2.5-0.5b-android` (the zero-setup
-default model), `sokoclaw-local` (the deterministic compatibility fallback), and
+default model), `grogoniclaw-local` (the deterministic compatibility fallback), and
 `builtin:shopkeeper` (the default agent fallback) cannot be removed through these routes - required
 runtime fallbacks, protected even from an operator, though still editable. `AgentDefinitionId` now
 accepts any `builtin:<slug>`, not only the one hardcoded id, so an operator can add a second
@@ -139,9 +139,9 @@ result without logging prompts or credentials.
 
 | Target               | Location and trust                                        | Availability                                                               | Fallback                          |
 | -------------------- | --------------------------------------------------------- | -------------------------------------------------------------------------- | --------------------------------- |
-| `backend`            | Soko/server-reachable inference through a generic adapter | Adapter `canRun` plus execution result                                     | Next compatible binding candidate |
+| `backend`            | Grogoni/server-reachable inference through a generic adapter | Adapter `canRun` plus execution result                                     | Next compatible binding candidate |
 | `browser-local`      | Current authenticated browser only                        | Cached model and ready browser runtime in the current session              | Backend unless `LOCAL_ONLY`       |
-| `installed-app`      | Trusted `window.SokoAgentModelRuntime` bridge             | Bridge, ready assignment, matching model/runtime, and authenticated device | Backend unless `LOCAL_ONLY`       |
+| `installed-app`      | Trusted `window.GrogoniAgentModelRuntime` bridge             | Bridge, ready assignment, matching model/runtime, and authenticated device | Backend unless `LOCAL_ONLY`       |
 | `remote-shop-device` | Authorized same-tenant owner/shop device                  | Existing owner-node presence/heartbeat and model support                   | Next client route or backend      |
 
 Provider names are not execution targets. `backend` can be implemented by the private inference

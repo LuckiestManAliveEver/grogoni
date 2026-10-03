@@ -1,8 +1,8 @@
-alter table businesses add column if not exists soko_id text;
+alter table businesses add column if not exists grogoni_id text;
 
-create unique index if not exists businesses_soko_id_unique_idx
-  on businesses (soko_id)
-  where soko_id is not null;
+create unique index if not exists businesses_grogoni_id_unique_idx
+  on businesses (grogoni_id)
+  where grogoni_id is not null;
 
 create unique index if not exists products_business_sku_unique_idx
   on products (business_id, sku)

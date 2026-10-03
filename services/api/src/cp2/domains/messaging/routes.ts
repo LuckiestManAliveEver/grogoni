@@ -32,7 +32,7 @@ import type {
   MessageHandoffStatus,
   NativeSmsResultCode,
   TrustedMessageAttachmentReference
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { Cp2Error } from "../../cp2-error.js";
 import { type Cp2Store, readSessionCookie } from "../../store.js";
 import { parseRuntimeTurnBody, type RuntimeTurnBody } from "../agent-runtime/routes.js";
@@ -1412,7 +1412,7 @@ export function registerMessagingRoutes(
 
 function isMessageChannel(value: string): value is MessageChannel {
   return [
-    "soko",
+    "grogoni",
     "sms",
     "mms",
     "rcs_business",
@@ -1431,7 +1431,7 @@ function parseChannelProvider(value: unknown): ChannelProvider {
   const provider = parseString(value, "provider");
   if (
     [
-      "soko",
+      "grogoni",
       "telegram",
       "whatsapp",
       "messenger",

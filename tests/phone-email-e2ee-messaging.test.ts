@@ -5,7 +5,7 @@ import type {
   ConversationMessageSummary,
   ConversationView,
   E2eeDeviceSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { buildApi } from "../services/api/src/app";
 import { createPostgresCp2Store } from "../services/api/src/cp2/postgres-store";
 import {
@@ -29,7 +29,7 @@ describe("registered phone and email end-to-end messaging", () => {
         emailNotifications.push(input);
         return "sent" as const;
       },
-      messageWebBaseUrl: "https://soko.market"
+      messageWebBaseUrl: "https://grogoni.com"
     };
     const store =
       databaseUrl === undefined
@@ -114,7 +114,7 @@ describe("registered phone and email end-to-end messaging", () => {
       {
         conversationId: phoneToEmailConversation.conversation.id,
         messageId: phoneToEmailMessage.id,
-        openUrl: `https://soko.market/?conversation=${phoneToEmailConversation.conversation.id}`,
+        openUrl: `https://grogoni.com/?conversation=${phoneToEmailConversation.conversation.id}`,
         to: email
       }
     ]);

@@ -5,7 +5,7 @@ import {
   type RuntimeModelTrace,
   type RuntimeModelProvider,
   type ShopAgentRuntime
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
 import {
   runtimeProviderFromAdapter,

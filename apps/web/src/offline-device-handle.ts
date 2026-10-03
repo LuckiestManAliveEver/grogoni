@@ -1,4 +1,4 @@
-const dbName = "soko-offline-device-handle";
+const dbName = "grogoni-offline-device-handle";
 const storeName = "handles";
 const handleKey = "removable-directory";
 

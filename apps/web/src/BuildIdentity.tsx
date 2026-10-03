@@ -1,6 +1,6 @@
 import { AppIcon } from "./AppIcon";
 
-import { buildIdentity, showBuildIdentity } from "./soko-application-shared";
+import { buildIdentity, showBuildIdentity } from "./grogoni-application-shared";
 
 export function BuildIdentity() {
   if (!showBuildIdentity) {
@@ -19,7 +19,7 @@ export function NativeLaunchScreen({ message }: { message: string }) {
   return (
     <main className="native-launch-screen" aria-busy="true" aria-live="polite">
       <AppIcon className="route-brand-icon" />
-      <h1>Soko.market</h1>
+      <h1>Grogoni</h1>
       <p>{message}</p>
     </main>
   );

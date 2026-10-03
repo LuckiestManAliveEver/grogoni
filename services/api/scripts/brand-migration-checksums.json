@@ -1,0 +1,542 @@
+[
+  {
+    "name": "000_initial.sql",
+    "oldHash": "a26c2812dc5f5be6f8dc99eaeb9dc3a13e2a0d504ac950936c5f3ec985e2b5be",
+    "repositoryHash": "a26c2812dc5f5be6f8dc99eaeb9dc3a13e2a0d504ac950936c5f3ec985e2b5be"
+  },
+  {
+    "name": "001_cp2_auth_business.sql",
+    "oldHash": "f76439bad5b95a40ff14228a452392cce6d6a3754e84393fd2d773e249d20fb3",
+    "repositoryHash": "f76439bad5b95a40ff14228a452392cce6d6a3754e84393fd2d773e249d20fb3"
+  },
+  {
+    "name": "002_cp5_business_core_records.sql",
+    "oldHash": "f058ddfb1ec927dbe68968560a5f500d6741339ee09ceb3b33afa209307c3a83",
+    "repositoryHash": "f058ddfb1ec927dbe68968560a5f500d6741339ee09ceb3b33afa209307c3a83"
+  },
+  {
+    "name": "003_cp6_invoice_inventory.sql",
+    "oldHash": "e49004c0f2a14e7134cdae76c9029778c66dcf059d0864073f8e45bfaaf1b16b",
+    "repositoryHash": "e49004c0f2a14e7134cdae76c9029778c66dcf059d0864073f8e45bfaaf1b16b"
+  },
+  {
+    "name": "004_cp7_offline_sync.sql",
+    "oldHash": "81a651ad36e3909581daa56d56702cfaf745b84af46cabaa2ee31ab2b10dd042",
+    "repositoryHash": "81a651ad36e3909581daa56d56702cfaf745b84af46cabaa2ee31ab2b10dd042"
+  },
+  {
+    "name": "005_cp8_payments_debt.sql",
+    "oldHash": "0b69d1ca6580b08d966b4810b829fd3d9ece9e275373383c05bc501f21b5acd3",
+    "repositoryHash": "0b69d1ca6580b08d966b4810b829fd3d9ece9e275373383c05bc501f21b5acd3"
+  },
+  {
+    "name": "006_cp9_document_import.sql",
+    "oldHash": "d61a11992ec5ef6b2b0c3c186e6a8687ad1761e328e54c19c059acb796482501",
+    "repositoryHash": "d61a11992ec5ef6b2b0c3c186e6a8687ad1761e328e54c19c059acb796482501"
+  },
+  {
+    "name": "007_product_price_fields.sql",
+    "oldHash": "ed114224dfd464a46394cdd9ef02cf331f680d2343d20dcd94f06ef3be2eddfd",
+    "repositoryHash": "ed114224dfd464a46394cdd9ef02cf331f680d2343d20dcd94f06ef3be2eddfd"
+  },
+  {
+    "name": "008_social_auth_oauth.sql",
+    "oldHash": "e798e1fd848b533569d8b8ac66c8831d8a2a2ac8b45c39847a3a9e2b5681da10",
+    "repositoryHash": "e798e1fd848b533569d8b8ac66c8831d8a2a2ac8b45c39847a3a9e2b5681da10"
+  },
+  {
+    "name": "010_cp2_store_snapshots.sql",
+    "oldHash": "9b24f3e98cf1832b964ad7fd07ffb993fa33c93c4a69f5670008f2567558ee03",
+    "repositoryHash": "9b24f3e98cf1832b964ad7fd07ffb993fa33c93c4a69f5670008f2567558ee03"
+  },
+  {
+    "name": "011_cp2_normalized_store.sql",
+    "oldHash": "e5253e166f8b329d4b7a9817442b6cc695f91d01bb9b0ea62c52624da97774c0",
+    "repositoryHash": "e5253e166f8b329d4b7a9817442b6cc695f91d01bb9b0ea62c52624da97774c0"
+  },
+  {
+    "name": "012_production_relational_core.sql",
+    "oldHash": "c5bfe7c2dc1162ac8c2ba98c75ca4ab7b713e233892ca8d4c4b822373d84ba9d",
+    "repositoryHash": "c5bfe7c2dc1162ac8c2ba98c75ca4ab7b713e233892ca8d4c4b822373d84ba9d"
+  },
+  {
+    "name": "013_production_operations_hardening.sql",
+    "oldHash": "68e29645976f9a44629732fd32d164827269be4d3368d02bb7ce88e2272b4e31",
+    "repositoryHash": "68e29645976f9a44629732fd32d164827269be4d3368d02bb7ce88e2272b4e31"
+  },
+  {
+    "name": "014_cp2_phase1_auth_security_relational.sql",
+    "oldHash": "47838eb7fd6e985e8423b5ebdbf4a328507012aed49305667db1b1dd8a238f5d",
+    "repositoryHash": "47838eb7fd6e985e8423b5ebdbf4a328507012aed49305667db1b1dd8a238f5d"
+  },
+  {
+    "name": "015_social_auth_accounts_channels.sql",
+    "oldHash": "93f661db4f1982bd0e450a250083c913dabae7b2a2faf7bc6605e74b9359d7e2",
+    "repositoryHash": "93f661db4f1982bd0e450a250083c913dabae7b2a2faf7bc6605e74b9359d7e2"
+  },
+  {
+    "name": "016_device_trust_actor_type.sql",
+    "oldHash": "70b922a19ec94458464ba763f527ce6001e6799b22aaeeafa10769d810b1abda",
+    "repositoryHash": "70b922a19ec94458464ba763f527ce6001e6799b22aaeeafa10769d810b1abda"
+  },
+  {
+    "name": "017_cp20_unified_session_conversations.sql",
+    "oldHash": "512facb89831d25ea0608dad6d07e8fceb259563b2614cd852bae2c813c65084",
+    "repositoryHash": "512facb89831d25ea0608dad6d07e8fceb259563b2614cd852bae2c813c65084"
+  },
+  {
+    "name": "018_cp21_account_sync_changes.sql",
+    "oldHash": "22522833b72c3bc707c15992b415c8fc523e10fe10cafc0981c1671712458c98",
+    "repositoryHash": "22522833b72c3bc707c15992b415c8fc523e10fe10cafc0981c1671712458c98"
+  },
+  {
+    "name": "019_cp23_mcp_access_tokens.sql",
+    "oldHash": "3acc83196d74875f14b575a02e118dd3b2a291231b2e676d722108fbae93dc1f",
+    "repositoryHash": "3acc83196d74875f14b575a02e118dd3b2a291231b2e676d722108fbae93dc1f"
+  },
+  {
+    "name": "020_marketplace_deletion_models.sql",
+    "oldHash": "129041c26989bc070913e913418c25f92a3153286e6a3f108b5b1fda938323f1",
+    "repositoryHash": "129041c26989bc070913e913418c25f92a3153286e6a3f108b5b1fda938323f1"
+  },
+  {
+    "name": "021_messaging_push_e2ee.sql",
+    "oldHash": "50cd52b32ea45cd4edb7c6f6b7560e5bc47cd828a8695a453dba50c8a2f4683f",
+    "repositoryHash": "50cd52b32ea45cd4edb7c6f6b7560e5bc47cd828a8695a453dba50c8a2f4683f"
+  },
+  {
+    "name": "022_account_deletion_purge.sql",
+    "oldHash": "28f408b3911efaee997299e6c078cd42c428ac183ff3c0cefbc1ae8a63bde745",
+    "repositoryHash": "28f408b3911efaee997299e6c078cd42c428ac183ff3c0cefbc1ae8a63bde745"
+  },
+  {
+    "name": "023_storefront_interaction_contracts.sql",
+    "oldHash": "9ce53399b4611cf82da95950c9273ac03a84401d459fdea86592b101716c685e",
+    "repositoryHash": "9ce53399b4611cf82da95950c9273ac03a84401d459fdea86592b101716c685e"
+  },
+  {
+    "name": "024_agent_profiles.sql",
+    "oldHash": "083d904ec8608ff4383867cd95b649e347e780fcf3d05d738b78da7df4e26323",
+    "repositoryHash": "083d904ec8608ff4383867cd95b649e347e780fcf3d05d738b78da7df4e26323"
+  },
+  {
+    "name": "025_passkeys.sql",
+    "oldHash": "3dcd3683905063e99303cc11b2feee1cf9bb417b283e48ed63cd0d8f049d7ba1",
+    "repositoryHash": "3dcd3683905063e99303cc11b2feee1cf9bb417b283e48ed63cd0d8f049d7ba1"
+  },
+  {
+    "name": "026_otp_recovery_purpose.sql",
+    "oldHash": "e85248adbdea439d23257028658094a296db7bc326b04b2563f50cff83903a01",
+    "repositoryHash": "e85248adbdea439d23257028658094a296db7bc326b04b2563f50cff83903a01"
+  },
+  {
+    "name": "027_product_field_schemas.sql",
+    "oldHash": "141a4b851d4570a6cc40d3ef76c269da528e7608578cfe84534539a60c0a62b0",
+    "repositoryHash": "141a4b851d4570a6cc40d3ef76c269da528e7608578cfe84534539a60c0a62b0"
+  },
+  {
+    "name": "028_data_pipeline_infrastructure.sql",
+    "oldHash": "754ce8bcb8cecd6dece49291ac36268a99c4d8e9fd83c3450c0e66814a36ef37",
+    "repositoryHash": "754ce8bcb8cecd6dece49291ac36268a99c4d8e9fd83c3450c0e66814a36ef37"
+  },
+  {
+    "name": "029_owner_phone_identity.sql",
+    "oldHash": "030490d8a11044672b62d7e8b2abf4ba661e59f7890490a0b9057a244e729263",
+    "repositoryHash": "030490d8a11044672b62d7e8b2abf4ba661e59f7890490a0b9057a244e729263"
+  },
+  {
+    "name": "030_phone_pin_recovery_code.sql",
+    "oldHash": "a6ffa3846a13bcddfee472a06349a551fb425a86a67672125a6873948fd357d4",
+    "repositoryHash": "a6ffa3846a13bcddfee472a06349a551fb425a86a67672125a6873948fd357d4"
+  },
+  {
+    "name": "031_message_delivery_state.sql",
+    "oldHash": "7fa6f107890e4eb6d62c641a5f2f5b4beefe17cceabbeb502f5f427c0bd65e77",
+    "repositoryHash": "7fa6f107890e4eb6d62c641a5f2f5b4beefe17cceabbeb502f5f427c0bd65e77"
+  },
+  {
+    "name": "032_account_sync_collection_constraint.sql",
+    "oldHash": "684a9237139f7b4b961126ba09547d9a9ed9585432a6449c68073db7115df962",
+    "repositoryHash": "684a9237139f7b4b961126ba09547d9a9ed9585432a6449c68073db7115df962"
+  },
+  {
+    "name": "033_database_pipeline_cleanup.sql",
+    "oldHash": "1cc2bc93a715318c625170d3057bdf11a4cdb0fdc800cc8e2d4aa3697d60f806",
+    "repositoryHash": "1cc2bc93a715318c625170d3057bdf11a4cdb0fdc800cc8e2d4aa3697d60f806"
+  },
+  {
+    "name": "034_account_sync_constraint_repair.sql",
+    "oldHash": "5650fe0f5b8c7b86e41abad7d823d01cddb4881189cfb7b82bbe2cc34ea5bcea",
+    "repositoryHash": "5650fe0f5b8c7b86e41abad7d823d01cddb4881189cfb7b82bbe2cc34ea5bcea"
+  },
+  {
+    "name": "035_agent_model_assignments.sql",
+    "oldHash": "0a2597d76c77a2dde526b173b1d44219760627ee466ace1daa6d6939b599b728",
+    "repositoryHash": "0a2597d76c77a2dde526b173b1d44219760627ee466ace1daa6d6939b599b728"
+  },
+  {
+    "name": "036_native_device_sessions.sql",
+    "oldHash": "98f562c86bc2e924ee1e4061f7ec2ee8e33df6e4a3b5aacecdeb6be572f8d89e",
+    "repositoryHash": "98f562c86bc2e924ee1e4061f7ec2ee8e33df6e4a3b5aacecdeb6be572f8d89e"
+  },
+  {
+    "name": "037_legacy_session_writer_compatibility.sql",
+    "oldHash": "2e56412e1b447cf60839a4eea6c05a609f0c6f78bbe21c59be4cce3baad946a9",
+    "repositoryHash": "2e56412e1b447cf60839a4eea6c05a609f0c6f78bbe21c59be4cce3baad946a9"
+  },
+  {
+    "name": "038_auth_retention_policy.sql",
+    "oldHash": "45a84fa5e72e849d08b593251b0972ec4ee3fd2132d68d1ebbaa30705af3537e",
+    "repositoryHash": "45a84fa5e72e849d08b593251b0972ec4ee3fd2132d68d1ebbaa30705af3537e"
+  },
+  {
+    "name": "039_agent_business_runtime.sql",
+    "oldHash": "94ea5ef598a79d9a0a421b8f629d86ff0541d8817c0731a54c52525bbada6e4f",
+    "repositoryHash": "94ea5ef598a79d9a0a421b8f629d86ff0541d8817c0731a54c52525bbada6e4f"
+  },
+  {
+    "name": "040_agent_model_runtime_bindings.sql",
+    "oldHash": "d1cc45e6fc2dccb9ef149164df05a6d8f2cffb2982e44ec219b8cfee5898d21e",
+    "repositoryHash": "d1cc45e6fc2dccb9ef149164df05a6d8f2cffb2982e44ec219b8cfee5898d21e"
+  },
+  {
+    "name": "041_browser_inference_assignments.sql",
+    "oldHash": "af5244332dc07e60a1a582b0b383c678c4335f9e5cabb75c075bac77924fc536",
+    "repositoryHash": "af5244332dc07e60a1a582b0b383c678c4335f9e5cabb75c075bac77924fc536"
+  },
+  {
+    "name": "042_phone_first_authentication.sql",
+    "oldHash": "a336e713d91e3275f05ecea89483f4150a3679209196f801adf346d638900b9f",
+    "repositoryHash": "a336e713d91e3275f05ecea89483f4150a3679209196f801adf346d638900b9f"
+  },
+  {
+    "name": "043_legacy_session_hashes.sql",
+    "oldHash": "c6c92a887c1a13fcbe0189a2a8ecb9fcfdbec6997a7901048729071bcdaa31d2",
+    "repositoryHash": "c6c92a887c1a13fcbe0189a2a8ecb9fcfdbec6997a7901048729071bcdaa31d2"
+  },
+  {
+    "name": "044_self_hosted_phone_verification.sql",
+    "oldHash": "10947537351a4681f6d5064852091f1d66e4fa9d1c6d3c99da53f492eadbd283",
+    "repositoryHash": "10947537351a4681f6d5064852091f1d66e4fa9d1c6d3c99da53f492eadbd283"
+  },
+  {
+    "name": "045_persistent_passwordless_sessions.sql",
+    "oldHash": "7b46309c79b5bd4416302ecf2b0805274ac49cf595d1fd7d08d71095560f8970",
+    "repositoryHash": "7b46309c79b5bd4416302ecf2b0805274ac49cf595d1fd7d08d71095560f8970"
+  },
+  {
+    "name": "046_disable_sms_verification.sql",
+    "oldHash": "21abf35db9897875853102f4278ac7db079e920a58eaf5a05777c5dfad22f232",
+    "repositoryHash": "21abf35db9897875853102f4278ac7db079e920a58eaf5a05777c5dfad22f232"
+  },
+  {
+    "name": "047_remove_phone_pin_recovery_codes.sql",
+    "oldHash": "90aa5216d3d984be6c6ac602f9cb51e4bcdb753e43c5959b04bc645a130bd169",
+    "repositoryHash": "90aa5216d3d984be6c6ac602f9cb51e4bcdb753e43c5959b04bc645a130bd169"
+  },
+  {
+    "name": "048_product_catalogue_aliases.sql",
+    "oldHash": "b5adfcbf33cc558b6943e6de9f4db5ad868cdaa616b7144b3311028f0587a649",
+    "repositoryHash": "b5adfcbf33cc558b6943e6de9f4db5ad868cdaa616b7144b3311028f0587a649"
+  },
+  {
+    "name": "049_platform_chat_commerce_foundation.sql",
+    "oldHash": "2aed5886642cef5d13f9d53759f76c1d3e6074246df6536c06993069d46e2914",
+    "repositoryHash": "2aed5886642cef5d13f9d53759f76c1d3e6074246df6536c06993069d46e2914"
+  },
+  {
+    "name": "050_progressive_device_identity.sql",
+    "oldHash": "4d45d809fcdad392663128bfcb6b9a0698c6521278ca2d6efdec4c37d4e1e2ee",
+    "repositoryHash": "4d45d809fcdad392663128bfcb6b9a0698c6521278ca2d6efdec4c37d4e1e2ee"
+  },
+  {
+    "name": "051_single_identity_single_store.sql",
+    "oldHash": "85528c81d3b4b8514cb1ae932963c867fd26c42e7884fabf69a71b90876f1367",
+    "repositoryHash": "85528c81d3b4b8514cb1ae932963c867fd26c42e7884fabf69a71b90876f1367"
+  },
+  {
+    "name": "052_account_scoped_session_context.sql",
+    "oldHash": "3d75d2c94576f2c6fa9148c5becac0b7766857b404bff75426bbd7670a2342c1",
+    "repositoryHash": "3d75d2c94576f2c6fa9148c5becac0b7766857b404bff75426bbd7670a2342c1"
+  },
+  {
+    "name": "053_omnichannel_messaging_gateway.sql",
+    "oldHash": "75e132c1b331a4b17851f91812de4119c5d8aa7e086862cb226cd4026f9ebbbf",
+    "repositoryHash": "75e132c1b331a4b17851f91812de4119c5d8aa7e086862cb226cd4026f9ebbbf"
+  },
+  {
+    "name": "054_android_native_sms_channel.sql",
+    "oldHash": "298e8ad69411f52f4d4b7736ec481bf83255da6d4a946ea9ebe773264b3a06d4",
+    "repositoryHash": "298e8ad69411f52f4d4b7736ec481bf83255da6d4a946ea9ebe773264b3a06d4"
+  },
+  {
+    "name": "055_connected_email_channel.sql",
+    "oldHash": "3bc73e9b8c4dfdd7791678d7b6528a66abcdece526e82d89e7d74e51e9088963",
+    "repositoryHash": "3bc73e9b8c4dfdd7791678d7b6528a66abcdece526e82d89e7d74e51e9088963"
+  },
+  {
+    "name": "056_status_broadcasts.sql",
+    "oldHash": "17cc9657d9bd8aab6303265abaa1de9c437463d7fcf4534431ee042f0bf55575",
+    "repositoryHash": "17cc9657d9bd8aab6303265abaa1de9c437463d7fcf4534431ee042f0bf55575"
+  },
+  {
+    "name": "057_buy_checkout.sql",
+    "oldHash": "c73deaa0f506364e3ad4007bc5a5e4cedab0f2ea4687d94c900880482beca5fe",
+    "repositoryHash": "c73deaa0f506364e3ad4007bc5a5e4cedab0f2ea4687d94c900880482beca5fe"
+  },
+  {
+    "name": "058_workspace_conversation_attachments.sql",
+    "oldHash": "51588b62d0c50326ff49baa7c38de1b2d66fef10ccab9cfac7c4160d8400d2ea",
+    "repositoryHash": "51588b62d0c50326ff49baa7c38de1b2d66fef10ccab9cfac7c4160d8400d2ea"
+  },
+  {
+    "name": "059_conversation_attachment_blob_storage.sql",
+    "oldHash": "6761faf4a1186abcf901579892e22c9385a36a77dbbc5e16df3bbee17f5455cb",
+    "repositoryHash": "6761faf4a1186abcf901579892e22c9385a36a77dbbc5e16df3bbee17f5455cb"
+  },
+  {
+    "name": "060_execution_fabric_entities.sql",
+    "oldHash": "71191d73613ec217358fc2b7b312619e1798277816ba4e425b8ca8acbf478cfc",
+    "repositoryHash": "71191d73613ec217358fc2b7b312619e1798277816ba4e425b8ca8acbf478cfc"
+  },
+  {
+    "name": "061_mcp_integration_principal.sql",
+    "oldHash": "12520ffe1cc4458df981087c38f595f7c53d1c8a8bc8c4a056f30f101f3aadcf",
+    "repositoryHash": "12520ffe1cc4458df981087c38f595f7c53d1c8a8bc8c4a056f30f101f3aadcf"
+  },
+  {
+    "name": "062_grogoni_id_history.sql",
+    "oldHash": "b6366cde8f13853f60f184c400de70d9ffe0c07ae62384586a6f2892b603e899",
+    "repositoryHash": "b6366cde8f13853f60f184c400de70d9ffe0c07ae62384586a6f2892b603e899"
+  },
+  {
+    "name": "063_native_runtime_bindings.sql",
+    "oldHash": "0d5608ad40f8dfbb9509dac9dedbcb8ad95ffe21549583b329426117a0ba2953",
+    "repositoryHash": "0d5608ad40f8dfbb9509dac9dedbcb8ad95ffe21549583b329426117a0ba2953"
+  },
+  {
+    "name": "064_drop_redundant_users_account_index.sql",
+    "oldHash": "67925977a9c00f490fc1bf5faba320a61ef15d385a184a3710f8ee6f1f3b500f",
+    "repositoryHash": "67925977a9c00f490fc1bf5faba320a61ef15d385a184a3710f8ee6f1f3b500f"
+  },
+  {
+    "name": "065_retire_execution_fabric.sql",
+    "oldHash": "6a5f2bfb3e82052d1adda7d2450f9176eec4f69ebae215f841ff4c0b03cf108f",
+    "repositoryHash": "6a5f2bfb3e82052d1adda7d2450f9176eec4f69ebae215f841ff4c0b03cf108f"
+  },
+  {
+    "name": "066_account_ai_assets.sql",
+    "oldHash": "511c5bf5d5d349a5595b38b1fbab0383862dfa7ae55d8d7c6553a98c027aa710",
+    "repositoryHash": "511c5bf5d5d349a5595b38b1fbab0383862dfa7ae55d8d7c6553a98c027aa710"
+  },
+  {
+    "name": "067_provider_agnostic_runtime_default.sql",
+    "oldHash": "5de588ac900d936f259c70b6f3a2ba9fa6a42368a363598b2a50e95f87bb5c1e",
+    "repositoryHash": "5de588ac900d936f259c70b6f3a2ba9fa6a42368a363598b2a50e95f87bb5c1e"
+  },
+  {
+    "name": "068_remove_cloud_fallback.sql",
+    "oldHash": "f485aa7a8435b0aa6ccbcd620c9dfe9b2e94b78ab53061ea89466f03093cbb6a",
+    "repositoryHash": "f485aa7a8435b0aa6ccbcd620c9dfe9b2e94b78ab53061ea89466f03093cbb6a"
+  },
+  {
+    "name": "069_provider_neutral_execution_targets.sql",
+    "oldHash": "617562cfa6b1521a414d783dde18efcb7fbd292c3b33b40dc882360c1d0f3556",
+    "repositoryHash": "617562cfa6b1521a414d783dde18efcb7fbd292c3b33b40dc882360c1d0f3556"
+  },
+  {
+    "name": "070_zero_setup_runtime_defaults.sql",
+    "oldHash": "3d4cc435e183a9f32d27a2e9b5190397587d4fc2739f42203dcd7617e1c945bc",
+    "repositoryHash": "3d4cc435e183a9f32d27a2e9b5190397587d4fc2739f42203dcd7617e1c945bc"
+  },
+  {
+    "name": "071_platform_catalog.sql",
+    "oldHash": "a70e8b7d20fe688371de90bf1ed7857c8a5cf530c3cad8dd73a28791e124df44",
+    "repositoryHash": "a70e8b7d20fe688371de90bf1ed7857c8a5cf530c3cad8dd73a28791e124df44"
+  },
+  {
+    "name": "072_pi_smollm_default_runtime.sql",
+    "oldHash": "04955b2b4c84ff672d41eace8996370a742d323a654412a5d536be2e9bb7b2eb",
+    "repositoryHash": "04955b2b4c84ff672d41eace8996370a742d323a654412a5d536be2e9bb7b2eb"
+  },
+  {
+    "name": "073_external_registry_connections.sql",
+    "oldHash": "fd43315bd55fd527c69e017558668b17f6c8c8e54264a0ee127441d351cf4a4c",
+    "repositoryHash": "fd43315bd55fd527c69e017558668b17f6c8c8e54264a0ee127441d351cf4a4c"
+  },
+  {
+    "name": "074_runtime_registry_imports.sql",
+    "oldHash": "6018a503886eabc922a1094d9bf9775a5091f9e5e370739d4a696bea98db167f",
+    "repositoryHash": "6018a503886eabc922a1094d9bf9775a5091f9e5e370739d4a696bea98db167f"
+  },
+  {
+    "name": "075_drop_dead_runtime_assignment_tables.sql",
+    "oldHash": "0d12335fd3d3bc15f7ddde23431c83d37fbf031a557c212a8760c0471ae1c1ea",
+    "repositoryHash": "0d12335fd3d3bc15f7ddde23431c83d37fbf031a557c212a8760c0471ae1c1ea"
+  },
+  {
+    "name": "076_drop_legacy_agent_model_bindings.sql",
+    "oldHash": "dc5ab01553a4640ea3a069b558dd0f77ca8536eeb038754ee887570d1241fd99",
+    "repositoryHash": "dc5ab01553a4640ea3a069b558dd0f77ca8536eeb038754ee887570d1241fd99"
+  },
+  {
+    "name": "077_materialize_platform_default_runtime.sql",
+    "oldHash": "570861082a1c2cce6604f03927050474e138870234129c5d9d5c42a0a5a596e1",
+    "repositoryHash": "570861082a1c2cce6604f03927050474e138870234129c5d9d5c42a0a5a596e1"
+  },
+  {
+    "name": "078_commercial_history.sql",
+    "oldHash": "816167a07c879c904bd3889d5be1ca2918d3aa993956d81654c849392dcf7c08",
+    "repositoryHash": "816167a07c879c904bd3889d5be1ca2918d3aa993956d81654c849392dcf7c08"
+  },
+  {
+    "name": "079_vercel_inference_artifacts.sql",
+    "oldHash": "e7a122b644d726e77c432dd04eb19731c9a93c791b0b5d2e3a5d255658e99b88",
+    "repositoryHash": "e7a122b644d726e77c432dd04eb19731c9a93c791b0b5d2e3a5d255658e99b88"
+  },
+  {
+    "name": "080_correct_smollm2_artifact_size.sql",
+    "oldHash": "f1dd59b4550228a46a1af123cf5e2fdc0d8633c9f019a375fd716bd699a904e5",
+    "repositoryHash": "f1dd59b4550228a46a1af123cf5e2fdc0d8633c9f019a375fd716bd699a904e5"
+  },
+  {
+    "name": "081_model_template_expertise_flywheel.sql",
+    "oldHash": "63c29ed409edd93afa54f1b195495e5a69d7bec0888b1638ac54e76ae8039477",
+    "repositoryHash": "63c29ed409edd93afa54f1b195495e5a69d7bec0888b1638ac54e76ae8039477"
+  },
+  {
+    "name": "082_offline_runtime.sql",
+    "oldHash": "0649494682b47e36f5783e3a909b21adc036f12adfe82f81f82cbac99f3bf61c",
+    "repositoryHash": "0649494682b47e36f5783e3a909b21adc036f12adfe82f81f82cbac99f3bf61c"
+  },
+  {
+    "name": "083_runtime_handoff_protocol.sql",
+    "oldHash": "d2207f4e4be58e9458766074e50bcc5d1fcff34f5f4f1cdd9147d3de34468841",
+    "repositoryHash": "d2207f4e4be58e9458766074e50bcc5d1fcff34f5f4f1cdd9147d3de34468841"
+  },
+  {
+    "name": "084_runtime_handoff_created_at_index.sql",
+    "oldHash": "2859e2f95c2bb1b63a8f3d100d15d205434d827439e4d615b299c6e1d57e0ff2",
+    "repositoryHash": "2859e2f95c2bb1b63a8f3d100d15d205434d827439e4d615b299c6e1d57e0ff2"
+  },
+  {
+    "name": "085_runtime_transfers.sql",
+    "oldHash": "6d3e6fc7a863639e066e98f310d88b48b9062600dd45b89de25fcb86bfe3ab11",
+    "repositoryHash": "6d3e6fc7a863639e066e98f310d88b48b9062600dd45b89de25fcb86bfe3ab11"
+  },
+  {
+    "name": "086_vocabulary_canonicalization.sql",
+    "oldHash": "baaf17f1141fe48ce2d78fe63134e92aec8bf6836daca5fece86c90f65fd451f",
+    "repositoryHash": "baaf17f1141fe48ce2d78fe63134e92aec8bf6836daca5fece86c90f65fd451f"
+  },
+  {
+    "name": "087_computer_runtime.sql",
+    "oldHash": "1ab313177a44fcb0821d8ad36a3f3c972dfb32ce12ee9ba81fd40c166ce1131e",
+    "repositoryHash": "1ab313177a44fcb0821d8ad36a3f3c972dfb32ce12ee9ba81fd40c166ce1131e"
+  },
+  {
+    "name": "087_runtime_execution_events.sql",
+    "oldHash": "b25f5284554af32364a052feb292862c5fcdc3df19da4bd010866b2f74d124c8",
+    "repositoryHash": "b25f5284554af32364a052feb292862c5fcdc3df19da4bd010866b2f74d124c8"
+  },
+  {
+    "name": "088_identity_candidates.sql",
+    "oldHash": "13a06cce412ba021e258f5e80a6d138b52c71643543910c1d78ac7173d050f1a",
+    "repositoryHash": "13a06cce412ba021e258f5e80a6d138b52c71643543910c1d78ac7173d050f1a"
+  },
+  {
+    "name": "088_runtime_experiences.sql",
+    "oldHash": "f6151381697cbccb1f53af7b24b2fe783d7d2ab42a9ee38976ab4550e9f6102c",
+    "repositoryHash": "f6151381697cbccb1f53af7b24b2fe783d7d2ab42a9ee38976ab4550e9f6102c"
+  },
+  {
+    "name": "089_fulfillment_weight_timezone.sql",
+    "oldHash": "9fe36e6911abb4d8efb3371dc616f74c85e0ff64a0401fae02b7f06bd9aade0e",
+    "repositoryHash": "9fe36e6911abb4d8efb3371dc616f74c85e0ff64a0401fae02b7f06bd9aade0e"
+  },
+  {
+    "name": "090_fulfillment_foundation.sql",
+    "oldHash": "14885852e563a95d967fa7ae1cdfcb52df9be2f39c3ecc8cbc54486925cc86e1",
+    "repositoryHash": "14885852e563a95d967fa7ae1cdfcb52df9be2f39c3ecc8cbc54486925cc86e1"
+  },
+  {
+    "name": "091_fulfillment_corridors.sql",
+    "oldHash": "1aca43b8d55ca2c0c43b32e5c5f49f4e7d9b5711bb7c910ab24dad1dd735beec",
+    "repositoryHash": "1aca43b8d55ca2c0c43b32e5c5f49f4e7d9b5711bb7c910ab24dad1dd735beec"
+  },
+  {
+    "name": "092_fulfillment_orders_resolutions.sql",
+    "oldHash": "19c628d691bc4c8fa8411be23a3b5668f91a5b30373d8ef335b73402a57e1132",
+    "repositoryHash": "19c628d691bc4c8fa8411be23a3b5668f91a5b30373d8ef335b73402a57e1132"
+  },
+  {
+    "name": "093_fulfillment_order_intake.sql",
+    "oldHash": "4292c4728adfb792e477d84a46730c51add63319e7226fe78af52f0e59085dd6",
+    "repositoryHash": "4292c4728adfb792e477d84a46730c51add63319e7226fe78af52f0e59085dd6"
+  },
+  {
+    "name": "094_fulfillment_manifests.sql",
+    "oldHash": "ebe23484f8cff13de8de0fac35d59adc01157b03a0efc2dda40570a726bf2c37",
+    "repositoryHash": "ebe23484f8cff13de8de0fac35d59adc01157b03a0efc2dda40570a726bf2c37"
+  },
+  {
+    "name": "095_drop_harness_runtime_kind.sql",
+    "oldHash": "f5976fedc410429b913389f0810cbeb20091edd1fed68f3c916e40cc3d0e1029",
+    "repositoryHash": "f5976fedc410429b913389f0810cbeb20091edd1fed68f3c916e40cc3d0e1029"
+  },
+  {
+    "name": "096_agent_definition_runtime_adapter.sql",
+    "oldHash": "d3dd6a9370053a34524d56d608246610c111409987b3d6502e960f58ff09b254",
+    "repositoryHash": "d3dd6a9370053a34524d56d608246610c111409987b3d6502e960f58ff09b254"
+  },
+  {
+    "name": "097_external_connection_inference_authorization.sql",
+    "oldHash": "179a819ea0bcf6b4e3627a0c56ee99a2fa5c548931ddc7c6fa23931cd23ba368",
+    "repositoryHash": "179a819ea0bcf6b4e3627a0c56ee99a2fa5c548931ddc7c6fa23931cd23ba368"
+  },
+  {
+    "name": "098_fulfillment_dispatch_automation.sql",
+    "oldHash": "2abd13042e82725eee6dfdefe721af9b6b91ecef641574a8f9b11626ee2fa638",
+    "repositoryHash": "2abd13042e82725eee6dfdefe721af9b6b91ecef641574a8f9b11626ee2fa638"
+  },
+  {
+    "name": "099_staff_invitations.sql",
+    "oldHash": "812f7c8d3a77dd119812da66aa95643dfaf2e1a3b7f3e5bac0972b062774363d",
+    "repositoryHash": "812f7c8d3a77dd119812da66aa95643dfaf2e1a3b7f3e5bac0972b062774363d"
+  },
+  {
+    "name": "100_fulfillment_manifest_driver.sql",
+    "oldHash": "9086264af7494fee222df3592f0e47b8bf6c12898ef54aa364a9c04133805690",
+    "repositoryHash": "9086264af7494fee222df3592f0e47b8bf6c12898ef54aa364a9c04133805690"
+  },
+  {
+    "name": "101_multi_provider_inference.sql",
+    "oldHash": "65851821c104254eb71defd6b1a80904c60a61be8a4cbf36ed649ef06ccbae90",
+    "repositoryHash": "65851821c104254eb71defd6b1a80904c60a61be8a4cbf36ed649ef06ccbae90"
+  },
+  {
+    "name": "102_inference_catalog_seeds.sql",
+    "oldHash": "4f6571c58e3ee2b7a7adad78c24fff78cb537e3a16ff10779dceabd88c5295bd",
+    "repositoryHash": "4f6571c58e3ee2b7a7adad78c24fff78cb537e3a16ff10779dceabd88c5295bd"
+  },
+  {
+    "name": "103_shopkeeper_zeroclaw_default.sql",
+    "oldHash": "ec222c06414502d567cc9e6e924adc4c5a50fe356aae5b5eb1c1eb52d2c38b3e",
+    "repositoryHash": "ec222c06414502d567cc9e6e924adc4c5a50fe356aae5b5eb1c1eb52d2c38b3e"
+  },
+  {
+    "name": "104_openai_primary_vercel_fallback.sql",
+    "oldHash": "4061e0228d939f98794446dfabafea456565685dffb8e1234d4687657e80fdf5",
+    "repositoryHash": "4061e0228d939f98794446dfabafea456565685dffb8e1234d4687657e80fdf5"
+  },
+  {
+    "name": "105_network_connections.sql",
+    "oldHash": "92a34d8f6187b6aedddbae359783fe9e8cb8664513720836ac276e9d5b0084f7",
+    "repositoryHash": "92a34d8f6187b6aedddbae359783fe9e8cb8664513720836ac276e9d5b0084f7"
+  },
+  {
+    "name": "106_session_retention_uses_refresh_lifetime.sql",
+    "oldHash": "75af82a48af532ba8137e9d3e9b7eaa19552ba6f3be94efdf39a6ffa4d4b4a2c",
+    "repositoryHash": "75af82a48af532ba8137e9d3e9b7eaa19552ba6f3be94efdf39a6ffa4d4b4a2c"
+  }
+]

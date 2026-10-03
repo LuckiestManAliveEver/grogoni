@@ -7,7 +7,7 @@
 
 ## Purpose
 
-Continuously look for relevant, durable information that can improve the Soko agent's understanding
+Continuously look for relevant, durable information that can improve the Grogoni agent's understanding
 of the active shop. Use the interaction to identify missing context, ask focused follow-up questions,
 and propose additions or corrections to that shop's context files.
 

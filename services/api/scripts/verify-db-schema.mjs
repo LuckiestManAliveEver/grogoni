@@ -220,7 +220,7 @@ const expectedMigrations = new Map(
 );
 const pool = new Pool(
   databasePoolConfig(databaseUrl, {
-    applicationName: "soko-market-verify-schema",
+    applicationName: "grogoni-verify-schema",
     max: 1
   })
 );
@@ -233,7 +233,7 @@ try {
   `);
   for (const [filename, expectedChecksum] of expectedMigrations) {
     const migration = await client.query(
-      `select checksum from soko_schema_migrations where filename = $1`,
+      `select checksum from grogoni_schema_migrations where filename = $1`,
       [filename]
     );
     if (!isAcceptedMigrationChecksum(filename, migration.rows[0]?.checksum, expectedChecksum)) {
@@ -503,7 +503,7 @@ try {
     );
   }
 
-  // Provider-neutral: no model vendor is required for Soko to boot (docs/architecture/
+  // Provider-neutral: no model vendor is required for Grogoni to boot (docs/architecture/
   // provider-neutral-runtime.md). The global default runtime binding is a valid, structurally
   // sound state whether or not a model has been assigned yet ("draft") or one has ("active" with
   // exactly one enabled primary role, matching the check_native_runtime_binding_primary trigger's

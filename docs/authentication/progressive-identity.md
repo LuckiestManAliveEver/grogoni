@@ -2,7 +2,7 @@
 
 ## Existing architecture
 
-Soko already owned its authentication stack in `services/api/src/cp2`: server-generated account and
+Grogoni already owned its authentication stack in `services/api/src/cp2`: server-generated account and
 user UUIDs, HTTP-only access and rotating refresh cookies, device session metadata, PIN and passkey
 credentials, OAuth/email identities, account deletion, and PostgreSQL snapshot/relational
 persistence. The web shell restored `/auth/bootstrap`, silently rotated through
@@ -19,11 +19,11 @@ system was unnecessary.
 
 ```text
 Fresh install
-→ Continue to Soko
+→ Continue to Grogoni
 → POST /auth/continue
 → server-created account + user + secure session
-→ personal Soko conversation/context
-→ Soko chat
+→ personal Grogoni conversation/context
+→ Grogoni chat
 ```
 
 The entry component contains no phone, email, username, PIN, password, OTP, profile, business, or
@@ -72,7 +72,7 @@ device account
 The existing owner-phone UI and E.164 server normalization are reused. A selected country plus a
 number that already contains its calling code normalizes correctly rather than duplicating the
 code. Phone and email linking check both canonical and identity indexes before writing. If the
-normalized identity belongs to another account, Soko requires proof of control before joining the
+normalized identity belongs to another account, Grogoni requires proof of control before joining the
 graphs: the existing account's PIN for a phone collision, or an OTP sent to the existing email for
 an email collision. The established account stays canonical while the device account's
 conversations, shops, catalogue, runtime state, and recovery credentials move to it. No identity is
@@ -92,13 +92,13 @@ and user identity from the secure session cookie, never a supplied account ID. P
 already asks for PIN verification only when an account actually has a PIN, so chat, session context,
 catalogue/store exploration, and other permitted account routes work immediately.
 
-The first session creates the existing personal Soko conversation and session context with the
-account-level Soko agent. Business creation retains its contextual owner-phone requirement; the
+The first session creates the existing personal Grogoni conversation and session context with the
+account-level Grogoni agent. Business creation retains its contextual owner-phone requirement; the
 initial chat experience does not. Contacts, camera, microphone, notifications, and storage
 permissions remain feature-triggered and are not requested by onboarding.
 
 At Continue time, the browser generates a P-256 signing key. It stores the re-imported,
-non-exportable private `CryptoKey` in IndexedDB and sends only the public JWK to Soko. If cookies are
+non-exportable private `CryptoKey` in IndexedDB and sends only the public JWK to Grogoni. If cookies are
 erased but that site storage remains, startup signs a short-lived nonce and recovers the same
 account before showing onboarding. The server verifies the signature, timestamp, credential status,
 and replay state before issuing a new rotating session. This is device-bound recovery, not

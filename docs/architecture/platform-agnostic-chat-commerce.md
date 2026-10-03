@@ -2,13 +2,13 @@
 
 ## Target architecture
 
-Soko owns catalogue, inventory, price, business identity, authorization, conversations, orders,
+Grogoni owns catalogue, inventory, price, business identity, authorization, conversations, orders,
 payments, and customer relationship state. External providers are replaceable transports.
 
 ```mermaid
 flowchart LR
-  Camera --> Catalogue[Canonical Soko catalogue]
-  Native[Native Soko] --> Conversation[Canonical conversation]
+  Camera --> Catalogue[Canonical Grogoni catalogue]
+  Native[Native Grogoni] --> Conversation[Canonical conversation]
   Telegram[Telegram adapter] --> Conversation
   Catalogue --> Conversation
   Conversation --> Runtime[Customer-safe agent runtime]
@@ -51,7 +51,7 @@ Two existing gateway surfaces delegate to the same service:
 
 - Runtime: `products.list` with optional `{ query }`. Omitting `query` preserves the existing full
   seller catalogue list behavior.
-- MCP: `soko.query_catalogue` with `{ shopId, query, limit? }`, available to `mcp:read` principals.
+- MCP: `grogoni.query_catalogue` with `{ shopId, query, limit? }`, available to `mcp:read` principals.
   A shop-bound token cannot query another shop even when its caller supplies another `shopId`.
 
 The structured result uses `CatalogueQueryResult` / `CatalogueProductSummary`. It contains selling
@@ -61,7 +61,7 @@ not retained a canonical image.
 
 ## Customer-safe commerce principal
 
-`POST /public/storefronts/:agentId/sessions` creates or resolves a business-scoped Soko platform
+`POST /public/storefronts/:agentId/sessions` creates or resolves a business-scoped Grogoni platform
 identity and canonical storefront conversation. It returns an opaque, expiring capability token;
 only the SHA-256 token hash is persisted. The capability is bound to one business, conversation,
 and external identity and cannot cross shops.
@@ -102,7 +102,7 @@ The channel foundation represents:
 
 - a canonical conversation;
 - a business-scoped provider conversation mapping;
-- a provider identity separate from a Soko account identity;
+- a provider identity separate from a Grogoni account identity;
 - a durable provider update receipt for idempotency;
 - an outbound delivery attempt rendered at the adapter boundary.
 
@@ -113,7 +113,7 @@ receipt/message. Outbound messages can select a configured provider channel and 
 delivery-attempt state; until an adapter is installed they remain queued with
 `provider_adapter_unconfigured`.
 
-The provider identity has a nullable Soko account link and provider onboarding leaves it null.
+The provider identity has a nullable Grogoni account link and provider onboarding leaves it null.
 Display name, username, Telegram user ID, or provider-claimed phone number never creates that link.
 
 ## Telegram shared-bot model (gated target)
@@ -125,7 +125,7 @@ is not assigned to any business.
 
 Inbound updates must validate Telegram's webhook secret, durably deduplicate `(provider,
 external_update_id)`, normalize into canonical messages, and call the same customer runtime as
-native Soko. Outbound rendering resolves the conversation channel and converts canonical text or
+native Grogoni. Outbound rendering resolves the conversation channel and converts canonical text or
 product cards into Telegram-supported media, text, and inline actions. Provider outages update
 delivery state but never block native commerce.
 

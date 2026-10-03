@@ -2,7 +2,7 @@
 
 ## The production failure this fixes
 
-A user leaves a Soko.market tab open across a deployment. Session storage still says
+A user leaves a Grogoni tab open across a deployment. Session storage still says
 "Session active". They open Account and Agent Settings and see:
 
 > Account and agent settings could not open.
@@ -39,8 +39,8 @@ lazy(() => loadLazyModuleWithRecovery(moduleKey, () => import("./Module")))
 
 `loadLazyModuleWithRecovery` wraps the dynamic `import()`. `LazyModuleErrorBoundary` is the single
 error boundary every such `<Suspense>` renders inside (`apps/web/src/AppRouter.tsx` for the app
-shell/legal/storefront routes, `apps/web/src/SokoApplication.tsx` for Account and Agent Settings and
-its nested panels via `apps/web/src/soko-application-shared.ts`).
+shell/legal/storefront routes, `apps/web/src/GrogoniApplication.tsx` for Account and Agent Settings and
+its nested panels via `apps/web/src/grogoni-application-shared.ts`).
 
 ### 1. Recognizing a stale-build failure
 
@@ -60,9 +60,9 @@ user sees the boundary's fallback UI and can retry once they're back online.
 
 ### 3. The reload-loop guard (build/version + timestamp + attempt count)
 
-A short-lived marker (`sessionStorage["soko.deployment-recovery.v1"]`) records
+A short-lived marker (`sessionStorage["grogoni.deployment-recovery.v1"]`) records
 `{ buildId, attempts, firstAttemptAt }`, where `buildId` is the tab's compiled-in
-`__GIT_COMMIT_SHA__` (see `apps/web/src/soko-application-shared.ts`'s `buildIdentity.commitSha`).
+`__GIT_COMMIT_SHA__` (see `apps/web/src/grogoni-application-shared.ts`'s `buildIdentity.commitSha`).
 On a confirmed stale-build failure:
 
 - No marker, or the marker belongs to a _different_ build, or the marker is older than 5 minutes
@@ -101,21 +101,21 @@ recovery. This is a single fetch on boot, not a poll.
 Before calling `reload()`, the recovery path always, in order:
 
 1. **Flushes recoverable client state.** `registerPreReloadFlush` lets any part of the app that
-   owns recoverable state register a synchronous flush callback. `SokoApplication` registers one
+   owns recoverable state register a synchronous flush callback. `GrogoniApplication` registers one
    that writes the active conversation id, runtime session id, chat draft (unsent composer text),
    and recent chat messages to `sessionStorage` via `owner-navigation-session.ts` -
    _synchronously_, not the normal 180ms-debounced write, since the reload can fire before that
    debounce would have flushed on its own.
-2. **Marks the panel to reopen.** `sessionStorage["soko.lazy-module-recovery.v1.<moduleKey>"]` is
-   set to `"pending"`. `SokoApplication`'s initial `view` state checks this for every
+2. **Marks the panel to reopen.** `sessionStorage["grogoni.lazy-module-recovery.v1.<moduleKey>"]` is
+   set to `"pending"`. `GrogoniApplication`'s initial `view` state checks this for every
    `agentProfileModuleKeys` entry before falling back to the last route, so Account and Agent
    Settings (or whichever nested panel failed) reopens automatically once the app re-boots - the
    user never has to re-navigate to what they were doing.
 3. **Reloads exactly once** (`window.location.reload()`).
 
 None of this touches authentication. The recovery marker and the per-module "reopen" flag live
-under their own `soko.*` session-storage keys; nothing here ever calls `sessionStorage.clear()`,
-clears `soko.chatFirst.ownerAuth`, `soko.market.owner-navigation.v1:*`, or any other storage key it
+under their own `grogoni.*` session-storage keys; nothing here ever calls `sessionStorage.clear()`,
+clears `grogoni.chatFirst.ownerAuth`, `grogoni.owner-navigation.v1:*`, or any other storage key it
 doesn't own, deletes conversations, resets the active business, or touches agent/model runtime
 bindings. The authenticated session, the active business, and the agent/model binding all survive
 the reload exactly as any ordinary page reload preserves them.
@@ -175,7 +175,7 @@ worker activates immediately rather than waiting for every tab to close.
 
 Requirement: inspect Account and Agent Settings' bundle size and inline it into the main bundle
 instead of lazy-loading it if that materially improves reliability, without blindly removing code
-splitting elsewhere. Measured via `pnpm --filter @soko/web build` (see
+splitting elsewhere. Measured via `pnpm --filter @grogoni/web build` (see
 `scripts/check-web-bundle-budgets.mjs`, budgets enforced by `tests/web-bundle-budget.test.ts`):
 
 | Chunk                                                          | gzip size                  |
@@ -183,7 +183,7 @@ splitting elsewhere. Measured via `pnpm --filter @soko/web build` (see
 | `AgentProfileSurface` (Settings surface itself)                | 26.1 KiB                   |
 | `AgentModelPanel` (nested, Settings-only)                      | 7.3 KiB                    |
 | `IdentitySecurityPanel` (nested, Settings-only)                | 7.5 KiB                    |
-| `SokoApplication` (the owner app shell, i.e. `ownerRouteGzip`) | 141.0 KiB / 170 KiB budget |
+| `GrogoniApplication` (the owner app shell, i.e. `ownerRouteGzip`) | 141.0 KiB / 170 KiB budget |
 
 Folding `AgentProfileSurface` alone into the owner-app-shell chunk would push `ownerRouteGzip` to
 ~167 KiB against a 170 KiB budget, and Settings' own nested panels add another ~15 KiB on top of

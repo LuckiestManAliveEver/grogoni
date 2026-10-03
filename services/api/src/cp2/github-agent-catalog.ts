@@ -3,7 +3,7 @@ import type {
   OssAgentSearchResult,
   OssAgentSummary,
   OssAgentRuntime
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
 export interface GitHubAgentCatalog {
   searchAgents: (search?: string) => Promise<OssAgentSearchResult>;
@@ -230,7 +230,7 @@ function normalizeSearch(search: string | undefined): string {
 function githubHeaders(token: string | undefined): HeadersInit {
   return {
     accept: "application/vnd.github+json",
-    "user-agent": "soko-market-oss-agent-catalog",
+    "user-agent": "grogoni-oss-agent-catalog",
     "x-github-api-version": "2022-11-28",
     ...(token === undefined ? {} : { authorization: `Bearer ${token}` })
   };

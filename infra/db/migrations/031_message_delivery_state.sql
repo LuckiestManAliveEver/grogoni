@@ -8,7 +8,7 @@ alter table conversation_messages
   add column if not exists failure_code text,
   add column if not exists retry_count integer not null default 0,
   add column if not exists next_retry_at timestamp with time zone,
-  add column if not exists selected_channel text not null default 'soko',
+  add column if not exists selected_channel text not null default 'grogoni',
   add column if not exists actual_channel text,
   add column if not exists provider_message_id text,
   add column if not exists imported_source text,
@@ -16,7 +16,7 @@ alter table conversation_messages
   add column if not exists consent_record_id uuid;
 
 update conversation_messages
-set idempotency_key = 'soko:' || conversation_id::text || ':' || client_message_id
+set idempotency_key = 'grogoni:' || conversation_id::text || ':' || client_message_id
 where idempotency_key is null;
 
 update conversation_messages
@@ -44,7 +44,7 @@ alter table conversation_messages
   drop constraint if exists conversation_messages_selected_channel_check,
   add constraint conversation_messages_selected_channel_check
     check (selected_channel in (
-      'soko',
+      'grogoni',
       'sms',
       'mms',
       'rcs_business',
@@ -59,7 +59,7 @@ alter table conversation_messages
     check (
       actual_channel is null
       or actual_channel in (
-        'soko',
+        'grogoni',
         'sms',
         'mms',
         'rcs_business',
@@ -84,7 +84,7 @@ create table if not exists message_delivery_attempts (
   conversation_id uuid not null references conversations (id) on delete cascade,
   message_id uuid not null references conversation_messages (id) on delete cascade,
   channel text not null check (channel in (
-    'soko',
+    'grogoni',
     'sms',
     'mms',
     'rcs_business',

@@ -1,5 +1,5 @@
 {
-  "name": "@soko/observability",
+  "name": "@grogoni/observability",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -21,6 +21,6 @@
   },
   "dependencies": {
     "@prometheus-io/client": "^0.16.1",
-    "@soko/resource-control": "workspace:*"
+    "@grogoni/resource-control": "workspace:*"
   }
 }

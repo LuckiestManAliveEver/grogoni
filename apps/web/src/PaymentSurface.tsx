@@ -5,7 +5,7 @@ import {
   type PaymentFormState,
   type PaymentMethod,
   type PaymentSummary
-} from "./soko-application-shared";
+} from "./grogoni-application-shared";
 
 import { formatMoney } from "./formatters";
 

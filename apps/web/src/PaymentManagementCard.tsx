@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import type { InvoicePaymentSummary, PaymentMethod } from "@soko/shared-types";
+import type { InvoicePaymentSummary, PaymentMethod } from "@grogoni/shared-types";
 import { useAsyncActions } from "./hooks/useAsyncActions";
 import { useApiMutationRevision } from "./hooks/useApiMutationRevision";
 import { getJson, postJson } from "./api-helpers";
 import { getUserFacingErrorMessage } from "./user-facing-error";
-import type { RecordPaymentResponse } from "./soko-application-shared";
+import type { RecordPaymentResponse } from "./grogoni-application-shared";
 
 const paymentMethods: PaymentMethod[] = [
   "cash",

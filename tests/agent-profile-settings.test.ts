@@ -63,7 +63,7 @@ describe("business agent settings", () => {
         instructions: "Prioritize stock accuracy and ask before making risky changes.",
         knowledge: "The shop serves walk-in and delivery customers.",
         tools: ["Products", "Customers"],
-        integrations: ["Soko.market storefront"],
+        integrations: ["Grogoni storefront"],
         contextScripts: ["# Store policy\n- rule: confirm delivery promises with the owner"],
         status: "active"
       })

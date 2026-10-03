@@ -5,7 +5,7 @@ export const workspaceRuntimeTools = {
     name: "workspace.deliver",
     hub: null,
     description:
-      "Deliver a file from the active business workspace into the current Soko conversation. Use this instead of exposing a filesystem path.",
+      "Deliver a file from the active business workspace into the current Grogoni conversation. Use this instead of exposing a filesystem path.",
     risk: "medium",
     requiresConfirmation: false,
     readOnly: false,

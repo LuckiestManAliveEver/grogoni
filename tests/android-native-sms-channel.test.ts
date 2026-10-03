@@ -1,15 +1,15 @@
 import { readFile } from "node:fs/promises";
-import type { RuntimeModelPrompt, RuntimeModelProvider } from "@soko/shared-types";
+import type { RuntimeModelPrompt, RuntimeModelProvider } from "@grogoni/shared-types";
 import { describe, expect, it } from "vitest";
 import { buildApi } from "../services/api/src/app";
 import { createCp2Store } from "../services/api/src/cp2/store";
 import { activateGenericGlobalDefaultModel } from "./fixtures/native-runtime-test-helpers";
 
 const androidHeaders = {
-  "x-soko-device-id": "android-device-1",
-  "x-soko-device-name": "Pixel Test",
-  "x-soko-platform": "android",
-  "x-soko-client": "android-native"
+  "x-grogoni-device-id": "android-device-1",
+  "x-grogoni-device-name": "Pixel Test",
+  "x-grogoni-platform": "android",
+  "x-grogoni-client": "android-native"
 };
 
 describe("Android native SMS channel", () => {
@@ -91,9 +91,9 @@ describe("Android native SMS channel", () => {
       sessionId,
       businessId: owner.business.id,
       customerId: existingCustomer.id,
-      provider: "soko",
-      externalUserId: "brian-soko",
-      externalConversationId: "brian-soko-thread"
+      provider: "grogoni",
+      externalUserId: "brian-grogoni",
+      externalConversationId: "brian-grogoni-thread"
     });
 
     const inbound = await postJson<{
@@ -178,14 +178,14 @@ describe("Android native SMS channel", () => {
     const owner = await createAndroidOwner(app, "+254700000784", "Outbound Shop", "1784");
     const other = await createAndroidOwner(app, "+254700000785", "Other Tenant Shop", "1785", {
       ...androidHeaders,
-      "x-soko-device-id": "android-device-2",
-      "x-soko-device-name": "Other Pixel"
+      "x-grogoni-device-id": "android-device-2",
+      "x-grogoni-device-name": "Other Pixel"
     });
     await registerReadyDevice(app, owner.cookie);
     await registerReadyDevice(app, other.cookie, {
       ...androidHeaders,
-      "x-soko-device-id": "android-device-2",
-      "x-soko-device-name": "Other Pixel"
+      "x-grogoni-device-id": "android-device-2",
+      "x-grogoni-device-name": "Other Pixel"
     });
     const customer = await postJson<{ id: string }>(
       app,
@@ -253,8 +253,8 @@ describe("Android native SMS channel", () => {
         cookie: other.cookie,
         ...{
           ...androidHeaders,
-          "x-soko-device-id": "android-device-2",
-          "x-soko-device-name": "Other Pixel"
+          "x-grogoni-device-id": "android-device-2",
+          "x-grogoni-device-name": "Other Pixel"
         }
       },
       payload: JSON.stringify({ status: "sent", resultCode: "SMS_SENT" })
@@ -300,7 +300,7 @@ describe("Android native SMS channel", () => {
     const [migration, manifest, store] = await Promise.all([
       readFile("infra/db/migrations/054_android_native_sms_channel.sql", "utf8"),
       readFile("apps/android/app/src/main/AndroidManifest.xml", "utf8"),
-      readFile("apps/android/app/src/main/java/market/soko/app/sms/NativeSmsStore.kt", "utf8")
+      readFile("apps/android/app/src/main/java/market/grogoni/app/sms/NativeSmsStore.kt", "utf8")
     ]);
     expect(migration).toContain("native_sms_devices");
     expect(migration).toContain("native_sms_device_commands");

@@ -115,7 +115,7 @@ describePostgres("network connections on PostgreSQL", () => {
     const graph = await ok<NetworkGraphSummary>(secondApp, "GET", "/network", owner.cookie);
     const direct = graph.nodes.filter((node) => node.degree === 1);
     expect(direct).toHaveLength(4);
-    expect(direct.every((node) => node.sokoUserId !== null)).toBe(true);
+    expect(direct.every((node) => node.grogoniUserId !== null)).toBe(true);
     expect(
       Object.fromEntries(
         (graph.connections ?? []).map((connection) => [

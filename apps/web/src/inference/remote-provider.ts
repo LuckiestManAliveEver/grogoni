@@ -3,7 +3,7 @@ import type {
   InferenceProvider,
   InferenceRequest,
   InferenceRuntime
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { isExplicitOfflineMode } from "../offline-runtime";
 
 export function createRemoteInferenceProvider(input: {

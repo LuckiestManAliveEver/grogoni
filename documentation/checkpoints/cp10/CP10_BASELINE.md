@@ -1,14 +1,14 @@
-# CP10: Sokoclaw Runtime Full Adapter
+# CP10: Grogoniclaw Runtime Full Adapter
 
 Status: passed
 Date opened: 2026-07-03
 Date passed: 2026-07-03
-Target tag: `checkpoint/cp10-sokoclaw-runtime`
-Actual tag: `checkpoint/cp10-sokoclaw-runtime`
+Target tag: `checkpoint/cp10-grogoniclaw-runtime`
+Actual tag: `checkpoint/cp10-grogoniclaw-runtime`
 
 ## Purpose
 
-CP10 introduces the Sokoclaw Runtime full adapter on top of the deterministic commerce, parser, sync, payment, and import foundations from CP2 through CP9.
+CP10 introduces the Grogoniclaw Runtime full adapter on top of the deterministic commerce, parser, sync, payment, and import foundations from CP2 through CP9.
 
 The goal is to move from a simple rule parser to a structured runtime that can plan, route intents, build context, propose tool calls, verify risk, require confirmation for sensitive actions, and generate responses without allowing model output to mutate business data directly.
 
@@ -36,7 +36,7 @@ CP10 starts from:
 
 In scope:
 
-- Sokoclaw Runtime API contract
+- Grogoniclaw Runtime API contract
 - conversation manager for runtime sessions and turns
 - context builder for business-scoped, least-necessary runtime context
 - intent router that can combine CP4 parser output with runtime planning
@@ -111,7 +111,7 @@ CP10 can be marked passed when:
 - [x] AI evaluation dataset covers runtime flows and configured task-completion gates.
 - [x] Web/chat shell exposes the runtime path without regressing CP3 behavior.
 - [x] Existing CP1 through CP9 checks still pass.
-- [x] Checkpoint tag `checkpoint/cp10-sokoclaw-runtime` is created.
+- [x] Checkpoint tag `checkpoint/cp10-grogoniclaw-runtime` is created.
 
 ## Rollback Instructions
 

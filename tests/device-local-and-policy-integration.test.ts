@@ -99,7 +99,7 @@ function sendMessage(
   return app.inject({
     method: "POST",
     url: "/v1/messages",
-    headers: jsonHeaders(shop.cookie, { "x-soko-turn-id": turnId }),
+    headers: jsonHeaders(shop.cookie, { "x-grogoni-turn-id": turnId }),
     payload: JSON.stringify({
       conversationId,
       clientMessageId: `client-${turnId}`,
@@ -199,7 +199,7 @@ describe("device-local models through the real chat path", () => {
     }
   });
 
-  it("keeps a device model's tool proposals behind Soko's confirmation gate", async () => {
+  it("keeps a device model's tool proposals behind Grogoni's confirmation gate", async () => {
     const { fetch } = scriptedFetch(() => jsonResponse({}));
     const { platform } = createTestPlatform({ catalog: [], fetch });
     const store = createCp2Store({ inferencePlatform: platform });
@@ -356,7 +356,7 @@ describe("live reply streaming", () => {
       })();
       const turn = await globalThis.fetch(`${base}/v1/messages`, {
         method: "POST",
-        headers: jsonHeaders(shop.cookie, { "x-soko-turn-id": turnId }),
+        headers: jsonHeaders(shop.cookie, { "x-grogoni-turn-id": turnId }),
         body: JSON.stringify({
           conversationId,
           clientMessageId: "client-stream-0001",
@@ -432,7 +432,7 @@ describe("inference policy and provider management APIs", () => {
           dailyBudget: 2.5,
           maxRequestsPerMinute: 30,
           fallbackPolicy: "SAME_PROVIDER",
-          fallbackModelIds: ["qwen3-4b-soko-cloud"]
+          fallbackModelIds: ["qwen3-4b-grogoni-cloud"]
         })
       });
       expect(saved.statusCode, saved.body).toBe(200);
@@ -450,7 +450,7 @@ describe("inference policy and provider management APIs", () => {
         { fallbackPolicy: "APPROVED_PROVIDERS", approvedProviderIds: ["not-a-provider"] },
         { fallbackPolicy: "SAME_PROVIDER", fallbackModelIds: ["smollm2-360m"] },
         { dailyBudget: -1 },
-        { fallbackModelIds: ["qwen3-4b-soko-cloud"] }
+        { fallbackModelIds: ["qwen3-4b-grogoni-cloud"] }
       ]) {
         const rejected = await app.inject({
           method: "PUT",
@@ -564,7 +564,7 @@ describe("inference policy and provider management APIs", () => {
 });
 
 describe("budget scopes", () => {
-  it("applies Soko's caps only to Soko-funded spend and a shop's own cap to all its spend", async () => {
+  it("applies Grogoni's caps only to Grogoni-funded spend and a shop's own cap to all its spend", async () => {
     const { fetch } = scriptedFetch(() =>
       jsonResponse(
         openAiCompletion({ content: "ok", usage: { prompt_tokens: 1_000, completion_tokens: 500 } })
@@ -595,7 +595,7 @@ describe("budget scopes", () => {
     await expect(platformCapped.platform.router.generate(request, context)).rejects.toMatchObject({
       code: "BUDGET_EXCEEDED"
     });
-    // The shop connects its own key: Soko's cap no longer applies to its own spend.
+    // The shop connects its own key: Grogoni's cap no longer applies to its own spend.
     await platformCapped.platform.connections.connect({
       scope: "tenant",
       tenantId: "shop-1",

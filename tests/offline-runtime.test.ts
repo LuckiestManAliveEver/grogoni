@@ -16,7 +16,7 @@ import {
   type Operation,
   type Entity,
   type InstallSnapshot,
-  type SokoProvider
+  type GrogoniProvider
 } from "../packages/offline-runtime/index";
 import { buildApi } from "../services/api/src/app";
 import { createCp2Store } from "../services/api/src/cp2/store";
@@ -137,13 +137,13 @@ describe("Offline runtime local transactions and installation", () => {
     expect((await getActivePin(db, scope))?.explicitSwap).toBe(true);
   });
   it("requires deliberate offline consent and never retries ambiguous cloud mutations locally", async () => {
-    const local: SokoProvider = {
+    const local: GrogoniProvider = {
       name: "local",
       supports: () => true,
       isAvailable: async () => true,
       call: vi.fn()
     };
-    const cloud: SokoProvider = {
+    const cloud: GrogoniProvider = {
       name: "cloud",
       supports: () => true,
       isAvailable: async () => true,
@@ -774,12 +774,12 @@ async function serverFixture() {
     app.inject({
       method,
       url,
-      headers: { cookie, "x-soko-device-id": deviceId },
+      headers: { cookie, "x-grogoni-device-id": deviceId },
       ...(payload === undefined
         ? {}
         : {
             payload: JSON.stringify(payload),
-            headers: { cookie, "x-soko-device-id": deviceId, "content-type": "application/json" }
+            headers: { cookie, "x-grogoni-device-id": deviceId, "content-type": "application/json" }
           })
     });
   const created = await request("POST", "/businesses", { name: "Offline shop", language: "en" });

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://soko.market/schemas/android-release-identity.schema.json",
-  "title": "Soko.market Android release identity",
+  "$id": "https://grogoni.com/schemas/android-release-identity.schema.json",
+  "title": "Grogoni Android release identity",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -77,12 +77,12 @@
         "apiOrigin"
       ],
       "properties": {
-        "origin": { "const": "https://soko.market" },
+        "origin": { "const": "https://grogoni.com" },
         "startUrl": { "type": "string", "format": "uri" },
         "scope": { "type": "string", "format": "uri" },
         "manifestUrl": { "type": "string", "format": "uri" },
         "digitalAssetLinksUrl": { "type": "string", "format": "uri" },
-        "apiOrigin": { "const": "https://soko.market" }
+        "apiOrigin": { "const": "https://grogoni.com" }
       }
     },
     "developer": {

@@ -32,7 +32,7 @@ import type {
   ModelTemplateVersionRecord,
   OptimizationStrategy,
   ProductionObservationRecord,
-  SokoModelTemplateManifestV1,
+  GrogoniModelTemplateManifestV1,
   TemplateExecutor,
   TemplatePromotionRecord,
   TemplateReportCard,
@@ -188,7 +188,7 @@ export class ModelTemplatesDomain {
   createTemplate(input: {
     sessionId: string | null;
     businessId: string;
-    manifest: SokoModelTemplateManifestV1;
+    manifest: GrogoniModelTemplateManifestV1;
     baseModelId: string;
     nativeRuntimeBindingId?: string | null;
     executionHostId?: string | null;
@@ -1231,9 +1231,9 @@ export class ModelTemplatesDomain {
     templateVersionId: string;
     now?: Date;
   }): {
-    mediaType: "application/vnd.soko.template+json";
+    mediaType: "application/vnd.grogoni.template+json";
     fileName: string;
-    manifest: SokoModelTemplateManifestV1;
+    manifest: GrogoniModelTemplateManifestV1;
     manifestSha256: string;
     files: Record<string, string>;
   } {
@@ -1252,8 +1252,8 @@ export class ModelTemplatesDomain {
     validateManifest(manifest);
     verifyExportChecksums({ files, checksums: manifest.checksums });
     return {
-      mediaType: "application/vnd.soko.template+json",
-      fileName: `${template.slug}-${version.version}.soko`,
+      mediaType: "application/vnd.grogoni.template+json",
+      fileName: `${template.slug}-${version.version}.grogoni.com`,
       manifest,
       manifestSha256: manifestSha256(manifest),
       files
@@ -1261,7 +1261,7 @@ export class ModelTemplatesDomain {
   }
 
   verifyArtifact(input: {
-    manifest: SokoModelTemplateManifestV1;
+    manifest: GrogoniModelTemplateManifestV1;
     expectedManifestSha256: string;
     files: Record<string, string>;
   }): void {
@@ -1269,7 +1269,7 @@ export class ModelTemplatesDomain {
     if (manifestSha256(input.manifest) !== input.expectedManifestSha256) {
       throw new Cp2Error(
         400,
-        "SOKO_ARTIFACT_CHECKSUM_INVALID",
+        "GROGONI_ARTIFACT_CHECKSUM_INVALID",
         "Manifest checksum verification failed."
       );
     }
@@ -1278,7 +1278,7 @@ export class ModelTemplatesDomain {
 
   private insertVersion(input: {
     template: ModelTemplateRecord;
-    manifest: SokoModelTemplateManifestV1;
+    manifest: GrogoniModelTemplateManifestV1;
     baseModelId: string;
     nativeRuntimeBindingId: string | null;
     executionHostId: string | null;

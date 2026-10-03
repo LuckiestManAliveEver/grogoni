@@ -1,5 +1,5 @@
 import Fastify from "fastify";
-import type { ComputerAction } from "@soko/shared-types";
+import type { ComputerAction } from "@grogoni/shared-types";
 import { PlaywrightComputerRuntime, type WorkerSessionInput } from "./playwright-runtime.js";
 
 function bearer(value: string | undefined): string | null {

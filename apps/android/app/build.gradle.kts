@@ -3,21 +3,21 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
-val sokoApiOrigin = providers.gradleProperty("SOKO_API_ORIGIN")
-    .orElse("https://soko.market")
+val grogoniApiOrigin = providers.gradleProperty("GROGONI_API_ORIGIN")
+    .orElse("https://grogoni.com")
 
 android {
-    namespace = "market.soko.app"
+    namespace = "market.grogoni.app"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "market.soko.app"
+        applicationId = "market.grogoni.app"
         minSdk = 23
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        buildConfigField("String", "SOKO_API_ORIGIN", "\"${sokoApiOrigin.get()}\"")
+        buildConfigField("String", "GROGONI_API_ORIGIN", "\"${grogoniApiOrigin.get()}\"")
     }
 
     buildFeatures {

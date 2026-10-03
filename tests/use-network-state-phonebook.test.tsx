@@ -105,8 +105,8 @@ describe("useNetworkState phonebook", () => {
       ]);
     });
 
-    expect(outcome).toEqual({ invited: 0, alreadyOnSoko: 0, invalid: 0, shared: true });
-    expect(share).toHaveBeenCalledWith(expect.objectContaining({ title: "Soko.market" }));
+    expect(outcome).toEqual({ invited: 0, alreadyOnGrogoni: 0, invalid: 0, shared: true });
+    expect(share).toHaveBeenCalledWith(expect.objectContaining({ title: "Grogoni" }));
     expect(postJson).not.toHaveBeenCalled();
 
     // Cancelling the share sheet is not "shared".
@@ -184,9 +184,9 @@ describe("useNetworkState phonebook", () => {
     );
   });
 
-  it("reloads the graph after an invite finds people already on Soko, and when a request is answered elsewhere", async () => {
+  it("reloads the graph after an invite finds people already on Grogoni, and when a request is answered elsewhere", async () => {
     act(() => root.render(<Probe business={{ id: "shop" }} />));
-    postJson.mockResolvedValue({ invites: [], alreadyOnSokoCount: 1, invalidCount: 0 });
+    postJson.mockResolvedValue({ invites: [], alreadyOnGrogoniCount: 1, invalidCount: 0 });
     getJson.mockResolvedValue([]);
     fetchFreshJson.mockReset();
     fetchFreshJson.mockResolvedValue({
@@ -203,7 +203,7 @@ describe("useNetworkState phonebook", () => {
     expect(fetchFreshJson).toHaveBeenCalledWith("/network");
 
     fetchFreshJson.mockClear();
-    await act(async () => window.dispatchEvent(new Event("soko:network-changed")));
+    await act(async () => window.dispatchEvent(new Event("grogoni:network-changed")));
     expect(fetchFreshJson).toHaveBeenCalledWith("/network");
   });
   it("tells the shell prompt when a request is answered in the card", async () => {
@@ -220,7 +220,7 @@ describe("useNetworkState phonebook", () => {
       routes: []
     });
     const heard = vi.fn();
-    window.addEventListener("soko:network-changed", heard);
+    window.addEventListener("grogoni:network-changed", heard);
 
     await act(async () => {
       await hook.runNetworkConnectionAction({ type: "respond", connectionId: "c1", accept: false });
@@ -234,7 +234,7 @@ describe("useNetworkState phonebook", () => {
       await hook.runNetworkConnectionAction({ type: "remove", connectionId: "c1" });
     });
     expect(heard).toHaveBeenCalledTimes(1);
-    window.removeEventListener("soko:network-changed", heard);
+    window.removeEventListener("grogoni:network-changed", heard);
   });
   it("reports a failed invite in the status line and rethrows it for the card", async () => {
     act(() => root.render(<Probe business={{ id: "shop" }} />));

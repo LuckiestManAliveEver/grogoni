@@ -537,7 +537,7 @@ describePostgres("corridor fulfillment Phase 1a on PostgreSQL", () => {
       try {
         await lockClient.query("begin");
         await lockClient.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [
-          `soko.fulfillment.shop_location:${owner.businessId}:${shop.id}`
+          `grogoni.fulfillment.shop_location:${owner.businessId}:${shop.id}`
         ]);
 
         pendingCapture = request(

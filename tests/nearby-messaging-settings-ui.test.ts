@@ -14,9 +14,9 @@ class FakeCharacteristic extends EventTarget {
   }
 }
 
-const SOKO_NEARBY_SERVICE_UUID = "6c9b7a00-9d2e-4f3a-8b1c-2f6a5e9d0a01";
-const SOKO_NEARBY_TX_CHARACTERISTIC_UUID = "6c9b7a01-9d2e-4f3a-8b1c-2f6a5e9d0a01";
-const SOKO_NEARBY_RX_CHARACTERISTIC_UUID = "6c9b7a02-9d2e-4f3a-8b1c-2f6a5e9d0a01";
+const GROGONI_NEARBY_SERVICE_UUID = "6c9b7a00-9d2e-4f3a-8b1c-2f6a5e9d0a01";
+const GROGONI_NEARBY_TX_CHARACTERISTIC_UUID = "6c9b7a01-9d2e-4f3a-8b1c-2f6a5e9d0a01";
+const GROGONI_NEARBY_RX_CHARACTERISTIC_UUID = "6c9b7a02-9d2e-4f3a-8b1c-2f6a5e9d0a01";
 
 /**
  * React tracks a controlled input's previous value via a hidden property setter, so assigning
@@ -36,8 +36,8 @@ function fakePeerDevice() {
   const tx = new FakeCharacteristic();
   const rx = new FakeCharacteristic();
   const characteristics = new Map([
-    [SOKO_NEARBY_TX_CHARACTERISTIC_UUID, tx],
-    [SOKO_NEARBY_RX_CHARACTERISTIC_UUID, rx]
+    [GROGONI_NEARBY_TX_CHARACTERISTIC_UUID, tx],
+    [GROGONI_NEARBY_RX_CHARACTERISTIC_UUID, rx]
   ]);
   const service = {
     getCharacteristic: async (uuid: string) => {
@@ -56,7 +56,7 @@ function fakePeerDevice() {
       server.connected = false;
     },
     getPrimaryService: async (uuid: string) => {
-      if (uuid !== SOKO_NEARBY_SERVICE_UUID) throw new Error("Unknown service.");
+      if (uuid !== GROGONI_NEARBY_SERVICE_UUID) throw new Error("Unknown service.");
       return service;
     }
   };
@@ -87,7 +87,7 @@ async function renderWithOfflineModeActive(bluetooth: unknown) {
   });
   Object.defineProperty(navigator, "bluetooth", { configurable: true, value: bluetooth });
   localStorage.setItem(
-    "soko.market.auth-bootstrap.v1",
+    "grogoni.auth-bootstrap.v1",
     JSON.stringify({
       account: { id: "account" },
       user: { id: "user" },
@@ -101,7 +101,7 @@ async function renderWithOfflineModeActive(bluetooth: unknown) {
   const offline = await import("../apps/web/src/offline-runtime");
   const { readStableDeviceId } = await import("../apps/web/src/lib/api");
   localStorage.setItem(
-    "soko.offline-runtime.active.v1",
+    "grogoni.offline-runtime.active.v1",
     JSON.stringify({ accountId: "account", storeId: "shop", deviceId: readStableDeviceId() })
   );
   const db = await offline.offlineDatabase();
@@ -134,7 +134,7 @@ describe("Nearby device messaging (Settings)", () => {
       value: { estimate: async () => ({ quota: 2 ** 30, usage: 0 }) }
     });
     localStorage.setItem(
-      "soko.market.auth-bootstrap.v1",
+      "grogoni.auth-bootstrap.v1",
       JSON.stringify({
         account: { id: "account" },
         user: { id: "user" },
@@ -148,7 +148,7 @@ describe("Nearby device messaging (Settings)", () => {
     const offline = await import("../apps/web/src/offline-runtime");
     const { readStableDeviceId } = await import("../apps/web/src/lib/api");
     localStorage.setItem(
-      "soko.offline-runtime.active.v1",
+      "grogoni.offline-runtime.active.v1",
       JSON.stringify({ accountId: "account", storeId: "shop", deviceId: readStableDeviceId() })
     );
     const db = await offline.offlineDatabase();

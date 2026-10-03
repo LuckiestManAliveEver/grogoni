@@ -5,11 +5,11 @@
 - [Repository audit](architecture/model-template-flywheel-audit.md)
 - [Expertise flywheel architecture](architecture/model-template-flywheel.md)
 - [Shared SmolLM template inference](architecture/shared-smollm-template-inference.md)
-- [`.soko` format v1](specs/soko-model-template-v1.md)
+- [`.grogoni.com` format v1](specs/grogoni-model-template-v1.md)
 - [Evaluation and report cards](architecture/model-template-evaluation.md)
 - [Lineage and reproducibility](architecture/model-template-lineage.md)
 - [Recursive-improvement security](security/model-template-improvement-security.md)
-- [Guide for domain experts](guides/building-a-soko-expert.md)
+- [Guide for domain experts](guides/building-a-grogoni-expert.md)
 - [Architecture decision](adr/ADR-model-templates-as-expertise-artifacts.md)
 
 ## Existing runtime foundations

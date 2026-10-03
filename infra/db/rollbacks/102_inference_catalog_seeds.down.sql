@@ -6,5 +6,5 @@ where entity_id in (
   'smollm2-360m-device',
   'qwen2.5-0.5b-device',
   'qwen3-1.7b-device',
-  'qwen3-4b-soko-cloud'
+  'qwen3-4b-grogoni-cloud'
 );

@@ -1,4 +1,4 @@
-import type { ContactPickerContact } from "./soko-application-shared";
+import type { ContactPickerContact } from "./grogoni-application-shared";
 
 // Only the Phone Contacts card imports vCards, so this lives in its own module and loads with it.
 

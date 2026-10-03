@@ -1,4 +1,4 @@
-import { type RuntimeSessionSummary, type RuntimeTurnSummary } from "./soko-application-shared";
+import { type RuntimeSessionSummary, type RuntimeTurnSummary } from "./grogoni-application-shared";
 
 import { EmptyStateSurface } from "./EmptyStateSurface";
 

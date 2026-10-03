@@ -1,4 +1,4 @@
-import type { SyncRealtimeEvent } from "@soko/shared-types";
+import type { SyncRealtimeEvent } from "@grogoni/shared-types";
 import { recordRealtimeConnection } from "../performance";
 
 export interface AccountRealtimeOptions {

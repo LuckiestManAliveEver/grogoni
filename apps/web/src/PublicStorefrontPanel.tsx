@@ -1,8 +1,8 @@
-import { commerceAddressFromSokoId } from "@soko/shared-types";
-import type { AgentSettings, SupportedLanguage } from "./soko-application-shared";
+import { commerceAddressFromGrogoniId } from "@grogoni/shared-types";
+import type { AgentSettings, SupportedLanguage } from "./grogoni-application-shared";
 
 export interface PublicStorefrontPanelProps {
-  business: { sokoId: string };
+  business: { grogoniId: string };
   storefrontUrl: string;
   ownerLabel: string;
   draftAgent: AgentSettings;
@@ -20,12 +20,12 @@ export function PublicStorefrontPanel({
   updateAgent,
   copyStorefrontValue
 }: PublicStorefrontPanelProps) {
-  const publicId = commerceAddressFromSokoId(business.sokoId);
+  const publicId = commerceAddressFromGrogoniId(business.grogoniId);
 
   async function shareStorefront() {
     const shareData = {
-      title: `${ownerLabel}'s shop on Soko.market`,
-      text: `Browse and message ${ownerLabel}'s shop on Soko.market.`,
+      title: `${ownerLabel}'s shop on Grogoni`,
+      text: `Browse and message ${ownerLabel}'s shop on Grogoni.`,
       url: storefrontUrl
     };
 
@@ -46,10 +46,10 @@ export function PublicStorefrontPanel({
   return (
     <div className="record-form">
       <div className="section-heading">
-        <p className="eyebrow">Soko Storefront ID</p>
+        <p className="eyebrow">Grogoni Storefront ID</p>
         <h3>Public storefront</h3>
       </div>
-      <div className="soko-id-card">
+      <div className="grogoni-id-card">
         <span>Public shop ID</span>
         <strong>{publicId}</strong>
         <p>Print this on packaging, receipts, QR codes, and storefront material.</p>
@@ -71,7 +71,7 @@ export function PublicStorefrontPanel({
       </div>
       <label>
         Storefront ID
-        <input value={business.sokoId} disabled />
+        <input value={business.grogoniId} disabled />
       </label>
       <label>
         Storefront URL

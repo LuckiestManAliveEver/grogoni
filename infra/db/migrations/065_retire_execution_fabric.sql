@@ -108,7 +108,7 @@ select
     'businessId', p.business_id,
     'accountId', coalesce(p.account_id, b.account_id),
     'name', 'Retired ' || coalesce(p.record ->> 'scope', 'unknown') || ' preference holder',
-    'provider', 'soko-migrated-preference',
+    'provider', 'grogoni-migrated-preference',
     'packageRef', null,
     'version', '1',
     'runtimeContractVersion', '1',
@@ -242,7 +242,7 @@ on conflict (entity_id) do update set
 update cp2_native_runtime_agents
 set record = record || '{"capabilities":["tools","mcp"],"configuration":{"requiredModelCapabilities":["chat","tool-routing"]}}'::jsonb,
   updated_at = now()
-where entity_id = 'builtin:soko-agent:v1';
+where entity_id = 'builtin:grogoni-agent:v1';
 
 update cp2_native_runtime_bindings
 set record = jsonb_set(
@@ -250,12 +250,12 @@ set record = jsonb_set(
     '{updatedAt}', to_jsonb('2026-08-28T00:00:00.000Z'::text), true
   ),
   updated_at = now()
-where entity_id = 'builtin:soko-default-runtime:v1';
+where entity_id = 'builtin:grogoni-default-runtime:v1';
 
 update cp2_native_runtime_binding_models
 set record = jsonb_build_object(
     'id', 'fa44cb93-7206-4265-88b9-d8493db05f21',
-    'runtimeBindingId', 'builtin:soko-default-runtime:v1',
+    'runtimeBindingId', 'builtin:grogoni-default-runtime:v1',
     'modelId', 'openai-fast',
     'role', 'primary',
     'priority', 0,

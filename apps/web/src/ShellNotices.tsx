@@ -1,5 +1,5 @@
 import { Suspense, lazy } from "react";
-import type { AccountShopSummary } from "@soko/shared-types";
+import type { AccountShopSummary } from "@grogoni/shared-types";
 import { AuthenticationActionMessage } from "./AuthenticationActionMessage";
 import { isRedundantAgentErrorMessage } from "./chat-message-plumbing";
 import StaffInvitationsPrompt from "./StaffInvitationsPrompt";
@@ -13,7 +13,7 @@ const ConnectionRequestsPrompt = lazy(() => import("./ConnectionRequestsPrompt")
 // The notices at the top of the app shell: the last action's status line, invitations to join a
 // business waiting for the signed-in person (docs/architecture/staff-invitations.md), and requests
 // to connect from people who found them in their phonebook.
-// Extracted from SokoApplication so the shell stays within its modularity budget.
+// Extracted from GrogoniApplication so the shell stays within its modularity budget.
 export default function ShellNotices(props: {
   /** Empty hides the status line (for example on the sign-in screens). */
   statusMessage: string;

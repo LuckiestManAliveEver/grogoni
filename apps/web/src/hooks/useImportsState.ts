@@ -10,7 +10,7 @@ import {
   type DocumentImportJobSummary,
   type DocumentImportPreviewRow,
   type ImportFormState
-} from "../soko-application-shared";
+} from "../grogoni-application-shared";
 
 interface UseImportsStateDeps {
   businessId: string | null;

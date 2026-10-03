@@ -1,4 +1,4 @@
-import { invalid, type ValidationResult, valid } from "@soko/tool-core";
+import { invalid, type ValidationResult, valid } from "@grogoni/tool-core";
 
 import {
   isValidEmail,

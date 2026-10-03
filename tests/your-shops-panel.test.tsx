@@ -3,17 +3,17 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import type { AccountShopSummary } from "@soko/shared-types";
-import type { ActiveBusiness } from "../apps/web/src/soko-application-shared";
+import type { AccountShopSummary } from "@grogoni/shared-types";
+import type { ActiveBusiness } from "../apps/web/src/grogoni-application-shared";
 import { YourShopsPanel } from "../apps/web/src/YourShopsPanel";
 
 const shops: AccountShopSummary[] = [
   {
-    business: { id: "biz-1", name: "Mama Mboga", language: "en", sokoId: "soko.mama-mboga" },
+    business: { id: "biz-1", name: "Mama Mboga", language: "en", grogoniId: "grogoni.mama-mboga" },
     membership: { id: "mem-1", businessId: "biz-1", userId: "user-1", role: "owner" }
   },
   {
-    business: { id: "biz-2", name: "Second Shop", language: "en", sokoId: "soko.second-shop" },
+    business: { id: "biz-2", name: "Second Shop", language: "en", grogoniId: "grogoni.second-shop" },
     membership: { id: "mem-2", businessId: "biz-2", userId: "user-1", role: "owner" }
   }
 ];
@@ -37,7 +37,7 @@ describe("YourShopsPanel", () => {
     host.remove();
   });
 
-  it("shows each shop's public commerce address, not the raw sokoId", () => {
+  it("shows each shop's public commerce address, not the raw grogoniId", () => {
     act(() => {
       root = createRoot(host);
       root.render(
@@ -45,9 +45,9 @@ describe("YourShopsPanel", () => {
       );
     });
 
-    expect(host.textContent).toContain("mama-mboga@soko.market");
-    expect(host.textContent).toContain("second-shop@soko.market");
-    expect(host.textContent).not.toContain("soko.mama-mboga");
-    expect(host.textContent).not.toContain("soko.second-shop");
+    expect(host.textContent).toContain("mama-mboga@grogoni.com");
+    expect(host.textContent).toContain("second-shop@grogoni.com");
+    expect(host.textContent).not.toContain("grogoni.mama-mboga");
+    expect(host.textContent).not.toContain("grogoni.second-shop");
   });
 });

@@ -1,29 +1,29 @@
 # Computer Runtime
 
-Computer use is a Soko runtime capability family, not a separate agent architecture.
+Computer use is a Grogoni runtime capability family, not a separate agent architecture.
 
 ```text
-Soko Chat -> Agent Runtime -> Capability Router -> computer.* -> ComputerRuntime -> Provider
+Grogoni Chat -> Agent Runtime -> Capability Router -> computer.* -> ComputerRuntime -> Provider
 ```
 
 Computer use is also the compatibility fallback for an authorized application whose capability
-cannot be reached through Soko itself, a native agent, MCP, an API, or an installed integration:
+cannot be reached through Grogoni itself, a native agent, MCP, an API, or an installed integration:
 
 ```text
-Soko agent + bound model -> ComputerRuntime -> ExternalSurface -> authorized application UI
+Grogoni agent + bound model -> ComputerRuntime -> ExternalSurface -> authorized application UI
 ```
 
-The selected Soko agent continues to own planning, authorization, task state, handoff, validation,
+The selected Grogoni agent continues to own planning, authorization, task state, handoff, validation,
 and the final response. An AI service reached through its website is an external surface, not a
-native Soko agent, and does not replace either the active agent or its bound model.
+native Grogoni agent, and does not replace either the active agent or its bound model.
 
 ## Runtime Concepts
 
 - **Native agent**: a registered runtime implementation participating directly in native bindings,
   runtime instances, capability resolution, and RuntimeHandoff.
 - **Native model**: a model independently bound to a native agent through the runtime graph.
-- **Tool**: a governed Soko runtime capability with validation, risk, and permission metadata.
-- **MCP capability**: a programmatic capability supplied through Soko's curated MCP boundary.
+- **Tool**: a governed Grogoni runtime capability with validation, risk, and permission metadata.
+- **MCP capability**: a programmatic capability supplied through Grogoni's curated MCP boundary.
 - **API integration**: an authorized deterministic provider interface.
 - **ComputerRuntime**: the governed session, observation, action, approval, takeover, and checkpoint
   capability used to operate interfaces.
@@ -32,7 +32,7 @@ native Soko agent, and does not replace either the active agent or its bound mod
 - **External agent surface**: an ExternalSurface whose UI happens to expose an AI agent. It remains
   untrusted external content and is not shown in the native agent selector.
 
-`resolveCapabilityRoute` uses this preference order: internal Soko capability, native agent, MCP,
+`resolveCapabilityRoute` uses this preference order: internal Grogoni capability, native agent, MCP,
 API, installed integration, authorized UI through ComputerRuntime, then unsupported. Session
 creation fails closed if a programmatic route is declared available or no authorized surface exists.
 
@@ -111,7 +111,7 @@ A normal SaaS administration console uses the same path, for example
 `ExternalSurface { id: "shop-admin", type: "web", provider: "commerce-provider" }`, but only when
 an authorized API or installed integration cannot perform the requested operation.
 
-Consequential clicks and submissions remain bound to one-time Soko approvals. Page content cannot
+Consequential clicks and submissions remain bound to one-time Grogoni approvals. Page content cannot
 change the active agent/model, grant permissions, disable approval, expose credentials, or invoke
 unrelated tools. User takeover pauses agent input; returning control always captures a fresh
 observation before execution continues.

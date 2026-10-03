@@ -4,7 +4,7 @@ CP1 uses explicit environment variables with safe local defaults documented in `
 
 ## Local Services
 
-- PostgreSQL: `postgres://soko:soko_dev_password@127.0.0.1:5432/soko_market`
+- PostgreSQL: `postgres://grogoni:grogoni_dev_password@127.0.0.1:5432/grogoni_market`
 - Redis: `redis://127.0.0.1:6379`
 - API: `http://127.0.0.1:4000`
 - Web frontend: `http://127.0.0.1:5173`
@@ -63,7 +63,7 @@ required. With scanning disabled, binary uploads use the local passthrough pipel
 ## Authentication channels
 
 Social OAuth login is disabled in the frontend and API, so OAuth client credentials are not
-required. Phone account access uses the Soko PIN routes, email verification uses the configured
+required. Phone account access uses the Grogoni PIN routes, email verification uses the configured
 email provider, and first-shop phone capture uses no SMS or external phone-auth provider.
 
 There are no Firebase phone-auth environment variables. Owner phone parsing is local to the web and

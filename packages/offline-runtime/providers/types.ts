@@ -1,4 +1,4 @@
-export interface SokoProvider {
+export interface GrogoniProvider {
   name: "cloud" | "local" | "peer";
   supports(op: string): boolean;
   isAvailable(): Promise<boolean>;

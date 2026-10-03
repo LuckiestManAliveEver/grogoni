@@ -20,7 +20,7 @@ describe("native runtime binding migration", () => {
       "active runtime binding % must have exactly one enabled primary model"
     );
     expect(migration).toContain("add column if not exists runtime_binding_id");
-    expect(migration).toContain("builtin:soko-default-runtime:v1");
+    expect(migration).toContain("builtin:grogoni-default-runtime:v1");
     expect(rollback).toContain("drop table if exists cp2_native_runtime_binding_models");
   });
 
@@ -127,9 +127,9 @@ describe("native runtime binding migration", () => {
     expect(migration).toContain("'smollm2-360m'");
     expect(migration).toContain("smollm2:360m-instruct-q4_0");
     expect(migration).toContain('"runtimeAdapterId":"pi"');
-    expect(migration).toContain("where entity_id = 'builtin:soko-default-runtime:v1'");
+    expect(migration).toContain("where entity_id = 'builtin:grogoni-default-runtime:v1'");
     expect(migration).not.toContain("where business_id is not null");
-    expect(rollback).toContain("parent_id = 'builtin:soko-agent:v1'");
+    expect(rollback).toContain("parent_id = 'builtin:grogoni-agent:v1'");
   });
 
   it("binds the platform default to a real backend host and SmolLM installation in place", async () => {
@@ -155,7 +155,7 @@ describe("native runtime binding migration", () => {
     expect(migration).toContain("delete from cp2_native_runtime_binding_models");
     expect(migration).toContain("'status', 'active'");
     expect(migration).toContain("set parent_id = 'builtin:pi:v1'");
-    expect(migration).toContain("where entity_id = 'builtin:soko-default-runtime:v1'");
+    expect(migration).toContain("where entity_id = 'builtin:grogoni-default-runtime:v1'");
     expect(rollback).toContain("'status', 'draft'");
   });
 });

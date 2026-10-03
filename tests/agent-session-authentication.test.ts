@@ -161,11 +161,11 @@ async function createOwnerBusiness(
 function deviceHeaders(deviceId: string, includeContentType = true): Record<string, string> {
   return {
     ...(includeContentType ? jsonHeaders() : {}),
-    "x-soko-device-id": deviceId,
-    "x-soko-device-name": `${deviceId} name`,
-    "x-soko-platform": "android",
-    "x-soko-client": "pwa",
-    "user-agent": "Soko agent authentication test"
+    "x-grogoni-device-id": deviceId,
+    "x-grogoni-device-name": `${deviceId} name`,
+    "x-grogoni-platform": "android",
+    "x-grogoni-client": "pwa",
+    "user-agent": "Grogoni agent authentication test"
   };
 }
 

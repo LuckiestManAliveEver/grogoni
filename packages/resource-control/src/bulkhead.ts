@@ -1,4 +1,4 @@
-import type { WorkloadClass } from "@soko/shared-types";
+import type { WorkloadClass } from "@grogoni/shared-types";
 
 /**
  * Structured events a Bulkhead emits at the moments docs/architecture/resource-isolation.md

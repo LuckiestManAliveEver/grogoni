@@ -25,8 +25,8 @@ import {
   validateContactRecordInput,
   type BusinessPermission,
   type ContactRecordInput
-} from "@soko/business-core";
-import type { BusinessEvent } from "@soko/event-core";
+} from "@grogoni/business-core";
+import type { BusinessEvent } from "@grogoni/event-core";
 import type {
   AuthenticatedActorView,
   NetworkNodeSummary,
@@ -38,7 +38,7 @@ import type {
   SupplierBusinessCardSummary,
   SupplierContactLinkSummary,
   SupplierSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { Cp2Error, assertValid } from "../../cp2-error.js";
 import { roundMoney } from "../../money.js";
 import { normalizeDestination } from "../../phone-identity.js";

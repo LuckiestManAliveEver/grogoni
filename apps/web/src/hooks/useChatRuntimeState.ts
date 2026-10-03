@@ -2,8 +2,8 @@ import { useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { currentOfflineScope, isExplicitOfflineMode } from "../offline-runtime";
 import { runtimeHandoffController, runtimeTransition } from "../runtime-handoff";
 
-import type { RuntimeToolName } from "@soko/tool-core";
-import { renderRuntimeModelOutputInstructions, runtimeToolRegistry } from "@soko/tool-core";
+import type { RuntimeToolName } from "@grogoni/tool-core";
+import { renderRuntimeModelOutputInstructions, runtimeToolRegistry } from "@grogoni/tool-core";
 import type {
   AuthBootstrapState,
   ChannelProvider,
@@ -14,7 +14,7 @@ import type {
   InferenceProvider,
   InferenceRequest,
   InferenceRouteDecision
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
 import {
   createAgentHelpReply,
@@ -24,7 +24,7 @@ import {
 } from "../agent-command-engine";
 import { parseChatModuleCommand } from "../chat-module-commands";
 import { postJson } from "../api-helpers";
-import { type ChatAttachment, type ChatMessage, type ShellView, type SokoMode } from "../app-shell";
+import { type ChatAttachment, type ChatMessage, type ShellView, type GrogoniMode } from "../app-shell";
 import {
   agentProcessingFailureMessage,
   appendAttachmentSummary,
@@ -69,18 +69,18 @@ import {
   type ProcessedConversationMessageResponse,
   type RuntimeTurnResult,
   type SessionResponse
-} from "../soko-application-shared";
+} from "../grogoni-application-shared";
 
 interface UseChatRuntimeStateDeps {
   business: ActiveBusiness | null;
-  mode: SokoMode;
+  mode: GrogoniMode;
   session: SessionResponse | null;
   authBootstrapState: AuthBootstrapState;
   ensureAuthenticatedSession: () => Promise<SessionResponse | null>;
   rejectDefinitiveAuthenticationFailure: (error: unknown) => boolean;
   agentSettings: AgentSettings;
   setStatusMessage: (message: string) => void;
-  navigateToView: (nextView: ShellView, options?: { replace?: boolean; mode?: SokoMode }) => void;
+  navigateToView: (nextView: ShellView, options?: { replace?: boolean; mode?: GrogoniMode }) => void;
   requireMessagingSignIn: () => void;
   searchBuyFeed?: (query: string) => Promise<void>;
   loadProducts: (businessId: string) => Promise<void>;
@@ -213,7 +213,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
     const send = () =>
       sendChatDraftOnRuntime(draftOverride, preferredProvider, emailSubject, emailInvoiceId);
     if (session && business && navigator.locks && !isExplicitOfflineMode()) {
-      await navigator.locks.request("soko-runtime-handoff", { ifAvailable: true }, async (lock) => {
+      await navigator.locks.request("grogoni-runtime-handoff", { ifAvailable: true }, async (lock) => {
         if (!lock) {
           setStatusMessage(
             "Another tab is using this runtime. Your draft is saved; wait for its turn or handoff to finish."
@@ -256,7 +256,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       if (validatedSession === null) return;
       activeSession = validatedSession;
     }
-    // The public Soko ID identifies the storefront route. Runtime bindings, owner-node presence,
+    // The public Grogoni ID identifies the storefront route. Runtime bindings, owner-node presence,
     // and inference requests use the server-authoritative business agent ID.
     const canonicalRuntimeAgentId = business?.id ?? null;
     const attachments = pendingAttachments;
@@ -288,7 +288,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
         },
         {
           id: createClientMessageId("agent"),
-          author: "sokoclaw",
+          author: "grogoniclaw",
           body: "I searched the marketplace for that. Open a result to review the shop and add items to your cart.",
           createdAt,
           status: "delivered"
@@ -347,7 +347,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
           ),
           {
             id: reply.id,
-            author: "sokoclaw",
+            author: "grogoniclaw",
             body: reply.content,
             createdAt: reply.createdAt,
             status: "delivered"
@@ -397,7 +397,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
           ),
           {
             id: createClientMessageId("agent"),
-            author: "sokoclaw",
+            author: "grogoniclaw",
             body: "Choose or create a shop before opening the POS terminal.",
             createdAt: new Date().toISOString(),
             status: "delivered"
@@ -413,7 +413,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
         ),
         {
           id: createClientMessageId("agent"),
-          author: "sokoclaw",
+          author: "grogoniclaw",
           body: `${formatAgentDisplayName(agentSettings)} opened ${viewLabel(localModuleCommand.view)}. Add products to ring up the sale.`,
           createdAt: new Date().toISOString(),
           status: "delivered"
@@ -542,7 +542,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
             modelId: inferenceModelId,
             messages: [
               ...chatMessages
-                .filter((item) => item.author === "merchant" || item.author === "sokoclaw")
+                .filter((item) => item.author === "merchant" || item.author === "grogoniclaw")
                 .slice(-12)
                 .map((item) => ({
                   role: item.author === "merchant" ? ("user" as const) : ("assistant" as const),
@@ -551,7 +551,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
               { role: "user", content: runtimeMessage }
             ],
             systemPrompt: [
-              `You are Soko's ${agentSettings.role}.`,
+              `You are Grogoni's ${agentSettings.role}.`,
               agentSettings.instructions,
               ...(availableRuntimeTools.length === 0
                 ? [
@@ -785,7 +785,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
 
       let next: ChatMessage = {
         id: createClientMessageId("agent"),
-        author: "sokoclaw",
+        author: "grogoniclaw",
         body,
         ...(confirmationToken !== undefined ? { confirmationToken } : {}),
         createdAt: new Date().toISOString(),
@@ -1042,7 +1042,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
         ...messages,
         {
           id: streamingMessageId,
-          author: "sokoclaw",
+          author: "grogoniclaw",
           body: "…",
           createdAt: new Date().toISOString(),
           status: "delivered"
@@ -1344,8 +1344,8 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       setChatMessages((messages) => [
         ...messages,
         {
-          id: `sokoclaw-${Date.now()}`,
-          author: "sokoclaw",
+          id: `grogoniclaw-${Date.now()}`,
+          author: "grogoniclaw",
           body: result.turn.response
         }
       ]);

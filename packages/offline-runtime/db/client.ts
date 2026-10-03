@@ -9,7 +9,7 @@ export interface LocalDatabase {
 
 export async function openLocalDatabase(
   factory: IDBFactory = globalThis.indexedDB,
-  name = "soko-offline-runtime"
+  name = "grogoni-offline-runtime"
 ): Promise<LocalDatabase> {
   if (!factory) throw new Error("Persistent device storage is unavailable.");
   const db = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -21,7 +21,7 @@ export async function openLocalDatabase(
     };
     request.onerror = () => reject(request.error);
     request.onblocked = () =>
-      reject(new Error("Close other Soko tabs to upgrade offline storage."));
+      reject(new Error("Close other Grogoni tabs to upgrade offline storage."));
   });
   function run<T>(
     scope: Scope,

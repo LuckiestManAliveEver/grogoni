@@ -9,7 +9,7 @@
 
 ## Runtime order
 
-Soko selects inference deterministically from an explicit policy:
+Grogoni selects inference deterministically from an explicit policy:
 
 1. installed native llama.cpp bridge, when detected and allowed;
 2. browser WebGPU;
@@ -40,13 +40,13 @@ Prompts and responses are not routing telemetry.
 
 ## Browser flow
 
-The user opts into the browser model download. Soko feature-detects WebGPU, WASM, Worker,
+The user opts into the browser model download. Grogoni feature-detects WebGPU, WASM, Worker,
 IndexedDB, storage, memory when available, logical processors, and connectivity. It does not use a
 user-agent string as the primary capability decision.
 
 The approved manifest is code/data metadata, not a model bundle. The Worker loads model files
 from a trusted HTTPS repository on demand. Transformers.js uses its dedicated browser cache;
-Soko's versioned IndexedDB records settings and model state separately from conversation
+Grogoni's versioned IndexedDB records settings and model state separately from conversation
 summaries. A cached compatible model is reusable offline.
 
 One chat client message ID is also the browser inference request ID. Streaming updates one pending
@@ -76,5 +76,5 @@ Blueprint enables those capabilities, but native still requires a detected trust
 owner-node requires an authenticated same-shop device, and cloud requires explicit consent plus
 an allow-listed configured provider. Browser WebGPU and WASM require an explicit model download.
 
-`sokoclaw-local` remains the deterministic compatibility fallback when no real model route is
+`grogoniclaw-local` remains the deterministic compatibility fallback when no real model route is
 available. It is not presented as a general-purpose language model.

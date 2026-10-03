@@ -1,6 +1,6 @@
 import { webcrypto } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import type { E2eeDeviceSummary, E2eePublicKey } from "@soko/shared-types";
+import type { E2eeDeviceSummary, E2eePublicKey } from "@grogoni/shared-types";
 import {
   decryptDirectMessage,
   encryptDirectMessage,

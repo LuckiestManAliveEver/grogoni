@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
-import type { ShopPresenceSummary } from "@soko/shared-types";
+import type { ShopPresenceSummary } from "@grogoni/shared-types";
 import { useAsyncActions } from "./hooks/useAsyncActions";
 import { getJson, patchJson } from "./api-helpers";
 import { getUserFacingErrorMessage } from "./user-facing-error";
 
 // Self-contained generated-surface card (Phase 4a pattern, see ProductManagementCard) - fetches
 // its own shop presence from businessId alone rather than threading a toggle through
-// ShopPresenceButtons' existing prop chain in ChatSurface.tsx/SokoApplication.tsx.
+// ShopPresenceButtons' existing prop chain in ChatSurface.tsx/GrogoniApplication.tsx.
 export default function CatalogueShareSettingsCard(props: { businessId: string }) {
   const presencePath = `/businesses/${props.businessId}/presence`;
   const { isPending, runAction } = useAsyncActions();
@@ -56,7 +56,7 @@ export default function CatalogueShareSettingsCard(props: { businessId: string }
         <h3>Let other shops duplicate your catalogue</h3>
       </div>
       <p className="shell-note">
-        When enabled, other Soko shop owners can browse your product names, units, and selling
+        When enabled, other Grogoni shop owners can browse your product names, units, and selling
         prices while adding products, and copy them into their own catalogue as a starting point.
         Your buying prices, SKUs, and stock levels are never shared.
       </p>

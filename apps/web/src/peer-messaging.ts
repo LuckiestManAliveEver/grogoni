@@ -1,5 +1,5 @@
-import { PeerProvider, createPeerOutbox, type Scope, type PeerOutbox } from "@soko/offline-runtime";
-import type { ConversationMessageSummary } from "@soko/shared-types";
+import { PeerProvider, createPeerOutbox, type Scope, type PeerOutbox } from "@grogoni/offline-runtime";
+import type { ConversationMessageSummary } from "@grogoni/shared-types";
 import { WebBluetoothPeerTransport, webBluetoothSupported } from "./peer-bluetooth-transport";
 import { offlineDatabase } from "./offline-runtime";
 import { readCachedAuthSession } from "./auth-bootstrap";
@@ -55,7 +55,7 @@ export async function nearbyProvider(scope: Scope): Promise<PeerProvider> {
   return activeProvider;
 }
 
-/** Opens the browser's Bluetooth device picker and connects to the chosen Soko-compatible
+/** Opens the browser's Bluetooth device picker and connects to the chosen Grogoni-compatible
  *  peripheral. Must be invoked directly from a user gesture (a click), never on page load or a
  *  timer, or the browser rejects the picker. */
 export async function connectNearbyDevice(scope: Scope): Promise<void> {

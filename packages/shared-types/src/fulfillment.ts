@@ -13,7 +13,7 @@ import type { GramsString } from "./grams.js";
 export const orderSources = [
   "FIELD_SALES",
   "RETAIL_SALES",
-  "SOKO_CHAT",
+  "GROGONI_CHAT",
   "WHATSAPP",
   "TELEGRAM",
   "TIKTOK",

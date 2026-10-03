@@ -3,7 +3,7 @@ import { URL } from "node:url";
 import webPush from "web-push";
 
 const outputPath = new URL("../../../.env.vapid", import.meta.url);
-const subject = process.env.VAPID_SUBJECT?.trim() || "mailto:operations@soko.market";
+const subject = process.env.VAPID_SUBJECT?.trim() || "mailto:operations@grogoni.com";
 
 if (!subject.startsWith("mailto:") && !subject.startsWith("https://")) {
   throw new Error("VAPID_SUBJECT must be a mailto: or HTTPS URL.");

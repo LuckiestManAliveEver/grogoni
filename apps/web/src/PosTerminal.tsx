@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 
-import type { PaymentMethod } from "@soko/shared-types";
+import type { PaymentMethod } from "@grogoni/shared-types";
 
 import { formatMoney } from "./formatters";
 import { getUserFacingErrorMessage } from "./user-facing-error";
@@ -10,7 +10,7 @@ import {
   type PosSaleLine,
   type PosSaleResult
 } from "./pos-sale";
-import type { CustomerSummary, ProductSummary } from "./soko-application-shared";
+import type { CustomerSummary, ProductSummary } from "./grogoni-application-shared";
 
 const paymentMethods: Array<{ label: string; value: PaymentMethod }> = [
   { label: "Cash", value: "cash" },

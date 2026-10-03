@@ -222,8 +222,8 @@ describe("loadLazyModuleWithRecovery", () => {
 
   it("never touches storage keys outside its own namespace", async () => {
     const environment = createEnvironment();
-    environment.values.set("soko.chatFirst.ownerAuth", "do-not-touch");
-    environment.values.set("soko.market.owner-navigation.v1:acct-1", "do-not-touch");
+    environment.values.set("grogoni.chatFirst.ownerAuth", "do-not-touch");
+    environment.values.set("grogoni.owner-navigation.v1:acct-1", "do-not-touch");
 
     await loadLazyModuleWithRecovery(
       "agent-profile",
@@ -231,17 +231,17 @@ describe("loadLazyModuleWithRecovery", () => {
       environment
     ).catch(() => undefined);
 
-    expect(environment.values.get("soko.chatFirst.ownerAuth")).toBe("do-not-touch");
-    expect(environment.values.get("soko.market.owner-navigation.v1:acct-1")).toBe("do-not-touch");
+    expect(environment.values.get("grogoni.chatFirst.ownerAuth")).toBe("do-not-touch");
+    expect(environment.values.get("grogoni.owner-navigation.v1:acct-1")).toBe("do-not-touch");
   });
 });
 
 describe("retryLazyModuleLoad", () => {
   it("clears both markers and always reloads, resetting the automatic loop guard", () => {
     const environment = createEnvironment();
-    environment.values.set("soko.lazy-module-recovery.v1.agent-profile", "pending");
+    environment.values.set("grogoni.lazy-module-recovery.v1.agent-profile", "pending");
     environment.values.set(
-      "soko.deployment-recovery.v1",
+      "grogoni.deployment-recovery.v1",
       JSON.stringify({ buildId: "build-a", attempts: 1, firstAttemptAt: 0 })
     );
 
@@ -249,7 +249,7 @@ describe("retryLazyModuleLoad", () => {
 
     expect(environment.reload).toHaveBeenCalledTimes(1);
     expect(hasPendingLazyModuleRecovery("agent-profile", environment)).toBe(false);
-    expect(environment.values.get("soko.deployment-recovery.v1")).toBeUndefined();
+    expect(environment.values.get("grogoni.deployment-recovery.v1")).toBeUndefined();
   });
 });
 
@@ -257,7 +257,7 @@ describe("consumeDeploymentRecoveryOutcome", () => {
   it("logs frontend.recovery_completed and clears the marker once the build actually changed", () => {
     const environment = createEnvironment({ buildId: "build-b" });
     environment.values.set(
-      "soko.deployment-recovery.v1",
+      "grogoni.deployment-recovery.v1",
       JSON.stringify({ buildId: "build-a", attempts: 1, firstAttemptAt: 0 })
     );
 
@@ -267,20 +267,20 @@ describe("consumeDeploymentRecoveryOutcome", () => {
       "frontend.recovery_completed",
       expect.objectContaining({ buildId: "build-b", previousBuildId: "build-a" })
     );
-    expect(environment.values.get("soko.deployment-recovery.v1")).toBeUndefined();
+    expect(environment.values.get("grogoni.deployment-recovery.v1")).toBeUndefined();
   });
 
   it("does nothing when still on the same build (leaves the loop guard armed)", () => {
     const environment = createEnvironment({ buildId: "build-a" });
     environment.values.set(
-      "soko.deployment-recovery.v1",
+      "grogoni.deployment-recovery.v1",
       JSON.stringify({ buildId: "build-a", attempts: 1, firstAttemptAt: 0 })
     );
 
     consumeDeploymentRecoveryOutcome(environment);
 
     expect(environment.log).not.toHaveBeenCalled();
-    expect(environment.values.get("soko.deployment-recovery.v1")).toBeDefined();
+    expect(environment.values.get("grogoni.deployment-recovery.v1")).toBeDefined();
   });
 
   it("does nothing when no recovery was ever attempted", () => {

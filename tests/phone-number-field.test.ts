@@ -17,7 +17,7 @@ describe("shared phone-number field", () => {
   it("is reused by every authentication and owner identity surface", () => {
     const phoneFirst = readFileSync("apps/web/src/PhoneFirstAuthentication.tsx", "utf8");
     const phoneSignup = readFileSync("apps/web/src/PhoneSignup.tsx", "utf8");
-    const application = readFileSync("apps/web/src/SokoApplication.tsx", "utf8");
+    const application = readFileSync("apps/web/src/GrogoniApplication.tsx", "utf8");
     const businessSetupPanel = readFileSync("apps/web/src/BusinessSetupPanel.tsx", "utf8");
     const identitySecurityPanel = readFileSync("apps/web/src/IdentitySecurityPanel.tsx", "utf8");
     expect(phoneFirst).toContain("<PhoneNumberField");

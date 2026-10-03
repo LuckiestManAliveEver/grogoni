@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import type { CanonicalContactSummary, ContactSource } from "@soko/shared-types";
+import type { CanonicalContactSummary, ContactSource } from "@grogoni/shared-types";
 import { useAsyncActions } from "./hooks/useAsyncActions";
 import { useApiMutationRevision } from "./hooks/useApiMutationRevision";
 import { deleteJson, getJson, postJson } from "./api-helpers";
 import { getUserFacingErrorMessage } from "./user-facing-error";
 
-const contactSources: ContactSource[] = ["MANUAL", "PHONEBOOK", "EMAIL", "SOCIAL", "SOKO_ACCOUNT"];
+const contactSources: ContactSource[] = ["MANUAL", "PHONEBOOK", "EMAIL", "SOCIAL", "GROGONI_ACCOUNT"];
 
 interface NewContactDraft {
   displayName: string;
@@ -92,7 +92,7 @@ export default function CanonicalContactsCard(props: { businessId: string; conta
   async function linkAccount(contact: CanonicalContactSummary) {
     const accountId = (linkAccountDrafts[contact.id] ?? "").trim();
     if (accountId.length === 0) {
-      setMessage("Enter a Soko account id to link.");
+      setMessage("Enter a Grogoni account id to link.");
       return;
     }
     const updated = await postJson<CanonicalContactSummary>(`${contactsPath}/${contact.id}/link`, {
@@ -127,7 +127,7 @@ export default function CanonicalContactsCard(props: { businessId: string; conta
         <p className="eyebrow">Contacts</p>
         <h3>Contact directory</h3>
         <p className="shell-note">
-          Contacts merged from phonebook, email, social, manual entry, and Soko accounts.
+          Contacts merged from phonebook, email, social, manual entry, and Grogoni accounts.
         </p>
       </div>
       {message.length > 0 ? <p className="shell-note">{message}</p> : null}
@@ -253,7 +253,7 @@ export default function CanonicalContactsCard(props: { businessId: string; conta
                       .join(", ")}
                   </p>
                 ) : null}
-                <p>Linked Soko account: {contact.linkedAccountId ?? "None"}</p>
+                <p>Linked Grogoni account: {contact.linkedAccountId ?? "None"}</p>
                 {contact.linkedAccountId === null ? (
                   <div className="row-actions">
                     <input

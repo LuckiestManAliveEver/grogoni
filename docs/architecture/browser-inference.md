@@ -21,17 +21,17 @@ ChatSurface
 ```
 
 Only one page-session worker and one generation may be active. The browser route is evaluated
-before a server agent request is issued, so Soko never sends the same turn to browser and cloud
+before a server agent request is issued, so Grogoni never sends the same turn to browser and cloud
 simultaneously. Native GGUF and server routing remain in the existing `AgentModelRuntime` and CP2
 paths.
 
 ## Engine boundary
 
 Only the dedicated runtime adapters import `@huggingface/transformers` or `@mlc-ai/web-llm`. The
-rest of Soko uses `BrowserModelEngine`, versioned runtime/checkpoint contracts, typed generation
+rest of Grogoni uses `BrowserModelEngine`, versioned runtime/checkpoint contracts, typed generation
 requests, progress handlers, and error codes. The adapters:
 
-- validates the model against Soko's approved Hugging Face origin;
+- validates the model against Grogoni's approved Hugging Face origin;
 - use approved q4 ONNX or q4f16_1 MLC profiles and the declared backend;
 - owns tokenizer, live generation state and in-session caches;
 - streams decoded token text;
@@ -51,12 +51,12 @@ initial adapter does not claim durable KV-cache persistence; reload reconstructs
 messages, summaries and structured state.
 
 Catalogue retrieval is bounded lexical matching over current structured product records. Intent
-matching chooses only relevant Soko context scripts. Write operations, server tools, complex
+matching chooses only relevant Grogoni context scripts. Write operations, server tools, complex
 reasoning and background work route to the authenticated server.
 
 ## Persistence and offline behavior
 
-`soko-browser-inference` is a versioned IndexedDB database with account-scoped settings, model
+`grogoni-browser-inference` is a versioned IndexedDB database with account-scoped settings, model
 metadata, summaries, chat cache, retrieval metadata and offline queue stores. Transformers.js and
 WebLLM own their binary asset caches, avoiding an extra model copy. The application service worker
 does not run inference and does not delete inference storage during shell upgrades.
@@ -73,7 +73,7 @@ select and download a profile. Both deployments add a strict CSP plus
 allowing memory measurements and threaded WASM without changing production authentication or
 integrations.
 
-The staging CSP permits only same-origin application assets and workers, the configured Soko API,
+The staging CSP permits only same-origin application assets and workers, the configured Grogoni API,
 and HTTPS downloads under the Hugging Face `huggingface.co`/`hf.co` host families. It also permits
 the exact `raw.githubusercontent.com` origin used by pinned WebLLM model libraries. Hub downloads
 redirect to separate CDN/storage subdomains. Staging may force the WASM route with

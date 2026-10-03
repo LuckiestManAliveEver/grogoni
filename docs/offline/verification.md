@@ -1,6 +1,6 @@
 # Verification record
 
-Validated in an isolated copy of the Soko checkout using its installed dependencies. Source changes preserve the supplied root implementation plan and do not alter secrets or Git metadata.
+Validated in an isolated copy of the Grogoni checkout using its installed dependencies. Source changes preserve the supplied root implementation plan and do not alter secrets or Git metadata.
 
 - 43 tests passed across 14 files: five offline-runtime suites plus existing CP7 offline sync, CP21 client sync, invoice/inventory, product fields, API persistence acknowledgements, store persistence, Postgres persistence boundary and service-worker suites.
 - SQLite constraints and native transaction tests executed against Node 22.19.0's real SQLite engine.

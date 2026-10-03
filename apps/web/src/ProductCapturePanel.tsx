@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
-import type { ProductCaptureJobSummary } from "@soko/shared-types";
+import type { ProductCaptureJobSummary } from "@grogoni/shared-types";
 import { useAsyncActions } from "./hooks/useAsyncActions";
 import { apiFetch } from "./lib/api";
 import { invalidateApiCacheForMutation } from "./api-request-cache";
@@ -60,7 +60,7 @@ export default function ProductCapturePanel(props: {
   const [selectedGalleryPhotoId, setSelectedGalleryPhotoId] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState("");
   const [message, setMessage] = useState("");
-  const storageKey = `soko-product-capture:${props.businessId}`;
+  const storageKey = `grogoni-product-capture:${props.businessId}`;
 
   useEffect(() => {
     const captureJobId = localStorage.getItem(storageKey);

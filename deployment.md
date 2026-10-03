@@ -1,107 +1,152 @@
-# Soko Market Deployment
+# Grogoni Deployment
 
-Soko Market is deployed from this monorepo as one public Render web service. The Node/Fastify
-process serves both the API and the built Vite application from `https://soko.market`.
+Grogoni now targets a split deployment:
 
-## Production topology
+- Frontend: Vercel static Vite app from `apps/web`.
+- API: the existing Node/Fastify service from `services/api`.
+- Database: Supabase Postgres.
+- Inference: the existing Vercel inference service in `services/ai-runtime`.
 
-- Repository: `LuckiestManAliveEver/soko.market`
-- Branch: `main`
-- Public service: `soko-market` (`runtime: node`)
-- Public domain: `soko.market`
-- Legacy API alias: `api.soko.market` (temporary cached-client compatibility)
-- Storefront wildcard: `*.soko.market`
-- API metadata: `https://soko.market/api`
-- Liveness: `https://soko.market/health/live`
-- Readiness: `https://soko.market/health/ready`
-- Database health: `https://soko.market/health/db`
-- Private OCR worker: `soko-market-ocr-worker`
-- Rate-limit cache: `soko-market-rate-limit-cache`
+The important boundary is that `services/api` is not a Supabase Edge Function today. It uses Node,
+Fastify, WebSockets, background runners, Redis-backed rate limits, and PostgreSQL pools. Supabase is
+the right replacement for the database layer, but the API process still needs a Node runtime unless
+the API is ported to Supabase Edge Functions separately.
 
-The production frontend is not a separate Render Static Site. `pnpm build:production` builds the
-web bundle and API, and Fastify serves `apps/web/dist` with SPA fallback and production cache and
-security headers.
+## Frontend on Vercel
 
-## First cutover
+Deploy this repository to Vercel from the repo root. The root `vercel.json` is configured for the
+web app:
 
-1. Push the migration commit to `main` and sync the Render Blueprint.
-2. Create or adopt the `soko-market` web service from `render.yaml`.
-3. Copy all secret values from the old `soko-market-api` service into the matching `sync: false`
-   variables on `soko-market`. Do not generate new authentication, encryption, VAPID, inference,
-   or webhook secrets during the move.
-   At minimum, preserve `OTP_HMAC_SECRET`, `PASSWORD_HASH_SECRET`, `AUTH_AUDIT_HMAC_SECRET`,
-   `PIN_HASH_SECRET`, `AUTH_TOKEN_ENCRYPTION_KEY`, and `SOKO_INFERENCE_SERVICE_TOKEN` exactly.
-4. Point `DATABASE_URL` and `DIRECT_DATABASE_URL` at the existing production Neon database. This
-   moves the application process, not the merchant data.
-5. Confirm `soko-market` can reach `soko-market-ocr-worker` and
-   `soko-market-rate-limit-cache` through the Blueprint references.
-6. Deploy `soko-market` and wait for `/health/ready` to return `200` before changing DNS.
-7. Move the `soko.market`, `api.soko.market`, and `*.soko.market` custom domains to `soko-market`
-   in Render.
-8. In Cloudflare, point the apex and wildcard records at the DNS target Render shows for
-   `soko-market`. Keep records DNS-only while Render verifies certificates.
-9. Update the workspace Render webhook endpoint to
-   `https://soko.market/internal/render/deploy-webhook` and keep its existing signing secret.
-10. Verify the checklist below, then suspend the old `soko-market-api` and `soko-market-web`
-    services. Delete them only after logs show no traffic reaching either service.
+```text
+installCommand: pnpm install --frozen-lockfile
+buildCommand: pnpm build:web:vercel
+outputDirectory: apps/web/dist
+```
 
-## Required environment
+Set these Vercel environment variables for the frontend project:
 
-Non-secret production values are declared in `render.yaml`, including:
+```text
+VITE_API_BASE_URL=https://api.grogoni.com
+VITE_API_URL=https://api.grogoni.com
+VITE_DEPLOYMENT_ENV=production
+VITE_INFERENCE_OWNER_NODE_ENABLED=false
+VITE_INFERENCE_MAX_FALLBACKS=3
+```
+
+If the API is served from a different hostname, use that hostname for both `VITE_API_*` variables.
+The SPA fallback is handled by the Vercel rewrite in `vercel.json`.
+
+## Supabase Postgres
+
+Create a Supabase project and copy both database URLs:
+
+- `DATABASE_URL`: pooled connection string for normal API traffic.
+- `DIRECT_DATABASE_URL`: direct/session connection string for migrations and schema checks.
+
+Use `sslmode=require` on both URLs. Keep `CP2_STORE=postgres`.
+
+Run migrations against Supabase before sending production traffic:
+
+```bash
+DIRECT_DATABASE_URL="postgresql://..." DATABASE_URL="postgresql://..." pnpm db:migrate
+DIRECT_DATABASE_URL="postgresql://..." DATABASE_URL="postgresql://..." pnpm db:verify-schema
+```
+
+## API Service
+
+Run the existing API as a Node service with:
+
+```bash
+pnpm install --frozen-lockfile
+pnpm --filter @grogoni/api build
+pnpm --filter @grogoni/api start
+```
+
+Required production environment:
 
 ```text
 NODE_ENV=production
 API_HOST=0.0.0.0
-VITE_API_BASE_URL=https://soko.market
-WEB_ORIGINS=https://soko.market,https://www.soko.market
-APP_URL=https://soko.market
-AUTH_ALLOWED_REDIRECT_ORIGINS=https://soko.market,https://www.soko.market
-WEBAUTHN_RP_ID=soko.market
-WEBAUTHN_EXPECTED_ORIGINS=https://soko.market,https://www.soko.market
+PORT=4000
+APP_URL=https://grogoni.com
+WEB_PUBLIC_URL=https://grogoni.com
+WEB_ORIGINS=https://grogoni.com,https://www.grogoni.com
+AUTH_BASE_URL=https://api.grogoni.com
+AUTH_ALLOWED_REDIRECT_ORIGINS=https://grogoni.com,https://www.grogoni.com
+WEBAUTHN_RP_ID=grogoni
+WEBAUTHN_EXPECTED_ORIGINS=https://grogoni.com,https://www.grogoni.com
 COOKIE_SECURE=true
 COOKIE_SAME_SITE=lax
 CP2_STORE=postgres
+DATABASE_URL=<supabase pooled url>
+DIRECT_DATABASE_URL=<supabase direct url>
+REDIS_URL=<managed redis url>
 ```
 
-Every `sync: false` value must be supplied in the Render dashboard. Preserve existing values when
-moving from the old service, especially database URLs, hash/encryption secrets, VAPID keys,
-`SOKO_INFERENCE_SERVICE_TOKEN`, model-storage credentials, provider tokens, and
-`RENDER_DEPLOY_WEBHOOK_SECRET`.
+Preserve all authentication and encryption secrets from the old deployment if users or production
+data already exist:
 
-Before deploying, verify `SOKO_INFERENCE_SERVICE_TOKEN` has the exact same value in the Vercel
-inference project. A mismatch makes every proxied inference request fail authentication.
+```text
+OTP_HMAC_SECRET
+PASSWORD_HASH_SECRET
+AUTH_AUDIT_HMAC_SECRET
+PIN_HASH_SECRET
+AUTH_TOKEN_ENCRYPTION_KEY
+AUTH_SECRET
+AUTH_SESSION_SECRET
+GROGONI_INFERENCE_SERVICE_TOKEN
+INFERENCE_CREDENTIAL_KEYS
+VAPID_PUBLIC_KEY
+VAPID_PRIVATE_KEY
+```
+
+`REDIS_URL` is required in production by the current API. Use a managed Redis provider if Supabase
+is only providing Postgres.
+
+## Inference
+
+The repo already has a separate Vercel deployment config at `services/ai-runtime/vercel.json`.
+Deploy that service separately and set the API variables:
+
+```text
+VERCEL_INFERENCE_URL=https://<ai-runtime-project>.vercel.app
+GROGONI_INFERENCE_SERVICE_TOKEN=<same value in API and ai-runtime>
+VERCEL_INFERENCE_TIMEOUT_MS=300000
+```
+
+If hosted inference is not ready during the first web/API cutover, leave `INFERENCE_REQUIRED=false`
+so the API can boot while model calls report unconfigured runtime errors.
+
+## DNS
+
+Point the production hostnames at the new services:
+
+```text
+grogoni      -> Vercel frontend
+www.grogoni.com  -> Vercel frontend
+api.grogoni.com  -> Node API service
+```
+
+Keep the API hostname stable once published because installed clients and service workers can cache
+the compiled `VITE_API_BASE_URL`.
 
 ## Verification
 
-Run these checks after the domain is attached:
+After DNS is attached:
 
 ```bash
-curl --fail https://soko.market/health/live
-curl --fail https://soko.market/health/ready
-curl --fail https://soko.market/health/db
-curl --fail https://soko.market/api
-curl --fail --header 'Accept: text/html' https://soko.market/
+curl --fail https://api.grogoni.com/health/live
+curl --fail https://api.grogoni.com/health/ready
+curl --fail https://api.grogoni.com/health/db
+curl --fail https://api.grogoni.com/api
+curl --fail --header 'Accept: text/html' https://grogoni.com/
 ```
 
 Then verify in a browser:
 
-1. `https://soko.market` loads the application and a nested client route survives refresh.
-2. Sign-in and sign-out work with same-origin cookies.
-3. API calls target `https://soko.market`, not the retired API subdomain.
-4. Passkey registration and authentication use RP ID `soko.market`.
-5. A storefront wildcard hostname redirects to its canonical `/agent/soko.<handle>` route.
-6. The service worker, manifest, icons, and hashed assets return successfully.
-7. A successful Render deploy produces one update notification for service `soko-market`.
-8. `https://api.soko.market/health/ready` reaches the API rather than storefront resolution.
-
-Keep the `api.soko.market` alias while installed PWAs or cached bundles still call it. Remove the
-alias and its DNS record only after service access logs show no meaningful legacy traffic across a
-full client-update window.
-
-## Rollback
-
-Before retiring the old services, rollback is a DNS/custom-domain move: reattach `soko.market` to
-the previous frontend and restore its API setting while leaving the shared database untouched.
-After the old services are removed, roll back by deploying the previous known-good commit to
-`soko-market`. Database migrations must follow their documented rollback procedure; do not point
-two writable production API services at the database for an extended period.
+1. `https://grogoni.com` loads the application and a nested client route survives refresh.
+2. Sign-in and sign-out work with cross-origin secure cookies.
+3. API calls target `https://api.grogoni.com`.
+4. Passkey registration and authentication use RP ID `grogoni`.
+5. Push notifications still work with the preserved VAPID keys.
+6. The service worker, manifest, icons, and hashed assets return successfully from Vercel.

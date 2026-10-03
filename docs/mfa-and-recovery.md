@@ -1,6 +1,6 @@
 # MFA and recovery
 
-Soko supports TOTP as a second factor and passkeys as a strong authentication method. TOTP setup
+Grogoni supports TOTP as a second factor and passkeys as a strong authentication method. TOTP setup
 creates an encrypted secret and does not activate the factor until the user supplies a valid code.
 Replay of the same TOTP time step is rejected. Enrollments generate single-use recovery codes; only
 their hashes are persisted, and newly generated codes invalidate the old set.

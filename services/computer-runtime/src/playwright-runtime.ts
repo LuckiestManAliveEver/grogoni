@@ -8,7 +8,7 @@ import type {
   ComputerObservation,
   ComputerSession,
   ComputerTarget
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { assertNavigationAllowed } from "./network-policy.js";
 
 interface WorkerSession {

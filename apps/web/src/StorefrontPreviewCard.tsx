@@ -1,13 +1,13 @@
-import { commerceAddressFromSokoId } from "@soko/shared-types";
+import { commerceAddressFromGrogoniId } from "@grogoni/shared-types";
 
-import { type ProductSummary } from "./soko-application-shared";
+import { type ProductSummary } from "./grogoni-application-shared";
 
 import { formatMoney } from "./formatters";
 
 export interface StorefrontPreviewCardProps {
   businessName: string;
   products: ProductSummary[];
-  sokoId: string;
+  grogoniId: string;
   onBack: () => void;
   onOpenProfile: () => void;
   onAddToOrder: (product: ProductSummary) => void;
@@ -18,7 +18,7 @@ export interface StorefrontPreviewCardProps {
 export function StorefrontPreviewCard({
   businessName,
   products,
-  sokoId,
+  grogoniId,
   onBack,
   onOpenProfile,
   onAddToOrder,
@@ -40,7 +40,7 @@ export function StorefrontPreviewCard({
         <span className="storefront-preview-logo">{businessName.slice(0, 1).toUpperCase()}</span>
         <div>
           <h2>{businessName}</h2>
-          <p>{commerceAddressFromSokoId(sokoId)}</p>
+          <p>{commerceAddressFromGrogoniId(grogoniId)}</p>
         </div>
       </button>
       {products.length === 0 ? (

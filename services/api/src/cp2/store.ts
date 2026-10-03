@@ -1,11 +1,11 @@
 import { withRuntimeDeadline } from "./runtime-deadline.js";
-import { isLocalRuntimeHost, isModelExecutionTarget } from "@soko/shared-types";
+import { isLocalRuntimeHost, isModelExecutionTarget } from "@grogoni/shared-types";
 import {
   calculateOrderFulfillmentWeight,
   isValidIanaTimeZone,
   validateLogisticsStatusTransition,
   type BusinessPermission as FulfillmentBusinessPermission
-} from "@soko/business-core";
+} from "@grogoni/business-core";
 import {
   formatGrams,
   type ChannelProvider,
@@ -15,9 +15,9 @@ import {
   type BusinessRole as FulfillmentBusinessRole,
   type FulfillmentSettingsSummary,
   type OrderFulfillmentWeightSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { runtimeAdapterIdForAgent } from "../agent-harness/agent-runtime-adapter.js";
-import type { RuntimeTransfer } from "@soko/shared-types";
+import type { RuntimeTransfer } from "@grogoni/shared-types";
 import { OfflineJournal, type OfflineReceipt } from "./offline-runtime.js";
 import {
   same,
@@ -31,7 +31,7 @@ import {
   type OfflineOrderItemOutcome,
   type OfflineOrderCustomerClaim,
   type OfflineOrderItemIntent
-} from "@soko/offline-runtime";
+} from "@grogoni/offline-runtime";
 import { normalizeExistingCustomerPhone } from "./domains/messaging/shared.js";
 import { matchOfflineOrderProducts } from "./domains/agent-runtime/offline-order-planning.js";
 import {
@@ -55,36 +55,36 @@ import {
 } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { verifyAuthenticationResponse } from "@simplewebauthn/server";
-import type { BusinessEvent } from "@soko/event-core";
-import { runtimeToolRegistry } from "@soko/tool-core";
+import type { BusinessEvent } from "@grogoni/event-core";
+import { runtimeToolRegistry } from "@grogoni/tool-core";
 import {
   defaultAgentDefinition,
   defaultAgentDefinitionId,
   piAgentDefinition,
   piAgentDefinitionId,
-  sokoEngineAgentDefinition,
-  sokoEngineAgentDefinitionId,
+  grogoniEngineAgentDefinition,
+  grogoniEngineAgentDefinitionId,
   isAccountSyncCollection,
   isAgentDefinitionId,
   repositoryDefaultRuntimePolicy
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { Cp2Error, assertValid } from "./cp2-error.js";
 import { roundMoney } from "./money.js";
 import {
   destinationAccountKey,
   hashMatches,
   hashOtp,
-  isReservedSokoHandle,
-  isSokoStorefrontId,
-  maximumSokoHandleLength,
-  minimumSokoHandleLength,
+  isReservedGrogoniHandle,
+  isGrogoniStorefrontId,
+  maximumGrogoniHandleLength,
+  minimumGrogoniHandleLength,
   normalizeOptionalBoundedText,
   normalizeRequiredBoundedText,
-  commerceAddressFromSokoId,
-  createSokoHandle,
+  commerceAddressFromGrogoniId,
+  createGrogoniHandle,
   normalizeCommerceAddress,
   normalizeStorefrontLookupId,
-  sokoIdFromCommerceAddress,
+  grogoniIdFromCommerceAddress,
   pinAttemptTrackerMaximumEntries
 } from "./text-normalization.js";
 import { CommerceDomain } from "./domains/commerce/store.js";
@@ -293,7 +293,7 @@ import type {
   SaleRecordSummary,
   ExternalIdentitySummary,
   IdentityCandidateSummary,
-  SokoIdentityLinkSummary,
+  GrogoniIdentityLinkSummary,
   SyncMutationPayload,
   SyncMutationType,
   SyncQueueItem,
@@ -305,12 +305,12 @@ import type {
   SupportedLanguage,
   VerificationTierSummary,
   SecurityReviewSummary,
-  SokoChatSurface,
-  SokoMode,
-  SokoSessionContext,
+  GrogoniChatSurface,
+  GrogoniMode,
+  GrogoniSessionContext,
   ShopPresenceStatus,
   ShopPresenceSummary,
-  StoredSokoSessionContext,
+  StoredGrogoniSessionContext,
   SyncChange,
   SyncRealtimeChangesAvailableEvent,
   SyncCollection,
@@ -323,8 +323,8 @@ import type {
   NativeRuntimeBindingSummary,
   NativeRuntimeModelSummary,
   ResolvedNativeRuntimeBinding,
-  SokoIdHistorySummary,
-  SokoIdResolution,
+  GrogoniIdHistorySummary,
+  GrogoniIdResolution,
   ResolvedRuntimeHandoff,
   RuntimeCheckpointCreateInput,
   RuntimeCheckpointResult,
@@ -343,7 +343,7 @@ import type {
   RuntimeTaskInstance,
   RuntimeExecutionEvent,
   RuntimeInspection
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import {
   unavailableComputerWorkerClient,
   type ComputerWorkerClient
@@ -399,7 +399,7 @@ import {
   markSyncRejected,
   markSyncSynced,
   summarizeSyncQueue
-} from "@soko/sync-core";
+} from "@grogoni/sync-core";
 import { decryptOAuthToken, encryptOAuthToken } from "./oauth.js";
 import {
   maskPhoneNumber,
@@ -429,16 +429,16 @@ import {
   type PaymentInput,
   type ProductInput,
   type StockAdjustmentInput
-} from "@soko/business-core";
-import { parseRuntimeModelOutput, parseMerchantCommand } from "@soko/tool-core";
+} from "@grogoni/business-core";
+import { parseRuntimeModelOutput, parseMerchantCommand } from "@grogoni/tool-core";
 import type { ConversationAttachmentRecord } from "./workspace-file-delivery.js";
 import {
   createMemoryConversationAttachmentBlobStore,
   type ConversationAttachmentBlobStore
 } from "./conversation-attachment-blob-store.js";
 
-export const sessionCookieName = "soko_session";
-export const refreshCookieName = "soko_refresh";
+export const sessionCookieName = "grogoni_session";
+export const refreshCookieName = "grogoni_refresh";
 
 /**
  * How long a just-rotated refresh token's replacement credentials stay available for a
@@ -458,14 +458,14 @@ const pinScryptMaximumMemory = 64 * 1024 * 1024;
 const dummyPinHash = createScryptPinHash(
   "unknown-account",
   "0000",
-  "soko-market-dummy-pin-hash-secret"
+  "grogoni-dummy-pin-hash-secret"
 );
 const dummyPasswordHash = createScryptPasswordHash(
   "unknown-account",
   "not-a-real-password",
-  "soko-market-local-password-hash-secret"
+  "grogoni-local-password-hash-secret"
 );
-const sellerOnlySurfaces = new Set<SokoChatSurface>(["catalogue", "owner-controls", "receipt"]);
+const sellerOnlySurfaces = new Set<GrogoniChatSurface>(["catalogue", "owner-controls", "receipt"]);
 const marketplacePermissions = [
   "marketplace:search",
   "shop:read",
@@ -485,8 +485,8 @@ export interface PublicStorefrontProductSummary {
 
 export interface PublicStorefrontSummary {
   agentId: string;
-  sokoId: string;
-  /** The friendlier public-facing "handle@soko.market" address - see commerceAddressFromSokoId. */
+  grogoniId: string;
+  /** The friendlier public-facing "handle@grogoni.com" address - see commerceAddressFromGrogoniId. */
   commerceAddress: string;
   businessName: string;
   presence: PublicShopPresenceSummary;
@@ -684,9 +684,9 @@ export interface Cp2Snapshot
   deviceAccountBootstraps?: DeviceAccountBootstrapRecord[];
   deviceRecoveryCredentials?: DeviceRecoveryCredentialRecord[];
   businesses: BusinessSummary[];
-  sokoIdHistory?: SokoIdHistorySummary[];
+  grogoniIdHistory?: GrogoniIdHistorySummary[];
   memberships: MembershipSummary[];
-  sessionContexts: StoredSokoSessionContext[];
+  sessionContexts: StoredGrogoniSessionContext[];
   conversations: ConversationSummary[];
   conversationParticipants: ConversationParticipantSummary[];
   conversationMessages: ConversationMessageSummary[];
@@ -809,7 +809,7 @@ export interface Cp2Snapshot
   networkRoutes: AgentRouteSummary[];
   contactHashes: ContactHashSummary[];
   externalIdentities: ExternalIdentitySummary[];
-  sokoIdentityLinks: SokoIdentityLinkSummary[];
+  grogoniIdentityLinks: GrogoniIdentityLinkSummary[];
   identityCandidates: IdentityCandidateSummary[];
   networkConnections?: NetworkConnectionRecord[];
   externalRegistryConnections: ExternalConnectionRecord[];
@@ -1297,7 +1297,7 @@ export class Cp2Store {
       pushOfflineOrderIntents: (sessionId, intents) =>
         this.pushOfflineOrderIntents(sessionId, intents),
       createChannelOrder: (input) => this.createChannelOrder(input),
-      ensureSokoSessionContext: (session, now) => this.ensureSokoSessionContext(session, now),
+      ensureGrogoniSessionContext: (session, now) => this.ensureGrogoniSessionContext(session, now),
       createRuntimeTurn: (input) => this.agentRuntimeDomain.createRuntimeTurn(input),
       agentModelRecoveryGuidance: (businessId, error) =>
         this.agentRuntimeDomain.agentModelRecoveryGuidance(businessId, error),
@@ -1817,16 +1817,16 @@ export class Cp2Store {
   // the generic snapshot/restore/Postgres-persistence/account-deletion sweeps below.
   private readonly deviceBootstrapDomain: DeviceBootstrapDomain;
   private readonly businesses = new Map<string, BusinessSummary>();
-  // Retired sokoIds, in post-rename cooldown until releasedAt is set (see renameSokoId /
-  // releaseExpiredSokoIds / resolveBusinessBySokoId, docs/architecture/soko-id-slug-system.md).
-  private readonly sokoIdHistory = new Map<string, SokoIdHistorySummary>();
+  // Retired grogoniIds, in post-rename cooldown until releasedAt is set (see renameGrogoniId /
+  // releaseExpiredGrogoniIds / resolveBusinessByGrogoniId, docs/architecture/grogoni-id-slug-system.md).
+  private readonly grogoniIdHistory = new Map<string, GrogoniIdHistorySummary>();
   private readonly memberships = new Map<string, MembershipSummary>();
   private readonly phoneUpdateAttemptsByAccount = new Map<string, number[]>();
   // Keyed by sessionContextKey(accountId, conversationId), not accountId alone - each conversation
   // carries its own mode/activeShopId/activeSurface. Today every account has exactly one
   // conversation (its personal one), so this stays a de facto singleton until Phase 3 introduces
   // real multi-session UI. See docs/frontend/frontend.md Phase 2.
-  private readonly sessionContexts = new Map<string, StoredSokoSessionContext>();
+  private readonly sessionContexts = new Map<string, StoredGrogoniSessionContext>();
   // conversations/conversationParticipants/conversationMessages/platformIdentities/
   // conversationChannels/providerUpdateReceipts/channelIdentityLinkGrants/nativeSmsDevices/
   // nativeSmsDeviceCommands/connectedMailboxes/connectedMailboxOAuthSessions/
@@ -1962,7 +1962,7 @@ export class Cp2Store {
   private readonly accountPinHashes = new Map<string, string>();
   private readonly failedPinAttempts = new Map<string, number[]>();
   // networkNodes/networkEdges/networkSources/networkPermissions/networkRoutes/contactHashes/
-  // contactHashIdByValue/externalIdentities/externalIdentityIdBySubject/sokoIdentityLinks now
+  // contactHashIdByValue/externalIdentities/externalIdentityIdBySubject/grogoniIdentityLinks now
   // live inside `networkDomain` (services/api/src/cp2/domains/network/store.ts) - accessed via
   // its map getters for the generic snapshot/restore/Postgres-persistence/account-deletion
   // sweeps below.
@@ -2550,16 +2550,16 @@ export class Cp2Store {
     return { ...this.requireAnySession(session.id, now), isNewAccount: false };
   }
 
-  loginWithSokoIdPin(input: { sokoId: string; pin: string; now?: Date }): AuthSessionView {
+  loginWithGrogoniIdPin(input: { grogoniId: string; pin: string; now?: Date }): AuthSessionView {
     const now = input.now ?? new Date();
     const pin = normalizePin(input.pin);
-    const normalizedSokoId = normalizeStorefrontLookupId(input.sokoId);
-    const attemptKey = `login:store:${normalizedSokoId}`;
+    const normalizedGrogoniId = normalizeStorefrontLookupId(input.grogoniId);
+    const attemptKey = `login:store:${normalizedGrogoniId}`;
     this.requirePinAttemptAllowed(attemptKey, now);
 
-    const business = isSokoStorefrontId(input.sokoId)
+    const business = isGrogoniStorefrontId(input.grogoniId)
       ? [...this.businesses.values()].find(
-          (candidate) => normalizeStorefrontLookupId(candidate.sokoId) === normalizedSokoId
+          (candidate) => normalizeStorefrontLookupId(candidate.grogoniId) === normalizedGrogoniId
         )
       : undefined;
     const membership =
@@ -2610,7 +2610,7 @@ export class Cp2Store {
       occurredAt: now.toISOString(),
       payload: {
         channel: "store_id",
-        destination: normalizedSokoId
+        destination: normalizedGrogoniId
       }
     });
 
@@ -2938,7 +2938,7 @@ export class Cp2Store {
       disabledAt: null
     };
     this.mfaFactors.set(factor.id, factor);
-    const issuer = encodeURIComponent("Soko.market");
+    const issuer = encodeURIComponent("Grogoni");
     const label = encodeURIComponent(session.account.primaryAuthDestination);
     return {
       factorId: factor.id,
@@ -3114,7 +3114,7 @@ export class Cp2Store {
     }
 
     const businessId = randomUUID();
-    const sokoId = this.createGlobalShopId({
+    const grogoniId = this.createGlobalShopId({
       businessName: name,
       ownerDisplayName: currentUser.displayName,
       destination: session.account.primaryAuthDestination
@@ -3123,7 +3123,7 @@ export class Cp2Store {
       id: businessId,
       name,
       language: input.language,
-      sokoId
+      grogoniId
     };
     const membership: MembershipSummary = {
       id: randomUUID(),
@@ -3158,7 +3158,7 @@ export class Cp2Store {
       payload: {
         name: business.name,
         language: business.language,
-        sokoId: business.sokoId
+        grogoniId: business.grogoniId
       }
     });
 
@@ -3169,8 +3169,8 @@ export class Cp2Store {
       actorId: session.user.id,
       occurredAt: now.toISOString(),
       payload: {
-        sokoId: business.sokoId,
-        namespace: "soko"
+        grogoniId: business.grogoniId,
+        namespace: "grogoni"
       }
     });
 
@@ -3663,26 +3663,26 @@ export class Cp2Store {
     }
   }
 
-  getSokoSessionContext(input: {
+  getGrogoniSessionContext(input: {
     sessionId: string | null;
     conversationId?: string;
     now?: Date;
-  }): SokoSessionContext {
+  }): GrogoniSessionContext {
     const now = input.now ?? new Date();
     const session = this.requirePinVerifiedSession(input.sessionId, now);
-    const context = this.ensureSokoSessionContext(session, now, input.conversationId);
-    return this.sokoSessionContextView(session, context, now);
+    const context = this.ensureGrogoniSessionContext(session, now, input.conversationId);
+    return this.grogoniSessionContextView(session, context, now);
   }
 
-  updateSokoSessionContext(input: {
+  updateGrogoniSessionContext(input: {
     sessionId: string | null;
-    mode?: SokoMode;
+    mode?: GrogoniMode;
     activeShopId?: string | null;
-    activeSurface?: SokoChatSurface;
+    activeSurface?: GrogoniChatSurface;
     conversationId?: string;
     expectedSessionVersion?: number;
     now?: Date;
-  }): SokoSessionContext {
+  }): GrogoniSessionContext {
     const now = input.now ?? new Date();
     const session = this.requirePinVerifiedSession(input.sessionId, now);
     this.requireAccountNotPendingDeletion(session.account.id, now);
@@ -3690,7 +3690,7 @@ export class Cp2Store {
     // the account's personal conversation, same as today). It does not repoint an existing row at
     // a different conversation - each conversation keeps its own row, keyed by
     // sessionContextKey(accountId, conversationId). See docs/frontend/frontend.md Phase 2.
-    const current = this.ensureSokoSessionContext(session, now, input.conversationId);
+    const current = this.ensureGrogoniSessionContext(session, now, input.conversationId);
     const mode = input.mode ?? current.mode;
     const activeShopId =
       input.activeShopId === undefined ? current.activeShopId : input.activeShopId;
@@ -3723,9 +3723,9 @@ export class Cp2Store {
       );
     }
 
-    // ensureSokoSessionContext already resolved and validated the target conversation.
+    // ensureGrogoniSessionContext already resolved and validated the target conversation.
     const conversationId = current.conversationId;
-    const next: StoredSokoSessionContext = {
+    const next: StoredGrogoniSessionContext = {
       ...current,
       accountId: session.account.id,
       activeShopId,
@@ -3760,7 +3760,7 @@ export class Cp2Store {
       }
     });
 
-    return this.sokoSessionContextView(session, next, now);
+    return this.grogoniSessionContextView(session, next, now);
   }
 
   createConversation(
@@ -4081,7 +4081,7 @@ export class Cp2Store {
       throw new Cp2Error(
         400,
         "computer_task_required",
-        "Computer use must be attached to a Soko task with an active agent."
+        "Computer use must be attached to a Grogoni task with an active agent."
       );
     }
     const checkpoint = this.runtimeHandoffDomain.resolveHandoff(
@@ -5090,7 +5090,7 @@ export class Cp2Store {
         if (search.length === 0) return true;
         return [
           storefront.businessName,
-          storefront.sokoId,
+          storefront.grogoniId,
           ...storefront.products.map((product) => product.name)
         ].some((value) => value.toLowerCase().includes(search));
       })
@@ -5224,7 +5224,7 @@ export class Cp2Store {
     /** The device's region, for owners whose own country is unknown. */
     defaultCountry?: string | null;
     now?: Date;
-  }): { invites: NetworkInviteSummary[]; alreadyOnSokoCount: number; invalidCount: number } {
+  }): { invites: NetworkInviteSummary[]; alreadyOnGrogoniCount: number; invalidCount: number } {
     const now = input.now ?? new Date();
     const session = this.requireAuthorizedSession(
       input.sessionId,
@@ -5237,12 +5237,12 @@ export class Cp2Store {
     }
 
     const created: NetworkInviteSummary[] = [];
-    let alreadyOnSokoCount = 0;
+    let alreadyOnGrogoniCount = 0;
     let invalidCount = 0;
     // Phonebook numbers are usually national ("0712 345 678"): read them in the owner's country so
-    // the Soko-user check and the dedupe see one number however it was written. A contact whose
+    // the Grogoni-user check and the dedupe see one number however it was written. A contact whose
     // number and email both fail to parse is skipped and counted: nothing is sent to a value
-    // nobody can check, and an unparsed value could not be matched against Soko users anyway.
+    // nobody can check, and an unparsed value could not be matched against Grogoni users anyway.
     const country = ownerPhoneCountry(session, input.defaultCountry ?? null);
     const inviteKey = (channel: "phone" | "email", value: string) =>
       channel === "phone" ? normalizeContactPhone(value, country) : normalizeContactEmail(value);
@@ -5289,7 +5289,7 @@ export class Cp2Store {
       openInvites.set(canonical.toLowerCase(), invite);
     }
 
-    // Asking whether a number is on Soko is discovery: it is charged like a phonebook sync.
+    // Asking whether a number is on Grogoni is discovery: it is charged like a phonebook sync.
     const discovery = this.networkDomain.createDiscoveryLookup({
       userId: session.user.id,
       // A number or email that is itself the destination of an open invite from this shop was
@@ -5314,12 +5314,12 @@ export class Cp2Store {
       const { phone, email } = contact;
       const destination = (phone ?? email) as string;
 
-      // Someone already on Soko is connected with, not invited. Either destination counts.
+      // Someone already on Grogoni is connected with, not invited. Either destination counts.
       if (
         (phone !== null && discovery.find("phone", phone) !== null) ||
         (email !== null && discovery.find("email", email) !== null)
       ) {
-        alreadyOnSokoCount += 1;
+        alreadyOnGrogoniCount += 1;
         this.recordAuditEvent({
           type: "network.invite_skipped_existing",
           aggregateType: "network_invite",
@@ -5362,7 +5362,7 @@ export class Cp2Store {
       });
     }
     discovery.commit();
-    return { invites: created, alreadyOnSokoCount, invalidCount };
+    return { invites: created, alreadyOnGrogoniCount, invalidCount };
   }
 
   listNetworkInvites(input: {
@@ -5461,19 +5461,19 @@ export class Cp2Store {
     if (catalogueRuntime !== null) {
       const canonical = this.messagingDomain.persistExternalConversationMessage({
         conversationId: input.capability.conversationId,
-        provider: "soko",
+        provider: "grogoni",
         author: "agent",
         authorId: `shop-${businessId}-agent`,
         body: catalogueRuntime.turn.response,
         attachmentNames: [],
-        idempotencyKey: `soko-agent-runtime:${catalogueRuntime.turn.id}`,
+        idempotencyKey: `grogoni-agent-runtime:${catalogueRuntime.turn.id}`,
         now
       });
       const result = catalogueRuntime.turn.toolResult as CatalogueQueryResult;
       for (const product of result.products) {
         this.messagingDomain.persistExternalProductCard({
           conversationId: input.capability.conversationId,
-          provider: "soko",
+          provider: "grogoni",
           product,
           runtimeTurnId: catalogueRuntime.turn.id,
           now
@@ -5584,12 +5584,12 @@ export class Cp2Store {
 
     const canonical = this.messagingDomain.persistExternalConversationMessage({
       conversationId: input.capability.conversationId,
-      provider: "soko",
+      provider: "grogoni",
       author: "agent",
       authorId: `shop-${businessId}-agent`,
       body: normalizeRequiredBoundedText(replyText, "message", 4000),
       attachmentNames: [],
-      idempotencyKey: `soko-agent-reply:${input.capability.conversationId}:${randomUUID()}`,
+      idempotencyKey: `grogoni-agent-reply:${input.capability.conversationId}:${randomUUID()}`,
       now
     });
     return this.messagingDomain.publicMessageView(canonical, businessId, visitorId);
@@ -6429,7 +6429,7 @@ export class Cp2Store {
     const business = this.requireBusiness(input.businessId);
 
     if (
-      normalizeStorefrontLookupId(input.shopId) !== normalizeStorefrontLookupId(business.sokoId)
+      normalizeStorefrontLookupId(input.shopId) !== normalizeStorefrontLookupId(business.grogoniId)
     ) {
       throw new Cp2Error(400, "shop_id_mismatch", "Type the exact shop ID to continue.");
     }
@@ -6489,7 +6489,7 @@ export class Cp2Store {
       occurredAt: now.toISOString(),
       payload: {
         businessId: input.businessId,
-        shopId: business.sokoId,
+        shopId: business.grogoniId,
         status: deletionRequest.status,
         reauthentication: "owner_pin"
       }
@@ -7472,7 +7472,7 @@ export class Cp2Store {
     if (existing) return existing;
     const guest = this.createGuestCustomer({
       businessId,
-      provider: "soko",
+      provider: "grogoni",
       externalUserId: claim.accountId,
       displayName: claim.displayName,
       now
@@ -8012,7 +8012,7 @@ export class Cp2Store {
         ...this.deviceBootstrapDomain.deviceRecoveryCredentialsMap.values()
       ],
       businesses: [...this.businesses.values()],
-      sokoIdHistory: [...this.sokoIdHistory.values()].map((entry) => ({ ...entry })),
+      grogoniIdHistory: [...this.grogoniIdHistory.values()].map((entry) => ({ ...entry })),
       memberships: [...this.memberships.values()],
       sessionContexts: [...this.sessionContexts.values()],
       conversations: [...this.messagingDomain.conversationsMap.values()],
@@ -8226,7 +8226,7 @@ export class Cp2Store {
       networkRoutes: [...this.networkDomain.networkRoutesMap.values()],
       contactHashes: [...this.networkDomain.contactHashesMap.values()],
       externalIdentities: [...this.networkDomain.externalIdentitiesMap.values()],
-      sokoIdentityLinks: [...this.networkDomain.sokoIdentityLinksMap.values()],
+      grogoniIdentityLinks: [...this.networkDomain.grogoniIdentityLinksMap.values()],
       identityCandidates: [...this.networkDomain.identityCandidatesMap.values()],
       networkConnections: [...this.networkDomain.networkConnectionsMap.values()],
       externalRegistryConnections: [...this.externalConnectionsDomain.connectionsMap.values()],
@@ -8241,7 +8241,7 @@ export class Cp2Store {
     this.userByAccount.clear();
     this.deviceBootstrapDomain.clear();
     this.businesses.clear();
-    this.sokoIdHistory.clear();
+    this.grogoniIdHistory.clear();
     this.memberships.clear();
     this.phoneUpdateAttemptsByAccount.clear();
     this.sessionContexts.clear();
@@ -8321,8 +8321,8 @@ export class Cp2Store {
       this.businesses.set(business.id, business);
     }
 
-    for (const entry of snapshot.sokoIdHistory ?? []) {
-      this.sokoIdHistory.set(entry.id, entry);
+    for (const entry of snapshot.grogoniIdHistory ?? []) {
+      this.grogoniIdHistory.set(entry.id, entry);
     }
 
     for (const membership of snapshot.memberships) {
@@ -8332,7 +8332,7 @@ export class Cp2Store {
     for (const context of snapshot.sessionContexts ?? []) {
       const legacySessionId = context.sessionId;
       const accountId =
-        (context as StoredSokoSessionContext & { accountId?: string }).accountId ??
+        (context as StoredGrogoniSessionContext & { accountId?: string }).accountId ??
         (legacySessionId === undefined ? undefined : this.sessions.get(legacySessionId)?.accountId);
       if (accountId !== undefined) {
         const accountContext = { ...context, accountId };
@@ -8627,8 +8627,8 @@ export class Cp2Store {
       );
     }
 
-    for (const link of snapshot.sokoIdentityLinks ?? []) {
-      this.networkDomain.sokoIdentityLinksMap.set(link.id, link);
+    for (const link of snapshot.grogoniIdentityLinks ?? []) {
+      this.networkDomain.grogoniIdentityLinksMap.set(link.id, link);
     }
 
     for (const candidate of snapshot.identityCandidates ?? []) {
@@ -8674,8 +8674,8 @@ export class Cp2Store {
       // rather than toggling a separate engine field on the same agent.
       this.agentCatalog.set(piAgentDefinitionId, cloneAgentCatalogEntry(piAgentDefinition));
       this.agentCatalog.set(
-        sokoEngineAgentDefinitionId,
-        cloneAgentCatalogEntry(sokoEngineAgentDefinition)
+        grogoniEngineAgentDefinitionId,
+        cloneAgentCatalogEntry(grogoniEngineAgentDefinition)
       );
     }
   }
@@ -9188,7 +9188,7 @@ export class Cp2Store {
   removeModelCatalogEntry(input: { sessionId: string | null; modelId: string; now?: Date }): void {
     const now = input.now ?? new Date();
     const session = this.requirePlatformOperator(input.sessionId, now);
-    if (input.modelId === defaultAiModelId || input.modelId === "sokoclaw-local") {
+    if (input.modelId === defaultAiModelId || input.modelId === "grogoniclaw-local") {
       throw new Cp2Error(
         409,
         "model_catalog_entry_protected",
@@ -10133,12 +10133,12 @@ export class Cp2Store {
     accountId: string,
     conversationId: string,
     now: Date
-  ): StoredSokoSessionContext {
+  ): StoredGrogoniSessionContext {
     return {
       accountId,
       conversationId,
       activeShopId: null,
-      activeModelId: "sokoclaw-runtime",
+      activeModelId: "grogoniclaw-runtime",
       mode: "marketplace",
       activeSurface: "conversation",
       sessionVersion: 1,
@@ -10150,11 +10150,11 @@ export class Cp2Store {
   // personal conversation (today's only conversation). Each conversation gets its own row, keyed by
   // sessionContextKey - not inherited from the account's other contexts. See
   // docs/frontend/frontend.md Phase 2.
-  private ensureSokoSessionContext(
+  private ensureGrogoniSessionContext(
     session: AuthSessionView,
     now: Date,
     conversationId?: string
-  ): StoredSokoSessionContext {
+  ): StoredGrogoniSessionContext {
     const conversation =
       conversationId === undefined
         ? this.messagingDomain.ensurePersonalAccountConversation({
@@ -10174,7 +10174,7 @@ export class Cp2Store {
         existing.activeShopId !== null &&
         !this.hasActiveMembership(existing.activeShopId, session.user.id)
       ) {
-        const healed: StoredSokoSessionContext = {
+        const healed: StoredGrogoniSessionContext = {
           ...existing,
           activeShopId: null,
           mode: "marketplace",
@@ -10221,11 +10221,11 @@ export class Cp2Store {
     return false;
   }
 
-  private sokoSessionContextView(
+  private grogoniSessionContextView(
     session: AuthSessionView,
-    context: StoredSokoSessionContext,
+    context: StoredGrogoniSessionContext,
     now: Date
-  ): SokoSessionContext {
+  ): GrogoniSessionContext {
     const shops = this.listAccountShops({ sessionId: session.session.id, now });
     const membership =
       context.activeShopId === null
@@ -10817,9 +10817,9 @@ export class Cp2Store {
   private publicStorefrontForBusiness(business: BusinessSummary): PublicStorefrontSummary {
     const presence = this.shopPresenceForBusiness(business.id);
     return {
-      agentId: business.sokoId,
-      sokoId: business.sokoId,
-      commerceAddress: commerceAddressFromSokoId(business.sokoId),
+      agentId: business.grogoniId,
+      grogoniId: business.grogoniId,
+      commerceAddress: commerceAddressFromGrogoniId(business.grogoniId),
       businessName: business.name,
       presence: { status: presence.status, updatedAt: presence.updatedAt },
       products: this.salesDomain
@@ -10843,11 +10843,11 @@ export class Cp2Store {
     return {
       canonicalBusinessId: business.id,
       displayName: business.name,
-      commerceAddress: commerceAddressFromSokoId(business.sokoId),
-      sokoId: business.sokoId,
+      commerceAddress: commerceAddressFromGrogoniId(business.grogoniId),
+      grogoniId: business.grogoniId,
       storefront: {
-        sokoId: business.sokoId,
-        publicUrlPath: `/public/storefronts/${encodeURIComponent(business.sokoId)}`
+        grogoniId: business.grogoniId,
+        publicUrlPath: `/public/storefronts/${encodeURIComponent(business.grogoniId)}`
       },
       catalogue: {
         productCount: storefront.products.length,
@@ -10859,11 +10859,11 @@ export class Cp2Store {
       entryPoints: [
         {
           type: "storefront",
-          href: `/public/storefronts/${encodeURIComponent(business.sokoId)}`
+          href: `/public/storefronts/${encodeURIComponent(business.grogoniId)}`
         },
         {
           type: "conversation",
-          href: `/public/storefronts/${encodeURIComponent(business.sokoId)}/sessions`
+          href: `/public/storefronts/${encodeURIComponent(business.grogoniId)}/sessions`
         }
       ]
     };
@@ -11805,7 +11805,7 @@ export class Cp2Store {
 
     return {
       businessId,
-      shopId: business.sokoId,
+      shopId: business.grogoniId,
       generatedAt: now.toISOString(),
       counts: {
         products: this.salesDomain.productsForBusiness(businessId).length,
@@ -12349,7 +12349,7 @@ export class Cp2Store {
       deletedRecordCount += deleteScopedMapRecords(this.networkDomain.networkRoutesMap, scope);
       deletedRecordCount += deleteScopedMapRecords(this.networkDomain.contactHashesMap, scope);
       deletedRecordCount += deleteScopedMapRecords(this.networkDomain.externalIdentitiesMap, scope);
-      deletedRecordCount += deleteScopedMapRecords(this.networkDomain.sokoIdentityLinksMap, scope);
+      deletedRecordCount += deleteScopedMapRecords(this.networkDomain.grogoniIdentityLinksMap, scope);
       deletedRecordCount += deleteScopedMapRecords(this.networkDomain.identityCandidatesMap, scope);
       deletedRecordCount += deleteScopedMapRecords(this.networkDomain.networkConnectionsMap, scope);
     }
@@ -12518,78 +12518,78 @@ export class Cp2Store {
     const generatedDisplayNames = new Set([
       defaultDisplayName(input.destination).toLowerCase(),
       "owner",
-      "soko user"
+      "grogoni user"
     ]);
     const ownerDisplayName = input.ownerDisplayName.trim().toLowerCase();
     const candidateHandles = [
       ...(generatedDisplayNames.has(ownerDisplayName)
         ? []
-        : [createSokoHandle(input.ownerDisplayName)]),
-      createSokoHandle(input.businessName)
+        : [createGrogoniHandle(input.ownerDisplayName)]),
+      createGrogoniHandle(input.businessName)
     ].filter(
       (handle, index, handles) =>
-        handle.length >= minimumSokoHandleLength &&
-        !isReservedSokoHandle(handle) &&
+        handle.length >= minimumGrogoniHandleLength &&
+        !isReservedGrogoniHandle(handle) &&
         handles.indexOf(handle) === index
     );
 
     for (const handle of candidateHandles) {
-      const candidate = `soko.${handle}`;
+      const candidate = `grogoni.${handle}`;
       if (!this.hasGlobalShopId(candidate)) return candidate;
     }
 
     const fallbackHandle = candidateHandles.at(-1) ?? "store";
     for (let suffix = 2; suffix <= 10_000; suffix += 1) {
       const suffixText = `-${suffix}`;
-      const candidate = `soko.${fallbackHandle.slice(0, 48 - suffixText.length)}${suffixText}`;
+      const candidate = `grogoni.${fallbackHandle.slice(0, 48 - suffixText.length)}${suffixText}`;
       if (!this.hasGlobalShopId(candidate)) return candidate;
     }
 
     throw new Cp2Error(
       500,
-      "soko_id_collision",
-      "A unique Soko Storefront ID could not be generated."
+      "grogoni_id_collision",
+      "A unique Grogoni Storefront ID could not be generated."
     );
   }
 
-  private hasGlobalShopId(sokoId: string): boolean {
-    const normalized = normalizeStorefrontLookupId(sokoId);
+  private hasGlobalShopId(grogoniId: string): boolean {
+    const normalized = normalizeStorefrontLookupId(grogoniId);
     if (
       [...this.businesses.values()].some(
-        (business) => normalizeStorefrontLookupId(business.sokoId) === normalized
+        (business) => normalizeStorefrontLookupId(business.grogoniId) === normalized
       )
     ) {
       return true;
     }
-    // A retired sokoId is unavailable for the duration of its cooldown (releasedAt === null) -
-    // see renameSokoId/releaseExpiredSokoIds. Once released, it's free to be claimed again.
-    return [...this.sokoIdHistory.values()].some(
+    // A retired grogoniId is unavailable for the duration of its cooldown (releasedAt === null) -
+    // see renameGrogoniId/releaseExpiredGrogoniIds. Once released, it's free to be claimed again.
+    return [...this.grogoniIdHistory.values()].some(
       (entry) =>
-        entry.releasedAt === null && normalizeStorefrontLookupId(entry.sokoId) === normalized
+        entry.releasedAt === null && normalizeStorefrontLookupId(entry.grogoniId) === normalized
     );
   }
 
   /**
-   * The one shared resolver every channel (web storefront route, `GET /s/:sokoId`, Telegram
-   * `/start`) uses - docs/architecture/soko-id-slug-system.md. Returns `null` only when the id
+   * The one shared resolver every channel (web storefront route, `GET /s/:grogoniId`, Telegram
+   * `/start`) uses - docs/architecture/grogoni-id-slug-system.md. Returns `null` only when the id
    * never existed and never will (not currently active, not anywhere in history either).
    */
-  resolveBusinessBySokoId(sokoId: string): SokoIdResolution | null {
-    const normalized = normalizeStorefrontLookupId(sokoId);
+  resolveBusinessByGrogoniId(grogoniId: string): GrogoniIdResolution | null {
+    const normalized = normalizeStorefrontLookupId(grogoniId);
     const active = [...this.businesses.values()].find(
       (business) =>
-        normalizeStorefrontLookupId(business.sokoId) === normalized &&
+        normalizeStorefrontLookupId(business.grogoniId) === normalized &&
         !this.quarantinedBusinessIds.has(business.id)
     );
     if (active !== undefined) return { status: "active", business: active };
 
-    const historical = [...this.sokoIdHistory.values()].find(
-      (entry) => normalizeStorefrontLookupId(entry.sokoId) === normalized
+    const historical = [...this.grogoniIdHistory.values()].find(
+      (entry) => normalizeStorefrontLookupId(entry.grogoniId) === normalized
     );
     if (historical === undefined) return null;
     const business = this.businesses.get(historical.businessId);
     if (business === undefined || this.quarantinedBusinessIds.has(business.id)) return null;
-    return { status: "stale", business, redirectTo: business.sokoId };
+    return { status: "stale", business, redirectTo: business.grogoniId };
   }
 
   checkCommerceAddressAvailability(address: string): CommerceIdentityAvailability {
@@ -12600,43 +12600,43 @@ export class Cp2Store {
       normalizedAddress = address.trim().toLowerCase();
       return { available: false, normalizedAddress, reason: "invalid" };
     }
-    const sokoId = sokoIdFromCommerceAddress(normalizedAddress);
-    if (!isSokoStorefrontId(sokoId)) {
+    const grogoniId = grogoniIdFromCommerceAddress(normalizedAddress);
+    if (!isGrogoniStorefrontId(grogoniId)) {
       return { available: false, normalizedAddress, reason: "invalid" };
     }
-    const handle = sokoId.replace(/^soko\./u, "");
-    if (isReservedSokoHandle(handle)) {
+    const handle = grogoniId.replace(/^grogoni\./u, "");
+    if (isReservedGrogoniHandle(handle)) {
       return { available: false, normalizedAddress, reason: "reserved" };
     }
-    if (this.hasGlobalShopId(sokoId)) {
+    if (this.hasGlobalShopId(grogoniId)) {
       return { available: false, normalizedAddress, reason: "taken" };
     }
     return { available: true, normalizedAddress };
   }
 
   resolveCommerceIdentity(address: string): CommerceIdentityResolution | null {
-    const sokoId = sokoIdFromCommerceAddress(address);
-    const resolution = this.resolveBusinessBySokoId(sokoId);
+    const grogoniId = grogoniIdFromCommerceAddress(address);
+    const resolution = this.resolveBusinessByGrogoniId(grogoniId);
     if (resolution === null) return null;
     const identity = this.publicCommerceIdentityForBusiness(resolution.business);
     if (resolution.status === "stale") {
       return {
         status: "stale",
         identity,
-        redirectTo: commerceAddressFromSokoId(resolution.redirectTo)
+        redirectTo: commerceAddressFromGrogoniId(resolution.redirectTo)
       };
     }
     return { status: "active", identity };
   }
 
   /**
-   * Explicit merchant-initiated rename (docs/architecture/soko-id-slug-system.md). The old sokoId
+   * Explicit merchant-initiated rename (docs/architecture/grogoni-id-slug-system.md). The old grogoniId
    * moves into history with `releasedAt: null` (in cooldown, still resolvable as "stale") rather
-   * than being deleted or made immediately available - `releaseExpiredSokoIds` is what eventually
+   * than being deleted or made immediately available - `releaseExpiredGrogoniIds` is what eventually
    * frees it. Rejects reserved handles, in-use handles, and anything currently in another store's
    * cooldown window, the same way initial generation does.
    */
-  renameSokoId(input: {
+  renameGrogoniId(input: {
     sessionId: string | null;
     businessId: string;
     handle: string;
@@ -12647,59 +12647,59 @@ export class Cp2Store {
     const business = this.requireBusiness(input.businessId);
     const handle = input.handle.trim().toLowerCase();
     if (
-      handle.length < minimumSokoHandleLength ||
-      handle.length > maximumSokoHandleLength ||
+      handle.length < minimumGrogoniHandleLength ||
+      handle.length > maximumGrogoniHandleLength ||
       !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/u.test(handle)
     ) {
       throw new Cp2Error(
         400,
-        "soko_id_invalid",
-        `A storefront id must be ${minimumSokoHandleLength}-${maximumSokoHandleLength} lowercase letters, numbers, or hyphens, and cannot start or end with a hyphen.`
+        "grogoni_id_invalid",
+        `A storefront id must be ${minimumGrogoniHandleLength}-${maximumGrogoniHandleLength} lowercase letters, numbers, or hyphens, and cannot start or end with a hyphen.`
       );
     }
-    if (isReservedSokoHandle(handle)) {
-      throw new Cp2Error(409, "soko_id_reserved", "This storefront id is reserved.");
+    if (isReservedGrogoniHandle(handle)) {
+      throw new Cp2Error(409, "grogoni_id_reserved", "This storefront id is reserved.");
     }
-    const nextSokoId = `soko.${handle}`;
-    if (normalizeStorefrontLookupId(nextSokoId) === normalizeStorefrontLookupId(business.sokoId)) {
+    const nextGrogoniId = `grogoni.${handle}`;
+    if (normalizeStorefrontLookupId(nextGrogoniId) === normalizeStorefrontLookupId(business.grogoniId)) {
       return { ...business };
     }
-    if (this.hasGlobalShopId(nextSokoId)) {
-      throw new Cp2Error(409, "soko_id_taken", "This storefront id is already in use.");
+    if (this.hasGlobalShopId(nextGrogoniId)) {
+      throw new Cp2Error(409, "grogoni_id_taken", "This storefront id is already in use.");
     }
     const historyEntryId = randomUUID();
-    this.sokoIdHistory.set(historyEntryId, {
+    this.grogoniIdHistory.set(historyEntryId, {
       id: historyEntryId,
       businessId: business.id,
-      sokoId: business.sokoId,
+      grogoniId: business.grogoniId,
       releasedAt: null,
       createdAt: now.toISOString()
     });
-    const updated: BusinessSummary = { ...business, sokoId: nextSokoId };
+    const updated: BusinessSummary = { ...business, grogoniId: nextGrogoniId };
     this.businesses.set(business.id, updated);
     this.recordAuditEvent({
-      type: "business.soko_id_renamed",
+      type: "business.grogoni_id_renamed",
       aggregateType: "business",
       aggregateId: business.id,
       actorId: input.sessionId ?? "system",
       occurredAt: now.toISOString(),
-      payload: { previousSokoId: business.sokoId, nextSokoId }
+      payload: { previousGrogoniId: business.grogoniId, nextGrogoniId }
     });
     return updated;
   }
 
   /**
-   * Frees any retired sokoId whose cooldown has elapsed - called by the cooldown runner
-   * (services/api/src/cp2/sokoid-cooldown-runner.ts), never inline with a request. Idempotent:
+   * Frees any retired grogoniId whose cooldown has elapsed - called by the cooldown runner
+   * (services/api/src/cp2/grogoniid-cooldown-runner.ts), never inline with a request. Idempotent:
    * safe to call repeatedly, only ever advances `releasedAt` from null to a timestamp once.
    */
-  releaseExpiredSokoIds(input: { cooldownMs: number; now?: Date }): number {
+  releaseExpiredGrogoniIds(input: { cooldownMs: number; now?: Date }): number {
     const now = input.now ?? new Date();
     let released = 0;
-    for (const [id, entry] of this.sokoIdHistory) {
+    for (const [id, entry] of this.grogoniIdHistory) {
       if (entry.releasedAt !== null) continue;
       if (now.getTime() - Date.parse(entry.createdAt) < input.cooldownMs) continue;
-      this.sokoIdHistory.set(id, { ...entry, releasedAt: now.toISOString() });
+      this.grogoniIdHistory.set(id, { ...entry, releasedAt: now.toISOString() });
       released += 1;
     }
     return released;
@@ -12757,7 +12757,7 @@ function deduplicateDeletionSubjects(subjects: AccountDeletionSubject[]): Accoun
 
 function deletionSubjectDigest(accountId: string, requestId: string): string {
   return createHash("sha256")
-    .update(`soko-account-deletion-proof:v1:${accountId}:${requestId}`)
+    .update(`grogoni-account-deletion-proof:v1:${accountId}:${requestId}`)
     .digest("hex");
 }
 
@@ -13089,7 +13089,7 @@ function passwordHashSecret(): string {
       "password_hash_unconfigured",
       "Password authentication is temporarily unavailable."
     );
-  return "soko-market-local-password-hash-secret";
+  return "grogoni-local-password-hash-secret";
 }
 
 function hashRecoveryCode(accountId: string, code: string): string {
@@ -13233,7 +13233,7 @@ function pinHashSecret(): string {
       "PIN authentication is temporarily unavailable."
     );
   }
-  return "soko-market-local-pin-hash-secret";
+  return "grogoni-local-pin-hash-secret";
 }
 
 function invalidLoginCredentialsError(): Cp2Error {
@@ -13406,7 +13406,7 @@ function defaultDisplayName(destination: string): string {
 }
 
 function syncOriginCursor(accountId: string): string {
-  return createHash("sha256").update(`soko-sync-origin:${accountId}`).digest("base64url");
+  return createHash("sha256").update(`grogoni-sync-origin:${accountId}`).digest("base64url");
 }
 
 function syncRecordDate(value: string): Date {

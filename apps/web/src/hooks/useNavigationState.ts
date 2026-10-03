@@ -1,11 +1,11 @@
 import { useRef, useState } from "react";
 
-import type { ChatMessage, ShellView, SokoMode } from "../app-shell";
+import type { ChatMessage, ShellView, GrogoniMode } from "../app-shell";
 import {
   navigateToBrowserUrl,
   navigateToOwnerRoute,
   readCurrentOwnerRoute,
-  readSokoHistoryState
+  readGrogoniHistoryState
 } from "../browser-navigation";
 import { getErrorMessage } from "../chat-message-plumbing";
 import { patchJson } from "../api-helpers";
@@ -18,14 +18,14 @@ import type {
   SessionResponse,
   ShopPresenceStatus,
   ShopPresenceSummary
-} from "../soko-application-shared";
-import { guestBrowsingStorageKey } from "../soko-application-shared";
+} from "../grogoni-application-shared";
+import { guestBrowsingStorageKey } from "../grogoni-application-shared";
 
 interface UseNavigationStateDeps {
   business: ActiveBusiness | null;
   session: SessionResponse | null;
-  mode: SokoMode;
-  setMode: (mode: SokoMode) => void;
+  mode: GrogoniMode;
+  setMode: (mode: GrogoniMode) => void;
   view: ShellView;
   setView: (view: ShellView) => void;
   // Marketplace is called after Navigation (Marketplace's completeMarketplaceIntro needs
@@ -58,9 +58,9 @@ interface UseNavigationStateDeps {
     setIsMessagingInboxOpen: (open: boolean) => void;
     setChatMessages: (messages: (current: ChatMessage[]) => ChatMessage[]) => void;
   };
-  // Same getter reasoning as Auth/BusinessSetup/Chat above: Auth (continueToSoko's owner) is
-  // called after Navigation, so browseAsGuest can't take continueToSoko as a plain dep.
-  getContinueToSoko: () => () => Promise<SessionResponse | null>;
+  // Same getter reasoning as Auth/BusinessSetup/Chat above: Auth (continueToGrogoni's owner) is
+  // called after Navigation, so browseAsGuest can't take continueToGrogoni as a plain dep.
+  getContinueToGrogoni: () => () => Promise<SessionResponse | null>;
   registerReset: (domainKey: string, fn: () => void) => void;
 }
 
@@ -88,7 +88,7 @@ export function useNavigationState(deps: UseNavigationStateDeps) {
     runAction
   } = deps;
 
-  function navigateToView(nextView: ShellView, options?: { replace?: boolean; mode?: SokoMode }) {
+  function navigateToView(nextView: ShellView, options?: { replace?: boolean; mode?: GrogoniMode }) {
     const nextMode = options?.mode ?? mode;
     const nextPath = pathForOwnerView(nextView, nextMode);
     const measurement = startNavigationMeasurement(nextPath);
@@ -126,7 +126,7 @@ export function useNavigationState(deps: UseNavigationStateDeps) {
   }
 
   function returnToChat() {
-    const currentState = readSokoHistoryState(window.history.state);
+    const currentState = readGrogoniHistoryState(window.history.state);
     const deepLinkedModule =
       currentState !== null && currentState.view !== "chat" && currentState.view !== "home";
     setView("chat");
@@ -149,7 +149,7 @@ export function useNavigationState(deps: UseNavigationStateDeps) {
     setIsBusinessSetupOpen(false);
     setIsAuthOpen(true);
     setAuthenticationView(intent);
-    setStatusMessage(intent === "signup" ? "Create your Soko account." : "Log in to your account.");
+    setStatusMessage(intent === "signup" ? "Create your Grogoni account." : "Log in to your account.");
     navigateToBrowserUrl(authenticationRoute(intent), { state: window.history.state });
   }
 
@@ -170,14 +170,14 @@ export function useNavigationState(deps: UseNavigationStateDeps) {
     // the plain chat home, same as any other non-deliberate arrival at marketplace mode.
     navigateToOwnerRoute({ mode: "marketplace", view: "chat" }, { replace: true });
     setStatusMessage("Browsing as a guest.");
-    // "Guest" only means skipping the signup form here, not going without Soko's own zero-form
-    // entry (docs/authentication/progressive-identity.md) - continueToSoko gives this browser the
+    // "Guest" only means skipping the signup form here, not going without Grogoni's own zero-form
+    // entry (docs/authentication/progressive-identity.md) - continueToGrogoni gives this browser the
     // same real, cookie-backed device account cold boot already gets everyone else, so messaging
     // works immediately instead of hitting a sign-in wall the moment a guest tries to use it.
-    void deps.getContinueToSoko()();
+    void deps.getContinueToGrogoni()();
   }
 
-  function switchMode(nextMode: SokoMode) {
+  function switchMode(nextMode: GrogoniMode) {
     const { setIsBusinessSetupOpen, setBusinessSetupStep } = deps.getBusinessSetupSetters();
 
     if (nextMode === "seller" && business === null) {
@@ -222,7 +222,7 @@ export function useNavigationState(deps: UseNavigationStateDeps) {
       ...messages,
       {
         id: `mode-${nextMode}-${Date.now()}`,
-        author: "sokoclaw",
+        author: "grogoniclaw",
         body:
           nextMode === "seller"
             ? `Seller controls are ready for ${business?.name ?? "your shop"}. You can use a card below or tell me what to change.`

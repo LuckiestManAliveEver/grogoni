@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ResolvedModelArtifact } from "@soko/shared-types";
+import type { ResolvedModelArtifact } from "@grogoni/shared-types";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { downloadVerifiedArtifact } from "../services/ai-runtime/src/artifact-loader";
@@ -40,7 +40,7 @@ function artifact(overrides: Partial<ResolvedModelArtifact> = {}): ResolvedModel
     id: "builtin:smollm2-360m:q4_0:gguf",
     modelId: "smollm2-360m",
     storageProvider: "neon-object-storage",
-    bucket: "soko-model-artifacts",
+    bucket: "grogoni-model-artifacts",
     objectKey: "models/smollm2-360m/SmolLM2-360M-Instruct-Q4_0.gguf",
     format: "gguf",
     quantization: "Q4_0",
@@ -50,7 +50,7 @@ function artifact(overrides: Partial<ResolvedModelArtifact> = {}): ResolvedModel
     status: "available",
     createdAt: "2026-08-31T00:00:00.000Z",
     updatedAt: "2026-08-31T00:00:00.000Z",
-    downloadUrl: "https://models.example.neon.tech/soko-model-artifacts/model.gguf",
+    downloadUrl: "https://models.example.neon.tech/grogoni-model-artifacts/model.gguf",
     expiresAt: new Date(Date.now() + 60_000).toISOString(),
     ...overrides
   };
@@ -237,7 +237,7 @@ describe("Vercel inference request handler", () => {
     });
   });
 
-  it("selects the mapped Hugging Face model for each requested Soko model", async () => {
+  it("selects the mapped Hugging Face model for each requested Grogoni model", async () => {
     const requestedModels: string[] = [];
     const handler = createVercelInferenceHandler(
       baseConfig({
@@ -337,7 +337,7 @@ describe("Vercel inference request handler", () => {
   it("hybrid mode: rejects an HF-routed request with no artifact host allowlist configured, since the llama-cpp path is still the default for unmapped models", () => {
     expect(() =>
       readVercelInferenceConfig({
-        SOKO_INFERENCE_SERVICE_TOKEN: token,
+        GROGONI_INFERENCE_SERVICE_TOKEN: token,
         MODEL_ARTIFACT_ALLOWED_HOSTS: "",
         HF_TOKEN: "hf_test_token",
         HF_MODEL_MAP: '{"qwen3-4b":"Qwen/Qwen3-4B"}'
@@ -709,7 +709,7 @@ describe("Vercel inference health handler", () => {
   it("does not claim the model or runtime is initialized", async () => {
     const handler = createVercelHealthHandler();
     const body = await handler().json();
-    expect(body).toEqual({ ok: true, service: "soko-ai-runtime" });
+    expect(body).toEqual({ ok: true, service: "grogoni-ai-runtime" });
   });
 });
 
@@ -720,7 +720,7 @@ describe("Vercel inference ready handler", () => {
 
   it("reports 200 ready when configuration is valid, without downloading anything", async () => {
     const handler = createVercelReadyHandler({
-      SOKO_INFERENCE_SERVICE_TOKEN: token,
+      GROGONI_INFERENCE_SERVICE_TOKEN: token,
       MODEL_ARTIFACT_ALLOWED_HOSTS: "models.example.neon.tech"
     });
     const response = handler();
@@ -731,7 +731,7 @@ describe("Vercel inference ready handler", () => {
 
   it("reports Hugging Face provider readiness without requiring artifact hosts", async () => {
     const handler = createVercelReadyHandler({
-      SOKO_INFERENCE_SERVICE_TOKEN: token,
+      GROGONI_INFERENCE_SERVICE_TOKEN: token,
       INFERENCE_PROVIDER: "huggingface",
       HF_TOKEN: "hf_test_token",
       HF_MODEL_MAP: '{"smollm2-360m":"openai/gpt-oss-20b"}'
@@ -751,7 +751,7 @@ describe("Vercel inference ready handler", () => {
   });
 
   it("reports 503 not-ready when required configuration is missing, without leaking the token", async () => {
-    const handler = createVercelReadyHandler({ SOKO_INFERENCE_SERVICE_TOKEN: "too-short" });
+    const handler = createVercelReadyHandler({ GROGONI_INFERENCE_SERVICE_TOKEN: "too-short" });
     const response = handler();
     expect(response.status).toBe(503);
     const body = await response.json();
@@ -766,7 +766,7 @@ describe("readVercelInferenceConfig", () => {
   });
 
   it("rejects a service token shorter than 32 characters", () => {
-    expect(() => readVercelInferenceConfig({ SOKO_INFERENCE_SERVICE_TOKEN: "too-short" })).toThrow(
+    expect(() => readVercelInferenceConfig({ GROGONI_INFERENCE_SERVICE_TOKEN: "too-short" })).toThrow(
       /at least 32 characters/u
     );
   });
@@ -774,7 +774,7 @@ describe("readVercelInferenceConfig", () => {
   it("requires at least one allowed artifact host", () => {
     expect(() =>
       readVercelInferenceConfig({
-        SOKO_INFERENCE_SERVICE_TOKEN: token,
+        GROGONI_INFERENCE_SERVICE_TOKEN: token,
         MODEL_ARTIFACT_ALLOWED_HOSTS: ""
       })
     ).toThrow(/MODEL_ARTIFACT_ALLOWED_HOSTS/u);
@@ -782,7 +782,7 @@ describe("readVercelInferenceConfig", () => {
 
   it("supports Hugging Face-hosted OSS models without an artifact host allowlist", () => {
     const config = readVercelInferenceConfig({
-      SOKO_INFERENCE_SERVICE_TOKEN: token,
+      GROGONI_INFERENCE_SERVICE_TOKEN: token,
       INFERENCE_PROVIDER: "huggingface",
       HF_TOKEN: "hf_test_token",
       HF_MODEL_MAP:
@@ -802,7 +802,7 @@ describe("readVercelInferenceConfig", () => {
 
   it("builds hybrid Hugging Face config under the default llama-cpp provider when HF_TOKEN is set", () => {
     const config = readVercelInferenceConfig({
-      SOKO_INFERENCE_SERVICE_TOKEN: token,
+      GROGONI_INFERENCE_SERVICE_TOKEN: token,
       MODEL_ARTIFACT_ALLOWED_HOSTS: "models.example.neon.tech",
       HF_TOKEN: "hf_test_token",
       HF_MODEL_MAP: '{"qwen3-4b":"Qwen/Qwen3-4B"}'
@@ -817,13 +817,13 @@ describe("readVercelInferenceConfig", () => {
   it("HF_FREE_TIER_ONLY defaults to false and is only true when explicitly set", () => {
     expect(
       readVercelInferenceConfig({
-        SOKO_INFERENCE_SERVICE_TOKEN: token,
+        GROGONI_INFERENCE_SERVICE_TOKEN: token,
         MODEL_ARTIFACT_ALLOWED_HOSTS: "models.example.neon.tech"
       }).huggingFaceFreeTierOnly
     ).toBe(false);
     expect(
       readVercelInferenceConfig({
-        SOKO_INFERENCE_SERVICE_TOKEN: token,
+        GROGONI_INFERENCE_SERVICE_TOKEN: token,
         MODEL_ARTIFACT_ALLOWED_HOSTS: "models.example.neon.tech",
         HF_FREE_TIER_ONLY: "true"
       }).huggingFaceFreeTierOnly
@@ -832,7 +832,7 @@ describe("readVercelInferenceConfig", () => {
 
   it("applies documented defaults", () => {
     const config = readVercelInferenceConfig({
-      SOKO_INFERENCE_SERVICE_TOKEN: token,
+      GROGONI_INFERENCE_SERVICE_TOKEN: token,
       MODEL_ARTIFACT_ALLOWED_HOSTS: "models.example.neon.tech, other.example.com"
     });
     expect(config.artifactAllowedHosts).toEqual(
@@ -965,7 +965,7 @@ describe("downloadVerifiedArtifact", () => {
   it("reuses an already-downloaded artifact from the on-disk cache without a network call", async () => {
     const bytes = Buffer.from("cached-model-bytes");
     const sha256 = createHash("sha256").update(bytes).digest("hex");
-    const path = join(tmpdir(), `soko-model-${sha256}.gguf`);
+    const path = join(tmpdir(), `grogoni-model-${sha256}.gguf`);
     await writeFile(path, bytes);
     const request = vi.fn();
 
@@ -1049,15 +1049,15 @@ describe("Render inference configuration (services/api/src/config.ts)", () => {
 
   it("requires a service token of at least 32 characters once a Vercel host is configured", () => {
     vi.stubEnv("VERCEL_INFERENCE_URL", "https://inference.example.vercel.app");
-    vi.stubEnv("SOKO_INFERENCE_SERVICE_TOKEN", "too-short");
+    vi.stubEnv("GROGONI_INFERENCE_SERVICE_TOKEN", "too-short");
     expect(() => readEnvironment()).toThrow(
-      /SOKO_INFERENCE_SERVICE_TOKEN must contain at least 32/u
+      /GROGONI_INFERENCE_SERVICE_TOKEN must contain at least 32/u
     );
   });
 
   it("requires Neon model-storage credentials once a Vercel host is configured", () => {
     vi.stubEnv("VERCEL_INFERENCE_URL", "https://inference.example.vercel.app");
-    vi.stubEnv("SOKO_INFERENCE_SERVICE_TOKEN", token);
+    vi.stubEnv("GROGONI_INFERENCE_SERVICE_TOKEN", token);
     vi.stubEnv("NEON_MODEL_STORAGE_ENDPOINT", "");
     expect(() => readEnvironment()).toThrow(/NEON_MODEL_STORAGE_ENDPOINT is required/u);
 
@@ -1070,7 +1070,7 @@ describe("Render inference configuration (services/api/src/config.ts)", () => {
   it("rejects a plain-http VERCEL_INFERENCE_URL in production", () => {
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("VERCEL_INFERENCE_URL", "http://inference.example.vercel.app");
-    vi.stubEnv("SOKO_INFERENCE_SERVICE_TOKEN", token);
+    vi.stubEnv("GROGONI_INFERENCE_SERVICE_TOKEN", token);
     vi.stubEnv("NEON_MODEL_STORAGE_ENDPOINT", "https://storage.example.neon.tech");
     vi.stubEnv("NEON_MODEL_STORAGE_ACCESS_KEY_ID", "key-id");
     vi.stubEnv("NEON_MODEL_STORAGE_SECRET_ACCESS_KEY", "secret");
@@ -1079,7 +1079,7 @@ describe("Render inference configuration (services/api/src/config.ts)", () => {
 
   it("accepts a fully configured Vercel + Neon runtime", () => {
     vi.stubEnv("VERCEL_INFERENCE_URL", "https://inference.example.vercel.app");
-    vi.stubEnv("SOKO_INFERENCE_SERVICE_TOKEN", token);
+    vi.stubEnv("GROGONI_INFERENCE_SERVICE_TOKEN", token);
     vi.stubEnv("NEON_MODEL_STORAGE_ENDPOINT", "https://storage.example.neon.tech");
     vi.stubEnv("NEON_MODEL_STORAGE_ACCESS_KEY_ID", "key-id");
     vi.stubEnv("NEON_MODEL_STORAGE_SECRET_ACCESS_KEY", "secret");

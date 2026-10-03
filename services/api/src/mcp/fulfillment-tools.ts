@@ -14,7 +14,7 @@
  * accept one, and the `absolute` tool takes none. Gram values are decimal strings in both
  * directions (A22).
  */
-import type { McpAccessScope } from "@soko/shared-types";
+import type { McpAccessScope } from "@grogoni/shared-types";
 import { Cp2Error, type Cp2Store } from "../cp2/store.js";
 import type { FulfillmentService } from "../cp2/domains/fulfillment/service.js";
 import {

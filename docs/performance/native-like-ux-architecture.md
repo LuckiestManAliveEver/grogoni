@@ -33,7 +33,7 @@ OAuth redirects, public external handoffs, and PWA document startup remain legit
 
 ## Local cache lifecycle
 
-The `soko-market-local-data` IndexedDB database has a versioned `entries` store. Keys combine account/business scope, domain, and resource key. Every record carries a schema version and update timestamp.
+The `grogoni-local-data` IndexedDB database has a versioned `entries` store. Keys combine account/business scope, domain, and resource key. Every record carries a schema version and update timestamp.
 
 Domain repositories expose:
 
@@ -107,7 +107,7 @@ The service worker has separate versioned caches:
 - GGUF/WASM model files: never put in app-shell precache and never prefetched automatically;
 - business mutations: not intercepted or generically queued by the service worker.
 
-Activation removes only obsolete Soko caches and enables navigation preload. The install step populates the matching shell version before activation, avoiding a new shell that references missing current assets.
+Activation removes only obsolete Grogoni caches and enables navigation preload. The install step populates the matching shell version before activation, avoiding a new shell that references missing current assets.
 
 ## Worker responsibilities
 
@@ -184,4 +184,4 @@ remains 300 ms.
 
 ## Known structural follow-up
 
-`SokoApplication.tsx` is still a large owner module. The safe next extraction order is settings/model management, imports/receipts, reports, then catalogue forms. Each extraction should keep domain state above the lazy outlet or in selector-based external stores, add an outlet error boundary, and compare real render counts before and after. This is intentionally documented as remaining work rather than masked with unverified memoization.
+`GrogoniApplication.tsx` is still a large owner module. The safe next extraction order is settings/model management, imports/receipts, reports, then catalogue forms. Each extraction should keep domain state above the lazy outlet or in selector-based external stores, add an outlet error boundary, and compare real render counts before and after. This is intentionally documented as remaining work rather than masked with unverified memoization.

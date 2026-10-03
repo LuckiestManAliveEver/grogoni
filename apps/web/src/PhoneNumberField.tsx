@@ -3,7 +3,7 @@ import {
   normalizePhoneInput,
   phoneNormalizationErrorMessage,
   type NormalizePhoneResult
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 import { getCountryCallingCode, type CountryCode } from "libphonenumber-js";
 
 export type PhoneValidationState = "empty" | "typing" | "valid" | "invalid";

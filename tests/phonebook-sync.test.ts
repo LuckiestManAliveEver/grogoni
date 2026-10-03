@@ -10,7 +10,7 @@ import {
   syncPhonebookInBatches,
   type PhonebookSyncContact
 } from "../apps/web/src/phonebook-sync";
-import type { NetworkGraphSummary } from "../apps/web/src/soko-application-shared";
+import type { NetworkGraphSummary } from "../apps/web/src/grogoni-application-shared";
 import { parseVcardContacts } from "../apps/web/src/phonebook-vcard";
 
 const at = "2026-09-26T00:00:00.000Z";
@@ -115,7 +115,7 @@ describe("invite batching and messages", () => {
   it("sends invites 100 at a time and adds up the results", async () => {
     const post = vi.fn(async (batch: Array<{ name: string }>) => ({
       invites: batch.slice(1).map((_, index) => ({ id: `i${index}`, status: "sent" as const })),
-      alreadyOnSokoCount: 1,
+      alreadyOnGrogoniCount: 1,
       invalidCount: 2
     }));
 
@@ -129,27 +129,27 @@ describe("invite batching and messages", () => {
     );
 
     expect(post.mock.calls.map(([batch]) => batch.length)).toEqual([100, 100, 5]);
-    expect(outcome).toEqual({ invited: 202, alreadyOnSoko: 3, invalid: 6, shared: false });
+    expect(outcome).toEqual({ invited: 202, alreadyOnGrogoni: 3, invalid: 6, shared: false });
   });
 
   it("says what actually happened", () => {
-    expect(describeInviteOutcome({ invited: 2, alreadyOnSoko: 0, invalid: 0, shared: false })).toBe(
+    expect(describeInviteOutcome({ invited: 2, alreadyOnGrogoni: 0, invalid: 0, shared: false })).toBe(
       "2 invites sent."
     );
-    expect(describeInviteOutcome({ invited: 1, alreadyOnSoko: 1, invalid: 0, shared: false })).toBe(
-      "1 invite sent. 1 is already on Soko: connect with them instead."
+    expect(describeInviteOutcome({ invited: 1, alreadyOnGrogoni: 1, invalid: 0, shared: false })).toBe(
+      "1 invite sent. 1 is already on Grogoni: connect with them instead."
     );
-    expect(describeInviteOutcome({ invited: 0, alreadyOnSoko: 2, invalid: 0, shared: false })).toBe(
-      "Nobody to invite. 2 are already on Soko: connect with them instead."
+    expect(describeInviteOutcome({ invited: 0, alreadyOnGrogoni: 2, invalid: 0, shared: false })).toBe(
+      "Nobody to invite. 2 are already on Grogoni: connect with them instead."
     );
-    expect(describeInviteOutcome({ invited: 0, alreadyOnSoko: 0, invalid: 0, shared: true })).toBe(
+    expect(describeInviteOutcome({ invited: 0, alreadyOnGrogoni: 0, invalid: 0, shared: true })).toBe(
       "Share the invite link with the people you picked."
     );
-    expect(describeInviteOutcome({ invited: 0, alreadyOnSoko: 0, invalid: 0, shared: false })).toBe(
+    expect(describeInviteOutcome({ invited: 0, alreadyOnGrogoni: 0, invalid: 0, shared: false })).toBe(
       "No invites were sent."
     );
-    expect(describeInviteOutcome({ invited: 1, alreadyOnSoko: 0, invalid: 2, shared: false })).toBe(
-      "1 invite sent. 2 had no number or email Soko could read."
+    expect(describeInviteOutcome({ invited: 1, alreadyOnGrogoni: 0, invalid: 2, shared: false })).toBe(
+      "1 invite sent. 2 had no number or email Grogoni could read."
     );
   });
 });

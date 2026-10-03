@@ -20,7 +20,7 @@ describe("canonical contacts directory card", () => {
 
   it("imports the canonical contact types from shared-types rather than redefining them", () => {
     expect(card).toContain(
-      'import type { CanonicalContactSummary, ContactSource } from "@soko/shared-types";'
+      'import type { CanonicalContactSummary, ContactSource } from "@grogoni/shared-types";'
     );
   });
 
@@ -30,7 +30,7 @@ describe("canonical contacts directory card", () => {
     expect(card).toContain('"import" | "sync"');
   });
 
-  it("lets an owner view a contact's linked sources and link/unlink a Soko account", () => {
+  it("lets an owner view a contact's linked sources and link/unlink a Grogoni account", () => {
     expect(card).toContain("View sources");
     expect(normalizedCard).toContain(
       "postJson<CanonicalContactSummary>(`${contactsPath}/${contact.id}/link`"

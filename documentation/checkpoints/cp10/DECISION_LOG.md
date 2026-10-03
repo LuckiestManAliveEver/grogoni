@@ -4,7 +4,7 @@ Status: passed
 Date opened: 2026-07-03
 Date passed: 2026-07-03
 
-This file records Sokoclaw Runtime full adapter decisions for CP10.
+This file records Grogoniclaw Runtime full adapter decisions for CP10.
 
 ## Accepted Decisions
 

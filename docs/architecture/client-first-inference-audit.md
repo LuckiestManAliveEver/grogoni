@@ -7,7 +7,7 @@ Date: 2026-07-19
 
 ## Executive finding
 
-Soko already has two distinct inference implementations:
+Grogoni already has two distinct inference implementations:
 
 - a browser-only ONNX runtime built on `@huggingface/transformers`, running in a dedicated
   Web Worker with WebGPU preferred and WASM available; and
@@ -31,15 +31,15 @@ more CPU and memory.
 chat / agent request
   -> services/api/src/cp2/routes.ts
   -> Cp2Store in services/api/src/cp2/store.ts
-  -> Sokoclaw runtime in packages/tool-core/src/index.ts
+  -> Grogoniclaw runtime in packages/tool-core/src/index.ts
   -> RuntimeModelProvider resolved by services/api/src/index.ts
-       -> @soko/ai-runtime
+       -> @grogoni/ai-runtime
           -> services/ai-runtime/src/local-model.ts -> llama.cpp /completion over HTTP
           -> services/ai-runtime/src/ollama-model.ts -> Ollama /api/chat over HTTP
           -> services/ai-runtime/src/openai-model.ts -> OpenAI Responses API
 
 browser chat
-  -> apps/web/src/SokoApplication.tsx
+  -> apps/web/src/GrogoniApplication.tsx
   -> apps/web/src/browser-inference-session.ts
   -> apps/web/src/browser-model-engine.ts
   -> apps/web/src/workers/browser-model.worker.ts
@@ -86,11 +86,11 @@ browser chat
 - `apps/web/src/browser-inference-session.ts` builds bounded context, selects the current route,
   generates, updates the rolling summary, and records privacy-safe diagnostics.
 - `apps/web/src/browser-inference-storage.ts` creates the dedicated
-  `soko-browser-inference` IndexedDB database. Model-related stores and conversation-related stores
+  `grogoni-browser-inference` IndexedDB database. Model-related stores and conversation-related stores
   are distinct.
 - `apps/web/src/browser-inference-diagnostics.ts` emits structured local diagnostic events without
   prompt text.
-- `apps/web/src/SokoApplication.tsx` owns settings/download controls and integrates browser-local
+- `apps/web/src/GrogoniApplication.tsx` owns settings/download controls and integrates browser-local
   replies with the existing chat UI.
 
 ## llama.cpp execution mode
@@ -109,7 +109,7 @@ runtime as a safe condition; it does not execute llama.cpp in an ordinary browse
 - Browser model metadata is kept in `browser-model-registry.ts`; no weight is imported into the
   JavaScript bundle.
 - The Worker validates the manifest origin and delegates lazy file loading to Transformers.js.
-- Browser Cache Storage uses the Transformers cache; the Soko IndexedDB database stores settings,
+- Browser Cache Storage uses the Transformers cache; the Grogoni IndexedDB database stores settings,
   model state, download state, summaries, and offline queue records in separate object stores.
 - The current registry has one low-tier model, SmolLM2 360M ONNX q4, supporting WebGPU and WASM.
 - Server-visible Android/GGUF model catalogue entries are embedded near the bottom of
@@ -147,13 +147,13 @@ express owner-node and explicitly consented cloud fallbacks independently.
 
 `render.yaml` currently configures:
 
-- API build: install the whole workspace, build `@soko/api...` (including dependencies), then run
+- API build: install the whole workspace, build `@grogoni/api...` (including dependencies), then run
   `check:production-imports`.
-- API start: migrate PostgreSQL, then start `@soko/api`.
+- API start: migrate PostgreSQL, then start `@grogoni/api`.
 - API build filter: includes `services/ai-runtime/**`.
 - API environment: includes `LOCAL_MODEL_ENABLED`, provider, endpoint, model, and timeout plus
   OpenAI variables.
-- Static web builds: build `@soko/web...`; staging enables browser-local inference.
+- Static web builds: build `@grogoni/web...`; staging enables browser-local inference.
 - There is no llama.cpp Dockerfile or Render inference worker.
 
 The production import check only rejects source-path imports. It does not reject server-local or

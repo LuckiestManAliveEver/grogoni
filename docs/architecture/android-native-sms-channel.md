@@ -2,12 +2,12 @@
 
 ## Audit result
 
-Before this implementation Soko was a React/Vite PWA plus Node services. It had no Android Gradle
+Before this implementation Grogoni was a React/Vite PWA plus Node services. It had no Android Gradle
 module, manifest, Kotlin client, or trusted native device transport. The web SMS feature in
 `apps/web/src/messaging/sms-handoff.ts` only opened the operating system composer. It could not read
 the SMS inbox, receive carrier broadcasts, or execute a server-delegated send.
 
-Soko already had the pieces that should remain authoritative:
+Grogoni already had the pieces that should remain authoritative:
 
 - canonical conversations, customers, messages, session families, and sync records in
   `services/api/src/cp2/store.ts`;
@@ -49,7 +49,7 @@ path.
 Outbound path:
 
 ```text
-Soko UI or agent-approved messaging.send
+Grogoni UI or agent-approved messaging.send
 → ChannelGateway native_sms adapter
 → canonical outbound message + one NativeSmsDeviceCommand
 → WAITING_FOR_DEVICE when the selected Android node is offline
@@ -58,11 +58,11 @@ Soko UI or agent-approved messaging.send
 → SmsManager.sendMultipartTextMessage
 → sent/delivery BroadcastReceiver callbacks
 → normalized result endpoint
-→ canonical Soko message status
+→ canonical Grogoni message status
 ```
 
 The Android app persists the outgoing row required of the default SMS handler. Multipart carrier
-segments remain implementation details; Soko stores one canonical message.
+segments remain implementation details; Grogoni stores one canonical message.
 
 ## Readiness and security
 

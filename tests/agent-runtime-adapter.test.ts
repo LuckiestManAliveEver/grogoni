@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { NativeRuntimeAgentSummary, RuntimeModelCompletionResult } from "@soko/shared-types";
+import type { NativeRuntimeAgentSummary, RuntimeModelCompletionResult } from "@grogoni/shared-types";
 import {
   AgentRuntimeAdapterRegistry,
   type AgentRuntimeAdapter

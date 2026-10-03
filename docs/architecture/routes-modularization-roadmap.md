@@ -118,7 +118,7 @@ the same pass/skip/fail count before and after every single row: **657
 passed / 27 skipped / 1 pre-existing unrelated failure** (the
 migration-051 checksum test, unrelated to this refactor) - unchanged
 from the first commit to the last. Typecheck
-(`pnpm --filter @soko/api typecheck`) and lint
+(`pnpm --filter @grogoni/api typecheck`) and lint
 (`pnpm exec eslint <changed files> --max-warnings=0`) were the two
 reliable mechanical gates; `tests/frontend-user-guidance.test.ts`'s
 literal-string assertions against `routes.ts`'s raw source text broke

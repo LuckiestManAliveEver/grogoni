@@ -51,9 +51,9 @@ function source(overrides: {
 }
 
 describe("contextRecipeRegistry", () => {
-  it("every entry's id matches soko.<taskType>@<version> and its own taskType/version", () => {
+  it("every entry's id matches grogoni.<taskType>@<version> and its own taskType/version", () => {
     for (const [intent, recipe] of Object.entries(contextRecipeRegistry)) {
-      expect(recipe?.id).toBe(`soko.${intent}@${recipe?.version}`);
+      expect(recipe?.id).toBe(`grogoni.${intent}@${recipe?.version}`);
       expect(recipe?.taskType).toBe(intent);
     }
   });
@@ -211,7 +211,7 @@ describe("nextRuntimeExperienceState", () => {
     agentId: "agent-1",
     turnId: "turn-1",
     intent: "show_products" as const,
-    recipeId: "soko.show_products@1",
+    recipeId: "grogoni.show_products@1",
     recipeVersion: 1,
     evidenceRefs: ["catalogue-1"],
     toolName: "products.list" as const,
@@ -343,7 +343,7 @@ describe("buildRuntimeReportCard", () => {
       toolName: null,
       risk: null,
       status: "completed" as const,
-      metadata: { recipeId: "soko.show_products@1" }
+      metadata: { recipeId: "grogoni.show_products@1" }
     };
     const groundingRejected = { ...groundingAccepted, state: "grounding.rejected" as const };
     const turns = [
@@ -368,7 +368,7 @@ describe("buildRuntimeReportCard", () => {
     expect(v1Card.key).toEqual({
       runtimeVersion: 1,
       modelId: "model-a",
-      recipeId: "soko.show_products@1"
+      recipeId: "grogoni.show_products@1"
     });
     expect(v1Card.sampleSize).toBe(2);
     expect(v1Card.taskSuccessRate).toBe(0.5);
@@ -398,7 +398,7 @@ describe("recall tenant isolation and grounding gate at the real HTTP seam", () 
       taskType: "show_products",
       situation: "A test situation for shop A only.",
       lessonKey: "fallback:show_products:retryable-execution-failure",
-      recipeId: "soko.show_products@1",
+      recipeId: "grogoni.show_products@1",
       recipeVersion: 1,
       evidenceRefs: [],
       toolSequence: ["products.list"],

@@ -8,7 +8,7 @@ set record = record || jsonb_build_object(
     'updatedBy', 'system'
   ),
   updated_at = now()
-where entity_id = 'builtin:soko-default-runtime:v1';
+where entity_id = 'builtin:grogoni-default-runtime:v1';
 
 delete from cp2_native_runtime_binding_models
 where entity_id = 'de6d9c28-a4a9-4446-8f17-3a2b1837197e';

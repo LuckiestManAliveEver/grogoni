@@ -2,8 +2,8 @@ import { parseCredentialKeyring } from "./credentials.js";
 import type { InferenceProviderConfig } from "./provider-config.js";
 
 /**
- * Environment-sourced inference configuration. Environment variables describe Soko-managed
- * (Soko-funded) credentials and deployment endpoints only; BYOK credentials always come from
+ * Environment-sourced inference configuration. Environment variables describe Grogoni-managed
+ * (Grogoni-funded) credentials and deployment endpoints only; BYOK credentials always come from
  * encrypted persistence (inference_provider_credentials). Nothing here hardcodes a model id, and no
  * provider is required for the API to boot.
  */

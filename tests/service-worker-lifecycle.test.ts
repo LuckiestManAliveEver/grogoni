@@ -11,7 +11,7 @@ import { describe, expect, it, vi } from "vitest";
  */
 const swSourcePath = fileURLToPath(new URL("../apps/web/public/sw.js", import.meta.url));
 const swSource = readFileSync(swSourcePath, "utf8");
-const origin = "https://soko.market";
+const origin = "https://grogoni.com";
 
 class MockCache {
   store = new Map<string, Response>();
@@ -161,7 +161,7 @@ describe("service worker: install / activate lifecycle", () => {
     await Promise.all(installWaited);
 
     expect(sw.self.skipWaiting).toHaveBeenCalledTimes(1);
-    const shell = sw.caches.caches.get("soko-market-app-v13");
+    const shell = sw.caches.caches.get("grogoni-app-v13");
     expect(shell).toBeDefined();
     expect(await shell?.match("/manifest.webmanifest")).toBeDefined();
   });
@@ -172,38 +172,38 @@ describe("service worker: install / activate lifecycle", () => {
     // Simulate caches left behind by earlier deployments (requirement: cache migration for
     // existing installs), the current version's own caches, and caches this worker must never
     // touch because they hold deliberate offline/runtime data, not app-shell precache.
-    sw.caches.seed("soko-market-app-v10", { "/": "old shell v10" });
-    sw.caches.seed("soko-market-app-static-v10", { "/assets/app-old.js": "old asset" });
-    sw.caches.seed("soko-market-app-public-read-v10", {});
-    sw.caches.seed("soko-market-app-v13", { "/": "current shell" });
-    sw.caches.seed("soko-market-app-static-v13", {});
-    sw.caches.seed("soko-market-app-public-read-v13", {});
-    sw.caches.seed("soko-offline-shell-v1", {
-      "/__soko_offline_active__": "active",
+    sw.caches.seed("grogoni-app-v10", { "/": "old shell v10" });
+    sw.caches.seed("grogoni-app-static-v10", { "/assets/app-old.js": "old asset" });
+    sw.caches.seed("grogoni-app-public-read-v10", {});
+    sw.caches.seed("grogoni-app-v13", { "/": "current shell" });
+    sw.caches.seed("grogoni-app-static-v13", {});
+    sw.caches.seed("grogoni-app-public-read-v13", {});
+    sw.caches.seed("grogoni-offline-shell-v1", {
+      "/__grogoni_offline_active__": "active",
       "/": "offline shell for deliberate offline mode"
     });
-    sw.caches.seed("soko-ocr-engine-v1", { "/tesseract/worker.min.js": "ocr engine" });
+    sw.caches.seed("grogoni-ocr-engine-v1", { "/tesseract/worker.min.js": "ocr engine" });
 
     const activateWaited: Promise<unknown>[] = [];
     sw.listeners.get("activate")?.({ waitUntil: (p: Promise<unknown>) => activateWaited.push(p) });
     await Promise.all(activateWaited);
 
     const remaining = new Set(await sw.caches.keys());
-    expect(remaining.has("soko-market-app-v10")).toBe(false);
-    expect(remaining.has("soko-market-app-static-v10")).toBe(false);
-    expect(remaining.has("soko-market-app-public-read-v10")).toBe(false);
+    expect(remaining.has("grogoni-app-v10")).toBe(false);
+    expect(remaining.has("grogoni-app-static-v10")).toBe(false);
+    expect(remaining.has("grogoni-app-public-read-v10")).toBe(false);
 
-    expect(remaining.has("soko-market-app-v13")).toBe(true);
-    expect(remaining.has("soko-market-app-static-v13")).toBe(true);
-    expect(remaining.has("soko-market-app-public-read-v13")).toBe(true);
+    expect(remaining.has("grogoni-app-v13")).toBe(true);
+    expect(remaining.has("grogoni-app-static-v13")).toBe(true);
+    expect(remaining.has("grogoni-app-public-read-v13")).toBe(true);
 
     // Customer/seller offline data must survive an app-shell cache-version bump.
-    expect(remaining.has("soko-offline-shell-v1")).toBe(true);
-    expect(remaining.has("soko-ocr-engine-v1")).toBe(true);
-    const offlineShell = sw.caches.caches.get("soko-offline-shell-v1");
-    expect(await offlineShell?.match("/__soko_offline_active__")).toBeDefined();
+    expect(remaining.has("grogoni-offline-shell-v1")).toBe(true);
+    expect(remaining.has("grogoni-ocr-engine-v1")).toBe(true);
+    const offlineShell = sw.caches.caches.get("grogoni-offline-shell-v1");
+    expect(await offlineShell?.match("/__grogoni_offline_active__")).toBeDefined();
     expect(await offlineShell?.match("/")).toBeDefined();
-    const ocrEngine = sw.caches.caches.get("soko-ocr-engine-v1");
+    const ocrEngine = sw.caches.caches.get("grogoni-ocr-engine-v1");
     expect(await ocrEngine?.match("/tesseract/worker.min.js")).toBeDefined();
 
     expect(sw.self.registration.navigationPreload.enable).toHaveBeenCalledTimes(1);
@@ -229,7 +229,7 @@ describe("service worker: navigation requests are network-first", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(await response?.text()).toBe("<html>v14 shell</html>");
 
-    const shell = sw.caches.caches.get("soko-market-app-v13");
+    const shell = sw.caches.caches.get("grogoni-app-v13");
     const cachedRoot = await shell?.match("/");
     expect(await cachedRoot?.text()).toBe("<html>v14 shell</html>");
   });
@@ -246,7 +246,7 @@ describe("service worker: navigation requests are network-first", () => {
     const fetchImpl = vi.fn().mockResolvedValue(fresh);
     const sw = loadServiceWorker(fetchImpl);
     await runInstallAndActivate(sw);
-    const shell = sw.caches.caches.get("soko-market-app-v13");
+    const shell = sw.caches.caches.get("grogoni-app-v13");
     await shell?.put("/", stale);
 
     const request = makeRequest("/", { mode: "navigate" });
@@ -262,7 +262,7 @@ describe("service worker: navigation requests are network-first", () => {
     const fetchImpl = vi.fn().mockRejectedValue(new TypeError("network error"));
     const sw = loadServiceWorker(fetchImpl);
     await runInstallAndActivate(sw);
-    const shell = sw.caches.caches.get("soko-market-app-v13");
+    const shell = sw.caches.caches.get("grogoni-app-v13");
     await shell?.put("/", new Response("<html>last known good</html>", { status: 200 }));
 
     const request = makeRequest("/", { mode: "navigate" });
@@ -278,7 +278,7 @@ describe("service worker: navigation requests are network-first", () => {
     const sw = loadServiceWorker(fetchImpl);
     await runInstallAndActivate(sw);
     // Simulate a brand-new install whose one-time app-shell precache never included "/".
-    const shell = sw.caches.caches.get("soko-market-app-v13");
+    const shell = sw.caches.caches.get("grogoni-app-v13");
     await shell?.delete("/");
 
     const request = makeRequest("/", { mode: "navigate" });
@@ -349,7 +349,7 @@ describe("service worker: hashed static assets stay cache-first", () => {
 
     expect(await nextResponse?.text()).toBe("v14 asset");
     expect(fetchImpl).toHaveBeenCalledTimes(2);
-    const staticCache = sw.caches.caches.get("soko-market-app-static-v13");
+    const staticCache = sw.caches.caches.get("grogoni-app-static-v13");
     expect(await staticCache?.match("/assets/app-a83f21.js")).toBeDefined();
     expect(await staticCache?.match("/assets/app-b91cc4.js")).toBeDefined();
   });
@@ -386,7 +386,7 @@ describe("service worker: private/API traffic is never served from an app-shell 
     await runInstallAndActivate(sw);
 
     const { event, handled } = fetchEvent(
-      makeRequest("/v1/products", { originOverride: "https://soko.market" })
+      makeRequest("/v1/products", { originOverride: "https://grogoni.com" })
     );
     sw.listeners.get("fetch")?.(event);
 
@@ -401,8 +401,8 @@ describe("service worker: deliberate offline mode overrides normal routing witho
     const sw = loadServiceWorker(fetchImpl);
     await runInstallAndActivate(sw);
 
-    const offlineShell = sw.caches.seed("soko-offline-shell-v1", {
-      "/__soko_offline_active__": "active",
+    const offlineShell = sw.caches.seed("grogoni-offline-shell-v1", {
+      "/__grogoni_offline_active__": "active",
       "/": "offline install shell"
     });
 
@@ -412,6 +412,6 @@ describe("service worker: deliberate offline mode overrides normal routing witho
 
     expect(await response?.text()).toBe("offline install shell");
     expect(fetchImpl).not.toHaveBeenCalled();
-    expect(await offlineShell.match("/__soko_offline_active__")).toBeDefined();
+    expect(await offlineShell.match("/__grogoni_offline_active__")).toBeDefined();
   });
 });

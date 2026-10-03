@@ -304,17 +304,17 @@ describePostgres("inference repositories on PostgreSQL", () => {
     await repositories.runs.deleteForOwner({ tenantId });
   });
 
-  it("seeds the on-device and Soko Cloud catalog models (migration 102)", async () => {
+  it("seeds the on-device and Grogoni Cloud catalog models (migration 102)", async () => {
     const result = await pool.query<{ entity_id: string; target: string | null }>(
       `select entity_id, record -> 'inference' ->> 'executionTarget' as target
          from cp2_model_catalog
-        where entity_id in ('smollm2-360m-device', 'qwen2.5-0.5b-device', 'qwen3-1.7b-device', 'qwen3-4b-soko-cloud')
+        where entity_id in ('smollm2-360m-device', 'qwen2.5-0.5b-device', 'qwen3-1.7b-device', 'qwen3-4b-grogoni-cloud')
         order by entity_id`
     );
     expect(result.rows).toEqual([
       { entity_id: "qwen2.5-0.5b-device", target: "browser-local" },
       { entity_id: "qwen3-1.7b-device", target: "browser-local" },
-      { entity_id: "qwen3-4b-soko-cloud", target: "remote-inference" },
+      { entity_id: "qwen3-4b-grogoni-cloud", target: "remote-inference" },
       { entity_id: "smollm2-360m-device", target: "browser-local" }
     ]);
   });

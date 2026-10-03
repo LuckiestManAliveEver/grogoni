@@ -23,8 +23,8 @@ describe("external SMS composer handoff", () => {
     expect(normalizeSmsRecipient("+14155552671", "KE")).toBe("+14155552671");
   });
 
-  it.each(["", "123", "soko: soko.janes-shop", "soko.janes-shop"])(
-    "rejects invalid or Soko-only recipient %s",
+  it.each(["", "123", "grogoni: grogoni.janes-shop", "grogoni.janes-shop"])(
+    "rejects invalid or Grogoni-only recipient %s",
     (input) => {
       expect(() => normalizeSmsRecipient(input, "KE")).toThrow();
     }
@@ -98,14 +98,14 @@ describe("external SMS composer handoff", () => {
     });
   });
 
-  it("keeps Soko as default and selects SMS only after an explicit request", () => {
-    expect(selectMessageComposerChannel({ isSokoRecipient: true, smsRequested: false })).toBe(
-      "soko"
+  it("keeps Grogoni as default and selects SMS only after an explicit request", () => {
+    expect(selectMessageComposerChannel({ isGrogoniRecipient: true, smsRequested: false })).toBe(
+      "grogoni"
     );
-    expect(selectMessageComposerChannel({ isSokoRecipient: false, smsRequested: false })).toBe(
+    expect(selectMessageComposerChannel({ isGrogoniRecipient: false, smsRequested: false })).toBe(
       "unsupported"
     );
-    expect(selectMessageComposerChannel({ isSokoRecipient: true, smsRequested: true })).toBe(
+    expect(selectMessageComposerChannel({ isGrogoniRecipient: true, smsRequested: true })).toBe(
       "sms_external_app"
     );
     expect(smsNativeSendingEnabled).toBe(false);

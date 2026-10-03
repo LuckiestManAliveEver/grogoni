@@ -65,5 +65,5 @@ Date passed: 2026-07-02
 - `pnpm run ci`
 - `pnpm build`
 - `docker compose ps`
-- `pnpm --filter @soko/api start`
+- `pnpm --filter @grogoni/api start`
 - `pnpm health:api`

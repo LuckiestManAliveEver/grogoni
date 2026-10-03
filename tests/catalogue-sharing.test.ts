@@ -7,7 +7,7 @@ interface CreateBusinessResponse {
     id: string;
     name: string;
     language: string;
-    sokoId: string;
+    grogoniId: string;
   };
 }
 
@@ -25,7 +25,7 @@ interface ProductResponse {
 
 interface ShareableCatalogueSummaryResponse {
   businessId: string;
-  sokoId: string;
+  grogoniId: string;
   businessName: string;
   productCount: number;
   updatedAt: string;
@@ -76,7 +76,7 @@ describe("catalogue sharing", () => {
     expect(listing).toEqual([
       {
         businessId: sharer.business.id,
-        sokoId: sharer.business.sokoId,
+        grogoniId: sharer.business.grogoniId,
         businessName: "Sharer shop",
         productCount: 1,
         updatedAt: expect.any(String)

@@ -14,7 +14,7 @@ export interface MenuDrawerProps {
 }
 
 /**
- * Soko Home's hamburger menu drawer: consolidates navigation the hamburger used to trigger
+ * Grogoni Home's hamburger menu drawer: consolidates navigation the hamburger used to trigger
  * directly (Message history) alongside settings destinations that previously had no entry point
  * from the customer-facing shell (Shop/Agent/Account settings all live on the one
  * AgentProfileSurface page, opened here with a hint for which of its SettingsGroups to land on).

@@ -26,11 +26,11 @@ drop index if exists suppliers_business_updated_idx;
 drop index if exists customers_business_contact_idx;
 drop index if exists products_business_updated_idx;
 drop index if exists products_business_sku_unique_idx;
-drop index if exists businesses_soko_id_unique_idx;
+drop index if exists businesses_grogoni_id_unique_idx;
 
 alter table suppliers drop column if exists last_purchase_date;
 alter table suppliers drop column if exists purchase_receipt_count;
 alter table suppliers drop column if exists sales_agent_count;
 alter table suppliers drop column if exists linked_phonebook_contact_name;
 alter table suppliers drop column if exists linked_phonebook_contact_id;
-alter table businesses drop column if exists soko_id;
+alter table businesses drop column if exists grogoni_id;

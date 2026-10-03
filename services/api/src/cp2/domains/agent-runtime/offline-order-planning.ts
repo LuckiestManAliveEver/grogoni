@@ -1,4 +1,4 @@
-import type { OfflineOrderIntentOutcome, ProductSummary } from "@soko/shared-types";
+import type { OfflineOrderIntentOutcome, ProductSummary } from "@grogoni/shared-types";
 
 /** Deterministic parsing only - no model call. Every quantity/product match here is a plain
  *  regex + string comparison, exactly the kind of same-input-same-output work that belongs in

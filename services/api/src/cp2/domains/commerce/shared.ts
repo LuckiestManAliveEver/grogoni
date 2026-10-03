@@ -1,10 +1,10 @@
-import type { ProductCaptureField } from "@soko/shared-types";
+import type { ProductCaptureField } from "@grogoni/shared-types";
 import {
   captureField,
   firstProductCaptureTitle,
   productCaptureItemsFromFields,
   visibleProductCapturePrice
-} from "@soko/business-core";
+} from "@grogoni/business-core";
 import {
   normalizeOptionalBoundedText,
   normalizeRequiredBoundedText
@@ -15,7 +15,7 @@ export { normalizeOptionalBoundedText, normalizeRequiredBoundedText };
 // Re-exported rather than redefined: these are pure text-extraction heuristics that must produce
 // the exact same result whether they run here (the online capture path) or on-device in
 // packages/offline-runtime/providers/product-capture-entity.ts (the offline capture path) - see
-// that function's own doc comment for why it lives in @soko/business-core instead of either side.
+// that function's own doc comment for why it lives in @grogoni/business-core instead of either side.
 export {
   captureField,
   firstProductCaptureTitle,

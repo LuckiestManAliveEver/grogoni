@@ -23,8 +23,8 @@ The prompts named two options and required an explicit choice before
 building unified checkout:
 
 - **Option A — split payment.** One checkout action initiates N separate
-  payments (one per source). Soko never holds buyer funds.
-- **Option B — Soko as intermediary.** The buyer pays Soko once; Soko
+  payments (one per source). Grogoni never holds buyer funds.
+- **Option B — Grogoni as intermediary.** The buyer pays Grogoni once; Grogoni
   settles with each source on a separate schedule, holding funds and
   bearing reconciliation/refund/liability risk in between.
 
@@ -46,7 +46,7 @@ checkout action into one order per distinct source and moves zero money:
   definition (`packages/shared-types/src/index.ts:1533-1555`) documents
   why: "Contacts are not businesses and have no invoice/payment machinery
   ... payment is handled directly between buyer and seller-contact, out of
-  band, the same way a real-world peer sale would be." Soko records that a
+  band, the same way a real-world peer sale would be." Grogoni records that a
   pickup was requested and tracks its status (`requested` → `accepted` /
   `rejected` → `completed`), but never touches money for it.
 - **Marketplace-connector items** are rejected outright at checkout with
@@ -71,7 +71,7 @@ intermediate. One does not exist yet:
 records track invoice payments and customer debt. Live M-Pesa integration
 is intentionally deferred."` (`apps/web/src/app-shell.ts:196`).
 - Building split-payment logic (Option A) with no payment rail to split
-  across would be fabricated. Building Soko-as-intermediary logic
+  across would be fabricated. Building Grogoni-as-intermediary logic
   (Option B) with no settlement rail to eventually pay sources out from
   would create funds-holding liability with no corresponding operational
   or compliance capability to discharge it. Both would be exactly the kind
@@ -95,17 +95,17 @@ contact-sourced items.**
 
 - Catalogue orders already resolve to a specific business's existing
   invoice; charging the buyer directly against that invoice via whatever
-  rail the business already uses is a natural extension of "Soko never
+  rail the business already uses is a natural extension of "Grogoni never
   holds buyer funds" and requires no new settlement/reconciliation
   surface.
 - Contact orders should keep the peer-to-peer, out-of-band model
   permanently, independent of whichever rail catalogue orders adopt —
-  contacts are not businesses, have no invoicing relationship with Soko,
-  and forcing one into existence to route a payment through Soko would be
+  contacts are not businesses, have no invoicing relationship with Grogoni,
+  and forcing one into existence to route a payment through Grogoni would be
   a bigger, separate product decision (effectively turning a contact into
   a merchant) that this settlement question shouldn't force.
-- Option B (Soko-as-intermediary) is not recommended for either source
-  kind: it would require Soko to take on refund, reconciliation, and
+- Option B (Grogoni-as-intermediary) is not recommended for either source
+  kind: it would require Grogoni to take on refund, reconciliation, and
   regulatory liability for money it doesn't need to touch to make either
   flow work, for no corresponding product benefit over Option A.
 

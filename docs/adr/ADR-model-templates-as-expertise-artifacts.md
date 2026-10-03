@@ -4,8 +4,8 @@ Status: accepted, 2026-09-02.
 
 ## Decision
 
-Soko treats domain expertise as the persistent portable asset and foundation models as swappable
-execution dependencies. The asset is a versioned `.soko` template containing source expertise,
+Grogoni treats domain expertise as the persistent portable asset and foundation models as swappable
+execution dependencies. The asset is a versioned `.grogoni.com` template containing source expertise,
 runtime contracts, evaluation evidence, compiled artifacts, and lineage.
 
 ## Context
@@ -25,7 +25,7 @@ the accumulated business specification when the base is replaced.
 4. Provider-specific assistants. Fast initial integration, but makes a proprietary API, identity,
    and lifecycle an architectural dependency.
 5. Portable expertise artifact with swappable base. Preserves the domain specification and
-   evidence, supports recompilation, and fits Soko's existing agent/model/host separation.
+   evidence, supports recompilation, and fits Grogoni's existing agent/model/host separation.
 
 Option 5 is selected.
 

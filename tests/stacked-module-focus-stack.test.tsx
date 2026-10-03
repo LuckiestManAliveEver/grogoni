@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { StackedModule } from "../apps/web/src/StackedModule";
 
 // Regression coverage for a bug found while testing audit A27's MerchantWorkspaceDashboard
-// (docs/audits/soko-home-2026-09-17/audit.md): resizing below the compact-viewport breakpoint
+// (docs/audits/grogoni-home-2026-09-17/audit.md): resizing below the compact-viewport breakpoint
 // while the Workspace StackedModule stays open also turns the conversation inbox into its own
 // StackedModule (ChatSurface.tsx's isCompactViewport branch), so two instances end up open at
 // once. Each one used to install its own document-level Tab/Escape listener, so both acted on the

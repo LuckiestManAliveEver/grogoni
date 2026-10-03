@@ -7,12 +7,12 @@
 
 ## Context
 
-Soko's hosted-first zero-setup runtime (ADR-hosted-first-zero-setup-ai.md, ADR-default-runtime-pi-smollm.md)
+Grogoni's hosted-first zero-setup runtime (ADR-hosted-first-zero-setup-ai.md, ADR-default-runtime-pi-smollm.md)
 already made Pi + SmolLM2 360M work on a shop's first chat message with no client setup. Alongside
 that hosted path, the codebase still carried an earlier, parallel architecture: private on-device
 model execution. `ModelExecutionTarget` included `browser-local` (in-browser GGUF/WebGPU/WASM
 inference via `@wllama/wllama`, `transformers.js`, and WebLLM) and `installed-app` (a native bridge,
-`window.SokoAgentModelRuntime`, running llama.cpp against a model privately downloaded to one
+`window.GrogoniAgentModelRuntime`, running llama.cpp against a model privately downloaded to one
 Android device). A shop-scoped model artifact uploaded to the account could be reconstructed back
 onto any individual device (`restoreAccountModelToDevice`) purely to run inference locally, and a
 `localStorage`-keyed `DeviceAgentModelAssignment` bound "this agent" to "this installed model" per
@@ -51,7 +51,7 @@ rather than the hosted registration path.
    existing native/legacy binding records, not a new persistence shape competing with them.
 3. **GitHub and Hugging Face become `RuntimeRegistryAdapter` sources, not runtime authorities.**
    A canonical `RuntimeRegistryAdapter` interface (`search`, `inspect`) is implemented by
-   `SokoCatalogRegistryAdapter`, `GitHubRegistryAdapter`, and `HuggingFaceRegistryAdapter`, wrapping
+   `GrogoniCatalogRegistryAdapter`, `GitHubRegistryAdapter`, and `HuggingFaceRegistryAdapter`, wrapping
    the pre-existing catalog code rather than re-implementing GitHub/Hugging Face access. A unified
    `GET /v1/runtime-registry/search` fans out to requested providers concurrently, normalizes results
    into `RuntimeRegistrySearchItem`, and reports provider-level failures separately so one slow or
@@ -72,7 +72,7 @@ rather than the hosted registration path.
    can only ever surface as "update available."
 6. **A harness (an `AgentRuntimeAdapter` implementation) is never executed merely because a user
    selected a GitHub search result.** Discovery and compatibility are different states: a search
-   result is `"compatible"` only after static inspection finds a well-formed Soko-compatible
+   result is `"compatible"` only after static inspection finds a well-formed Grogoni-compatible
    manifest at the repository root — never because a repo name or README contains the word "agent."
    Import for a harness proceeds through discover → inspect → validate → register, and then
    deliberately stops: this codebase has no isolated execution environment (no `isolated-vm`,
@@ -135,7 +135,7 @@ named, deliberate gap, not an oversight.
 - README/model-card text encountered during discovery is treated as untrusted data; nothing in the
   import pipeline executes instructions found in it.
 - Provider metadata (stars, license, compatibility claims) is discovery input, never authoritative
-  runtime truth — Soko independently validates what it will register and, for models, what it will
+  runtime truth — Grogoni independently validates what it will register and, for models, what it will
   provision.
 - Search result caching separates public results from connected-account results by cache key
   (`accountId` only enters the key when the request is actually authenticated as connected); one
@@ -156,7 +156,7 @@ the repository default; nothing here changes `repositoryDefaultRuntimePolicy`.
 
 ## Update: a narrow, disclosed exception for explicit offline mode
 
-The Soko Offline Runtime (`docs/offline/README.md`) reintroduces on-device model execution for one
+The Grogoni Offline Runtime (`docs/offline/README.md`) reintroduces on-device model execution for one
 specific, narrow case: a device the merchant has _explicitly_ put into offline mode from Settings,
 where the alternative is not "route to the hosted default" but "the agent is unavailable at all."
 This is not a reversal of the decision above - the "keep on-device inference as an offline fallback"

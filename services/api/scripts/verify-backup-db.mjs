@@ -33,7 +33,7 @@ async function recordRestoreDrill(status) {
 
   const pool = new Pool(
     databasePoolConfig(databaseUrl, {
-      applicationName: "soko-market-verify-backup",
+      applicationName: "grogoni-verify-backup",
       max: 1
     })
   );

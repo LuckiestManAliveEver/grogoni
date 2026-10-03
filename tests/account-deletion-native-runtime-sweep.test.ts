@@ -57,7 +57,7 @@ describe("account deletion sweeps native runtime state", () => {
     store.grantPlatformOperator({ accountId, grantedBy: "system-test" });
 
     const before = store.snapshot();
-    const globalDefaultBindingId = "builtin:soko-default-runtime:v1";
+    const globalDefaultBindingId = "builtin:grogoni-default-runtime:v1";
     const scopedBindings = before.nativeRuntimeBindings.filter(
       (binding) => binding.businessId === businessId
     );
@@ -140,7 +140,7 @@ function healthyAdapter(modelIdForAdapter: string): ModelRuntimeAdapter {
         provider: "test",
         executionTarget: "backend",
         latencyMs: 1,
-        responsePreview: "SOKO_MODEL_OK",
+        responsePreview: "GROGONI_MODEL_OK",
         errorCode: null,
         message: null,
         retryable: false

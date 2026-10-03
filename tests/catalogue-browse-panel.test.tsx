@@ -7,7 +7,7 @@ import type {
   ProductSummary,
   ShareableCatalogueProductSummary,
   ShareableCatalogueSummary
-} from "@soko/shared-types";
+} from "@grogoni/shared-types";
 
 const getJson = vi.fn();
 const postJson = vi.fn();
@@ -21,7 +21,7 @@ const { default: CatalogueBrowsePanel } = await import("../apps/web/src/Catalogu
 
 const shop: ShareableCatalogueSummary = {
   businessId: "shop-a",
-  sokoId: "soko.shop-a",
+  grogoniId: "grogoni.shop-a",
   businessName: "Amina's Fresh Produce",
   productCount: 1,
   updatedAt: new Date(0).toISOString()
@@ -95,9 +95,9 @@ describe("CatalogueBrowsePanel", () => {
 
     expect(getJson).toHaveBeenCalledWith("/businesses/shop-b/catalogue-marketplace/shops");
     expect(host.textContent).toContain("Amina's Fresh Produce");
-    // Displays the friendly public commerce address, not the raw internal sokoId.
-    expect(host.textContent).toContain("shop-a@soko.market");
-    expect(host.textContent).not.toContain("soko.shop-a");
+    // Displays the friendly public commerce address, not the raw internal grogoniId.
+    expect(host.textContent).toContain("shop-a@grogoni.com");
+    expect(host.textContent).not.toContain("grogoni.shop-a");
 
     const shopButton = [...host.querySelectorAll("button")].find((button) =>
       button.textContent?.includes("Amina's Fresh Produce")

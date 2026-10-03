@@ -10,9 +10,9 @@
 
     <application
         android:allowBackup="false"
-        android:label="Soko"
+        android:label="Grogoni"
         android:supportsRtl="true"
-        android:theme="@style/Theme.Soko">
+        android:theme="@style/Theme.grogoni.com">
 
         <activity
             android:name=".MainActivity"

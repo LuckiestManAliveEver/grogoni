@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-import type { AiModelSummary } from "@soko/shared-types";
+import type { AiModelSummary } from "@grogoni/shared-types";
 
 import { getJson, postJson } from "./api-helpers";
 import { useAsyncActions } from "./hooks/useAsyncActions";
@@ -298,7 +298,7 @@ export function ModelTemplateWorkbenchPanel({ businessId }: { businessId: string
     }>(templatesPath, {
       baseModelId: templateDraft.baseModelId,
       manifest: {
-        format: "soko-template",
+        format: "grogoni-template",
         formatVersion: 1,
         template: {
           id: manifestId,
