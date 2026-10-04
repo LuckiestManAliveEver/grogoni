@@ -62,42 +62,39 @@ describe("Chat API offline adapter", () => {
     };
     const shows = (text: string) => () => (host.textContent ?? "").includes(text);
     const hasButton = (text: string) => () => button(text) !== undefined;
+    // Buttons can render a tick after the text that announces them, so every click waits for its
+    // button first and fails with the button's name rather than "reading 'click' of undefined".
+    const click = async (text: string) => {
+      await until(hasButton(text));
+      const target = button(text);
+      if (target === undefined) throw new Error(`Button "${text}" never appeared.`);
+      await act(async () => {
+        target.click();
+      });
+    };
     try {
       await act(async () => {
         root.render(
           createElement(OfflineRuntimeSettings, { accountId: "account", businessId: "shop" })
         );
       });
-      await until(hasButton("Prepare offline storage"));
-      await act(async () => {
-        button("Prepare offline storage").click();
-      });
+      await click("Prepare offline storage");
       expect(document.body.textContent).toContain("Set up offline mode");
-      await act(async () => {
-        button("Continue").click();
-      });
+      await click("Continue");
       expect(document.body.textContent).toContain("Choose a destination");
-      await act(async () => {
-        button("Continue").click();
-      });
+      await click("Continue");
       expect(document.body.textContent).toContain("Ready to install");
       expect(network).not.toHaveBeenCalled();
-      await act(async () => {
-        button("Install").click();
-      });
+      await click("Install");
       await until(shows("Offline business data is prepared"));
       expect(host.textContent).toContain("Offline business data is prepared");
-      await act(async () => {
-        button("Done").click();
-      });
+      await click("Done");
       expect(network).toHaveBeenCalledTimes(1);
       expect(String(network.mock.calls[0]?.[0])).toContain("offline-runtime/snapshot");
       // Installing only prepares the snapshot now - going offline is a separate, explicit step
       // (either this standalone toggle, or the header's runtime handoff for an active agent
       // conversation), so sync stays impossible to trigger by accident from Install alone.
-      await act(async () => {
-        button("Resume saved offline session").click();
-      });
+      await click("Resume saved offline session");
       await until(shows("Offline mode is active"));
       expect(host.textContent).toContain("Offline mode is active");
       await act(async () => {
@@ -114,10 +111,7 @@ describe("Chat API offline adapter", () => {
         localStorage.removeItem("grogoni.offline-runtime.active.v1");
         window.dispatchEvent(new Event("storage"));
       });
-      await until(hasButton("Resume saved offline session"));
-      await act(async () => {
-        button("Resume saved offline session").click();
-      });
+      await click("Resume saved offline session");
       await until(shows("Offline mode is active"));
       expect(host.textContent).toContain("Offline mode is active");
       expect(network).toHaveBeenCalledTimes(1);
