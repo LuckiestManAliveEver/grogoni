@@ -151,7 +151,16 @@ DB_PERSISTENCE_QUEUE_WARN_MS=10000
 DB_SLOW_QUERY_MS=500
 DB_PERSISTENCE_RETRY_INITIAL_MS=2000
 DB_PERSISTENCE_RETRY_MAX_MS=60000
+DB_STARTUP_MAX_ATTEMPTS=6
 ```
+
+Boot-time database steps (schema checks, the inference provider refresh and the CP2 snapshot
+load) retry transient network and connection failures, making up to `DB_STARTUP_MAX_ATTEMPTS`
+attempts per step with jittered backoff; `1` disables retries. A schema check or snapshot load that
+still fails aborts startup. A provider refresh that still fails does not: boot continues and the
+refresh keeps retrying in the background. Each retry logs a `db.startup_retry` (or
+`db.background_retry`) JSON line. See
+[docs/runbooks/db-startup-dns-flake.md](runbooks/db-startup-dns-flake.md).
 
 Slow persistence operations are logged by the API when they exceed `DB_SLOW_QUERY_MS`.
 `GET /health/db` reports pending and queued persistence work, the active operation and its age,

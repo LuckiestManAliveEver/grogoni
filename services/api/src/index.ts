@@ -4,6 +4,12 @@ import { Pool } from "pg";
 import { buildApi } from "./app.js";
 import { readEnvironment } from "./config.js";
 import { buildPgPoolConfig } from "./db-pool-config.js";
+import {
+  DEFAULT_DATABASE_STARTUP_RETRY,
+  retryDatabaseStartup,
+  retryInBackground,
+  transientReason
+} from "./db-startup-retry.js";
 import { positiveIntegerFromEnv } from "@grogoni/resource-control";
 import {
   createOllamaInferenceClient,
@@ -134,6 +140,14 @@ const shouldUsePostgresStore =
 // same own-pool shape corridor fulfillment uses. No provider is required to boot: with nothing
 // configured, provider-routed models simply report CREDENTIAL_MISSING / unconfigured.
 const inferenceEnvironment = readInferenceEnvironment(process.env);
+// A flaky resolver or a Neon compute waking from suspend must not crash boot (db-startup-retry.ts).
+const databaseStartupRetry = {
+  ...DEFAULT_DATABASE_STARTUP_RETRY,
+  maxAttempts: positiveIntegerFromEnv(
+    "DB_STARTUP_MAX_ATTEMPTS",
+    DEFAULT_DATABASE_STARTUP_RETRY.maxAttempts
+  )
+};
 let inferencePool: Pool | undefined;
 if (shouldUsePostgresStore) {
   inferencePool = new Pool(
@@ -142,7 +156,17 @@ if (shouldUsePostgresStore) {
     })
   );
   metrics.instrumentPgPool(inferencePool, { poolName: "inference" });
-  await assertInferenceSchema(inferencePool);
+  // pg-pool emits "error" when an idle client's connection dies (network reset, Neon compute
+  // restart); without a listener that is an unhandled 'error' event and the process exits.
+  inferencePool.on("error", (error) => {
+    console.error("Unexpected PostgreSQL inference pool error.", error);
+  });
+  const schemaPool = inferencePool;
+  await retryDatabaseStartup(
+    "inference_schema",
+    () => assertInferenceSchema(schemaPool),
+    databaseStartupRetry
+  );
 }
 const inferencePlatform = createInferencePlatform({
   environment: inferenceEnvironment,
@@ -155,26 +179,52 @@ const inferencePlatform = createInferencePlatform({
   // Callers pass already-redacted fields (inference-router.ts runs redactRecord first).
   log: (event, fields) => console.log({ event, ...fields })
 });
+// Background retries for boot work that may finish after startup; stopped on shutdown, and never
+// started once shutdown has begun.
+let backgroundRetriesStopped = false;
+let stopCredentialKeyRotationRetry: (() => void) | undefined;
+let stopInferenceRefreshRetry: (() => void) | undefined;
+const backgroundRetry = { initialDelayMs: 5_000, maxDelayMs: 60_000 };
 // Re-encrypt BYOK credentials still on an older INFERENCE_CREDENTIAL_KEYS version. Idempotent and
-// off the boot path: a slow or failing rotation never delays or blocks startup.
-void inferencePlatform
-  .rotateCredentialKeys()
-  .then((result) => {
+// off the boot path: a slow or failing rotation never delays or blocks startup, and a failed one
+// keeps retrying in the background so credentials do not stay on the old key until a restart.
+const rotateCredentialKeys = () =>
+  inferencePlatform.rotateCredentialKeys().then((result) => {
     if (result.rotated > 0 || result.failed > 0) {
       console.log({ event: "inference.credential_keys_rotated", ...result });
     }
-  })
-  .catch((error: unknown) => {
-    console.error({
-      event: "inference.credential_key_rotation_failed",
-      reason: error instanceof Error ? error.name : "unknown"
-    });
   });
-await inferencePlatform.refresh().catch((error: unknown) => {
+void rotateCredentialKeys().catch((error: unknown) => {
+  console.error({
+    event: "inference.credential_key_rotation_failed",
+    reason: error instanceof Error ? error.name : "unknown",
+    code: transientReason(error) ?? (error as { code?: unknown } | null)?.code ?? null
+  });
+  if (backgroundRetriesStopped) return;
+  stopCredentialKeyRotationRetry = retryInBackground(
+    "inference_key_rotation",
+    () => rotateCredentialKeys(),
+    backgroundRetry
+  );
+});
+// Loads the DB-configured providers. Boot may continue without them, but never silently for good:
+// once the startup retries are exhausted the refresh keeps retrying in the background.
+await retryDatabaseStartup(
+  "inference_refresh",
+  () => inferencePlatform.refresh(),
+  databaseStartupRetry
+).catch((error: unknown) => {
   console.error({
     event: "inference.provider_refresh_failed",
-    reason: error instanceof Error ? error.name : "unknown"
+    reason: error instanceof Error ? error.name : "unknown",
+    code: transientReason(error) ?? (error as { code?: unknown } | null)?.code ?? null
   });
+  if (backgroundRetriesStopped) return;
+  stopInferenceRefreshRetry = retryInBackground(
+    "inference_refresh",
+    () => inferencePlatform.refresh(),
+    backgroundRetry
+  );
 });
 const cp2StoreOptions = {
   channelGateway,
@@ -210,7 +260,17 @@ if (shouldUsePostgresStore) {
     })
   );
   metrics.instrumentPgPool(fulfillmentPool, { poolName: "fulfillment" });
-  fulfillmentSchemaCheck = assertFulfillmentSchema(fulfillmentPool).then(
+  // pg-pool emits "error" when an idle client's connection dies (network reset, Neon compute
+  // restart); without a listener that is an unhandled 'error' event and the process exits.
+  fulfillmentPool.on("error", (error) => {
+    console.error("Unexpected PostgreSQL fulfillment pool error.", error);
+  });
+  const schemaPool = fulfillmentPool;
+  fulfillmentSchemaCheck = retryDatabaseStartup(
+    "fulfillment_schema",
+    () => assertFulfillmentSchema(schemaPool),
+    databaseStartupRetry
+  ).then(
     () => null,
     (error: unknown) => error
   );
@@ -324,6 +384,9 @@ const grogoniIdCooldownIntervalMs = readOptionalPositiveInteger(
 );
 const grogoniIdCooldownMs = readOptionalPositiveInteger(process.env.GROGONI_ID_COOLDOWN_MS);
 app.addHook("onClose", async () => {
+  backgroundRetriesStopped = true;
+  stopCredentialKeyRotationRetry?.();
+  stopInferenceRefreshRetry?.();
   await grogoniIdCooldownRunner?.stop();
   await connectedMailboxSyncRunner?.stop();
   await notificationDeliveryRunner?.stop();
@@ -488,11 +551,16 @@ if (process.env.ENABLE_GROGONI_ID_COOLDOWN_RUNNER !== "false") {
   grogoniIdCooldownRunner = startGrogoniIdCooldownRunner({
     store: cp2Store,
     timeScheduledJob: metrics.timeScheduledJob,
-    ...(grogoniIdCooldownIntervalMs === undefined ? {} : { intervalMs: grogoniIdCooldownIntervalMs }),
+    ...(grogoniIdCooldownIntervalMs === undefined
+      ? {}
+      : { intervalMs: grogoniIdCooldownIntervalMs }),
     ...(grogoniIdCooldownMs === undefined ? {} : { cooldownMs: grogoniIdCooldownMs }),
     onResult: (released) => {
       if (released > 0) {
-        app.log.info({ event: "grogoni_id_cooldown_released", released }, "Retired grogoniIds released.");
+        app.log.info(
+          { event: "grogoni_id_cooldown_released", released },
+          "Retired grogoniIds released."
+        );
       }
     },
     onError: (error) => app.log.error({ error }, "GrogoniId cooldown run failed.")
@@ -553,10 +621,15 @@ if (process.env.ENABLE_ACCOUNT_DELETION_RUNNER === "true") {
 async function createCp2StoreOrExplainSchemaFailure() {
   try {
     return shouldUsePostgresStore
-      ? await createPostgresCp2Store({
-          databaseUrl: config.databaseUrl,
-          ...cp2StoreOptions
-        })
+      ? await retryDatabaseStartup(
+          "cp2_store",
+          () =>
+            createPostgresCp2Store({
+              databaseUrl: config.databaseUrl,
+              ...cp2StoreOptions
+            }),
+          databaseStartupRetry
+        )
       : createCp2Store(cp2StoreOptions);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
