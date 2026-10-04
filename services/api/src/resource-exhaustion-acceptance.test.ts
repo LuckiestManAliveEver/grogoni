@@ -7,10 +7,7 @@
  * resource-control primitives directly.
  */
 import { describe, expect, it } from "vitest";
-import {
-  BulkheadRejectedError,
-  createBulkhead
-} from "@grogoni/resource-control";
+import { BulkheadRejectedError, createBulkhead } from "@grogoni/resource-control";
 
 describe("resource exhaustion acceptance", () => {
   it("a saturated background bulkhead rejects new work while an independent critical bulkhead is unaffected", async () => {

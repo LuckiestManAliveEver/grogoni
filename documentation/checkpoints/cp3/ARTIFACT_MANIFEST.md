@@ -14,15 +14,15 @@ Date passed: 2026-07-02
 
 ## Implemented CP3 Artifacts
 
-| Path                                   | Purpose                                                        |
-| -------------------------------------- | -------------------------------------------------------------- |
-| `apps/web/public/manifest.webmanifest` | PWA install metadata.                                          |
-| `apps/web/public/icons/grogoni-icon.svg`  | Lightweight app icon for install metadata and browser tab.     |
-| `apps/web/index.html`                  | Links PWA manifest and app icon.                               |
-| `apps/web/src/cp3-shell.ts`            | CP3 quick action, empty state, and chat placeholder contract.  |
-| `apps/web/src/main.tsx`                | Authenticated mobile shell, home, chat, and placeholder views. |
-| `apps/web/src/styles.css`              | Mobile-first shell styling.                                    |
-| `tests/cp3-shell.test.ts`              | Focused CP3 shell behavior tests.                              |
+| Path                                     | Purpose                                                        |
+| ---------------------------------------- | -------------------------------------------------------------- |
+| `apps/web/public/manifest.webmanifest`   | PWA install metadata.                                          |
+| `apps/web/public/icons/grogoni-icon.svg` | Lightweight app icon for install metadata and browser tab.     |
+| `apps/web/index.html`                    | Links PWA manifest and app icon.                               |
+| `apps/web/src/cp3-shell.ts`              | CP3 quick action, empty state, and chat placeholder contract.  |
+| `apps/web/src/main.tsx`                  | Authenticated mobile shell, home, chat, and placeholder views. |
+| `apps/web/src/styles.css`                | Mobile-first shell styling.                                    |
+| `tests/cp3-shell.test.ts`                | Focused CP3 shell behavior tests.                              |
 
 ## CP3 Opening Checklist
 

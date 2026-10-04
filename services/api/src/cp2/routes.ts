@@ -1634,7 +1634,10 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
   // way it ever changes.
   app.put(
     "/businesses/:businessId/grogoni-id",
-    async (request: FastifyRequest<{ Params: BusinessParams; Body: GrogoniIdRenameBody }>, reply) => {
+    async (
+      request: FastifyRequest<{ Params: BusinessParams; Body: GrogoniIdRenameBody }>,
+      reply
+    ) => {
       try {
         const business = store.renameGrogoniId({
           sessionId: readSessionCookie(request.headers.cookie),

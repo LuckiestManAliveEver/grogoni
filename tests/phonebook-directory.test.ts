@@ -113,7 +113,9 @@ describe("phonebook directory", () => {
     });
 
     expect(directory.requests.map((request) => request.id)).toEqual(["c-eve"]);
-    expect(directory.onGrogoni.map((entry) => [entry.name, entry.state, entry.connectionId])).toEqual([
+    expect(
+      directory.onGrogoni.map((entry) => [entry.name, entry.state, entry.connectionId])
+    ).toEqual([
       ["Bob", "connect", null],
       ["Carol", "requested", "c-carol"],
       ["Dan", "connected", "c-dan"],

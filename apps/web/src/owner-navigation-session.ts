@@ -126,6 +126,8 @@ function isChatMessage(value: unknown): value is ChatMessage {
   return (
     typeof message.id === "string" &&
     typeof message.body === "string" &&
-    (message.author === "merchant" || message.author === "grogoniclaw" || message.author === "contact")
+    (message.author === "merchant" ||
+      message.author === "grogoniclaw" ||
+      message.author === "contact")
   );
 }

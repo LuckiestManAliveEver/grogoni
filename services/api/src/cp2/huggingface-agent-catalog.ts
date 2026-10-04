@@ -1,4 +1,8 @@
-import type { AgentDefinitionId, OssAgentSearchResult, OssAgentSummary } from "@grogoni/shared-types";
+import type {
+  AgentDefinitionId,
+  OssAgentSearchResult,
+  OssAgentSummary
+} from "@grogoni/shared-types";
 
 export interface HuggingFaceAgentCatalog {
   searchAgents: (search?: string) => Promise<OssAgentSearchResult>;

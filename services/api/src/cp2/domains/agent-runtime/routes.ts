@@ -153,10 +153,7 @@ export interface RuntimeTurnBody {
   confirmationToken?: string;
 }
 
-export function registerAgentRuntimeRoutes(
-  app: FastifyInstance,
-  store: Cp2Store
-): void {
+export function registerAgentRuntimeRoutes(app: FastifyInstance, store: Cp2Store): void {
   app.get("/v1/oss-agents/installed", async (request, reply) => {
     try {
       return {

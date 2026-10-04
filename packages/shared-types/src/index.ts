@@ -1716,7 +1716,8 @@ export type NetworkVisibilityStatus = "direct" | "agent_mediated" | "private";
 export type NetworkConsentStatus =
   "granted" | "pending" | "agent_required" | "rejected" | "revoked";
 
-export type NetworkNodeKind = "grogoni_user" | "grogoni_shop" | "external_contact" | "external_social";
+export type NetworkNodeKind =
+  "grogoni_user" | "grogoni_shop" | "external_contact" | "external_social";
 
 export type SocialNetworkProvider =
   | "facebook"

@@ -56,13 +56,13 @@ are `N/A` rather than fabricated.
 
 ## Production bundle comparison
 
-| Asset/category                        | Baseline gzip | Final gzip | Change |
-| ------------------------------------- | ------------: | ---------: | -----: |
-| Bootstrap entry                       |       1.08 KB |    1.08 KB |   0.0% |
-| Main React/router chunk               |      62.58 KB |   66.80 KB |  +6.7% |
+| Asset/category                           | Baseline gzip | Final gzip | Change |
+| ---------------------------------------- | ------------: | ---------: | -----: |
+| Bootstrap entry                          |       1.08 KB |    1.08 KB |   0.0% |
+| Main React/router chunk                  |      62.58 KB |   66.80 KB |  +6.7% |
 | Authenticated `GrogoniApplication` chunk |     149.88 KB |  152.79 KB |  +1.9% |
-| Initial CSS                           |      13.42 KB |   14.01 KB |  +4.4% |
-| Authenticated startup path            |     213.54 KB |  220.67 KB |  +3.3% |
+| Initial CSS                              |      13.42 KB |   14.01 KB |  +4.4% |
+| Authenticated startup path               |     213.54 KB |  220.67 KB |  +3.3% |
 
 The size increase is the cost of the new repository, connectivity, capability, diagnostics, and
 prefetch foundations. Heavy model code remains outside the static entry graph:

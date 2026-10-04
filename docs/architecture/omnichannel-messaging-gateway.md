@@ -13,7 +13,7 @@ message store.
 
 | Concern                | Canonical implementation                                                                 |
 | ---------------------- | ---------------------------------------------------------------------------------------- |
-| Customer               | `CustomerSummary`, optionally linked to one Grogoni account                                 |
+| Customer               | `CustomerSummary`, optionally linked to one Grogoni account                              |
 | Provider identity      | `PlatformIdentitySummary`, scoped by business and linked to one customer                 |
 | Conversation transport | `ConversationChannelSummary`                                                             |
 | Message                | `ConversationMessageSummary`, including provider, direction, lifecycle, and external IDs |
@@ -62,7 +62,7 @@ provider review have been completed.
 
 | Provider            | Inbound | Reply           | Initiate | Configured        | Contract/mock tested | Live verified |
 | ------------------- | ------: | --------------- | -------: | ----------------- | -------------------- | ------------- |
-| Grogoni                |     Yes | Yes             |      Yes | Yes               | Yes                  | Internal only |
+| Grogoni             |     Yes | Yes             |      Yes | Yes               | Yes                  | Internal only |
 | Telegram            |     Yes | Existing thread |       No | Runtime-dependent | Yes                  | No            |
 | WhatsApp Business   |      No | No              |       No | No                | Fail-closed only     | No            |
 | Facebook Messenger  |      No | No              |       No | No                | Fail-closed only     | No            |

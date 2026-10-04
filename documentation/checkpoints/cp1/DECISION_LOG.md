@@ -36,7 +36,7 @@ This file records engineering foundation decisions for CP1.
 | CP0 ID  | Deferred To | Reason                                                                                 |
 | ------- | ----------- | -------------------------------------------------------------------------------------- |
 | CP0-O03 | CP3/CP7     | Browser local storage choice depends on PWA shell and sync queue design.               |
-| CP0-O06 | CP10        | Pi/OpenClaw timing belongs to Grogoniclaw adapter work.                                   |
+| CP0-O06 | CP10        | Pi/OpenClaw timing belongs to Grogoniclaw adapter work.                                |
 | CP0-O07 | CP11        | llama.cpp path belongs to local model adapter work.                                    |
 | CP0-O08 | CP6/CP14    | Tax profile should be tied to invoice/payment implementation and compliance hardening. |
 | CP0-O09 | CP16        | SMS provider is public-launch infrastructure.                                          |

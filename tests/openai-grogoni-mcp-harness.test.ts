@@ -50,7 +50,10 @@ describe("OpenAI Grogoni MCP live harness helpers", () => {
         { type: "message", content: [{ type: "output_text", text: "done" }] }
       ]
     };
-    expect(discoveredToolNames(response)).toEqual(["grogoni.list_shops", "grogoni.query_catalogue"]);
+    expect(discoveredToolNames(response)).toEqual([
+      "grogoni.list_shops",
+      "grogoni.query_catalogue"
+    ]);
     expect(responseText(response)).toBe("done");
 
     const catalogue = catalogueProducts({

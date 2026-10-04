@@ -8,7 +8,7 @@ and does not require a persistent inference service.
 
 The initial approved profiles are:
 
-| Grogoni profile                   | WebLLM model ID                     | Weight revision                            |
+| Grogoni profile                | WebLLM model ID                     | Weight revision                            |
 | ------------------------------ | ----------------------------------- | ------------------------------------------ |
 | `smollm2-360m-instruct-webllm` | `SmolLM2-360M-Instruct-q4f16_1-MLC` | `3a622fd89e0216e8bb10c410c007c786baa8a033` |
 | `qwen2.5-0.5b-instruct-webllm` | `Qwen2.5-0.5B-Instruct-q4f16_1-MLC` | `32ff081fe7e4dfe4ffb167b94c66fdf11e02b8ad` |

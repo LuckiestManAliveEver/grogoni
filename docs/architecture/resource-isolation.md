@@ -30,7 +30,7 @@ contention points in _this_ architecture, not a generic template.
 Used as a label on every bulkhead, every resource-control event, and every metric, so nothing
 duplicates these as string literals.
 
-| Class      | Examples in Grogoni                                                                                                                              | Bounded today?                                                                                                                                                          |
+| Class      | Examples in Grogoni                                                                                                                           | Bounded today?                                                                                                                                                          |
 | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | critical   | auth, session restore, conversation persistence, catalogue reads, order/payment state                                                         | No dedicated bulkhead - it runs against the in-memory store (§0), which isn't the contended resource; protected by _not sharing_ the resources below with anything else |
 | important  | an agent turn's inference call                                                                                                                | Yes - `inferenceBulkhead` + `inferenceBreaker` (§3)                                                                                                                     |
@@ -46,7 +46,7 @@ for one-off scripts, and index.ts's bare `{ max: 2 }` artifact pool with no time
 | Pool                   | Budget env var         | Default | Purpose                                                                                                                    |
 | ---------------------- | ---------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------- |
 | `cp2_primary`          | `DB_POOL_MAX`          | 5       | Boot snapshot load, async persistence, health checks                                                                       |
-| `cp2_realtime`         | (fixed `max: 1`)       | 1       | `LISTEN grogoni_sync_changes`                                                                                                 |
+| `cp2_realtime`         | (fixed `max: 1`)       | 1       | `LISTEN grogoni_sync_changes`                                                                                              |
 | `model_artifact_store` | `DB_ARTIFACT_POOL_MAX` | 2       | Inference artifact resolution - now has real `connectionTimeoutMillis`/`query_timeout`/`statement_timeout` instead of none |
 
 `DB_CONNECTION_TIMEOUT_MS` / `DB_IDLE_TIMEOUT_MS` / `DB_QUERY_TIMEOUT_MS` / `DB_STATEMENT_TIMEOUT_MS`

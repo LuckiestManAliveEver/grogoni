@@ -26,11 +26,11 @@ RuntimeRegistryAdapter
 Three adapters implement it, each wrapping pre-existing catalog code rather than re-implementing
 provider access:
 
-| Adapter                      | Wraps                                                                   |
-| ---------------------------- | ----------------------------------------------------------------------- |
+| Adapter                         | Wraps                                                                   |
+| ------------------------------- | ----------------------------------------------------------------------- |
 | `GrogoniCatalogRegistryAdapter` | `cp2_model_catalog`, `cp2_agent_catalog`, `AgentRuntimeAdapterRegistry` |
-| `GitHubRegistryAdapter`      | `github-model-catalog.ts`, `github-agent-catalog.ts`                    |
-| `HuggingFaceRegistryAdapter` | `huggingface-model-catalog.ts`, `huggingface-agent-catalog.ts`          |
+| `GitHubRegistryAdapter`         | `github-model-catalog.ts`, `github-agent-catalog.ts`                    |
+| `HuggingFaceRegistryAdapter`    | `huggingface-model-catalog.ts`, `huggingface-agent-catalog.ts`          |
 
 `search` results are normalized into `RuntimeRegistrySearchItem` — provider, kind, identity,
 ownership, popularity/recency signals, license, and a `compatibility` verdict. Provider-specific raw

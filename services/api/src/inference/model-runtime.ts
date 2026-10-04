@@ -123,7 +123,12 @@ export interface OllamaInferenceClient {
   chat(
     messages: OllamaChatMessage[],
     options?: { signal?: AbortSignal; onDelta?: (text: string) => void }
-  ): Promise<{ text: string; promptTokens?: number; completionTokens?: number; finishReason?: string }>;
+  ): Promise<{
+    text: string;
+    promptTokens?: number;
+    completionTokens?: number;
+    finishReason?: string;
+  }>;
 }
 
 export function createOllamaInferenceClient(options: {
@@ -178,8 +183,11 @@ export function createOllamaInferenceClient(options: {
     async health(signal) {
       try {
         const response = await invoke("/api/tags", { method: "GET" }, signal);
-        if (!response.ok) throw responseError(response.status, await response.json().catch(() => null));
-        const body = (await response.json().catch(() => ({}))) as { models?: Array<{ name?: string }> };
+        if (!response.ok)
+          throw responseError(response.status, await response.json().catch(() => null));
+        const body = (await response.json().catch(() => ({}))) as {
+          models?: Array<{ name?: string }>;
+        };
         const modelInstalled = (body.models ?? []).some((entry) => entry.name === model);
         return {
           provider: "ollama",
@@ -212,7 +220,8 @@ export function createOllamaInferenceClient(options: {
         },
         callOptions.signal
       );
-      if (!response.ok) throw responseError(response.status, await response.json().catch(() => null));
+      if (!response.ok)
+        throw responseError(response.status, await response.json().catch(() => null));
       if (response.body === null) {
         throw new ModelRuntimeError("INFERENCE_FAILED", "Ollama returned no stream.", true);
       }

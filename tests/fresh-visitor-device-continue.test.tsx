@@ -37,7 +37,12 @@ function freshDeviceSession(): unknown {
       primaryAuthDestination: "device:abc",
       identityLevel: "device"
     },
-    user: { id: "user-1", accountId: "device-account-1", displayName: "Grogoni user", language: "en" },
+    user: {
+      id: "user-1",
+      accountId: "device-account-1",
+      displayName: "Grogoni user",
+      language: "en"
+    },
     session: { id: "session-1", expiresAt: "2099-01-01T00:00:00.000Z" },
     deviceRecoveryCredentialId: "cred-1"
   };

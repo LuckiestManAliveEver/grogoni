@@ -199,7 +199,9 @@ export function OwnerApp() {
   const initialCountryCode: CountryDialCode =
     initialOwnerAuth?.countryCode ?? initialSetupDraft?.countryCode ?? "+254";
   const [session, setSession] = useState<SessionResponse | null>(initialCachedSession);
-  const [grogoniSessionContext, setGrogoniSessionContext] = useState<GrogoniSessionContext | null>(null);
+  const [grogoniSessionContext, setGrogoniSessionContext] = useState<GrogoniSessionContext | null>(
+    null
+  );
   const [business, setBusiness] = useState<ActiveBusiness | null>(initialBusiness);
   const [agentSettings, setAgentSettings] = useState<AgentSettings>(
     () => readStoredAgent() ?? createDefaultAgent(initialBusiness)

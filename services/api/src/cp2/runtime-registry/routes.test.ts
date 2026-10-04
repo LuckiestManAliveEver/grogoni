@@ -111,7 +111,10 @@ describe("registerRuntimeRegistryRoutes", () => {
       url: "/v1/runtime-registry/resources/grogoni/example%2Fagent-repo?kind=agent"
     });
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toMatchObject({ provider: "grogoni", externalId: "example/agent-repo" });
+    expect(response.json()).toMatchObject({
+      provider: "grogoni",
+      externalId: "example/agent-repo"
+    });
 
     const missingKind = await app.inject({
       method: "GET",

@@ -307,7 +307,8 @@ function summarizeConnection(
     direction,
     counterpartUserId,
     // The viewer's own name for this person wins; otherwise the name they chose on Grogoni.
-    counterpartDisplayName: phonebookNode?.displayName ?? counterpart?.displayName ?? "Grogoni user",
+    counterpartDisplayName:
+      phonebookNode?.displayName ?? counterpart?.displayName ?? "Grogoni user",
     counterpartBusinessName: business?.name ?? null,
     counterpartGrogoniId: business?.grogoniId ?? null,
     nodeId: phonebookNode?.id ?? null,

@@ -44,14 +44,14 @@ Command: `pnpm --filter @grogoni/web build`
 
 Build completed successfully in 24.63 seconds (29.01 seconds shell wall time), transforming 218 modules.
 
-| Asset/category                        |     Minified |                 Gzip |
-| ------------------------------------- | -----------: | -------------------: |
-| Bootstrap entry                       |      2.08 KB |              1.08 KB |
-| Main React/router chunk               |    199.25 KB |             62.58 KB |
+| Asset/category                           |     Minified |                 Gzip |
+| ---------------------------------------- | -----------: | -------------------: |
+| Bootstrap entry                          |      2.08 KB |              1.08 KB |
+| Main React/router chunk                  |    199.25 KB |             62.58 KB |
 | Authenticated `GrogoniApplication` chunk |    570.09 KB |            149.88 KB |
-| Initial CSS                           |     71.15 KB |             13.42 KB |
-| Browser-model worker                  |    883.33 KB | not reported by Vite |
-| ONNX/WASM runtime                     | 21,596.02 KB |          5,067.67 KB |
+| Initial CSS                              |     71.15 KB |             13.42 KB |
+| Browser-model worker                     |    883.33 KB | not reported by Vite |
+| ONNX/WASM runtime                        | 21,596.02 KB |          5,067.67 KB |
 
 The practical authenticated JavaScript startup path was approximately 213.54 KB gzip (bootstrap + main + authenticated route), below the requested 250 KB preference but concentrated in one 570 KB minified route chunk. The model worker and WASM were separate and were not part of ordinary navigation.
 

@@ -2,7 +2,10 @@ import { useState } from "react";
 import { reportBackgroundLoadError } from "../background-load-error";
 
 import { getJson } from "../api-helpers";
-import type { BusinessKnowledgeSummary, BusinessReportSummary } from "../grogoni-application-shared";
+import type {
+  BusinessKnowledgeSummary,
+  BusinessReportSummary
+} from "../grogoni-application-shared";
 
 interface UseReportsStateDeps {
   setStatusMessage: (message: string) => void;

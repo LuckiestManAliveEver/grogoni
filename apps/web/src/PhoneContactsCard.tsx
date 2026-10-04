@@ -191,8 +191,8 @@ export function PhoneContactsCard({
         <div>
           <h3>Phone Contacts</h3>
           <p>
-            Find the people you know on Grogoni and invite the rest. Grogoni reads only the contacts you
-            pick, and keeps only a fingerprint and the last few digits of each number, never the
+            Find the people you know on Grogoni and invite the rest. Grogoni reads only the contacts
+            you pick, and keeps only a fingerprint and the last few digits of each number, never the
             full number.
           </p>
         </div>

@@ -16,8 +16,8 @@ export default function AccountDeletionPage() {
           <p className="eyebrow">Privacy control</p>
           <h1>Delete your Grogoni account</h1>
           <p className="legal-intro">
-            Use this public web resource to request deletion of your Grogoni account and the
-            data associated with it, even if the Android app is no longer installed.
+            Use this public web resource to request deletion of your Grogoni account and the data
+            associated with it, even if the Android app is no longer installed.
           </p>
         </header>
 
@@ -29,8 +29,8 @@ export default function AccountDeletionPage() {
         >
           <h2 id="request-deletion-title">Request account deletion</h2>
           <p>
-            Sign in on the secure Grogoni website using the phone number or email associated
-            with your account. You will be taken directly to the deletion controls.
+            Sign in on the secure Grogoni website using the phone number or email associated with
+            your account. You will be taken directly to the deletion controls.
           </p>
           <a className="account-deletion-primary-action" href="/?intent=account-deletion">
             Continue to secure deletion request

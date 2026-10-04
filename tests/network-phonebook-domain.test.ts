@@ -473,7 +473,11 @@ describe("identity endpoints", () => {
         deps: { memberships: Map<string, unknown>; businesses: Map<string, unknown> };
       }
     ).deps;
-    deps.businesses.set("biz-bob", { id: "biz-bob", grogoniId: "grogoni.bob", name: "Bob Hardware" });
+    deps.businesses.set("biz-bob", {
+      id: "biz-bob",
+      grogoniId: "grogoni.bob",
+      name: "Bob Hardware"
+    });
     deps.memberships.set("m-bob", {
       id: "m-bob",
       userId: "bob",
@@ -493,7 +497,11 @@ describe("identity endpoints", () => {
       sessionId: "alice",
       candidateId: candidate.id
     });
-    expect(confirmed).toMatchObject({ grogoniUserId: "bob", grogoniBusinessId: null, grogoniAgentId: null });
+    expect(confirmed).toMatchObject({
+      grogoniUserId: "bob",
+      grogoniBusinessId: null,
+      grogoniAgentId: null
+    });
   });
 });
 

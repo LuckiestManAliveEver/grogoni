@@ -766,9 +766,9 @@ describe("readVercelInferenceConfig", () => {
   });
 
   it("rejects a service token shorter than 32 characters", () => {
-    expect(() => readVercelInferenceConfig({ GROGONI_INFERENCE_SERVICE_TOKEN: "too-short" })).toThrow(
-      /at least 32 characters/u
-    );
+    expect(() =>
+      readVercelInferenceConfig({ GROGONI_INFERENCE_SERVICE_TOKEN: "too-short" })
+    ).toThrow(/at least 32 characters/u);
   });
 
   it("requires at least one allowed artifact host", () => {

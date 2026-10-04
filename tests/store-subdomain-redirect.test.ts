@@ -84,7 +84,9 @@ describe("store subdomain redirect (Host: {handle}.grogoni.com)", () => {
       headers: { host: `${oldBareHandle}.grogoni.com` }
     });
     expect(response.statusCode).toBe(302);
-    expect(response.headers.location).toBe("https://grogoni.com/agent/grogoni.new-subdomain-handle");
+    expect(response.headers.location).toBe(
+      "https://grogoni.com/agent/grogoni.new-subdomain-handle"
+    );
     await app.close();
   });
 

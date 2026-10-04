@@ -66,8 +66,8 @@ export default function PrivacyPolicyPage() {
           <p className="legal-version">Version 1.0 (Draft) · Parts I–IV</p>
           <p className="legal-effective-date">Effective Date: To Be Inserted</p>
           <p className="legal-intro">
-            How Grogoni collects, uses, stores, shares, protects, and otherwise processes
-            Personal Data when people use the Services.
+            How Grogoni collects, uses, stores, shares, protects, and otherwise processes Personal
+            Data when people use the Services.
           </p>
           <dl className="legal-particulars">
             <div>

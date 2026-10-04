@@ -206,11 +206,9 @@ describe("connections", () => {
       alice.cookie
     );
     expect(sent).toMatchObject({ counterpartBusinessName: null, counterpartGrogoniId: null });
-    const resolved = await getJson<{ matches: Array<{ node: { grogoniBusinessId: string | null } }> }>(
-      app,
-      `/network/contacts/resolve?query=Bob`,
-      alice.cookie
-    );
+    const resolved = await getJson<{
+      matches: Array<{ node: { grogoniBusinessId: string | null } }>;
+    }>(app, `/network/contacts/resolve?query=Bob`, alice.cookie);
     expect(resolved.matches[0]?.node.grogoniBusinessId).toBeNull();
 
     await postJson(app, `/network/connections/${sent.id}/respond`, { accept: true }, bob.cookie);
@@ -227,7 +225,11 @@ describe("connections", () => {
     await syncContacts(app, alice.cookie, "merge", [{ name: "Bob", phone: bobPhone }]);
 
     const found = await getJson<
-      Array<{ displayName: string; grogoniBusinessId: string | null; grogoniAgentId: string | null }>
+      Array<{
+        displayName: string;
+        grogoniBusinessId: string | null;
+        grogoniAgentId: string | null;
+      }>
     >(app, `/businesses/${alice.businessId}/suppliers/phonebook/search?q=Bob`, alice.cookie);
     expect(found).toEqual([
       expect.objectContaining({ displayName: "Bob", grogoniBusinessId: null, grogoniAgentId: null })

@@ -24,7 +24,7 @@ Date passed: 2026-07-03
 | `apps/web/src/cp3-shell.ts`              | CP10 runtime chat shell metadata and welcome copy.                                           |
 | `apps/web/src/main.tsx`                  | Owner-facing runtime chat, confirmation token handling, and CP4 fallback behavior.           |
 | `tests/cp3-shell.test.ts`                | Shell contract test updated for CP10 runtime behavior.                                       |
-| `tests/cp10-grogoniclaw-runtime.test.ts`    | Runtime API, planning, verification, confirmation, telemetry, scoping, and rate-limit tests. |
+| `tests/cp10-grogoniclaw-runtime.test.ts` | Runtime API, planning, verification, confirmation, telemetry, scoping, and rate-limit tests. |
 | `tests/ai-eval/cp10-runtime-commands.ts` | Runtime evaluation dataset and task-completion gate fixtures.                                |
 
 ## CP10 Opening Checklist

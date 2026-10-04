@@ -1,5 +1,10 @@
 import { randomInt, randomUUID } from "node:crypto";
-import type { AccountSummary, AuthChannel, SessionSummary, UserSummary } from "@grogoni/shared-types";
+import type {
+  AccountSummary,
+  AuthChannel,
+  SessionSummary,
+  UserSummary
+} from "@grogoni/shared-types";
 import { Cp2Error } from "../../cp2-error.js";
 import { normalizeDestination } from "../../phone-identity.js";
 import {

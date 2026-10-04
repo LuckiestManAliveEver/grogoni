@@ -77,7 +77,10 @@ interface UseAuthStateDeps {
   setView: (view: ShellView) => void;
   setStatusMessage: (message: string) => void;
   setNetworkGraph: (graph: NetworkGraphSummary) => void;
-  navigateToView: (nextView: ShellView, options?: { replace?: boolean; mode?: GrogoniMode }) => void;
+  navigateToView: (
+    nextView: ShellView,
+    options?: { replace?: boolean; mode?: GrogoniMode }
+  ) => void;
   loadMarketplaceIntroState: () => Promise<void>;
   validateStoredBusiness: () => Promise<void>;
   accountDeletionIntent: boolean;

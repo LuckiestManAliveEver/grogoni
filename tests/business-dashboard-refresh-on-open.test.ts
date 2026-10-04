@@ -41,7 +41,10 @@ describe("merchant workspace dashboard refreshes invoices on open (audit A27/A28
   it("wires onRefreshInvoices to the real loadInvoices for the current business, not a no-op", () => {
     const propStart = grogoniApplication.indexOf("onRefreshInvoices={() => {");
     expect(propStart).toBeGreaterThan(-1);
-    const propBody = grogoniApplication.slice(propStart, grogoniApplication.indexOf("}}", propStart));
+    const propBody = grogoniApplication.slice(
+      propStart,
+      grogoniApplication.indexOf("}}", propStart)
+    );
     expect(propBody).toContain("business !== null");
     expect(propBody).toContain("loadInvoices(business.id)");
   });

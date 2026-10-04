@@ -24,7 +24,12 @@ import {
 } from "../agent-command-engine";
 import { parseChatModuleCommand } from "../chat-module-commands";
 import { postJson } from "../api-helpers";
-import { type ChatAttachment, type ChatMessage, type ShellView, type GrogoniMode } from "../app-shell";
+import {
+  type ChatAttachment,
+  type ChatMessage,
+  type ShellView,
+  type GrogoniMode
+} from "../app-shell";
 import {
   agentProcessingFailureMessage,
   appendAttachmentSummary,
@@ -80,7 +85,10 @@ interface UseChatRuntimeStateDeps {
   rejectDefinitiveAuthenticationFailure: (error: unknown) => boolean;
   agentSettings: AgentSettings;
   setStatusMessage: (message: string) => void;
-  navigateToView: (nextView: ShellView, options?: { replace?: boolean; mode?: GrogoniMode }) => void;
+  navigateToView: (
+    nextView: ShellView,
+    options?: { replace?: boolean; mode?: GrogoniMode }
+  ) => void;
   requireMessagingSignIn: () => void;
   searchBuyFeed?: (query: string) => Promise<void>;
   loadProducts: (businessId: string) => Promise<void>;
@@ -213,15 +221,19 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
     const send = () =>
       sendChatDraftOnRuntime(draftOverride, preferredProvider, emailSubject, emailInvoiceId);
     if (session && business && navigator.locks && !isExplicitOfflineMode()) {
-      await navigator.locks.request("grogoni-runtime-handoff", { ifAvailable: true }, async (lock) => {
-        if (!lock) {
-          setStatusMessage(
-            "Another tab is using this runtime. Your draft is saved; wait for its turn or handoff to finish."
-          );
-          return;
+      await navigator.locks.request(
+        "grogoni-runtime-handoff",
+        { ifAvailable: true },
+        async (lock) => {
+          if (!lock) {
+            setStatusMessage(
+              "Another tab is using this runtime. Your draft is saved; wait for its turn or handoff to finish."
+            );
+            return;
+          }
+          await send();
         }
-        await send();
-      });
+      );
     } else await send();
   }
 

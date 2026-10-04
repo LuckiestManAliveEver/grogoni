@@ -51,7 +51,7 @@ Verify the actual model separately with the existing `pnpm inference:live-probe`
 
    | Variable                          | Value                                                                |
    | --------------------------------- | -------------------------------------------------------------------- |
-   | `GROGONI_INFERENCE_SERVICE_TOKEN`    | Copy the existing API's value; store as an encrypted secret.         |
+   | `GROGONI_INFERENCE_SERVICE_TOKEN` | Copy the existing API's value; store as an encrypted secret.         |
    | `MODEL_ARTIFACT_ALLOWED_HOSTS`    | Copy the existing Vercel allowlist: hostnames only, comma separated. |
    | `VERCEL_MAX_ARTIFACT_BYTES`       | `450000000`, matching the existing limit.                            |
    | `INFERENCE_MAX_INPUT_CHARACTERS`  | `64000`                                                              |

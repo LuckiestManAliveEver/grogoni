@@ -34,7 +34,9 @@ const AccountDeletionPage = lazy(() =>
     () => import("./legal/AccountDeletionPage")
   )
 );
-const OwnerApp = lazy(() => loadGrogoniApplication().then((module) => ({ default: module.OwnerApp })));
+const OwnerApp = lazy(() =>
+  loadGrogoniApplication().then((module) => ({ default: module.OwnerApp }))
+);
 const PublicStorefront = lazy(() =>
   loadGrogoniApplication().then((module) => ({ default: module.PublicStorefrontChat }))
 );
@@ -124,9 +126,7 @@ export function AppRouter() {
     );
   }
 
-  return (
-    <LazyRoute moduleKey={appRouteModuleKeys.ownerApp} label="Grogoni" page={<OwnerApp />} />
-  );
+  return <LazyRoute moduleKey={appRouteModuleKeys.ownerApp} label="Grogoni" page={<OwnerApp />} />;
 }
 
 function LazyRoute({

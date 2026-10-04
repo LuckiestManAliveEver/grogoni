@@ -57,10 +57,7 @@ export function readEnvironment(): EnvironmentConfig {
       modelId:
         runtimeMode === "local"
           ? portableIdFromEnv("PLATFORM_DEFAULT_MODEL_ID", "smollm2-360m")
-          : portableIdFromEnv(
-              "PLATFORM_DEFAULT_MODEL_ID",
-              repositoryDefaultRuntimePolicy.modelId
-            ),
+          : portableIdFromEnv("PLATFORM_DEFAULT_MODEL_ID", repositoryDefaultRuntimePolicy.modelId),
       executionTarget: executionTargetFromEnv(
         "PLATFORM_DEFAULT_EXECUTION_TARGET",
         runtimeMode === "local" ? "local" : repositoryDefaultRuntimePolicy.executionTarget

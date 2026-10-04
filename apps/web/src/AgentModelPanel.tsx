@@ -556,7 +556,8 @@ export function AgentModelPanel({
           <p className="eyebrow">Backend-hosted AI</p>
           <h3>Model library</h3>
           <p>
-            Browse Grogoni's local model catalog. Every model runs through the local Grogoni runtime.
+            Browse Grogoni's local model catalog. Every model runs through the local Grogoni
+            runtime.
           </p>
         </div>
 

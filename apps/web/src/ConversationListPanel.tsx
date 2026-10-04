@@ -150,8 +150,8 @@ export function ConversationListPanel({
             />
           </label>
           <small>
-            Grogoni chats require a registered user and are end-to-end encrypted. SMS and external apps
-            use their own privacy and delivery rules.
+            Grogoni chats require a registered user and are end-to-end encrypted. SMS and external
+            apps use their own privacy and delivery rules.
           </small>
           <div className="new-conversation-actions">
             <button type="submit">Start encrypted chat</button>

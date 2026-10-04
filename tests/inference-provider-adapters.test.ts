@@ -452,9 +452,9 @@ describe("OpenAICompatibleProvider (llama.cpp and other self-hosted servers)", (
     expect(await provider.supports(textOnly)).toBe(true);
     expect(await provider.supports(textOnly, toolRequest)).toBe(false);
     expect(await provider.supports(model("openai"))).toBe(false);
-    expect(await provider.supports(model("grogoni-llama", { executionTarget: "browser-local" }))).toBe(
-      false
-    );
+    expect(
+      await provider.supports(model("grogoni-llama", { executionTarget: "browser-local" }))
+    ).toBe(false);
   });
 });
 

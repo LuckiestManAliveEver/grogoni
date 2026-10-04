@@ -1,5 +1,8 @@
 import { createHash, randomBytes } from "node:crypto";
-import type { ConnectedMailboxProvider, ConnectedMailboxProviderSummary } from "@grogoni/shared-types";
+import type {
+  ConnectedMailboxProvider,
+  ConnectedMailboxProviderSummary
+} from "@grogoni/shared-types";
 
 export interface EmailProviderTokens {
   accessToken: string;

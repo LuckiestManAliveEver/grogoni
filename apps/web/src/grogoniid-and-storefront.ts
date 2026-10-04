@@ -4,7 +4,8 @@ import { type ActiveBusiness } from "./grogoni-application-shared";
 
 export function isGrogoniId(value: unknown): value is string {
   return (
-    typeof value === "string" && /^grogoni\.[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?$/iu.test(value.trim())
+    typeof value === "string" &&
+    /^grogoni\.[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?$/iu.test(value.trim())
   );
 }
 

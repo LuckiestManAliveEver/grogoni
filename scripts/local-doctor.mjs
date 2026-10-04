@@ -39,7 +39,11 @@ await record(checks, ".env.local", async () => {
 
 await record(checks, "Neon Postgres", async () => {
   if (!env.DATABASE_URL) throw new Error("DATABASE_URL is missing");
-  const pool = new Pool({ connectionString: env.DATABASE_URL, max: 1, connectionTimeoutMillis: 5000 });
+  const pool = new Pool({
+    connectionString: env.DATABASE_URL,
+    max: 1,
+    connectionTimeoutMillis: 5000
+  });
   try {
     await pool.query("select 1");
     return "reachable";
@@ -49,13 +53,17 @@ await record(checks, "Neon Postgres", async () => {
 });
 
 await record(checks, "Ollama", async () => {
-  const response = await fetch(new URL("/api/tags", ollamaBaseUrl), { signal: AbortSignal.timeout(3000) });
+  const response = await fetch(new URL("/api/tags", ollamaBaseUrl), {
+    signal: AbortSignal.timeout(3000)
+  });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   return ollamaBaseUrl;
 });
 
 await record(checks, ollamaModel, async () => {
-  const response = await fetch(new URL("/api/tags", ollamaBaseUrl), { signal: AbortSignal.timeout(3000) });
+  const response = await fetch(new URL("/api/tags", ollamaBaseUrl), {
+    signal: AbortSignal.timeout(3000)
+  });
   const body = await response.json();
   const installed = (body.models || []).some((model) => model.name === ollamaModel);
   if (!installed) throw new Error(`run: ollama pull ${ollamaModel}`);

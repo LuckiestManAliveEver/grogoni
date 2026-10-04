@@ -65,7 +65,8 @@ export function buildPhonebookDirectory(input: {
   const seenUsers = new Set<string>();
 
   for (const node of nodes) {
-    if (node.degree !== 1 || node.grogoniUserId === null || node.grogoniUserId === undefined) continue;
+    if (node.degree !== 1 || node.grogoniUserId === null || node.grogoniUserId === undefined)
+      continue;
     grogoniNodeIds.add(node.id);
     if (seenUsers.has(node.grogoniUserId)) continue;
     seenUsers.add(node.grogoniUserId);

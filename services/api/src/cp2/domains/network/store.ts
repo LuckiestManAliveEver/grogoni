@@ -1424,7 +1424,10 @@ export class NetworkDomain {
    * phonebook hashes look up directly and raw numbers never need to be compared.
    */
   private discoveryPass(): DiscoveryPass {
-    return { index: this.grogoniDiscoveryIndex(), businessByUser: primaryBusinessByUser(this.deps) };
+    return {
+      index: this.grogoniDiscoveryIndex(),
+      businessByUser: primaryBusinessByUser(this.deps)
+    };
   }
 
   private grogoniDiscoveryIndex(): Map<string, string> {

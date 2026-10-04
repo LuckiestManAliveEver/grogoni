@@ -91,14 +91,14 @@ A shop can pick any other model the same way. Those models are merchant-funded.
 
 ## Configuration
 
-| Variable                         | Purpose                                                                                               |
-| -------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `ZEROCLAW_GATEWAY_URL`           | Gateway base URL. Render wires the private `hostport`.                                                |
-| `ZEROCLAW_ALLOW_PRIVATE_NETWORK` | Allows plain http and private addresses. Needed for the private-network sidecar.                      |
-| `ZEROCLAW_WEBHOOK_SECRET`        | Must equal the gateway's `gateway.webhook_secret`. Render shares the generated value.                 |
-| `ZEROCLAW_GATEWAY_TOKEN`         | Alternative to the secret: a bearer token from `zeroclaw pair`.                                       |
-| `ZEROCLAW_AGENT_ALIAS`           | Optional ZeroClaw agent alias (`?agent=`).                                                            |
-| `ZEROCLAW_TIMEOUT_MS`            | Per-turn timeout. Default 120000.                                                                     |
+| Variable                         | Purpose                                                                                                  |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `ZEROCLAW_GATEWAY_URL`           | Gateway base URL. Render wires the private `hostport`.                                                   |
+| `ZEROCLAW_ALLOW_PRIVATE_NETWORK` | Allows plain http and private addresses. Needed for the private-network sidecar.                         |
+| `ZEROCLAW_WEBHOOK_SECRET`        | Must equal the gateway's `gateway.webhook_secret`. Render shares the generated value.                    |
+| `ZEROCLAW_GATEWAY_TOKEN`         | Alternative to the secret: a bearer token from `zeroclaw pair`.                                          |
+| `ZEROCLAW_AGENT_ALIAS`           | Optional ZeroClaw agent alias (`?agent=`).                                                               |
+| `ZEROCLAW_TIMEOUT_MS`            | Per-turn timeout. Default 120000.                                                                        |
 | `OPENAI_API_KEY`                 | Grogoni's OpenAI key. Set it on the API (health and routing) and as the ZeroClaw service's provider key. |
 
 ## Consequences

@@ -20,8 +20,8 @@ tools, or unchecked business mutations.
 
 ## Exposed Tools
 
-| Tool                          | Scope      | Behavior                                                        |
-| ----------------------------- | ---------- | --------------------------------------------------------------- |
+| Tool                             | Scope      | Behavior                                                        |
+| -------------------------------- | ---------- | --------------------------------------------------------------- |
 | `grogoni.list_shops`             | `mcp:read` | Lists server-authorized shop memberships.                       |
 | `grogoni.get_sync_changes`       | `mcp:read` | Reads the durable account catch-up journal.                     |
 | `grogoni.runtime_turn`           | `mcp:act`  | Produces a runtime plan; high-risk mutations remain unexecuted. |

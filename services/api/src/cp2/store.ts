@@ -12349,7 +12349,10 @@ export class Cp2Store {
       deletedRecordCount += deleteScopedMapRecords(this.networkDomain.networkRoutesMap, scope);
       deletedRecordCount += deleteScopedMapRecords(this.networkDomain.contactHashesMap, scope);
       deletedRecordCount += deleteScopedMapRecords(this.networkDomain.externalIdentitiesMap, scope);
-      deletedRecordCount += deleteScopedMapRecords(this.networkDomain.grogoniIdentityLinksMap, scope);
+      deletedRecordCount += deleteScopedMapRecords(
+        this.networkDomain.grogoniIdentityLinksMap,
+        scope
+      );
       deletedRecordCount += deleteScopedMapRecords(this.networkDomain.identityCandidatesMap, scope);
       deletedRecordCount += deleteScopedMapRecords(this.networkDomain.networkConnectionsMap, scope);
     }
@@ -12661,7 +12664,9 @@ export class Cp2Store {
       throw new Cp2Error(409, "grogoni_id_reserved", "This storefront id is reserved.");
     }
     const nextGrogoniId = `grogoni.${handle}`;
-    if (normalizeStorefrontLookupId(nextGrogoniId) === normalizeStorefrontLookupId(business.grogoniId)) {
+    if (
+      normalizeStorefrontLookupId(nextGrogoniId) === normalizeStorefrontLookupId(business.grogoniId)
+    ) {
       return { ...business };
     }
     if (this.hasGlobalShopId(nextGrogoniId)) {

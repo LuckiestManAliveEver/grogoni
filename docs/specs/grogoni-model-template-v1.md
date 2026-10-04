@@ -36,7 +36,7 @@ top-level fields are:
 
 | Field                       | Requirement                                                                               |
 | --------------------------- | ----------------------------------------------------------------------------------------- |
-| `format`                    | Literal `grogoni-template`                                                                   |
+| `format`                    | Literal `grogoni-template`                                                                |
 | `formatVersion`             | Integer `1`                                                                               |
 | `template`                  | Stable ID, kebab-case slug, name, semantic version, domain, owning business, and agent ID |
 | `tasks`                     | One or more namespaced task contracts such as `catalog.product-classify`                  |
@@ -46,7 +46,7 @@ top-level fields are:
 | `capabilities`              | Declared expertise/runtime capabilities; these do not grant permission                    |
 | `baseModel`                 | Compatibility requirements, preferred/tested bases, and explicit incompatibilities        |
 | `expertise`                 | Portable source expertise plus optional base-specific compiled artifacts                  |
-| `runtime`                   | Prompt, registered Grogoni tools, output schemas, context requirements, constraints          |
+| `runtime`                   | Prompt, registered Grogoni tools, output schemas, context requirements, constraints       |
 | `evaluation`                | Frozen suite references and baseline metric metadata                                      |
 | `lineage`                   | Parent, improvement run, dataset version, actor, timestamp, and change summary            |
 | `ownership`                 | Business and distribution visibility                                                      |

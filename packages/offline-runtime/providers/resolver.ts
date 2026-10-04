@@ -10,7 +10,9 @@ export async function resolveProviderChain(
   providers: GrogoniProvider[],
   context: ResolverContext
 ): Promise<GrogoniProvider[]> {
-  const order: GrogoniProvider["name"][] = context.offlineModeActive ? ["local", "peer"] : ["cloud"];
+  const order: GrogoniProvider["name"][] = context.offlineModeActive
+    ? ["local", "peer"]
+    : ["cloud"];
   const result: GrogoniProvider[] = [];
   for (const name of order) {
     const provider = providers.find((candidate) => candidate.name === name);

@@ -38,7 +38,10 @@ interface UseProductsStateDeps {
   getNavigationHelpers: () => {
     routedProductId: string | null;
     setRoutedProductId: (productId: string | null) => void;
-    navigateToView: (nextView: ShellView, options?: { replace?: boolean; mode?: GrogoniMode }) => void;
+    navigateToView: (
+      nextView: ShellView,
+      options?: { replace?: boolean; mode?: GrogoniMode }
+    ) => void;
   };
   registerReset: (domainKey: string, fn: () => void) => void;
   registerRefresh: (

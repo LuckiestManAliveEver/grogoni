@@ -6529,7 +6529,8 @@ details.nested-form-section summary {
   --grogoni-sell-soft: #3a1f18;
   --grogoni-sell-tint: #241612;
   --grogoni-bezel: #05060a;
-  --grogoni-display-font: "Sora", "Avenir Next", Avenir, Inter, ui-sans-serif, system-ui, sans-serif;
+  --grogoni-display-font:
+    "Sora", "Avenir Next", Avenir, Inter, ui-sans-serif, system-ui, sans-serif;
   --grogoni-mono-font: "IBM Plex Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   --grogoni-serif-font:
     Georgia, "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, "Times New Roman",
@@ -6539,7 +6540,8 @@ details.nested-form-section summary {
 body {
   background:
     radial-gradient(circle at 12% 5%, rgb(227 161 60 / 8%), transparent 32rem),
-    radial-gradient(circle at 88% 100%, rgb(47 107 86 / 9%), transparent 34rem), var(--grogoni-bezel);
+    radial-gradient(circle at 88% 100%, rgb(47 107 86 / 9%), transparent 34rem),
+    var(--grogoni-bezel);
   color: var(--grogoni-ink);
   font-family: "IBM Plex Sans", Inter, ui-sans-serif, system-ui, sans-serif;
 }

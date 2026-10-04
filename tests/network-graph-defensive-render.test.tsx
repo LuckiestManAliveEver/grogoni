@@ -5,7 +5,10 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { normalizeNetworkGraph } from "../apps/web/src/hooks/useNetworkState";
-import type { NetworkGraphSummary, SessionResponse } from "../apps/web/src/grogoni-application-shared";
+import type {
+  NetworkGraphSummary,
+  SessionResponse
+} from "../apps/web/src/grogoni-application-shared";
 
 vi.mock("../apps/web/src/api-helpers", () => ({
   postJson: vi.fn()

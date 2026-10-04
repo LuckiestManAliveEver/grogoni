@@ -21,14 +21,14 @@ This file records rule-based AI entry point decisions for CP4.
 
 ## Deferred Decisions
 
-| Decision                        | Deferred To | Reason                                                                  |
-| ------------------------------- | ----------- | ----------------------------------------------------------------------- |
-| Product/customer persistence    | CP5         | CP4 only parses drafts; CP5 owns business records and validation.       |
-| Invoice and inventory execution | CP6         | Invoice totals and stock movement must be deterministic and tested.     |
-| Payment and M-Pesa execution    | CP8         | Payment reconciliation and webhook trust belong to payments checkpoint. |
-| Grogoniclaw runtime full adapter   | CP10        | CP4 is the first simple parser, not the full runtime.                   |
-| llama.cpp local model adapter   | CP11        | Local models remain optional behind `ModelProviderAdapter`.             |
-| Durable offline parser queue    | CP7         | Offline mutation queue design should drive persistence choices.         |
+| Decision                         | Deferred To | Reason                                                                  |
+| -------------------------------- | ----------- | ----------------------------------------------------------------------- |
+| Product/customer persistence     | CP5         | CP4 only parses drafts; CP5 owns business records and validation.       |
+| Invoice and inventory execution  | CP6         | Invoice totals and stock movement must be deterministic and tested.     |
+| Payment and M-Pesa execution     | CP8         | Payment reconciliation and webhook trust belong to payments checkpoint. |
+| Grogoniclaw runtime full adapter | CP10        | CP4 is the first simple parser, not the full runtime.                   |
+| llama.cpp local model adapter    | CP11        | Local models remain optional behind `ModelProviderAdapter`.             |
+| Durable offline parser queue     | CP7         | Offline mutation queue design should drive persistence choices.         |
 
 ## CP4 Boundary Checks
 

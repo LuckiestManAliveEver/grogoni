@@ -99,7 +99,9 @@ describe("portable Grogoni agent manifests", () => {
       valid: true,
       agentId: "portable:shop-assistant"
     });
-    await expect(importer.convert({ kind: "grogoni-manifest", manifest })).resolves.toEqual(manifest);
+    await expect(importer.convert({ kind: "grogoni-manifest", manifest })).resolves.toEqual(
+      manifest
+    );
   });
 
   it("converts OSS discovery metadata into a declarative portable definition", () => {

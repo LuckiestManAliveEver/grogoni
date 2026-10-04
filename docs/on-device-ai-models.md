@@ -4,7 +4,7 @@ The Grogoni agent model library exposes five llama.cpp-compatible GGUF models th
 for Android-class hardware. Each upstream repository identifies its license as Apache-2.0, which
 permits commercial use subject to the license's notice and attribution terms.
 
-| Grogoni model     | Hugging Face source                        | Quantization | Download | Device profile |
+| Grogoni model  | Hugging Face source                        | Quantization | Download | Device profile |
 | -------------- | ------------------------------------------ | ------------ | -------: | -------------- |
 | SmolLM2 360M   | `HuggingFaceTB/SmolLM2-360M-Instruct-GGUF` | Q8_0         |   386 MB | 2 GB+ RAM      |
 | TinyLlama 1.1B | `TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF`   | Q3_K_M       |   551 MB | 3 GB+ RAM      |

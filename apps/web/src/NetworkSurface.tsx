@@ -44,8 +44,8 @@ export function NetworkSurface(props: NetworkSurfaceProps) {
             <p className="eyebrow">Commerce graph</p>
             <h3>Network</h3>
             <p className="shell-note">
-              Your contacts help Grogoni build your first commerce network. Social connections expand
-              it; friends-of-friends are reached through friends' agents.
+              Your contacts help Grogoni build your first commerce network. Social connections
+              expand it; friends-of-friends are reached through friends' agents.
             </p>
           </div>
           <button className="secondary" type="button" onClick={props.onRefresh}>

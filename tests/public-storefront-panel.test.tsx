@@ -42,7 +42,9 @@ describe("PublicStorefrontPanel", () => {
       );
     });
 
-    expect(host.querySelector(".grogoni-id-card strong")?.textContent).toBe("mama-mboga@grogoni.com");
+    expect(host.querySelector(".grogoni-id-card strong")?.textContent).toBe(
+      "mama-mboga@grogoni.com"
+    );
     expect(host.textContent).toContain("Public shop ID");
     expect(host.textContent).not.toContain("Permanent shop identity");
     // The technical "Storefront ID" input below still shows the raw grogoniId - that's the value

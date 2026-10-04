@@ -142,8 +142,8 @@ export function SmsHandoffDialog({
         {result === null ? (
           <>
             <p>
-              Grogoni will prepare this message in your phone&apos;s selected SMS app. Review it there
-              and press Send yourself.
+              Grogoni will prepare this message in your phone&apos;s selected SMS app. Review it
+              there and press Send yourself.
             </p>
             <label>
               Recipient name
@@ -199,8 +199,8 @@ export function SmsHandoffDialog({
             ) : null}
             {hasAttachments ? (
               <div className="sms-handoff-warning" role="note">
-                SMS handoff is text-only. Your selected Grogoni attachments will stay in this draft and
-                will not be shared.
+                SMS handoff is text-only. Your selected Grogoni attachments will stay in this draft
+                and will not be shared.
               </div>
             ) : null}
             {error ? (

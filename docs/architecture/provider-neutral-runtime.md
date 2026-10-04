@@ -63,7 +63,7 @@ target):
 
 | Target               | Meaning                                                                                                                                                                               |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `vercel`             | Inference runs on Grogoni's Vercel deployment (`services/ai-runtime`) - the platform default. Render mints a signed model-artifact URL; Vercel downloads, verifies, and executes it.     |
+| `vercel`             | Inference runs on Grogoni's Vercel deployment (`services/ai-runtime`) - the platform default. Render mints a signed model-artifact URL; Vercel downloads, verifies, and executes it.  |
 | `backend`            | Reserved for a future self-hosted server-side execution path, dispatched through the same `ModelRuntimeAdapter` interface - not currently registered by any adapter in production.    |
 | `remote-shop-device` | Inference runs on a shop-owned machine registered as an execution host in the shop runtime graph (e.g. a merchant's laptop running Ollama) — never the currently-open browser/device. |
 

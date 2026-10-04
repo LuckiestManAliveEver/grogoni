@@ -88,7 +88,10 @@ export function useNavigationState(deps: UseNavigationStateDeps) {
     runAction
   } = deps;
 
-  function navigateToView(nextView: ShellView, options?: { replace?: boolean; mode?: GrogoniMode }) {
+  function navigateToView(
+    nextView: ShellView,
+    options?: { replace?: boolean; mode?: GrogoniMode }
+  ) {
     const nextMode = options?.mode ?? mode;
     const nextPath = pathForOwnerView(nextView, nextMode);
     const measurement = startNavigationMeasurement(nextPath);
@@ -149,7 +152,9 @@ export function useNavigationState(deps: UseNavigationStateDeps) {
     setIsBusinessSetupOpen(false);
     setIsAuthOpen(true);
     setAuthenticationView(intent);
-    setStatusMessage(intent === "signup" ? "Create your Grogoni account." : "Log in to your account.");
+    setStatusMessage(
+      intent === "signup" ? "Create your Grogoni account." : "Log in to your account."
+    );
     navigateToBrowserUrl(authenticationRoute(intent), { state: window.history.state });
   }
 

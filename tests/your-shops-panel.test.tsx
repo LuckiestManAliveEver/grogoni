@@ -13,7 +13,12 @@ const shops: AccountShopSummary[] = [
     membership: { id: "mem-1", businessId: "biz-1", userId: "user-1", role: "owner" }
   },
   {
-    business: { id: "biz-2", name: "Second Shop", language: "en", grogoniId: "grogoni.second-shop" },
+    business: {
+      id: "biz-2",
+      name: "Second Shop",
+      language: "en",
+      grogoniId: "grogoni.second-shop"
+    },
     membership: { id: "mem-2", businessId: "biz-2", userId: "user-1", role: "owner" }
   }
 ];

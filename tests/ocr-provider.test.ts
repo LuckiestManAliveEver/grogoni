@@ -123,9 +123,6 @@ describe("OCR provider", () => {
       globalThis.fetch = originalFetch;
     }
 
-    expect(fetcher).toHaveBeenCalledWith(
-      "http://grogoni-ocr-worker:8090/scan",
-      expect.anything()
-    );
+    expect(fetcher).toHaveBeenCalledWith("http://grogoni-ocr-worker:8090/scan", expect.anything());
   });
 });

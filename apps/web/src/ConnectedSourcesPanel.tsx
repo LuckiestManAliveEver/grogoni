@@ -112,8 +112,8 @@ export function ConnectedSourcesPanel() {
         <h3>Connected sources</h3>
         <p>
           Connect a personal access token to raise API rate limits and reach private or gated
-          resources when searching GitHub and Hugging Face from Grogoni. Tokens are encrypted at rest
-          and never shown again once saved.
+          resources when searching GitHub and Hugging Face from Grogoni. Tokens are encrypted at
+          rest and never shown again once saved.
         </p>
       </div>
       {loading ? (

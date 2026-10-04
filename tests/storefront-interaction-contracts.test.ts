@@ -187,7 +187,11 @@ describe("storefront interaction contracts", () => {
       { productId: product.id, productName: "Contract item", unit: "unit", quantity: 2 }
     ]);
 
-    const storefront = await injectJson(app, "GET", `/public/storefronts/${owner.business.grogoniId}`);
+    const storefront = await injectJson(
+      app,
+      "GET",
+      `/public/storefronts/${owner.business.grogoniId}`
+    );
     expect(storefront.presence.status).toBe("private");
 
     const snapshot = store.snapshot();
@@ -300,7 +304,11 @@ describe("public storefront agent reply", () => {
     const store = createCp2Store({ runtimeModelProvider: provider });
     const app = buildApi({ cp2: { store } });
     const owner = await createOwnerBusiness(app, "254700000091", "Agent Reply Shop", "6194");
-    const publicSession = await createPublicSession(app, owner.business.grogoniId, "visitor-agent-1");
+    const publicSession = await createPublicSession(
+      app,
+      owner.business.grogoniId,
+      "visitor-agent-1"
+    );
     await injectJson(
       app,
       "POST",
@@ -376,7 +384,11 @@ describe("public storefront agent reply", () => {
     const store = createCp2Store({ runtimeModelProvider: provider });
     const app = buildApi({ cp2: { store } });
     const owner = await createOwnerBusiness(app, "254700000092", "Tool Attempt Shop", "6295");
-    const publicSession = await createPublicSession(app, owner.business.grogoniId, "visitor-agent-2");
+    const publicSession = await createPublicSession(
+      app,
+      owner.business.grogoniId,
+      "visitor-agent-2"
+    );
 
     const result = await injectJson(
       app,
@@ -401,7 +413,11 @@ describe("public storefront agent reply", () => {
   it("degrades to no automatic reply, without rejecting the customer's message, when no model is configured", async () => {
     const app = buildApi();
     const owner = await createOwnerBusiness(app, "254700000093", "No Provider Shop", "6396");
-    const publicSession = await createPublicSession(app, owner.business.grogoniId, "visitor-agent-3");
+    const publicSession = await createPublicSession(
+      app,
+      owner.business.grogoniId,
+      "visitor-agent-3"
+    );
 
     const result = await injectJson(
       app,
@@ -437,7 +453,11 @@ describe("public storefront agent reply", () => {
     const store = createCp2Store({ runtimeModelProvider: provider });
     const app = buildApi({ cp2: { store } });
     const owner = await createOwnerBusiness(app, "254700000094", "Rate Limited Shop", "6497");
-    const publicSession = await createPublicSession(app, owner.business.grogoniId, "visitor-agent-4");
+    const publicSession = await createPublicSession(
+      app,
+      owner.business.grogoniId,
+      "visitor-agent-4"
+    );
 
     const results: Array<{ agentReply: unknown; body: string }> = [];
     for (let index = 0; index < 21; index += 1) {

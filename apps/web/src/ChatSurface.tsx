@@ -3,7 +3,10 @@ import { Fragment, Suspense, lazy, useEffect, useRef, useState } from "react";
 import type { CountryCode } from "libphonenumber-js";
 import type { Scope } from "@grogoni/offline-runtime";
 
-import type { ConversationMessageContent, MessageDeliveryAttemptSummary } from "@grogoni/shared-types";
+import type {
+  ConversationMessageContent,
+  MessageDeliveryAttemptSummary
+} from "@grogoni/shared-types";
 
 import { readStableDeviceId } from "./lib/api";
 
@@ -608,7 +611,8 @@ export function ChatSurface({
                     message.body
                   )}
                 </p>
-                {message.author === "grogoniclaw" && capabilityTraceLabel(message.content) !== null ? (
+                {message.author === "grogoniclaw" &&
+                capabilityTraceLabel(message.content) !== null ? (
                   <span className="capability-trace" aria-hidden="true">
                     {capabilityTraceLabel(message.content)}
                   </span>

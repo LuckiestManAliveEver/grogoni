@@ -55,9 +55,9 @@ runtime graph's `ModelExecutionTarget` is the routing contract that matters.
 | Artifact           | GGUF, quantization recorded on the artifact row                   |
 | Host               | Resolved through native runtime binding and `ModelRuntimeAdapter` |
 | API access         | Private, authenticated service-to-service request                 |
-| Business data      | Supplied per request by the Grogoni API                              |
-| Template selection | Grogoni API only                                                     |
-| Tool execution     | Grogoni API only                                                     |
+| Business data      | Supplied per request by the Grogoni API                           |
+| Template selection | Grogoni API only                                                  |
+| Tool execution     | Grogoni API only                                                  |
 
 The model should be loaded once per warm inference worker and reused across requests when the host
 supports that cache. Loading a separate model instance for every template would erase the benefit of

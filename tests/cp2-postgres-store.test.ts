@@ -330,7 +330,9 @@ describePostgres("CP2 Postgres store", () => {
           queuedCount: 0
         });
 
-        await lockClient.query("select pg_advisory_unlock(hashtext('grogoni.cp2.normalized_store'))");
+        await lockClient.query(
+          "select pg_advisory_unlock(hashtext('grogoni.cp2.normalized_store'))"
+        );
         lockHeld = false;
         await store.flush();
 

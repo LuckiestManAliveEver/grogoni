@@ -137,12 +137,12 @@ result without logging prompts or credentials.
 
 ## Execution targets
 
-| Target               | Location and trust                                        | Availability                                                               | Fallback                          |
-| -------------------- | --------------------------------------------------------- | -------------------------------------------------------------------------- | --------------------------------- |
+| Target               | Location and trust                                           | Availability                                                               | Fallback                          |
+| -------------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------- | --------------------------------- |
 | `backend`            | Grogoni/server-reachable inference through a generic adapter | Adapter `canRun` plus execution result                                     | Next compatible binding candidate |
-| `browser-local`      | Current authenticated browser only                        | Cached model and ready browser runtime in the current session              | Backend unless `LOCAL_ONLY`       |
+| `browser-local`      | Current authenticated browser only                           | Cached model and ready browser runtime in the current session              | Backend unless `LOCAL_ONLY`       |
 | `installed-app`      | Trusted `window.GrogoniAgentModelRuntime` bridge             | Bridge, ready assignment, matching model/runtime, and authenticated device | Backend unless `LOCAL_ONLY`       |
-| `remote-shop-device` | Authorized same-tenant owner/shop device                  | Existing owner-node presence/heartbeat and model support                   | Next client route or backend      |
+| `remote-shop-device` | Authorized same-tenant owner/shop device                     | Existing owner-node presence/heartbeat and model support                   | Next client route or backend      |
 
 Provider names are not execution targets. `backend` can be implemented by the private inference
 service or an optional provider adapter; changing that implementation does not change agents,

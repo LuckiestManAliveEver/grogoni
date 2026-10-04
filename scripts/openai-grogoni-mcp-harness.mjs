@@ -18,7 +18,12 @@ export class HarnessError extends Error {
 }
 
 export function loadHarnessConfig(env = process.env) {
-  const requiredNames = ["OPENAI_API_KEY", "GROGONI_MCP_SERVER_URL", "GROGONI_MCP_TOKEN", "GROGONI_SHOP_ID"];
+  const requiredNames = [
+    "OPENAI_API_KEY",
+    "GROGONI_MCP_SERVER_URL",
+    "GROGONI_MCP_TOKEN",
+    "GROGONI_SHOP_ID"
+  ];
   const missing = requiredNames.filter((name) => clean(env[name]) === "");
   if (missing.length > 0) {
     throw new HarnessError(

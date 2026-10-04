@@ -29,7 +29,9 @@ describe("grogoni id history migration", () => {
 
   it("is registered in postgres-store.ts's generic normalizedCollections mechanism, with no bespoke SQL for it", async () => {
     const postgresStore = await readFile("services/api/src/cp2/postgres-store.ts", "utf8");
-    expect(postgresStore).toContain('{ key: "grogoniIdHistory", tableName: "cp2_grogoni_id_history" }');
+    expect(postgresStore).toContain(
+      '{ key: "grogoniIdHistory", tableName: "cp2_grogoni_id_history" }'
+    );
     expect(postgresStore).not.toContain("select * from cp2_grogoni_id_history");
   });
 });

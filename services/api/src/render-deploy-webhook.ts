@@ -27,7 +27,7 @@ export interface RenderDeployWebhookOptions {
 }
 
 const defaultNotifiedServiceNames: Record<string, string> = {
-  "grogoni": "Grogoni"
+  grogoni: "Grogoni"
 };
 
 // Render retries a webhook delivery on any non-2xx response, replaying the identical

@@ -44,7 +44,12 @@ describe("CP18 Grogoni Storefront ID", () => {
     const app = buildApi({ cp2: { store } });
 
     const first = await createOwnerBusiness(app, "254700000018", "BigFish grogoni", "Amina Seller");
-    const second = await createOwnerBusiness(app, "255700000018", "Dar Fish grogoni", "Amina Seller");
+    const second = await createOwnerBusiness(
+      app,
+      "255700000018",
+      "Dar Fish grogoni",
+      "Amina Seller"
+    );
     const third = await createOwnerBusiness(app, "256700000018", "Dar Fish grogoni");
 
     expect(first.business.grogoniId).toBe("grogoni.amina-seller");

@@ -17,7 +17,7 @@ Date passed: 2026-07-02
 | Path                              | Purpose                                                               |
 | --------------------------------- | --------------------------------------------------------------------- |
 | `packages/tool-core/src/index.ts` | Parser contract, intent taxonomy, confidence scoring, and slot logic. |
-| `apps/web/package.json`           | Adds the web app dependency on `@grogoni/tool-core`.                     |
+| `apps/web/package.json`           | Adds the web app dependency on `@grogoni/tool-core`.                  |
 | `apps/web/src/main.tsx`           | Integrates parser output into the CP3 chat shell.                     |
 | `apps/web/src/cp3-shell.ts`       | Updates initial chat copy for CP4 parser behavior.                    |
 | `tests/ai-eval/cp4-commands.ts`   | Internal command dataset for parser evaluation.                       |

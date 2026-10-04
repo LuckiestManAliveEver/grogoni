@@ -89,7 +89,9 @@ describe("grogoniId generation and collisions", () => {
     const store = createCp2Store();
     const owner = seedOwner(store, 10, "WWW");
     expect(owner.business.grogoniId).not.toBe("grogoni.www");
-    expect(isReservedGrogoniHandle(owner.business.grogoniId.replace(/^grogoni\./u, ""))).toBe(false);
+    expect(isReservedGrogoniHandle(owner.business.grogoniId.replace(/^grogoni\./u, ""))).toBe(
+      false
+    );
   });
 
   it("falls back to a generated base when the business name produces no usable handle at all", () => {
@@ -247,7 +249,9 @@ describe("renameGrogoniId", () => {
       handle: "second-handle"
     });
     const snapshot = store.snapshot();
-    const historyEntry = snapshot.grogoniIdHistory?.find((entry) => entry.grogoniId === oldGrogoniId);
+    const historyEntry = snapshot.grogoniIdHistory?.find(
+      (entry) => entry.grogoniId === oldGrogoniId
+    );
     expect(historyEntry).toMatchObject({ businessId: owner.business.id, releasedAt: null });
   });
 

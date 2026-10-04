@@ -709,7 +709,8 @@ export class CommerceDomain {
       .map((node) => {
         const recipientAccountId = this.accountIdForNetworkNode(node);
         const isGrogoniUser = recipientAccountId !== null;
-        const isExistingCustomer = isGrogoniUser && existingCustomerAccountIds.has(recipientAccountId);
+        const isExistingCustomer =
+          isGrogoniUser && existingCustomerAccountIds.has(recipientAccountId);
         return {
           networkNodeId: node.id,
           displayName: node.displayName,
@@ -1323,6 +1324,7 @@ export class CommerceDomain {
   }
 
   private businessIdForAgentId(agentId: string): string | undefined {
-    return [...this.deps.businesses.values()].find((business) => business.grogoniId === agentId)?.id;
+    return [...this.deps.businesses.values()].find((business) => business.grogoniId === agentId)
+      ?.id;
   }
 }

@@ -178,11 +178,11 @@ instead of lazy-loading it if that materially improves reliability, without blin
 splitting elsewhere. Measured via `pnpm --filter @grogoni/web build` (see
 `scripts/check-web-bundle-budgets.mjs`, budgets enforced by `tests/web-bundle-budget.test.ts`):
 
-| Chunk                                                          | gzip size                  |
-| -------------------------------------------------------------- | -------------------------- |
-| `AgentProfileSurface` (Settings surface itself)                | 26.1 KiB                   |
-| `AgentModelPanel` (nested, Settings-only)                      | 7.3 KiB                    |
-| `IdentitySecurityPanel` (nested, Settings-only)                | 7.5 KiB                    |
+| Chunk                                                             | gzip size                  |
+| ----------------------------------------------------------------- | -------------------------- |
+| `AgentProfileSurface` (Settings surface itself)                   | 26.1 KiB                   |
+| `AgentModelPanel` (nested, Settings-only)                         | 7.3 KiB                    |
+| `IdentitySecurityPanel` (nested, Settings-only)                   | 7.5 KiB                    |
 | `GrogoniApplication` (the owner app shell, i.e. `ownerRouteGzip`) | 141.0 KiB / 170 KiB budget |
 
 Folding `AgentProfileSurface` alone into the owner-app-shell chunk would push `ownerRouteGzip` to

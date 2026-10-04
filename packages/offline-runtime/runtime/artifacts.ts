@@ -56,9 +56,10 @@ export async function cacheArtifactsByUrl(
       artifact.url,
       new Response(buffer, {
         headers: {
-          "content-type": new URL(artifact.url, "https://offline.grogoni.invalid").pathname.endsWith(
-            ".js"
-          )
+          "content-type": new URL(
+            artifact.url,
+            "https://offline.grogoni.invalid"
+          ).pathname.endsWith(".js")
             ? "application/javascript"
             : "application/octet-stream"
         }

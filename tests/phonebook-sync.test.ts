@@ -133,24 +133,24 @@ describe("invite batching and messages", () => {
   });
 
   it("says what actually happened", () => {
-    expect(describeInviteOutcome({ invited: 2, alreadyOnGrogoni: 0, invalid: 0, shared: false })).toBe(
-      "2 invites sent."
-    );
-    expect(describeInviteOutcome({ invited: 1, alreadyOnGrogoni: 1, invalid: 0, shared: false })).toBe(
-      "1 invite sent. 1 is already on Grogoni: connect with them instead."
-    );
-    expect(describeInviteOutcome({ invited: 0, alreadyOnGrogoni: 2, invalid: 0, shared: false })).toBe(
-      "Nobody to invite. 2 are already on Grogoni: connect with them instead."
-    );
-    expect(describeInviteOutcome({ invited: 0, alreadyOnGrogoni: 0, invalid: 0, shared: true })).toBe(
-      "Share the invite link with the people you picked."
-    );
-    expect(describeInviteOutcome({ invited: 0, alreadyOnGrogoni: 0, invalid: 0, shared: false })).toBe(
-      "No invites were sent."
-    );
-    expect(describeInviteOutcome({ invited: 1, alreadyOnGrogoni: 0, invalid: 2, shared: false })).toBe(
-      "1 invite sent. 2 had no number or email Grogoni could read."
-    );
+    expect(
+      describeInviteOutcome({ invited: 2, alreadyOnGrogoni: 0, invalid: 0, shared: false })
+    ).toBe("2 invites sent.");
+    expect(
+      describeInviteOutcome({ invited: 1, alreadyOnGrogoni: 1, invalid: 0, shared: false })
+    ).toBe("1 invite sent. 1 is already on Grogoni: connect with them instead.");
+    expect(
+      describeInviteOutcome({ invited: 0, alreadyOnGrogoni: 2, invalid: 0, shared: false })
+    ).toBe("Nobody to invite. 2 are already on Grogoni: connect with them instead.");
+    expect(
+      describeInviteOutcome({ invited: 0, alreadyOnGrogoni: 0, invalid: 0, shared: true })
+    ).toBe("Share the invite link with the people you picked.");
+    expect(
+      describeInviteOutcome({ invited: 0, alreadyOnGrogoni: 0, invalid: 0, shared: false })
+    ).toBe("No invites were sent.");
+    expect(
+      describeInviteOutcome({ invited: 1, alreadyOnGrogoni: 0, invalid: 2, shared: false })
+    ).toBe("1 invite sent. 2 had no number or email Grogoni could read.");
   });
 });
 

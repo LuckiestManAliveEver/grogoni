@@ -224,7 +224,8 @@ export function readSetupDraft(): SetupDraft | null {
 
 export function createDefaultAgent(business: ActiveBusiness | null): AgentSettings {
   const businessName = business?.name.trim() || "Grogoni";
-  const globalAgentId = business === null ? "local-grogoni" : normalizeGrogoniId(business.grogoniId);
+  const globalAgentId =
+    business === null ? "local-grogoni" : normalizeGrogoniId(business.grogoniId);
 
   const generalInstruction = defaultAgentDefinition.instructions;
   const personality = defaultAgentDefinition.personality;

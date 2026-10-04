@@ -48,13 +48,13 @@ Local mode keeps Neon as the only remote dependency, so every database round tri
 the full network latency (~350ms per round trip measured to `us-east-2`). Measured boot to
 `Server listening` (`pnpm dev:local`, 2026-10-02):
 
-| Step | Before | After |
-|---|---|---|
-| Normalized collections (~147 tables) | one query per table, ~50s | one `union all` of `jsonb_agg(record order by entity_id)`, ~3.5s |
-| Relational core (~24 tables) | sequential, ~7s | concurrent over the pool, ~2-4s |
-| Pool connections | opened one by one as queries needed them | a short-lived boot pool is warmed concurrently, used for the migration check and snapshot load, then closed, so no extra idle connections stay open |
-| Fulfillment schema check | after store hydration | alongside store hydration |
-| Total | ~90s | ~24-29s |
+| Step                                 | Before                                   | After                                                                                                                                               |
+| ------------------------------------ | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Normalized collections (~147 tables) | one query per table, ~50s                | one `union all` of `jsonb_agg(record order by entity_id)`, ~3.5s                                                                                    |
+| Relational core (~24 tables)         | sequential, ~7s                          | concurrent over the pool, ~2-4s                                                                                                                     |
+| Pool connections                     | opened one by one as queries needed them | a short-lived boot pool is warmed concurrently, used for the migration check and snapshot load, then closed, so no extra idle connections stay open |
+| Fulfillment schema check             | after store hydration                    | alongside store hydration                                                                                                                           |
+| Total                                | ~90s                                     | ~24-29s                                                                                                                                             |
 
 What remains is mostly fixed cost: ~7.5s of `tsx` compile in dev, ~5s of inference schema check
 and provider refresh, and one TLS connection setup per pool.

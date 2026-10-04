@@ -1,4 +1,9 @@
-import { PeerProvider, createPeerOutbox, type Scope, type PeerOutbox } from "@grogoni/offline-runtime";
+import {
+  PeerProvider,
+  createPeerOutbox,
+  type Scope,
+  type PeerOutbox
+} from "@grogoni/offline-runtime";
 import type { ConversationMessageSummary } from "@grogoni/shared-types";
 import { WebBluetoothPeerTransport, webBluetoothSupported } from "./peer-bluetooth-transport";
 import { offlineDatabase } from "./offline-runtime";

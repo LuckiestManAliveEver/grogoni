@@ -1212,7 +1212,10 @@ async function installApiMocks(page: Page): Promise<void> {
     if (path === "/public/storefronts/grogoni.responsive-public-shop" && method === "GET") {
       return json(mockPublicStorefront);
     }
-    if (path === "/public/storefronts/grogoni.responsive-public-shop/sessions" && method === "POST") {
+    if (
+      path === "/public/storefronts/grogoni.responsive-public-shop/sessions" &&
+      method === "POST"
+    ) {
       return json({
         conversationId: "responsive-public-conversation",
         capabilityToken: "responsive-public-capability",

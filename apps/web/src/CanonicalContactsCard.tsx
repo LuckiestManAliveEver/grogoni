@@ -5,7 +5,13 @@ import { useApiMutationRevision } from "./hooks/useApiMutationRevision";
 import { deleteJson, getJson, postJson } from "./api-helpers";
 import { getUserFacingErrorMessage } from "./user-facing-error";
 
-const contactSources: ContactSource[] = ["MANUAL", "PHONEBOOK", "EMAIL", "SOCIAL", "GROGONI_ACCOUNT"];
+const contactSources: ContactSource[] = [
+  "MANUAL",
+  "PHONEBOOK",
+  "EMAIL",
+  "SOCIAL",
+  "GROGONI_ACCOUNT"
+];
 
 interface NewContactDraft {
   displayName: string;

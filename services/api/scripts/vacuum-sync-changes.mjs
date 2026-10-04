@@ -35,7 +35,11 @@ async function stats(label) {
             pg_total_relation_size('account_sync_changes')::bigint as total_bytes
        from account_sync_changes`
   );
-  const row = { label, connection: url.includes("-pooler") ? "pooler" : "direct", ...result.rows[0] };
+  const row = {
+    label,
+    connection: url.includes("-pooler") ? "pooler" : "direct",
+    ...result.rows[0]
+  };
   log(row);
   return row;
 }

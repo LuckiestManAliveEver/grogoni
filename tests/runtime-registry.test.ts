@@ -71,7 +71,9 @@ describe("runtime registry unified search fan-out", () => {
         throw new Error("Hugging Face is down");
       }
     });
-    const grogoni = fakeAdapter("grogoni", { search: async () => [fakeItem("grogoni", "grogoni-model")] });
+    const grogoni = fakeAdapter("grogoni", {
+      search: async () => [fakeItem("grogoni", "grogoni-model")]
+    });
 
     const service = createRuntimeRegistrySearchService({
       adapters: { github, huggingface, grogoni }
@@ -79,7 +81,10 @@ describe("runtime registry unified search fan-out", () => {
 
     const result = await service.search({ query: "model" }, publicContext);
 
-    expect(result.items.map((item) => item.externalId).sort()).toEqual(["gh-model", "grogoni-model"]);
+    expect(result.items.map((item) => item.externalId).sort()).toEqual([
+      "gh-model",
+      "grogoni-model"
+    ]);
     expect(result.providers.github).toEqual({ status: "ok" });
     expect(result.providers.grogoni).toEqual({ status: "ok" });
     expect(result.providers.huggingface).toEqual({

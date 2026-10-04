@@ -18,25 +18,25 @@ Date passed: 2026-07-01
 
 ## Source Artifacts Preserved
 
-| Path                                                     | Role                                      |
-| -------------------------------------------------------- | ----------------------------------------- |
+| Path                                                        | Role                                      |
+| ----------------------------------------------------------- | ----------------------------------------- |
 | `documentation/Grogoni doc 5 June ctrl .pdf`                | Master Control Document.                  |
 | `documentation/Grogoni_Master_Control_Document_v1.docx`     | Master Control Document source duplicate. |
 | `documentation/Grogoni_Master_Control_Document_v1 (1).docx` | Master Control Document source duplicate. |
 | `documentation/Grogoni doc 1 june.pdf`                      | Master Architecture Document.             |
 | `documentation/Grogoni doc 2 June .pdf`                     | Technical Architecture Specification.     |
 | `documentation/Grogoni doc 3 june.pdf`                      | PRD and Development Blueprint.            |
-| `documentation/Grogoni doc 4 June  (1).pdf`                 | Grogoniclaw Runtime Specification.           |
+| `documentation/Grogoni doc 4 June  (1).pdf`                 | Grogoniclaw Runtime Specification.        |
 | `documentation/Grogoni doc 1.0 june (1).pdf`                | TIEL base specification.                  |
 | `documentation/Grogoni doc 1,1 june.pdf`                    | TIEL implementation supplement.           |
-| `documentation/1000157660.png`                           | UI reference.                             |
-| `documentation/1000157661.png`                           | UI reference.                             |
-| `documentation/1000157662.png`                           | UI reference.                             |
+| `documentation/1000157660.png`                              | UI reference.                             |
+| `documentation/1000157661.png`                              | UI reference.                             |
+| `documentation/1000157662.png`                              | UI reference.                             |
 
 ## Invalid or Superseded Artifacts
 
-| Path                                 | Reason                                                |
-| ------------------------------------ | ----------------------------------------------------- |
+| Path                                    | Reason                                                |
+| --------------------------------------- | ----------------------------------------------------- |
 | `documentation/Grogoni doc 4 June .pdf` | Broken one-page placeholder. Excluded from authority. |
 
 ## Integrity Notes

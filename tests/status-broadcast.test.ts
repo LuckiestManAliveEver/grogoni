@@ -134,8 +134,12 @@ describe("photo capture items and status broadcast", () => {
       },
       cookie
     );
-    const grogoniContactNode = graph.nodes.find((node) => node.displayName === "Amina (on Grogoni)")!;
-    const unmatchedNode = graph.nodes.find((node) => node.displayName === "Baraka (not on Grogoni)")!;
+    const grogoniContactNode = graph.nodes.find(
+      (node) => node.displayName === "Amina (on Grogoni)"
+    )!;
+    const unmatchedNode = graph.nodes.find(
+      (node) => node.displayName === "Baraka (not on Grogoni)"
+    )!;
     expect(grogoniContactNode.grogoniUserId).not.toBeNull();
     expect(unmatchedNode.grogoniUserId).toBeNull();
 

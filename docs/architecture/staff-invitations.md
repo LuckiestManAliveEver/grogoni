@@ -14,11 +14,11 @@ audit event (`staff.invitation_created`, `staff.invitation_accepted`, `staff.inv
 
 ## Decisions (Julien)
 
-| Question                      | Decision                                                                                                                                              |
-| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Question                      | Decision                                                                                                                                                 |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Relation to network invites   | A new membership-invitation concept. Network invites stay "join the Grogoni network" (customer outreach); staff invitations are "join my business as X". |
-| How access is granted         | Explicit accept by the invitee. Nothing is granted by inviting.                                                                                       |
-| Who invites and manages roles | Owner and manager.                                                                                                                                    |
+| How access is granted         | Explicit accept by the invitee. Nothing is granted by inviting.                                                                                          |
+| Who invites and manages roles | Owner and manager.                                                                                                                                       |
 
 ## Model
 

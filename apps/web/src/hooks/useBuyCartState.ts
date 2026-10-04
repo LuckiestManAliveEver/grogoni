@@ -1,4 +1,8 @@
-import type { BuyFeedSummary, BuyResultSummary, UnifiedCheckoutSummary } from "@grogoni/shared-types";
+import type {
+  BuyFeedSummary,
+  BuyResultSummary,
+  UnifiedCheckoutSummary
+} from "@grogoni/shared-types";
 
 import { getJson, postJson } from "../api-helpers";
 import type { ChatMessage } from "../app-shell";

@@ -25,7 +25,11 @@ import {
   type LogisticsStatusInput
 } from "@grogoni/business-core";
 import type { BusinessEvent } from "@grogoni/event-core";
-import type { AuthenticatedActorView, InvoiceSummary, LogisticsSummary } from "@grogoni/shared-types";
+import type {
+  AuthenticatedActorView,
+  InvoiceSummary,
+  LogisticsSummary
+} from "@grogoni/shared-types";
 import { Cp2Error, assertValid } from "../../cp2-error.js";
 
 export interface LogisticsDomainDeps {

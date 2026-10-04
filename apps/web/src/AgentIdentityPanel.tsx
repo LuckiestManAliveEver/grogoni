@@ -43,7 +43,9 @@ export function AgentIdentityPanel({
       const merged = new Map<string, OssAgentSummary>();
       for (const manifest of accountManifests) {
         const item = manifest.agent;
-        const haystack = normalizeSearchText(`${item.label} ${item.description} ${item.runtime} ${item.capabilities.join(" ")}`);
+        const haystack = normalizeSearchText(
+          `${item.label} ${item.description} ${item.runtime} ${item.capabilities.join(" ")}`
+        );
         if (query.length === 0 || haystack.includes(query)) {
           merged.set(item.id, item);
         }

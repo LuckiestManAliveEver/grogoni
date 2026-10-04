@@ -466,7 +466,8 @@ export const aiModelRegistry: AiModelSummary[] = [
     id: "llama-cpp-configured",
     label: "Installed app llama.cpp bridge",
     provider: "local",
-    description: "Optional native model runtime exposed by a supported installed Grogoni application.",
+    description:
+      "Optional native model runtime exposed by a supported installed Grogoni application.",
     capabilities: ["chat", "tool-routing", "llama.cpp", "native-bridge"],
     available: false,
     source: "builtin",

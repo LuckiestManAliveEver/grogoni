@@ -84,17 +84,24 @@ async function run(liveConfig) {
     try {
       const { call } = await invokeApprovedTool(client, liveConfig, primaryTool, {
         name: "grogoni.list_shops",
-        prompt: "Call grogoni.list_shops with an empty object. Summarize only the returned shop names."
+        prompt:
+          "Call grogoni.list_shops with an empty object. Summarize only the returned shop names."
       });
       const parsed = parseMcpCall(call);
       assert(!parsed.isError, "grogoni.list_shops returned an MCP tool error.");
-      assert(Array.isArray(parsed.structuredContent), "grogoni.list_shops did not return an array.");
+      assert(
+        Array.isArray(parsed.structuredContent),
+        "grogoni.list_shops did not return an array."
+      );
       report.pass(
         "list_shops read",
         `returned ${parsed.structuredContent.length} authorized shop(s)`
       );
     } catch (error) {
-      report.fail("list_shops read", failure(error, "Grogoni MCP/tool execution", "authorized shops"));
+      report.fail(
+        "list_shops read",
+        failure(error, "Grogoni MCP/tool execution", "authorized shops")
+      );
     }
   } else {
     report.skip("list_shops read", "tool discovery prerequisite failed");
@@ -160,7 +167,10 @@ async function run(liveConfig) {
     );
     report.pass("Shop isolation", "random shop binding was rejected by Grogoni authorization");
   } catch (error) {
-    report.fail("Shop isolation", failure(error, "Grogoni authorization", "foreign shop rejection"));
+    report.fail(
+      "Shop isolation",
+      failure(error, "Grogoni authorization", "foreign shop rejection")
+    );
   }
 
   await testReadOnlyCredential(report, client, liveConfig);
@@ -307,7 +317,10 @@ async function testMutationFlow(report, client, liveConfig, tool, actionApproval
       productName
     );
     assert(pendingCount === 0, "Product existed before Grogoni business confirmation.");
-    report.pass("Grogoni confirmation gate", "OpenAI approval produced a proposal without mutation");
+    report.pass(
+      "Grogoni confirmation gate",
+      "OpenAI approval produced a proposal without mutation"
+    );
 
     const confirmed = await invokeApprovedTool(client, liveConfig, tool, {
       name: "grogoni.confirm_runtime_action",
@@ -389,7 +402,10 @@ async function cleanupProduct(report, client, liveConfig, tool, productName) {
     assert(remaining === 0, "Canonical cleanup left the test product in the shop.");
     report.pass("Mutation cleanup", "test product removed through the Grogoni runtime");
   } catch (error) {
-    report.fail("Mutation cleanup", failure(error, "Grogoni runtime", "canonical product deletion"));
+    report.fail(
+      "Mutation cleanup",
+      failure(error, "Grogoni runtime", "canonical product deletion")
+    );
   }
 }
 

@@ -133,12 +133,12 @@ shop's customers also merges, so it never wipes contacts picked from the phonebo
 
 Limits (all in `services/api/src/cp2/domains/network/store.ts`):
 
-| Limit                        | Value          | Why                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| ---------------------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Contacts per request         | 5,000          | Request size. The web app sends larger phonebooks in 5,000-contact merge batches.                                                                                                                                                                                                                                                                                                                                                 |
-| Contacts per phonebook       | 20,000         | Checked before any write, counting only contacts that would be new (a re-synced contact is an update), so a sync is never half applied. Applies to the phone source only: social sources are separate sources and do not count toward it (what they discover is still charged to the budget below).                                                                                                                               |
+| Limit                        | Value          | Why                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ---------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Contacts per request         | 5,000          | Request size. The web app sends larger phonebooks in 5,000-contact merge batches.                                                                                                                                                                                                                                                                                                                                                    |
+| Contacts per phonebook       | 20,000         | Checked before any write, counting only contacts that would be new (a re-synced contact is an update), so a sync is never half applied. Applies to the phone source only: social sources are separate sources and do not count toward it (what they discover is still charged to the budget below).                                                                                                                                  |
 | Numbers asked about per user | 25,000 per day | Every sync, social profile list (client-submitted or a provider fetch such as Google Contacts, whose contents the owner controls) and invite request reveals which numbers are on Grogoni. Charged per number or email the owner has not asked about before, so re-syncing a phonebook is free; only requests that succeed are charged. Kept in API process memory, so each API instance has its own window and a restart resets it. |
-| Unanswered requests          | 100 per user   | Spam. Applies to a new request, re-asking after a cancel, and asking back after the other side cancelled.                                                                                                                                                                                                                                                                                                                         |
+| Unanswered requests          | 100 per user   | Spam. Applies to a new request, re-asking after a cancel, and asking back after the other side cancelled.                                                                                                                                                                                                                                                                                                                            |
 
 Every request does a fixed number of passes over the shared maps, never one pass per contact:
 one discovery pass (accounts, users and memberships, `discoveryPass`), one scan of the owner's
@@ -149,14 +149,14 @@ in `tests/network-phonebook-domain.test.ts` count these passes, so a per-contact
 
 Measured on the in-memory store:
 
-| Scenario                                                                  | Time    |
-| ------------------------------------------------------------------------- | ------- |
-| Sync 5,000 national-format contacts, 20,000 users each with a shop        | ~0.8 s  |
-| Graph load, 5,000 linked contacts, 20,000 users with shops                | ~0.1 s  |
+| Scenario                                                                     | Time    |
+| ---------------------------------------------------------------------------- | ------- |
+| Sync 5,000 national-format contacts, 20,000 users each with a shop           | ~0.8 s  |
+| Graph load, 5,000 linked contacts, 20,000 users with shops                   | ~0.1 s  |
 | First graph load after 3,000 contacts joined Grogoni, 100,000 identity links | ~0.1 s  |
-| Merge sync relinking 1,000 contacts, 100,000 identity links               | ~0.15 s |
-| Sync with 200 contacts × 10 nested connections, 50,000 other edges        | ~0.1 s  |
-| 100 invites against 20,000 existing invites                               | ~50 ms  |
+| Merge sync relinking 1,000 contacts, 100,000 identity links                  | ~0.15 s |
+| Sync with 200 contacts × 10 nested connections, 50,000 other edges           | ~0.1 s  |
+| 100 invites against 20,000 existing invites                                  | ~50 ms  |
 
 ### Discovery
 
@@ -189,11 +189,11 @@ to be seen).
 holds one record per pair of Grogoni users; whoever asked first is the requester. Rules live in
 `services/api/src/cp2/domains/network/connections.ts`:
 
-| Endpoint                                   | Rule                                                                                                                                                                          |
-| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Endpoint                                   | Rule                                                                                                                                                                             |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `POST /network/connections {nodeId}`       | The node must be the caller's own direct contact and discovered as another Grogoni user. Asking again returns the same record. If the other side already asked, this accepts it. |
-| `POST /network/connections/:id/respond`    | Recipient only. `accept: true` connects; `false` declines.                                                                                                                    |
-| `DELETE /network/connections/:id`          | Requester: cancels (withdraws) an unanswered request. Recipient: declines a pending one. Either side: removes an accepted connection.                                         |
+| `POST /network/connections/:id/respond`    | Recipient only. `accept: true` connects; `false` declines.                                                                                                                       |
+| `DELETE /network/connections/:id`          | Requester: cancels (withdraws) an unanswered request. Recipient: declines a pending one. Either side: removes an accepted connection.                                            |
 | `GET /network/connections`, `GET /network` | Viewer-relative `NetworkConnectionSummary` (`direction`, counterpart name, shop). The owner's own phonebook name for the person wins over their Grogoni display name.            |
 
 A decline is private. Nothing the requester can read changes: status stays `pending`, and
