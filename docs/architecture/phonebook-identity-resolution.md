@@ -225,7 +225,7 @@ never fails the request or stops the other devices, expired subscriptions are dr
 with the next mutation, as for app-update pushes), and each push records a
 `network.connection_push` audit event (actor, notified user, sent/expired/failed counts). The
 service worker shows it as its own notification (re-alerting if the same connection is asked
-again) and tells any open Soko window to recheck, both when the push arrives and on click, so the
+again) and tells any open Grogoni window to recheck, both when the push arrives and on click, so the
 request or new connection shows even if that window was already in front; with no window open,
 the click opens the app (the network page for an acceptance).
 

@@ -11,8 +11,9 @@ describe("suppliers chat-invokable capability (Phase 4b)", () => {
   it("registers a supplier-management card in the generated-surface registry", () => {
     expect(registry).toContain('"supplier-management": (content) => {');
     expect(registry).toContain("<SupplierManagementCard");
-    expect(grogoni).toContain(
-      'export const SupplierManagementCard = lazy(() => import("./SupplierManagementCard"));'
+    // Lazy, and through the deploy-recovery loader (tests/lazy-module-recovery-coverage.test.ts).
+    expect(grogoni).toMatch(
+      /export const SupplierManagementCard = lazy\(\s*\(\) =>\s*loadLazyModuleWithRecovery\(\s*ownerModuleKeys\.supplierManagementCard,\s*\(\) =>\s*import\("\.\/SupplierManagementCard"\)/u
     );
   });
 

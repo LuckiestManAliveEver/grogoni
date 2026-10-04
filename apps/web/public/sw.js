@@ -241,29 +241,29 @@ self.addEventListener("push", (event) => {
   }
 
   // Someone asked to connect or accepted. Handled before the message fallback below, which
-  // would otherwise show it as "New Soko message". The app's connection prompt shows the request
+  // would otherwise show it as "New Grogoni message". The app's connection prompt shows the request
   // when the app opens or regains focus, so the click only has to bring the app forward.
   if (payload.type === "network.connection") {
     const accepted = payload.event === "accepted";
     event.waitUntil(
       Promise.all([
         self.registration.showNotification(
-          payload.title || (accepted ? "New Soko connection" : "New connection request on Soko"),
+          payload.title || (accepted ? "New Grogoni connection" : "New connection request on Grogoni"),
           {
             body:
               payload.body ||
-              (accepted ? "Open Soko to see your network." : "Open Soko to accept or decline."),
-            icon: "/icons/soko-icon-192.png",
-            badge: "/icons/soko-icon-192.png",
+              (accepted ? "Open Grogoni to see your network." : "Open Grogoni to accept or decline."),
+            icon: "/icons/grogoni-icon-192.png",
+            badge: "/icons/grogoni-icon-192.png",
             tag: payload.connectionId
-              ? `soko-connection-${payload.connectionId}`
-              : "soko-connection",
+              ? `grogoni-connection-${payload.connectionId}`
+              : "grogoni-connection",
             // The same connection can be asked again (after a cancel): alert again, don't update silently.
             renotify: true,
             data: { type: "network.connection", url: accepted ? "/network" : "/" }
           }
         ),
-        // An open Soko window refreshes right away, without waiting for a click or refocus.
+        // An open Grogoni window refreshes right away, without waiting for a click or refocus.
         self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
           for (const client of clients) client.postMessage({ type: "network.connection.changed" });
         })

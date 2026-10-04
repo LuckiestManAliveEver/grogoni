@@ -11,8 +11,9 @@ describe("invoices chat-invokable capability (Phase 4d)", () => {
   it("registers an invoice-management card in the generated-surface registry", () => {
     expect(registry).toContain('"invoice-management": (content) => {');
     expect(registry).toContain("<InvoiceManagementCard");
-    expect(grogoni).toContain(
-      'export const InvoiceManagementCard = lazy(() => import("./InvoiceManagementCard"));'
+    // Lazy, and through the deploy-recovery loader (tests/lazy-module-recovery-coverage.test.ts).
+    expect(grogoni).toMatch(
+      /export const InvoiceManagementCard = lazy\(\s*\(\) =>\s*loadLazyModuleWithRecovery\(\s*ownerModuleKeys\.invoiceManagementCard,\s*\(\) =>\s*import\("\.\/InvoiceManagementCard"\)/u
     );
   });
 

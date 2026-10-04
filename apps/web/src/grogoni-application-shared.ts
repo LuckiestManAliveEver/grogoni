@@ -28,7 +28,11 @@ import { readAuthenticationRouteHash, readAuthenticationRoutePath, readOwnerRout
 
 import { readApiBaseUrl } from "./lib/api";
 
-import { agentProfileModuleKeys, loadLazyModuleWithRecovery } from "./lazy-module-recovery";
+import {
+  agentProfileModuleKeys,
+  loadLazyModuleWithRecovery,
+  ownerModuleKeys
+} from "./lazy-module-recovery";
 
 import { RuntimeManager } from "./runtime-manager";
 
@@ -42,11 +46,17 @@ export type CountryDialCode = "+254" | "+1" | "+44" | "+234" | "+27" | "+255" | 
 
 export const clientInferenceFeatureFlags = readClientInferenceFeatureFlags();
 export const AccountRestorationPanel = lazy(async () => {
-  const module = await import("./features/account-restoration/AccountRestorationPanel");
+  const module = await loadLazyModuleWithRecovery(
+    ownerModuleKeys.accountRestorationPanel,
+    () => import("./features/account-restoration/AccountRestorationPanel")
+  );
   return { default: module.AccountRestorationPanel };
 });
 export const SmsHandoffDialog = lazy(async () => {
-  const module = await import("./messaging/SmsHandoffDialog");
+  const module = await loadLazyModuleWithRecovery(
+    ownerModuleKeys.smsHandoffDialog,
+    () => import("./messaging/SmsHandoffDialog")
+  );
   return { default: module.SmsHandoffDialog };
 });
 // The private runtime has a 90s inference deadline and successful mutations may spend up to 8s
@@ -57,14 +67,31 @@ export const initialAuthenticationModuleTarget =
   readAuthenticationRoutePath(window.location.pathname) ??
   readAuthenticationRouteHash(window.location.hash);
 export const initialPhoneLoginModule =
-  initialAuthenticationModuleTarget === "login" ? import("./PhoneFirstAuthentication") : null;
+  initialAuthenticationModuleTarget === "login"
+    ? loadLazyModuleWithRecovery(
+        ownerModuleKeys.phoneFirstAuthentication,
+        () => import("./PhoneFirstAuthentication")
+      )
+    : null;
 export const initialPhoneSignupModule =
-  initialAuthenticationModuleTarget === "signup" ? import("./PhoneSignup") : null;
+  initialAuthenticationModuleTarget === "signup"
+    ? loadLazyModuleWithRecovery(ownerModuleKeys.phoneSignup, () => import("./PhoneSignup"))
+    : null;
 export const initialOwnerModuleView = readOwnerRoute(window.location.pathname)?.view ?? null;
 export const initialProductCaptureModule =
-  initialOwnerModuleView === "products" ? import("./ProductCapturePanel") : null;
+  initialOwnerModuleView === "products"
+    ? loadLazyModuleWithRecovery(
+        ownerModuleKeys.productCapturePanel,
+        () => import("./ProductCapturePanel")
+      )
+    : null;
 export const initialAccountControlsModule =
-  initialOwnerModuleView === "agent" ? import("./AccountBackendControls") : null;
+  initialOwnerModuleView === "agent"
+    ? loadLazyModuleWithRecovery(
+        ownerModuleKeys.accountBackendControls,
+        () => import("./AccountBackendControls")
+      )
+    : null;
 export const initialAgentModelPanelModule =
   initialOwnerModuleView === "agent"
     ? loadLazyModuleWithRecovery(
@@ -80,16 +107,36 @@ export const initialIdentitySecurityPanelModule =
       )
     : null;
 export const PhoneFirstAuthentication = lazy(() =>
-  (initialPhoneLoginModule ?? import("./PhoneFirstAuthentication")).then((module) => ({
+  (
+    initialPhoneLoginModule ??
+    loadLazyModuleWithRecovery(
+      ownerModuleKeys.phoneFirstAuthentication,
+      () => import("./PhoneFirstAuthentication")
+    )
+  ).then((module) => ({
     default: module.PhoneFirstAuthentication
   }))
 );
-export const PhoneSignup = lazy(() => initialPhoneSignupModule ?? import("./PhoneSignup"));
+export const PhoneSignup = lazy(
+  () =>
+    initialPhoneSignupModule ??
+    loadLazyModuleWithRecovery(ownerModuleKeys.phoneSignup, () => import("./PhoneSignup"))
+);
 export const ProductCapturePanel = lazy(
-  () => initialProductCaptureModule ?? import("./ProductCapturePanel")
+  () =>
+    initialProductCaptureModule ??
+    loadLazyModuleWithRecovery(
+      ownerModuleKeys.productCapturePanel,
+      () => import("./ProductCapturePanel")
+    )
 );
 export const AccountBackendControls = lazy(
-  () => initialAccountControlsModule ?? import("./AccountBackendControls")
+  () =>
+    initialAccountControlsModule ??
+    loadLazyModuleWithRecovery(
+      ownerModuleKeys.accountBackendControls,
+      () => import("./AccountBackendControls")
+    )
 );
 export const AgentModelPanel = lazy(() =>
   (
@@ -106,17 +153,72 @@ export const IdentitySecurityPanel = lazy(() =>
     )
   ).then((module) => ({ default: module.IdentitySecurityPanel }))
 );
-export const ProductCaptureItemsCard = lazy(() => import("./ProductCaptureItemsCard"));
-export const ProductManagementCard = lazy(() => import("./ProductManagementCard"));
-export const SupplierManagementCard = lazy(() => import("./SupplierManagementCard"));
-export const CustomerManagementCard = lazy(() => import("./CustomerManagementCard"));
-export const InvoiceManagementCard = lazy(() => import("./InvoiceManagementCard"));
-export const PaymentManagementCard = lazy(() => import("./PaymentManagementCard"));
-export const ImportManagementCard = lazy(() => import("./ImportManagementCard"));
-export const LogisticsManagementCard = lazy(() => import("./LogisticsManagementCard"));
-export const StatusBroadcastCard = lazy(() => import("./StatusBroadcastCard"));
-export const UnifiedCartSummary = lazy(() => import("./UnifiedCartSummary"));
-export const FulfilmentSplitCard = lazy(() => import("./FulfilmentSplitCard"));
+export const ProductCaptureItemsCard = lazy(() =>
+  loadLazyModuleWithRecovery(
+    ownerModuleKeys.productCaptureItemsCard,
+    () => import("./ProductCaptureItemsCard")
+  )
+);
+export const ProductManagementCard = lazy(() =>
+  loadLazyModuleWithRecovery(
+    ownerModuleKeys.productManagementCard,
+    () => import("./ProductManagementCard")
+  )
+);
+export const SupplierManagementCard = lazy(() =>
+  loadLazyModuleWithRecovery(
+    ownerModuleKeys.supplierManagementCard,
+    () => import("./SupplierManagementCard")
+  )
+);
+export const CustomerManagementCard = lazy(() =>
+  loadLazyModuleWithRecovery(
+    ownerModuleKeys.customerManagementCard,
+    () => import("./CustomerManagementCard")
+  )
+);
+export const InvoiceManagementCard = lazy(() =>
+  loadLazyModuleWithRecovery(
+    ownerModuleKeys.invoiceManagementCard,
+    () => import("./InvoiceManagementCard")
+  )
+);
+export const PaymentManagementCard = lazy(() =>
+  loadLazyModuleWithRecovery(
+    ownerModuleKeys.paymentManagementCard,
+    () => import("./PaymentManagementCard")
+  )
+);
+export const ImportManagementCard = lazy(() =>
+  loadLazyModuleWithRecovery(
+    ownerModuleKeys.importManagementCard,
+    () => import("./ImportManagementCard")
+  )
+);
+export const LogisticsManagementCard = lazy(() =>
+  loadLazyModuleWithRecovery(
+    ownerModuleKeys.logisticsManagementCard,
+    () => import("./LogisticsManagementCard")
+  )
+);
+export const StatusBroadcastCard = lazy(() =>
+  loadLazyModuleWithRecovery(
+    ownerModuleKeys.statusBroadcastCard,
+    () => import("./StatusBroadcastCard")
+  )
+);
+export const UnifiedCartSummary = lazy(() =>
+  loadLazyModuleWithRecovery(
+    ownerModuleKeys.unifiedCartSummary,
+    () => import("./UnifiedCartSummary")
+  )
+);
+export const FulfilmentSplitCard = lazy(() =>
+  loadLazyModuleWithRecovery(
+    ownerModuleKeys.fulfilmentSplitCard,
+    () => import("./FulfilmentSplitCard")
+  )
+);
 
 export const chatAttachmentAccept = [
   "image/*",

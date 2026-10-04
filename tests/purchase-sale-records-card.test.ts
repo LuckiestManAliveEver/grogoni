@@ -48,7 +48,7 @@ describe("purchase and sale records card (permanent surface, no chat wiring)", (
   });
 
   it("receives businessId from OwnerWorkspace's suppliers case, the only change made there", () => {
-    expect(ownerWorkspace).toContain("<SupplierSurface\n          businessId={businessId}");
+    expect(ownerWorkspace).toContain("<Screens.SupplierSurface\n          businessId={businessId}");
   });
 
   it("does not add any new chat/NLU capability wiring for purchases or sales", () => {

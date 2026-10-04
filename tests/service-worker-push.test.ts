@@ -144,18 +144,18 @@ describe("service worker: app-update push notifications", () => {
       type: "network.connection",
       connectionId: "c-1",
       event: "requested",
-      title: "Amina wants to connect on Soko",
-      body: "Open Soko to accept or decline."
+      title: "Amina wants to connect on Grogoni",
+      body: "Open Grogoni to accept or decline."
     });
 
     handler?.(event);
     await settled();
 
     expect(sw.self.registration.showNotification).toHaveBeenCalledWith(
-      "Amina wants to connect on Soko",
+      "Amina wants to connect on Grogoni",
       expect.objectContaining({
-        body: "Open Soko to accept or decline.",
-        tag: "soko-connection-c-1",
+        body: "Open Grogoni to accept or decline.",
+        tag: "grogoni-connection-c-1",
         data: { type: "network.connection", url: "/" }
       })
     );
@@ -193,7 +193,7 @@ describe("service worker: app-update push notifications", () => {
       connectionId: "c-2",
       event: "accepted",
       title: "You are now connected with Amina",
-      body: "Open Soko to see your network."
+      body: "Open Grogoni to see your network."
     });
 
     handler?.(event);

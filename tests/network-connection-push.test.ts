@@ -50,7 +50,7 @@ describe("connection request push", () => {
           type: "network.connection",
           event: "requested",
           connectionId: request.id,
-          title: expect.stringMatching(/wants to connect on Soko$/u)
+          title: expect.stringMatching(/wants to connect on Grogoni$/u)
         })
       }
     ]);

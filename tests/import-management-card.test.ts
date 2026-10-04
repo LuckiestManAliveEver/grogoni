@@ -11,8 +11,9 @@ describe("imports chat-invokable capability (Phase 4f)", () => {
   it("registers an import-management card in the generated-surface registry", () => {
     expect(registry).toContain('"import-management": (content) => {');
     expect(registry).toContain("<ImportManagementCard");
-    expect(grogoni).toContain(
-      'export const ImportManagementCard = lazy(() => import("./ImportManagementCard"));'
+    // Lazy, and through the deploy-recovery loader (tests/lazy-module-recovery-coverage.test.ts).
+    expect(grogoni).toMatch(
+      /export const ImportManagementCard = lazy\(\s*\(\) =>\s*loadLazyModuleWithRecovery\(\s*ownerModuleKeys\.importManagementCard,\s*\(\) =>\s*import\("\.\/ImportManagementCard"\)/u
     );
   });
 

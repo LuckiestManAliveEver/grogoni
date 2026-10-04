@@ -11,8 +11,9 @@ describe("products chat-invokable capability (Phase 4a)", () => {
   it("registers a product-management card in the generated-surface registry", () => {
     expect(registry).toContain('"product-management": (content) => {');
     expect(registry).toContain("<ProductManagementCard");
-    expect(grogoni).toContain(
-      'export const ProductManagementCard = lazy(() => import("./ProductManagementCard"));'
+    // Lazy, and through the deploy-recovery loader (tests/lazy-module-recovery-coverage.test.ts).
+    expect(grogoni).toMatch(
+      /export const ProductManagementCard = lazy\(\s*\(\) =>\s*loadLazyModuleWithRecovery\(\s*ownerModuleKeys\.productManagementCard,\s*\(\) =>\s*import\("\.\/ProductManagementCard"\)/u
     );
   });
 

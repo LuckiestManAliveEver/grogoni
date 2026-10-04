@@ -8,6 +8,11 @@ import {
 import { appRouteModuleKeys, loadLazyModuleWithRecovery } from "./lazy-module-recovery";
 import { LazyModuleErrorBoundary } from "./LazyModuleErrorBoundary";
 import { recordComponentRender, recordRouteRender } from "./performance";
+import {
+  matchStorefrontRoute,
+  shouldWarmOwnerRoute,
+  type StorefrontRoute
+} from "./app-route-matching";
 import { readAuthenticationRoutePath, readOwnerRoute, routes } from "./routes";
 import { isGrogoniId, normalizeGrogoniId } from "./grogoniid-and-storefront";
 
@@ -34,26 +39,19 @@ const AccountDeletionPage = lazy(() =>
     () => import("./legal/AccountDeletionPage")
   )
 );
-const OwnerApp = lazy(() =>
-  loadGrogoniApplication().then((module) => ({ default: module.OwnerApp }))
-);
+const OwnerApp = lazy(() => loadGrogoniApplication().then((module) => ({ default: module.OwnerApp })));
+// Loaded on its own: a storefront visitor chats with a shop without downloading the owner app.
 const PublicStorefront = lazy(() =>
-  loadGrogoniApplication().then((module) => ({ default: module.PublicStorefrontChat }))
+  loadLazyModuleWithRecovery(
+    appRouteModuleKeys.publicStorefront,
+    () => import("./PublicStorefrontChat")
+  ).then((module) => ({ default: module.PublicStorefrontChat }))
 );
 
 function loadGrogoniApplication() {
   return (
     initialGrogoniApplicationModule ??
     loadLazyModuleWithRecovery(appRouteModuleKeys.ownerApp, () => import("./GrogoniApplication"))
-  );
-}
-
-function shouldWarmOwnerRoute(pathname: string): boolean {
-  return (
-    readOwnerRoute(pathname) !== null ||
-    readAuthenticationRoutePath(pathname) !== null ||
-    pathname === routes.oauthCallback ||
-    /^\/(?:agent|shop|shops|grogoni)\//u.test(pathname)
   );
 }
 
@@ -191,40 +189,17 @@ export function readStorefrontAgentId(): string | null {
   return readStorefrontRoute()?.agentId ?? null;
 }
 
-export interface StorefrontRoute {
-  agentId: string;
-  productId: string | null;
-}
+export function readStorefrontRoute(
+  pathname: string = window.location.pathname
+): StorefrontRoute | null {
+  const route = matchStorefrontRoute(pathname);
+  if (route === null) return null;
 
-export function readStorefrontRoute(): StorefrontRoute | null {
-  const pathname = window.location.pathname;
-  const match =
-    pathname.match(/^\/agent\/([^/]+)(?:\/products\/([^/]+))?\/?$/) ??
-    pathname.match(/^\/(?:shop|shops|grogoni)\/([^/]+)\/?$/);
-
-  if (match === null) return null;
-
-  const rawAgentId = (match[1] ?? "").replace(/^\//, "");
-  let agentId: string;
-  try {
-    agentId = decodeURIComponent(rawAgentId).trim();
-  } catch {
-    return null;
-  }
-
-  if (agentId.length === 0) return null;
-
-  let productId: string | null = null;
-  if (match[2] !== undefined) {
-    try {
-      productId = decodeURIComponent(match[2]).trim() || null;
-    } catch {
-      return null;
-    }
-  }
-
+  // /shop/:id, /shops/:id and /grogoni/:id are aliases: show the canonical /agent/:id address.
   if (!pathname.startsWith("/agent/")) {
-    const canonicalAgentId = isGrogoniId(agentId) ? normalizeGrogoniId(agentId) : agentId;
+    const canonicalAgentId = isGrogoniId(route.agentId)
+      ? normalizeGrogoniId(route.agentId)
+      : route.agentId;
     window.history.replaceState(
       null,
       "",
@@ -232,5 +207,5 @@ export function readStorefrontRoute(): StorefrontRoute | null {
     );
   }
 
-  return { agentId, productId };
+  return route;
 }

@@ -118,7 +118,7 @@ describe("ConnectionRequestsPrompt", () => {
     fetchFreshJson.mockResolvedValue({ connections: [] });
     await render();
     const changed = vi.fn();
-    window.addEventListener("soko:network-changed", changed);
+    window.addEventListener("grogoni:network-changed", changed);
 
     fetchFreshJson.mockResolvedValue({ connections: [connection({})] });
     await act(async () => {
@@ -129,7 +129,7 @@ describe("ConnectionRequestsPrompt", () => {
 
     expect(changed).toHaveBeenCalled();
     expect(container.textContent).toContain("Eve wants to connect");
-    window.removeEventListener("soko:network-changed", changed);
+    window.removeEventListener("grogoni:network-changed", changed);
     Reflect.deleteProperty(navigator, "serviceWorker");
   });
 });

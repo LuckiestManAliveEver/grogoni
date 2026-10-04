@@ -12547,9 +12547,9 @@ export class Cp2Store {
         connectionId: event.aggregateId,
         event: requested ? "requested" : "accepted",
         title: requested
-          ? `${name} wants to connect on Soko`
+          ? `${name} wants to connect on Grogoni`
           : `You are now connected with ${name}`,
-        body: requested ? "Open Soko to accept or decline." : "Open Soko to see your network."
+        body: requested ? "Open Grogoni to accept or decline." : "Open Grogoni to see your network."
       })
       .then((outcome) => {
         if (outcome.targeted === 0) return;

@@ -11,8 +11,9 @@ describe("logistics chat-invokable capability (Phase 4h)", () => {
   it("registers a logistics-management card in the generated-surface registry", () => {
     expect(registry).toContain('"logistics-management": (content) => {');
     expect(registry).toContain("<LogisticsManagementCard");
-    expect(grogoni).toContain(
-      'export const LogisticsManagementCard = lazy(() => import("./LogisticsManagementCard"));'
+    // Lazy, and through the deploy-recovery loader (tests/lazy-module-recovery-coverage.test.ts).
+    expect(grogoni).toMatch(
+      /export const LogisticsManagementCard = lazy\(\s*\(\) =>\s*loadLazyModuleWithRecovery\(\s*ownerModuleKeys\.logisticsManagementCard,\s*\(\) =>\s*import\("\.\/LogisticsManagementCard"\)/u
     );
   });
 

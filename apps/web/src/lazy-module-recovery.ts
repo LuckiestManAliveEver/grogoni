@@ -14,12 +14,43 @@ const deploymentRecoveryMarkerTtlMs = 5 * 60 * 1000;
 export const agentProfileModuleKeys = {
   surface: "agent-profile",
   modelPanel: "agent-model-panel",
-  identitySecurityPanel: "identity-security-panel"
+  identitySecurityPanel: "identity-security-panel",
+  aiProvidersPanel: "ai-providers-panel"
+} as const;
+
+/** Lazy panels and cards of the owner app (apps/web/src/grogoni-application-shared.ts). */
+export const ownerModuleKeys = {
+  productCaptureItemsCard: "product-capture-items-card",
+  productManagementCard: "product-management-card",
+  supplierManagementCard: "supplier-management-card",
+  customerManagementCard: "customer-management-card",
+  invoiceManagementCard: "invoice-management-card",
+  paymentManagementCard: "payment-management-card",
+  importManagementCard: "import-management-card",
+  logisticsManagementCard: "logistics-management-card",
+  statusBroadcastCard: "status-broadcast-card",
+  unifiedCartSummary: "unified-cart-summary",
+  fulfilmentSplitCard: "fulfilment-split-card",
+  accountRestorationPanel: "account-restoration-panel",
+  smsHandoffDialog: "sms-handoff-dialog",
+  phoneFirstAuthentication: "phone-first-authentication",
+  phoneSignup: "phone-signup",
+  productCapturePanel: "product-capture-panel",
+  accountBackendControls: "account-backend-controls"
 } as const;
 
 /** Lazy panels inside the owner app's workspace drawer. */
 export const workspaceModuleKeys = {
-  shopHub: "shop-hub"
+  shopHub: "shop-hub",
+  phoneContacts: "phone-contacts",
+  connectionRequests: "connection-requests",
+  supplierSurface: "workspace-suppliers",
+  posTerminal: "workspace-pos",
+  importSurface: "workspace-imports",
+  logisticsSurface: "workspace-logistics",
+  complianceSurface: "workspace-compliance",
+  betaSurface: "workspace-beta",
+  launchSurface: "workspace-launch"
 } as const;
 
 /** Other top-level lazy routes (apps/web/src/AppRouter.tsx) that share this same mechanism. */

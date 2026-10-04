@@ -29,11 +29,15 @@ import { ModelTemplateWorkbenchPanel } from "./ModelTemplateWorkbenchPanel";
 import { ModelTemplateGovernancePanel } from "./ModelTemplateGovernancePanel";
 import { YourShopsPanel } from "./YourShopsPanel";
 import StaffCard from "./StaffCard";
+import { agentProfileModuleKeys, loadLazyModuleWithRecovery } from "./lazy-module-recovery";
 import { shopAfterLeaving } from "./stored-shop";
 
 // Loaded only when the owner opens Settings -> AI providers, keeping it out of the owner route chunk.
 const AiProvidersPanel = lazy(() =>
-  import("./AiProvidersPanel").then((module) => ({ default: module.AiProvidersPanel }))
+  loadLazyModuleWithRecovery(
+    agentProfileModuleKeys.aiProvidersPanel,
+    () => import("./AiProvidersPanel")
+  ).then((module) => ({ default: module.AiProvidersPanel }))
 );
 
 import {
