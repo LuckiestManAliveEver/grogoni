@@ -55,7 +55,7 @@ services:
 
   # Inference now runs as a Vercel serverless function (services/ai-runtime), not a container in
   # this compose file. Run it locally with `pnpm --filter @grogoni/ai-runtime dev` (Vercel CLI dev
-  # server) and point the API at it with VERCEL_INFERENCE_URL=http://127.0.0.1:3000 - see
+  # server). The API now uses local Ollama instead of this retired hosted runtime - see
   # docs/deployment/vercel-inference.md.
 
   receipt-ocr-worker:

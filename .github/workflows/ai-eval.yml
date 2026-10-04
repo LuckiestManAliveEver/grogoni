@@ -34,21 +34,10 @@ jobs:
 
       - name: Run AI eval
         env:
-          VERCEL_INFERENCE_URL: ${{ vars.VERCEL_INFERENCE_URL }}
-          VERCEL_INFERENCE_TIMEOUT_MS: ${{ vars.VERCEL_INFERENCE_TIMEOUT_MS }}
-          GROGONI_INFERENCE_SERVICE_TOKEN: ${{ secrets.GROGONI_INFERENCE_SERVICE_TOKEN }}
-          NEON_MODEL_STORAGE_ENDPOINT: ${{ vars.NEON_MODEL_STORAGE_ENDPOINT }}
-          NEON_MODEL_STORAGE_REGION: ${{ vars.NEON_MODEL_STORAGE_REGION }}
-          NEON_MODEL_STORAGE_ACCESS_KEY_ID: ${{ secrets.NEON_MODEL_STORAGE_ACCESS_KEY_ID }}
-          NEON_MODEL_STORAGE_SECRET_ACCESS_KEY: ${{ secrets.NEON_MODEL_STORAGE_SECRET_ACCESS_KEY }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENAI_FAST_MODEL: ${{ vars.OPENAI_FAST_MODEL }}
-        # No Vercel inference host configured yet -> the script prints a clear skip message and
-        # exits 0. This job goes from a no-op to a real gate the moment those repo
-        # variables/secrets are set - no script change needed. OPENAI_API_KEY, if set, is used
-        # only as the eval judge's cloud fallback when the Vercel judge call fails.
-        run: pnpm eval:ai
+        # The previous hosted eval runner is retired. A local Ollama runner is needed before
+        # this lane can resume evaluating models.
+        run: echo "AI eval skipped - local Ollama eval runner is not configured."
 
       - name: Upload eval report
         if: always()

@@ -94,12 +94,6 @@ services:
         sync: false
       - key: AUTH_TOKEN_ENCRYPTION_KEY
         sync: false
-      - key: COMPUTER_RUNTIME_URL
-        sync: false
-      - key: COMPUTER_RUNTIME_SERVICE_TOKEN
-        sync: false
-      - key: RESEND_API_KEY
-        sync: false
       - key: GROGONI_EMAIL_FROM
         value: "Grogoni <messages@grogoni.com>"
       - key: CP2_STORE
@@ -127,15 +121,8 @@ services:
         generateValue: true
       - key: GITHUB_TOKEN
         sync: false
-      - key: HF_TOKEN
-        sync: false
-      # Vercel executes inference; Render never runs a model locally (docs/architecture/
-      # inference-runtime.md). The browser never receives the inference service token, the Neon
-      # object-storage credentials, or a signed artifact URL directly - Render mints those and
-      # proxies the inference stream back to the client.
-      # Platform default before any swap: the Shopkeeper agent on the ZeroClaw agent runtime with
-      # OpenAI's GPT-6 Luna, Grogoni-funded (docs/adr/ADR-zeroclaw-default-agent-runtime.md). Needs
-      # OPENAI_API_KEY below; without a ZeroClaw gateway Shopkeeper runs on Grogoni's own engine.
+      # Historical hosted runtime defaults. Local development uses .env.local.example;
+      # retired cloud environment settings must not be provisioned here.
       - key: PLATFORM_DEFAULT_AGENT_ID
         value: builtin:shopkeeper:v1
       - key: PLATFORM_DEFAULT_AGENT_NAME
@@ -146,60 +133,8 @@ services:
         value: gpt-6-luna
       - key: PLATFORM_DEFAULT_EXECUTION_TARGET
         value: backend
-      # ZeroClaw gateway (grogoni-zeroclaw below), reached over Render's private network.
-      - key: ZEROCLAW_GATEWAY_URL
-        fromService:
-          name: grogoni-zeroclaw
-          type: pserv
-          property: hostport
-      - key: ZEROCLAW_ALLOW_PRIVATE_NETWORK
-        value: "true"
-      - key: ZEROCLAW_WEBHOOK_SECRET
-        fromService:
-          name: grogoni-zeroclaw
-          type: pserv
-          envVarKey: ZEROCLAW_gateway__webhook_secret
-      - key: ZEROCLAW_TIMEOUT_MS
-        value: "120000"
-      - key: VERCEL_INFERENCE_URL
-        sync: false
-      - key: VERCEL_INFERENCE_TIMEOUT_MS
-        value: "300000"
       - key: INFERENCE_REQUIRED
         value: "true"
-      # Shared bearer secret between this service and services/ai-runtime's Vercel deployment.
-      # Preserve the existing value during the service migration and configure that exact value
-      # in both Render and Vercel; Blueprint sync cannot link secrets across providers.
-      - key: GROGONI_INFERENCE_SERVICE_TOKEN
-        sync: false
-      - key: NEON_MODEL_STORAGE_ENDPOINT
-        sync: false
-      - key: NEON_MODEL_STORAGE_REGION
-        value: us-east-1
-      - key: NEON_MODEL_STORAGE_ACCESS_KEY_ID
-        sync: false
-      - key: NEON_MODEL_STORAGE_SECRET_ACCESS_KEY
-        sync: false
-      - key: MODEL_ARTIFACT_URL_TTL_SECONDS
-        value: "900"
-      # Multi-provider inference router (docs/architecture/multi-provider-inference-implementation.md).
-      # All optional: blank keys leave a provider BYOK-only; nothing here is needed to boot.
-      - key: OPENAI_API_KEY
-        sync: false
-      - key: OPENAI_BASE_URL
-        sync: false
-      - key: ANTHROPIC_API_KEY
-        sync: false
-      - key: ANTHROPIC_BASE_URL
-        sync: false
-      - key: ZAI_API_KEY
-        sync: false
-      - key: ZAI_BASE_URL
-        value: https://api.z.ai/api/paas/v4
-      - key: GROGONI_LLAMA_BASE_URL
-        sync: false
-      - key: GROGONI_LLAMA_API_KEY
-        sync: false
       - key: INFERENCE_DEFAULT_MODEL
         value: gpt-6-luna
       - key: INFERENCE_REQUEST_TIMEOUT_MS
@@ -231,11 +166,6 @@ services:
         value: "2"
       - key: DB_HEALTH_PARITY_CHECK_INTERVAL_MS
         value: "60000"
-      - key: OCR_WORKER_URL
-        fromService:
-          name: grogoni-ocr-worker
-          type: pserv
-          property: hostport
       - key: OCR_CONCURRENCY
         value: "1"
       - key: OCR_JOB_TIMEOUT_SECONDS
@@ -258,17 +188,6 @@ services:
         sync: false
       - key: VAPID_SUBJECT
         value: mailto:operations@grogoni.com
-      # Signing secret for the workspace-level Render deploy webhook (Dashboard -> Integrations ->
-      # Webhooks -> this webhook's Settings page). Set manually after creating that webhook; see
-      # docs/deployment/render-deploy-push-notifications.md for the full setup. Until this is set,
-      # POST /internal/render/deploy-webhook is never registered (services/api/src/app.ts).
-      - key: RENDER_DEPLOY_WEBHOOK_SECRET
-        sync: false
-      - key: REDIS_URL
-        fromService:
-          name: grogoni-rate-limit-cache
-          type: keyvalue
-          property: connectionString
 
   - type: keyvalue
     name: grogoni-rate-limit-cache
@@ -279,7 +198,7 @@ services:
 
   # Self-hosted PaddleOCR/Tesseract worker (docs/receipt-ocr.md, services/receipt-ocr-service/).
   # Private, not public: only grogoni reaches it, over Render's private network at the
-  # "hostport" wired into OCR_WORKER_URL above. This is unrelated to the LLM inference boundary
+  # worker endpoint is no longer configured on the API. This is unrelated to the LLM inference boundary
   # docs/deployment/render-inference.md describes - Render still never runs a chat model itself,
   # it hosts an OCR worker, which is a bounded image/PDF-to-text tool, not a model runtime.
   - type: pserv
@@ -447,8 +366,6 @@ services:
         value: production
       - key: PORT
         value: "8790"
-      - key: COMPUTER_RUNTIME_SERVICE_TOKEN
-        sync: false
 
   - type: cron
     name: grogoni-db-backup

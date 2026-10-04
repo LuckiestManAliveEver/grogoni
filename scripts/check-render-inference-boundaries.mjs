@@ -125,9 +125,12 @@ for (const forbidden of ["LOCAL_MODEL_", "llama.cpp", ".gguf", "OLLAMA_BASE_URL"
 if (!/-\s+type:\s*web\s*\n\s*name:\s*grogoni/u.test(blueprint)) {
   violations.push("Render API service must declare `type: web`, not a private service (pserv).");
 }
-for (const required of ["key: VERCEL_INFERENCE_URL", "key: GROGONI_INFERENCE_SERVICE_TOKEN"]) {
-  if (!apiService.includes(required)) {
-    violations.push(`Render API service is missing the Vercel execution-host marker ${required}`);
+// Environment settings retired by the API must not be provisioned by the Blueprint.
+const apiConfig = readFileSync("services/api/src/config.ts", "utf8");
+const removedSettings = apiConfig.match(/const removed = \[([\s\S]*?)\]\.filter/u)?.[1] ?? "";
+for (const match of removedSettings.matchAll(/"([A-Z][A-Z0-9_]*)"/gu)) {
+  if (apiService.includes(`key: ${match[1]}\n`)) {
+    violations.push(`Render API service declares retired environment setting ${match[1]}`);
   }
 }
 
@@ -151,7 +154,7 @@ if (violations.length > 0) {
 }
 
 console.log(
-  "Render stays a control plane: it proxies inference to Vercel and never runs a model locally."
+  "Runtime deployment boundaries verified; retired API cloud settings are not provisioned."
 );
 
 function listCodeFiles(directory) {
