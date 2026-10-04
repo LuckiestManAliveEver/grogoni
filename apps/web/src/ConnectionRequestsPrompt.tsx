@@ -36,16 +36,26 @@ export default function ConnectionRequestsPrompt(props: { accountId: string }) {
     };
     // A request answered in the Phone Contacts card must disappear here too.
     const onNetworkChanged = (event: Event) => {
-      if ((event as CustomEvent<{ source?: string }>).detail?.source === "network-state") check();
+      if ((event as CustomEvent<{ source?: string }>).detail?.source !== "prompt") check();
+    };
+    // A connection push arrived, or its notification was clicked while this window was already in
+    // front (which fires no focus event): recheck, and let the network card reload as well.
+    const onServiceWorkerMessage = (event: MessageEvent) => {
+      if ((event.data as { type?: string } | null)?.type !== "network.connection.changed") return;
+      window.dispatchEvent(
+        new CustomEvent(networkChangedEvent, { detail: { source: "service-worker" } })
+      );
     };
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", check);
     window.addEventListener(networkChangedEvent, onNetworkChanged);
+    navigator.serviceWorker?.addEventListener("message", onServiceWorkerMessage);
     return () => {
       cancelled = true;
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", check);
       window.removeEventListener(networkChangedEvent, onNetworkChanged);
+      navigator.serviceWorker?.removeEventListener("message", onServiceWorkerMessage);
     };
   }, [props.accountId]);
 
@@ -55,7 +65,8 @@ export default function ConnectionRequestsPrompt(props: { accountId: string }) {
     try {
       await postJson(`/network/connections/${request.id}/respond`, { accept });
       setRequests((current) => current.filter((item) => item.id !== request.id));
-      window.dispatchEvent(new Event(networkChangedEvent));
+      // Tell the network card; this prompt already updated itself.
+      window.dispatchEvent(new CustomEvent(networkChangedEvent, { detail: { source: "prompt" } }));
       setMessage(accept ? `You are now connected with ${request.counterpartDisplayName}.` : "");
     } catch (error) {
       setMessage(getUserFacingErrorMessage(error));

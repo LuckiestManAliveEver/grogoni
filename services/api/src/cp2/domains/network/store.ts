@@ -74,6 +74,7 @@ import {
 } from "./shared.js";
 import {
   primaryBusinessByUser,
+  summarizeConnectionFor,
   listNetworkConnections,
   removeNetworkConnection,
   requestNetworkConnection,
@@ -508,6 +509,17 @@ export class NetworkDomain {
     this.ensureOwnerNetworkNode(session.user, now);
     this.refreshGrogoniDiscovery(session.user.id, now);
     return this.networkGraphForUser(session.user.id, now);
+  }
+
+  /**
+   * How one party sees a connection, for notifying them; null when it is not visible to them
+   * (for example a declined request, for its recipient).
+   */
+  connectionSummaryFor(
+    connectionId: string,
+    viewerUserId: string
+  ): NetworkConnectionSummary | null {
+    return summarizeConnectionFor(this.connectionDeps(), connectionId, viewerUserId);
   }
 
   listConnections(input: { sessionId: string | null; now?: Date }): NetworkConnectionSummary[] {

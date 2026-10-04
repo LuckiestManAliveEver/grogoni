@@ -216,6 +216,18 @@ export function removeNetworkConnection(
   });
 }
 
+/** How one party sees one connection, or null when it is not visible to them. */
+export function summarizeConnectionFor(
+  deps: NetworkConnectionDeps,
+  connectionId: string,
+  viewerUserId: string
+): NetworkConnectionSummary | null {
+  const connection = deps.connections.get(connectionId);
+  if (connection === undefined || !isVisibleTo(connection, viewerUserId)) return null;
+  if (!deps.users.has(counterpartOf(connection, viewerUserId))) return null;
+  return summarizeConnection(deps, connection, viewerUserId);
+}
+
 export function listNetworkConnections(
   deps: NetworkConnectionDeps,
   userId: string

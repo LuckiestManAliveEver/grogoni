@@ -214,7 +214,20 @@ before the purge sweep runs.
 
 The recipient sees waiting requests in the app shell (`ConnectionRequestsPrompt`, next to staff
 invitations, rechecked when the app returns to the foreground) and in Phone Contacts, and can
-accept or decline from either.
+accept or decline from either. They are also pushed on every device they enabled notifications
+on: the recipient when someone asks (including a request turned around after the other side
+cancelled), the requester when the other side accepts (including by asking back). Pushes hang off
+the `network.connection_requested` / `_accepted` audit events, so a decline (private) and a
+re-ask after a cancel (no new event) never push anyone. Each push is built off the request's
+tick and only if the connection still says what the event said, so a request cancelled or turned
+around before its push went out reaches nobody. Push is best effort: a failed or throwing device
+never fails the request or stops the other devices, expired subscriptions are dropped (persisted
+with the next mutation, as for app-update pushes), and each push records a
+`network.connection_push` audit event (actor, notified user, sent/expired/failed counts). The
+service worker shows it as its own notification (re-alerting if the same connection is asked
+again) and tells any open Soko window to recheck, both when the push arrives and on click, so the
+request or new connection shows even if that window was already in front; with no window open,
+the click opens the app (the network page for an acceptance).
 
 Audit events: `network.connection_requested`, `network.connection_accepted` (`via: response` or
 `mutual`), `network.connection_declined`, `network.connection_removed`, and

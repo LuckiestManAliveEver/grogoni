@@ -112,4 +112,24 @@ describe("ConnectionRequestsPrompt", () => {
     );
     expect(container.innerHTML).toBe("");
   });
+  it("rechecks and tells the network card when the service worker reports a change", async () => {
+    const serviceWorker = new EventTarget();
+    Object.defineProperty(navigator, "serviceWorker", { configurable: true, value: serviceWorker });
+    fetchFreshJson.mockResolvedValue({ connections: [] });
+    await render();
+    const changed = vi.fn();
+    window.addEventListener("soko:network-changed", changed);
+
+    fetchFreshJson.mockResolvedValue({ connections: [connection({})] });
+    await act(async () => {
+      serviceWorker.dispatchEvent(
+        new MessageEvent("message", { data: { type: "network.connection.changed" } })
+      );
+    });
+
+    expect(changed).toHaveBeenCalled();
+    expect(container.textContent).toContain("Eve wants to connect");
+    window.removeEventListener("soko:network-changed", changed);
+    Reflect.deleteProperty(navigator, "serviceWorker");
+  });
 });
