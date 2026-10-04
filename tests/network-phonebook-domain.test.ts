@@ -974,4 +974,61 @@ describe("abuse limits", () => {
     ]);
     expect(graph.nodes.filter((node) => node.degree === 2)).toHaveLength(1);
   });
+  it("counts exactly the last 24 hours, survives a restart, and keeps only live spending", () => {
+    const t0 = new Date("2026-09-28T08:00:00.000Z");
+    const hours = (h: number) => new Date(t0.getTime() + h * 60 * 60 * 1000);
+    const first = fixture([{ id: "alice", phone: "+254711000001" }], {
+      phonebookSyncDailyBudget: 2
+    });
+    first.domain.syncPhoneContacts({
+      sessionId: "alice",
+      mode: "merge",
+      now: t0,
+      contacts: [
+        { name: "A", phone: "+254722000001" },
+        { name: "B", phone: "+254722000002" }
+      ]
+    });
+
+    // A restart: the budget record goes through JSON into a fresh domain.
+    const restarted = fixture([{ id: "alice", phone: "+254711000001" }], {
+      phonebookSyncDailyBudget: 2
+    });
+    for (const record of JSON.parse(
+      JSON.stringify([...first.domain.discoveryBudgetsMap.values()])
+    )) {
+      restarted.domain.discoveryBudgetsMap.set(record.id, record);
+    }
+    const sync = (name: string, phone: string, now: Date) =>
+      restarted.domain.syncPhoneContacts({
+        sessionId: "alice",
+        mode: "merge",
+        now,
+        contacts: [{ name, phone }]
+      });
+
+    expect(() => sync("C", "+254722000003", hours(23))).toThrow(
+      expect.objectContaining({ code: "network_sync_rate_limited" })
+    );
+    sync("C", "+254722000003", hours(24));
+    // The expired spending is gone; only the new entry remains.
+    expect(restarted.domain.discoveryBudgetsMap.get("alice")?.entries).toEqual([
+      { at: hours(24).toISOString(), count: 1 }
+    ]);
+
+    // Free requests (nothing new asked) add nothing.
+    sync("C again", "+254722000003", hours(25));
+    expect(restarted.domain.discoveryBudgetsMap.get("alice")?.entries).toHaveLength(1);
+
+    // Once everything has expired, the record itself goes.
+    sync("C", "+254722000003", hours(49));
+    expect(restarted.domain.discoveryBudgetsMap.has("alice")).toBe(false);
+    restarted.domain.discoveryBudgetsMap.set("alice", {
+      id: "alice",
+      userId: "alice",
+      entries: [{ at: t0.toISOString(), count: 2 }]
+    });
+    restarted.domain.pruneDiscoveryBudgets(hours(24));
+    expect(restarted.domain.discoveryBudgetsMap.has("alice")).toBe(false);
+  });
 });

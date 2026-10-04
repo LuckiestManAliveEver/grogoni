@@ -199,6 +199,7 @@ export const normalizedCollections: NormalizedCollection[] = [
   { key: "grogoniIdentityLinks", tableName: "cp2_grogoni_identity_links" },
   { key: "identityCandidates", tableName: "cp2_identity_candidates" },
   { key: "networkConnections", tableName: "cp2_network_connections" },
+  { key: "discoveryBudgets", tableName: "cp2_discovery_budgets" },
   { key: "auditEvents", tableName: "cp2_audit_events" }
 ];
 
@@ -616,6 +617,7 @@ export async function createPostgresCp2Store(
       ...(options.networkInviteSender === undefined
         ? {}
         : { networkInviteSender: options.networkInviteSender }),
+      ...(options.networkLimits === undefined ? {} : { networkLimits: options.networkLimits }),
       ...(options.messageWebBaseUrl === undefined
         ? {}
         : { messageWebBaseUrl: options.messageWebBaseUrl }),
@@ -4948,6 +4950,7 @@ function emptySnapshot(): Cp2Snapshot {
     grogoniIdentityLinks: [],
     identityCandidates: [],
     networkConnections: [],
+    discoveryBudgets: [],
     externalRegistryConnections: [],
     auditEvents: []
   };

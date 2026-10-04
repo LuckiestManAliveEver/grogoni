@@ -107,12 +107,36 @@ describePostgres("network connections on PostgreSQL", () => {
       [connectionIds.get("Declined")!]: "declined"
     });
 
-    const second = await createPostgresCp2Store({ databaseUrl: databaseUrl ?? "" });
+    // The discovery budget the sync spent is persisted too (migration 107).
+    const budgets = await pool.query<{ total: string }>(
+      "select sum((entry ->> 'count')::int)::text as total from cp2_discovery_budgets, jsonb_array_elements(record -> 'entries') as entry where user_id = $1",
+      [owner.userId]
+    );
+    expect(Number(budgets.rows[0]?.total)).toBe(people.length);
+
+    // Reloaded with a budget the persisted spending already used up: still enforced.
+    const second = await createPostgresCp2Store({
+      databaseUrl: databaseUrl ?? "",
+      networkLimits: { phonebookSyncDailyBudget: people.length }
+    });
     const secondApp = buildApi({
       cp2: { store: second },
       mutationPersistenceFlush: () => second.flush()
     });
     const graph = await ok<NetworkGraphSummary>(secondApp, "GET", "/network", owner.cookie);
+    const overBudget = await secondApp.inject({
+      method: "POST",
+      url: "/network/sync/contacts",
+      headers: { "content-type": "application/json", cookie: owner.cookie },
+      payload: JSON.stringify({
+        mode: "merge",
+        contacts: [{ name: "New", phone: "+254722999001" }]
+      })
+    });
+    expect(overBudget.statusCode).toBe(429);
+    expect(
+      second.snapshot().discoveryBudgets?.find((budget) => budget.userId === owner.userId)
+    ).toMatchObject({ entries: [expect.objectContaining({ count: people.length })] });
     const direct = graph.nodes.filter((node) => node.degree === 1);
     expect(direct).toHaveLength(4);
     expect(direct.every((node) => node.grogoniUserId !== null)).toBe(true);

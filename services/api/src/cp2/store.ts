@@ -262,6 +262,7 @@ import type {
   NativeSmsDeviceSummary,
   NetworkInviteSummary,
   NetworkConnectionRecord,
+  DiscoveryBudgetRecord,
   StaffInvitationSummary,
   OfflineCacheSnapshot,
   PaymentSummary,
@@ -812,6 +813,7 @@ export interface Cp2Snapshot
   grogoniIdentityLinks: GrogoniIdentityLinkSummary[];
   identityCandidates: IdentityCandidateSummary[];
   networkConnections?: NetworkConnectionRecord[];
+  discoveryBudgets?: DiscoveryBudgetRecord[];
   externalRegistryConnections: ExternalConnectionRecord[];
   auditEvents: BusinessEvent[];
 }
@@ -8240,6 +8242,7 @@ export class Cp2Store {
       grogoniIdentityLinks: [...this.networkDomain.grogoniIdentityLinksMap.values()],
       identityCandidates: [...this.networkDomain.identityCandidatesMap.values()],
       networkConnections: [...this.networkDomain.networkConnectionsMap.values()],
+      discoveryBudgets: [...this.networkDomain.discoveryBudgetsMap.values()],
       externalRegistryConnections: [...this.externalConnectionsDomain.connectionsMap.values()],
       auditEvents: [...this.auditEvents]
     };
@@ -8649,6 +8652,12 @@ export class Cp2Store {
     for (const connection of snapshot.networkConnections ?? []) {
       this.networkDomain.networkConnectionsMap.set(connection.id, connection);
     }
+
+    for (const budget of snapshot.discoveryBudgets ?? []) {
+      this.networkDomain.discoveryBudgetsMap.set(budget.id, budget);
+    }
+    // Users whose spending has all expired need no record (it would never shrink otherwise).
+    this.networkDomain.pruneDiscoveryBudgets(new Date());
 
     for (const change of snapshot.syncChanges ?? []) {
       this.syncChanges.push(change);
@@ -12366,6 +12375,7 @@ export class Cp2Store {
       );
       deletedRecordCount += deleteScopedMapRecords(this.networkDomain.identityCandidatesMap, scope);
       deletedRecordCount += deleteScopedMapRecords(this.networkDomain.networkConnectionsMap, scope);
+      deletedRecordCount += deleteScopedMapRecords(this.networkDomain.discoveryBudgetsMap, scope);
     }
 
     deletedRecordCount += deleteScopedArrayRecords(this.syncChanges, scope);

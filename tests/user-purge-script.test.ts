@@ -60,8 +60,10 @@ describe("registered-user purge script", () => {
     // Network connections (infra/db/migrations/105_network_connections.sql, docs/architecture/
     // phonebook-identity-resolution.md) added cp2_network_connections, classified DELETE - they
     // reference two user accounts and must not survive a purge of either.
-    expect(plan.size).toBe(202);
-    expect([...plan.values()].filter((value) => value === "DELETE")).toHaveLength(195);
+    // Discovery budgets (infra/db/migrations/107_discovery_budgets.sql) added
+    // cp2_discovery_budgets, classified DELETE - per-user spending records.
+    expect(plan.size).toBe(203);
+    expect([...plan.values()].filter((value) => value === "DELETE")).toHaveLength(196);
     expect(
       [...plan.entries()]
         .filter(([, classification]) => classification === "PRESERVE")
