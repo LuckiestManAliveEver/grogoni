@@ -80,6 +80,7 @@ describe("resolveExecutionTarget - the single authoritative execution-target res
     // browser-local / installed-app are location targets (ADR-explicit-device-local-models.md),
     // not providers.
     expect(modelExecutionTargets).toEqual([
+      "local",
       "vercel",
       "backend",
       "remote-shop-device",
@@ -411,26 +412,26 @@ describe("resolveNativeRuntimeModelProvider - own-account credential resolution 
   });
 });
 
-describe("zero-setup hosted-first runtime provisioning", () => {
-  it("provisions a verified generic backend binding for first chat without manual activation", async () => {
-    const backendGenerate = vi.fn(async () => ({
+describe("zero-setup local-first runtime provisioning", () => {
+  it("provisions a verified local Ollama binding for first chat without manual activation", async () => {
+    const localGenerate = vi.fn(async () => ({
       text: JSON.stringify({ type: "response", message: "Grogoni AI is ready." }),
-      modelId: "gpt-6-luna",
-      provider: "test-hosted-adapter",
-      executionTarget: "backend" as const,
+      modelId: "smollm2-360m",
+      provider: "test-ollama-adapter",
+      executionTarget: "local" as const,
       latencyMs: 2
     }));
     const store = createCp2Store({
       modelRuntimeAdapterResolver: ({ executionTarget }) =>
-        executionTarget === "backend"
+        executionTarget === "local"
           ? {
               provider: "test",
-              executionTarget: "backend",
+              executionTarget: "local",
               canRun: async () => ({ available: true, errorCode: null, message: null }),
               healthCheck: async () => {
                 throw new Error("not used in this test");
               },
-              generate: backendGenerate
+              generate: localGenerate
             }
           : undefined
     });
@@ -475,14 +476,14 @@ describe("zero-setup hosted-first runtime provisioning", () => {
     });
 
     expect(turn.statusCode).toBe(200);
-    expect(backendGenerate).toHaveBeenCalledOnce();
+    expect(localGenerate).toHaveBeenCalledOnce();
     expect(turn.json()).toMatchObject({
       turn: {
         response: "Grogoni AI is ready.",
         model: {
           status: "available",
-          modelId: "gpt-6-luna",
-          executionTarget: "backend",
+          modelId: "smollm2-360m",
+          executionTarget: "local",
           fallbackIndex: 0
         }
       }
@@ -505,24 +506,24 @@ describe("zero-setup hosted-first runtime provisioning", () => {
   // though the platform default (then Pi + SmolLM 360M) was fully provisionable. See
   // NativeRuntimeBindingStore.resolveRuntimeBinding and docs/architecture/runtime-resolution.md.
   it("provisions and resolves the platform default for a conversation-free runtime turn (first chat with Grogoni AI)", async () => {
-    const backendGenerate = vi.fn(async () => ({
+    const localGenerate = vi.fn(async () => ({
       text: JSON.stringify({ type: "response", message: "Hi there!" }),
-      modelId: "gpt-6-luna",
-      provider: "test-hosted-adapter",
-      executionTarget: "backend" as const,
+      modelId: "smollm2-360m",
+      provider: "test-ollama-adapter",
+      executionTarget: "local" as const,
       latencyMs: 2
     }));
     const store = createCp2Store({
       modelRuntimeAdapterResolver: ({ executionTarget }) =>
-        executionTarget === "backend"
+        executionTarget === "local"
           ? {
               provider: "test",
-              executionTarget: "backend",
+              executionTarget: "local",
               canRun: async () => ({ available: true, errorCode: null, message: null }),
               healthCheck: async () => {
                 throw new Error("not used in this test");
               },
-              generate: backendGenerate
+              generate: localGenerate
             }
           : undefined
     });
@@ -560,14 +561,14 @@ describe("zero-setup hosted-first runtime provisioning", () => {
     });
 
     expect(turn.statusCode).toBe(200);
-    expect(backendGenerate).toHaveBeenCalledOnce();
+    expect(localGenerate).toHaveBeenCalledOnce();
     expect(turn.json()).toMatchObject({
       turn: {
         response: "Hi there!",
         model: {
           status: "available",
-          modelId: "gpt-6-luna",
-          executionTarget: "backend"
+          modelId: "smollm2-360m",
+          executionTarget: "local"
         }
       }
     });
@@ -585,24 +586,24 @@ describe("zero-setup hosted-first runtime provisioning", () => {
   it("falls back to the platform default for an existing shop with no prior model binding (no conversationId)", async () => {
     // Same shape as an account that never received an activated model before this fix shipped -
     // the resolver must not require a pre-existing binding row to reach the zero-setup path.
-    const backendGenerate = vi.fn(async () => ({
+    const localGenerate = vi.fn(async () => ({
       text: JSON.stringify({ type: "response", message: "Still ready." }),
-      modelId: "gpt-6-luna",
-      provider: "test-hosted-adapter",
-      executionTarget: "backend" as const,
+      modelId: "smollm2-360m",
+      provider: "test-ollama-adapter",
+      executionTarget: "local" as const,
       latencyMs: 2
     }));
     const store = createCp2Store({
       modelRuntimeAdapterResolver: ({ executionTarget }) =>
-        executionTarget === "backend"
+        executionTarget === "local"
           ? {
               provider: "test",
-              executionTarget: "backend",
+              executionTarget: "local",
               canRun: async () => ({ available: true, errorCode: null, message: null }),
               healthCheck: async () => {
                 throw new Error("not used in this test");
               },
-              generate: backendGenerate
+              generate: localGenerate
             }
           : undefined
     });
@@ -646,7 +647,7 @@ describe("zero-setup hosted-first runtime provisioning", () => {
     });
     expect(second.statusCode).toBe(200);
     expect(second.json()).toMatchObject({
-      turn: { model: { status: "available", modelId: "gpt-6-luna" } }
+      turn: { model: { status: "available", modelId: "smollm2-360m" } }
     });
     // Idempotent: the second turn must not create a second provisioned binding.
     const provisioned = store

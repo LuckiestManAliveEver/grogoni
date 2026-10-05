@@ -24,10 +24,10 @@ describe("agent model activation runtime", () => {
     const withBackend = createCp2Store({
       // "backend" here is the frontend's stable field name for "a hosted adapter is configured",
       // not the "backend" ModelExecutionTarget literal - it tracks whichever target the platform
-      // default actually is ("backend" for GPT-6 Luna; see repositoryDefaultRuntimePolicy).
+      // default actually is ("local" for SmolLM2 on Ollama; see repositoryDefaultRuntimePolicy).
       modelRuntimeAdapterResolver: ({ modelId, executionTarget }) =>
-        modelId === primaryModelId && executionTarget === "backend"
-          ? healthyAdapter(primaryModelId, { executionTarget: "backend" })
+        modelId === primaryModelId && executionTarget === "local"
+          ? healthyAdapter(primaryModelId, { executionTarget: "local" })
           : undefined
     });
 
@@ -764,12 +764,12 @@ describe("agent model activation runtime", () => {
     const app = buildApi({ cp2: { store } });
     const owner = await createOwnerBusiness(app, "+254700002006", "Hosted Model Shop");
 
-    // gpt-6-luna (the platform default) is a hosted catalog entry (format: "remote", no
+    // smollm2-360m (the platform default) is a hosted catalog entry (format: "remote", no
     // downloadable artifact) - it can only run through a server-reachable target, never the
     // merchant's own device.
     const response = await app.inject({
       method: "POST",
-      url: `/api/agents/${owner.businessId}/models/gpt-6-luna/activate`,
+      url: `/api/agents/${owner.businessId}/models/smollm2-360m/activate`,
       headers: jsonHeaders(owner.cookie),
       payload: JSON.stringify({
         ...activationPayload(owner.businessId),

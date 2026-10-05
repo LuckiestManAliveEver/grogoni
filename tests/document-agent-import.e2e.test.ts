@@ -245,59 +245,23 @@ describe("binary document upload to agent-persisted records", () => {
     }
   );
 
-  it("extracts readable text from a chat image through the OCR worker", async () => {
-    const app = buildApi({
-      cp2: {
-        store: createCp2Store(),
-        ocrProcessor: {
-          async process() {
-            return {
-              engine: "tesseract",
-              engineVersion: "5.4.0",
-              modelVersion: "eng",
-              profile: "mobile",
-              fallbackUsed: false,
-              blocks: [
-                {
-                  id: "block-1",
-                  page: 1,
-                  text: "Invoice 1042 Total KES 1,250",
-                  confidence: 0.94,
-                  boundingBox: null
-                }
-              ],
-              fullText: "Invoice 1042\nTotal KES 1,250",
-              averageConfidence: 0.94,
-              warnings: []
-            };
-          }
-        }
-      }
-    });
+  it("no longer offers server-side image OCR now that the OCR worker is retired", async () => {
+    // The OCR worker was removed with the local-first runtime (docs/local-first-cloud-audit.md);
+    // extracted text must come from an agent tool or the client instead.
+    const app = buildApi({ cp2: { store: createCp2Store() } });
     const { businessId, sessionCookie } = await createOwnerBusiness(app);
-    const image = Buffer.concat([
-      Buffer.from("89504e470d0a1a0a", "hex"),
-      Buffer.from("mock image bytes")
-    ]);
-
-    const extracted = await postJson<DocumentExtractionResponse>(
-      app,
-      `/businesses/${businessId}/documents/ocr`,
-      {
+    const response = await app.inject({
+      method: "POST",
+      url: `/businesses/${businessId}/documents/ocr`,
+      headers: { "content-type": "application/json", cookie: sessionCookie },
+      payload: JSON.stringify({
         fileName: "invoice.png",
         contentType: "image/png",
-        contentBase64: image.toString("base64")
-      },
-      sessionCookie
-    );
-
-    expect(extracted).toMatchObject({
-      format: "ocr",
-      engine: "tesseract",
-      averageConfidence: 0.94
+        contentBase64: Buffer.from("89504e470d0a1a0a", "hex").toString("base64")
+      })
     });
-    expect(extracted.text).toContain("Invoice 1042");
-    expect(extracted.text).toContain("KES 1,250");
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toMatchObject({ code: "route_not_found" });
     await app.close();
   });
 });

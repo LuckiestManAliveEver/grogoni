@@ -2,16 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { createRuntimeReplyTextStream } from "../packages/tool-core/src";
 import { DeviceInferenceBroker } from "../services/api/src/inference/device-inference-broker";
-import {
-  createKeyringCipher,
-  CredentialResolver,
-  parseCredentialKeyring,
-  rotateCredentialKeys,
-  secretBoxCipher
-} from "../services/api/src/inference/providers/credentials";
-import { builtinProviderConfigs } from "../services/api/src/inference/providers/environment";
 import { InferenceError } from "../services/api/src/inference/providers/errors";
-import { createMemoryInferenceRepositories } from "../services/api/src/inference/providers/repositories";
 import {
   createMemoryRequestRateLimiter,
   createRedisRequestRateLimiter,
@@ -223,67 +214,5 @@ describe("shared request rate limits", () => {
     });
     expect((await degraded.hit("k", 1, 60_000)).allowed).toBe(true);
     expect((await degraded.hit("k", 1, 60_000)).allowed).toBe(false);
-  });
-});
-
-describe("credential key rotation", () => {
-  it("re-encrypts old rows onto the newest key and keeps them resolvable", async () => {
-    const repositories = createMemoryInferenceRepositories();
-    const legacy = secretBoxCipher.encrypt("sk-legacy-key-000000000000000000LLLL");
-    await repositories.credentials.insert({
-      id: "3b2f7a52-3d0b-4d44-9a3c-6f6a9b0e1c01",
-      scope: "tenant",
-      tenantId: "shop-1",
-      userId: null,
-      providerId: "openai",
-      credentialType: "api_key",
-      encryptedSecret: legacy.ciphertext,
-      keyVersion: legacy.keyVersion,
-      secretSuffix: "LLLL",
-      baseUrl: null,
-      status: "ACTIVE",
-      createdBy: "u",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      revokedAt: null,
-      lastVerifiedAt: null,
-      lastVerificationStatus: null
-    });
-    const keyring = createKeyringCipher(parseCredentialKeyring(`2:${"a".repeat(40)}`));
-    expect(keyring.currentVersion).toBe(2);
-    expect(
-      await rotateCredentialKeys({ repository: repositories.credentials, cipher: keyring })
-    ).toEqual({
-      rotated: 1,
-      failed: 0
-    });
-    const rotated = await repositories.credentials.get("3b2f7a52-3d0b-4d44-9a3c-6f6a9b0e1c01");
-    expect(rotated).toMatchObject({ keyVersion: 2 });
-    expect(rotated?.encryptedSecret).not.toBe(legacy.ciphertext);
-    expect(
-      await rotateCredentialKeys({ repository: repositories.credentials, cipher: keyring })
-    ).toEqual({
-      rotated: 0,
-      failed: 0
-    });
-    const resolver = new CredentialResolver({
-      repository: repositories.credentials,
-      cipher: keyring,
-      managedSecrets: new Map()
-    });
-    const resolved = await resolver.resolve({
-      provider: builtinProviderConfigs().find((config) => config.id === "openai")!,
-      tenantId: "shop-1"
-    });
-    expect(resolved?.secret.reveal()).toBe("sk-legacy-key-000000000000000000LLLL");
-    // Without the version-2 key the row is unreadable - removing a key before rotation finishes
-    // is caught, never silently dropped.
-    expect(() => secretBoxCipher.decrypt(rotated!.encryptedSecret!, 2)).toThrow();
-  });
-
-  it("rejects malformed or weak keyring configuration", () => {
-    expect(() => parseCredentialKeyring("nope")).toThrow();
-    expect(() => createKeyringCipher(new Map([[2, "short"]]))).toThrow();
-    expect(() => createKeyringCipher(new Map([[1, "b".repeat(40)]]))).toThrow();
   });
 });

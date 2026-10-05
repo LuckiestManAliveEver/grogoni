@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -5,6 +7,7 @@ import {
   servedExecutionTarget
 } from "../apps/web/src/agent-model-panel-utils";
 import type { AiModelSummary } from "../apps/web/src/grogoni-application-shared";
+import { isAgentModel } from "../apps/web/src/owner-app-bootstrap";
 
 function model(overrides: Partial<AiModelSummary> = {}): AiModelSummary {
   return { id: "smollm2-360m", label: "SmolLM2 360M", ...overrides } as AiModelSummary;
@@ -30,5 +33,13 @@ describe("served execution target", () => {
     expect(isServerExecutionTarget("browser-local")).toBe(false);
     expect(isServerExecutionTarget("installed-app")).toBe(false);
     expect(isServerExecutionTarget("remote-shop-device")).toBe(false);
+  });
+
+  it("accepts the local platform default as a saved agent model", () => {
+    // Regression: the panel only syncs the agent profile when isAgentModel accepts the effective
+    // model, and the local default smollm2-360m was missing from the list.
+    expect(isAgentModel("smollm2-360m")).toBe(true);
+    expect(isAgentModel("openai-fast")).toBe(true);
+    expect(isAgentModel("not a model")).toBe(false);
   });
 });

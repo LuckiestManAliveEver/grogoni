@@ -595,7 +595,7 @@ export function AgentProfileSurface({
         <SettingsGroup
           id="settings-group-ai-providers"
           title="AI providers"
-          description="Local AI on this computer and on-device models"
+          description="Ollama on the Grogoni machine and on-device models"
         >
           <Suspense fallback={<div className="inline-loading-card">Opening AI providers…</div>}>
             <AiProvidersPanel businessId={business.id} />

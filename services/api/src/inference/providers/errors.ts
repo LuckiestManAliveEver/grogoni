@@ -118,60 +118,9 @@ export function isInferenceError(error: unknown): error is InferenceError {
   return error instanceof InferenceError;
 }
 
-/**
- * Maps an HTTP failure from any provider onto a normalized error. `bodyText` is the raw response
- * body; it is redacted against `secrets` and truncated before it is kept as a diagnostic, and it
- * never becomes the user-facing message.
- */
-export function inferenceErrorFromHttp(input: {
-  providerId: string;
-  modelId?: string;
-  status: number;
-  bodyText: string;
-  retryAfterHeader?: string | null;
-  secrets: readonly string[];
-}): InferenceError {
-  const body = input.bodyText.toLowerCase();
-  const code: InferenceErrorCode =
-    input.status === 401 || input.status === 403
-      ? "INVALID_CREDENTIAL"
-      : input.status === 429
-        ? body.includes("quota") || body.includes("billing") || body.includes("insufficient")
-          ? "BUDGET_EXCEEDED"
-          : "RATE_LIMITED"
-        : input.status === 404
-          ? "MODEL_UNAVAILABLE"
-          : input.status === 408 || input.status === 504
-            ? "REQUEST_TIMEOUT"
-            : input.status === 413 ||
-                body.includes("context_length") ||
-                body.includes("context length") ||
-                body.includes("maximum context") ||
-                body.includes("too many tokens") ||
-                body.includes("prompt is too long")
-              ? "CONTEXT_TOO_LARGE"
-              : body.includes("content_filter") ||
-                  body.includes("content policy") ||
-                  body.includes("safety")
-                ? "CONTENT_REJECTED"
-                : input.status >= 500
-                  ? "PROVIDER_UNAVAILABLE"
-                  : "INFERENCE_FAILED";
-  return new InferenceError(code, {
-    providerId: input.providerId,
-    ...(input.modelId === undefined ? {} : { modelId: input.modelId }),
-    status: input.status,
-    ...(parseRetryAfter(input.retryAfterHeader) === undefined
-      ? {}
-      : { retryAfterMs: parseRetryAfter(input.retryAfterHeader) as number }),
-    diagnostic: redactSecrets(input.bodyText, input.secrets).slice(0, 2_000)
-  });
-}
-
-/** Normalizes anything thrown during a provider call (network errors, aborts, bugs). */
 export function toInferenceError(
   error: unknown,
-  context: { providerId: string; modelId?: string; secrets: readonly string[]; timedOut?: boolean }
+  context: { providerId: string; modelId?: string; secrets?: readonly string[]; timedOut?: boolean }
 ): InferenceError {
   if (error instanceof InferenceError) return error;
   const base = {
@@ -179,7 +128,7 @@ export function toInferenceError(
     ...(context.modelId === undefined ? {} : { modelId: context.modelId })
   };
   const rawMessage = error instanceof Error ? error.message : String(error);
-  const diagnostic = redactSecrets(rawMessage, context.secrets).slice(0, 500);
+  const diagnostic = redactSecrets(rawMessage, context.secrets ?? []).slice(0, 500);
   if (context.timedOut === true) {
     return new InferenceError("REQUEST_TIMEOUT", { ...base, diagnostic });
   }
@@ -196,31 +145,4 @@ export function toInferenceError(
     );
   }
   return new InferenceError("PROVIDER_UNAVAILABLE", { ...base, diagnostic });
-}
-
-function parseRetryAfter(value: string | null | undefined): number | undefined {
-  if (value === null || value === undefined || value.trim() === "") return undefined;
-  const seconds = Number(value);
-  if (Number.isFinite(seconds) && seconds >= 0) return Math.min(seconds * 1000, 600_000);
-  const date = Date.parse(value);
-  if (Number.isNaN(date)) return undefined;
-  return Math.max(0, Math.min(date - Date.now(), 600_000));
-}
-
-export function healthStatusForError(
-  error: InferenceError
-): "UNAVAILABLE" | "MISCONFIGURED" | "RATE_LIMITED" | "CREDENTIAL_INVALID" {
-  switch (error.inferenceCode) {
-    case "INVALID_CREDENTIAL":
-    case "CREDENTIAL_MISSING":
-      return "CREDENTIAL_INVALID";
-    case "RATE_LIMITED":
-    case "BUDGET_EXCEEDED":
-      return "RATE_LIMITED";
-    case "PROVIDER_MISCONFIGURED":
-    case "ENDPOINT_FORBIDDEN":
-      return "MISCONFIGURED";
-    default:
-      return "UNAVAILABLE";
-  }
 }

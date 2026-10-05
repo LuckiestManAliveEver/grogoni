@@ -1,13 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { buildApi } from "../services/api/src/app";
-import {
-  createGitHubAgentCatalog,
-  type GitHubAgentCatalog
-} from "../services/api/src/cp2/github-agent-catalog";
-import {
-  createHuggingFaceAgentCatalog,
-  type HuggingFaceAgentCatalog
-} from "../services/api/src/cp2/huggingface-agent-catalog";
+import { createGitHubAgentCatalog } from "../services/api/src/cp2/github-agent-catalog";
+import { createHuggingFaceAgentCatalog } from "../services/api/src/cp2/huggingface-agent-catalog";
 
 describe("OSS agent discovery", () => {
   it("discovers established licensed GitHub agent repositories and caches searches", async () => {
@@ -118,35 +112,17 @@ describe("OSS agent discovery", () => {
     });
   });
 
-  it("exposes both discovery sources through API routes", async () => {
-    const githubAgentCatalog: GitHubAgentCatalog = {
-      async searchAgents(search) {
-        return emptyResult(`GitHub ${search}`);
-      }
-    };
-    const huggingFaceAgentCatalog: HuggingFaceAgentCatalog = {
-      async searchAgents(search) {
-        return emptyResult(`Hugging Face ${search}`);
-      }
-    };
-    const app = buildApi({ cp2: { githubAgentCatalog, huggingFaceAgentCatalog } });
-
-    const [github, huggingFace] = await Promise.all([
-      app.inject({ method: "GET", url: "/v1/oss-agents/github?search=retail" }),
-      app.inject({ method: "GET", url: "/v1/oss-agents/huggingface?search=retail" })
-    ]);
-
-    expect(github.json()).toMatchObject({ message: "GitHub retail" });
-    expect(huggingFace.json()).toMatchObject({ message: "Hugging Face retail" });
+  it("no longer exposes hosted discovery routes", async () => {
+    // GitHub and Hugging Face discovery routes were removed with the local-first runtime
+    // (docs/local-first-cloud-audit.md); the catalog adapters above remain unit-tested only.
+    const app = buildApi();
+    for (const url of [
+      "/v1/oss-agents/github?search=retail",
+      "/v1/oss-agents/huggingface?search=retail"
+    ]) {
+      const response = await app.inject({ method: "GET", url });
+      expect(response.statusCode, url).toBe(404);
+    }
     await app.close();
   });
 });
-
-function emptyResult(message: string) {
-  return {
-    agents: [],
-    status: "available" as const,
-    connection: "public" as const,
-    message
-  };
-}

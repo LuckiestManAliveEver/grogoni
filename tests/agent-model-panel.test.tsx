@@ -46,7 +46,7 @@ describe("AgentModelPanel merchant-funded activation confirmation", () => {
   function agent(): AgentSettings {
     return {
       name: "Shopkeeper",
-      model: "gpt-6-luna",
+      model: "smollm2-360m",
       agentDefinitionId: "builtin:shopkeeper",
       contextScripts: []
     } as unknown as AgentSettings;
@@ -69,8 +69,8 @@ describe("AgentModelPanel merchant-funded activation confirmation", () => {
 
   function backendModel(overrides: Partial<AiModelSummary> = {}): AiModelSummary {
     return {
-      id: "gpt-6-luna",
-      label: "GPT-6 Luna",
+      id: "smollm2-360m",
+      label: "SmolLM2 360M",
       provider: "local",
       description: "",
       capabilities: [],
@@ -103,7 +103,7 @@ describe("AgentModelPanel merchant-funded activation confirmation", () => {
       [`/businesses/${shopId}/runtime/effective`]: () =>
         jsonResponse({
           agent: { id: "builtin:shopkeeper", name: "Shopkeeper", runtimeAdapterId: "grogoni" },
-          model: { id: "gpt-6-luna", name: "GPT-6 Luna" },
+          model: { id: "smollm2-360m", name: "SmolLM2 360M" },
           execution: { type: "backend", hostId: "host-1", ready: true },
           binding: { id: "binding-1" },
           source: "default",
@@ -149,7 +149,7 @@ describe("AgentModelPanel merchant-funded activation confirmation", () => {
   // same way the real host component does.
   function Harness({ shopId }: { shopId: string }) {
     const [aiModels, setAiModels] = useState<AiModelSummary[]>([]);
-    const [activeAiModelId, setActiveAiModelId] = useState("gpt-6-luna");
+    const [activeAiModelId, setActiveAiModelId] = useState("smollm2-360m");
     const [profileMessage, setProfileMessage] = useState("");
     return (
       <AgentModelPanel
@@ -282,13 +282,13 @@ describe("AgentModelPanel merchant-funded activation confirmation", () => {
     const shopId = "panel-shop-default";
     const fetchMock = stubFetch({
       ...fixture(shopId),
-      [`/api/agents/${shopId}/models/gpt-6-luna/activate`]: () =>
+      [`/api/agents/${shopId}/models/smollm2-360m/activate`]: () =>
         jsonResponse({
           status: "active",
           binding: {
             id: "binding-1",
             agentId: shopId,
-            modelId: "gpt-6-luna",
+            modelId: "smollm2-360m",
             status: "active",
             executionTarget: "vercel",
             lastVerifiedAt: null
@@ -307,13 +307,13 @@ describe("AgentModelPanel merchant-funded activation confirmation", () => {
 
     await openLibrary();
     await act(async () => {
-      useWithAgentButtonFor("GPT-6 Luna").click();
+      useWithAgentButtonFor("SmolLM2 360M").click();
       await Promise.resolve();
       await Promise.resolve();
     });
 
     expect(host.querySelector('[role="alertdialog"]')).toBeNull();
-    expect(calledWithPath(fetchMock, `/api/agents/${shopId}/models/gpt-6-luna/activate`)).toBe(
+    expect(calledWithPath(fetchMock, `/api/agents/${shopId}/models/smollm2-360m/activate`)).toBe(
       true
     );
   });
@@ -323,14 +323,14 @@ describe("AgentModelPanel merchant-funded activation confirmation", () => {
     const activationBodies: unknown[] = [];
     stubFetch({
       ...fixture(shopId),
-      [`/api/agents/${shopId}/models/gpt-6-luna/activate`]: (init) => {
+      [`/api/agents/${shopId}/models/smollm2-360m/activate`]: (init) => {
         activationBodies.push(JSON.parse(String(init?.body)));
         return jsonResponse({
           status: "active",
           binding: {
             id: "binding-1",
             agentId: shopId,
-            modelId: "gpt-6-luna",
+            modelId: "smollm2-360m",
             status: "active",
             executionTarget: "local",
             lastVerifiedAt: null
@@ -350,7 +350,7 @@ describe("AgentModelPanel merchant-funded activation confirmation", () => {
 
     await openLibrary();
     await act(async () => {
-      useWithAgentButtonFor("GPT-6 Luna").click();
+      useWithAgentButtonFor("SmolLM2 360M").click();
       await Promise.resolve();
       await Promise.resolve();
     });
@@ -365,7 +365,7 @@ describe("AgentModelPanel merchant-funded activation confirmation", () => {
     const localBinding = {
       id: "binding-1",
       agentId: shopId,
-      modelId: "gpt-6-luna",
+      modelId: "smollm2-360m",
       status: "active",
       executionTarget: "local",
       lastVerifiedAt: null
@@ -376,7 +376,7 @@ describe("AgentModelPanel merchant-funded activation confirmation", () => {
       [`/businesses/${shopId}/runtime/effective`]: () =>
         jsonResponse({
           agent: { id: "builtin:shopkeeper", name: "Shopkeeper", runtimeAdapterId: "grogoni" },
-          model: { id: "gpt-6-luna", name: "GPT-6 Luna" },
+          model: { id: "smollm2-360m", name: "SmolLM2 360M" },
           execution: { type: "local", hostId: "ollama", ready: true },
           binding: { id: "binding-1" },
           source: "binding",
@@ -395,9 +395,9 @@ describe("AgentModelPanel merchant-funded activation confirmation", () => {
 
     await openLibrary();
 
-    expect(host.textContent).toContain("Running on: this computer's local runtime");
+    expect(host.textContent).toContain("Running on: Ollama on the machine running Grogoni");
     const card = [...host.querySelectorAll("article.ai-model-card")].find((article) =>
-      article.textContent?.includes("GPT-6 Luna")
+      article.textContent?.includes("SmolLM2 360M")
     );
     expect(card?.textContent).toContain("Local · Active for Shopkeeper");
     expect(host.textContent).not.toContain("Grogoni backend");

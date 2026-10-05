@@ -1,8 +1,8 @@
-// Render is the control plane; it authenticates, resolves runtime bindings, and proxies inference
-// requests to Vercel over HTTPS with a shared bearer token - it must never load or run a model
-// itself (docs/architecture/inference-runtime.md). This script fails the build if that boundary
-// is crossed in either direction: Render code depending on a local inference engine, or the
-// Render Blueprint reintroducing a Render-hosted inference service.
+// The API never loads or runs a model in-process: server-side generation goes to Ollama over HTTP
+// (OLLAMA_BASE_URL, docs/local-first-cloud-audit.md) and device-local models run on members' own
+// devices. This script fails the build if API code depends on an in-process inference engine, or if
+// the Render Blueprint reintroduces a hosted inference, agent-runtime or OCR service that the
+// local-first runtime retired.
 import { readFileSync, readdirSync } from "node:fs";
 import { extname, join, relative } from "node:path";
 
@@ -48,47 +48,9 @@ for (const root of ["services/api/src", "services/api/dist"]) {
   }
 }
 
-// The inverse boundary: services/ai-runtime is a standalone Vercel deployment that executes
-// inference only. It must never import Render's application code (auth, commerce APIs, database
-// business logic, agent orchestration, MCP, messaging) or the web app - if it did, `vercel build`
-// would either fail (services/api/apps/web aren't installed in the Vercel project) or silently
-// bundle application code into the inference deployment.
-const aiRuntimeManifest = JSON.parse(readFileSync("services/ai-runtime/package.json", "utf8"));
-const allowedAiRuntimeDependencies = new Set(["@grogoni/shared-types", "node-llama-cpp"]);
-for (const dependency of Object.keys(aiRuntimeManifest.dependencies ?? {})) {
-  if (!allowedAiRuntimeDependencies.has(dependency)) {
-    violations.push(
-      `services/ai-runtime/package.json depends on ${dependency}, which is outside the ` +
-        `narrow allowlist (${[...allowedAiRuntimeDependencies].join(", ")})`
-    );
-  }
-}
-const aiRuntimeForbiddenImportPatterns = [
-  /(^|\/)services\/api(\/|$)/u,
-  /(^|\/)apps\/web(\/|$)/u,
-  /^(\.\.\/)+api\//u,
-  /^(\.\.\/)+web\//u
-];
-for (const root of ["services/ai-runtime/src", "services/ai-runtime/api"]) {
-  for (const file of listCodeFiles(root)) {
-    const source = readFileSync(file, "utf8");
-    for (const pattern of importPatterns) {
-      for (const match of source.matchAll(pattern)) {
-        const specifier = match[1] ?? "";
-        if (aiRuntimeForbiddenImportPatterns.some((blocked) => blocked.test(specifier))) {
-          violations.push(
-            `${relative(process.cwd(), file)} imports ${specifier}, crossing the ` +
-              "Vercel inference deployment boundary into Render/web application code"
-          );
-        }
-      }
-    }
-  }
-}
-
 const blueprint = readFileSync("render.yaml", "utf8");
 
-// The Render Blueprint must no longer declare a Render-hosted inference service of any kind.
+// The Render Blueprint must not declare a hosted inference, ZeroClaw, or OCR service of any kind.
 const forbiddenBlueprintMarkers = [
   "grogoni-inference",
   "services/ai-runtime/Dockerfile",
@@ -98,7 +60,11 @@ const forbiddenBlueprintMarkers = [
   "mountPath: /var/lib/grogoni-models",
   "OLLAMA_KEEP_ALIVE",
   "INFERENCE_ENGINE",
-  "key: INFERENCE_SERVICE_TOKEN"
+  "key: INFERENCE_SERVICE_TOKEN",
+  "grogoni-zeroclaw",
+  "ghcr.io/zeroclaw-labs/zeroclaw",
+  "grogoni-ocr-worker",
+  "services/receipt-ocr-service"
 ];
 for (const forbidden of forbiddenBlueprintMarkers) {
   if (blueprint.includes(forbidden)) {
@@ -112,16 +78,15 @@ const apiStart = blueprint.indexOf("name: grogoni");
 const nextService = blueprint.indexOf("\n  - type:", apiStart);
 const apiService = blueprint.slice(apiStart, nextService === -1 ? undefined : nextService);
 
-// The API service must resolve inference through Vercel, never a local model engine.
+// The API service must never be configured to load a model itself.
 for (const forbidden of ["LOCAL_MODEL_", "llama.cpp", ".gguf", "OLLAMA_BASE_URL"]) {
   if (apiService.toLowerCase().includes(forbidden.toLowerCase())) {
     violations.push(`Render API service contains forbidden local-inference marker ${forbidden}`);
   }
 }
 // The API service itself must stay `type: web`, not a private service - checked as an adjacency,
-// not a bare `apiService.includes("type: pserv")`, because the API's envVars legitimately contain
-// that substring inside a `fromService: { type: pserv }` reference to another private service (the
-// OCR worker, docs/receipt-ocr.md), which is not this boundary's concern.
+// not a bare `apiService.includes("type: pserv")`, so a `fromService: { type: pserv }` reference in
+// its envVars does not trip it.
 if (!/-\s+type:\s*web\s*\n\s*name:\s*grogoni/u.test(blueprint)) {
   violations.push("Render API service must declare `type: web`, not a private service (pserv).");
 }
@@ -134,8 +99,7 @@ for (const match of removedSettings.matchAll(/"([A-Z][A-Z0-9_]*)"/gu)) {
   }
 }
 
-// The browser must never receive the inference service token or the Neon object-storage
-// credentials that let Render mint signed model-artifact download URLs.
+// The browser must never receive an inference service token or model-storage credentials.
 for (const forbidden of [
   "VITE_INFERENCE_SERVICE_TOKEN",
   "VITE_GROGONI_INFERENCE_SERVICE_TOKEN",

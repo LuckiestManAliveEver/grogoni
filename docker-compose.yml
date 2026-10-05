@@ -53,28 +53,8 @@ services:
           cpus: "1.00"
           memory: 1G
 
-  # Inference now runs as a Vercel serverless function (services/ai-runtime), not a container in
-  # this compose file. Run it locally with `pnpm --filter @grogoni/ai-runtime dev` (Vercel CLI dev
-  # server). The API now uses local Ollama instead of this retired hosted runtime - see
-  # docs/deployment/vercel-inference.md.
-
-  receipt-ocr-worker:
-    profiles: ["ocr"]
-    build:
-      context: ./services/receipt-ocr-service
-    environment:
-      OCR_ENGINE_PRIMARY: ${OCR_ENGINE_PRIMARY:-paddleocr}
-      OCR_ENGINE_FALLBACK: ${OCR_ENGINE_FALLBACK:-tesseract}
-      OCR_FALLBACK_ENABLED: ${OCR_FALLBACK_ENABLED:-true}
-      OCR_PROFILE: ${OCR_PROFILE:-balanced}
-      OCR_LANGUAGE_HINTS: ${OCR_LANGUAGE_HINTS:-en,sw}
-      OCR_MAX_UPLOAD_MB: ${OCR_MAX_UPLOAD_MB:-10}
-      OCR_MAX_IMAGE_EDGE: ${OCR_MAX_IMAGE_EDGE:-3000}
-      OCR_MAX_PDF_PAGES: ${OCR_MAX_PDF_PAGES:-5}
-      OCR_CONCURRENCY: ${OCR_CONCURRENCY:-1}
-      OCR_WORKER_PORT: 8090
-    ports:
-      - "8090:8090"
+  # Inference runs through local Ollama (OLLAMA_BASE_URL); no inference or OCR container is part
+  # of this compose file (docs/local-first-cloud-audit.md).
 
 volumes:
   grogoni-postgres-data:

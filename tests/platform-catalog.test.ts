@@ -20,17 +20,13 @@ describe("DB-hosted platform model/agent catalog", () => {
         "tinyllama-1.1b-chat-q4-k-m-android",
         "qwen2.5-0.5b-android",
         "qwen2.5-1.5b-android",
-        "qwen3-4b",
         "grogoniclaw-local",
         "llama-cpp-configured",
-        // Multi-provider router seeds (migration 102): three on-device models and a disabled
-        // Grogoni Cloud entry.
+        // Device-local router seeds (migration 102). The hosted Grogoni Cloud, Hugging Face
+        // Qwen3-4B and GPT-6 Luna entries were retired with the cloud providers.
         "smollm2-360m-device",
         "qwen2.5-0.5b-device",
-        "qwen3-1.7b-device",
-        "qwen3-4b-grogoni-cloud",
-        // The Grogoni-funded platform default (migration 103).
-        "gpt-6-luna"
+        "qwen3-1.7b-device"
       ].sort()
     );
     expect(
@@ -144,7 +140,7 @@ describe("DB-hosted platform model/agent catalog", () => {
 
       const removeDefaultModel = await app.inject({
         method: "DELETE",
-        url: "/v1/platform/model-catalog/gpt-6-luna",
+        url: "/v1/platform/model-catalog/smollm2-360m",
         headers: { cookie: operator.cookie }
       });
       expect(removeDefaultModel.statusCode).toBe(409);

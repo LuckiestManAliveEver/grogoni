@@ -121,28 +121,28 @@ services:
         generateValue: true
       - key: GITHUB_TOKEN
         sync: false
-      # Historical hosted runtime defaults. Local development uses .env.local.example;
-      # retired cloud environment settings must not be provisioned here.
+      # Historical blueprint (docs/local-first-cloud-audit.md): it provisions no Ollama, so with
+      # INFERENCE_REQUIRED=true /health/ready stays unavailable until an Ollama host is configured.
+      # Defaults match local mode (services/api/src/config.ts): Shopkeeper on Grogoni's built-in
+      # engine with SmolLM2 360M. Retired cloud settings must not be provisioned here.
       - key: PLATFORM_DEFAULT_AGENT_ID
         value: builtin:shopkeeper:v1
       - key: PLATFORM_DEFAULT_AGENT_NAME
         value: Shopkeeper
       - key: PLATFORM_DEFAULT_AGENT_ADAPTER_ID
-        value: zeroclaw
+        value: grogoni
       - key: PLATFORM_DEFAULT_MODEL_ID
-        value: gpt-6-luna
+        value: smollm2-360m
       - key: PLATFORM_DEFAULT_EXECUTION_TARGET
-        value: backend
+        value: local
       - key: INFERENCE_REQUIRED
         value: "true"
       - key: INFERENCE_DEFAULT_MODEL
-        value: gpt-6-luna
+        value: smollm2-360m
       - key: INFERENCE_REQUEST_TIMEOUT_MS
         value: "60000"
       - key: INFERENCE_MAX_OUTPUT_TOKENS
         value: "1024"
-      - key: INFERENCE_CREDENTIAL_KEYS
-        sync: false
       - key: INFERENCE_OWNER_NODE_ENABLED
         value: "true"
       - key: INFERENCE_MAX_FALLBACKS
@@ -151,35 +151,10 @@ services:
         value: "120000"
       - key: INFERENCE_JOB_SIGNING_SECRET
         generateValue: true
-      # Resource isolation (docs/architecture/resource-isolation.md): bounds concurrent inference
-      # calls to ai-runtime and opens the circuit fast under sustained failure instead of letting
-      # every conversation turn queue/time out against a dependency that is clearly down.
-      - key: INFERENCE_MAX_CONCURRENCY
-        value: "4"
-      - key: INFERENCE_QUEUE_MAX
-        value: "8"
-      - key: INFERENCE_CIRCUIT_BREAKER_FAILURE_THRESHOLD
-        value: "5"
-      - key: INFERENCE_CIRCUIT_BREAKER_RESET_TIMEOUT_MS
-        value: "30000"
       - key: DB_ARTIFACT_POOL_MAX
         value: "2"
       - key: DB_HEALTH_PARITY_CHECK_INTERVAL_MS
         value: "60000"
-      - key: OCR_CONCURRENCY
-        value: "1"
-      - key: OCR_JOB_TIMEOUT_SECONDS
-        value: "120"
-      - key: OCR_QUEUE_MAX
-        value: "10"
-      - key: OCR_RETRY_INITIAL_DELAY_MS
-        value: "200"
-      - key: OCR_RETRY_MAX_DELAY_MS
-        value: "5000"
-      - key: OCR_CIRCUIT_BREAKER_FAILURE_THRESHOLD
-        value: "5"
-      - key: OCR_CIRCUIT_BREAKER_RESET_TIMEOUT_MS
-        value: "30000"
       - key: MALWARE_SCANNER_ENABLED
         value: "false"
       - key: VAPID_PUBLIC_KEY
@@ -195,91 +170,6 @@ services:
     region: oregon
     ipAllowList: []
     maxmemoryPolicy: allkeys-lru
-
-  # Self-hosted PaddleOCR/Tesseract worker (docs/receipt-ocr.md, services/receipt-ocr-service/).
-  # Private, not public: only grogoni reaches it, over Render's private network at the
-  # worker endpoint is no longer configured on the API. This is unrelated to the LLM inference boundary
-  # docs/deployment/render-inference.md describes - Render still never runs a chat model itself,
-  # it hosts an OCR worker, which is a bounded image/PDF-to-text tool, not a model runtime.
-  - type: pserv
-    name: grogoni-ocr-worker
-    runtime: docker
-    branch: main
-    autoDeployTrigger: commit
-    # starter matches every other service in this Blueprint; PaddleOCR's CPU inference is memory-
-    # hungry enough that this may need sizing up if the worker OOMs under real receipt/product-photo
-    # traffic - watch its Render metrics after the first real deploy. No persistent disk is mounted,
-    # so PaddleOCR re-downloads its model weights on every deploy/restart (a one-time, few-second hit
-    # per cold start, not per request); add a `disk` here (mirroring the retired inference service's
-    # pattern) if that cold-start cost becomes worth trading for the extra disk cost.
-    plan: starter
-    region: oregon
-    dockerfilePath: ./services/receipt-ocr-service/Dockerfile
-    dockerContext: ./services/receipt-ocr-service
-    buildFilter:
-      paths:
-        - render.yaml
-        - services/receipt-ocr-service/**
-    envVars:
-      - key: OCR_WORKER_PORT
-        value: "8090"
-      - key: OCR_ENGINE_PRIMARY
-        value: paddleocr
-      - key: OCR_ENGINE_FALLBACK
-        value: tesseract
-      - key: OCR_FALLBACK_ENABLED
-        value: "true"
-      - key: OCR_PROFILE
-        value: balanced
-      - key: OCR_LANGUAGE_HINTS
-        value: en,sw
-      - key: OCR_MAX_UPLOAD_MB
-        value: "10"
-      - key: OCR_MAX_IMAGE_EDGE
-        value: "3000"
-      - key: OCR_MAX_PDF_PAGES
-        value: "5"
-      - key: OCR_CONCURRENCY
-        value: "1"
-
-  # ZeroClaw agent runtime (https://github.com/zeroclaw-labs/zeroclaw, MIT OR Apache-2.0) - the
-  # default engine for the Shopkeeper agent (docs/adr/ADR-zeroclaw-default-agent-runtime.md).
-  # Private: only grogoni reaches its gateway. It runs no model itself; it calls OpenAI's
-  # GPT-6 Luna with Grogoni's key. Locked down: read-only risk profile with every ZeroClaw tool
-  # denied, so it can only produce text, which Grogoni then parses and approval-gates like any model
-  # output. No pairing tokens; the generated webhook secret is shared with grogoni above.
-  - type: pserv
-    name: grogoni-zeroclaw
-    runtime: image
-    image:
-      url: ghcr.io/zeroclaw-labs/zeroclaw:v0.8.5
-    plan: starter
-    region: oregon
-    envVars:
-      - key: ZEROCLAW_gateway__host
-        value: 0.0.0.0
-      - key: ZEROCLAW_gateway__allow_public_bind
-        value: "true"
-      - key: ZEROCLAW_gateway__port
-        value: "42617"
-      - key: ZEROCLAW_gateway__require_pairing
-        value: "false"
-      - key: ZEROCLAW_gateway__webhook_secret
-        generateValue: true
-      - key: ZEROCLAW_gateway__session_persistence
-        value: "false"
-      - key: ZEROCLAW_gateway__request_timeout_secs
-        value: "120"
-      - key: ZEROCLAW_providers__models__openai__default__model
-        value: gpt-6-luna
-      - key: ZEROCLAW_providers__models__openai__default__api_key
-        sync: false
-      - key: ZEROCLAW_risk_profiles__default__level
-        value: readonly
-      - key: ZEROCLAW_risk_profiles__default__deny_all_tools
-        value: "true"
-      - key: ZEROCLAW_risk_profiles__default__workspace_only
-        value: "true"
 
   - type: web
     name: grogoni-web-staging

@@ -8,18 +8,18 @@ import {
   type ModelRuntimeAdapter
 } from "../services/api/src/inference/model-runtime";
 
-const primaryModelId = "gpt-6-luna";
+const primaryModelId = "smollm2-360m";
 const fallbackModelId = "qwen2.5-0.5b-android";
 
 describe("zero-setup native runtime", () => {
   it("completes a brand-new user's first /v1/messages chat without a download or activation", async () => {
     const generate = vi.fn(async () =>
-      generation(primaryModelId, "Welcome to Grogoni AI.", "backend")
+      generation(primaryModelId, "Welcome to Grogoni AI.", "local")
     );
     const store = createCp2Store({
       modelRuntimeAdapterResolver: ({ modelId, executionTarget }) =>
-        modelId === primaryModelId && executionTarget === "backend"
-          ? adapter(modelId, generate, "backend")
+        modelId === primaryModelId && executionTarget === "local"
+          ? adapter(modelId, generate, "local")
           : undefined
     });
     const app = buildApi({ cp2: { store } });
@@ -46,7 +46,7 @@ describe("zero-setup native runtime", () => {
             model: {
               status: "available",
               modelId: primaryModelId,
-              executionTarget: "backend",
+              executionTarget: "local",
               agentId: actor.businessId,
               agentAdapterId: "grogoni"
             }
@@ -73,14 +73,14 @@ describe("zero-setup native runtime", () => {
     const generate = vi.fn(async () => generation(primaryModelId, "Global default ready."));
     const store = createCp2Store({
       modelRuntimeAdapterResolver: ({ modelId, executionTarget }) =>
-        modelId === primaryModelId && executionTarget === "backend"
+        modelId === primaryModelId && executionTarget === "local"
           ? adapter(modelId, generate)
           : undefined
     });
     store.activateGlobalDefaultModel({
       model: {
         id: primaryModelId,
-        label: "GPT-6 Luna",
+        label: "SmolLM2 360M",
         provider: "local",
         description: "Default hosted runtime model.",
         capabilities: ["chat", "english", "instruction-following"],
@@ -97,7 +97,7 @@ describe("zero-setup native runtime", () => {
         recommended: true,
         contextWindow: 8192
       },
-      executionTarget: "backend",
+      executionTarget: "local",
       checkedAt: "2026-08-30T00:00:00.000Z",
       updatedBy: "system"
     });
@@ -113,7 +113,7 @@ describe("zero-setup native runtime", () => {
       expect(effectiveRuntime.json()).toMatchObject({
         agent: { id: "builtin:shopkeeper", runtimeAdapterId: "grogoni" },
         model: { id: primaryModelId },
-        execution: { type: "backend", ready: true },
+        execution: { type: "local", ready: true },
         source: "default",
         ready: true
       });
@@ -132,7 +132,7 @@ describe("zero-setup native runtime", () => {
           model: {
             status: "available",
             modelId: primaryModelId,
-            executionTarget: "backend",
+            executionTarget: "local",
             agentAdapterId: "grogoni"
           }
         }
@@ -161,11 +161,11 @@ describe("zero-setup native runtime", () => {
         agentName: "Agent B",
         agentRuntimeAdapterId: "beta",
         modelId: primaryModelId,
-        executionTarget: "backend"
+        executionTarget: "local"
       },
       agentRuntimeAdapterResolver: (adapterId) => (adapterId === "beta" ? betaAdapter : undefined),
       modelRuntimeAdapterResolver: ({ modelId, executionTarget }) =>
-        modelId === primaryModelId && executionTarget === "backend"
+        modelId === primaryModelId && executionTarget === "local"
           ? adapter(modelId, generate)
           : undefined
     });
@@ -193,7 +193,7 @@ describe("zero-setup native runtime", () => {
             model: {
               status: "available",
               modelId: primaryModelId,
-              executionTarget: "backend",
+              executionTarget: "local",
               agentId: actor.businessId,
               agentAdapterId: "beta"
             }
@@ -220,13 +220,13 @@ describe("zero-setup native runtime", () => {
       throw new ModelRuntimeError("INFERENCE_SERVICE_UNREACHABLE", "offline", true);
     });
     const fallbackGenerate = vi.fn(async () =>
-      generation(fallbackModelId, "Fallback ready.", "backend")
+      generation(fallbackModelId, "Fallback ready.", "local")
     );
     const store = createCp2Store({
       modelRuntimeAdapterResolver: ({ modelId, executionTarget }) => {
-        if (executionTarget !== "backend") return undefined;
-        if (modelId === primaryModelId) return adapter(modelId, primaryGenerate, "backend");
-        if (modelId === fallbackModelId) return adapter(modelId, fallbackGenerate, "backend");
+        if (executionTarget !== "local") return undefined;
+        if (modelId === primaryModelId) return adapter(modelId, primaryGenerate, "local");
+        if (modelId === fallbackModelId) return adapter(modelId, fallbackGenerate, "local");
         return undefined;
       }
     });
@@ -244,7 +244,7 @@ describe("zero-setup native runtime", () => {
           response: "Fallback ready.",
           model: {
             modelId: fallbackModelId,
-            executionTarget: "backend",
+            executionTarget: "local",
             fallbackIndex: 1,
             status: "available"
           }
@@ -457,7 +457,7 @@ describe("zero-setup native runtime", () => {
 function adapter(
   modelId: string,
   generate: ModelRuntimeAdapter["generate"],
-  executionTarget: ModelRuntimeAdapter["executionTarget"] = "backend"
+  executionTarget: ModelRuntimeAdapter["executionTarget"] = "local"
 ): ModelRuntimeAdapter {
   return {
     provider: "test-hosted-adapter",
@@ -478,7 +478,7 @@ function adapter(
   };
 }
 
-function generation(modelId: string, message: string, executionTarget: "backend" = "backend") {
+function generation(modelId: string, message: string, executionTarget: "local" = "local") {
   return {
     text: JSON.stringify({ type: "response", message }),
     modelId,

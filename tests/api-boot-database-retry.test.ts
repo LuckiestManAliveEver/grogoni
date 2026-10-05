@@ -266,12 +266,10 @@ describe("API boot wiring", () => {
     }
   );
 
-  it("keeps rotating credential keys in the background after a failed boot-time rotation", () => {
-    expect(entrypoint).toMatch(
-      /retryInBackground\(\s*"inference_key_rotation",\s*\(\)\s*=>\s*rotateCredentialKeys\(\)/
-    );
-    // Both fallbacks refuse to start once shutdown has begun.
-    expect(entrypoint.match(/if \(backgroundRetriesStopped\) return;/g)).toHaveLength(2);
+  it("no longer rotates BYOK credential keys at boot", () => {
+    // BYOK provider keys were removed with the local-first runtime; nothing re-encrypts them.
+    expect(entrypoint).not.toContain("rotateCredentialKeys");
+    expect(entrypoint).not.toContain("inference_key_rotation");
   });
 
   it("keeps refreshing inference providers in the background after the boot retries run out", () => {
@@ -279,7 +277,9 @@ describe("API boot wiring", () => {
       /retryInBackground\(\s*"inference_refresh",\s*\(\)\s*=>\s*inferencePlatform\.refresh\(\)/
     );
     expect(entrypoint).toMatch(
-      /onClose", async \(\) => \{\s*backgroundRetriesStopped = true;\s*stopCredentialKeyRotationRetry\?\.\(\);\s*stopInferenceRefreshRetry\?\.\(\);/
+      /onClose", async \(\) => \{\s*backgroundRetriesStopped = true;\s*stopInferenceRefreshRetry\?\.\(\);/
     );
+    // The fallback refuses to start once shutdown has begun.
+    expect(entrypoint.match(/if \(backgroundRetriesStopped\) return;/g)).toHaveLength(1);
   });
 });

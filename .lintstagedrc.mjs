@@ -7,7 +7,6 @@ import path from "node:path";
 const workspacesByPrefix = [
   ["apps/web/", "@grogoni/web"],
   ["services/api/", "@grogoni/api"],
-  ["services/ai-runtime/", "@grogoni/ai-runtime"],
   ["services/sync/", "@grogoni/sync"],
   ["packages/shared-types/", "@grogoni/shared-types"],
   ["packages/sync-core/", "@grogoni/sync-core"],

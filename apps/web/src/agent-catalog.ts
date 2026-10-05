@@ -31,7 +31,7 @@ export function rankPortableOssAgents(input: {
         : hosted
           ? agent.requiresGpu
             ? "Runs on the Space's hosted GPU; this device only uses its API."
-            : "Runs through the hosted Hugging Face API without local installation."
+            : "Runs through the publisher's hosted API without local installation."
           : !backendAvailable
             ? "This GitHub project needs a configured backend adapter before it can be selected."
             : `Runs through Grogoni's restricted backend adapter (estimated ${agent.minimumMemoryGb} GB backend memory); repository code is never executed in the browser.`;

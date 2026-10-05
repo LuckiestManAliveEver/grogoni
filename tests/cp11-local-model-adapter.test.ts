@@ -240,7 +240,7 @@ describe("CP11 local model adapter", () => {
       sessionCookie
     );
 
-    expect(selectedModelId).toBe("gpt-6-luna");
+    expect(selectedModelId).toBe("smollm2-360m");
     expect(turn.turn).toMatchObject({
       status: "completed",
       model: {

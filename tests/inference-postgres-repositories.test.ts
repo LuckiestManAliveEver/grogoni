@@ -9,15 +9,13 @@ import { resolve } from "node:path";
 import type { Pool as PgPool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { secretBoxCipher } from "../services/api/src/inference/providers/credentials";
 import {
   assertInferenceSchema,
   createPostgresInferenceRepositories
 } from "../services/api/src/inference/providers/postgres-repositories";
 import type {
   InferenceRepositories,
-  InferenceRunRecord,
-  ProviderCredentialRecord
+  InferenceRunRecord
 } from "../services/api/src/inference/providers/repositories";
 
 const { Pool } = createRequire(resolve(process.cwd(), "services/api/package.json"))("pg") as {
@@ -27,29 +25,30 @@ const { Pool } = createRequire(resolve(process.cwd(), "services/api/package.json
 const databaseUrl = process.env.CP2_POSTGRES_TEST_DATABASE_URL;
 const describePostgres = databaseUrl === undefined ? describe.skip : describe;
 
-function credential(overrides: Partial<ProviderCredentialRecord>): ProviderCredentialRecord {
+/**
+ * Writes a key row the way the retired BYOK connections did. Nothing in the API writes these any
+ * more; they exist only in databases that predate the local-first runtime.
+ */
+async function insertLegacyCredential(
+  pool: PgPool,
+  owner: { tenantId?: string; userId?: string }
+): Promise<string> {
+  const id = randomUUID();
   const now = new Date().toISOString();
-  const { ciphertext, keyVersion } = secretBoxCipher.encrypt("sk-postgres-test-key-000000000000");
-  return {
-    id: randomUUID(),
-    scope: "tenant",
-    tenantId: `tenant-${randomUUID()}`,
-    userId: null,
-    providerId: "openai",
-    credentialType: "api_key",
-    encryptedSecret: ciphertext,
-    keyVersion,
-    secretSuffix: "0000",
-    baseUrl: null,
-    status: "ACTIVE",
-    createdBy: "test",
-    createdAt: now,
-    updatedAt: now,
-    revokedAt: null,
-    lastVerifiedAt: null,
-    lastVerificationStatus: null,
-    ...overrides
-  };
+  await pool.query(
+    `insert into inference_provider_credentials (
+       id, scope, tenant_id, user_id, provider_id, encrypted_secret, key_version, secret_suffix,
+       status, created_by, created_at, updated_at
+     ) values ($1, $2, $3, $4, 'openai', 'v1:aaaa:bbbb:cccc', 1, '0000', 'ACTIVE', 'test', $5, $5)`,
+    [
+      id,
+      owner.tenantId === undefined ? "user" : "tenant",
+      owner.tenantId ?? null,
+      owner.userId ?? null,
+      now
+    ]
+  );
+  return id;
 }
 
 function run(overrides: Partial<InferenceRunRecord>): InferenceRunRecord {
@@ -60,10 +59,10 @@ function run(overrides: Partial<InferenceRunRecord>): InferenceRunRecord {
     agentId: "agent",
     tenantId: null,
     userId: null,
-    modelId: "gpt-test",
-    providerId: "openai",
-    credentialScope: "platform",
-    executionTarget: "remote-inference",
+    modelId: "phi-test",
+    providerId: "local",
+    credentialScope: null,
+    executionTarget: "browser-local",
     inputTokens: 10,
     outputTokens: 5,
     cachedInputTokens: null,
@@ -93,79 +92,29 @@ describePostgres("inference repositories on PostgreSQL", () => {
     await pool.end();
   });
 
-  it("round-trips credentials with exact-owner lookup and one active key per owner", async () => {
-    const tenantA = credential({});
-    const tenantId = tenantA.tenantId as string;
-    await repositories.credentials.insert(tenantA);
+  it("erases an owner's legacy BYOK key rows on account or shop deletion, and only theirs", async () => {
+    const tenantId = `tenant-${randomUUID()}`;
+    const userId = `user-${randomUUID()}`;
+    const otherTenantId = `tenant-${randomUUID()}`;
+    await insertLegacyCredential(pool, { tenantId });
+    await insertLegacyCredential(pool, { tenantId });
+    await insertLegacyCredential(pool, { userId });
+    const survivor = await insertLegacyCredential(pool, { tenantId: otherTenantId });
     try {
-      expect(await repositories.credentials.get(tenantA.id)).toEqual(tenantA);
-      expect(
-        (
-          await repositories.credentials.findActive({
-            providerId: "openai",
-            scope: "tenant",
-            tenantId
-          })
-        )?.id
-      ).toBe(tenantA.id);
-      expect(
-        await repositories.credentials.findActive({
-          providerId: "openai",
-          scope: "tenant",
-          tenantId: "someone-else"
-        })
-      ).toBeUndefined();
-      expect(
-        await repositories.credentials.findActive({
-          providerId: "anthropic",
-          scope: "tenant",
-          tenantId
-        })
-      ).toBeUndefined();
-
-      // The partial unique index enforces "revoke before replace".
-      await expect(repositories.credentials.insert(credential({ tenantId }))).rejects.toThrow();
-
-      const revokedAt = new Date().toISOString();
-      await repositories.credentials.update({
-        ...tenantA,
-        status: "REVOKED",
-        encryptedSecret: null,
-        revokedAt,
-        updatedAt: revokedAt
-      });
-      expect(
-        await repositories.credentials.findActive({
-          providerId: "openai",
-          scope: "tenant",
-          tenantId
-        })
-      ).toBeUndefined();
-      const replacement = credential({ tenantId });
-      await repositories.credentials.insert(replacement);
-      expect(
-        (await repositories.credentials.listForOwner({ tenantId }))
-          .map((record) => record.status)
-          .sort()
-      ).toEqual(["ACTIVE", "REVOKED"]);
-    } finally {
       expect(await repositories.credentials.deleteForOwner({ tenantId })).toBe(2);
+      expect(await repositories.credentials.deleteForOwner({ userId })).toBe(1);
+      expect(await repositories.credentials.deleteForOwner({ tenantId })).toBe(0);
+      const remaining = await pool.query(
+        "select id from inference_provider_credentials where id = $1",
+        [survivor]
+      );
+      expect(remaining.rowCount).toBe(1);
+    } finally {
+      await pool.query("delete from inference_provider_credentials where tenant_id = any($1)", [
+        [tenantId, otherTenantId]
+      ]);
+      await pool.query("delete from inference_provider_credentials where user_id = $1", [userId]);
     }
-  });
-
-  it("refuses plaintext secrets, revoked rows that keep a secret, and mismatched owners", async () => {
-    await expect(
-      repositories.credentials.insert(credential({ encryptedSecret: "sk-plaintext-key" }))
-    ).rejects.toThrow();
-    await expect(
-      repositories.credentials.insert(credential({ status: "REVOKED" }))
-    ).rejects.toThrow();
-    await expect(
-      repositories.credentials.insert(credential({ scope: "user", userId: null }))
-    ).rejects.toThrow();
-    await expect(
-      repositories.credentials.insert(credential({ baseUrl: "http://insecure.example.com/v1" }))
-    ).rejects.toThrow();
   });
 
   it("sums cost by owner, provider, currency and period, and purges by owner", async () => {
@@ -173,13 +122,13 @@ describePostgres("inference repositories on PostgreSQL", () => {
     const userId = `user-${randomUUID()}`;
     const earlier = new Date(Date.now() - 86_400_000 * 40).toISOString();
     await repositories.runs.insert(run({ tenantId, userId }));
-    await repositories.runs.insert(run({ tenantId, providerId: "anthropic", estimatedCost: 1 }));
+    await repositories.runs.insert(run({ tenantId, providerId: "device-b", estimatedCost: 1 }));
     await repositories.runs.insert(run({ tenantId, currency: "EUR", estimatedCost: 9 }));
     await repositories.runs.insert(run({ tenantId, createdAt: earlier, estimatedCost: 100 }));
     const since = new Date(Date.now() - 86_400_000).toISOString();
     expect(await repositories.runs.sumCost({ since, tenantId, currency: "USD" })).toBeCloseTo(1.25);
     expect(
-      await repositories.runs.sumCost({ since, tenantId, providerId: "openai", currency: "USD" })
+      await repositories.runs.sumCost({ since, tenantId, providerId: "local", currency: "USD" })
     ).toBeCloseTo(0.25);
     expect(await repositories.runs.sumCost({ since, userId, currency: "USD" })).toBeCloseTo(0.25);
     expect(await repositories.runs.deleteForOwner({ tenantId })).toBe(4);
@@ -194,12 +143,12 @@ describePostgres("inference repositories on PostgreSQL", () => {
       userId: null,
       currency: "USD",
       dailyBudget: 12.5,
-      providerMonthlyCeilings: { openai: 100 },
+      providerMonthlyCeilings: { local: 100 },
       maxRequestsPerMinute: 30,
       maxTokensPerRequest: 2_000,
       fallbackPolicy: "APPROVED_PROVIDERS" as const,
-      approvedProviderIds: ["anthropic"],
-      fallbackModelIds: ["claude-test"],
+      approvedProviderIds: ["device-b"],
+      fallbackModelIds: ["qwen2.5-0.5b-device"],
       updatedAt: new Date().toISOString()
     };
     try {
@@ -213,98 +162,57 @@ describePostgres("inference repositories on PostgreSQL", () => {
         await repositories.policies.get({ scope: "tenant", tenantId: "missing" })
       ).toBeUndefined();
 
+      // A row of a retired hosted type, written before the local-first runtime, never loads.
       await pool.query(
         `insert into inference_providers (id, display_name, provider_type, base_url, execution_target, credential_ref)
          values ('test-gateway', 'Test Gateway', 'openai-compatible', 'https://gateway.example.com/v1', 'remote-inference', 'env:TEST_GATEWAY_KEY')`
       );
       const providers = await repositories.providers.list();
-      expect(providers.find((provider) => provider.id === "test-gateway")).toMatchObject({
-        type: "openai-compatible",
-        baseUrl: "https://gateway.example.com/v1",
-        credentialRef: "env:TEST_GATEWAY_KEY",
-        allowPrivateNetwork: false,
-        source: "database"
-      });
-      await expect(
-        pool.query(
-          `insert into inference_providers (id, display_name, provider_type, execution_target, credential_ref)
-           values ('bad-ref', 'Bad', 'openai', 'remote-inference', 'sk-a-raw-secret')`
-        )
-      ).rejects.toThrow();
+      expect(providers.find((provider) => provider.id === "test-gateway")).toBeUndefined();
     } finally {
       await pool.query("delete from inference_policies where owner_key = $1", [tenantId]);
-      await pool.query("delete from inference_providers where id in ('test-gateway', 'bad-ref')");
+      await pool.query("delete from inference_providers where id = 'test-gateway'");
     }
   });
 
-  it("manages operator provider rows, lists rows needing key rotation, and filters spend by payer", async () => {
+  it("manages operator device-local provider rows", async () => {
     try {
       await repositories.providers.upsert({
-        id: "pg-gateway",
-        displayName: "PG gateway",
-        type: "openai-compatible",
-        baseUrl: "https://gateway.example.com/v1",
-        executionTarget: "remote-inference",
+        id: "pg-devices",
+        displayName: "PG devices",
+        type: "local",
+        executionTarget: "installed-app",
         enabled: true,
         capabilities: { tools: false },
-        credentialRef: "env:PG_GATEWAY_KEY",
-        byokAllowed: false,
-        allowCredentialEndpoint: false,
-        allowPrivateNetwork: false,
-        allowHttp: false,
-        billingProduct: "gateway",
-        verification: "models-endpoint",
-        options: { maxTokensParameter: "max_tokens" },
         source: "database"
       });
       await repositories.providers.upsert({
-        ...(await repositories.providers.list()).find((provider) => provider.id === "pg-gateway")!,
+        ...(await repositories.providers.list()).find((provider) => provider.id === "pg-devices")!,
         enabled: false
       });
       expect(
-        (await repositories.providers.list()).find((provider) => provider.id === "pg-gateway")
-      ).toMatchObject({
+        (await repositories.providers.list()).find((provider) => provider.id === "pg-devices")
+      ).toEqual({
+        id: "pg-devices",
+        displayName: "PG devices",
+        type: "local",
+        executionTarget: "installed-app",
         enabled: false,
         capabilities: { tools: false },
-        options: { maxTokensParameter: "max_tokens" }
+        source: "database"
       });
-      expect(await repositories.providers.remove("pg-gateway")).toBe(true);
-      expect(await repositories.providers.remove("pg-gateway")).toBe(false);
+      const stored = await pool.query<{ byok_allowed: boolean; credential_ref: string | null }>(
+        "select byok_allowed, credential_ref from inference_providers where id = 'pg-devices'"
+      );
+      expect(stored.rows[0]).toEqual({ byok_allowed: false, credential_ref: null });
+      expect(await repositories.providers.remove("pg-devices")).toBe(true);
+      expect(await repositories.providers.remove("pg-devices")).toBe(false);
     } finally {
-      await pool.query("delete from inference_providers where id = 'pg-gateway'");
+      await pool.query("delete from inference_providers where id = 'pg-devices'");
     }
-
-    const tenantId = `tenant-${randomUUID()}`;
-    const old = credential({ tenantId, keyVersion: 1 });
-    await repositories.credentials.insert(old);
-    try {
-      const needing = await repositories.credentials.listNeedingRotation(2);
-      expect(needing.map((record) => record.id)).toContain(old.id);
-      expect(
-        (await repositories.credentials.listNeedingRotation(1)).map((record) => record.id)
-      ).not.toContain(old.id);
-    } finally {
-      await repositories.credentials.deleteForOwner({ tenantId });
-    }
-
-    await repositories.runs.insert(
-      run({ tenantId, credentialScope: "platform", estimatedCost: 1 })
-    );
-    await repositories.runs.insert(run({ tenantId, credentialScope: "tenant", estimatedCost: 2 }));
-    const since = new Date(Date.now() - 60_000).toISOString();
-    expect(await repositories.runs.sumCost({ since, tenantId, currency: "USD" })).toBeCloseTo(3);
-    expect(
-      await repositories.runs.sumCost({
-        since,
-        tenantId,
-        currency: "USD",
-        credentialScope: "platform"
-      })
-    ).toBeCloseTo(1);
-    await repositories.runs.deleteForOwner({ tenantId });
   });
 
-  it("seeds the on-device and Grogoni Cloud catalog models (migration 102)", async () => {
+  it("seeds the on-device catalog models (migration 102)", async () => {
     const result = await pool.query<{ entity_id: string; target: string | null }>(
       `select entity_id, record -> 'inference' ->> 'executionTarget' as target
          from cp2_model_catalog

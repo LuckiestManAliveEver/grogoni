@@ -1,5 +1,9 @@
 # Multi-provider inference: implementation report
 
+> **Historical.** The hosted providers, BYOK keys and Grogoni Cloud described here were removed
+> with the local-first runtime ([docs/local-first-cloud-audit.md](../local-first-cloud-audit.md)).
+> Only the device-local provider and the router's budgets, fallback policy and run telemetry remain.
+
 This change lets Grogoni agents run on models from OpenAI, Anthropic, Z.ai (GLM), Grogoni-hosted
 llama.cpp, any other OpenAI-compatible server, or the device itself. It does this without new
 agents, without vendor branches in agent code, and without a second model registry. The Phase 0

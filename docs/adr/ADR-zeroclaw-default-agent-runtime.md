@@ -2,8 +2,13 @@
 
 ## Status
 
-Accepted. Supersedes [ADR-default-runtime-pi-smollm.md](./ADR-default-runtime-pi-smollm.md) as
-the platform default. Pi and SmolLM2 stay available to choose.
+Superseded by the local-first runtime ([docs/local-first-cloud-audit.md](../local-first-cloud-audit.md)):
+the ZeroClaw engine and hosted GPT-6 Luna were removed, and the platform default is Shopkeeper on
+Grogoni's built-in engine with SmolLM2 360M served by Ollama. Stored agents that still name
+"zeroclaw" resolve to the built-in engine. Kept for history.
+
+Previously: Accepted. Superseded [ADR-default-runtime-pi-smollm.md](./ADR-default-runtime-pi-smollm.md)
+as the platform default.
 
 ## Context
 

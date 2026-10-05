@@ -55,16 +55,16 @@ export interface PlatformDefaultRuntimePolicy {
 }
 
 /**
- * Before a shop swaps anything it runs the Shopkeeper agent on the ZeroClaw agent runtime with
- * OpenAI's GPT-6 Luna, paid for by Grogoni (docs/adr/ADR-zeroclaw-default-agent-runtime.md). A
- * deployment without a ZeroClaw gateway runs Shopkeeper on Grogoni's built-in engine instead.
+ * Before a shop swaps anything it runs the Shopkeeper agent on Grogoni's built-in engine with
+ * SmolLM2 360M served by local Ollama (docs/local-first-cloud-audit.md). The hosted ZeroClaw +
+ * GPT-6 Luna default was retired with the cloud providers.
  */
 export const repositoryDefaultRuntimePolicy: PlatformDefaultRuntimePolicy = {
   agentId: "builtin:shopkeeper:v1",
   agentName: "Shopkeeper",
-  agentRuntimeAdapterId: "zeroclaw",
-  modelId: "gpt-6-luna",
-  executionTarget: "backend"
+  agentRuntimeAdapterId: "grogoni",
+  modelId: "smollm2-360m",
+  executionTarget: "local"
 };
 
 export type InferenceRuntime =
@@ -969,8 +969,8 @@ export interface MarketplaceIntroStateSummary {
 
 /** Stable provider-registry key. Providers are runtime extensions, not a closed platform enum. */
 export type ModelProviderId = string;
-/** The Grogoni-funded default model: platform-included, every other model is merchant-funded. */
-export const platformSharedModelId = "gpt-6-luna" as const;
+/** The platform-included default model (local SmolLM2 360M); every other model is merchant-funded. */
+export const platformSharedModelId = "smollm2-360m" as const;
 export type ModelCostResponsibility = "platform-included" | "merchant";
 
 export interface AiModelSummary {
@@ -1058,7 +1058,7 @@ export interface InferenceModelPricing {
 }
 
 export interface AiModelInferenceRouting {
-  /** Configured provider instance id (e.g. "openai", "anthropic", "zai-general", "grogoni-llama"). */
+  /** Configured provider instance id (e.g. "local"). Rows naming retired hosted ids never route. */
   providerId: string;
   /** The id sent to the provider API; distinct from the catalog id so hosting can move. */
   providerModelId: string;
@@ -1077,40 +1077,16 @@ export type InferenceProviderHealthStatus =
   | "RATE_LIMITED"
   | "CREDENTIAL_INVALID";
 
-/** Public projection of a configured inference provider. Never carries credential material. */
+/**
+ * Public projection of a configured inference provider. Only the device-local provider remains;
+ * hosted providers and BYOK keys were removed with the local-first runtime.
+ */
 export interface InferenceProviderSummary {
   id: string;
   displayName: string;
-  type: "openai" | "anthropic" | "zai" | "openai-compatible" | "local";
+  type: "local";
   executionTarget: InferenceExecutionTarget;
   enabled: boolean;
-  /** Grogoni-funded credential is configured server-side (the key itself is never exposed). */
-  managedCredentialConfigured: boolean;
-  byokAllowed: boolean;
-  allowCredentialEndpoint: boolean;
-  billingProduct: string | null;
-}
-
-export type InferenceProviderConnectionScope = "tenant" | "user";
-export type InferenceProviderConnectionStatus = "ACTIVE" | "INVALID" | "REVOKED";
-
-/**
- * Public projection of a BYOK provider credential. The encrypted secret never leaves the server;
- * `secretHint` is at most the last four characters, and only for keys long enough to hint safely.
- */
-export interface InferenceProviderConnectionSummary {
-  id: string;
-  providerId: string;
-  scope: InferenceProviderConnectionScope;
-  businessId: string | null;
-  connected: boolean;
-  status: InferenceProviderConnectionStatus;
-  secretHint: string | null;
-  customEndpoint: string | null;
-  lastVerifiedAt: string | null;
-  lastVerificationStatus: "passed" | "failed" | null;
-  createdAt: string;
-  updatedAt: string;
 }
 
 /** Which on-device runtime a claiming device offers (see DeviceInferenceJob). */
@@ -1165,17 +1141,6 @@ export interface InferencePolicySummary {
   approvedProviderIds: string[];
   fallbackModelIds: string[];
   updatedAt: string | null;
-}
-
-export interface InferenceProviderConnectionTestResult {
-  connection: InferenceProviderConnectionSummary;
-  health: {
-    status: InferenceProviderHealthStatus;
-    checkedAt: string;
-    latencyMs: number | null;
-    errorCode: string | null;
-    message: string | null;
-  };
 }
 
 export interface ActiveAiModelSummary {
@@ -1277,20 +1242,6 @@ export interface RuntimeModelDefinition {
 }
 
 export const runtimeModels = {
-  "qwen3-4b": {
-    id: "qwen3-4b",
-    displayName: "Qwen3-4B",
-    provider: "huggingface",
-    // The Hugging Face Hub repository id, distinct from Grogoni's internal registry id above -
-    // this is what gets sent as `model` in the chat/completions request, never the internal id.
-    providerModelId: "Qwen/Qwen3-4B",
-    // Qwen3's published native context length (see the model card at
-    // https://huggingface.co/Qwen/Qwen3-4B); YaRN extension to 131,072 is not enabled here since
-    // it is not something every Inference Providers backend honors uniformly.
-    contextWindow: 32_768,
-    enabled: true,
-    requiresArtifact: false
-  },
   "qwen2.5-0.5b-android": {
     id: "qwen2.5-0.5b-android",
     displayName: "Qwen2.5 0.5B",
@@ -3958,8 +3909,8 @@ export interface RuntimeModelConversationMessage {
 
 /**
  * Provider-neutral inference failure categories. Every inference-capable surface in this
- * repository - server model adapters (services/api/src/inference/model-runtime.ts) routing to
- * either the llama.cpp or Hugging Face backend behind services/ai-runtime - throws or returns its
+ * repository - server model adapters (services/api/src/inference/model-runtime.ts), which talk to
+ * local Ollama - throws or returns its
  * own specific error code (e.g. "MODEL_PROVIDER_TIMEOUT", "CLOUD_TIMEOUT", "INFERENCE_TIMEOUT").
  * (There is no OpenAI or other cloud-LLM-API provider in this repository; one existed historically
  * and was removed by migration 068_remove_cloud_fallback.sql.) Those specific
@@ -4340,7 +4291,7 @@ export const defaultAgentDefinition: AgentDefinition = {
   displayName: "Shopkeeper",
   role: "General shopkeeper and storefront attendant",
   description:
-    "Grogoni's default shop assistant, running on the ZeroClaw agent runtime. Also the safe fallback while the open-source agent catalogue is unavailable.",
+    "Grogoni's default shop assistant, running on Grogoni's built-in agent engine. Also the safe fallback while the open-source agent catalogue is unavailable.",
   operatingPattern: "Focused operator",
   workloadClass: "focused",
   minimumDeviceTier: "low",
@@ -4363,12 +4314,12 @@ export const defaultAgentDefinition: AgentDefinition = {
     "Workspace delivery"
   ],
   skillIds: [],
-  runtimeAdapterId: "zeroclaw"
+  runtimeAdapterId: "grogoni"
 };
 
 /**
- * Same built-in shopkeeper behavior as defaultAgentDefinition, running on Grogoni's built-in engine
- * instead of ZeroClaw. Choosing it is how a shop swaps off ZeroClaw.
+ * Same built-in shopkeeper behavior as defaultAgentDefinition, also on Grogoni's built-in engine.
+ * Kept as its own id because shops that swapped off the retired ZeroClaw engine reference it.
  */
 export const grogoniEngineAgentDefinitionId: AgentDefinitionId = "builtin:shopkeeper-grogoni";
 export const grogoniEngineAgentDefinition: AgentDefinition = {

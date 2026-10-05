@@ -438,8 +438,8 @@ export function AgentModelPanel({
           <p className="eyebrow">Grogoni AI · {grogoniAiReady ? "Ready" : "Unavailable"}</p>
           <h3>Advanced model preferences</h3>
           <p>
-            Execution is automatic. Grogoni runs the model through the local Ollama runtime on this
-            computer; there is no cloud AI provider to configure.
+            Execution is automatic. Grogoni runs the model through Ollama on the machine running
+            Grogoni; there is no cloud AI provider to configure.
           </p>
         </div>
         {modelActivationState !== "idle" && profileMessage.length > 0 ? (

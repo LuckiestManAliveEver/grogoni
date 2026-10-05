@@ -182,31 +182,8 @@ const inferencePlatform = createInferencePlatform({
 // Background retries for boot work that may finish after startup; stopped on shutdown, and never
 // started once shutdown has begun.
 let backgroundRetriesStopped = false;
-let stopCredentialKeyRotationRetry: (() => void) | undefined;
 let stopInferenceRefreshRetry: (() => void) | undefined;
 const backgroundRetry = { initialDelayMs: 5_000, maxDelayMs: 60_000 };
-// Re-encrypt BYOK credentials still on an older INFERENCE_CREDENTIAL_KEYS version. Idempotent and
-// off the boot path: a slow or failing rotation never delays or blocks startup, and a failed one
-// keeps retrying in the background so credentials do not stay on the old key until a restart.
-const rotateCredentialKeys = () =>
-  inferencePlatform.rotateCredentialKeys().then((result) => {
-    if (result.rotated > 0 || result.failed > 0) {
-      console.log({ event: "inference.credential_keys_rotated", ...result });
-    }
-  });
-void rotateCredentialKeys().catch((error: unknown) => {
-  console.error({
-    event: "inference.credential_key_rotation_failed",
-    reason: error instanceof Error ? error.name : "unknown",
-    code: transientReason(error) ?? (error as { code?: unknown } | null)?.code ?? null
-  });
-  if (backgroundRetriesStopped) return;
-  stopCredentialKeyRotationRetry = retryInBackground(
-    "inference_key_rotation",
-    () => rotateCredentialKeys(),
-    backgroundRetry
-  );
-});
 // Loads the DB-configured providers. Boot may continue without them, but never silently for good:
 // once the startup retries are exhausted the refresh keeps retrying in the background.
 await retryDatabaseStartup(
@@ -228,7 +205,6 @@ await retryDatabaseStartup(
 });
 const cp2StoreOptions = {
   channelGateway,
-  zeroClawGateway: null,
   emailMailboxProviderClient,
   metrics,
   modelRuntimeAdapterResolver,
@@ -245,8 +221,8 @@ const cp2StoreOptions = {
 };
 
 // Runtime resources remain provider-neutral and independently swappable. Deployments that promise
-// zero-setup AI set INFERENCE_REQUIRED=true, making /health/ready fail unless the configured
-// Vercel execution host can reach the selected model artifact.
+// zero-setup AI set INFERENCE_REQUIRED=true, making /health/ready fail unless local Ollama
+// (OLLAMA_BASE_URL) answers with the configured model.
 // Corridor fulfillment is Postgres-authoritative (docs/architecture/corridor-fulfillment.md §5):
 // its own instrumented pool, per-request transactions, and no participation in the in-memory
 // snapshot. Memory mode gets no service, so its routes answer 503 fulfillment_requires_postgres.
@@ -385,7 +361,6 @@ const grogoniIdCooldownIntervalMs = readOptionalPositiveInteger(
 const grogoniIdCooldownMs = readOptionalPositiveInteger(process.env.GROGONI_ID_COOLDOWN_MS);
 app.addHook("onClose", async () => {
   backgroundRetriesStopped = true;
-  stopCredentialKeyRotationRetry?.();
   stopInferenceRefreshRetry?.();
   await grogoniIdCooldownRunner?.stop();
   await connectedMailboxSyncRunner?.stop();

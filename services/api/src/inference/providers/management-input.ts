@@ -1,14 +1,7 @@
 import type { InferencePolicySummary } from "@grogoni/shared-types";
 
-import { ProviderConnectionError } from "./connections.js";
-import { isInferenceExecutionTarget, type ModelDefinition } from "./contract.js";
-import { validateProviderEndpoint } from "./endpoint-policy.js";
-import { InferenceError } from "./errors.js";
-import {
-  isInferenceProviderType,
-  type CredentialVerificationMethod,
-  type InferenceProviderConfig
-} from "./provider-config.js";
+import type { ModelDefinition } from "./contract.js";
+import { isInferenceProviderType, type InferenceProviderConfig } from "./provider-config.js";
 import type { InferencePolicyRecord } from "./repositories.js";
 
 /**
@@ -16,8 +9,19 @@ import type { InferencePolicyRecord } from "./repositories.js";
  * untrusted request data; nothing is stored until it passes.
  */
 
-function invalid(message: string): ProviderConnectionError {
-  return new ProviderConnectionError(400, "inference_management_input_invalid", message);
+/** A rejected policy or provider-management body. The store maps it to an HTTP error. */
+export class InferenceManagementInputError extends Error {
+  readonly statusCode = 400;
+  readonly code = "inference_management_input_invalid";
+
+  constructor(message: string) {
+    super(message);
+    this.name = "InferenceManagementInputError";
+  }
+}
+
+function invalid(message: string): InferenceManagementInputError {
+  return new InferenceManagementInputError(message);
 }
 
 function record(value: unknown, name: string): Record<string, unknown> {
@@ -152,62 +156,28 @@ export function policySummary(
   };
 }
 
-const verificationMethods: readonly CredentialVerificationMethod[] = [
-  "models-endpoint",
-  "minimal-completion",
-  "none"
-];
-
 /**
- * Operator provider configuration. The same endpoint policy used at request time is applied here,
- * so an invalid or internal URL is rejected when it is saved rather than when a merchant first
- * chats. `allowPrivateNetwork` / `allowHttp` are accepted only because this route is
- * platform-operator-only; no merchant route reaches it.
+ * Operator provider configuration. The only provider type is "local" (generation on members' own
+ * devices), so a row can rename, disable, or retarget it between browser-local and installed-app.
+ * This route is platform-operator-only; no merchant route reaches it.
  */
 export function parseProviderInput(body: unknown, id: string): InferenceProviderConfig {
   if (!/^[a-z0-9][a-z0-9:._-]{0,99}$/u.test(id)) throw invalid("Provider id is invalid.");
   const input = record(body, "body");
   const type = input.type;
-  if (!isInferenceProviderType(type)) throw invalid("type is not a supported provider type.");
-  const executionTarget =
-    input.executionTarget ?? (type === "local" ? "browser-local" : "remote-inference");
-  if (!isInferenceExecutionTarget(executionTarget)) throw invalid("executionTarget is invalid.");
+  if (!isInferenceProviderType(type)) {
+    throw invalid('type must be "local"; hosted inference providers were removed.');
+  }
+  const executionTarget = input.executionTarget ?? "browser-local";
+  if (executionTarget !== "browser-local" && executionTarget !== "installed-app") {
+    throw invalid('executionTarget must be "browser-local" or "installed-app".');
+  }
   const displayName = input.displayName;
   if (typeof displayName !== "string" || displayName.trim() === "" || displayName.length > 120) {
     throw invalid("displayName is required (at most 120 characters).");
   }
-  const flag = (value: unknown, name: string, fallback: boolean) => {
-    if (value === undefined) return fallback;
-    if (typeof value !== "boolean") throw invalid(`${name} must be true or false.`);
-    return value;
-  };
-  const allowPrivateNetwork = flag(input.allowPrivateNetwork, "allowPrivateNetwork", false);
-  const allowHttp = flag(input.allowHttp, "allowHttp", false);
-  let baseUrl: string | null = null;
-  if (type !== "local") {
-    if (typeof input.baseUrl !== "string") throw invalid("baseUrl is required.");
-    try {
-      baseUrl = validateProviderEndpoint(input.baseUrl.trim(), { allowPrivateNetwork, allowHttp })
-        .toString()
-        .replace(/\/$/u, "");
-    } catch (error) {
-      throw invalid(error instanceof InferenceError ? error.message : "baseUrl is not allowed.");
-    }
-  }
-  const credentialRef = input.credentialRef ?? null;
-  if (
-    credentialRef !== null &&
-    (typeof credentialRef !== "string" ||
-      !/^(?:env:[A-Z][A-Z0-9_]{0,99}|secret:\/\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/u.test(
-        credentialRef
-      ))
-  ) {
-    throw invalid('credentialRef must be "env:NAME" or "secret://<credential id>" - never a key.');
-  }
-  const verification = input.verification ?? (type === "local" ? "none" : "models-endpoint");
-  if (!verificationMethods.includes(verification as CredentialVerificationMethod)) {
-    throw invalid("verification is invalid.");
-  }
+  const enabled = input.enabled ?? true;
+  if (typeof enabled !== "boolean") throw invalid("enabled must be true or false.");
   const capabilities: InferenceProviderConfig["capabilities"] = {};
   if (input.capabilities !== undefined) {
     for (const [key, value] of Object.entries(record(input.capabilities, "capabilities"))) {
@@ -220,45 +190,13 @@ export function parseProviderInput(body: unknown, id: string): InferenceProvider
       capabilities[key as keyof typeof capabilities] = value;
     }
   }
-  const options: InferenceProviderConfig["options"] = {};
-  if (input.options !== undefined) {
-    const raw = record(input.options, "options");
-    if (
-      raw.maxTokensParameter === "max_tokens" ||
-      raw.maxTokensParameter === "max_completion_tokens"
-    ) {
-      options.maxTokensParameter = raw.maxTokensParameter;
-    }
-    if (
-      typeof raw.anthropicVersion === "string" &&
-      /^\d{4}-\d{2}-\d{2}$/u.test(raw.anthropicVersion)
-    ) {
-      options.anthropicVersion = raw.anthropicVersion;
-    }
-  }
-  const billingProduct = input.billingProduct ?? null;
-  if (
-    billingProduct !== null &&
-    (typeof billingProduct !== "string" || billingProduct.length > 100)
-  ) {
-    throw invalid("billingProduct is invalid.");
-  }
   return {
     id,
     displayName: displayName.trim(),
     type,
-    baseUrl,
     executionTarget,
-    enabled: flag(input.enabled, "enabled", true),
+    enabled,
     capabilities,
-    credentialRef,
-    byokAllowed: flag(input.byokAllowed, "byokAllowed", type !== "local"),
-    allowCredentialEndpoint: flag(input.allowCredentialEndpoint, "allowCredentialEndpoint", false),
-    allowPrivateNetwork,
-    allowHttp,
-    billingProduct,
-    verification: verification as CredentialVerificationMethod,
-    options,
     source: "database"
   };
 }

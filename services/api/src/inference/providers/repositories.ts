@@ -7,50 +7,13 @@ import type { InferenceProviderConfig } from "./provider-config.js";
  * for tests and CP2_STORE=memory. None of these records ever holds a plaintext secret.
  */
 
-export type ProviderCredentialOwnerScope = "tenant" | "user" | "platform";
-export type ProviderCredentialStatus = "ACTIVE" | "INVALID" | "REVOKED";
-
-export interface ProviderCredentialRecord {
-  id: string;
-  scope: ProviderCredentialOwnerScope;
-  /** Business id for tenant scope; null otherwise. */
-  tenantId: string | null;
-  /** Account id for user scope; null otherwise. */
-  userId: string | null;
-  providerId: string;
-  credentialType: "api_key";
-  /** AES-256-GCM envelope from cp2/secret-box.ts. Never returned by any API. */
-  encryptedSecret: string | null;
-  keyVersion: number;
-  /** Last four characters, only for keys of 16+ characters. */
-  secretSuffix: string | null;
-  /** BYOK custom endpoint, validated with the strict SSRF policy at connect time. */
-  baseUrl: string | null;
-  status: ProviderCredentialStatus;
-  createdBy: string;
-  createdAt: string;
-  updatedAt: string;
-  revokedAt: string | null;
-  lastVerifiedAt: string | null;
-  lastVerificationStatus: "passed" | "failed" | null;
-}
-
+/**
+ * Encrypted keys stored by the retired BYOK connections (inference_provider_credentials). Nothing
+ * reads or writes them any more; account and shop deletion still erase an owner's rows.
+ */
 export interface ProviderCredentialRepository {
-  insert(record: ProviderCredentialRecord): Promise<void>;
-  update(record: ProviderCredentialRecord): Promise<void>;
-  get(id: string): Promise<ProviderCredentialRecord | undefined>;
-  /** Exact-owner lookup of the single active credential for a provider. Never widens scope. */
-  findActive(input: {
-    providerId: string;
-    scope: ProviderCredentialOwnerScope;
-    tenantId?: string;
-    userId?: string;
-  }): Promise<ProviderCredentialRecord | undefined>;
-  listForOwner(input: { tenantId?: string; userId?: string }): Promise<ProviderCredentialRecord[]>;
   /** Hard delete on account/business deletion. Returns the number of rows removed. */
   deleteForOwner(input: { tenantId?: string; userId?: string }): Promise<number>;
-  /** Rows still holding a secret under a key version other than `currentVersion`. */
-  listNeedingRotation(currentVersion: number): Promise<ProviderCredentialRecord[]>;
 }
 
 export type InferenceRunStatus = "succeeded" | "failed" | "rejected";
@@ -143,7 +106,6 @@ export function createMemoryInferenceRepositories(
   const providers = new Map<string, InferenceProviderConfig>(
     (seed.providers ?? []).map((provider) => [provider.id, structuredClone(provider)])
   );
-  const credentials = new Map<string, ProviderCredentialRecord>();
   const runs: InferenceRunRecord[] = [];
   const policies = new Map<string, InferencePolicyRecord>();
   const policyKey = (scope: string, tenantId?: string | null, userId?: string | null) =>
@@ -171,52 +133,8 @@ export function createMemoryInferenceRepositories(
       }
     },
     credentials: {
-      async insert(record) {
-        credentials.set(record.id, { ...record });
-      },
-      async update(record) {
-        credentials.set(record.id, { ...record });
-      },
-      async get(id) {
-        const record = credentials.get(id);
-        return record === undefined ? undefined : { ...record };
-      },
-      async findActive(input) {
-        for (const record of credentials.values()) {
-          if (
-            record.providerId === input.providerId &&
-            record.scope === input.scope &&
-            record.status === "ACTIVE" &&
-            record.encryptedSecret !== null &&
-            (input.scope !== "tenant" || record.tenantId === (input.tenantId ?? null)) &&
-            (input.scope !== "user" || record.userId === (input.userId ?? null))
-          ) {
-            return { ...record };
-          }
-        }
-        return undefined;
-      },
-      async listForOwner(input) {
-        return [...credentials.values()]
-          .filter((record) => ownerMatches(record, input))
-          .map((record) => ({ ...record }));
-      },
-      async listNeedingRotation(currentVersion) {
-        return [...credentials.values()]
-          .filter(
-            (record) => record.encryptedSecret !== null && record.keyVersion !== currentVersion
-          )
-          .map((record) => ({ ...record }));
-      },
-      async deleteForOwner(input) {
-        let removed = 0;
-        for (const [id, record] of credentials) {
-          if (ownerMatches(record, input)) {
-            credentials.delete(id);
-            removed += 1;
-          }
-        }
-        return removed;
+      async deleteForOwner() {
+        return 0;
       }
     },
     runs: {

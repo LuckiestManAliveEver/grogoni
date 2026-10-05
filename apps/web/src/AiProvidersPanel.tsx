@@ -1,138 +1,43 @@
 import { useEffect, useState } from "react";
-import type {
-  InferenceProviderConnectionScope,
-  InferenceProviderConnectionSummary,
-  InferenceProviderConnectionTestResult,
-  InferenceProviderSummary
-} from "@grogoni/shared-types";
+import type { InferenceProviderSummary } from "@grogoni/shared-types";
 
-import { deleteJson, fetchFreshJson, postJson } from "./api-helpers";
+import { fetchFreshJson } from "./api-helpers";
 import { getErrorMessage } from "./chat-message-plumbing";
 import { InferencePolicyCard } from "./InferencePolicyCard";
 import { OnDeviceModelsCard } from "./OnDeviceModelsCard";
-import { isDeviceLocalInferenceAvailable, maskedKey, providerCardState } from "./ai-providers-view";
+import { isDeviceLocalInferenceAvailable, providerCardState } from "./ai-providers-view";
 
 export interface AiProvidersPanelProps {
   businessId: string;
 }
 
 /**
- * Settings → AI providers. Lists the providers the backend has configured (GET /v1/ai/providers)
- * and this person's / this shop's own keys (GET /v1/ai/provider-connections). A key is sent once,
- * in the connect request, and is never shown again: after saving, only the server-provided
- * last-four hint is displayed. Connect / Replace / Test / Disconnect all go through the backend,
- * which verifies keys with the provider's cheapest safe check before storing them encrypted.
+ * Settings → AI providers. Lists the providers the backend has configured (GET /v1/ai/providers).
+ * Inference is local-only (docs/local-first-cloud-audit.md): server-side models run through Ollama
+ * and on-device models on a member's own device, so there are no API keys to connect here.
  */
 export function AiProvidersPanel({ businessId }: AiProvidersPanelProps) {
   const [providers, setProviders] = useState<InferenceProviderSummary[]>([]);
-  const [connections, setConnections] = useState<InferenceProviderConnectionSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
-  const [openProviderId, setOpenProviderId] = useState<string | null>(null);
-  const [keyDraft, setKeyDraft] = useState("");
-  const [scopeDraft, setScopeDraft] = useState<InferenceProviderConnectionScope>("tenant");
-  const [busyProviderId, setBusyProviderId] = useState<string | null>(null);
   const deviceLocalAvailable = isDeviceLocalInferenceAvailable();
 
-  async function load() {
-    try {
-      const [providerResponse, connectionResponse] = await Promise.all([
-        fetchFreshJson<{ providers: InferenceProviderSummary[] }>("/v1/ai/providers"),
-        fetchFreshJson<{ connections: InferenceProviderConnectionSummary[] }>(
-          `/v1/ai/provider-connections?businessId=${encodeURIComponent(businessId)}`
-        )
-      ]);
-      setProviders(providerResponse.providers);
-      setConnections(connectionResponse.connections);
-    } catch (error) {
-      setMessage(getErrorMessage(error));
-    } finally {
-      setLoading(false);
-    }
-  }
-
   useEffect(() => {
-    void load();
-  }, [businessId]);
-
-  function openForm(providerId: string) {
-    setOpenProviderId(providerId);
-    setKeyDraft("");
-    setScopeDraft("tenant");
-    setMessage("");
-  }
-
-  function closeForm() {
-    setOpenProviderId(null);
-    setKeyDraft("");
-  }
-
-  async function connect(provider: InferenceProviderSummary) {
-    const apiKey = keyDraft.trim();
-    if (apiKey.length === 0) return;
-    setBusyProviderId(provider.id);
-    setMessage("");
-    try {
-      await postJson<InferenceProviderConnectionSummary>("/v1/ai/provider-connections", {
-        providerId: provider.id,
-        apiKey,
-        scope: scopeDraft,
-        ...(scopeDraft === "tenant" ? { businessId } : {})
+    let active = true;
+    fetchFreshJson<{ providers: InferenceProviderSummary[] }>("/v1/ai/providers")
+      .then((response) => {
+        if (active) setProviders(response.providers);
+      })
+      .catch((error: unknown) => {
+        if (active) setMessage(getErrorMessage(error));
+      })
+      .finally(() => {
+        if (active) setLoading(false);
       });
-      closeForm();
-      await load();
-      setMessage(`${provider.displayName} connected.`);
-    } catch (error) {
-      setMessage(getErrorMessage(error));
-    } finally {
-      // The draft is cleared on success and on failure: a key never lingers in component state.
-      setKeyDraft("");
-      setBusyProviderId(null);
-    }
-  }
-
-  async function test(
-    provider: InferenceProviderSummary,
-    connection: InferenceProviderConnectionSummary
-  ) {
-    setBusyProviderId(provider.id);
-    setMessage("");
-    try {
-      const result = await postJson<InferenceProviderConnectionTestResult>(
-        `/v1/ai/provider-connections/${encodeURIComponent(connection.id)}/test`,
-        {}
-      );
-      await load();
-      setMessage(
-        result.health.status === "AVAILABLE"
-          ? `${provider.displayName} key works.`
-          : `${provider.displayName}: ${result.health.message ?? "the key could not be verified."}`
-      );
-    } catch (error) {
-      setMessage(getErrorMessage(error));
-    } finally {
-      setBusyProviderId(null);
-    }
-  }
-
-  async function disconnect(
-    provider: InferenceProviderSummary,
-    connection: InferenceProviderConnectionSummary
-  ) {
-    setBusyProviderId(provider.id);
-    setMessage("");
-    try {
-      await deleteJson<{ disconnected: true; id: string }>(
-        `/v1/ai/provider-connections/${encodeURIComponent(connection.id)}`
-      );
-      await load();
-      setMessage(`${provider.displayName} disconnected. Its key was deleted.`);
-    } catch (error) {
-      setMessage(getErrorMessage(error));
-    } finally {
-      setBusyProviderId(null);
-    }
-  }
+    return () => {
+      active = false;
+    };
+  }, [businessId]);
 
   return (
     <div className="record-form ai-providers-panel">
@@ -140,8 +45,8 @@ export function AiProvidersPanel({ businessId }: AiProvidersPanelProps) {
         <p className="eyebrow">AI providers</p>
         <h3>Where your agent's models run</h3>
         <p>
-          Your agent stays the same whichever runtime runs its model. Inference runs locally through
-          Ollama on this computer or on a member's own device; nothing is sent to a cloud AI
+          Your agent stays the same whichever runtime runs its model. Models run through Ollama on
+          the machine that runs Grogoni, or on a member's own device; nothing is sent to a cloud AI
           provider.
         </p>
       </div>
@@ -157,15 +62,7 @@ export function AiProvidersPanel({ businessId }: AiProvidersPanelProps) {
       ) : (
         <div className="connected-social-list" role="list" aria-label="AI providers">
           {providers.map((provider) => {
-            const card = providerCardState({
-              provider,
-              connections,
-              businessId,
-              deviceLocalAvailable
-            });
-            const busy = busyProviderId === provider.id;
-            const formOpen = openProviderId === provider.id;
-            const connection = card.connection;
+            const card = providerCardState({ provider, deviceLocalAvailable });
             return (
               <article
                 className="connected-social-card ai-provider-card"
@@ -176,90 +73,6 @@ export function AiProvidersPanel({ businessId }: AiProvidersPanelProps) {
                   <span>{provider.displayName}</span>
                   <strong>{card.status}</strong>
                   <p>{card.detail}</p>
-                  {connection !== null ? (
-                    <p className="form-hint">
-                      API key{" "}
-                      <span aria-label="hidden key">{maskedKey(connection.secretHint)}</span>
-                    </p>
-                  ) : null}
-                </div>
-                <div className="row-actions">
-                  {formOpen ? (
-                    <>
-                      <label>
-                        API key
-                        <input
-                          type="password"
-                          autoComplete="off"
-                          spellCheck={false}
-                          value={keyDraft}
-                          onChange={(event) => setKeyDraft(event.target.value)}
-                        />
-                      </label>
-                      <label>
-                        Use for
-                        <select
-                          value={scopeDraft}
-                          onChange={(event) =>
-                            setScopeDraft(event.target.value as InferenceProviderConnectionScope)
-                          }
-                        >
-                          <option value="tenant">This shop</option>
-                          <option value="user">Just me</option>
-                        </select>
-                      </label>
-                      <button
-                        type="button"
-                        disabled={busy || keyDraft.trim().length === 0}
-                        aria-busy={busy}
-                        onClick={() => void connect(provider)}
-                      >
-                        {busy ? "Checking key…" : "Save key"}
-                      </button>
-                      <button
-                        className="secondary"
-                        type="button"
-                        disabled={busy}
-                        onClick={closeForm}
-                      >
-                        Cancel
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      {card.canConnect ? (
-                        <button
-                          type="button"
-                          className={connection === null ? undefined : "secondary"}
-                          disabled={busyProviderId !== null}
-                          onClick={() => openForm(provider.id)}
-                        >
-                          {connection === null ? "Connect" : "Replace"}
-                        </button>
-                      ) : null}
-                      {connection !== null ? (
-                        <>
-                          <button
-                            className="secondary"
-                            type="button"
-                            disabled={busy}
-                            aria-busy={busy}
-                            onClick={() => void test(provider, connection)}
-                          >
-                            Test
-                          </button>
-                          <button
-                            className="secondary"
-                            type="button"
-                            disabled={busy}
-                            onClick={() => void disconnect(provider, connection)}
-                          >
-                            Disconnect
-                          </button>
-                        </>
-                      ) : null}
-                    </>
-                  )}
                 </div>
               </article>
             );

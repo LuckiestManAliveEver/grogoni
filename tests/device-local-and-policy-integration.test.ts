@@ -1,19 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentModelActivationResult, AiModelSummary } from "../packages/shared-types/src";
 import { buildApi } from "../services/api/src/app";
 import { createCp2Store } from "../services/api/src/cp2/store";
 import { DeviceInferenceBroker } from "../services/api/src/inference/device-inference-broker";
-import type { InferencePolicyRecord } from "../services/api/src/inference/providers/repositories";
-import {
-  catalogModel,
-  createTestPlatform,
-  jsonResponse,
-  openAiCompletion,
-  scriptedFetch,
-  sseResponse,
-  testSecrets
-} from "./fixtures/inference-provider-fakes";
+import { createTestPlatform } from "./fixtures/inference-provider-fakes";
 
 const deviceModelId = "qwen2.5-0.5b-device";
 const deviceEngineModel = "Qwen2.5-0.5B-Instruct-q4f16_1-MLC";
@@ -111,9 +102,13 @@ function sendMessage(
 }
 
 describe("device-local models through the real chat path", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("runs the shop's on-device model on the member's own device and returns its reply", async () => {
-    const { fetch, requests } = scriptedFetch(() => jsonResponse({}));
-    const { platform, repositories } = createTestPlatform({ catalog: [], fetch });
+    const network = vi.spyOn(globalThis, "fetch");
+    const { platform, repositories } = createTestPlatform({ catalog: [] });
     const app = buildApi({ cp2: { store: createCp2Store({ inferencePlatform: platform }) } });
     try {
       const shop = await owner(app, "+254700009201");
@@ -184,8 +179,8 @@ describe("device-local models through the real chat path", () => {
         conversationId,
         agentMessage: { content: { text: "Sugar sells best on this device." } }
       });
-      // Nothing went to any cloud provider, and the run is recorded as free on-device usage.
-      expect(requests).toHaveLength(0);
+      // Nothing went out over the network, and the run is recorded as free on-device usage.
+      expect(network).not.toHaveBeenCalled();
       expect(repositories.runsSnapshot().at(-1)).toMatchObject({
         providerId: "local",
         executionTarget: "browser-local",
@@ -200,8 +195,7 @@ describe("device-local models through the real chat path", () => {
   });
 
   it("keeps a device model's tool proposals behind Grogoni's confirmation gate", async () => {
-    const { fetch } = scriptedFetch(() => jsonResponse({}));
-    const { platform } = createTestPlatform({ catalog: [], fetch });
+    const { platform } = createTestPlatform({ catalog: [] });
     const store = createCp2Store({ inferencePlatform: platform });
     const app = buildApi({ cp2: { store } });
     try {
@@ -267,12 +261,9 @@ describe("device-local models through the real chat path", () => {
   });
 
   it("fails clearly - without switching to a cloud model - when no device with the model is online", async () => {
-    const { fetch, requests } = scriptedFetch(() =>
-      jsonResponse(openAiCompletion({ content: "cloud" }))
-    );
+    const network = vi.spyOn(globalThis, "fetch");
     const { platform } = createTestPlatform({
       catalog: [],
-      fetch,
       options: { deviceBroker: new DeviceInferenceBroker({ claimTimeoutMs: 30 }) }
     });
     const app = buildApi({ cp2: { store: createCp2Store({ inferencePlatform: platform }) } });
@@ -282,121 +273,7 @@ describe("device-local models through the real chat path", () => {
       const conversationId = await firstConversation(app, shop.cookie);
       const response = await sendMessage(app, shop, conversationId, "Hello?", "turn-device-0002");
       expect(response.statusCode).not.toBe(500);
-      expect(JSON.stringify(response.json())).not.toContain("cloud");
-      expect(requests).toHaveLength(0);
-    } finally {
-      await app.close();
-    }
-  });
-});
-
-describe("live reply streaming", () => {
-  it("streams hosted model text to the member's turn stream while the turn runs", async () => {
-    const { fetch } = scriptedFetch((request) => {
-      if (request.method === "GET") return jsonResponse({ data: [] });
-      if (request.body?.stream === true) {
-        return sseResponse([
-          { data: { choices: [{ index: 0, delta: { content: '{"type":"response","mes' } }] } },
-          { data: { choices: [{ index: 0, delta: { content: 'sage":"Streaming ' } }] } },
-          {
-            data: { choices: [{ index: 0, delta: { content: 'reply."}' }, finish_reason: "stop" }] }
-          },
-          {
-            data: {
-              choices: [],
-              usage: { prompt_tokens: 5, completion_tokens: 4, total_tokens: 9 }
-            }
-          },
-          { data: "[DONE]" }
-        ]);
-      }
-      return jsonResponse(openAiCompletion({ content: "{}" }));
-    });
-    const { platform } = createTestPlatform({ catalog: [], fetch });
-    const store = createCp2Store({ inferencePlatform: platform });
-    const app = buildApi({ cp2: { store } });
-    await app.listen({ host: "127.0.0.1", port: 0 });
-    const address = app.server.address();
-    const base = `http://127.0.0.1:${typeof address === "object" && address !== null ? address.port : 0}`;
-    try {
-      const shop = await owner(app, "+254700009205");
-      const operator = await signUp(app, "+254700009206");
-      store.grantPlatformOperator({ accountId: operator.accountId, grantedBy: "test" });
-      const put = await app.inject({
-        method: "PUT",
-        url: "/v1/platform/model-catalog/gpt-stream",
-        headers: jsonHeaders(operator.cookie),
-        payload: JSON.stringify(
-          catalogModel({
-            id: "gpt-stream",
-            providerId: "openai",
-            providerModelId: "gpt-x",
-            capabilities: { streaming: true }
-          })
-        )
-      });
-      expect(put.statusCode, put.body).toBe(200);
-      await activate(app, shop, "gpt-stream");
-      const conversationId = await firstConversation(app, shop.cookie);
-
-      const turnId = "turn-stream-0001";
-      const streamResponse = await globalThis.fetch(`${base}/v1/ai/turn-stream/${turnId}`, {
-        headers: { cookie: shop.cookie, accept: "text/event-stream" }
-      });
-      expect(streamResponse.headers.get("content-type")).toContain("text/event-stream");
-      const reader = streamResponse.body!.getReader();
-      const decoder = new TextDecoder();
-      let raw = "";
-      const received = (async () => {
-        while (!raw.includes('reply."}') && !raw.includes("reply.")) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          raw += decoder.decode(value, { stream: true });
-        }
-      })();
-      const turn = await globalThis.fetch(`${base}/v1/messages`, {
-        method: "POST",
-        headers: jsonHeaders(shop.cookie, { "x-grogoni-turn-id": turnId }),
-        body: JSON.stringify({
-          conversationId,
-          clientMessageId: "client-stream-0001",
-          content: { type: "text", text: "Tell me something" },
-          clientTimestamp: new Date().toISOString(),
-          agent: { businessId: shop.businessId, message: "Tell me something" }
-        })
-      });
-      expect(turn.status).toBe(200);
-      expect(await turn.json()).toMatchObject({
-        agentMessage: { content: { text: "Streaming reply." } }
-      });
-      await received;
-      await reader.cancel();
-      const texts = raw
-        .split("\n")
-        .filter((line) => line.startsWith("data: "))
-        .map((line) => JSON.parse(line.slice(6)) as { type: string; text?: string })
-        .filter((event) => event.type === "text")
-        .map((event) => event.text)
-        .join("");
-      expect(texts).toBe("Streaming reply.");
-      expect(raw).not.toContain('"type":"response"');
-
-      // Another account cannot read this turn's stream.
-      const outsider = await signUp(app, "+254700009207");
-      const peek = await globalThis.fetch(`${base}/v1/ai/turn-stream/${turnId}`, {
-        headers: { cookie: outsider.cookie }
-      });
-      const peekReader = peek.body!.getReader();
-      const first = await Promise.race([
-        peekReader.read(),
-        new Promise<{ value: undefined }>((resolve) =>
-          setTimeout(() => resolve({ value: undefined }), 150)
-        )
-      ]);
-      expect(first.value === undefined ? "" : new TextDecoder().decode(first.value)).not.toContain(
-        "Streaming"
-      );
-      await peekReader.cancel();
+      expect(network).not.toHaveBeenCalled();
     } finally {
       await app.close();
     }
@@ -405,8 +282,7 @@ describe("live reply streaming", () => {
 
 describe("inference policy and provider management APIs", () => {
   function appWithOperator() {
-    const { fetch } = scriptedFetch(() => jsonResponse({ data: [] }));
-    const { platform, repositories } = createTestPlatform({ catalog: [], fetch });
+    const { platform, repositories } = createTestPlatform({ catalog: [] });
     const store = createCp2Store({ inferencePlatform: platform });
     return { app: buildApi({ cp2: { store } }), store, platform, repositories };
   }
@@ -432,7 +308,7 @@ describe("inference policy and provider management APIs", () => {
           dailyBudget: 2.5,
           maxRequestsPerMinute: 30,
           fallbackPolicy: "SAME_PROVIDER",
-          fallbackModelIds: ["qwen3-4b-grogoni-cloud"]
+          fallbackModelIds: ["qwen2.5-0.5b-device"]
         })
       });
       expect(saved.statusCode, saved.body).toBe(200);
@@ -445,12 +321,12 @@ describe("inference policy and provider management APIs", () => {
       });
 
       for (const body of [
-        { providerMonthlyCeilings: { openai: 10 } },
+        { providerMonthlyCeilings: { local: 10 } },
         { fallbackPolicy: "ALWAYS" },
         { fallbackPolicy: "APPROVED_PROVIDERS", approvedProviderIds: ["not-a-provider"] },
         { fallbackPolicy: "SAME_PROVIDER", fallbackModelIds: ["smollm2-360m"] },
         { dailyBudget: -1 },
-        { fallbackModelIds: ["qwen3-4b-grogoni-cloud"] }
+        { fallbackModelIds: ["qwen2.5-0.5b-device"] }
       ]) {
         const rejected = await app.inject({
           method: "PUT",
@@ -491,6 +367,46 @@ describe("inference policy and provider management APIs", () => {
     }
   });
 
+  it("drops retired providers and models from a saved policy so the owner can still save it", async () => {
+    const { app, repositories } = appWithOperator();
+    try {
+      const shop = await owner(app, "+254700009305");
+      // A policy saved before the local-first runtime, naming hosted providers and models.
+      await repositories.policies.upsert({
+        scope: "tenant",
+        tenantId: shop.businessId,
+        userId: null,
+        currency: "USD",
+        dailyBudget: 3,
+        providerMonthlyCeilings: {},
+        maxRequestsPerMinute: null,
+        maxTokensPerRequest: null,
+        fallbackPolicy: "APPROVED_PROVIDERS",
+        approvedProviderIds: ["anthropic", "local"],
+        fallbackModelIds: ["claude-test", "qwen2.5-0.5b-device"],
+        updatedAt: new Date().toISOString()
+      });
+      const url = `/v1/ai/policies/shop/${shop.businessId}`;
+      const loaded = await app.inject({ method: "GET", url, headers: { cookie: shop.cookie } });
+      expect(loaded.json()).toMatchObject({
+        dailyBudget: 3,
+        approvedProviderIds: ["local"],
+        fallbackModelIds: ["qwen2.5-0.5b-device"]
+      });
+      // The editor re-sends what it loaded; that must save.
+      const resaved = await app.inject({
+        method: "PUT",
+        url,
+        headers: jsonHeaders(shop.cookie),
+        payload: JSON.stringify({ ...loaded.json(), dailyBudget: 4 })
+      });
+      expect(resaved.statusCode, resaved.body).toBe(200);
+      expect(resaved.json()).toMatchObject({ dailyBudget: 4, approvedProviderIds: ["local"] });
+    } finally {
+      await app.close();
+    }
+  });
+
   it("lets only platform operators add, validate and remove provider configuration", async () => {
     const { app, store } = appWithOperator();
     try {
@@ -498,10 +414,9 @@ describe("inference policy and provider management APIs", () => {
       const operator = await signUp(app, "+254700009304");
       store.grantPlatformOperator({ accountId: operator.accountId, grantedBy: "test" });
       const gateway = {
-        displayName: "Team gateway",
-        type: "openai-compatible",
-        baseUrl: "https://gateway.example.com/v1",
-        credentialRef: "env:TEAM_GATEWAY_KEY"
+        displayName: "Team devices",
+        type: "local",
+        executionTarget: "installed-app"
       };
       const denied = await app.inject({
         method: "PUT",
@@ -512,9 +427,9 @@ describe("inference policy and provider management APIs", () => {
       expect(denied.statusCode).toBe(403);
 
       for (const bad of [
-        { ...gateway, baseUrl: "https://169.254.169.254/v1" },
-        { ...gateway, baseUrl: "http://gateway.example.com/v1" },
-        { ...gateway, credentialRef: testSecrets.openai },
+        { ...gateway, type: "openai-compatible" },
+        { ...gateway, executionTarget: "remote-inference" },
+        { ...gateway, displayName: "" },
         { ...gateway, type: "chatgpt-web" }
       ]) {
         const rejected = await app.inject({
@@ -543,7 +458,6 @@ describe("inference policy and provider management APIs", () => {
           .json<{ providers: Array<{ id: string }> }>()
           .providers.map((provider) => provider.id)
       ).toContain("team-gateway");
-      expect(visible.body).not.toContain("TEAM_GATEWAY_KEY");
 
       const removed = await app.inject({
         method: "DELETE",
@@ -560,79 +474,5 @@ describe("inference policy and provider management APIs", () => {
     } finally {
       await app.close();
     }
-  });
-});
-
-describe("budget scopes", () => {
-  it("applies Grogoni's caps only to Grogoni-funded spend and a shop's own cap to all its spend", async () => {
-    const { fetch } = scriptedFetch(() =>
-      jsonResponse(
-        openAiCompletion({ content: "ok", usage: { prompt_tokens: 1_000, completion_tokens: 500 } })
-      )
-    );
-    const priced = [
-      catalogModel({
-        id: "gpt-priced",
-        providerId: "openai",
-        providerModelId: "gpt",
-        pricing: { inputPerMillionTokens: 2, outputPerMillionTokens: 8 }
-      })
-    ];
-    const context = { agentId: "agent", tenantId: "shop-1", userId: "user-1" };
-    const request = {
-      requestId: "r",
-      modelId: "gpt-priced",
-      messages: [{ role: "user" as const, content: "hi" }]
-    };
-
-    // Platform cap 0.006 USD/day; each call costs 0.006.
-    const platformCapped = createTestPlatform({
-      catalog: priced,
-      fetch,
-      env: { INFERENCE_TENANT_DAILY_BUDGET: "0.006" }
-    });
-    await platformCapped.platform.router.generate(request, context);
-    await expect(platformCapped.platform.router.generate(request, context)).rejects.toMatchObject({
-      code: "BUDGET_EXCEEDED"
-    });
-    // The shop connects its own key: Grogoni's cap no longer applies to its own spend.
-    await platformCapped.platform.connections.connect({
-      scope: "tenant",
-      tenantId: "shop-1",
-      userId: "user-1",
-      actorId: "user-1",
-      providerId: "openai",
-      apiKey: "sk-shop-owned-key-00000000000000SHOP"
-    });
-    await expect(platformCapped.platform.router.generate(request, context)).resolves.toBeDefined();
-
-    // The shop's own cap limits everything it spends, including its own key.
-    const ownCap: InferencePolicyRecord = {
-      scope: "tenant",
-      tenantId: "shop-1",
-      userId: null,
-      currency: "USD",
-      dailyBudget: 0.006,
-      providerMonthlyCeilings: {},
-      maxRequestsPerMinute: null,
-      maxTokensPerRequest: null,
-      fallbackPolicy: "NONE",
-      approvedProviderIds: [],
-      fallbackModelIds: [],
-      updatedAt: new Date().toISOString()
-    };
-    const shopCapped = createTestPlatform({ catalog: priced, fetch, policies: [ownCap] });
-    await shopCapped.platform.connections.connect({
-      scope: "tenant",
-      tenantId: "shop-1",
-      userId: "user-1",
-      actorId: "user-1",
-      providerId: "openai",
-      apiKey: "sk-shop-owned-key-00000000000000SHOP"
-    });
-    await shopCapped.platform.router.generate(request, context);
-    await expect(shopCapped.platform.router.generate(request, context)).rejects.toMatchObject({
-      code: "BUDGET_EXCEEDED"
-    });
   });
 });

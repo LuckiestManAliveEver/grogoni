@@ -1,9 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { buildApi } from "../services/api/src/app";
-import {
-  createGitHubModelCatalog,
-  type GitHubModelCatalog
-} from "../services/api/src/cp2/github-model-catalog";
+import { createGitHubModelCatalog } from "../services/api/src/cp2/github-model-catalog";
 
 describe("GitHub on-device model catalog", () => {
   it("discovers only Apache-2.0 Android-sized GGUF release assets and caches searches", async () => {
@@ -137,31 +134,12 @@ describe("GitHub on-device model catalog", () => {
     });
   });
 
-  it("exposes GitHub discovery through the API route", async () => {
-    const githubModelCatalog: GitHubModelCatalog = {
-      async searchModels(search) {
-        return {
-          models: [],
-          status: "available",
-          connection: "authenticated",
-          message: `GitHub connected for ${search ?? "default"}.`
-        };
-      }
-    };
-    const app = buildApi({ cp2: { githubModelCatalog } });
-    const response = await app.inject({
-      method: "GET",
-      url: "/v1/ai-models/github?search=smol"
-    });
-
-    expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({
-      models: [],
-      status: "available",
-      connection: "authenticated",
-      message: "GitHub connected for smol."
-    });
-
+  it("no longer exposes GitHub discovery through the API", async () => {
+    // Hosted model discovery routes were removed with the local-first runtime
+    // (docs/local-first-cloud-audit.md); the catalog client above remains unit-tested only.
+    const app = buildApi();
+    const response = await app.inject({ method: "GET", url: "/v1/ai-models/github?search=smol" });
+    expect(response.statusCode).toBe(404);
     await app.close();
   });
 

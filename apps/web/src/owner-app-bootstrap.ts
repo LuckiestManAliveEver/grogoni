@@ -460,6 +460,8 @@ export function sanitizeContextScript(script: string): string {
 
 export function isAgentModel(value: unknown): value is AgentModel {
   return (
+    // The platform default (local SmolLM2 360M served by Ollama).
+    value === "smollm2-360m" ||
     value === "qwen2.5-0.5b-android" ||
     value === "qwen2.5-1.5b-android" ||
     value === "smollm2-360m-android" ||
@@ -467,6 +469,7 @@ export function isAgentModel(value: unknown): value is AgentModel {
     value === "tinyllama-1.1b-chat-q4-k-m-android" ||
     value === "grogoniclaw-local" ||
     value === "llama-cpp-configured" ||
+    // Retired hosted preferences; still accepted so profiles saved before the local-first runtime load.
     value === "openai-fast" ||
     value === "openai-reasoning" ||
     (typeof value === "string" &&

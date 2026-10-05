@@ -444,8 +444,8 @@ export class AgentRuntimeDomain {
   }
 
   /**
-   * The live hosted default target first (Vercel today), then the router's targets: "backend" for
-   * provider-routed models, "browser-local"/"installed-app" for device-local models. Never guesses: a target is
+   * The live platform default target first ("local" Ollama today), then the router's targets
+   * ("backend" for older rows, which nothing serves now; "browser-local"/"installed-app"). Never guesses: a target is
    * returned only when an adapter is actually registered for it.
    */
   private hostedExecutionTargetFor(model: AiModelSummary): ModelExecutionTarget | undefined {
@@ -3149,7 +3149,7 @@ export class AgentRuntimeDomain {
   /**
    * Lazy, idempotent first-chat provisioning. Only server-reachable adapters participate here;
    * normal chat never depends on a browser model, web-cached weights, or a per-device install.
-   * A configured hosted adapter (Vercel) must affirm availability before its host is persisted as
+   * A configured server adapter (local Ollama) must affirm availability before its host is persisted as
    * usable.
    */
   private async ensureDefaultRuntimeForTurn(input: {
@@ -3231,7 +3231,7 @@ export class AgentRuntimeDomain {
       // Bounded the same way as every other live runtime probe in this file (see
       // withRuntimeDeadline usages above and in getEffectiveRuntime) - a hung or unreachable
       // execution host must not block this repair step for its full inference timeout budget
-      // (VERCEL_INFERENCE_TIMEOUT_MS defaults to 5 minutes, sized for real generation, not a
+      // (LOCAL_INFERENCE_TIMEOUT_MS defaults to 5 minutes, sized for real generation, not a
       // lightweight availability check). Without this bound a degraded inference host turns
       // every chat send that reaches this path into the client-visible generic request timeout
       // instead of a fast, typed runtime-unavailable failure.
@@ -3550,7 +3550,7 @@ export class AgentRuntimeDomain {
       ...(attemptedRuntimeKeys === undefined ? {} : { attemptedRuntimeKeys }),
       // Remote-shop-device execution is negotiated by the authenticated owner-node client
       // protocol. This in-process provider call can execute only server-reachable hosted targets
-      // (Vercel today) - any ModelExecutionTarget except remote-shop-device.
+      // (local Ollama today) - any ModelExecutionTarget except remote-shop-device.
       eligibleExecutionTargets: new Set<ModelExecutionTarget>(
         modelExecutionTargets.filter((target) => target !== "remote-shop-device")
       )

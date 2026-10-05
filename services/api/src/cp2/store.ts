@@ -120,10 +120,7 @@ import {
 } from "./domains/messaging/shared.js";
 import { AgentRuntimeDomain } from "./domains/agent-runtime/store.js";
 import { createDefaultAgentRuntimeAdapterRegistry } from "../agent-harness/default-agent-runtime-adapters.js";
-import {
-  connectedAgentRuntimeAdapterId,
-  type ZeroClawGatewayConfig
-} from "../agent-harness/zeroclaw-agent-runtime-adapter.js";
+import { connectedAgentRuntimeAdapterId } from "../agent-harness/retired-agent-runtimes.js";
 import type { AgentRuntimeAdapter } from "../agent-harness/agent-runtime-adapter.js";
 import {
   aiModelRegistry,
@@ -185,9 +182,6 @@ import type {
   InferenceExecutionTarget,
   InferenceModelCapabilities,
   InferenceModelPricing,
-  InferenceProviderConnectionScope,
-  InferenceProviderConnectionSummary,
-  InferenceProviderConnectionTestResult,
   InferenceProviderSummary,
   AgentEvaluationEvent,
   AgentOwnerCorrection,
@@ -358,10 +352,10 @@ import {
   createInferencePlatform,
   type InferencePlatform
 } from "../inference/providers/platform.js";
-import { ProviderConnectionError } from "../inference/providers/connections.js";
 import { DeviceInferenceBrokerError } from "../inference/device-inference-broker.js";
 import { turnStreamHub } from "../inference/turn-stream.js";
 import {
+  InferenceManagementInputError,
   parsePolicyInput,
   parseProviderInput,
   policySummary
@@ -838,8 +832,6 @@ export interface Cp2StoreOptions {
    * stores built without either option keep their exact prior (adapter-less) behavior.
    */
   inferencePlatform?: InferencePlatform;
-  /** ZeroClaw gateway (agent-harness/zeroclaw-agent-runtime-adapter.ts); null/omitted = not connected. */
-  zeroClawGateway?: ZeroClawGatewayConfig | null;
   platformDefaultRuntime?: PlatformDefaultRuntimePolicy;
   pushNotificationSender?: PushNotificationSender;
   messageEmailNotificationSender?: MessageEmailNotificationSender;
@@ -980,27 +972,17 @@ export class Cp2Store {
   private readonly inferencePlatform: InferencePlatform;
   /** The deployment's default runtime, with its engine resolved to one this deployment runs. */
   private readonly platformDefaultRuntime: PlatformDefaultRuntimePolicy;
-  private readonly zeroClawConnected: boolean;
   private readonly modelRuntimeAdapterResolver: Cp2StoreOptions["modelRuntimeAdapterResolver"];
 
   constructor(private readonly options: Cp2StoreOptions = {}) {
     this.inferencePlatform = options.inferencePlatform ?? createInferencePlatform();
     this.inferencePlatform.setModelCatalog(() => this.listModelCatalog());
-    this.zeroClawConnected = (options.zeroClawGateway ?? null) !== null;
     const configuredDefault = options.platformDefaultRuntime ?? repositoryDefaultRuntimePolicy;
     this.platformDefaultRuntime = {
       ...configuredDefault,
-      agentRuntimeAdapterId: connectedAgentRuntimeAdapterId(
-        configuredDefault.agentRuntimeAdapterId,
-        this.zeroClawConnected
-      )
+      agentRuntimeAdapterId: connectedAgentRuntimeAdapterId(configuredDefault.agentRuntimeAdapterId)
     };
-    this.defaultAgentRuntimeAdapters = createDefaultAgentRuntimeAdapterRegistry({
-      zeroclaw: {
-        gateway: options.zeroClawGateway ?? null,
-        inference: () => this.inferencePlatform
-      }
-    });
+    this.defaultAgentRuntimeAdapters = createDefaultAgentRuntimeAdapterRegistry();
     const explicitAdapterResolver = options.modelRuntimeAdapterResolver;
     const routedPlatform = options.inferencePlatform;
     this.modelRuntimeAdapterResolver =
@@ -1468,10 +1450,7 @@ export class Cp2Store {
         );
         return {
           ...entry,
-          runtimeAdapterId: connectedAgentRuntimeAdapterId(
-            entry.runtimeAdapterId,
-            this.zeroClawConnected
-          )
+          runtimeAdapterId: connectedAgentRuntimeAdapterId(entry.runtimeAdapterId)
         };
       },
       requireAuthorizedSession: (sessionId, businessId, permission, now) =>
@@ -8732,9 +8711,9 @@ export class Cp2Store {
     return this.listModelCatalog();
   }
 
-  // --- Multi-provider inference: providers, provider-routed models, BYOK connections ----------
-  // (docs/architecture/multi-provider-inference-implementation.md §13). Every method authorizes
-  // first and returns only redacted summaries; secrets never cross this boundary.
+  // --- Inference providers and provider-routed models ---------------------------------------
+  // Only the device-local provider remains; hosted providers and BYOK keys were removed with the
+  // local-first runtime (docs/local-first-cloud-audit.md).
 
   listInferenceProviders(sessionId: string | null, now = new Date()): InferenceProviderSummary[] {
     this.requirePinVerifiedSession(sessionId, now);
@@ -8778,110 +8757,6 @@ export class Cp2Store {
         }
       ];
     });
-  }
-
-  async listInferenceProviderConnections(input: {
-    sessionId: string | null;
-    businessId?: string;
-    now?: Date;
-  }): Promise<InferenceProviderConnectionSummary[]> {
-    const now = input.now ?? new Date();
-    const session = this.requirePinVerifiedSession(input.sessionId, now);
-    let tenantId: string | undefined;
-    if (input.businessId !== undefined) {
-      this.requireBrowserAuthorizedSession(
-        input.sessionId,
-        input.businessId,
-        "membership:manage",
-        now
-      );
-      tenantId = input.businessId;
-    }
-    return this.inferencePlatform.connections.list({
-      userId: session.account.id,
-      ...(tenantId === undefined ? {} : { tenantId })
-    });
-  }
-
-  async connectInferenceProvider(input: {
-    sessionId: string | null;
-    providerId: string;
-    apiKey: string;
-    scope: InferenceProviderConnectionScope;
-    businessId?: string;
-    baseUrl?: string | null;
-    now?: Date;
-  }): Promise<InferenceProviderConnectionSummary> {
-    const now = input.now ?? new Date();
-    const session =
-      input.scope === "tenant"
-        ? this.requireBrowserAuthorizedSession(
-            input.sessionId,
-            input.businessId ?? "",
-            "membership:manage",
-            now
-          )
-        : this.requirePinVerifiedSession(input.sessionId, now);
-    const connection = await this.withProviderConnectionErrors(() =>
-      this.inferencePlatform.connections.connect({
-        scope: input.scope,
-        tenantId: input.scope === "tenant" ? (input.businessId ?? null) : null,
-        userId: session.account.id,
-        actorId: session.user.id,
-        providerId: input.providerId,
-        apiKey: input.apiKey,
-        ...(input.baseUrl === undefined ? {} : { baseUrl: input.baseUrl })
-      })
-    );
-    this.recordAuditEvent({
-      type: "inference_provider.connected",
-      aggregateType: "inference_provider_connection",
-      aggregateId: connection.id,
-      actorId: session.user.id,
-      occurredAt: now.toISOString(),
-      payload: {
-        providerId: connection.providerId,
-        scope: connection.scope,
-        businessId: connection.businessId
-      }
-    });
-    return connection;
-  }
-
-  async testInferenceProviderConnection(input: {
-    sessionId: string | null;
-    id: string;
-    now?: Date;
-  }): Promise<InferenceProviderConnectionTestResult> {
-    const { record } = await this.requireInferenceConnectionOwner(
-      input.sessionId,
-      input.id,
-      input.now
-    );
-    return this.withProviderConnectionErrors(() => this.inferencePlatform.connections.test(record));
-  }
-
-  async disconnectInferenceProviderConnection(input: {
-    sessionId: string | null;
-    id: string;
-    now?: Date;
-  }): Promise<{ disconnected: true; id: string }> {
-    const now = input.now ?? new Date();
-    const { record, session } = await this.requireInferenceConnectionOwner(
-      input.sessionId,
-      input.id,
-      now
-    );
-    const result = await this.inferencePlatform.connections.disconnect(record);
-    this.recordAuditEvent({
-      type: "inference_provider.disconnected",
-      aggregateType: "inference_provider_connection",
-      aggregateId: record.id,
-      actorId: session.user.id,
-      occurredAt: now.toISOString(),
-      payload: { providerId: record.providerId, scope: record.scope, businessId: record.tenantId }
-    });
-    return result;
   }
 
   // --- Device-local inference (ADR-explicit-device-local-models.md) ------------------------
@@ -8969,7 +8844,31 @@ export class Cp2Store {
       ...(owner.tenantId === null ? {} : { tenantId: owner.tenantId }),
       ...(owner.userId === null ? {} : { userId: owner.userId })
     });
-    return policySummary(policy, owner);
+    return this.withoutRetiredInferenceReferences(policySummary(policy, owner));
+  }
+
+  /**
+   * Policies saved before the local-first runtime may name hosted providers or models that no
+   * longer exist. The policy editor re-sends what it loads, and parsePolicyInput rejects unknown
+   * ids, so they are left out of the summary - otherwise the owner could never save again.
+   */
+  private withoutRetiredInferenceReferences(
+    summary: InferencePolicySummary
+  ): InferencePolicySummary {
+    const providerExists = (providerId: string) =>
+      this.inferencePlatform.registry.get(providerId) !== undefined;
+    return {
+      ...summary,
+      approvedProviderIds: summary.approvedProviderIds.filter(providerExists),
+      providerMonthlyCeilings: Object.fromEntries(
+        Object.entries(summary.providerMonthlyCeilings).filter(([providerId]) =>
+          providerExists(providerId)
+        )
+      ),
+      fallbackModelIds: summary.fallbackModelIds.filter(
+        (modelId) => this.inferencePlatform.resolveModelDefinition(modelId) !== null
+      )
+    };
   }
 
   async updateInferencePolicy(input: {
@@ -8981,7 +8880,7 @@ export class Cp2Store {
   }): Promise<InferencePolicySummary> {
     const now = input.now ?? new Date();
     const owner = this.requireInferencePolicyOwner(input);
-    const record = await this.withProviderConnectionErrors(async () =>
+    const record = await this.withInferenceManagementErrors(async () =>
       parsePolicyInput(input.body, owner, {
         providerExists: (providerId) =>
           this.inferencePlatform.registry.get(providerId) !== undefined,
@@ -9057,7 +8956,7 @@ export class Cp2Store {
   }): Promise<InferenceProviderConfig> {
     const now = input.now ?? new Date();
     const session = this.requirePlatformOperator(input.sessionId, now);
-    const config = await this.withProviderConnectionErrors(async () =>
+    const config = await this.withInferenceManagementErrors(async () =>
       parseProviderInput(input.body, input.id)
     );
     await this.inferencePlatform.repositories.providers.upsert(config);
@@ -9068,7 +8967,11 @@ export class Cp2Store {
       aggregateId: config.id,
       actorId: session.account.id,
       occurredAt: now.toISOString(),
-      payload: { type: config.type, enabled: config.enabled, baseUrl: config.baseUrl }
+      payload: {
+        type: config.type,
+        enabled: config.enabled,
+        executionTarget: config.executionTarget
+      }
     });
     return this.inferencePlatform.registry.get(config.id)?.config ?? config;
   }
@@ -9095,45 +8998,11 @@ export class Cp2Store {
     return { removed: true, id: input.id };
   }
 
-  /**
-   * Tenant isolation for connection ids: a user-scoped key is visible only to its own account; a
-   * shop key only to members allowed to manage that shop. Anything else is indistinguishable from
-   * a missing id (404), so ids cannot be probed across tenants.
-   */
-  private async requireInferenceConnectionOwner(
-    sessionId: string | null,
-    id: string,
-    now = new Date()
-  ) {
-    const session = this.requirePinVerifiedSession(sessionId, now);
-    const record = await this.inferencePlatform.connections.get(id);
-    const notFound = new Cp2Error(
-      404,
-      "inference_connection_not_found",
-      "Connection was not found."
-    );
-    if (record === undefined || record.scope === "platform") throw notFound;
-    if (record.scope === "user" && record.userId !== session.account.id) throw notFound;
-    if (record.scope === "tenant") {
-      try {
-        this.requireBrowserAuthorizedSession(
-          sessionId,
-          record.tenantId ?? "",
-          "membership:manage",
-          now
-        );
-      } catch {
-        throw notFound;
-      }
-    }
-    return { record, session };
-  }
-
-  private async withProviderConnectionErrors<T>(run: () => Promise<T>): Promise<T> {
+  private async withInferenceManagementErrors<T>(run: () => Promise<T>): Promise<T> {
     try {
       return await run();
     } catch (error) {
-      if (error instanceof ProviderConnectionError) {
+      if (error instanceof InferenceManagementInputError) {
         throw new Cp2Error(error.statusCode, error.code, error.message);
       }
       throw error;
