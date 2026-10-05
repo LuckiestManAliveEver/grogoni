@@ -155,6 +155,16 @@ grades replies with local Claude Code. On 2026-10-05 SmolLM2 360M passed 0/6 sce
 merchant. Turns took 15-70s on this machine's CPU. The model is usable as a smoke test of the
 runtime, not as a shop assistant; choosing a larger Ollama model is an open product decision.
 
+Same day, qwen2.5:3b scored 3/6, but one pass copied a few-shot example: the prompt's KRA tax example
+matched the eval's out-of-scope scenario almost word for word. With that example replaced (and
+`tests/runtime-model-few-shot-examples.test.ts` now failing on any example that overlaps a
+scenario) plus explicit "when not to call a tool / answer in the merchant's language" rules,
+SmolLM2 stayed at 0/6 and qwen2.5:3b scored 1/6 (52-154s turns). Six scenarios are too few to
+separate prompt effects from judge variance (one scenario flipped on an identical reply). The
+platform default stays SmolLM2 360M: neither model is adequate, and SmolLM2's replies show it
+treating the assembled system text as content to grade or repeat, so the next lever is how agent
+instructions are placed in the prompt, then a larger eval set.
+
 `.github/workflows/ai-eval.yml` is manual-dispatch only: hosted runners have neither Ollama nor
 Claude Code, so a nightly run could only skip and report green. Run `pnpm eval:ai` on a machine with
 both (set `GROGONI_CLAUDE_BIN` if `claude` is not on PATH) before a ship.
