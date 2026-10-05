@@ -1,15 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
-import type { InferenceExecutionRequest, RuntimeModelPrompt } from "@grogoni/shared-types";
+import type { RuntimeModelPrompt } from "@grogoni/shared-types";
 import { createBulkhead, createCircuitBreaker } from "@grogoni/resource-control";
 import {
   boundModelRuntimeAdapter,
-  createVercelModelAdapter,
   ModelRuntimeError,
   type ModelRuntimeAdapter,
-  type ModelRuntimeGenerationResult,
-  type VercelInferenceClient
+  type ModelRuntimeGenerationResult
 } from "./model-runtime.js";
-import type { ModelArtifactStore } from "./model-artifact-store.js";
 
 const prompt: RuntimeModelPrompt = {
   message: "hi",
@@ -21,24 +18,24 @@ function generationResult(): ModelRuntimeGenerationResult {
   return {
     text: "hello",
     modelId: "smollm2-360m",
-    provider: "llama.cpp",
-    executionTarget: "vercel",
+    provider: "ollama",
+    executionTarget: "local",
     latencyMs: 1
   };
 }
 
 function fakeAdapter(overrides: Partial<ModelRuntimeAdapter> = {}): ModelRuntimeAdapter {
   return {
-    provider: "llama.cpp",
-    executionTarget: "vercel",
+    provider: "ollama",
+    executionTarget: "local",
     canRun: vi.fn(async () => ({ available: true, errorCode: null, message: null })),
     healthCheck: vi.fn(async () => ({
       available: true,
       errorCode: null,
       message: null,
       modelId: "smollm2-360m",
-      provider: "llama.cpp",
-      executionTarget: "vercel" as const,
+      provider: "ollama",
+      executionTarget: "local" as const,
       latencyMs: 1,
       responsePreview: null,
       retryable: false
@@ -159,202 +156,5 @@ describe("boundModelRuntimeAdapter", () => {
     // The circuit stayed open, so the adapter itself is never called a second time - this is what
     // "fail fast without calling the dependency" means in practice.
     expect(adapter.generate).toHaveBeenCalledTimes(1);
-  });
-});
-
-function fakeArtifactStore(overrides: Partial<ModelArtifactStore> = {}): ModelArtifactStore {
-  return {
-    resolveArtifact: vi.fn(async () => {
-      throw new Error("resolveArtifact should not be called for a model that requires no artifact");
-    }),
-    createDownloadUrl: vi.fn(async () => {
-      throw new Error(
-        "createDownloadUrl should not be called for a model that requires no artifact"
-      );
-    }),
-    verifyArtifact: vi.fn(async () => {
-      throw new Error("verifyArtifact should not be called for a model that requires no artifact");
-    }),
-    ...overrides
-  };
-}
-
-function fakeVercelClient(overrides: Partial<VercelInferenceClient> = {}): VercelInferenceClient & {
-  lastInferRequest: InferenceExecutionRequest | null;
-} {
-  const state: { lastInferRequest: InferenceExecutionRequest | null } = { lastInferRequest: null };
-  return {
-    health: vi.fn(async () => undefined),
-    infer: vi.fn(async (request: InferenceExecutionRequest) => {
-      state.lastInferRequest = request;
-      return {
-        type: "result" as const,
-        requestId: request.requestId,
-        text: "hello",
-        finishReason: "stop",
-        usage: { inputTokens: 1, outputTokens: 1 },
-        metrics: {
-          modelDownloadMs: 0,
-          modelLoadMs: 0,
-          firstTokenMs: 0,
-          inferenceMs: 1,
-          totalMs: 1,
-          inputTokens: 1,
-          outputTokens: 1,
-          cacheHit: false
-        }
-      };
-    }),
-    ...overrides,
-    get lastInferRequest() {
-      return state.lastInferRequest;
-    }
-  };
-}
-
-describe("createVercelModelAdapter (requiresArtifact: false - Hugging Face-routed models)", () => {
-  it("skips artifact resolution/verification entirely and still reports available from a health check", async () => {
-    const artifactStore = fakeArtifactStore();
-    const client = fakeVercelClient();
-    const adapter = createVercelModelAdapter({
-      modelId: "qwen3-4b",
-      artifactStore,
-      client,
-      requiresArtifact: false
-    });
-
-    const availability = await adapter.canRun({
-      agentId: "agent-1",
-      shopId: "shop-1",
-      modelId: "qwen3-4b"
-    });
-
-    expect(availability).toEqual({ available: true, errorCode: null, message: null });
-    expect(artifactStore.resolveArtifact).not.toHaveBeenCalled();
-    expect(artifactStore.verifyArtifact).not.toHaveBeenCalled();
-    expect(client.health).toHaveBeenCalledTimes(1);
-  });
-
-  it("sends no artifact field at all in the wire request", async () => {
-    const artifactStore = fakeArtifactStore();
-    const client = fakeVercelClient();
-    const adapter = createVercelModelAdapter({
-      modelId: "qwen3-4b",
-      artifactStore,
-      client,
-      requiresArtifact: false
-    });
-
-    await adapter.generate({
-      context: { agentId: "agent-1", shopId: "shop-1", modelId: "qwen3-4b" },
-      prompt
-    });
-
-    expect(artifactStore.resolveArtifact).not.toHaveBeenCalled();
-    expect(artifactStore.createDownloadUrl).not.toHaveBeenCalled();
-    expect(client.lastInferRequest).not.toHaveProperty("artifact");
-  });
-
-  it("reports a distinct provider identity from the artifact-backed llama.cpp adapter", async () => {
-    const adapter = createVercelModelAdapter({
-      modelId: "qwen3-4b",
-      artifactStore: fakeArtifactStore(),
-      client: fakeVercelClient(),
-      requiresArtifact: false
-    });
-    expect(adapter.provider).not.toBe("llama.cpp");
-
-    const result = await adapter.generate({
-      context: { agentId: "agent-1", shopId: "shop-1", modelId: "qwen3-4b" },
-      prompt
-    });
-    expect(result.provider).toBe(adapter.provider);
-  });
-
-  it("forwards an explicitly authorized user-connected credential to the wire request", async () => {
-    const client = fakeVercelClient();
-    const adapter = createVercelModelAdapter({
-      modelId: "qwen3-4b",
-      artifactStore: fakeArtifactStore(),
-      client,
-      requiresArtifact: false
-    });
-
-    await adapter.generate({
-      context: {
-        agentId: "agent-1",
-        shopId: "shop-1",
-        modelId: "qwen3-4b",
-        providerCredential: { token: "hf_user_owned_token" }
-      },
-      prompt
-    });
-
-    expect(client.lastInferRequest?.providerCredential).toEqual({ token: "hf_user_owned_token" });
-  });
-
-  it("omits providerCredential from the wire request when the business has not authorized one", async () => {
-    const client = fakeVercelClient();
-    const adapter = createVercelModelAdapter({
-      modelId: "qwen3-4b",
-      artifactStore: fakeArtifactStore(),
-      client,
-      requiresArtifact: false
-    });
-
-    await adapter.generate({
-      context: { agentId: "agent-1", shopId: "shop-1", modelId: "qwen3-4b" },
-      prompt
-    });
-
-    expect(client.lastInferRequest).not.toHaveProperty("providerCredential");
-  });
-});
-
-describe("createVercelModelAdapter (requiresArtifact defaults to true - unchanged llama.cpp behavior)", () => {
-  it("still resolves, verifies, and downloads an artifact exactly as before this option existed", async () => {
-    const artifact = {
-      id: "builtin:smollm2-360m:q4_0:gguf",
-      modelId: "smollm2-360m",
-      storageProvider: "neon-object-storage",
-      bucket: "grogoni-model-artifacts",
-      objectKey: "models/smollm2-360m/SmolLM2-360M-Instruct-Q4_0.gguf",
-      format: "gguf",
-      quantization: "Q4_0",
-      sizeBytes: 12,
-      sha256: null,
-      contentType: "application/octet-stream",
-      status: "available" as const,
-      createdAt: "2026-08-31T00:00:00.000Z",
-      updatedAt: "2026-08-31T00:00:00.000Z"
-    };
-    const artifactStore = fakeArtifactStore({
-      resolveArtifact: vi.fn(async () => artifact),
-      verifyArtifact: vi.fn(async () => ({
-        ok: true as const,
-        sizeMatches: true,
-        hashMatches: true,
-        errorCode: null
-      })),
-      createDownloadUrl: vi.fn(async () => ({
-        ...artifact,
-        downloadUrl: "https://models.example.neon.tech/model.gguf",
-        expiresAt: new Date(Date.now() + 60_000).toISOString()
-      }))
-    });
-    const client = fakeVercelClient();
-    const adapter = createVercelModelAdapter({ modelId: "smollm2-360m", artifactStore, client });
-
-    await adapter.canRun({ agentId: "agent-1", shopId: "shop-1", modelId: "smollm2-360m" });
-    expect(artifactStore.resolveArtifact).toHaveBeenCalledTimes(1);
-    expect(artifactStore.verifyArtifact).toHaveBeenCalledTimes(1);
-
-    await adapter.generate({
-      context: { agentId: "agent-1", shopId: "shop-1", modelId: "smollm2-360m" },
-      prompt
-    });
-    expect(artifactStore.createDownloadUrl).toHaveBeenCalledTimes(1);
-    expect(client.lastInferRequest).toHaveProperty("artifact");
-    expect(adapter.provider).toBe("llama.cpp");
   });
 });

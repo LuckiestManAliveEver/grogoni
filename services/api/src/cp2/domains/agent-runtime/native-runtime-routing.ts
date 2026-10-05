@@ -80,20 +80,10 @@ export function resolveNativeRuntimeModelProvider(input: {
   eligibleExecutionTargets?: ReadonlySet<ModelExecutionTarget>;
   /**
    * The account on whose behalf this turn executes - present whenever the caller has one (every
-   * real chat turn does; some direct unit tests of this function do not). Combined with
-   * `resolveInferenceCredential`, this is the whole BYO-credential mechanism: both are optional and
-   * a no-op unless the resolved model's own `configuration.billingMode` opts in, so every existing
-   * caller that omits them keeps its exact prior behavior.
+   * real chat turn does; some direct unit tests of this function do not). Forwarded to the
+   * adapter, which uses it to address the account's live reply stream and device jobs.
    */
   accountId?: string;
-  /**
-   * Synchronous by design - see ExternalConnectionsDomain.resolveInferenceToken and
-   * decryptOAuthToken, both plain in-memory/CPU operations with no I/O. Keeping this function a
-   * pure, synchronous precedence resolver (an existing, deliberate property this file's own
-   * comments call out) means the credential lookup must be injected as a value-returning callback
-   * rather than awaited here.
-   */
-  resolveInferenceCredential?: (accountId: string, provider: string) => { token: string } | null;
 }): {
   provider: RuntimeModelProvider | undefined;
   executionTarget: ModelExecutionTarget | undefined;
@@ -165,7 +155,6 @@ export function resolveNativeRuntimeModelProvider(input: {
     );
   }
   const adapter = input.requireAdapter({ modelId, executionTarget, agentId, businessId: shopId });
-  const providerCredential = resolveOwnAccountCredential(input, nativeResolution);
   const provider = runtimeProviderFromAdapter({
     adapter,
     context: {
@@ -173,8 +162,7 @@ export function resolveNativeRuntimeModelProvider(input: {
       agentId,
       shopId,
       ...(runtimeBindingId === null ? {} : { runtimeBindingId }),
-      ...(input.accountId === undefined ? {} : { accountId: input.accountId }),
-      ...(providerCredential === undefined ? {} : { providerCredential })
+      ...(input.accountId === undefined ? {} : { accountId: input.accountId })
     }
   });
   return {
@@ -187,40 +175,6 @@ export function resolveNativeRuntimeModelProvider(input: {
     executionHostId,
     fallbackIndex
   };
-}
-
-/**
- * Resolves a business's own connected provider credential for this turn, but only when every one
- * of these is true: the caller passed both `accountId` and `resolveInferenceCredential` (omitted by
- * every caller that doesn't need this - a pure no-op for them), the resolved native model's
- * `configuration.billingMode` is explicitly `"own-account"` (never inferred - see
- * ExternalRegistryConnection.inferenceAuthorized's own doc comment on the same principle), and that
- * account actually has a usable, inference-authorized connection for the model's provider. Any
- * missing piece falls through to `undefined`, meaning "use the platform's own credential" - this
- * function never fails a turn or throws; a misconfigured own-account preference degrades to the
- * platform default rather than blocking the chat.
- */
-function resolveOwnAccountCredential(
-  input: Pick<
-    Parameters<typeof resolveNativeRuntimeModelProvider>[0],
-    "accountId" | "resolveInferenceCredential"
-  >,
-  nativeResolution: ResolvedNativeRuntimeBinding | null
-): { token: string } | undefined {
-  if (input.accountId === undefined || input.resolveInferenceCredential === undefined) {
-    return undefined;
-  }
-  // Read from the *binding* (genuinely scoped to one business+account+agent -
-  // NativeRuntimeBindingStore keys it by a UUID derived from all three), never from the model row:
-  // cp2_native_runtime_models is a single shared catalog entry per model id, reused by every
-  // business that activates that model, so a billing-mode preference stored there would leak across
-  // unrelated businesses the moment more than one activates the same model.
-  const model = nativeResolution?.selected.model;
-  const billingMode = nativeResolution?.binding.configuration.billingMode;
-  if (model === undefined || billingMode !== "own-account") {
-    return undefined;
-  }
-  return input.resolveInferenceCredential(input.accountId, model.provider) ?? undefined;
 }
 
 function selectUnattemptedNativeResolution(

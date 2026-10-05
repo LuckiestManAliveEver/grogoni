@@ -183,8 +183,8 @@ secretHint: "x7K2", ...}`.
 6. Disconnect sets `REVOKED` and nulls the ciphertext. Test re-verifies the key and marks it
    `INVALID` if the provider now rejects it.
 
-The pre-existing Hugging Face BYOK path (`external-connections` + `billingMode: "own-account"`) is
-unchanged.
+The pre-existing Hugging Face BYOK path (`external-connections` + `billingMode: "own-account"`) was
+removed later with the local-first runtime; external connections now serve discovery only.
 
 ## 7. Model-selection flow
 

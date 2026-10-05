@@ -212,14 +212,6 @@ export interface AgentRuntimeDomainDeps extends AgentRuntimeCommerceDeps {
     updatedBy: string;
     now: Date;
   }) => string | null;
-  setBindingBillingMode: (input: {
-    businessId: string;
-    accountId: string;
-    agentId: string;
-    billingMode: "platform" | "own-account";
-    updatedBy: string;
-    now: Date;
-  }) => NativeRuntimeBindingSummary;
   modelRuntimeAdapterResolver?: (input: {
     modelId: string;
     executionTarget: ModelExecutionTarget;
@@ -229,12 +221,4 @@ export interface AgentRuntimeDomainDeps extends AgentRuntimeCommerceDeps {
   agentRuntimeAdapterResolver: (adapterId: string) => AgentRuntimeAdapter | undefined;
   runtimeModelProviderResolver?: (modelId: string) => RuntimeModelProvider | undefined;
   runtimeModelProvider?: RuntimeModelProvider;
-  /**
-   * BYO-inference-credential resolution (see native-runtime-routing.ts's
-   * resolveOwnAccountCredential and ExternalConnectionsDomain.resolveInferenceToken). Synchronous
-   * by design - the underlying lookup is a Map read plus AES-GCM decryption, no I/O. Wired from
-   * Cp2Store to ExternalConnectionsDomain.resolveInferenceToken; a no-op when omitted, which every
-   * test/caller that doesn't need BYO credentials can safely do.
-   */
-  resolveInferenceCredential?: (accountId: string, provider: string) => { token: string } | null;
 }

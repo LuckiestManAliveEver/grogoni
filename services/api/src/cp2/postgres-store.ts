@@ -2525,7 +2525,6 @@ async function loadRelationalCoreSnapshot(pool: Pool, snapshot: Cp2Snapshot): Pr
             externalUsername: row.external_username,
             status: row.status,
             scopes: row.scopes,
-            inferenceAuthorized: row.inference_authorized,
             encryptedToken: row.encrypted_token,
             createdAt: timestampToIso(row.created_at),
             updatedAt: timestampToIso(row.updated_at)
@@ -3884,7 +3883,8 @@ export async function saveRelationalCoreRecords(
         connection.status,
         connection.scopes,
         connection.encryptedToken,
-        connection.inferenceAuthorized,
+        // inference_authorized: the retired BYO inference billing flag; never set any more.
+        false,
         connection.createdAt,
         connection.updatedAt
       ]

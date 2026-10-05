@@ -18,16 +18,6 @@ export interface ExternalRegistryConnection {
   externalUsername: string | null;
   status: ExternalRegistryConnectionStatus;
   scopes: string[];
-  /**
-   * Separate from `scopes` (the token's own declared permissions on the provider's side): this is
-   * Grogoni's own explicit authorization to spend this connection's credential on the account's own
-   * inference usage instead of the platform's. False by default even right after connecting -
-   * connecting an account for discovery (raising Hub search rate limits) never implies inference
-   * billing authorization. Only POST /v1/external-connections/:id/inference-authorization sets this
-   * true, so enabling billing to a user's own account is always a distinct, explicit action. See
-   * docs/architecture/huggingface-inference.md.
-   */
-  inferenceAuthorized: boolean;
   createdAt: string;
   updatedAt: string;
 }

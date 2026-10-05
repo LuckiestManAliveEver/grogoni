@@ -550,6 +550,8 @@ function tenantDefaultBindings(store: ReturnType<typeof createCp2Store>, busines
     .snapshot()
     .nativeRuntimeBindings.filter(
       (binding) =>
-        binding.businessId === businessId && binding.isDefault && binding.status === "active"
+        binding.businessId === businessId &&
+        binding.configuration.source === "zero-setup-provisioning" &&
+        binding.status === "active"
     );
 }

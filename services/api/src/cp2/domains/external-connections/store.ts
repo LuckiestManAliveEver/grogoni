@@ -131,11 +131,6 @@ export class ExternalConnectionsDomain {
       externalUsername: validation.externalUsername,
       status: "connected",
       scopes: validation.scopes,
-      // Never set true by connect() itself, even on a reconnect of a previously-authorized
-      // connection - see authorizeInference() below and the migration 097 comment. A reconnect
-      // that changes the underlying token should not silently re-carry forward a prior inference
-      // billing authorization without the account confirming it again for the new token.
-      inferenceAuthorized: false,
       encryptedToken: encryptOAuthToken(token),
       createdAt: existing?.createdAt ?? now.toISOString(),
       updatedAt: now.toISOString()
@@ -154,54 +149,6 @@ export class ExternalConnectionsDomain {
     });
 
     return externalConnectionView(record);
-  }
-
-  /**
-   * The one action that turns a merely-connected Hugging Face account into one whose credential
-   * may be billed for this account's own inference usage. Deliberately separate from connect() -
-   * see the type-level comment on ExternalRegistryConnection.inferenceAuthorized and migration 097.
-   * Setting `authorized: false` (the account changing its mind) always succeeds; setting it `true`
-   * requires a still-connected, still-decryptable credential, so an account can never end up
-   * "authorized for inference" over a token that no longer actually exists.
-   */
-  authorizeInference(input: {
-    sessionId: string | null;
-    id: string;
-    authorized: boolean;
-    now?: Date;
-  }): ExternalRegistryConnection {
-    const now = input.now ?? new Date();
-    const session = this.deps.requirePinVerifiedSession(input.sessionId, now);
-    const record = this.connections.get(input.id);
-
-    if (record === undefined || record.accountId !== session.account.id) {
-      throw new Cp2Error(404, "external_connection_not_found", "Connected account was not found.");
-    }
-    if (input.authorized && (record.status !== "connected" || record.encryptedToken === null)) {
-      throw new Cp2Error(
-        409,
-        "external_connection_not_usable",
-        "Reconnect this account before authorizing it for inference billing."
-      );
-    }
-
-    const updated: ExternalConnectionRecord = {
-      ...record,
-      inferenceAuthorized: input.authorized,
-      updatedAt: now.toISOString()
-    };
-    this.connections.set(record.id, updated);
-
-    this.deps.recordAuditEvent({
-      type: "external_connection.inference_authorization_changed",
-      aggregateType: "external_registry_connection",
-      aggregateId: record.id,
-      actorId: session.user.id,
-      occurredAt: now.toISOString(),
-      payload: { provider: record.provider, authorized: input.authorized }
-    });
-
-    return externalConnectionView(updated);
   }
 
   disconnect(input: { sessionId: string | null; id: string; now?: Date }): {
@@ -260,33 +207,6 @@ export class ExternalConnectionsDomain {
     const record = id === undefined ? undefined : this.connections.get(id);
 
     if (record === undefined || record.status !== "connected" || record.encryptedToken === null) {
-      return null;
-    }
-
-    try {
-      return decryptOAuthToken(record.encryptedToken);
-    } catch {
-      return null;
-    }
-  }
-
-  /**
-   * Internal-only, same access rules as resolveToken() plus one more: returns null unless the
-   * account has explicitly authorized this exact connection for inference billing
-   * (authorizeInference() above), never merely because a connection exists. This is what the
-   * inference request-building path (not registry search/import) must call - resolveToken() above
-   * remains discovery-only and must never be used to source a credential for a billed model call.
-   */
-  resolveInferenceToken(accountId: string, provider: ExternalRegistryProvider): string | null {
-    const id = this.connectionIdByAccountProvider.get(externalConnectionKey(accountId, provider));
-    const record = id === undefined ? undefined : this.connections.get(id);
-
-    if (
-      record === undefined ||
-      record.status !== "connected" ||
-      record.encryptedToken === null ||
-      !record.inferenceAuthorized
-    ) {
       return null;
     }
 

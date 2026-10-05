@@ -182,10 +182,11 @@ describe("API boot on a flaky database resolver", () => {
       );
       expect(result.listening, result.output).toBe(true);
       expect(retries.some((event) => event.step === "inference_schema")).toBe(false);
-      // The provider refresh runs on the same flaky resolver; it must retry, not boot without the
-      // DB-configured providers.
+      // The provider refresh runs on the same flaky resolver and must never give up and boot
+      // without the DB-configured providers. Since BYOK key rotation was removed, nothing else holds
+      // the inference pool's idle connection, so the refresh usually reuses it and needs no retry.
       expect(result.output).not.toContain("inference.provider_refresh_failed");
-      for (const step of ["inference_refresh", "cp2_store", "fulfillment_schema"]) {
+      for (const step of ["cp2_store", "fulfillment_schema"]) {
         expect(
           retries.some((event) => event.step === step),
           `${step} retried\n${result.output}`

@@ -1,5 +1,10 @@
 # Model artifact storage
 
+> **Historical.** The Render-side artifact store (`model-artifact-store.ts`) and the Vercel
+> artifact loader were removed with the local-first runtime
+> ([docs/local-first-cloud-audit.md](../local-first-cloud-audit.md)); Ollama now owns local model
+> files. The `cp2_runtime_model_artifacts` table and its constraints remain for history.
+
 GGUF model weights live in Neon's S3-compatible object storage, never in this repository and never
 in a PostgreSQL `bytea` column. Postgres holds metadata only.
 

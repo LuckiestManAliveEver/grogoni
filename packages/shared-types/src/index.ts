@@ -1230,15 +1230,6 @@ export interface RuntimeModelDefinition {
   providerModelId: string;
   contextWindow: number;
   enabled: boolean;
-  /**
-   * Whether this model needs a downloaded/verified GGUF artifact (the llama.cpp path) before it
-   * can run. Defaults to true when absent, matching every model registered before this field
-   * existed. False for models served remotely through a hosted chat-completions API (e.g. Hugging
-   * Face Inference Providers) with no artifact to download - createVercelModelAdapter
-   * (services/api/src/inference/model-runtime.ts) uses this to skip artifact resolution entirely
-   * for such models instead of failing them for lacking one.
-   */
-  requiresArtifact?: boolean;
 }
 
 export const runtimeModels = {
@@ -4842,79 +4833,6 @@ export interface NativeRuntimeModelSummary {
   createdAt: string;
   updatedAt: string;
 }
-
-/** Durable model weights are objects; Neon stores only this control-plane metadata. */
-export type ModelArtifactStatus = "pending" | "available" | "invalid" | "retired";
-
-export interface ModelArtifact {
-  id: string;
-  modelId: string;
-  storageProvider: string;
-  bucket: string;
-  objectKey: string;
-  format: string;
-  quantization: string | null;
-  sizeBytes: number | null;
-  sha256: string | null;
-  contentType: string;
-  status: ModelArtifactStatus;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface ResolvedModelArtifact extends ModelArtifact {
-  /** Short-lived object access. Permanent storage credentials never cross this contract. */
-  downloadUrl: string;
-  expiresAt: string;
-}
-
-export interface ArtifactVerificationResult {
-  ok: boolean;
-  sizeMatches: boolean | null;
-  hashMatches: boolean | null;
-  errorCode: string | null;
-}
-
-export interface InferenceExecutionRequest {
-  requestId: string;
-  conversationId: string;
-  runtimeBindingId: string;
-  executionHostId: string;
-  agent: { id: string; adapterId: string };
-  model: { id: string; runtimeContractVersion: string };
-  /**
-   * Required for artifact-backed (llama.cpp/GGUF) models; omitted for models routed to a remote
-   * chat-completions provider (e.g. Hugging Face) that has nothing to download - see
-   * RuntimeModelDefinition.requiresArtifact and services/ai-runtime/src/vercel-handler.ts.
-   */
-  artifact?: ResolvedModelArtifact;
-  prompt: string;
-  generation: { maxTokens: number; temperature: number; jsonOutput: boolean };
-  /**
-   * Server-to-server only - this request never crosses a browser boundary (it travels from
-   * services/api to services/ai-runtime over the shared GROGONI_INFERENCE_SERVICE_TOKEN bearer, both
-   * internal). When present, the business has explicitly authorized (POST
-   * /v1/external-connections/:id/inference-authorization) using their own connected provider
-   * credential for this call instead of the platform's; ai-runtime substitutes it for its own
-   * configured token for this one request only. Never logged, never echoed back in any response
-   * or error, and never derived from anything client-supplied - services/api resolves it
-   * server-side via ExternalConnectionsDomain.resolveInferenceToken before this request is built.
-   */
-  providerCredential?: { token: string } | null;
-}
-
-export type InferenceExecutionEvent =
-  | { type: "status"; state: "INITIALIZING" | "MODEL_LOADING" | "READY"; cacheHit?: boolean }
-  | { type: "delta"; text: string }
-  | {
-      type: "result";
-      requestId: string;
-      text: string;
-      finishReason: string | null;
-      usage: { inputTokens: number | null; outputTokens: number | null };
-      metrics: Record<string, number | boolean | null>;
-    }
-  | { type: "error"; code: string; message: string; retryable: boolean };
 
 export interface NativeExecutionHostSummary {
   id: string;

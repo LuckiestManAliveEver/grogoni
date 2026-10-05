@@ -24,14 +24,6 @@ interface DisconnectParams {
   id: string;
 }
 
-interface AuthorizeInferenceParams {
-  id: string;
-}
-
-interface AuthorizeInferenceBody {
-  authorized?: boolean;
-}
-
 export function registerExternalConnectionsRoutes(
   app: FastifyInstance,
   store: Cp2Store,
@@ -67,31 +59,6 @@ export function registerExternalConnectionsRoutes(
           sessionId: readSessionCookie(request.headers.cookie),
           provider,
           token
-        });
-      } catch (error) {
-        return sendCp2Error(reply, error);
-      }
-    }
-  );
-
-  app.post(
-    "/v1/external-connections/:id/inference-authorization",
-    async (
-      request: FastifyRequest<{ Params: AuthorizeInferenceParams; Body: AuthorizeInferenceBody }>,
-      reply
-    ) => {
-      try {
-        if (typeof request.body?.authorized !== "boolean") {
-          throw new Cp2Error(
-            400,
-            "external_connection_authorized_required",
-            "authorized must be a boolean."
-          );
-        }
-        return store.authorizeExternalConnectionInference({
-          sessionId: readSessionCookie(request.headers.cookie),
-          id: request.params.id,
-          authorized: request.body.authorized
         });
       } catch (error) {
         return sendCp2Error(reply, error);

@@ -31,7 +31,8 @@ const describePostgres = databaseUrl === undefined ? describe.skip : describe;
  */
 async function insertLegacyCredential(
   pool: PgPool,
-  owner: { tenantId?: string; userId?: string }
+  owner: { tenantId?: string; userId?: string },
+  providerId = "openai"
 ): Promise<string> {
   const id = randomUUID();
   const now = new Date().toISOString();
@@ -39,13 +40,14 @@ async function insertLegacyCredential(
     `insert into inference_provider_credentials (
        id, scope, tenant_id, user_id, provider_id, encrypted_secret, key_version, secret_suffix,
        status, created_by, created_at, updated_at
-     ) values ($1, $2, $3, $4, 'openai', 'v1:aaaa:bbbb:cccc', 1, '0000', 'ACTIVE', 'test', $5, $5)`,
+     ) values ($1, $2, $3, $4, $6, 'v1:aaaa:bbbb:cccc', 1, '0000', 'ACTIVE', 'test', $5, $5)`,
     [
       id,
       owner.tenantId === undefined ? "user" : "tenant",
       owner.tenantId ?? null,
       owner.userId ?? null,
-      now
+      now,
+      providerId
     ]
   );
   return id;
@@ -96,8 +98,9 @@ describePostgres("inference repositories on PostgreSQL", () => {
     const tenantId = `tenant-${randomUUID()}`;
     const userId = `user-${randomUUID()}`;
     const otherTenantId = `tenant-${randomUUID()}`;
-    await insertLegacyCredential(pool, { tenantId });
-    await insertLegacyCredential(pool, { tenantId });
+    // One active key per owner and provider (inference_provider_credentials_active_owner_idx).
+    await insertLegacyCredential(pool, { tenantId }, "openai");
+    await insertLegacyCredential(pool, { tenantId }, "anthropic");
     await insertLegacyCredential(pool, { userId });
     const survivor = await insertLegacyCredential(pool, { tenantId: otherTenantId });
     try {

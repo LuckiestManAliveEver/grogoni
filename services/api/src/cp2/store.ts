@@ -1648,7 +1648,6 @@ export class Cp2Store {
         }
         return bindingId;
       },
-      setBindingBillingMode: (input) => this.nativeRuntimeBindings.setBindingBillingMode(input),
       ...(this.modelRuntimeAdapterResolver === undefined
         ? {}
         : { modelRuntimeAdapterResolver: this.modelRuntimeAdapterResolver }),
@@ -1660,15 +1659,7 @@ export class Cp2Store {
         : { runtimeModelProviderResolver: this.options.runtimeModelProviderResolver }),
       ...(this.options.runtimeModelProvider === undefined
         ? {}
-        : { runtimeModelProvider: this.options.runtimeModelProvider }),
-      // Cross-domain wiring, not an externally-injectable option - every deployment gets this for
-      // free once ExternalConnectionsDomain exists, matching resolveExternalConnectionInferenceToken's
-      // own "internal-only" contract.
-      resolveInferenceCredential: (accountId, provider) => {
-        if (provider !== "github" && provider !== "huggingface") return null;
-        const token = this.externalConnectionsDomain.resolveInferenceToken(accountId, provider);
-        return token === null ? null : { token };
-      }
+        : { runtimeModelProvider: this.options.runtimeModelProvider })
     });
     this.runtimeHandoffDomain = new RuntimeHandoffDomain({
       requireHandoffOwner: (businessId, userId) => {
@@ -3336,11 +3327,6 @@ export class Cp2Store {
   ): ReturnType<ExternalConnectionsDomain["disconnect"]> {
     return this.externalConnectionsDomain.disconnect(...args);
   }
-  authorizeExternalConnectionInference(
-    ...args: Parameters<ExternalConnectionsDomain["authorizeInference"]>
-  ): ReturnType<ExternalConnectionsDomain["authorizeInference"]> {
-    return this.externalConnectionsDomain.authorizeInference(...args);
-  }
   /**
    * Internal-only accessor for server-side registry adapters (not a route). Never call this from
    * a route handler directly - go through connectExternalConnection/disconnectExternalConnection/
@@ -3351,18 +3337,6 @@ export class Cp2Store {
   ): ReturnType<ExternalConnectionsDomain["resolveToken"]> {
     return this.externalConnectionsDomain.resolveToken(...args);
   }
-  /**
-   * Internal-only, inference-billing counterpart to resolveExternalConnectionToken - never call
-   * from a route handler. Returns a usable token only when the account explicitly authorized this
-   * connection for inference billing (authorizeExternalConnectionInference), never merely because
-   * a connection exists for discovery.
-   */
-  resolveExternalConnectionInferenceToken(
-    ...args: Parameters<ExternalConnectionsDomain["resolveInferenceToken"]>
-  ): ReturnType<ExternalConnectionsDomain["resolveInferenceToken"]> {
-    return this.externalConnectionsDomain.resolveInferenceToken(...args);
-  }
-
   assertMcpShopAccess(principal: McpPrincipal, shopId: string, now = new Date()): void {
     this.requireMcpBusinessAccess(principal, shopId, "business:read", now);
   }
@@ -4294,11 +4268,6 @@ export class Cp2Store {
     ...args: Parameters<AgentRuntimeDomain["removeAgentModelBinding"]>
   ): ReturnType<AgentRuntimeDomain["removeAgentModelBinding"]> {
     return this.agentRuntimeDomain.removeAgentModelBinding(...args);
-  }
-  setAgentModelBillingMode(
-    ...args: Parameters<AgentRuntimeDomain["setAgentModelBillingMode"]>
-  ): ReturnType<AgentRuntimeDomain["setAgentModelBillingMode"]> {
-    return this.agentRuntimeDomain.setAgentModelBillingMode(...args);
   }
   testAgentModel(
     ...args: Parameters<AgentRuntimeDomain["testAgentModel"]>

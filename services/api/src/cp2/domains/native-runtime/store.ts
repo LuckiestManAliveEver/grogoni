@@ -216,15 +216,7 @@ export class NativeRuntimeBindingStore {
       name: `${input.agentName} runtime`,
       status: "active",
       isDefault: false,
-      // A model activation/re-verification must never silently reset an explicit, separately-set
-      // preference on this binding (e.g. billingMode from setBindingBillingMode below) - only
-      // setBindingBillingMode itself changes it.
-      configuration: {
-        source: "model-activation",
-        ...(matching?.configuration.billingMode === undefined
-          ? {}
-          : { billingMode: matching.configuration.billingMode })
-      },
+      configuration: { source: "model-activation" },
       runtimeContractVersion: nativeRuntimeContractVersion,
       createdAt: matching?.createdAt ?? timestamp,
       updatedAt: timestamp,
@@ -385,9 +377,13 @@ export class NativeRuntimeBindingStore {
       updatedBy: input.updatedBy,
       checkedAt: input.checkedAt
     });
+    // isDefault stays false: in Postgres it marks only the global slot (063's default_scope_check
+    // and one_global_default_idx). A shop row with isDefault true can never be saved, and because
+    // collections are saved whole it would fail every later save in the process. The
+    // configuration.source below is what marks this binding as the shop's provisioned default.
     const provisioned: NativeRuntimeBindingSummary = {
       ...binding,
-      isDefault: true,
+      isDefault: false,
       configuration: {
         ...binding.configuration,
         source: "zero-setup-provisioning",
@@ -451,40 +447,6 @@ export class NativeRuntimeBindingStore {
         : null;
     if (executionTarget === null) return null;
     return { binding, model, role, executionTarget };
-  }
-
-  /**
-   * The only write path for a binding's billing-mode preference (see
-   * native-runtime-routing.ts's resolveOwnAccountCredential, which reads it). Deliberately separate
-   * from model activation - activateVerifiedModel above preserves whatever is already here across a
-   * routine re-activation/re-verification instead of ever setting it itself, so this is the one
-   * place "own-account" can be turned on, matching the same explicit-authorization principle as
-   * ExternalRegistryConnection.inferenceAuthorized.
-   */
-  setBindingBillingMode(input: {
-    businessId: string;
-    accountId: string;
-    agentId: string;
-    billingMode: "platform" | "own-account";
-    updatedBy: string;
-    now?: Date;
-  }): NativeRuntimeBindingSummary {
-    const binding = this.bindingForBusinessAgent(input.businessId, input.agentId, input.accountId);
-    if (binding === null) {
-      throw new Cp2Error(
-        404,
-        "NATIVE_RUNTIME_BINDING_NOT_FOUND",
-        "No active runtime binding exists for this agent yet - activate a model first."
-      );
-    }
-    const updated: NativeRuntimeBindingSummary = {
-      ...binding,
-      configuration: { ...binding.configuration, billingMode: input.billingMode },
-      updatedAt: (input.now ?? new Date()).toISOString(),
-      updatedBy: input.updatedBy
-    };
-    this.bindings.set(binding.id, updated);
-    return { ...updated };
   }
 
   deactivateBusinessAgentBinding(
@@ -594,7 +556,11 @@ export class NativeRuntimeBindingStore {
     ) {
       candidates.push({
         binding: accountBinding,
-        source: accountBinding.isDefault ? "default" : "explicit-account"
+        source:
+          accountBinding.isDefault ||
+          accountBinding.configuration.source === "zero-setup-provisioning"
+            ? "default"
+            : "explicit-account"
       });
     }
     let lastResolutionError: Cp2Error | null = null;

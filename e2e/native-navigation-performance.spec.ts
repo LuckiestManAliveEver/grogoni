@@ -103,6 +103,8 @@ test("backend model activation survives reload and can be removed", async ({ pag
   await expect(backendModels).toBeVisible();
 
   await backendModels.getByRole("button", { name: "Use with agent", exact: true }).click();
+  // Any model other than the platform default asks for an explicit merchant confirmation first.
+  await backendModels.getByRole("button", { name: "Confirm switch", exact: true }).click();
   await expect(
     backendModels.getByRole("button", { name: "Remove from agent", exact: true })
   ).toBeVisible();

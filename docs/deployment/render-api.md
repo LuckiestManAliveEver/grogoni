@@ -1,5 +1,10 @@
 # Deploy the API on Render
 
+> **Historical.** Render, Vercel inference and signed artifact URLs are retired
+> ([docs/local-first-cloud-audit.md](../local-first-cloud-audit.md)). The API now talks to local
+> Ollama and never mints artifact URLs. Do not let a Render deploy run migration 108 (see its
+> runbook in that doc).
+
 ## Topology
 
 `render.yaml`'s `grogoni` service is a standard `type: web`, `runtime: node` Render

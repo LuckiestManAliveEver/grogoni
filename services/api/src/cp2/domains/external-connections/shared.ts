@@ -50,7 +50,6 @@ export function externalConnectionView(
     externalUsername: record.externalUsername,
     status: record.status,
     scopes: [...record.scopes],
-    inferenceAuthorized: record.inferenceAuthorized,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt
   };

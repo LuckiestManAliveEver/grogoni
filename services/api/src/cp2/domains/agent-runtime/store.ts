@@ -106,8 +106,7 @@ import type {
   RuntimeToolName,
   RuntimeTurnResult,
   RuntimeTurnSummary,
-  ShopAgentRuntime,
-  NativeRuntimeBindingSummary
+  ShopAgentRuntime
 } from "@grogoni/shared-types";
 import {
   defaultAgentDefinitionId,
@@ -639,76 +638,6 @@ export class AgentRuntimeDomain {
       binding: null,
       removedBindingId: inactive.id
     };
-  }
-
-  /**
-   * The one write path for "bill this agent's inference to my own connected Hugging Face account
-   * instead of the platform's" (see native-runtime-routing.ts's resolveOwnAccountCredential, which
-   * reads what this writes). Never accepts "own-account" on trust: the account must already have an
-   * inference-authorized connection for the active model's provider
-   * (ExternalConnectionsDomain.resolveInferenceToken via deps.resolveInferenceCredential), or this
-   * throws rather than silently falling back to the platform credential later. Returning to
-   * "platform" always succeeds - an account can always opt back out.
-   */
-  setAgentModelBillingMode(input: {
-    sessionId: string | null;
-    businessId: string;
-    agentId: string;
-    billingMode: "platform" | "own-account";
-    now?: Date;
-  }): NativeRuntimeBindingSummary {
-    const now = input.now ?? new Date();
-    const session = this.deps.requireAuthorizedSession(
-      input.sessionId,
-      input.businessId,
-      "membership:manage",
-      now
-    );
-    this.requireBusinessAgent(input.businessId, input.agentId, now);
-    if (input.billingMode === "own-account") {
-      const active = this.deps.getActiveNativeRuntimeBinding(
-        input.businessId,
-        input.agentId,
-        session.account.id
-      );
-      if (active === null) {
-        throw new Cp2Error(
-          409,
-          "NATIVE_RUNTIME_BINDING_NOT_FOUND",
-          "Activate a model for this agent before choosing own-account billing."
-        );
-      }
-      const credential = this.deps.resolveInferenceCredential?.(
-        session.account.id,
-        active.model.provider
-      );
-      if (credential === null || credential === undefined) {
-        throw new Cp2Error(
-          409,
-          "INFERENCE_CREDENTIAL_NOT_AUTHORIZED",
-          `Connect and authorize a ${active.model.provider} account for inference billing before switching to own-account billing.`,
-          false,
-          { provider: active.model.provider }
-        );
-      }
-    }
-    const updated = this.deps.setBindingBillingMode({
-      businessId: input.businessId,
-      accountId: session.account.id,
-      agentId: input.agentId,
-      billingMode: input.billingMode,
-      updatedBy: session.user.id,
-      now
-    });
-    this.deps.recordAuditEvent({
-      type: "agent_model.billing_mode_changed",
-      aggregateType: "native_runtime_binding",
-      aggregateId: updated.id,
-      actorId: session.user.id,
-      occurredAt: now.toISOString(),
-      payload: { billingMode: input.billingMode }
-    });
-    return updated;
   }
 
   async testAgentModel(input: {
@@ -3538,9 +3467,6 @@ export class AgentRuntimeDomain {
       requireAdapter: (adapterInput) => this.requireModelRuntimeAdapter(adapterInput),
       adapterResolverConfigured: this.deps.modelRuntimeAdapterResolver !== undefined,
       ...(accountId === undefined ? {} : { accountId }),
-      ...(this.deps.resolveInferenceCredential === undefined
-        ? {}
-        : { resolveInferenceCredential: this.deps.resolveInferenceCredential }),
       ...(this.deps.runtimeModelProvider === undefined
         ? {}
         : { runtimeModelProvider: this.deps.runtimeModelProvider }),

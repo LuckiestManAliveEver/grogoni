@@ -33,11 +33,10 @@ jobs:
         run: pnpm -r --filter "./packages/**" --if-present build
 
       - name: Run AI eval
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        # The previous hosted eval runner is retired. A local Ollama runner is needed before
-        # this lane can resume evaluating models.
-        run: echo "AI eval skipped - local Ollama eval runner is not configured."
+        # Runs the platform default model on local Ollama and grades replies with local Claude
+        # Code (services/api/scripts/run-ai-eval.ts). Hosted runners have neither, so the script
+        # prints why and exits 0; run it on a machine (or self-hosted runner) with both installed.
+        run: pnpm eval:ai
 
       - name: Upload eval report
         if: always()

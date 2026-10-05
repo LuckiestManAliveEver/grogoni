@@ -312,43 +312,6 @@ describe("resolveNativeRuntimeModelProvider - own-account credential resolution 
     };
   }
 
-  it("forwards a resolved own-account credential into the adapter context when billingMode is own-account", async () => {
-    const capturedContexts: unknown[] = [];
-    const requireAdapter = vi.fn(() => ({
-      ...fakeAdapter("backend"),
-      generate: async (input: { context: unknown }) => {
-        capturedContexts.push(input.context);
-        return {
-          text: "{}",
-          modelId,
-          provider: "test",
-          executionTarget: "backend" as const,
-          latencyMs: 1
-        };
-      }
-    }));
-    const resolveInferenceCredential = vi.fn(() => ({ token: "hf_business_own_token" }));
-    const result = resolveNativeRuntimeModelProvider({
-      shopRuntime,
-      requestedModelId: modelId,
-      nativeResolution: resolutionWithBillingMode("own-account"),
-      requireAdapter,
-      adapterResolverConfigured: true,
-      accountId: "account-1",
-      resolveInferenceCredential
-    });
-
-    expect(resolveInferenceCredential).toHaveBeenCalledWith("account-1", "huggingface");
-    await result.provider?.complete({
-      message: "hi",
-      allowedTools: [],
-      schemaVersion: "cp11-runtime-model-v1"
-    });
-    expect(capturedContexts).toEqual([
-      expect.objectContaining({ providerCredential: { token: "hf_business_own_token" } })
-    ]);
-  });
-
   it("never resolves a credential when billingMode is absent (the default, platform-billed path)", () => {
     const resolveInferenceCredential = vi.fn(() => ({ token: "should-never-be-used" }));
     resolveNativeRuntimeModelProvider({
@@ -375,40 +338,6 @@ describe("resolveNativeRuntimeModelProvider - own-account credential resolution 
       adapterResolverConfigured: true
     });
     expect(result.provider).toBeDefined();
-  });
-
-  it("degrades to no credential (platform billing) when own-account is set but the account has no usable connection", async () => {
-    const resolveInferenceCredential = vi.fn(() => null);
-    const capturedContexts: unknown[] = [];
-    const requireAdapter = vi.fn(() => ({
-      ...fakeAdapter("backend"),
-      generate: async (input: { context: unknown }) => {
-        capturedContexts.push(input.context);
-        return {
-          text: "{}",
-          modelId,
-          provider: "test",
-          executionTarget: "backend" as const,
-          latencyMs: 1
-        };
-      }
-    }));
-    const result = resolveNativeRuntimeModelProvider({
-      shopRuntime,
-      requestedModelId: modelId,
-      nativeResolution: resolutionWithBillingMode("own-account"),
-      requireAdapter,
-      adapterResolverConfigured: true,
-      accountId: "account-1",
-      resolveInferenceCredential
-    });
-    expect(resolveInferenceCredential).toHaveBeenCalled();
-    await result.provider?.complete({
-      message: "hi",
-      allowedTools: [],
-      schemaVersion: "cp11-runtime-model-v1"
-    });
-    expect(capturedContexts[0]).not.toHaveProperty("providerCredential");
   });
 });
 
@@ -496,7 +425,8 @@ describe("zero-setup local-first runtime provisioning", () => {
           binding.configuration.source === "zero-setup-provisioning"
       );
     expect(provisioned).toHaveLength(1);
-    expect(provisioned[0]).toMatchObject({ status: "active", isDefault: true });
+    // isDefault marks only the global slot; Postgres rejects it on a shop binding.
+    expect(provisioned[0]).toMatchObject({ status: "active", isDefault: false });
   });
 
   // Regression for the production incident: a brand-new merchant's own "chat with Grogoni AI" turn
@@ -580,7 +510,8 @@ describe("zero-setup local-first runtime provisioning", () => {
           binding.configuration.source === "zero-setup-provisioning"
       );
     expect(provisioned).toHaveLength(1);
-    expect(provisioned[0]).toMatchObject({ status: "active", isDefault: true });
+    // isDefault marks only the global slot; Postgres rejects it on a shop binding.
+    expect(provisioned[0]).toMatchObject({ status: "active", isDefault: false });
   });
 
   it("falls back to the platform default for an existing shop with no prior model binding (no conversationId)", async () => {

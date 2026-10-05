@@ -47,12 +47,12 @@ import {
   upsertAccountSyncChangesBulk
 } from "../services/api/src/cp2/postgres-store";
 import { Cp2Store, readSessionCookie, sessionCookieName } from "../services/api/src/cp2/store";
-import type { ModelArtifactStore } from "../services/api/src/inference/model-artifact-store";
 import {
-  createVercelInferenceClient,
-  createVercelModelAdapter
+  createOllamaInferenceClient,
+  createOllamaModelAdapter
 } from "../services/api/src/inference/model-runtime";
 import { postgresPersistenceQueueScenarios } from "./ai-eval/postgres-persistence-queue-scenarios";
+import { ollamaFetch } from "./fixtures/ollama-fakes";
 
 interface SqlExecutor {
   query<T extends Record<string, unknown> = Record<string, unknown>>(
@@ -630,88 +630,23 @@ describePostgres("CP2 Postgres store", () => {
     await restoredApp.close();
   }, 15_000);
 
-  it("reloads an active binding from Postgres and routes chat through the Vercel adapter", async () => {
+  it("reloads an active binding from Postgres and routes chat through the Ollama adapter", async () => {
     expect(databaseUrl).toBeDefined();
     const connectionString = databaseUrl ?? "";
     const modelId = "qwen2.5-0.5b-android";
-    const inferenceCalls: string[] = [];
-    const inferenceRequestIds: string[] = [];
-    const artifactStore: ModelArtifactStore = {
-      async resolveArtifact(requestedModelId) {
-        return {
-          id: `postgres-integration:${requestedModelId}`,
-          modelId: requestedModelId,
-          storageProvider: "neon-object-storage",
-          bucket: "grogoni-model-artifacts",
-          objectKey: `models/${requestedModelId}/model.gguf`,
-          format: "gguf",
-          quantization: "Q4_0",
-          sizeBytes: 12,
-          sha256: null,
-          contentType: "application/octet-stream",
-          status: "available",
-          createdAt: "2026-08-31T00:00:00.000Z",
-          updatedAt: "2026-08-31T00:00:00.000Z"
-        };
-      },
-      async createDownloadUrl(artifact) {
-        return {
-          ...artifact,
-          downloadUrl: "https://storage.example.neon.tech/grogoni-model-artifacts/model.gguf",
-          expiresAt: new Date(Date.now() + 60_000).toISOString()
-        };
-      },
-      async verifyArtifact() {
-        return { ok: true, sizeMatches: true, hashMatches: null, errorCode: null };
-      }
-    };
+    const ollamaRequest = ollamaFetch({
+      installed: ["qwen2.5:0.5b"],
+      chunks: [JSON.stringify({ type: "response", message: "postgres market" })]
+    });
     const createAdapter = () =>
-      createVercelModelAdapter({
+      createOllamaModelAdapter({
         modelId,
-        artifactStore,
-        client: createVercelInferenceClient({
-          baseUrl: "https://vercel-inference.example",
-          serviceToken: "postgres-integration-token-at-least-32-chars",
+        ollamaModel: "qwen2.5:0.5b",
+        client: createOllamaInferenceClient({
+          baseUrl: "http://127.0.0.1:11434",
+          model: "qwen2.5:0.5b",
           timeoutMs: 1_000,
-          request: async (input, init) => {
-            const url = String(input);
-            inferenceCalls.push(url);
-            if (url.endsWith("/health")) {
-              return new Response(JSON.stringify({ ok: true }), { status: 200 });
-            }
-            // The Vercel client rejects a result whose requestId does not echo the request's own
-            // id (model-runtime.ts), so the fake runtime echoes it exactly like the real one.
-            const requestId =
-              typeof init?.body === "string"
-                ? ((JSON.parse(init.body) as { requestId?: string }).requestId ?? "")
-                : "";
-            inferenceRequestIds.push(requestId);
-            const events = [
-              { type: "status", state: "INITIALIZING" },
-              { type: "status", state: "READY", cacheHit: false },
-              {
-                type: "result",
-                requestId,
-                text: JSON.stringify({ type: "response", message: "postgres market" }),
-                finishReason: "stop",
-                usage: { inputTokens: 7, outputTokens: 3 },
-                metrics: {}
-              }
-            ];
-            const encoder = new TextEncoder();
-            const body = new ReadableStream<Uint8Array>({
-              start(controller) {
-                for (const event of events) {
-                  controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
-                }
-                controller.close();
-              }
-            });
-            return new Response(body, {
-              status: 200,
-              headers: { "content-type": "application/x-ndjson" }
-            });
-          }
+          request: ollamaRequest as unknown as typeof fetch
         })
       });
     const adapterResolver = ({ modelId: requestedModelId }: { modelId: string }) =>
@@ -729,7 +664,7 @@ describePostgres("CP2 Postgres store", () => {
       `/api/agents/${business.id}/models/${modelId}/activate`,
       {
         shopId: business.id,
-        executionTarget: "vercel",
+        executionTarget: "local",
         executionMode: "LOCAL_FIRST",
         costResponsibility: "merchant",
         permissions: {
@@ -772,11 +707,10 @@ describePostgres("CP2 Postgres store", () => {
       model: {
         bindingId: activation.binding.id,
         modelId,
-        inferenceRequestId: inferenceRequestIds.at(-1)
+        inferenceRequestId: expect.stringMatching(/\S/u)
       }
     });
-    expect(inferenceRequestIds.at(-1)).toMatch(/\S/u);
-    expect(inferenceCalls.some((url) => url.endsWith("/v1/inference"))).toBe(true);
+    expect(ollamaRequest.mock.calls.some(([url]) => String(url).endsWith("/api/chat"))).toBe(true);
 
     await restoredApp.close();
   }, 30_000);
