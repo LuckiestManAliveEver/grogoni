@@ -49,7 +49,6 @@ import { NetworkSyncNestedCard } from "./NetworkSyncNestedCard";
 import { CatalogueNestedCard } from "./CatalogueNestedCard";
 import { StackedModule } from "./StackedModule";
 import type { ChatSurfaceProps } from "./chat-surface-contracts";
-import { ComputerRuntimeCard } from "./ComputerRuntimeCard";
 export type { ChatSurfaceProps } from "./chat-surface-contracts";
 
 const ShopHub = lazy(() =>
@@ -530,9 +529,6 @@ export function ChatSurface({
           aria-live="polite"
           ref={messageListRef}
         >
-          {activeConversationId !== null && businessId !== null ? (
-            <ComputerRuntimeCard businessId={businessId} conversationId={activeConversationId} />
-          ) : null}
           {isHomeEmpty ? (
             <div className="home-welcome" data-testid="home-welcome">
               <h1>Karibu. What do you need?</h1>

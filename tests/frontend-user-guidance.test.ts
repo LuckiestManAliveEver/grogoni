@@ -214,40 +214,25 @@ describe("frontend user guidance", () => {
     expect(chatSurfaceForRedundancy).toContain("!isRedundantAgentErrorMessage(message.body)");
   });
 
-  it("connects the model library to Hugging Face and GitHub discovery, browse-only until hosted", () => {
-    // Model discovery (GitHub/Hugging Face search) survives the on-device architecture removal as
-    // a browsing feature - see apps/web/src/AgentModelPanel.tsx's "concern 4". What was removed is
-    // turning a discovered model into a device download; device-fit ranking (rankCatalogModelsForDevice)
-    // went with it since there is no device to fit against anymore.
+  it("keeps the model library local-only, with no cloud discovery or provider keys", () => {
+    // The local-first runtime (docs/local-first-cloud-audit.md) removed the API's GitHub and
+    // Hugging Face model-discovery routes and rejects HF_TOKEN at boot, so the library browses only
+    // the deployment's own catalog. Device-fit ranking stays retired with the on-device architecture.
     const application = readFileSync("apps/web/src/AgentModelPanel.tsx", "utf8");
     const modelCatalog = readFileSync(
       "services/api/src/cp2/domains/agent-runtime/model-catalog.ts",
       "utf8"
     );
-    const githubCatalog = readFileSync("services/api/src/cp2/github-model-catalog.ts", "utf8");
-    const huggingFaceCatalog = readFileSync(
-      "services/api/src/cp2/huggingface-model-catalog.ts",
-      "utf8"
-    );
     const render = readFileSync("render.yaml", "utf8");
 
-    expect(application).toContain("/v1/ai-models/github");
-    expect(application).toContain("/v1/ai-models/huggingface");
-    expect(application).toContain("Search all model sources");
+    expect(application).not.toContain("/v1/ai-models/github");
+    expect(application).not.toContain("/v1/ai-models/huggingface");
     expect(application).not.toContain("rankCatalogModelsForDevice");
-    expect(application).toContain("Not yet available for hosted activation on this deployment.");
+    expect(application).toContain("Browse Grogoni's local model catalog.");
     expect(modelCatalog).toContain("tinyllama-1.1b-chat-q3-k-m-android");
-    expect(modelCatalog).toContain("tinyllama-1.1b-chat-q4-k-m-android");
     expect(modelCatalog).toContain('id: "llama-cpp-configured"');
-    expect(application).toContain('githubModelDiscovery.connection === "authenticated"');
-    expect(application).toContain(
-      'githubModelDiscovery.status === "available" ? "Available" : "Unavailable"'
-    );
-    expect(githubCatalog).toContain('"public API" : "authenticated API"');
-    expect(huggingFaceCatalog).toContain('"public API" : "authenticated API"');
-    expect(huggingFaceCatalog).toContain("https://huggingface.co/api/models");
     expect(render).toContain("- key: GITHUB_TOKEN");
-    expect(render).toContain("- key: HF_TOKEN");
+    expect(render).not.toContain("- key: HF_TOKEN");
     expect(render).not.toContain("LOCAL_MODEL_");
     // VITE_INFERENCE_CLIENT_FIRST/VITE_BROWSER_LOCAL_INFERENCE_ENABLED were retired along with
     // browser-local inference - see ADR-device-independent-runtime-and-registry-discovery.md and
@@ -256,6 +241,30 @@ describe("frontend user guidance", () => {
     expect(render).toContain("- key: VITE_INFERENCE_OWNER_NODE_ENABLED");
     expect(render).toContain("- key: INFERENCE_OWNER_NODE_ENABLED");
     expect(render).not.toContain("INFERENCE_CLOUD_FALLBACK_ENABLED");
+  });
+
+  it("does not offer retired cloud surfaces in the web app", () => {
+    // The API rejects COMPUTER_RUNTIME_URL and every hosted AI provider key at boot
+    // (services/api/src/config.ts rejectRemovedCloudConfiguration), so the UI must not offer a
+    // remote browser session, cloud AI providers, or the retired "vercel" hosted target.
+    const chatSurface = readFileSync("apps/web/src/ChatSurface.tsx", "utf8");
+    const profileSurface = readFileSync("apps/web/src/AgentProfileSurface.tsx", "utf8");
+    const providersPanel = readFileSync("apps/web/src/AiProvidersPanel.tsx", "utf8");
+    const modelPanel = readFileSync("apps/web/src/AgentModelPanel.tsx", "utf8");
+    const switcher = readFileSync("apps/web/src/QuickRuntimeSwitcher.tsx", "utf8");
+    const styles = readFileSync("apps/web/src/styles.css", "utf8");
+
+    expect(existsSync("apps/web/src/ComputerRuntimeCard.tsx")).toBe(false);
+    expect(chatSurface).not.toContain("ComputerRuntimeCard");
+    expect(styles).not.toContain(".computer-runtime-card");
+    for (const retired of ["OpenAI", "Anthropic", "Z.ai", "Grogoni Cloud"]) {
+      expect(profileSurface).not.toContain(retired);
+      expect(providersPanel).not.toContain(retired);
+    }
+    expect(providersPanel).not.toContain("Connect your own API key");
+    expect(modelPanel).not.toContain("backend-hosted");
+    expect(modelPanel).not.toContain('?? "vercel"');
+    expect(switcher).not.toContain('?? "vercel"');
   });
 
   it("removes Firebase phone OTP and completes staged phone signup without SMS", () => {

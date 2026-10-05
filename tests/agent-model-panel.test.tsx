@@ -317,4 +317,89 @@ describe("AgentModelPanel merchant-funded activation confirmation", () => {
       true
     );
   });
+
+  it("activates on the local Ollama target, never the retired hosted runtime", async () => {
+    const shopId = "panel-shop-local-target";
+    const activationBodies: unknown[] = [];
+    stubFetch({
+      ...fixture(shopId),
+      [`/api/agents/${shopId}/models/gpt-6-luna/activate`]: (init) => {
+        activationBodies.push(JSON.parse(String(init?.body)));
+        return jsonResponse({
+          status: "active",
+          binding: {
+            id: "binding-1",
+            agentId: shopId,
+            modelId: "gpt-6-luna",
+            status: "active",
+            executionTarget: "local",
+            lastVerifiedAt: null
+          },
+          healthCheck: { latencyMs: 5, executionTarget: "local" }
+        });
+      }
+    });
+
+    await act(async () => {
+      root = createRoot(host);
+      root.render(<Harness shopId={shopId} />);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await openLibrary();
+    await act(async () => {
+      useWithAgentButtonFor("GPT-6 Luna").click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // The fixture's catalog entry carries no hostedExecutionTarget (an older API response): the
+    // panel must fall back to the API's local-mode default, not the retired "vercel" runtime.
+    expect(activationBodies).toEqual([expect.objectContaining({ executionTarget: "local" })]);
+  });
+
+  it("treats an active binding on the local target as the agent's current model", async () => {
+    const shopId = "panel-shop-local-binding";
+    const localBinding = {
+      id: "binding-1",
+      agentId: shopId,
+      modelId: "gpt-6-luna",
+      status: "active",
+      executionTarget: "local",
+      lastVerifiedAt: null
+    };
+    stubFetch({
+      ...fixture(shopId),
+      [`/api/agents/${shopId}/model-binding`]: () => jsonResponse({ binding: localBinding }),
+      [`/businesses/${shopId}/runtime/effective`]: () =>
+        jsonResponse({
+          agent: { id: "builtin:shopkeeper", name: "Shopkeeper", runtimeAdapterId: "grogoni" },
+          model: { id: "gpt-6-luna", name: "GPT-6 Luna" },
+          execution: { type: "local", hostId: "ollama", ready: true },
+          binding: { id: "binding-1" },
+          source: "binding",
+          status: "READY",
+          ready: true
+        })
+    });
+
+    await act(async () => {
+      root = createRoot(host);
+      root.render(<Harness shopId={shopId} />);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await openLibrary();
+
+    expect(host.textContent).toContain("Running on: this computer's local runtime");
+    const card = [...host.querySelectorAll("article.ai-model-card")].find((article) =>
+      article.textContent?.includes("GPT-6 Luna")
+    );
+    expect(card?.textContent).toContain("Local · Active for Shopkeeper");
+    expect(host.textContent).not.toContain("Grogoni backend");
+  });
 });

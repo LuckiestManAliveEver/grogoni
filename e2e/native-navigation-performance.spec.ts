@@ -80,7 +80,7 @@ test("workspace and model settings do not replace the authenticated shell", asyn
   await expect(page.getByRole("heading", { name: "Model library", exact: true })).toBeVisible({
     timeout: 30_000
   });
-  await expect(page.getByLabel("Grogoni backend models", { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("Grogoni local models", { exact: true })).toHaveCount(0);
 
   expect(await page.locator(".app-frame").getAttribute("data-shell-instance")).toBe(shellId);
 });
@@ -99,7 +99,7 @@ test("backend model activation survives reload and can be removed", async ({ pag
   await expect(page).toHaveURL(/\/sell$/u);
   await page.locator(".settings-group-title", { hasText: "Model & inference" }).click();
   await page.getByRole("button", { name: "Open model library" }).click();
-  const backendModels = page.getByLabel("Grogoni backend models", { exact: true });
+  const backendModels = page.getByLabel("Grogoni local models", { exact: true });
   await expect(backendModels).toBeVisible();
 
   await backendModels.getByRole("button", { name: "Use with agent", exact: true }).click();

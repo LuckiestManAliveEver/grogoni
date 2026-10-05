@@ -140,7 +140,7 @@ export function formatExecutionTarget(value: AgentModelBindingSummary["execution
   return (
     {
       local: "this computer's local runtime",
-      vercel: "Grogoni backend",
+      vercel: "the retired Grogoni hosted runtime",
       backend: "Grogoni backend",
       "remote-shop-device": "signed-in shop device",
       "browser-local": "this device's browser",

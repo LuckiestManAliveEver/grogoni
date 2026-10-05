@@ -140,8 +140,9 @@ export function AiProvidersPanel({ businessId }: AiProvidersPanelProps) {
         <p className="eyebrow">AI providers</p>
         <h3>Where your agent's models run</h3>
         <p>
-          Your agent stays the same whichever provider runs its model. Connect your own API key to
-          bill usage to your own account; keys are encrypted and never shown again.
+          Your agent stays the same whichever runtime runs its model. Inference runs locally through
+          Ollama on this computer or on a member's own device; nothing is sent to a cloud AI
+          provider.
         </p>
       </div>
       {message.length > 0 ? (

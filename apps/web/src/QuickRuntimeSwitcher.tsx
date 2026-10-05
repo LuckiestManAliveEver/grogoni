@@ -12,6 +12,7 @@ import { isDeviceInferenceSupported, listInstalledDeviceModels } from "./device-
 import { getErrorMessage } from "./chat-message-plumbing";
 import { buildAgentProfileUpdate } from "./agent-profile-payload";
 import { agentSettingsFromBusinessProfile } from "./owner-app-bootstrap";
+import { servedExecutionTarget } from "./agent-model-panel-utils";
 import type {
   ActiveBusiness,
   AgentSettings,
@@ -29,7 +30,7 @@ export interface QuickRuntimeSwitcherProps {
 /**
  * The common-case "pick one and go" surface for the two runtime dimensions that had no simple
  * selector at all: which built-in agent definition (which also fixes which engine runs it - see
- * AgentDefinition.runtimeAdapterId) and which backend-hosted model run this shop's agent. Engine
+ * AgentDefinition.runtimeAdapterId) and which model runs this shop's agent. Engine
  * choice is no longer its own dimension: picking a different agent definition is how a shop swaps
  * engines, the same way GitHub/HuggingFace-imported definitions are picked for personality - so
  * this only lists builtin:* definitions, leaving discovery of imported ones to AgentModelPanel's
@@ -171,10 +172,11 @@ export function QuickRuntimeSwitcher({
         `/api/agents/${canonicalAgentId}/models/${encodeURIComponent(modelId)}/activate`,
         {
           shopId: business.id,
-          // Provider-routed models (OpenAI, Anthropic, Z.ai, Grogoni Cloud...) run on "backend";
-          // artifact-backed ones on "vercel". The catalog response says which.
-          executionTarget:
-            modelOptions.find((option) => option.id === modelId)?.hostedExecutionTarget ?? "vercel",
+          // The catalog response says which target serves the model: "local" (Ollama) for
+          // local-first deployments, "browser-local"/"installed-app" for on-device models.
+          executionTarget: servedExecutionTarget(
+            modelOptions.find((option) => option.id === modelId)
+          ),
           executionMode: isOnDeviceModel(modelOptions.find((option) => option.id === modelId))
             ? "LOCAL_ONLY"
             : "LOCAL_FIRST",
@@ -239,8 +241,8 @@ export function QuickRuntimeSwitcher({
         <p className="eyebrow">Quick switch</p>
         <h3>Agent and model</h3>
         <p>
-          Pick an agent and a hosted model. The platform default applies immediately; a
-          merchant-funded model asks you to confirm first.
+          Pick an agent and a model. The platform default applies immediately; a merchant-funded
+          model asks you to confirm first.
         </p>
       </div>
       {message.length > 0 ? (

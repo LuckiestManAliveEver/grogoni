@@ -76,7 +76,7 @@ describe("quick runtime switcher", () => {
     return fetchMock;
   }
 
-  it("loads the registered agent definitions and hosted models, and shows the shop's current selection", async () => {
+  it("loads the registered agent definitions and server-run models, and shows the shop's current selection", async () => {
     stubFetch({
       "/v1/platform/agent-catalog": () =>
         jsonResponse({
@@ -482,5 +482,59 @@ describe("quick runtime switcher", () => {
     expect(calledWithPath(fetchMock, `/api/agents/${shopId}/models/gpt-6-luna/activate`)).toBe(
       true
     );
+  });
+
+  it("activates on the target the catalog reports, defaulting to local Ollama", async () => {
+    const shopId = "agent-shop-local-target";
+    const activationBodies: Array<Record<string, unknown>> = [];
+    const fixture = merchantFundedModelsFixture(shopId);
+    stubFetch({
+      ...fixture,
+      [`/businesses/${shopId}/runtime/effective`]: () =>
+        jsonResponse({
+          agent: { id: "builtin:shopkeeper", name: "Shopkeeper", runtimeAdapterId: "grogoni" },
+          model: { id: "qwen3-4b", name: "Qwen3-4B" },
+          execution: { type: "local", hostId: "ollama", ready: true },
+          binding: { id: "binding-1" },
+          source: "default",
+          status: "READY",
+          ready: true
+        }),
+      [`/api/agents/${shopId}/models/gpt-6-luna/activate`]: (init) => {
+        activationBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return jsonResponse({
+          status: "active",
+          binding: { id: "binding-1", agentId: shopId, modelId: "gpt-6-luna" },
+          healthCheck: { latencyMs: 5 }
+        });
+      }
+    });
+    await act(async () => {
+      root = createRoot(host);
+      root.render(
+        <QuickRuntimeSwitcher
+          business={business(shopId)}
+          agent={agent()}
+          updateAgent={vi.fn()}
+          onAgentChange={vi.fn()}
+        />
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const modelSelect = host.querySelectorAll<HTMLSelectElement>("select")[1] as HTMLSelectElement;
+    await act(async () => {
+      modelSelect.value = "gpt-6-luna";
+      modelSelect.dispatchEvent(new Event("change", { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // The fixture's catalog omits hostedExecutionTarget, so the switcher must use the API's
+    // local-mode default rather than the retired "vercel" hosted runtime.
+    expect(activationBodies).toHaveLength(1);
+    expect(activationBodies[0]?.executionTarget).toBe("local");
   });
 });

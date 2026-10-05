@@ -112,7 +112,7 @@ export function AgentIdentityPanel({
       <form className="agent-catalog-search" onSubmit={searchAgents}>
         <input
           aria-label="Search open-source agents"
-          placeholder="Search agents, e.g. ZeroClaw"
+          placeholder="Search agents, e.g. Shopkeeper"
           value={agentSearch}
           onChange={(event) => setAgentSearch(event.target.value)}
         />
@@ -200,8 +200,8 @@ export function AgentIdentityPanel({
           aria-label="Current conversational model"
         />
         <small className="model-select-hint">
-          The selected model runs on the Grogoni backend, not on this device. It becomes active only
-          after a real backend activation test succeeds.
+          The selected model runs through the local Ollama runtime. It becomes active only after a
+          real local activation test succeeds.
         </small>
       </label>
       <label>
