@@ -132,7 +132,9 @@ Runbook (Neon or any existing database):
    rows back over the migration.
 3. Snapshot the rows 108 touches:
    `pg_dump "$DIRECT_DATABASE_URL" --data-only -t inference_provider_credentials -t cp2_native_runtime_agents -t cp2_agent_catalog -t cp2_native_runtime_models -t cp2_native_execution_hosts -t cp2_native_model_installations -t cp2_native_runtime_bindings -t cp2_native_runtime_binding_models -t cp2_model_catalog -t cp2_external_registry_connections > /tmp/grogoni-108-snapshot.sql`
-4. `pnpm db:migrate`, then start the API.
+4. `PGOPTIONS='-c grogoni.allow_108=yes' pnpm db:migrate`, then start the API. Without the flag 108
+   raises before changing anything (and the runner stops), so an auto-deploy or a stray
+   `pnpm db:migrate` cannot run it.
 
 Ollama model naming: the API calls Ollama with `OLLAMA_MODEL` (default `smollm2:360m`), while the
 `smollm2-360m` catalog and native-runtime rows describe `smollm2:360m-instruct-q4_0`. Both tags are
@@ -153,5 +155,6 @@ grades replies with local Claude Code. On 2026-10-05 SmolLM2 360M passed 0/6 sce
 merchant. Turns took 15-70s on this machine's CPU. The model is usable as a smoke test of the
 runtime, not as a shop assistant; choosing a larger Ollama model is an open product decision.
 
-The nightly `.github/workflows/ai-eval.yml` job runs on a hosted runner with neither Ollama nor
-Claude Code, so it skips (exit 0) and measures nothing; real runs need a machine with both.
+`.github/workflows/ai-eval.yml` is manual-dispatch only: hosted runners have neither Ollama nor
+Claude Code, so a nightly run could only skip and report green. Run `pnpm eval:ai` on a machine with
+both (set `GROGONI_CLAUDE_BIN` if `claude` is not on PATH) before a ship.

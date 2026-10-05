@@ -30,8 +30,10 @@ const databaseUrl = process.env.CP2_POSTGRES_TEST_DATABASE_URL;
 const describePostgres = databaseUrl === undefined ? describe.skip : describe;
 const globalBindingId = "builtin:grogoni-default-runtime:v1";
 
-function migration(name: string): Promise<string> {
-  return readFile(resolve(process.cwd(), "infra/db/migrations", name), "utf8");
+async function migration(name: string): Promise<string> {
+  const sql = await readFile(resolve(process.cwd(), "infra/db/migrations", name), "utf8");
+  // 108 is opt-in (its guard raises otherwise); a multi-statement query runs on one connection.
+  return name.startsWith("108_") ? `set grogoni.allow_108 = 'yes';\n${sql}` : sql;
 }
 
 function rollback(name: string): Promise<string> {
@@ -114,6 +116,23 @@ function runtimeTurn(
 }
 
 describePostgres("migration 108: local-first runtime cleanup", () => {
+  it("refuses to run unless the operator opts in", async () => {
+    const pool = new Pool({ connectionString: databaseUrl as string });
+    try {
+      const raw = await readFile(
+        resolve(process.cwd(), "infra/db/migrations/108_local_first_runtime_cleanup.sql"),
+        "utf8"
+      );
+      // Explicitly not opted in (RESET would fall back to a PGOPTIONS startup value), the way an
+      // auto-deploy would run it.
+      await expect(pool.query(`set grogoni.allow_108 = 'no';\n${raw}`)).rejects.toThrow(
+        "Migration 108 is opt-in"
+      );
+    } finally {
+      await pool.end();
+    }
+  });
+
   it("moves legacy GPT-6 Luna, ZeroClaw and BYOK state onto local Ollama", async () => {
     const connectionString = databaseUrl as string;
     const pool = new Pool({ connectionString });

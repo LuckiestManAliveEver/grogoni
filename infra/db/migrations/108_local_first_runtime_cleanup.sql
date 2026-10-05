@@ -20,6 +20,21 @@
 -- back. Every runtime/catalog row it changes is first copied to migration_108_backup, which the
 -- rollback restores from; the deleted keys are deliberately not copied.
 
+-- Opt-in guard: 108 deletes stored keys and rewrites runtime rows, so it never runs by accident
+-- (an auto-deploy, a stray `pnpm db:migrate`). The operator sets the flag after following the
+-- runbook; test and CI databases set it in their environment. Raising here aborts the migration
+-- runner before anything changes.
+do $guard$
+begin
+  if coalesce(current_setting('grogoni.allow_108', true), '') <> 'yes' then
+    raise exception using
+      message = 'Migration 108 is opt-in: it deletes stored provider keys and rewrites runtime rows.',
+      hint = 'Follow the "Migration 108" runbook in docs/local-first-cloud-audit.md (stop the API, '
+        || 'snapshot), then run: PGOPTIONS=''-c grogoni.allow_108=yes'' pnpm db:migrate';
+  end if;
+end
+$guard$;
+
 -- 0. Backup of every row this migration may change. Captured only on the first run (the table is
 -- empty): a re-run must not record 108's own output as "before" state.
 create table if not exists migration_108_backup (

@@ -1,11 +1,11 @@
 name: AI eval
 
 # Periodic eval lane (CLAUDE.md: paid, quality-measuring, threshold-gated) for the model-fallback
-# path - separate from ci.yml's fast deterministic gate, which runs on every push/PR. This runs
-# nightly and on manual dispatch (before a ship) only, since it makes real model calls.
+# path - separate from ci.yml's fast deterministic gate, which runs on every push/PR.
+# Manual only: hosted runners have neither Ollama nor Claude Code, so a scheduled run could only
+# skip and report a meaningless green. Run `pnpm eval:ai` on a machine with both before a ship, or
+# dispatch this job on a runner that has them.
 on:
-  schedule:
-    - cron: "0 2 * * *"
   workflow_dispatch:
 
 jobs:
