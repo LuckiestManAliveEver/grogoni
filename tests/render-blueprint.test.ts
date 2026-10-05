@@ -51,6 +51,9 @@ describe("Render Blueprint", () => {
     // RESEND_API_KEY at boot, so the Blueprint must not provision it.
     expect(api).not.toContain("RESEND_API_KEY");
     expect(api).not.toMatch(/AUTH_SMS|SMS_GATEWAY|ANDROID_SMS|LOCAL_SMS/u);
+    // The passkey RP ID must be the registrable domain of every expected origin, or
+    // readAuthRuntimeConfig refuses to boot (regression: the rename left it as "grogoni").
+    expect(api).toContain("WEBAUTHN_RP_ID\n        value: grogoni.com\n");
     expect(api).toContain('GROGONI_EMAIL_FROM\n        value: "Grogoni <messages@grogoni.com>"');
   });
 

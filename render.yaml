@@ -63,7 +63,7 @@ services:
       - key: AUTH_ALLOWED_REDIRECT_ORIGINS
         value: https://grogoni.com,https://www.grogoni.com
       - key: WEBAUTHN_RP_ID
-        value: grogoni
+        value: grogoni.com
       - key: WEBAUTHN_EXPECTED_ORIGINS
         value: https://grogoni.com,https://www.grogoni.com
       - key: COOKIE_SECURE
