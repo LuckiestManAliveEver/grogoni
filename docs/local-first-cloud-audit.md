@@ -165,6 +165,16 @@ platform default stays SmolLM2 360M: neither model is adequate, and SmolLM2's re
 treating the assembled system text as content to grade or repeat, so the next lever is how agent
 instructions are placed in the prompt, then a larger eval set.
 
+The agent's trusted instructions (platform rules, identity, business policy, personality, tools,
+output rules) used to be concatenated into the user turn together with the merchant's message.
+They now go in the system message (`RuntimeModelPrompt.agentInstructions`); untrusted retrieved
+context, recall and memory stay in the user turn, delimited, so they never gain system authority.
+With that split, qwen2.5:3b scored 2/6 (it stopped parroting few-shot reasons and now asks for
+missing details) and SmolLM2 stayed at 0/6, now reciting the system prompt back: it cannot follow a
+system prompt of this size. Across all three prompt versions qwen2.5:3b led (3, 1, 2 vs 0, 0, 0)
+at roughly 3x the latency on this machine. Open quality gaps: it overclaims ("I can help you file
+your tax returns with KRA"), ignores delivery questions, and re-asks for details already given.
+
 `.github/workflows/ai-eval.yml` is manual-dispatch only: hosted runners have neither Ollama nor
 Claude Code, so a nightly run could only skip and report green. Run `pnpm eval:ai` on a machine with
 both (set `GROGONI_CLAUDE_BIN` if `claude` is not on PATH) before a ship.

@@ -9,6 +9,11 @@ import { buildApi } from "../services/api/src/app";
 import { createCp2Store } from "../services/api/src/cp2/store";
 import { activateGenericGlobalDefaultModel } from "./fixtures/native-runtime-test-helpers";
 
+/** Everything the model receives for a turn: trusted agent instructions plus the user turn. */
+function promptText(prompt: { message: string; agentInstructions?: string } | undefined): string {
+  return prompt === undefined ? "" : [prompt.agentInstructions ?? "", prompt.message].join("\n");
+}
+
 interface VerifyOtpResponse {
   session: {
     id: string;
@@ -432,7 +437,7 @@ describe("CP11 local model adapter", () => {
     // reaches a model adapter (createOllamaModelAdapter, tested in tests/ollama-model-adapter.test.ts,
     // sends this text through verbatim) - the per-turn agentProfile field in the request body above is not
     // the source of truth and must never leak into what the model actually sees.
-    const assembledMessage = capturedPrompt?.message ?? "";
+    const assembledMessage = promptText(capturedPrompt);
     expect(assembledMessage).not.toContain("Private Sugar");
     expect(assembledMessage).toContain(
       "Use this agent profile as the guiding operating principles for how this store is run."

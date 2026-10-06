@@ -5508,6 +5508,7 @@ export class Cp2Store {
     });
     const prompt = buildRuntimeModelPrompt(assembled.message, undefined, undefined, {
       runtimeVersion: shopRuntime.version,
+      agentInstructions: assembled.instructions,
       compiledInstructions: assembled.compiled,
       retrievedContext,
       allowedTools: [],

@@ -475,7 +475,9 @@ export function buildInferenceInstructions(prompt: RuntimeModelPrompt): string {
   const fewShotExamples = renderRuntimeModelFewShotExamples(prompt.allowedTools);
   const templateRecipe = renderModelTemplateRecipe(prompt);
   return [
-    "You are the model behind the Grogoni agent runtime.",
+    ...(prompt.agentInstructions === undefined || prompt.agentInstructions.trim() === ""
+      ? ["You are the model behind the Grogoni agent runtime."]
+      : [prompt.agentInstructions]),
     renderRuntimeModelOutputInstructions(prompt.allowedTools),
     ...(fewShotExamples === "" ? [] : [fewShotExamples]),
     ...(templateRecipe === "" ? [] : [templateRecipe])

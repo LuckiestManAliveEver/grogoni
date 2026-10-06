@@ -167,9 +167,9 @@ export function createRoutedModelRuntimeAdapter(input: {
 
 /**
  * RuntimeModelPrompt (Grogoni's agent prompt) -> canonical chat request. The system message carries
- * the same instructions every other model gets; history becomes real chat turns. Business context
- * that the agent runtime already minimized (compiled instructions, retrieved context) arrives
- * inside `prompt.message` exactly as for the Vercel adapter - nothing extra is added here.
+ * the agent's trusted instructions plus the output contract (buildInferenceInstructions), exactly as
+ * the Ollama adapter sends them; history becomes real chat turns; the user turn is `prompt.message`
+ * (untrusted retrieved data, if any, then the merchant's message).
  */
 export function inferenceRequestFromPrompt(
   prompt: RuntimeModelPrompt,

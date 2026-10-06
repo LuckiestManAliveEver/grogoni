@@ -7,6 +7,11 @@ import type {
 import { buildApi } from "../services/api/src/app";
 import { createCp2Store, type BusinessAgentProfileSummary } from "../services/api/src/cp2/store";
 
+/** Everything the model receives for a turn: trusted agent instructions plus the user turn. */
+function promptText(prompt: { message: string; agentInstructions?: string } | undefined): string {
+  return prompt === undefined ? "" : [prompt.agentInstructions ?? "", prompt.message].join("\n");
+}
+
 describe("business agent settings", () => {
   it("persists the complete settings profile and uses it for server-side runtime turns", async () => {
     let capturedPrompt: RuntimeModelPrompt | null = null;
@@ -106,10 +111,10 @@ describe("business agent settings", () => {
       })
     });
     expect(runtimeResponse.statusCode).toBe(200);
-    expect(capturedPrompt?.message).toContain(
+    expect(promptText(capturedPrompt)).toContain(
       "Agent behavior: Direct, calm, and careful with stock commitments."
     );
-    expect(capturedPrompt?.message).toContain(
+    expect(promptText(capturedPrompt)).toContain(
       "Agent responsibilities: Prioritize stock accuracy and ask before making risky changes."
     );
 
@@ -160,13 +165,13 @@ describe("business agent settings", () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(capturedPrompt?.message).toContain("[document-upload: active]");
-    expect(capturedPrompt?.message).toContain("script: document_upload_guardrails");
-    expect(capturedPrompt?.message).toContain("An attachment summary contains metadata only");
-    expect(capturedPrompt?.message).toContain(
+    expect(promptText(capturedPrompt)).toContain("[document-upload: active]");
+    expect(promptText(capturedPrompt)).toContain("script: document_upload_guardrails");
+    expect(promptText(capturedPrompt)).toContain("An attachment summary contains metadata only");
+    expect(promptText(capturedPrompt)).toContain(
       "Never claim that you read, opened, scanned, or extracted the file body"
     );
-    expect(capturedPrompt?.message).not.toContain("Agent behavior: Careful");
+    expect(promptText(capturedPrompt)).not.toContain("Agent behavior: Careful");
 
     await app.close();
   });

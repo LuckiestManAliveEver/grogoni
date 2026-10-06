@@ -125,6 +125,27 @@ describe("Ollama model adapter", () => {
     expect(chatCall?.[1]).toMatchObject({ method: "POST", credentials: "omit" });
   });
 
+  it("sends the agent's instructions as the system message and only the user turn as user", async () => {
+    const request = ollamaFetch({ chunks: ['{"type":"response","message":"Karibu!"}'] });
+    await adapterFor(request).generate({
+      context,
+      prompt: prompt("Habari, una sukari?", {
+        agentInstructions: "# Identity\nYou are Mama Mboga's shopkeeper."
+      })
+    });
+    const chatCall = request.mock.calls.find(([url]) => String(url).endsWith("/api/chat"));
+    const body = JSON.parse(String(chatCall?.[1]?.body)) as {
+      messages: Array<{ role: string; content: string }>;
+    };
+    expect(body.messages).toHaveLength(2);
+    expect(body.messages[0]?.role).toBe("system");
+    expect(
+      body.messages[0]?.content.startsWith("# Identity\nYou are Mama Mboga's shopkeeper.")
+    ).toBe(true);
+    expect(body.messages[0]?.content).toContain("Return only one JSON object.");
+    expect(body.messages[1]).toEqual({ role: "user", content: "Habari, una sukari?" });
+  });
+
   it("normalizes a plain-text reply into the runtime response contract", async () => {
     const completion = await adapterFor(ollamaFetch({ chunks: ["market"] })).generate({
       context,

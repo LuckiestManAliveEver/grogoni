@@ -3877,7 +3877,17 @@ export interface RuntimeModelTemplateRecipe {
 }
 
 export interface RuntimeModelPrompt {
+  /**
+   * The user turn: untrusted retrieved data (if any) followed by the current message. Never holds
+   * the agent's own instructions - those are `agentInstructions`.
+   */
   message: string;
+  /**
+   * The agent's trusted operating instructions (platform rules, identity, business policy,
+   * personality, available tools, output rules). Adapters send these as the system message, so a
+   * model never mistakes them for something the merchant said.
+   */
+  agentInstructions?: string;
   conversationHistory?: RuntimeModelConversationMessage[];
   /**
    * Owner-facing operational counts (invoices, compliance, etc.). Absent for callers with no

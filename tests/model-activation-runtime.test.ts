@@ -12,6 +12,11 @@ import {
   type ModelRuntimeAdapter
 } from "../services/api/src/inference/model-runtime";
 
+/** Everything the model receives for a turn: trusted agent instructions plus the user turn. */
+function promptText(prompt: { message: string; agentInstructions?: string } | undefined): string {
+  return prompt === undefined ? "" : [prompt.agentInstructions ?? "", prompt.message].join("\n");
+}
+
 const primaryModelId = "qwen2.5-0.5b-android";
 const replacementModelId = "qwen2.5-1.5b-android";
 
@@ -515,8 +520,8 @@ describe("agent model activation runtime", () => {
       }
     });
     expect(prompts).toHaveLength(1);
-    expect(prompts[0]?.message).toContain("Always mention the market policy.");
-    expect(prompts[0]?.message).toContain("Concise market guide");
+    expect(promptText(prompts[0])).toContain("Always mention the market policy.");
+    expect(promptText(prompts[0])).toContain("Concise market guide");
     const view = await getJson<{ messages: Array<{ clientMessageId: string }> }>(
       app,
       `/v1/conversations/${conversationId}`,

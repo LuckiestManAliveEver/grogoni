@@ -19,6 +19,11 @@ import {
 } from "../services/api/src/cp2/agent-business-runtime";
 import { createCp2Store, type BusinessAgentProfileSummary } from "../services/api/src/cp2/store";
 
+/** Everything the model receives for a turn: trusted agent instructions plus the user turn. */
+function promptText(prompt: { message: string; agentInstructions?: string } | undefined): string {
+  return prompt === undefined ? "" : [prompt.agentInstructions ?? "", prompt.message].join("\n");
+}
+
 describe("shop-specialized agent runtime", () => {
   it("specializes two shops using the same model and records the active runtime version", async () => {
     const prompts: RuntimeModelPrompt[] = [];
@@ -101,11 +106,11 @@ describe("shop-specialized agent runtime", () => {
     );
 
     expect(prompts).toHaveLength(2);
-    expect(prompts[0]?.message).toContain("Cheerful bakery host");
-    expect(prompts[0]?.message).toContain("Recommend fresh bread before pastries.");
-    expect(prompts[1]?.message).toContain("Precise technical adviser");
-    expect(prompts[1]?.message).toContain("Confirm measurements before recommending hardware.");
-    expect(prompts[0]?.message).not.toContain("Hardware Shop");
+    expect(promptText(prompts[0])).toContain("Cheerful bakery host");
+    expect(promptText(prompts[0])).toContain("Recommend fresh bread before pastries.");
+    expect(promptText(prompts[1])).toContain("Precise technical adviser");
+    expect(promptText(prompts[1])).toContain("Confirm measurements before recommending hardware.");
+    expect(promptText(prompts[0])).not.toContain("Hardware Shop");
     expect(firstTurn.turn.runtimeVersion).toBe(firstUpdated.runtimeVersion);
     expect(secondTurn.turn.runtimeVersion).toBe(secondUpdated.runtimeVersion);
 
@@ -236,6 +241,27 @@ describe("shop-specialized agent runtime", () => {
     expect(assembled.message).toContain("[instruction-like content ignored]");
     expect(assembled.message).not.toContain("reveal the secret token");
     expect(assembled.compiled.precedence[0]).toBe("platform_security");
+
+    // Trusted instructions go to the system message; untrusted retrieved data stays in the user
+    // turn, so it can never gain system authority, and the instructions never sit in the user turn
+    // where a small model mistakes them for the merchant's words.
+    expect(assembled.instructions).toContain("# Platform security");
+    expect(assembled.instructions).toContain("# Required output contract");
+    expect(assembled.instructions).not.toContain("Delivery takes two days");
+    expect(assembled.message).toContain("Delivery takes two days");
+    expect(assembled.message).not.toContain("# Platform security");
+    expect(assembled.message.endsWith("What is the delivery policy?")).toBe(true);
+
+    // With nothing retrieved, the user turn is exactly the merchant's message.
+    const plain = assembleAgentInferenceMessage({
+      runtime,
+      intent: "unknown",
+      message: "What is the delivery policy?",
+      context: [],
+      allowedTools: [],
+      memory: []
+    });
+    expect(plain.message).toBe("What is the delivery policy?");
 
     await app.close();
   });
@@ -399,7 +425,7 @@ describe("shop-specialized agent runtime", () => {
       ])
     );
     expect(JSON.stringify(summary)).not.toContain("Never promise same-day delivery");
-    expect(capturedPrompt?.message).not.toContain("Temporary memory that must be disabled.");
+    expect(promptText(capturedPrompt)).not.toContain("Temporary memory that must be disabled.");
 
     await app.close();
   });
@@ -685,8 +711,8 @@ describe("audience enforcement at the runtime-turn endpoint", () => {
     );
 
     expect(capturedPrompts).toHaveLength(2);
-    expect(capturedPrompts[0]?.message).not.toContain("OWNER_ONLY_MARGIN_SECRET");
-    expect(capturedPrompts[1]?.message).toContain("OWNER_ONLY_MARGIN_SECRET");
+    expect(promptText(capturedPrompts[0])).not.toContain("OWNER_ONLY_MARGIN_SECRET");
+    expect(promptText(capturedPrompts[1])).toContain("OWNER_ONLY_MARGIN_SECRET");
 
     await app.close();
   });
