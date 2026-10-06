@@ -12,7 +12,7 @@ import { isDeviceInferenceSupported, listInstalledDeviceModels } from "./device-
 import { getErrorMessage } from "./chat-message-plumbing";
 import { buildAgentProfileUpdate } from "./agent-profile-payload";
 import { agentSettingsFromBusinessProfile } from "./owner-app-bootstrap";
-import { servedExecutionTarget } from "./agent-model-panel-utils";
+import { isIncludedModel, servedExecutionTarget } from "./agent-model-panel-utils";
 import type {
   ActiveBusiness,
   AgentSettings,
@@ -128,7 +128,9 @@ export function QuickRuntimeSwitcher({
         .then((downloadBytes) => setPendingDeviceModel({ modelId, downloadBytes }));
       return;
     }
-    const isMerchantFunded = modelId !== platformSharedModelId;
+    const isMerchantFunded = !isIncludedModel(
+      modelOptions.find((candidate) => candidate.id === modelId)
+    );
     if (!isMerchantFunded) {
       void activateModel(modelId);
       return;
@@ -181,7 +183,9 @@ export function QuickRuntimeSwitcher({
             ? "LOCAL_ONLY"
             : "LOCAL_FIRST",
           permissions: { allowInstalledApp: false, allowRemoteShopDevice: false },
-          ...(modelId === platformSharedModelId ? {} : { costResponsibility: "merchant" })
+          ...(isIncludedModel(modelOptions.find((option) => option.id === modelId))
+            ? {}
+            : { costResponsibility: "merchant" })
         }
       );
       setSelectedModelId(result.binding.modelId);
@@ -297,8 +301,10 @@ export function QuickRuntimeSwitcher({
             {isOnDeviceModel(activeModel)
               ? "Runs privately on each team member's own device. Free - nothing is sent to a cloud model. Members need the model installed on the device they chat from."
               : `Provider: ${activeModel.provider}. Billing: ${
-                  activeModel.id === platformSharedModelId
-                    ? "included with the platform, no extra charge."
+                  isIncludedModel(activeModel)
+                    ? activeModel.provider === "ollama"
+                      ? "none - runs in Ollama on the machine running Grogoni."
+                      : "included with the platform, no extra charge."
                     : "merchant-funded - your business is billed for usage."
                 }`}
           </p>
@@ -384,9 +390,10 @@ function formatMegabytes(bytes: number | null): string {
 
 function modelOptionTitle(option: AiModelSummary): string {
   if (isOnDeviceModel(option)) return "on this device · free";
-  const billing =
-    option.id === platformSharedModelId
-      ? "platform-included"
-      : "merchant-funded (usage billed to you)";
+  const billing = isIncludedModel(option)
+    ? option.provider === "ollama"
+      ? "local, no usage cost"
+      : "platform-included"
+    : "merchant-funded (usage billed to you)";
   return `${option.provider} · ${billing}`;
 }

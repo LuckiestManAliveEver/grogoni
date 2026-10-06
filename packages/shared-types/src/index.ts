@@ -973,6 +973,15 @@ export type ModelProviderId = string;
 export const platformSharedModelId = "smollm2-360m" as const;
 export type ModelCostResponsibility = "platform-included" | "merchant";
 
+/**
+ * Whether activating a model costs the merchant nothing: the platform default, and every model
+ * served by local Ollama (it runs on the machine running Grogoni; there is no usage bill). Only
+ * other models need the merchant to accept costs before activation.
+ */
+export function isPlatformIncludedModel(model: Pick<AiModelSummary, "id" | "provider">): boolean {
+  return model.id === platformSharedModelId || model.provider === "ollama";
+}
+
 export interface AiModelSummary {
   id: string;
   label: string;

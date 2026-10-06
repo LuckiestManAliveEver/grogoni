@@ -7,7 +7,6 @@ import type {
   EffectiveRuntimeSummary,
   ModelRuntimeHealthSummary
 } from "@grogoni/shared-types";
-import { platformSharedModelId } from "@grogoni/shared-types";
 
 import {
   readClientInferencePreferences,
@@ -34,6 +33,7 @@ import { normalizeSearchText } from "./agent-command-engine";
 import { getErrorMessage } from "./chat-message-plumbing";
 import {
   applyDeploymentRuntimeAvailability,
+  isIncludedModel,
   isServerExecutionTarget,
   servedExecutionTarget
 } from "./agent-model-panel-utils";
@@ -301,7 +301,7 @@ export function AgentModelPanel({
   }
 
   function requestActivateServerBackendModel(model: AiModelSummary) {
-    if (model.id !== platformSharedModelId) {
+    if (!isIncludedModel(model)) {
       setPendingCostConfirmationModelId(model.id);
       return;
     }
@@ -332,7 +332,7 @@ export function AgentModelPanel({
             allowInstalledApp: false,
             allowRemoteShopDevice: inferencePreferences.ownerNodeAllowed
           },
-          ...(model.id === platformSharedModelId ? {} : { costResponsibility: "merchant" })
+          ...(isIncludedModel(model) ? {} : { costResponsibility: "merchant" })
         },
         { timeoutMs: backendModelProbeRequestTimeoutMs }
       );

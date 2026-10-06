@@ -16,6 +16,10 @@ import {
   createOllamaModelAdapter,
   type ModelRuntimeAdapter
 } from "./inference/model-runtime.js";
+import {
+  createLocalModelAdapterResolver,
+  createOllamaModelCatalog
+} from "./inference/ollama-model-catalog.js";
 import { OwnerNodeBroker } from "./inference/owner-node-broker.js";
 import { readInferenceEnvironment } from "./inference/providers/environment.js";
 import { createInferencePlatform } from "./inference/providers/platform.js";
@@ -97,10 +101,34 @@ const adapter = instrumentModelAdapter(
 );
 modelRuntimeAdapters.set(`local:${config.platformDefaultRuntime.modelId}`, adapter);
 primaryInferenceAdapter = adapter;
-const modelRuntimeAdapterResolver = (input: {
-  modelId: string;
-  executionTarget: ModelRuntimeAdapter["executionTarget"];
-}) => modelRuntimeAdapters.get(`${input.executionTarget}:${input.modelId}`);
+// Every other model installed in Ollama is listed in the model tab and served on demand, so a shop
+// switches models by picking one from the list - no restart or configuration change.
+const localModelCatalog = createOllamaModelCatalog({
+  client,
+  excludeTags: [config.ollamaModel],
+  log: (event, fields) => console.log({ event, ...fields })
+});
+// Not awaited: a slow or stopped Ollama must never delay boot; the list fills in when it answers.
+void localModelCatalog.refresh();
+const localModelCatalogRefresh = setInterval(() => void localModelCatalog.refresh(), 30_000);
+localModelCatalogRefresh.unref();
+const modelRuntimeAdapterResolver = createLocalModelAdapterResolver({
+  registered: modelRuntimeAdapters,
+  catalog: localModelCatalog,
+  createAdapter: (input) =>
+    instrumentModelAdapter(
+      createOllamaModelAdapter({
+        modelId: input.modelId,
+        ollamaModel: input.ollamaTag,
+        client: createOllamaInferenceClient({
+          baseUrl: config.ollamaBaseUrl,
+          model: input.ollamaTag,
+          timeoutMs: config.inferenceTimeoutMs
+        })
+      }),
+      metrics
+    )
+});
 const cp2StoreMode = process.env.CP2_STORE?.trim().toLowerCase();
 const databaseUrl = process.env.DATABASE_URL?.trim() ?? "";
 const webPushConfiguration = readWebPushConfiguration();
@@ -208,6 +236,7 @@ const cp2StoreOptions = {
   emailMailboxProviderClient,
   metrics,
   modelRuntimeAdapterResolver,
+  localModelCatalog,
   inferencePlatform,
   platformDefaultRuntime: config.platformDefaultRuntime,
   ...(pushNotificationSender === undefined ? {} : { pushNotificationSender }),
@@ -362,6 +391,7 @@ const grogoniIdCooldownMs = readOptionalPositiveInteger(process.env.GROGONI_ID_C
 app.addHook("onClose", async () => {
   backgroundRetriesStopped = true;
   stopInferenceRefreshRetry?.();
+  clearInterval(localModelCatalogRefresh);
   await grogoniIdCooldownRunner?.stop();
   await connectedMailboxSyncRunner?.stop();
   await notificationDeliveryRunner?.stop();

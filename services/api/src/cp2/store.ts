@@ -121,6 +121,7 @@ import {
 import { AgentRuntimeDomain } from "./domains/agent-runtime/store.js";
 import { createDefaultAgentRuntimeAdapterRegistry } from "../agent-harness/default-agent-runtime-adapters.js";
 import { connectedAgentRuntimeAdapterId } from "../agent-harness/retired-agent-runtimes.js";
+import type { LocalModelCatalog } from "../inference/ollama-model-catalog.js";
 import type { AgentRuntimeAdapter } from "../agent-harness/agent-runtime-adapter.js";
 import {
   aiModelRegistry,
@@ -824,6 +825,11 @@ export interface Cp2StoreOptions {
     shopId: string;
   }) => ModelRuntimeAdapter | undefined;
   agentRuntimeAdapterResolver?: (adapterId: string) => AgentRuntimeAdapter | undefined;
+  /**
+   * Models installed in local Ollama (inference/ollama-model-catalog.ts), listed alongside the
+   * stored catalog so the model tab can switch to any of them. Stored entries win on an id clash.
+   */
+  localModelCatalog?: Pick<LocalModelCatalog, "list">;
   /**
    * Multi-provider inference router (services/api/src/inference/providers). When supplied, its
    * router-backed adapters serve provider-routed catalog models on the "backend" target, after
@@ -8671,7 +8677,10 @@ export class Cp2Store {
   /** The DB-hosted model catalog, with env-gated provider availability applied. Any device already
    *  reaches this through GET /v1/ai-models (listAiModels below). */
   listModelCatalog(): AiModelSummary[] {
-    return [...this.modelCatalog.values()]
+    const local = (this.options.localModelCatalog?.list() ?? []).filter(
+      (model) => !this.modelCatalog.has(model.id)
+    );
+    return [...this.modelCatalog.values(), ...local]
       .map((model) => this.effectiveCatalogModel(model))
       .sort((left, right) => left.label.localeCompare(right.label));
   }
@@ -8987,7 +8996,9 @@ export class Cp2Store {
   }
 
   private resolveCatalogModel(modelId: string): AiModelSummary | undefined {
-    const stored = this.modelCatalog.get(modelId);
+    const stored =
+      this.modelCatalog.get(modelId) ??
+      this.options.localModelCatalog?.list().find((model) => model.id === modelId);
     if (stored === undefined) return undefined;
     return this.effectiveCatalogModel(stored);
   }

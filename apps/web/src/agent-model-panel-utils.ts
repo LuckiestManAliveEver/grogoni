@@ -1,4 +1,4 @@
-import type { ModelExecutionTarget } from "@grogoni/shared-types";
+import { isPlatformIncludedModel, type ModelExecutionTarget } from "@grogoni/shared-types";
 import type { AiModelSummary } from "./grogoni-application-shared";
 
 export function isDownloadableCatalogModel(model: AiModelSummary): boolean {
@@ -36,4 +36,16 @@ export function servedExecutionTarget(model: AiModelSummary | undefined): ModelE
 /** Targets the API runs itself (local Ollama, server-side router, legacy hosted bindings). */
 export function isServerExecutionTarget(target: ModelExecutionTarget): boolean {
   return target === "local" || target === "backend" || target === "vercel";
+}
+
+/**
+ * Whether switching to this model costs the merchant nothing, so no cost confirmation is needed:
+ * the API's own costResponsibility when present, otherwise the shared rule (the platform default
+ * and every local Ollama model are included).
+ */
+export function isIncludedModel(model: AiModelSummary | undefined): boolean {
+  if (model === undefined) return false;
+  if (model.costResponsibility !== undefined)
+    return model.costResponsibility === "platform-included";
+  return isPlatformIncludedModel(model);
 }

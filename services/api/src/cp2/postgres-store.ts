@@ -583,47 +583,15 @@ export async function createPostgresCp2Store(
 
   try {
     await assertDatabaseMigrated(bootPool);
+    // Every store option the caller injects is forwarded. This used to be a hand-maintained
+    // whitelist that silently dropped options added later (the messaging channel gateway,
+    // connected-mailbox client, workspace settings, the configured platform default runtime and
+    // the local Ollama model catalog), so a Postgres-backed API ran without them.
+    const { databaseUrl: _databaseUrl, metrics: _metrics, ...storeOptions } = options;
+    void _databaseUrl;
+    void _metrics;
     store = createCp2Store({
-      ...(options.runtimeModelProvider === undefined
-        ? {}
-        : { runtimeModelProvider: options.runtimeModelProvider }),
-      ...(options.runtimeModelProviderResolver === undefined
-        ? {}
-        : { runtimeModelProviderResolver: options.runtimeModelProviderResolver }),
-      ...(options.modelRuntimeAdapterResolver === undefined
-        ? {}
-        : { modelRuntimeAdapterResolver: options.modelRuntimeAdapterResolver }),
-      ...(options.inferencePlatform === undefined
-        ? {}
-        : { inferencePlatform: options.inferencePlatform }),
-      ...(options.agentRuntimeAdapterResolver === undefined
-        ? {}
-        : { agentRuntimeAdapterResolver: options.agentRuntimeAdapterResolver }),
-      ...(options.templateExecutor === undefined
-        ? {}
-        : { templateExecutor: options.templateExecutor }),
-      ...(options.templateJudgeEvaluator === undefined
-        ? {}
-        : { templateJudgeEvaluator: options.templateJudgeEvaluator }),
-      ...(options.templateTelemetrySink === undefined
-        ? {}
-        : { templateTelemetrySink: options.templateTelemetrySink }),
-      ...(options.pushNotificationSender === undefined
-        ? {}
-        : { pushNotificationSender: options.pushNotificationSender }),
-      ...(options.messageEmailNotificationSender === undefined
-        ? {}
-        : { messageEmailNotificationSender: options.messageEmailNotificationSender }),
-      ...(options.networkInviteSender === undefined
-        ? {}
-        : { networkInviteSender: options.networkInviteSender }),
-      ...(options.networkLimits === undefined ? {} : { networkLimits: options.networkLimits }),
-      ...(options.messageWebBaseUrl === undefined
-        ? {}
-        : { messageWebBaseUrl: options.messageWebBaseUrl }),
-      ...(options.accountDeletionProcessors === undefined
-        ? {}
-        : { accountDeletionProcessors: options.accountDeletionProcessors }),
+      ...storeOptions,
       conversationAttachmentBlobStore:
         options.conversationAttachmentBlobStore ?? createPostgresAttachmentBlobStore(pool),
       accountAiAssetStore: options.accountAiAssetStore ?? createPostgresAccountAiAssetStore(pool)

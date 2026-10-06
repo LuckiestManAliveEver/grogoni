@@ -112,7 +112,7 @@ import {
   defaultAgentDefinitionId,
   isModelExecutionTarget,
   modelExecutionTargets,
-  platformSharedModelId
+  isPlatformIncludedModel
 } from "@grogoni/shared-types";
 import {
   createRuntimeToolProposal,
@@ -429,7 +429,7 @@ export class AgentRuntimeDomain {
         return {
           ...model,
           capabilities: [...model.capabilities],
-          costResponsibility: model.id === platformSharedModelId ? "platform-included" : "merchant",
+          costResponsibility: isPlatformIncludedModel(model) ? "platform-included" : "merchant",
           // The "backend" key is the frontend's stable field name for "is a server-hosted adapter
           // configured for this model" (apps/web/src/AgentModelPanel.tsx, QuickRuntimeSwitcher.tsx)
           // - it does not mean the "backend" ModelExecutionTarget literal specifically.
@@ -700,7 +700,7 @@ export class AgentRuntimeDomain {
     this.requireBusinessAgent(input.businessId, input.agentId, now);
     input.onStage?.("agent_resolved", Date.now() - startedAt);
     const model = this.requireCanonicalAiModel(input.modelId);
-    if (model.id !== platformSharedModelId && input.costResponsibility !== "merchant") {
+    if (!isPlatformIncludedModel(model) && input.costResponsibility !== "merchant") {
       throw new Cp2Error(
         402,
         "CUSTOM_MODEL_COST_ACCEPTANCE_REQUIRED",
@@ -907,8 +907,7 @@ export class AgentRuntimeDomain {
     this.recordAgentModelBindingAudit(input.auditType, verified, input.actorId, {
       latencyMs: input.latencyMs,
       nativeRuntimeBindingId: nativeBinding.id,
-      costResponsibility:
-        input.model.id === platformSharedModelId ? "platform-included" : "merchant"
+      costResponsibility: isPlatformIncludedModel(input.model) ? "platform-included" : "merchant"
     });
     return verified;
   }

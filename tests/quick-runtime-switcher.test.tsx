@@ -537,4 +537,94 @@ describe("quick runtime switcher", () => {
     expect(activationBodies).toHaveLength(1);
     expect(activationBodies[0]?.executionTarget).toBe("local");
   });
+
+  it("switches to an installed local Ollama model without asking about cost", async () => {
+    const shopId = "agent-shop-ollama";
+    const activationBodies: Array<Record<string, unknown>> = [];
+    const fixture = merchantFundedModelsFixture(shopId);
+    stubFetch({
+      ...fixture,
+      "/v1/ai-models": () =>
+        jsonResponse({
+          models: [
+            {
+              id: "smollm2-360m",
+              label: "SmolLM2 360M",
+              provider: "local",
+              description: "",
+              capabilities: [],
+              available: true,
+              source: "hosted",
+              format: "remote",
+              license: null,
+              licenseUrl: null,
+              modelCardUrl: null,
+              downloadUrl: null,
+              fileName: null,
+              fileSizeBytes: null,
+              minimumMemoryGb: null,
+              recommended: true,
+              runtimeAvailability: { backend: "configured" }
+            },
+            {
+              id: "ollama-qwen2.5-3b",
+              label: "qwen2.5:3b (local)",
+              provider: "ollama",
+              description: "",
+              capabilities: [],
+              available: true,
+              source: "hosted",
+              format: "remote",
+              license: null,
+              licenseUrl: null,
+              modelCardUrl: null,
+              downloadUrl: null,
+              fileName: null,
+              fileSizeBytes: null,
+              minimumMemoryGb: null,
+              recommended: false,
+              costResponsibility: "platform-included",
+              hostedExecutionTarget: "local",
+              runtimeAvailability: { backend: "configured" }
+            }
+          ]
+        }),
+      [`/api/agents/${shopId}/models/ollama-qwen2.5-3b/activate`]: (init) => {
+        activationBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return jsonResponse({
+          status: "active",
+          binding: { id: "binding-1", agentId: shopId, modelId: "ollama-qwen2.5-3b" },
+          healthCheck: { latencyMs: 5 }
+        });
+      }
+    });
+    await act(async () => {
+      root = createRoot(host);
+      root.render(
+        <QuickRuntimeSwitcher
+          business={business(shopId)}
+          agent={agent()}
+          updateAgent={vi.fn()}
+          onAgentChange={vi.fn()}
+        />
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const modelSelect = host.querySelectorAll<HTMLSelectElement>("select")[1] as HTMLSelectElement;
+    expect([...modelSelect.options].map((option) => option.value)).toContain("ollama-qwen2.5-3b");
+    await act(async () => {
+      modelSelect.value = "ollama-qwen2.5-3b";
+      modelSelect.dispatchEvent(new Event("change", { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(host.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(activationBodies).toHaveLength(1);
+    expect(activationBodies[0]).not.toHaveProperty("costResponsibility");
+    expect(activationBodies[0]?.executionTarget).toBe("local");
+  });
 });

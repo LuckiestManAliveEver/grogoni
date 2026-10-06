@@ -402,4 +402,61 @@ describe("AgentModelPanel merchant-funded activation confirmation", () => {
     expect(card?.textContent).toContain("Local · Active for Shopkeeper");
     expect(host.textContent).not.toContain("Grogoni backend");
   });
+
+  it("switches to an installed local Ollama model with one click and no cost step", async () => {
+    const shopId = "panel-shop-ollama";
+    const activationBodies: unknown[] = [];
+    stubFetch({
+      ...fixture(shopId),
+      "/v1/ai-models": () =>
+        jsonResponse({
+          models: [
+            backendModel(),
+            backendModel({
+              id: "ollama-qwen2.5-3b",
+              label: "qwen2.5:3b (local)",
+              provider: "ollama",
+              costResponsibility: "platform-included",
+              hostedExecutionTarget: "local"
+            })
+          ]
+        }),
+      [`/api/agents/${shopId}/models/ollama-qwen2.5-3b/activate`]: (init) => {
+        activationBodies.push(JSON.parse(String(init?.body)));
+        return jsonResponse({
+          status: "active",
+          binding: {
+            id: "binding-1",
+            agentId: shopId,
+            modelId: "ollama-qwen2.5-3b",
+            status: "active",
+            executionTarget: "local",
+            lastVerifiedAt: null
+          },
+          healthCheck: { latencyMs: 5, executionTarget: "local" }
+        });
+      }
+    });
+
+    await act(async () => {
+      root = createRoot(host);
+      root.render(<Harness shopId={shopId} />);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await openLibrary();
+    await act(async () => {
+      useWithAgentButtonFor("qwen2.5:3b (local)").click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(host.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(host.textContent).not.toContain("merchant-funded");
+    expect(activationBodies).toEqual([
+      expect.not.objectContaining({ costResponsibility: expect.anything() })
+    ]);
+    expect(activationBodies[0]).toMatchObject({ executionTarget: "local" });
+  });
 });

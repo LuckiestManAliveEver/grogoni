@@ -100,8 +100,20 @@ interface OllamaChatMessage {
   content: string;
 }
 
+/** One model installed in Ollama, as GET /api/tags reports it. */
+export interface OllamaInstalledModel {
+  /** The Ollama tag, e.g. "qwen2.5:3b". */
+  name: string;
+  sizeBytes: number | null;
+  parameterSize: string | null;
+  quantization: string | null;
+  family: string | null;
+}
+
 export interface OllamaInferenceClient {
   health(signal?: AbortSignal): Promise<OllamaHealthResult>;
+  /** Every model installed in this Ollama. Throws a ModelRuntimeError when Ollama is unreachable. */
+  listModels(signal?: AbortSignal): Promise<OllamaInstalledModel[]>;
   chat(
     messages: OllamaChatMessage[],
     options?: { signal?: AbortSignal; onDelta?: (text: string) => void }
@@ -165,6 +177,32 @@ export function createOllamaInferenceClient(options: {
     }
   };
   return {
+    async listModels(signal) {
+      const response = await invoke("/api/tags", { method: "GET" }, signal);
+      if (!response.ok)
+        throw responseError(response.status, await response.json().catch(() => null));
+      const body = (await response.json().catch(() => ({}))) as {
+        models?: Array<{
+          name?: unknown;
+          size?: unknown;
+          details?: { parameter_size?: unknown; quantization_level?: unknown; family?: unknown };
+        }>;
+      };
+      const text = (value: unknown) => (typeof value === "string" && value !== "" ? value : null);
+      return (body.models ?? []).flatMap((entry) =>
+        typeof entry.name === "string" && entry.name.trim() !== ""
+          ? [
+              {
+                name: entry.name,
+                sizeBytes: typeof entry.size === "number" ? entry.size : null,
+                parameterSize: text(entry.details?.parameter_size),
+                quantization: text(entry.details?.quantization_level),
+                family: text(entry.details?.family)
+              }
+            ]
+          : []
+      );
+    },
     async health(signal) {
       try {
         const response = await invoke("/api/tags", { method: "GET" }, signal);

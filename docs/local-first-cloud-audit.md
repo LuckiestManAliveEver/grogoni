@@ -178,3 +178,18 @@ your tax returns with KRA"), ignores delivery questions, and re-asks for details
 `.github/workflows/ai-eval.yml` is manual-dispatch only: hosted runners have neither Ollama nor
 Claude Code, so a nightly run could only skip and report green. Run `pnpm eval:ai` on a machine with
 both (set `GROGONI_CLAUDE_BIN` if `claude` is not on PATH) before a ship.
+
+## Switching models from the model tab
+
+Every model installed in the Ollama at `OLLAMA_BASE_URL` appears in the model tab (Settings ->
+Model & inference -> Open model library, and the quick switcher) as `<tag> (local)`, with id
+`ollama-<tag>` (`services/api/src/inference/ollama-model-catalog.ts`). Clicking "Use with agent"
+tests and activates it for that shop; there is no cost step, because local models have no usage
+bill (`isPlatformIncludedModel`). The API re-reads Ollama every 30 seconds, so a model installed
+with `ollama pull <tag>` shows up without a restart. The configured `OLLAMA_MODEL` keeps serving the
+platform default and is not listed twice.
+
+Before this, a Postgres-backed API forwarded only a hand-picked subset of store options, silently
+dropping the local model catalog, the configured platform default runtime, the messaging channel
+gateway, the connected-mailbox client and the workspace settings. It now forwards all of them
+(`tests/local-model-switching.test.ts` covers this against Postgres).
