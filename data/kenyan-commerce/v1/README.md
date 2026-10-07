@@ -40,4 +40,3 @@ interaction that produced them. Promote approved candidates into a later dataset
 - Products with supplier: 25
 - Source workbook SHA-256:
   `c687a3cd6640397c14d9a46791ce5dd4844a146cc96858750decf9ffeed2b387`
-
