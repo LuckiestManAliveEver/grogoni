@@ -115,8 +115,11 @@ describe("Grogoni Home: recognized returning device pill", () => {
     // A device-only session is real and non-null, so the pre-device-account shouldShowAuth gate
     // (session === null) silently swallowed onLogIn's isAuthOpen=true - the phone/PIN form never
     // rendered. It must also fire for a session whose identityLevel is still "device".
+    expect(grogoniApplication).toContain(
+      'const isSignedOut = session === null || session.account.identityLevel === "device";'
+    );
     expect(grogoniApplication).toMatch(
-      /const shouldShowAuth =\s*!authBootstrapPending &&\s*isAuthOpen &&\s*\(session === null \|\| session\.account\.identityLevel === "device"\);/u
+      /const shouldShowAuth =\s*!authBootstrapPending &&\s*isAuthOpen &&\s*isSignedOut;/u
     );
   });
 });
@@ -154,7 +157,7 @@ describe("Grogoni Home: merchant entry point", () => {
     // button + Sign up/Log in in the top nav" pattern the unified-chat spec forbids on the
     // customer home. They now render only while mode is "seller" (the merchant's own header,
     // reachable solely via the shop icon or menu) - Message history moved into the hamburger menu,
-    // and the in-chat welcome message is the customer home's one sign-up/log-in entry point.
+    // and so did the customer home's Log in / Sign up (MenuDrawer, signed-out visitors only).
     //
     // The remaining "marketplace-button" is not that toggle: it never renders a "Sell" pill, it
     // relabels itself "Browse" (never "Buy") for a customer, and for a customer it only opens/closes
@@ -183,7 +186,7 @@ describe("Grogoni Home: merchant entry point", () => {
     expect(messagesIndex).toBeGreaterThan(sellerGateStart);
     expect(messagesIndex).toBeLessThan(sellerGateEnd);
 
-    const authGateStart = shellModeBar.indexOf('mode === "seller" && session === null ? (');
+    const authGateStart = shellModeBar.indexOf('mode === "seller" && showsSignInEntry ? (');
     expect(authGateStart).toBeGreaterThan(sellerGateEnd);
     const authGateEnd = shellModeBar.indexOf(") : null}", authGateStart);
     const signupIndex = shellModeBar.indexOf('data-testid="header-signup-button"');
@@ -192,6 +195,46 @@ describe("Grogoni Home: merchant entry point", () => {
     expect(signupIndex).toBeLessThan(authGateEnd);
     expect(loginIndex).toBeGreaterThan(signupIndex);
     expect(loginIndex).toBeLessThan(authGateEnd);
+  });
+});
+
+describe("Grogoni Home: signed-out sign-in entry points", () => {
+  it("treats a device-only session as signed out for both the auth screen and the entry points", () => {
+    // A device session is real but is not the identity someone logging in wants, so the auth
+    // screen already opened over it. The header buttons used to check `session === null` alone and
+    // vanished for exactly those visitors; one shared predicate keeps the two from drifting.
+    expect(grogoniApplication).toContain(
+      'const isSignedOut = session === null || session.account.identityLevel === "device";'
+    );
+    expect(grogoniApplication).toContain(
+      "const shouldShowAuth = !authBootstrapPending && isAuthOpen && isSignedOut;"
+    );
+  });
+
+  it("hides the sign-in entry points from a device account that already owns a shop", () => {
+    // Device accounts can create shops. Log in there would replace the account that owns the
+    // shop, so the menu and seller header only offer it while there is no shop.
+    expect(grogoniApplication).toContain(
+      "const showsSignInEntry = isSignedOut && business === null;"
+    );
+    // The recognized-device pill is the third Log in entry point and follows the same rule.
+    expect(grogoniApplication).toMatch(
+      /const recognizedDeviceLabel =\s*business === null &&\s*session\?\.account\.identityLevel === "device"/u
+    );
+  });
+
+  it("wires the menu drawer's Log in / Sign up items to openAuth and closes the drawer first", () => {
+    expect(grogoniApplication).toContain("signedOut={showsSignInEntry}");
+    for (const [prop, intent] of [
+      ["onLogIn", "login"],
+      ["onSignUp", "signup"]
+    ] as const) {
+      const start = grogoniApplication.indexOf(`${prop}={() => {`);
+      expect(start).toBeGreaterThan(-1);
+      const handler = grogoniApplication.slice(start, grogoniApplication.indexOf("}}", start));
+      expect(handler).toContain("setIsMenuDrawerOpen(false);");
+      expect(handler).toContain(`openAuth("${intent}");`);
+    }
   });
 });
 

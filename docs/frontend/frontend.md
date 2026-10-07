@@ -1018,14 +1018,41 @@ enforced by `tests/grogoni-home-progressive-entry.test.ts`:
   header Sign up/Log in buttons only render at all `mode === "seller"`
   now (message history for a customer lives in the hamburger menu
   instead). A first-time visitor gets one conversational welcome
-  message (`createInitialChatMessages` in `app-shell.ts`) with inline
-  Sign up/Log in/Browse as guest actions and three suggestion chips
+  message (`createInitialChatMessages` in `app-shell.ts`; on the empty
+  home it renders as the plain `home-welcome` heading, with no auth
+  action) and three suggestion chips
   (`homeSuggestionPrompts` in `ChatSurface.tsx`) that commit a chat
   draft, not navigate to a page. Commerce results (product/shop/order
   cards) render as generated conversation surfaces via the same
   `renderGeneratedSurface` protocol Phases 1-4 established — this
   phase added no new card types, only removed the navigation chrome
   competing with them for the customer's attention.
+- **Hamburger menu = sign-in entry.** The customer home's header has
+  no auth buttons and its welcome has no auth action, so a signed-out
+  visitor's always-available way to log in or sign up is the top of
+  the hamburger menu (`MenuDrawer.tsx`, `signedOut` prop). The
+  recognized-device pill adds a shortcut only for a device that
+  remembers a past login. "Signed out" is `isSignedOut`
+  in `GrogoniApplication.tsx`: no session, or only a device session
+  (`identityLevel === "device"`); the auth screen gate uses it. The
+  menu items and the seller-mode header buttons use
+  `showsSignInEntry` (`isSignedOut && business === null`), and the
+  recognized-device pill (`recognizedDeviceLabel`) carries the same
+  `business === null` guard: a device
+  account can own a shop, and a login would replace that account, so
+  a shop owner upgrades by adding a PIN/passkey in account settings
+  instead. While online, a device session returned by bootstrap,
+  device recovery, or zero-form continue never dismisses an open
+  login/signup screen (`dismissesAuthScreen` in `useAuthState.ts`);
+  a real account identity or the visitor (Cancel / Browse as guest)
+  does. Before that rule, a device-session visitor was bounced off
+  `/login` straight back to chat. The offline-restore path still
+  closes the screen, since login needs the network anyway, and so does
+  device recovery under an account-deletion/restoration intent, whose
+  panel renders only once the screen is closed. Covered by
+  `tests/menu-drawer-auth-entry.test.tsx`,
+  `tests/device-session-auth-screen.test.tsx`, and
+  `e2e/menu-drawer-auth.spec.ts`.
 - **Shop icon = seller/business entry point.** The single icon button
   at the top-right of the header (`shop-entry-button` when
   `business === null`, `agent-profile-link` once a shop exists) is the

@@ -261,9 +261,11 @@ export function OwnerApp() {
   // (initialOwnerAuth/initialBusiness, read once at cold boot) than the one the current session
   // actually holds (a fresh device-only account, per progressive-identity.md). Once the account
   // this session belongs to is itself upgraded past "device", the pill has nothing left to invite
-  // and disappears on its own - no separate dismiss state to track.
+  // and disappears on its own - no separate dismiss state to track. Hidden while the device
+  // account owns a shop: logging in would replace the account that owns it (same rule as
+  // showsSignInEntry below).
   const recognizedDeviceLabel =
-    session?.account.identityLevel === "device" && initialOwnerAuth !== null
+    business === null && session?.account.identityLevel === "device" && initialOwnerAuth !== null
       ? initialBusiness !== null
         ? `This device — continue to ${initialBusiness.name}?`
         : "This device — log in to pick up where you left off?"
@@ -799,10 +801,12 @@ export function OwnerApp() {
   // not yet the identity someone deliberately asking to log in or sign up wants - show the auth
   // screen for it the same as no session at all. completePhoneFirstAuthentication's new session
   // response simply replaces this temporary one, exactly like a fresh signup/login would.
-  const shouldShowAuth =
-    !authBootstrapPending &&
-    isAuthOpen &&
-    (session === null || session.account.identityLevel === "device");
+  const isSignedOut = session === null || session.account.identityLevel === "device";
+  const shouldShowAuth = !authBootstrapPending && isAuthOpen && isSignedOut;
+  // Log in / Sign up entry points (menu drawer, seller header). A device account can already own a
+  // shop; offering it a login that replaces that account would strand the shop, so a shop owner's
+  // upgrade path is adding a PIN/passkey in account settings, not these buttons.
+  const showsSignInEntry = isSignedOut && business === null;
   const setupComplete = business !== null && !shouldShowAuth && !authBootstrapPending;
   const isAuthScreen = authBootstrapPending || shouldShowAuth || isAccountRestorationOpen;
   const {
@@ -1680,6 +1684,7 @@ export function OwnerApp() {
             <MenuDrawer
               open={isMenuDrawerOpen}
               hasBusiness={business !== null}
+              signedOut={showsSignInEntry}
               onClose={() => setIsMenuDrawerOpen(false)}
               onBrowse={() => {
                 setIsMenuDrawerOpen(false);
@@ -1714,6 +1719,14 @@ export function OwnerApp() {
               onSetUpShop={() => {
                 setIsMenuDrawerOpen(false);
                 switchMode("seller");
+              }}
+              onLogIn={() => {
+                setIsMenuDrawerOpen(false);
+                openAuth("login");
+              }}
+              onSignUp={() => {
+                setIsMenuDrawerOpen(false);
+                openAuth("signup");
               }}
             />
           ) : null}
@@ -1781,7 +1794,7 @@ export function OwnerApp() {
                     Install app
                   </button>
                 ) : null}
-                {mode === "seller" && session === null ? (
+                {mode === "seller" && showsSignInEntry ? (
                   <>
                     <button
                       className="header-auth-button secondary"

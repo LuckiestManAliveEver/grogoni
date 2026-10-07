@@ -183,6 +183,17 @@ export function useAuthState(deps: UseAuthStateDeps) {
     }
   }
 
+  // A device-only session (progressive-identity.md) is not the identity a visitor on the login or
+  // signup screen is asking for, so online it never dismisses that screen; only a real account
+  // identity or the visitor (Cancel / Browse as guest) does. Without this, a device-session visitor
+  // who tapped Log in, or deep-linked to /login, was bounced back to chat by the next bootstrap.
+  // Of the session-acceptance paths, two still close it for a device session: offline restore
+  // (login needs the network anyway) and device recovery under a deletion/restoration intent
+  // (that panel needs it closed).
+  function dismissesAuthScreen(response: SessionResponse): boolean {
+    return response.account.identityLevel !== "device";
+  }
+
   function acceptAuthenticatedSession(response: SessionResponse) {
     sessionStorage.removeItem(guestBrowsingStorageKey);
     logAuthenticationLifecycle("session_response_received", response);
@@ -190,7 +201,7 @@ export function useAuthState(deps: UseAuthStateDeps) {
     saveCachedAuthSession(response);
     logAuthenticationLifecycle("frontend_session_stored", response);
     setAuthBootstrapState("authenticated");
-    setIsAuthOpen(false);
+    if (dismissesAuthScreen(response)) setIsAuthOpen(false);
   }
 
   function completePhoneFirstAuthentication(response: SessionResponse) {
@@ -390,7 +401,7 @@ export function useAuthState(deps: UseAuthStateDeps) {
       setSession(nextSession);
       saveCachedAuthSession(nextSession);
       setAuthBootstrapState("authenticated");
-      if (!accountDeletionIntent && !accountRestorationIntent) {
+      if (!accountDeletionIntent && !accountRestorationIntent && dismissesAuthScreen(nextSession)) {
         setIsAuthOpen(false);
         if (initialAuthenticationTarget !== null) {
           navigateToView("chat", { replace: true, mode: "marketplace" });
@@ -426,7 +437,14 @@ export function useAuthState(deps: UseAuthStateDeps) {
             setSession(recovered);
             saveCachedAuthSession(recovered);
             setAuthBootstrapState("authenticated");
-            setIsAuthOpen(false);
+            // A deletion/restoration intent's panel renders only once the auth screen is closed.
+            if (
+              accountDeletionIntent ||
+              accountRestorationIntent ||
+              dismissesAuthScreen(recovered)
+            ) {
+              setIsAuthOpen(false);
+            }
             setStatusMessage("Grogoni restored this device account.");
             await loadMarketplaceIntroState();
             await validateStoredBusiness();

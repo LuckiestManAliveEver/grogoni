@@ -8273,6 +8273,40 @@ body {
   width: 14px;
 }
 
+/* The account glyph shifted left, with a "+" drawn top-right by the element's own backgrounds. */
+.menu-icon-signup {
+  background:
+    linear-gradient(currentColor, currentColor) 12px 0 / 1.5px 6px no-repeat,
+    linear-gradient(currentColor, currentColor) 9.75px 2.25px / 6px 1.5px no-repeat;
+  display: inline-block;
+  height: 14px;
+  position: relative;
+  width: 16px;
+}
+
+.menu-icon-signup::before {
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  content: "";
+  height: 5px;
+  left: 2.5px;
+  position: absolute;
+  top: 1px;
+  width: 5px;
+}
+
+.menu-icon-signup::after {
+  border: 1.5px solid currentColor;
+  border-bottom: 0;
+  border-radius: 6px 6px 0 0;
+  bottom: 0;
+  content: "";
+  height: 6px;
+  left: 0;
+  position: absolute;
+  width: 12px;
+}
+
 @media (max-width: 759px) {
   .shell-mode-bar {
     padding-inline: 10px;
