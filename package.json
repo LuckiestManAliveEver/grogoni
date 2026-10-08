@@ -59,6 +59,7 @@
     "format:write": "prettier --write .",
     "health:api": "node scripts/health-check.mjs",
     "health:connected": "node scripts/check-connected-deployment.mjs",
+    "health:browser": "node scripts/smoke-production-browser.mjs",
     "health:api:supabase": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/deploy-supabase-api.mjs",
     "deploy:api:supabase": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/deploy-supabase-api.mjs --deploy",
     "lint": "eslint . --max-warnings=0",

@@ -29,6 +29,19 @@ Run `pnpm health:connected` to check the live frontend's HTML and assets, Supaba
 the Vercel-to-Supabase CORS rules, Neon connectivity, unauthorized-session rejection,
 login-route validation, and overall readiness.
 
+The production checker defaults to `https://grogoni.com` and its `/api` proxy. It rejects
+HTML responses, missing commit metadata, unavailable public routes, and failed auth
+validation. Set `SMOKE_EXPECTED_COMMIT` to require a specific deployed commit.
+Run `pnpm health:browser` for desktop and phone signup/login Continue checks. These assert
+the actual POST response and JSON contract, and save screenshots in
+`/tmp/grogoni-production-smoke`. They stop before account creation.
+
+Set both `VITE_API_BASE_URL` and `VITE_API_URL` in Vercel to the live Supabase URL.
+Production builds fail when neither is configured. Vercel builds use `/api` in the
+browser; `vercel.json` forwards that path to Supabase before the SPA fallback, so
+session cookies remain first-party on mobile browsers. Direct builds retain their
+configured API address. Build metadata includes `VERCEL_GIT_COMMIT_SHA`.
+
 The Vercel project's `VITE_API_BASE_URL` should point to the live API base URL before
 the frontend is rebuilt. Vercel management access is configured through the ignored
 local environment. Do not substitute the deployment token for a browser API key.
@@ -54,6 +67,11 @@ Native authentication routes:
 - `POST /auth/mfa/challenge`, `/auth/mfa/verify`.
 - `GET /auth/bootstrap`, `/auth/credentials/status`, `/auth/pin/status`.
 - `POST /auth/identify` returns the existing replacement notice (HTTP 410).
+- `POST /auth/continue` creates or restores a device account using a secure bootstrap
+  key and a validated P-256 public key. Device sessions are not PIN verified.
+- `GET /auth/oauth/providers` returns an empty list until OAuth is configured.
+- `GET /public/storefronts`, `GET /v1/marketplace-intro`, and
+  `POST /v1/marketplace-intro/complete` serve browsing and intro state.
 
 Credential hashes preserve the existing scrypt formats and verified legacy PIN upgrade.
 Failed logins commit sanitized audit records; transaction-scoped advisory locks enforce the
