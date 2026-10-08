@@ -1,10 +1,11 @@
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import {
   normalizePhoneInput,
   phoneNormalizationErrorMessage,
   type NormalizePhoneResult
 } from "@grogoni/shared-types";
 import { getCountryCallingCode, type CountryCode } from "libphonenumber-js";
+import { installPointerPressTracking, runAfterPointerPress } from "./pointer-press";
 
 export type PhoneValidationState = "empty" | "typing" | "valid" | "invalid";
 
@@ -69,6 +70,19 @@ export function PhoneNumberField({
   const [preview, setPreview] = useState("");
   const error = externalError || internalError;
   const callingCode = getCountryCallingCode(country);
+  const mountedRef = useRef(true);
+  const latestValueRef = useRef(value);
+  latestValueRef.current = value;
+  const latestCountryRef = useRef(country);
+  latestCountryRef.current = country;
+
+  useEffect(() => {
+    installPointerPressTracking();
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   function evaluate(rawValue = value, normalizeVisibleValue = true): NormalizePhoneResult {
     const result = normalizePhoneInput({
@@ -161,7 +175,24 @@ export function PhoneNumberField({
               evaluate(pasted);
             }}
             onBlur={() => {
-              if (value.trim()) evaluate();
+              if (!value.trim()) return;
+              // The blur check can add a line under the field. When the blur comes from pressing
+              // a button below it (Continue), adding it now moves the button before the press
+              // ends and the click is dropped, so it waits for the press to finish. Skipped if
+              // by then the field unmounted, or its value or country changed (the button's
+              // handler normalized the number itself; re-evaluating stale input would flash an
+              // outdated format).
+              const rawValue = value;
+              const rawCountry = country;
+              runAfterPointerPress(() => {
+                if (
+                  mountedRef.current &&
+                  latestValueRef.current === rawValue &&
+                  latestCountryRef.current === rawCountry
+                ) {
+                  evaluate(rawValue);
+                }
+              });
             }}
             placeholder="e.g. 0712 345 678"
             aria-invalid={validationState === "invalid" || Boolean(externalError)}

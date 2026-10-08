@@ -1,15 +1,13 @@
 /**
  * Canonical, provider-neutral inference contract (docs/architecture/multi-provider-inference-
- * implementation.md §2). Every provider adapter translates *into* these types at its boundary;
- * nothing vendor-specific (OpenAI `choices`, Anthropic `content` blocks, SSE frames, request-id
- * headers) crosses into the router, the routed model adapter, or the agent runtime.
+ * implementation.md §2). The only provider left is the device-local one (local-provider.ts); the
+ * hosted vendor adapters were removed with the local-first runtime (docs/local-first-cloud-audit.md).
  *
  * These names intentionally live in services/api rather than @grogoni/shared-types: the shared
  * package already exports a *client-side* InferenceRequest/InferenceChunk/InferenceProvider for the
  * offline/owner-node executor (apps/web/src/inference), and the server contract below is a
- * different shape with a different trust boundary (it carries resolved credentials).
+ * different shape with a different trust boundary (it runs server-side, for an identified caller).
  */
-import type { SecretValue } from "./secret-value.js";
 import type {
   InferenceExecutionTarget,
   InferenceModelCapabilities,
@@ -182,39 +180,27 @@ export interface ProviderHealth {
   message?: string;
 }
 
-/** Which credential source paid for a request. Recorded in telemetry; never the secret itself. */
+/**
+ * Which credential source paid for a request, as recorded on inference runs. Inference is local-only
+ * now (docs/local-first-cloud-audit.md), so new runs record null; the values stay so historical run
+ * rows keep parsing.
+ */
 export type CredentialScope = "explicit" | "tenant" | "user" | "platform";
-
-export interface ResolvedCredential {
-  scope: CredentialScope;
-  /** null for env-managed platform credentials, which have no database row. */
-  credentialId: string | null;
-  secret: SecretValue;
-  /** Only for providers that allow a per-credential endpoint (validated at connect time). */
-  baseUrlOverride?: string;
-}
 
 export interface InferenceExecutionContext {
   model: ModelDefinition;
-  credential: ResolvedCredential | null;
   timeoutMs: number;
   signal?: AbortSignal;
   /**
-   * Who the request runs for. Only the device-local provider reads it (to hand generation to that
-   * member's own device); hosted providers never forward it anywhere.
+   * Who the request runs for. The device-local provider reads it to hand generation to that
+   * member's own device.
    */
   caller?: { tenantId: string | null; userId: string | null; turnId: string | null };
 }
 
 export interface ProviderHealthContext {
-  credential: ResolvedCredential | null;
   timeoutMs: number;
   signal?: AbortSignal;
-  /**
-   * Provider model id to probe, for providers whose only verification is a minimal completion
-   * (no free models endpoint). Ignored by providers that verify through GET /models.
-   */
-  probeModelId?: string;
 }
 
 export interface InferenceProvider {

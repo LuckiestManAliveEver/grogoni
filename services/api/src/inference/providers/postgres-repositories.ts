@@ -5,24 +5,23 @@ import { isInferenceProviderType, type InferenceProviderConfig } from "./provide
 import type {
   InferencePolicyRecord,
   InferenceRepositories,
-  InferenceRunRecord,
-  ProviderCredentialRecord
+  InferenceRunRecord
 } from "./repositories.js";
 
 /**
  * Postgres implementations of the inference repositories (tables from
  * infra/db/migrations/101_multi_provider_inference.sql). Each write is a single statement on the
  * module's own pool - the same Postgres-authoritative, own-pool shape corridor fulfillment uses -
- * so credentials and telemetry never sit only in the CP2 in-memory snapshot.
+ * so telemetry never sits only in the CP2 in-memory snapshot.
  */
 export function createPostgresInferenceRepositories(pool: Pool): InferenceRepositories {
   return {
     providers: {
       async list() {
+        // Rows of retired hosted types (openai, anthropic, zai, openai-compatible) are skipped by
+        // providerFromRow; they stay in the table untouched so nothing is destroyed.
         const result = await pool.query<ProviderRow>(
-          `select id, display_name, provider_type, base_url, execution_target, enabled, capabilities,
-                  credential_ref, byok_allowed, allow_credential_endpoint, allow_private_network,
-                  allow_http, billing_product, verification, options
+          `select id, display_name, provider_type, execution_target, enabled, capabilities
              from inference_providers
             order by id`
         );
@@ -35,35 +34,21 @@ export function createPostgresInferenceRepositories(pool: Pool): InferenceReposi
         await pool.query(
           `insert into inference_providers (
              id, display_name, provider_type, base_url, execution_target, enabled, capabilities,
-             credential_ref, byok_allowed, allow_credential_endpoint, allow_private_network,
-             allow_http, billing_product, verification, options, updated_at
-           ) values ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12,$13,$14,$15::jsonb, now())
+             credential_ref, byok_allowed, verification, updated_at
+           ) values ($1,$2,$3,null,$4,$5,$6::jsonb,null,false,'none', now())
            on conflict (id) do update set
              display_name = excluded.display_name, provider_type = excluded.provider_type,
-             base_url = excluded.base_url, execution_target = excluded.execution_target,
+             base_url = null, execution_target = excluded.execution_target,
              enabled = excluded.enabled, capabilities = excluded.capabilities,
-             credential_ref = excluded.credential_ref, byok_allowed = excluded.byok_allowed,
-             allow_credential_endpoint = excluded.allow_credential_endpoint,
-             allow_private_network = excluded.allow_private_network,
-             allow_http = excluded.allow_http, billing_product = excluded.billing_product,
-             verification = excluded.verification, options = excluded.options,
+             credential_ref = null, byok_allowed = false, verification = 'none',
              updated_at = now()`,
           [
             config.id,
             config.displayName,
             config.type,
-            config.baseUrl,
             config.executionTarget,
             config.enabled,
-            JSON.stringify(config.capabilities),
-            config.credentialRef,
-            config.byokAllowed,
-            config.allowCredentialEndpoint,
-            config.allowPrivateNetwork,
-            config.allowHttp,
-            config.billingProduct,
-            config.verification,
-            JSON.stringify(config.options)
+            JSON.stringify(config.capabilities)
           ]
         );
       },
@@ -75,63 +60,6 @@ export function createPostgresInferenceRepositories(pool: Pool): InferenceReposi
       }
     },
     credentials: {
-      async insert(record) {
-        await pool.query(
-          `insert into inference_provider_credentials (
-             id, scope, tenant_id, user_id, provider_id, credential_type, encrypted_secret,
-             key_version, secret_suffix, base_url, status, created_by, created_at, updated_at,
-             revoked_at, last_verified_at, last_verification_status
-           ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
-          credentialParams(record)
-        );
-      },
-      async update(record) {
-        await pool.query(
-          `update inference_provider_credentials
-              set encrypted_secret = $7, key_version = $8, secret_suffix = $9, base_url = $10,
-                  status = $11, updated_at = $14, revoked_at = $15, last_verified_at = $16,
-                  last_verification_status = $17
-            where id = $1 and scope = $2 and tenant_id is not distinct from $3
-              and user_id is not distinct from $4 and provider_id = $5 and credential_type = $6
-              and created_by = $12 and created_at = $13`,
-          credentialParams(record)
-        );
-      },
-      async get(id) {
-        const result = await pool.query<CredentialRow>(`${selectCredentials} where id = $1`, [id]);
-        const row = result.rows[0];
-        return row === undefined ? undefined : credentialFromRow(row);
-      },
-      async findActive(input) {
-        const result = await pool.query<CredentialRow>(
-          `${selectCredentials}
-            where provider_id = $1 and scope = $2 and status = 'ACTIVE'
-              and encrypted_secret is not null
-              and ($2 <> 'tenant' or tenant_id = $3)
-              and ($2 <> 'user' or user_id = $4)
-            order by updated_at desc
-            limit 1`,
-          [input.providerId, input.scope, input.tenantId ?? null, input.userId ?? null]
-        );
-        const row = result.rows[0];
-        return row === undefined ? undefined : credentialFromRow(row);
-      },
-      async listForOwner(input) {
-        const result = await pool.query<CredentialRow>(
-          `${selectCredentials}
-            where ($1::text is not null and tenant_id = $1) or ($2::text is not null and user_id = $2)
-            order by created_at, id`,
-          [input.tenantId ?? null, input.userId ?? null]
-        );
-        return result.rows.map(credentialFromRow);
-      },
-      async listNeedingRotation(currentVersion) {
-        const result = await pool.query<CredentialRow>(
-          `${selectCredentials} where encrypted_secret is not null and key_version <> $1 order by id`,
-          [currentVersion]
-        );
-        return result.rows.map(credentialFromRow);
-      },
       async deleteForOwner(input) {
         const result = await pool.query(
           `delete from inference_provider_credentials
@@ -248,27 +176,13 @@ export async function assertInferenceSchema(pool: Pool): Promise<void> {
   }
 }
 
-const selectCredentials = `select id, scope, tenant_id, user_id, provider_id, credential_type,
-  encrypted_secret, key_version, secret_suffix, base_url, status, created_by, created_at,
-  updated_at, revoked_at, last_verified_at, last_verification_status
-  from inference_provider_credentials`;
-
 interface ProviderRow {
   id: string;
   display_name: string;
   provider_type: string;
-  base_url: string | null;
   execution_target: string;
   enabled: boolean;
   capabilities: Record<string, unknown>;
-  credential_ref: string | null;
-  byok_allowed: boolean;
-  allow_credential_endpoint: boolean;
-  allow_private_network: boolean;
-  allow_http: boolean;
-  billing_product: string | null;
-  verification: string;
-  options: Record<string, unknown>;
 }
 
 function providerFromRow(row: ProviderRow): InferenceProviderConfig | null {
@@ -278,103 +192,17 @@ function providerFromRow(row: ProviderRow): InferenceProviderConfig | null {
   ) {
     return null;
   }
-  const verification =
-    row.verification === "minimal-completion" || row.verification === "none"
-      ? row.verification
-      : "models-endpoint";
-  const options = row.options ?? {};
   return {
     id: row.id,
     displayName: row.display_name,
     type: row.provider_type,
-    baseUrl: row.base_url,
     executionTarget: row.execution_target,
     enabled: row.enabled,
     capabilities: Object.fromEntries(
       Object.entries(row.capabilities ?? {}).filter(([, value]) => typeof value === "boolean")
     ),
-    credentialRef: row.credential_ref,
-    byokAllowed: row.byok_allowed,
-    allowCredentialEndpoint: row.allow_credential_endpoint,
-    allowPrivateNetwork: row.allow_private_network,
-    allowHttp: row.allow_http,
-    billingProduct: row.billing_product,
-    verification,
-    options: {
-      ...(options.maxTokensParameter === "max_tokens" ||
-      options.maxTokensParameter === "max_completion_tokens"
-        ? { maxTokensParameter: options.maxTokensParameter }
-        : {}),
-      ...(typeof options.anthropicVersion === "string"
-        ? { anthropicVersion: options.anthropicVersion }
-        : {})
-    },
     source: "database"
   };
-}
-
-interface CredentialRow {
-  id: string;
-  scope: ProviderCredentialRecord["scope"];
-  tenant_id: string | null;
-  user_id: string | null;
-  provider_id: string;
-  credential_type: "api_key";
-  encrypted_secret: string | null;
-  key_version: number;
-  secret_suffix: string | null;
-  base_url: string | null;
-  status: ProviderCredentialRecord["status"];
-  created_by: string;
-  created_at: Date;
-  updated_at: Date;
-  revoked_at: Date | null;
-  last_verified_at: Date | null;
-  last_verification_status: "passed" | "failed" | null;
-}
-
-function credentialFromRow(row: CredentialRow): ProviderCredentialRecord {
-  return {
-    id: row.id,
-    scope: row.scope,
-    tenantId: row.tenant_id,
-    userId: row.user_id,
-    providerId: row.provider_id,
-    credentialType: row.credential_type,
-    encryptedSecret: row.encrypted_secret,
-    keyVersion: row.key_version,
-    secretSuffix: row.secret_suffix,
-    baseUrl: row.base_url,
-    status: row.status,
-    createdBy: row.created_by,
-    createdAt: row.created_at.toISOString(),
-    updatedAt: row.updated_at.toISOString(),
-    revokedAt: row.revoked_at?.toISOString() ?? null,
-    lastVerifiedAt: row.last_verified_at?.toISOString() ?? null,
-    lastVerificationStatus: row.last_verification_status
-  };
-}
-
-function credentialParams(record: ProviderCredentialRecord): unknown[] {
-  return [
-    record.id,
-    record.scope,
-    record.tenantId,
-    record.userId,
-    record.providerId,
-    record.credentialType,
-    record.encryptedSecret,
-    record.keyVersion,
-    record.secretSuffix,
-    record.baseUrl,
-    record.status,
-    record.createdBy,
-    record.createdAt,
-    record.updatedAt,
-    record.revokedAt,
-    record.lastVerifiedAt,
-    record.lastVerificationStatus
-  ];
 }
 
 function runParams(run: InferenceRunRecord): unknown[] {

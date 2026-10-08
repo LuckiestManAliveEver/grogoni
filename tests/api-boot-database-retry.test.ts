@@ -182,10 +182,11 @@ describe("API boot on a flaky database resolver", () => {
       );
       expect(result.listening, result.output).toBe(true);
       expect(retries.some((event) => event.step === "inference_schema")).toBe(false);
-      // The provider refresh runs on the same flaky resolver; it must retry, not boot without the
-      // DB-configured providers.
+      // The provider refresh runs on the same flaky resolver and must never give up and boot
+      // without the DB-configured providers. Since BYOK key rotation was removed, nothing else holds
+      // the inference pool's idle connection, so the refresh usually reuses it and needs no retry.
       expect(result.output).not.toContain("inference.provider_refresh_failed");
-      for (const step of ["inference_refresh", "cp2_store", "fulfillment_schema"]) {
+      for (const step of ["cp2_store", "fulfillment_schema"]) {
         expect(
           retries.some((event) => event.step === step),
           `${step} retried\n${result.output}`
@@ -266,12 +267,10 @@ describe("API boot wiring", () => {
     }
   );
 
-  it("keeps rotating credential keys in the background after a failed boot-time rotation", () => {
-    expect(entrypoint).toMatch(
-      /retryInBackground\(\s*"inference_key_rotation",\s*\(\)\s*=>\s*rotateCredentialKeys\(\)/
-    );
-    // Both fallbacks refuse to start once shutdown has begun.
-    expect(entrypoint.match(/if \(backgroundRetriesStopped\) return;/g)).toHaveLength(2);
+  it("no longer rotates BYOK credential keys at boot", () => {
+    // BYOK provider keys were removed with the local-first runtime; nothing re-encrypts them.
+    expect(entrypoint).not.toContain("rotateCredentialKeys");
+    expect(entrypoint).not.toContain("inference_key_rotation");
   });
 
   it("keeps refreshing inference providers in the background after the boot retries run out", () => {
@@ -279,7 +278,9 @@ describe("API boot wiring", () => {
       /retryInBackground\(\s*"inference_refresh",\s*\(\)\s*=>\s*inferencePlatform\.refresh\(\)/
     );
     expect(entrypoint).toMatch(
-      /onClose", async \(\) => \{\s*backgroundRetriesStopped = true;\s*stopCredentialKeyRotationRetry\?\.\(\);\s*stopInferenceRefreshRetry\?\.\(\);/
+      /onClose", async \(\) => \{\s*backgroundRetriesStopped = true;\s*stopInferenceRefreshRetry\?\.\(\);/
     );
+    // The fallback refuses to start once shutdown has begun.
+    expect(entrypoint.match(/if \(backgroundRetriesStopped\) return;/g)).toHaveLength(1);
   });
 });

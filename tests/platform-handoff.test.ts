@@ -46,7 +46,7 @@ describe("cross-platform message handoff", () => {
       { writeClipboard }
     );
 
-    expect(writeClipboard).toHaveBeenCalledWith("Hello\nhttps://grogoni/shop/example");
+    expect(writeClipboard).toHaveBeenCalledWith("Hello\nhttps://grogoni.com/shop/example");
     expect(result).toMatchObject({
       status: "copied_to_clipboard",
       errorCode: null,

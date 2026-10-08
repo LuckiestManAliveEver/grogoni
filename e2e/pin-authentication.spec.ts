@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("signs up with a profile and later logs in from the welcome message", async ({ page }) => {
+test("signs up with a profile and later logs in from the menu", async ({ page }) => {
   const phone = "+254712345678";
   const password = "a secure recovery password";
   let sessionActive = false;
@@ -99,17 +99,33 @@ test("signs up with a profile and later logs in from the welcome message", async
     localStorage.setItem("grogoni.marketplace-intro.completed.v1", "true");
   });
   // Zero-form entry (docs/authentication/progressive-identity.md): a non-deliberate cold boot at
-  // /marketplace lands straight on the chat shell with its inline welcome message, not behind a
-  // separate "choose guest/signup/login" screen - there is no "Continue to marketplace as guest"
-  // button to click before the welcome message appears.
+  // /marketplace lands straight on the chat shell, not behind a "choose guest/signup/login"
+  // screen. Signing up and logging in start from the hamburger menu.
   await page.goto("/marketplace");
 
-  const welcome = page.getByTestId("welcome-message");
-  await expect(welcome).toBeVisible();
-  await expect(page.getByTestId("welcome-signup-button")).toBeVisible();
-  await expect(page.getByTestId("welcome-login-button")).toBeVisible();
+  const homeWelcome = page.getByTestId("home-welcome");
+  const openMenuItem = async (name: string) => {
+    await page.getByRole("button", { name: "Open menu", exact: true }).click();
+    await page
+      .getByRole("dialog", { name: "Menu" })
+      .getByRole("button", { name, exact: true })
+      .click();
+  };
+  await expect(homeWelcome).toBeVisible();
+  // The status line is hidden by product decision (.app-action-notice), so "signed in" is
+  // asserted the way a user sees it: back on the home, and the menu no longer offers Log in.
+  const expectSignedIn = async () => {
+    await expect(page).toHaveURL(/\/marketplace$/u);
+    await expect(homeWelcome).toBeVisible();
+    await page.getByRole("button", { name: "Open menu", exact: true }).click();
+    const menu = page.getByRole("dialog", { name: "Menu" });
+    await expect(menu.getByRole("button", { name: "Message history", exact: true })).toBeVisible();
+    await expect(menu.getByRole("button", { name: "Log in", exact: true })).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(menu).toHaveCount(0);
+  };
 
-  await page.getByTestId("welcome-signup-button").click();
+  await openMenuItem("Sign up");
   await expect(page).toHaveURL(/\/signup$/u);
   await expect(page.getByRole("heading", { name: "Connect with your market" })).toBeVisible();
   await page.getByLabel("Phone number", { exact: true }).fill("712345678");
@@ -127,18 +143,18 @@ test("signs up with a profile and later logs in from the welcome message", async
   await expect.poll(() => signupCompleteCount).toBe(1);
   await expect(page.getByRole("heading", { name: "Secure your account" })).toBeVisible();
   await page.getByRole("button", { name: "Do this later" }).click();
-  await expect(page.getByText("Authentication complete", { exact: true })).toBeVisible();
+  await expectSignedIn();
 
   sessionActive = false;
   await page.evaluate(() => localStorage.removeItem("grogoni.auth-bootstrap.v1"));
   await page.reload();
 
   // A non-deliberate reload never auto-navigates to /login, even once the session is invalid
-  // (docs/authentication/progressive-identity.md) - it lands back on the chat shell's welcome
-  // message, same as any other cold boot. The phone number is still remembered separately (in
+  // (docs/authentication/progressive-identity.md) - it lands back on the chat shell, same as any
+  // other cold boot. The phone number is still remembered separately (in
   // grogoni.chatFirst.ownerAuth, untouched above) once the visitor deliberately taps Log in.
-  await expect(welcome).toBeVisible();
-  await page.getByTestId("welcome-login-button").click();
+  await expect(homeWelcome).toBeVisible();
+  await openMenuItem("Log in");
   await expect(page).toHaveURL(/\/login$/u);
   await expect(page.getByText(`Continuing as ${phone}`)).toBeVisible();
   await page.getByRole("button", { name: "Continue to log in" }).click();
@@ -148,5 +164,5 @@ test("signs up with a profile and later logs in from the welcome message", async
   await page.getByRole("button", { name: "Log in", exact: true }).click();
 
   await expect.poll(() => loginCount).toBe(1);
-  await expect(page.getByText("Authentication complete", { exact: true })).toBeVisible();
+  await expectSignedIn();
 });

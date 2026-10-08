@@ -1,19 +1,12 @@
-import { parseCredentialKeyring } from "./credentials.js";
 import type { InferenceProviderConfig } from "./provider-config.js";
 
 /**
- * Environment-sourced inference configuration. Environment variables describe Grogoni-managed
- * (Grogoni-funded) credentials and deployment endpoints only; BYOK credentials always come from
- * encrypted persistence (inference_provider_credentials). Nothing here hardcodes a model id, and no
- * provider is required for the API to boot.
+ * Environment-sourced inference configuration: budgets, limits, and defaults for the device-local
+ * router. Hosted provider keys and BYOK credential encryption keys were removed with the local-first
+ * runtime (docs/local-first-cloud-audit.md); services/api/src/config.ts rejects their variables.
  */
 export interface InferenceEnvironment {
   providers: InferenceProviderConfig[];
-  /** Managed secrets by env var name, read once at boot. Values never leave the credential resolver. */
-  managedSecrets: ReadonlyMap<string, string>;
-  /** INFERENCE_CREDENTIAL_KEYS: versioned keys for BYOK credential encryption (see credentials.ts). */
-  credentialKeys: ReadonlyMap<number, string>;
-  defaultProviderId: string | null;
   defaultModelId: string | null;
   requestTimeoutMs: number;
   maxOutputTokens: number;
@@ -29,46 +22,24 @@ export interface InferenceEnvironment {
 
 type Env = Readonly<Record<string, string | undefined>>;
 
-const managedSecretNames = [] as const;
-
-/** Local-only provider registry. Neon remains remote data storage; inference never leaves the machine. */
+/** The only built-in provider: generation on the requesting member's own device. */
 export function builtinProviderConfigs(): InferenceProviderConfig[] {
   return [
     {
       id: "local",
       displayName: "Local AI (this device)",
       type: "local",
-      baseUrl: null,
       executionTarget: "browser-local",
       enabled: true,
       capabilities: {},
-      credentialRef: null,
-      byokAllowed: false,
-      allowCredentialEndpoint: false,
-      allowPrivateNetwork: false,
-      allowHttp: false,
-      billingProduct: null,
-      verification: "none",
-      options: {},
       source: "builtin"
     }
   ];
 }
 
 export function readInferenceEnvironment(env: Env = process.env): InferenceEnvironment {
-  const managedSecrets = new Map<string, string>();
-  for (const name of managedSecretNames) {
-    const value = env[name]?.trim() ?? "";
-    if (value !== "") managedSecrets.set(name, value);
-  }
-
-  const providers: InferenceProviderConfig[] = builtinProviderConfigs();
-
   return {
-    providers,
-    managedSecrets,
-    credentialKeys: parseCredentialKeyring(env.INFERENCE_CREDENTIAL_KEYS),
-    defaultProviderId: optionalId(env.INFERENCE_DEFAULT_PROVIDER),
+    providers: builtinProviderConfigs(),
     defaultModelId: optionalId(env.INFERENCE_DEFAULT_MODEL),
     requestTimeoutMs: positiveInteger(env, "INFERENCE_REQUEST_TIMEOUT_MS", 60_000),
     maxOutputTokens: positiveInteger(env, "INFERENCE_MAX_OUTPUT_TOKENS", 1_024),
@@ -87,7 +58,7 @@ function optionalId(value: string | undefined): string | null {
   const trimmed = value?.trim() ?? "";
   if (trimmed === "") return null;
   if (!/^[a-z0-9][a-z0-9:._-]{0,199}$/u.test(trimmed)) {
-    throw new Error("Inference default provider/model must be a portable lowercase identifier.");
+    throw new Error("INFERENCE_DEFAULT_MODEL must be a portable lowercase identifier.");
   }
   return trimmed;
 }
@@ -114,7 +85,7 @@ function optionalAmount(env: Env, name: string): number | null {
   return parsed;
 }
 
-/** "openai=500,anthropic=300" -> Map. */
+/** "local=500" -> Map. */
 function amountMap(env: Env, name: string): ReadonlyMap<string, number> {
   const raw = env[name]?.trim() ?? "";
   const map = new Map<string, number>();

@@ -1,28 +1,29 @@
 import { describe, expect, it } from "vitest";
 
 import type { InferenceRequest } from "../services/api/src/inference/providers/contract";
-import { secretBoxCipher } from "../services/api/src/inference/providers/credentials";
 import { InferenceError } from "../services/api/src/inference/providers/errors";
 import type { InferenceObservation } from "../services/api/src/inference/providers/inference-router";
 import type { InferencePolicyRecord } from "../services/api/src/inference/providers/repositories";
 import { estimateCost } from "../services/api/src/inference/providers/usage-policy";
 import { DeviceInferenceBroker } from "../services/api/src/inference/device-inference-broker";
 import {
-  anthropicMessage,
   catalogModel,
   createTestPlatform,
-  jsonResponse,
-  openAiCompletion,
-  scriptedFetch,
-  testSecrets,
-  type RecordedRequest
+  failingDeviceProvider,
+  fakeDeviceProvider,
+  localProviderConfig
 } from "./fixtures/inference-provider-fakes";
 
+// The router serves device-local models only: hosted providers were removed with the local-first
+// runtime (docs/local-first-cloud-audit.md). "local" is the built-in provider backed by the real
+// DeviceInferenceBroker; "device-a"/"device-b" are operator-managed local providers whose device is
+// a scripted fake, so routing, fallback, budgets and streaming can be driven deterministically.
+
 const catalog = [
+  catalogModel({ id: "smollm-local", providerModelId: "smollm2-360m" }),
   catalogModel({
-    id: "gpt-test",
-    providerId: "openai",
-    providerModelId: "gpt-vendor-id",
+    id: "phi-a",
+    providerId: "device-a",
     pricing: {
       inputPerMillionTokens: 2,
       outputPerMillionTokens: 8,
@@ -30,30 +31,16 @@ const catalog = [
       currency: "USD"
     }
   }),
-  catalogModel({
-    id: "gpt-mini-test",
-    providerId: "openai",
-    providerModelId: "gpt-mini-vendor-id"
-  }),
-  catalogModel({ id: "claude-test", providerId: "anthropic", providerModelId: "claude-vendor-id" }),
-  catalogModel({ id: "glm-test", providerId: "zai-general", providerModelId: "glm-vendor-id" }),
-  catalogModel({ id: "qwen3-4b-cloud", providerId: "grogoni-llama", providerModelId: "qwen3-4b" }),
-  catalogModel({
-    id: "smollm-local",
-    providerId: "local",
-    providerModelId: "smollm2-360m",
-    executionTarget: "browser-local",
-    pricing: { inputPerMillionTokens: 0, outputPerMillionTokens: 0 }
-  }),
-  catalogModel({ id: "disabled-test", providerId: "openai", providerModelId: "x", enabled: false }),
-  catalogModel({ id: "orphan-test", providerId: "no-such-provider", providerModelId: "x" }),
-  catalogModel({
-    id: "tools-test",
-    providerId: "openai",
-    providerModelId: "tools",
-    capabilities: { tools: true }
-  })
+  catalogModel({ id: "phi-a-mini", providerId: "device-a" }),
+  catalogModel({ id: "qwen-b", providerId: "device-b" }),
+  catalogModel({ id: "server-model", providerId: "local", executionTarget: "remote-inference" }),
+  catalogModel({ id: "shop-machine", providerId: "local", executionTarget: "remote-shop-device" }),
+  catalogModel({ id: "disabled-a", providerId: "device-a", enabled: false }),
+  catalogModel({ id: "orphan", providerId: "no-such-provider" }),
+  catalogModel({ id: "tools-a", providerId: "device-a", capabilities: { tools: true } })
 ];
+
+const usage = { inputTokens: 1_000, outputTokens: 500, cachedInputTokens: 400 };
 
 function request(modelId: string, extra: Partial<InferenceRequest> = {}): InferenceRequest {
   return {
@@ -69,117 +56,120 @@ function request(modelId: string, extra: Partial<InferenceRequest> = {}): Infere
 
 const callContext = { agentId: "agent-1", tenantId: "shop-a", userId: "account-a" };
 
-/** Answers every vendor with a recognisable body so tests can tell who served the request. */
-function vendorFetch(
-  overrides: (request: RecordedRequest) => Response | undefined = () => undefined
-) {
-  return scriptedFetch((recorded) => {
-    const override = overrides(recorded);
-    if (override !== undefined) return override;
-    if (recorded.method === "GET") return jsonResponse({ data: [] });
-    if (recorded.url.includes("anthropic.com"))
-      return jsonResponse(anthropicMessage({ text: "anthropic reply" }));
-    const host = new URL(recorded.url).hostname;
-    return jsonResponse(
-      openAiCompletion({
-        content: `reply from ${host}`,
-        usage: { prompt_tokens: 1_000, completion_tokens: 500, cached: 400 }
-      })
-    );
-  });
-}
-
-async function connectKey(
-  platform: ReturnType<typeof createTestPlatform>["platform"],
+async function platformWithDevices(
   input: {
-    scope: "tenant" | "user";
-    tenantId?: string;
-    userId: string;
-    providerId: string;
-    key: string;
-  }
+    devices?: Parameters<typeof createTestPlatform>[0]["devices"];
+    env?: Record<string, string>;
+    policies?: InferencePolicyRecord[];
+    options?: Parameters<typeof createTestPlatform>[0]["options"];
+  } = {}
 ) {
-  return platform.connections.connect({
-    scope: input.scope,
-    tenantId: input.tenantId ?? null,
-    userId: input.userId,
-    actorId: `user-of-${input.userId}`,
-    providerId: input.providerId,
-    apiKey: input.key
+  const devices = input.devices ?? {
+    "device-a": fakeDeviceProvider("device-a", undefined, { usage }),
+    "device-b": fakeDeviceProvider("device-b", undefined, { usage })
+  };
+  const created = createTestPlatform({
+    catalog,
+    providers: [localProviderConfig("device-a"), localProviderConfig("device-b")],
+    devices,
+    ...(input.env === undefined ? {} : { env: input.env }),
+    ...(input.policies === undefined ? {} : { policies: input.policies }),
+    ...(input.options === undefined ? {} : { options: input.options })
   });
+  await created.platform.refresh();
+  return { ...created, devices };
 }
 
 describe("inference router: model and provider resolution", () => {
-  it("routes one agent to whichever provider the selected model names", async () => {
-    const { fetch, requests } = vendorFetch();
-    const { platform } = createTestPlatform({ catalog, fetch });
-    for (const [modelId, host] of [
-      ["gpt-test", "api.openai.com"],
-      ["claude-test", "api.anthropic.com"],
-      ["glm-test", "api.z.ai"],
-      ["qwen3-4b-cloud", "inference.grogoni.example"]
-    ] as const) {
-      const response = await platform.router.generate(request(modelId), callContext);
-      expect(response.modelId).toBe(modelId);
-      expect(new URL(requests.at(-1)?.url ?? "").hostname).toBe(host);
-    }
-    expect(new Set(requests.map((recorded) => recorded.body?.model))).toEqual(
-      new Set(["gpt-vendor-id", "claude-vendor-id", "glm-vendor-id", "qwen3-4b"])
-    );
+  it("routes each model to the device provider its catalog entry names", async () => {
+    const { platform, devices } = await platformWithDevices();
+    await expect(platform.router.generate(request("phi-a"), callContext)).resolves.toMatchObject({
+      providerId: "device-a",
+      modelId: "phi-a",
+      output: { text: "reply from device-a" }
+    });
+    await expect(platform.router.generate(request("qwen-b"), callContext)).resolves.toMatchObject({
+      providerId: "device-b",
+      output: { text: "reply from device-b" }
+    });
+    const [call] = (devices["device-a"] as ReturnType<typeof fakeDeviceProvider>).calls;
+    expect(call?.context.caller).toEqual({
+      tenantId: "shop-a",
+      userId: "account-a",
+      turnId: null
+    });
   });
 
-  it("fails each resolution step with its own normalized code before any network call", async () => {
-    const { fetch, requests } = vendorFetch();
-    const { platform } = createTestPlatform({ catalog, fetch });
-    const resolve = (
-      modelId: string,
-      extra: Partial<Parameters<typeof platform.router.resolveInferenceTarget>[0]> = {}
-    ) =>
+  it("fails each resolution step with its own normalized code before any device call", async () => {
+    const { platform, devices } = await platformWithDevices();
+    const resolve = (modelId: string, extra: Partial<InferenceRequest> = {}) =>
       platform.router
         .resolveInferenceTarget({
           agentId: "agent-1",
           modelId,
           tenantId: null,
-          userId: null,
-          ...extra
+          userId: "account-a",
+          request: request(modelId, extra),
+          allowDeviceExecution: true
         })
-        .catch((error: unknown) => (error as InferenceError).code);
-    expect(await resolve("gpt-test", { agentId: " " })).toBe("INFERENCE_FAILED");
-    expect(await resolve("not-in-catalog")).toBe("MODEL_UNAVAILABLE");
-    expect(await resolve("disabled-test")).toBe("MODEL_UNAVAILABLE");
-    expect(await resolve("orphan-test")).toBe("PROVIDER_MISCONFIGURED");
+        .then(
+          () => "resolved",
+          (error: InferenceError) => error.code
+        );
+    expect(await resolve("missing-model")).toBe("MODEL_UNAVAILABLE");
+    expect(await resolve("disabled-a")).toBe("MODEL_UNAVAILABLE");
+    expect(await resolve("orphan")).toBe("PROVIDER_MISCONFIGURED");
     expect(
-      await resolve("gpt-test", {
-        request: request("gpt-test", {
-          tools: [{ name: "products.list", description: "x", inputSchema: { type: "object" } }]
-        })
+      await resolve("phi-a", {
+        tools: [{ name: "products.search", description: "x", inputSchema: {} }]
       })
     ).toBe("CAPABILITY_UNSUPPORTED");
-    expect(await resolve("smollm-local")).toBe("LOCAL_EXECUTION_REQUIRED");
-    expect(requests).toHaveLength(0);
+    expect(await resolve("tools-a", { tools: [] })).toBe("resolved");
+    await expect(
+      platform.router.resolveInferenceTarget({
+        agentId: " ",
+        modelId: "phi-a",
+        tenantId: null,
+        userId: null
+      })
+    ).rejects.toMatchObject({ code: "INFERENCE_FAILED" });
+    expect((devices["device-a"] as ReturnType<typeof fakeDeviceProvider>).calls).toHaveLength(0);
+  });
+
+  it("refuses server-side and shop-device models: those run through Ollama and the owner node", async () => {
+    const { platform } = await platformWithDevices();
+    for (const modelId of ["server-model", "shop-machine"]) {
+      await expect(
+        platform.router.resolveInferenceTarget({
+          agentId: "agent-1",
+          modelId,
+          tenantId: null,
+          userId: "account-a",
+          allowDeviceExecution: true
+        })
+      ).rejects.toMatchObject({ code: "LOCAL_EXECUTION_REQUIRED", retryable: false });
+    }
+    expect(platform.hostedExecutionTargetFor("server-model")).toBeUndefined();
+    expect(platform.hostedExecutionTargetFor("shop-machine")).toBeUndefined();
   });
 
   it("never silently picks a model: no binding model and no configured default is an error", async () => {
-    const { fetch } = vendorFetch();
-    const { platform } = createTestPlatform({ catalog, fetch });
+    const { platform } = createTestPlatform({ catalog });
     expect(() => platform.router.resolveModelId(null)).toThrow(InferenceError);
     const withDefault = createTestPlatform({
       catalog,
-      fetch,
-      env: { INFERENCE_DEFAULT_MODEL: "glm-test" }
+      env: { INFERENCE_DEFAULT_MODEL: "smollm-local" }
     });
-    expect(withDefault.platform.router.resolveModelId(undefined)).toBe("glm-test");
+    expect(withDefault.platform.router.resolveModelId(undefined)).toBe("smollm-local");
   });
 
   it("never sends a device-local model anywhere but the requesting member's own device", async () => {
-    const { fetch, requests } = vendorFetch();
-    const { platform, repositories } = createTestPlatform({ catalog, fetch });
+    const { platform, repositories } = createTestPlatform({ catalog });
     // An anonymous caller (no member to hand the job to) is refused outright.
     await expect(
       platform.router.generate(request("smollm-local"), { ...callContext, userId: null })
     ).rejects.toMatchObject({ code: "LOCAL_EXECUTION_REQUIRED", retryable: false });
 
-    // An identified member: the prompt goes to that member's device, never to a provider.
     const pending = platform.router.generate(request("smollm-local"), {
       ...callContext,
       turnId: "turn-local-0001"
@@ -220,14 +210,11 @@ describe("inference router: model and provider resolution", () => {
       text: '{"type":"response","message":"from the device"}',
       usage: { inputTokens: 40, outputTokens: 8 }
     });
-    const response = await pending;
-    expect(response).toMatchObject({
+    await expect(pending).resolves.toMatchObject({
       providerId: "local",
       output: { text: '{"type":"response","message":"from the device"}' },
-      usage: { inputTokens: 40, outputTokens: 8 },
-      cost: { estimatedAmount: 0 }
+      usage: { inputTokens: 40, outputTokens: 8 }
     });
-    expect(requests).toHaveLength(0);
     expect(repositories.runsSnapshot().at(-1)).toMatchObject({
       providerId: "local",
       executionTarget: "browser-local",
@@ -237,33 +224,17 @@ describe("inference router: model and provider resolution", () => {
   });
 
   it("fails clearly, without switching models, when no device with the model is online", async () => {
-    const { fetch, requests } = vendorFetch();
     const { platform } = createTestPlatform({
       catalog,
-      fetch,
       options: { deviceBroker: new DeviceInferenceBroker({ claimTimeoutMs: 20 }) }
     });
     await expect(
       platform.router.generate(request("smollm-local"), callContext)
-    ).rejects.toMatchObject({
-      code: "LOCAL_DEVICE_UNAVAILABLE"
-    });
-    expect(requests).toHaveLength(0);
+    ).rejects.toMatchObject({ code: "LOCAL_DEVICE_UNAVAILABLE" });
   });
 
-  it("exposes each routed model to the agent runtime only on its own target", () => {
-    const { fetch } = vendorFetch();
-    const { platform } = createTestPlatform({ catalog, fetch });
-    expect(
-      platform.adapterFor({ modelId: "claude-test", executionTarget: "backend" })?.provider
-    ).toBe("anthropic");
-    expect(
-      platform.adapterFor({ modelId: "claude-test", executionTarget: "vercel" })
-    ).toBeUndefined();
-    expect(
-      platform.adapterFor({ modelId: "orphan-test", executionTarget: "backend" })
-    ).toBeUndefined();
-    expect(platform.hostedExecutionTargetFor("glm-test")).toBe("backend");
+  it("exposes each routed model to the agent runtime only on its own device target", async () => {
+    const { platform } = await platformWithDevices();
     expect(platform.hostedExecutionTargetFor("smollm-local")).toBe("browser-local");
     expect(
       platform.adapterFor({ modelId: "smollm-local", executionTarget: "browser-local" })
@@ -272,182 +243,73 @@ describe("inference router: model and provider resolution", () => {
     expect(
       platform.adapterFor({ modelId: "smollm-local", executionTarget: "backend" })
     ).toBeUndefined();
+    expect(
+      platform.adapterFor({ modelId: "smollm-local", executionTarget: "local" })
+    ).toBeUndefined();
+    expect(
+      platform.adapterFor({ modelId: "orphan", executionTarget: "browser-local" })
+    ).toBeUndefined();
+    expect(
+      platform.adapterFor({ modelId: "phi-a", executionTarget: "browser-local" })?.provider
+    ).toBe("device-a");
   });
 });
 
-describe("inference router: credential precedence and BYOK isolation", () => {
-  it("uses tenant BYOK, then user BYOK, then the Grogoni-managed key", async () => {
-    const { fetch, requests } = vendorFetch();
-    const { platform } = createTestPlatform({ catalog, fetch });
-    const authorizationOfLastCall = () => requests.at(-1)?.headers.authorization;
-
-    await platform.router.generate(request("gpt-test"), callContext);
-    expect(authorizationOfLastCall()).toBe(`Bearer ${testSecrets.openai}`);
-
-    await connectKey(platform, {
-      scope: "user",
-      userId: "account-a",
-      providerId: "openai",
-      key: "sk-user-a-key-000000000000000000UUUU"
+describe("inference router: retired hosted providers", () => {
+  it("never loads an operator row of a retired hosted type", async () => {
+    const { platform } = createTestPlatform({
+      catalog: [
+        catalogModel({
+          id: "gpt-legacy",
+          providerId: "openai",
+          executionTarget: "remote-inference"
+        })
+      ],
+      providers: [
+        // A row written before the local-first runtime, read back as-is from inference_providers.
+        { ...localProviderConfig("openai"), type: "openai" as unknown as "local" }
+      ]
     });
-    await platform.router.generate(request("gpt-test"), callContext);
-    expect(authorizationOfLastCall()).toBe("Bearer sk-user-a-key-000000000000000000UUUU");
-
-    await connectKey(platform, {
-      scope: "tenant",
-      tenantId: "shop-a",
-      userId: "account-a",
-      providerId: "openai",
-      key: "sk-tenant-a-key-0000000000000000TTTT"
-    });
-    await platform.router.generate(request("gpt-test"), callContext);
-    expect(authorizationOfLastCall()).toBe("Bearer sk-tenant-a-key-0000000000000000TTTT");
-
-    // Explicit scope narrows resolution and never falls through to another payer.
-    await platform.router.generate(request("gpt-test"), {
-      ...callContext,
-      explicitCredentialScope: "platform"
-    });
-    expect(authorizationOfLastCall()).toBe(`Bearer ${testSecrets.openai}`);
+    // The memory repository returns rows verbatim; Postgres also filters them in providerFromRow.
+    // Either way the registry must not end up serving a hosted model.
+    await platform.refresh();
+    expect(platform.registry.get("openai")).toBeUndefined();
+    expect(platform.hostedExecutionTargetFor("gpt-legacy")).toBeUndefined();
     await expect(
-      platform.router.generate(request("gpt-test"), {
-        ...callContext,
-        tenantId: "shop-without-key",
-        explicitCredentialScope: "tenant"
-      })
-    ).rejects.toMatchObject({ code: "CREDENTIAL_MISSING" });
+      platform.router.generate(request("gpt-legacy"), callContext)
+    ).rejects.toMatchObject({ code: "PROVIDER_MISCONFIGURED" });
   });
+});
 
-  it("never lets one tenant or user resolve another's credential", async () => {
-    const { fetch, requests } = vendorFetch();
-    const { platform } = createTestPlatform({ catalog, fetch, env: { OPENAI_API_KEY: "" } });
-    await connectKey(platform, {
-      scope: "tenant",
-      tenantId: "shop-a",
-      userId: "account-a",
-      providerId: "openai",
-      key: "sk-tenant-a-only-000000000000000AAAA"
-    });
-    await connectKey(platform, {
-      scope: "user",
-      userId: "account-a",
-      providerId: "openai",
-      key: "sk-account-a-only-00000000000000BBBB"
-    });
-
-    await expect(
-      platform.router.generate(request("gpt-test"), {
-        agentId: "agent-b",
-        tenantId: "shop-b",
-        userId: "account-b"
-      })
-    ).rejects.toMatchObject({ code: "CREDENTIAL_MISSING" });
-    expect(requests).toHaveLength(2); // only the two connect-time verifications
-
-    const tenantB = await platform.credentials.resolve({
-      provider: platform.registry.get("openai")!.config,
-      tenantId: "shop-b",
-      userId: "account-b"
-    });
-    expect(tenantB).toBeNull();
-  });
-
-  it("stores only ciphertext and revokes by erasing it", async () => {
-    const { fetch } = vendorFetch();
-    const { platform, repositories } = createTestPlatform({ catalog, fetch });
-    const key = "sk-plaintext-must-not-persist-000000ZZZZ";
-    const summary = await connectKey(platform, {
-      scope: "user",
-      userId: "account-a",
-      providerId: "openai",
-      key
-    });
-    const stored = await repositories.credentials.get(summary.id);
-    expect(stored?.encryptedSecret).toMatch(/^v1:/u);
-    expect(JSON.stringify(stored)).not.toContain(key);
-    expect(secretBoxCipher.decrypt(stored!.encryptedSecret!, stored!.keyVersion)).toBe(key);
-    expect(summary).toMatchObject({ connected: true, status: "ACTIVE", secretHint: "ZZZZ" });
-    expect(JSON.stringify(summary)).not.toContain(key);
-
-    await platform.connections.disconnect(stored!);
-    const revoked = await repositories.credentials.get(summary.id);
-    expect(revoked).toMatchObject({ status: "REVOKED", encryptedSecret: null });
-  });
-
-  it("replacing a key keeps exactly one active credential", async () => {
-    const { fetch } = vendorFetch();
-    const { platform, repositories } = createTestPlatform({ catalog, fetch });
-    const first = await connectKey(platform, {
-      scope: "user",
-      userId: "account-a",
-      providerId: "anthropic",
-      key: "sk-ant-first-key-000000000000001111"
-    });
-    const second = await connectKey(platform, {
-      scope: "user",
-      userId: "account-a",
-      providerId: "anthropic",
-      key: "sk-ant-second-key-00000000000002222"
-    });
-    const all = await repositories.credentials.listForOwner({ userId: "account-a" });
-    expect(all.filter((record) => record.status === "ACTIVE").map((record) => record.id)).toEqual([
-      second.id
-    ]);
-    expect(all.find((record) => record.id === first.id)).toMatchObject({
-      status: "REVOKED",
-      encryptedSecret: null
-    });
-  });
-
-  it("rejects a key the provider refuses without storing it", async () => {
-    const { fetch } = vendorFetch((recorded) =>
-      recorded.method === "GET" ? jsonResponse({ error: "bad key" }, 401) : undefined
-    );
-    const { platform, repositories } = createTestPlatform({ catalog, fetch });
-    await expect(
-      connectKey(platform, {
-        scope: "user",
-        userId: "account-a",
-        providerId: "openai",
-        key: "sk-rejected-key-000000000000000000"
-      })
-    ).rejects.toMatchObject({ statusCode: 401, code: "inference_api_key_rejected" });
-    expect(await repositories.credentials.listForOwner({ userId: "account-a" })).toHaveLength(0);
-  });
-
-  it("keeps Z.ai general and coding plans as distinct, non-interchangeable providers", async () => {
-    const { fetch } = vendorFetch();
+describe("inference router: legacy provider rows", () => {
+  it("never lets a retired-type row shadow the built-in device provider", async () => {
     const { platform } = createTestPlatform({
       catalog,
-      fetch,
-      env: {
-        ZAI_CODING_BASE_URL: "https://api.z.ai/api/coding/paas/v4",
-        ZAI_CODING_API_KEY: "zai-coding-key-00000000000000000"
-      }
+      providers: [{ ...localProviderConfig("local"), type: "openai" as unknown as "local" }]
     });
-    const general = platform.registry.get("zai-general")!.config;
-    const coding = platform.registry.get("zai-coding")!.config;
-    expect(general.billingProduct).toBe("zai-general");
-    expect(coding.billingProduct).toBe("zai-coding");
-    expect(coding.byokAllowed).toBe(false);
-    // The general model never resolves the coding key.
-    const resolved = await platform.credentials.resolve({
-      provider: general,
-      tenantId: null,
-      userId: null
+    await platform.refresh();
+    expect(platform.registry.get("local")?.config).toMatchObject({
+      type: "local",
+      source: "builtin"
     });
-    expect(resolved?.secret.reveal()).toBe(testSecrets.zai);
+    expect(platform.hostedExecutionTargetFor("smollm-local")).toBe("browser-local");
+  });
+
+  it("ignores a provider's capability ceiling, gating only on the model's declared capabilities", async () => {
+    // Matches routed-model-adapter.ts, which decides tools/response format from the model alone.
+    const { platform } = createTestPlatform({
+      catalog,
+      providers: [localProviderConfig("device-a", { capabilities: { structuredOutput: false } })],
+      devices: { "device-a": fakeDeviceProvider("device-a") }
+    });
+    await platform.refresh();
+    await expect(platform.router.generate(request("phi-a"), callContext)).resolves.toMatchObject({
+      providerId: "device-a"
+    });
   });
 });
 
 describe("inference router: fallback policy", () => {
-  function failingOpenAi() {
-    return vendorFetch((recorded) =>
-      recorded.method === "POST" && recorded.url.includes("api.openai.com")
-        ? jsonResponse({ error: "down" }, 503)
-        : undefined
-    );
-  }
   const policy = (fallback: Partial<InferencePolicyRecord>): InferencePolicyRecord => ({
     scope: "tenant",
     tenantId: "shop-a",
@@ -463,85 +325,79 @@ describe("inference router: fallback policy", () => {
     updatedAt: new Date().toISOString(),
     ...fallback
   });
+  const failingA = () => ({
+    "device-a": failingDeviceProvider("device-a"),
+    "device-b": fakeDeviceProvider("device-b")
+  });
 
-  it("defaults to NONE: a provider failure never moves the conversation elsewhere", async () => {
-    const { fetch, requests } = failingOpenAi();
-    const { platform } = createTestPlatform({ catalog, fetch });
-    await expect(platform.router.generate(request("gpt-test"), callContext)).rejects.toMatchObject({
+  it("defaults to NONE: a device failure never moves the conversation elsewhere", async () => {
+    const { platform, devices } = await platformWithDevices({ devices: failingA() });
+    await expect(platform.router.generate(request("phi-a"), callContext)).rejects.toMatchObject({
       code: "PROVIDER_UNAVAILABLE"
     });
-    expect(requests.every((recorded) => recorded.url.includes("api.openai.com"))).toBe(true);
+    expect((devices["device-b"] as ReturnType<typeof fakeDeviceProvider>).calls).toHaveLength(0);
   });
 
   it("SAME_PROVIDER only moves to another model of the same provider", async () => {
-    const { fetch, requests } = failingOpenAi();
-    const { platform } = createTestPlatform({
-      catalog,
-      fetch,
+    const { platform, devices } = await platformWithDevices({
+      devices: failingA(),
       policies: [
-        policy({
-          fallbackPolicy: "SAME_PROVIDER",
-          fallbackModelIds: ["claude-test", "gpt-mini-test"]
-        })
+        policy({ fallbackPolicy: "SAME_PROVIDER", fallbackModelIds: ["qwen-b", "phi-a-mini"] })
       ]
     });
-    await expect(platform.router.generate(request("gpt-test"), callContext)).rejects.toMatchObject({
+    await expect(platform.router.generate(request("phi-a"), callContext)).rejects.toMatchObject({
       code: "PROVIDER_UNAVAILABLE"
     });
-    expect(requests.some((recorded) => recorded.url.includes("anthropic"))).toBe(false);
+    expect((devices["device-b"] as ReturnType<typeof fakeDeviceProvider>).calls).toHaveLength(0);
     expect(
-      requests.filter((recorded) => recorded.body?.model === "gpt-mini-vendor-id")
-    ).toHaveLength(1);
+      (devices["device-a"] as ReturnType<typeof fakeDeviceProvider>).calls.map(
+        (call) => call.request.modelId
+      )
+    ).toEqual(["phi-a", "phi-a-mini"]);
   });
 
   it("APPROVED_PROVIDERS crosses providers only to approved ones, and records it", async () => {
-    const { fetch } = failingOpenAi();
-    const { platform, repositories } = createTestPlatform({
-      catalog,
-      fetch,
+    const { platform, repositories } = await platformWithDevices({
+      devices: failingA(),
       policies: [
         policy({
           fallbackPolicy: "APPROVED_PROVIDERS",
-          approvedProviderIds: ["anthropic"],
-          fallbackModelIds: ["glm-test", "claude-test"]
+          approvedProviderIds: ["device-b"],
+          fallbackModelIds: ["qwen-b"]
         })
       ]
     });
-    const response = await platform.router.generate(request("gpt-test"), callContext);
-    expect(response).toMatchObject({
-      providerId: "anthropic",
-      modelId: "claude-test",
-      fallbackFromProviderId: "openai"
+    await expect(platform.router.generate(request("phi-a"), callContext)).resolves.toMatchObject({
+      providerId: "device-b",
+      modelId: "qwen-b",
+      fallbackFromProviderId: "device-a"
     });
     const runs = repositories.runsSnapshot();
     expect(runs.map((run) => [run.providerId, run.status])).toEqual([
-      ["openai", "failed"],
-      ["anthropic", "succeeded"]
+      ["device-a", "failed"],
+      ["device-b", "succeeded"]
     ]);
-    expect(runs[1]?.fallbackFromProviderId).toBe("openai");
+    expect(runs[1]?.fallbackFromProviderId).toBe("device-a");
   });
 
-  it("never falls back after a policy rejection such as a rejected key", async () => {
-    const { fetch, requests } = vendorFetch((recorded) =>
-      recorded.url.includes("api.openai.com")
-        ? jsonResponse({ error: "invalid key" }, 401)
-        : undefined
-    );
-    const { platform } = createTestPlatform({
-      catalog,
-      fetch,
+  it("never falls back after a non-retryable failure", async () => {
+    const { platform, devices } = await platformWithDevices({
+      devices: {
+        "device-a": failingDeviceProvider("device-a", "CONTENT_REJECTED"),
+        "device-b": fakeDeviceProvider("device-b")
+      },
       policies: [
         policy({
           fallbackPolicy: "APPROVED_PROVIDERS",
-          approvedProviderIds: ["anthropic"],
-          fallbackModelIds: ["claude-test"]
+          approvedProviderIds: ["device-b"],
+          fallbackModelIds: ["qwen-b"]
         })
       ]
     });
-    await expect(platform.router.generate(request("gpt-test"), callContext)).rejects.toMatchObject({
-      code: "INVALID_CREDENTIAL"
+    await expect(platform.router.generate(request("phi-a"), callContext)).rejects.toMatchObject({
+      code: "CONTENT_REJECTED"
     });
-    expect(requests.some((recorded) => recorded.url.includes("anthropic"))).toBe(false);
+    expect((devices["device-b"] as ReturnType<typeof fakeDeviceProvider>).calls).toHaveLength(0);
   });
 });
 
@@ -557,28 +413,25 @@ describe("inference router: usage, cost and limits", () => {
     expect(estimateCost({ inputTokens: 5 }, undefined, "USD")).toBeUndefined();
   });
 
-  it("records runs with tokens, cost and credential scope but never the prompt", async () => {
-    const { fetch } = vendorFetch();
+  it("records runs with tokens and cost but never the prompt or the caller in metrics", async () => {
     const observations: InferenceObservation[] = [];
-    const { platform, repositories } = createTestPlatform({
-      catalog,
-      fetch,
+    const { platform, repositories } = await platformWithDevices({
       options: { metrics: { recordInference: (observation) => observations.push(observation) } }
     });
-    const response = await platform.router.generate(request("gpt-test"), {
+    const response = await platform.router.generate(request("phi-a"), {
       ...callContext,
       conversationId: "conv-1"
     });
     expect(response.cost).toEqual({ currency: "USD", estimatedAmount: 0.0054 });
     const [run] = repositories.runsSnapshot();
     expect(run).toMatchObject({
-      requestId: "req-gpt-test",
+      requestId: "req-phi-a",
       conversationId: "conv-1",
       agentId: "agent-1",
-      modelId: "gpt-test",
-      providerId: "openai",
-      credentialScope: "platform",
-      executionTarget: "remote-inference",
+      modelId: "phi-a",
+      providerId: "device-a",
+      credentialScope: null,
+      executionTarget: "browser-local",
       inputTokens: 1_000,
       outputTokens: 500,
       cachedInputTokens: 400,
@@ -587,162 +440,123 @@ describe("inference router: usage, cost and limits", () => {
       status: "succeeded"
     });
     expect(JSON.stringify(run)).not.toContain("SECRET-PROMPT-CONTENT");
-    expect(JSON.stringify(run)).not.toContain(testSecrets.openai);
     expect(observations[0]).toMatchObject({
-      provider: "openai",
-      model: "gpt-test",
+      provider: "device-a",
+      model: "phi-a",
       status: "succeeded"
     });
     expect(Object.keys(observations[0]!)).not.toContain("tenantId");
     expect(JSON.stringify(observations)).not.toContain("account-a");
   });
 
-  it("rejects when a daily budget is spent instead of rerouting to another model", async () => {
-    const { fetch, requests } = vendorFetch();
-    const { platform, repositories } = createTestPlatform({
-      catalog,
-      fetch,
-      // Each call costs 0.0054 USD (see the pricing test above): two calls exhaust 0.01.
-      env: { INFERENCE_TENANT_DAILY_BUDGET: "0.01" }
-    });
-    await platform.router.generate(request("gpt-test"), callContext);
-    await platform.router.generate(request("gpt-test"), callContext);
-    const callsBefore = requests.length;
-    await expect(platform.router.generate(request("gpt-test"), callContext)).rejects.toMatchObject({
+  it("rejects when a shop's daily budget is spent instead of rerouting to another model", async () => {
+    const shopCap: InferencePolicyRecord = {
+      scope: "tenant",
+      tenantId: "shop-a",
+      userId: null,
+      currency: "USD",
+      // Each phi-a call costs 0.0054 USD: two calls exhaust 0.01.
+      dailyBudget: 0.01,
+      providerMonthlyCeilings: {},
+      maxRequestsPerMinute: null,
+      maxTokensPerRequest: null,
+      fallbackPolicy: "NONE",
+      approvedProviderIds: [],
+      fallbackModelIds: [],
+      updatedAt: new Date().toISOString()
+    };
+    const { platform, repositories, devices } = await platformWithDevices({ policies: [shopCap] });
+    await platform.router.generate(request("phi-a"), callContext);
+    await platform.router.generate(request("phi-a"), callContext);
+    await expect(platform.router.generate(request("phi-a"), callContext)).rejects.toMatchObject({
       code: "BUDGET_EXCEEDED",
       retryable: false
     });
-    expect(requests).toHaveLength(callsBefore);
+    expect((devices["device-a"] as ReturnType<typeof fakeDeviceProvider>).calls).toHaveLength(2);
     expect(repositories.runsSnapshot().at(-1)).toMatchObject({
       status: "rejected",
       errorCode: "BUDGET_EXCEEDED"
     });
-    // Another tenant is unaffected.
+    // Another shop is unaffected.
     await expect(
-      platform.router.generate(request("gpt-test"), { ...callContext, tenantId: "shop-b" })
+      platform.router.generate(request("phi-a"), { ...callContext, tenantId: "shop-b" })
     ).resolves.toBeDefined();
   });
 
-  it("enforces provider monthly ceilings and per-minute request limits", async () => {
-    const { fetch } = vendorFetch();
-    const ceiling = createTestPlatform({
-      catalog,
-      fetch,
-      env: { INFERENCE_PROVIDER_MONTHLY_CEILINGS: "openai=0.001" }
-    });
-    await ceiling.platform.router.generate(request("gpt-test"), callContext);
-    await expect(
-      ceiling.platform.router.generate(request("gpt-test"), callContext)
-    ).rejects.toMatchObject({ code: "BUDGET_EXCEEDED" });
-    await expect(
-      ceiling.platform.router.generate(request("claude-test"), callContext)
-    ).resolves.toBeDefined();
-
-    const rate = createTestPlatform({
-      catalog,
-      fetch,
-      env: { INFERENCE_MAX_REQUESTS_PER_MINUTE: "2" }
-    });
-    await rate.platform.router.generate(request("glm-test"), callContext);
-    await rate.platform.router.generate(request("glm-test"), callContext);
+  it("enforces per-minute request limits", async () => {
+    const rate = await platformWithDevices({ env: { INFERENCE_MAX_REQUESTS_PER_MINUTE: "2" } });
+    await rate.platform.router.generate(request("qwen-b"), callContext);
+    await rate.platform.router.generate(request("qwen-b"), callContext);
     const limited = await rate.platform.router
-      .generate(request("glm-test"), callContext)
+      .generate(request("qwen-b"), callContext)
       .catch((error: unknown) => error);
     expect(limited).toMatchObject({ code: "RATE_LIMITED" });
     expect((limited as InferenceError).retryAfterMs).toBeGreaterThan(0);
   });
 
+  it("never applies Grogoni-funded caps to device runs, which Grogoni does not pay for", async () => {
+    // Platform budgets and provider monthly ceilings only limit platform-funded spend. Device-local
+    // runs record no funding scope, so these caps must not block a member's own device.
+    const capped = await platformWithDevices({
+      env: {
+        INFERENCE_PROVIDER_MONTHLY_CEILINGS: "device-a=0.001",
+        INFERENCE_TENANT_DAILY_BUDGET: "0.001"
+      }
+    });
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await expect(
+        capped.platform.router.generate(request("phi-a"), callContext)
+      ).resolves.toMatchObject({ providerId: "device-a" });
+    }
+  });
+
   it("clamps output tokens to the strictest of request, model, policy and deployment limits", async () => {
-    const { fetch, requests } = vendorFetch();
+    const device = fakeDeviceProvider("device-a");
     const { platform } = createTestPlatform({
-      catalog: [
-        catalogModel({
-          id: "capped",
-          providerId: "grogoni-llama",
-          providerModelId: "q",
-          maxOutputTokens: 300
-        })
-      ],
-      fetch,
+      catalog: [catalogModel({ id: "capped", providerId: "device-a", maxOutputTokens: 300 })],
+      providers: [localProviderConfig("device-a")],
+      devices: { "device-a": device },
       env: { INFERENCE_MAX_TOKENS_PER_REQUEST: "200", INFERENCE_MAX_OUTPUT_TOKENS: "1000" }
     });
+    await platform.refresh();
     await platform.router.generate(
       request("capped", { generation: { maxOutputTokens: 4_000 } }),
       callContext
     );
-    expect(requests[0]?.body?.max_tokens).toBe(200);
+    expect(device.calls[0]?.request.generation?.maxOutputTokens).toBe(200);
+  });
+
+  it("gives a member's device extra time to load its model", async () => {
+    const { platform, devices } = await platformWithDevices();
+    await platform.router.generate(request("phi-a"), callContext);
+    expect(
+      (devices["device-a"] as ReturnType<typeof fakeDeviceProvider>).calls[0]?.context.timeoutMs
+    ).toBe(240_000);
   });
 });
 
-describe("inference router: health isolation and streaming", () => {
-  it("reports each provider's health independently", async () => {
-    const { fetch } = vendorFetch((recorded) =>
-      recorded.url.includes("api.openai.com") ? jsonResponse({}, 503) : undefined
+describe("inference router: health and streaming", () => {
+  it("reports each provider's health independently, and unknown providers as misconfigured", async () => {
+    const { platform } = await platformWithDevices();
+    expect((await platform.router.checkHealth({ providerId: "local" })).status).toBe("AVAILABLE");
+    expect((await platform.router.checkHealth({ providerId: "device-b" })).status).toBe(
+      "AVAILABLE"
     );
-    const { platform } = createTestPlatform({ catalog, fetch });
-    const openai = await platform.router.checkHealth({
-      providerId: "openai",
-      tenantId: null,
-      userId: null
+    expect(await platform.router.checkHealth({ providerId: "openai" })).toMatchObject({
+      status: "MISCONFIGURED",
+      errorCode: "PROVIDER_MISCONFIGURED"
     });
-    const anthropic = await platform.router.checkHealth({
-      providerId: "anthropic",
-      tenantId: null,
-      userId: null
-    });
-    const llama = await platform.router.checkHealth({
-      providerId: "grogoni-llama",
-      tenantId: null,
-      userId: null
-    });
-    expect(openai.status).toBe("UNAVAILABLE");
-    expect(anthropic.status).toBe("AVAILABLE");
-    expect(llama.status).toBe("AVAILABLE");
-    const missing = createTestPlatform({ catalog, fetch, env: { ANTHROPIC_API_KEY: "" } });
-    expect(
-      (
-        await missing.platform.router.checkHealth({
-          providerId: "anthropic",
-          tenantId: null,
-          userId: null
-        })
-      ).status
-    ).toBe("CREDENTIAL_INVALID");
-  });
-
-  it("opens a provider circuit after repeated provider faults without affecting other providers", async () => {
-    const { fetch } = vendorFetch((recorded) =>
-      recorded.method === "POST" && recorded.url.includes("api.openai.com")
-        ? jsonResponse({}, 500)
-        : undefined
-    );
-    const { platform } = createTestPlatform({ catalog, fetch });
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      await platform.router.generate(request("gpt-test"), callContext).catch(() => undefined);
-    }
-    await expect(
-      platform.router.resolveInferenceTarget({
-        agentId: "a",
-        modelId: "gpt-test",
-        tenantId: null,
-        userId: null
-      })
-    ).rejects.toMatchObject({ code: "PROVIDER_UNAVAILABLE" });
-    await expect(
-      platform.router.generate(request("claude-test"), callContext)
-    ).resolves.toMatchObject({ providerId: "anthropic" });
   });
 
   it("streams canonical chunks, synthesizing a stream for non-streaming models", async () => {
-    const { fetch } = vendorFetch();
-    const { platform, repositories } = createTestPlatform({ catalog, fetch });
+    const { platform, repositories } = await platformWithDevices();
     const chunks = [];
-    for await (const chunk of platform.router.stream(request("glm-test"), callContext))
+    for await (const chunk of platform.router.stream(request("qwen-b"), callContext))
       chunks.push(chunk);
-    expect(chunks[0]).toEqual({ type: "text-delta", text: "reply from api.z.ai" });
+    expect(chunks[0]).toEqual({ type: "text-delta", text: "reply from device-b" });
     expect(chunks.at(-1)).toMatchObject({
       type: "completed",
-      response: { providerId: "zai-general", modelId: "glm-test" }
+      response: { providerId: "device-b", modelId: "qwen-b" }
     });
     expect(repositories.runsSnapshot()).toHaveLength(1);
 
@@ -760,5 +574,34 @@ describe("inference router: health isolation and streaming", () => {
         retryable: false
       }
     ]);
+  });
+
+  it("forwards live text from a streaming device and resets it before a fallback attempt", async () => {
+    const streamed: string[] = [];
+    let resets = 0;
+    const { platform } = await platformWithDevices({
+      devices: {
+        "device-a": fakeDeviceProvider("device-a", () => "Habari ya leo", { stream: true }),
+        "device-b": fakeDeviceProvider("device-b")
+      }
+    });
+    const streamingCatalogModel = catalogModel({
+      id: "phi-stream",
+      providerId: "device-a",
+      capabilities: { streaming: true }
+    });
+    platform.setModelCatalog(() => [...catalog, streamingCatalogModel]);
+    const response = await platform.router.generate(request("phi-stream"), {
+      ...callContext,
+      onText: {
+        raw: (chunk) => streamed.push(chunk),
+        reset: () => {
+          resets += 1;
+        }
+      }
+    });
+    expect(response.output.text).toBe("Habari ya leo");
+    expect(streamed.join("")).toBe("Habari ya leo");
+    expect(resets).toBe(0);
   });
 });

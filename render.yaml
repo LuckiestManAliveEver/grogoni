@@ -13,7 +13,7 @@ services:
     # and docs/architecture/native-runtime-deployment.md); running it only after build:production
     # succeeds means a failed build can never leave the schema migrated out from under whatever
     # instance is still serving traffic on the previous deploy.
-    buildCommand: COREPACK_HOME=/tmp/corepack corepack pnpm install --frozen-lockfile && COREPACK_HOME=/tmp/corepack corepack pnpm build:production && COREPACK_HOME=/tmp/corepack corepack pnpm db:migrate && REQUIRE_NEON_DATABASE=true COREPACK_HOME=/tmp/corepack corepack pnpm db:verify-schema
+    buildCommand: COREPACK_HOME=/tmp/corepack corepack pnpm install --frozen-lockfile && COREPACK_HOME=/tmp/corepack corepack pnpm build:production && COREPACK_HOME=/tmp/corepack corepack pnpm db:migrate && COREPACK_HOME=/tmp/corepack corepack pnpm db:verify-schema
     startCommand: COREPACK_HOME=/tmp/corepack corepack pnpm --filter @grogoni/api start
     healthCheckPath: /health/ready
     buildFilter:
@@ -63,7 +63,7 @@ services:
       - key: AUTH_ALLOWED_REDIRECT_ORIGINS
         value: https://grogoni.com,https://www.grogoni.com
       - key: WEBAUTHN_RP_ID
-        value: grogoni
+        value: grogoni.com
       - key: WEBAUTHN_EXPECTED_ORIGINS
         value: https://grogoni.com,https://www.grogoni.com
       - key: COOKIE_SECURE
@@ -94,12 +94,6 @@ services:
         sync: false
       - key: AUTH_TOKEN_ENCRYPTION_KEY
         sync: false
-      - key: COMPUTER_RUNTIME_URL
-        sync: false
-      - key: COMPUTER_RUNTIME_SERVICE_TOKEN
-        sync: false
-      - key: RESEND_API_KEY
-        sync: false
       - key: GROGONI_EMAIL_FROM
         value: "Grogoni <messages@grogoni.com>"
       - key: CP2_STORE
@@ -127,87 +121,28 @@ services:
         generateValue: true
       - key: GITHUB_TOKEN
         sync: false
-      - key: HF_TOKEN
-        sync: false
-      # Vercel executes inference; Render never runs a model locally (docs/architecture/
-      # inference-runtime.md). The browser never receives the inference service token, the Neon
-      # object-storage credentials, or a signed artifact URL directly - Render mints those and
-      # proxies the inference stream back to the client.
-      # Platform default before any swap: the Shopkeeper agent on the ZeroClaw agent runtime with
-      # OpenAI's GPT-6 Luna, Grogoni-funded (docs/adr/ADR-zeroclaw-default-agent-runtime.md). Needs
-      # OPENAI_API_KEY below; without a ZeroClaw gateway Shopkeeper runs on Grogoni's own engine.
+      # Historical blueprint (docs/local-first-cloud-audit.md): it provisions no Ollama, so with
+      # INFERENCE_REQUIRED=true /health/ready stays unavailable until an Ollama host is configured.
+      # Defaults match local mode (services/api/src/config.ts): Shopkeeper on Grogoni's built-in
+      # engine with SmolLM2 360M. Retired cloud settings must not be provisioned here.
       - key: PLATFORM_DEFAULT_AGENT_ID
         value: builtin:shopkeeper:v1
       - key: PLATFORM_DEFAULT_AGENT_NAME
         value: Shopkeeper
       - key: PLATFORM_DEFAULT_AGENT_ADAPTER_ID
-        value: zeroclaw
+        value: grogoni
       - key: PLATFORM_DEFAULT_MODEL_ID
-        value: gpt-6-luna
+        value: smollm2-360m
       - key: PLATFORM_DEFAULT_EXECUTION_TARGET
-        value: backend
-      # ZeroClaw gateway (grogoni-zeroclaw below), reached over Render's private network.
-      - key: ZEROCLAW_GATEWAY_URL
-        fromService:
-          name: grogoni-zeroclaw
-          type: pserv
-          property: hostport
-      - key: ZEROCLAW_ALLOW_PRIVATE_NETWORK
-        value: "true"
-      - key: ZEROCLAW_WEBHOOK_SECRET
-        fromService:
-          name: grogoni-zeroclaw
-          type: pserv
-          envVarKey: ZEROCLAW_gateway__webhook_secret
-      - key: ZEROCLAW_TIMEOUT_MS
-        value: "120000"
-      - key: VERCEL_INFERENCE_URL
-        sync: false
-      - key: VERCEL_INFERENCE_TIMEOUT_MS
-        value: "300000"
+        value: local
       - key: INFERENCE_REQUIRED
         value: "true"
-      # Shared bearer secret between this service and services/ai-runtime's Vercel deployment.
-      # Preserve the existing value during the service migration and configure that exact value
-      # in both Render and Vercel; Blueprint sync cannot link secrets across providers.
-      - key: GROGONI_INFERENCE_SERVICE_TOKEN
-        sync: false
-      - key: NEON_MODEL_STORAGE_ENDPOINT
-        sync: false
-      - key: NEON_MODEL_STORAGE_REGION
-        value: us-east-1
-      - key: NEON_MODEL_STORAGE_ACCESS_KEY_ID
-        sync: false
-      - key: NEON_MODEL_STORAGE_SECRET_ACCESS_KEY
-        sync: false
-      - key: MODEL_ARTIFACT_URL_TTL_SECONDS
-        value: "900"
-      # Multi-provider inference router (docs/architecture/multi-provider-inference-implementation.md).
-      # All optional: blank keys leave a provider BYOK-only; nothing here is needed to boot.
-      - key: OPENAI_API_KEY
-        sync: false
-      - key: OPENAI_BASE_URL
-        sync: false
-      - key: ANTHROPIC_API_KEY
-        sync: false
-      - key: ANTHROPIC_BASE_URL
-        sync: false
-      - key: ZAI_API_KEY
-        sync: false
-      - key: ZAI_BASE_URL
-        value: https://api.z.ai/api/paas/v4
-      - key: GROGONI_LLAMA_BASE_URL
-        sync: false
-      - key: GROGONI_LLAMA_API_KEY
-        sync: false
       - key: INFERENCE_DEFAULT_MODEL
-        value: gpt-6-luna
+        value: smollm2-360m
       - key: INFERENCE_REQUEST_TIMEOUT_MS
         value: "60000"
       - key: INFERENCE_MAX_OUTPUT_TOKENS
         value: "1024"
-      - key: INFERENCE_CREDENTIAL_KEYS
-        sync: false
       - key: INFERENCE_OWNER_NODE_ENABLED
         value: "true"
       - key: INFERENCE_MAX_FALLBACKS
@@ -216,40 +151,10 @@ services:
         value: "120000"
       - key: INFERENCE_JOB_SIGNING_SECRET
         generateValue: true
-      # Resource isolation (docs/architecture/resource-isolation.md): bounds concurrent inference
-      # calls to ai-runtime and opens the circuit fast under sustained failure instead of letting
-      # every conversation turn queue/time out against a dependency that is clearly down.
-      - key: INFERENCE_MAX_CONCURRENCY
-        value: "4"
-      - key: INFERENCE_QUEUE_MAX
-        value: "8"
-      - key: INFERENCE_CIRCUIT_BREAKER_FAILURE_THRESHOLD
-        value: "5"
-      - key: INFERENCE_CIRCUIT_BREAKER_RESET_TIMEOUT_MS
-        value: "30000"
       - key: DB_ARTIFACT_POOL_MAX
         value: "2"
       - key: DB_HEALTH_PARITY_CHECK_INTERVAL_MS
         value: "60000"
-      - key: OCR_WORKER_URL
-        fromService:
-          name: grogoni-ocr-worker
-          type: pserv
-          property: hostport
-      - key: OCR_CONCURRENCY
-        value: "1"
-      - key: OCR_JOB_TIMEOUT_SECONDS
-        value: "120"
-      - key: OCR_QUEUE_MAX
-        value: "10"
-      - key: OCR_RETRY_INITIAL_DELAY_MS
-        value: "200"
-      - key: OCR_RETRY_MAX_DELAY_MS
-        value: "5000"
-      - key: OCR_CIRCUIT_BREAKER_FAILURE_THRESHOLD
-        value: "5"
-      - key: OCR_CIRCUIT_BREAKER_RESET_TIMEOUT_MS
-        value: "30000"
       - key: MALWARE_SCANNER_ENABLED
         value: "false"
       - key: VAPID_PUBLIC_KEY
@@ -258,17 +163,6 @@ services:
         sync: false
       - key: VAPID_SUBJECT
         value: mailto:operations@grogoni.com
-      # Signing secret for the workspace-level Render deploy webhook (Dashboard -> Integrations ->
-      # Webhooks -> this webhook's Settings page). Set manually after creating that webhook; see
-      # docs/deployment/render-deploy-push-notifications.md for the full setup. Until this is set,
-      # POST /internal/render/deploy-webhook is never registered (services/api/src/app.ts).
-      - key: RENDER_DEPLOY_WEBHOOK_SECRET
-        sync: false
-      - key: REDIS_URL
-        fromService:
-          name: grogoni-rate-limit-cache
-          type: keyvalue
-          property: connectionString
 
   - type: keyvalue
     name: grogoni-rate-limit-cache
@@ -276,91 +170,6 @@ services:
     region: oregon
     ipAllowList: []
     maxmemoryPolicy: allkeys-lru
-
-  # Self-hosted PaddleOCR/Tesseract worker (docs/receipt-ocr.md, services/receipt-ocr-service/).
-  # Private, not public: only grogoni reaches it, over Render's private network at the
-  # "hostport" wired into OCR_WORKER_URL above. This is unrelated to the LLM inference boundary
-  # docs/deployment/render-inference.md describes - Render still never runs a chat model itself,
-  # it hosts an OCR worker, which is a bounded image/PDF-to-text tool, not a model runtime.
-  - type: pserv
-    name: grogoni-ocr-worker
-    runtime: docker
-    branch: main
-    autoDeployTrigger: commit
-    # starter matches every other service in this Blueprint; PaddleOCR's CPU inference is memory-
-    # hungry enough that this may need sizing up if the worker OOMs under real receipt/product-photo
-    # traffic - watch its Render metrics after the first real deploy. No persistent disk is mounted,
-    # so PaddleOCR re-downloads its model weights on every deploy/restart (a one-time, few-second hit
-    # per cold start, not per request); add a `disk` here (mirroring the retired inference service's
-    # pattern) if that cold-start cost becomes worth trading for the extra disk cost.
-    plan: starter
-    region: oregon
-    dockerfilePath: ./services/receipt-ocr-service/Dockerfile
-    dockerContext: ./services/receipt-ocr-service
-    buildFilter:
-      paths:
-        - render.yaml
-        - services/receipt-ocr-service/**
-    envVars:
-      - key: OCR_WORKER_PORT
-        value: "8090"
-      - key: OCR_ENGINE_PRIMARY
-        value: paddleocr
-      - key: OCR_ENGINE_FALLBACK
-        value: tesseract
-      - key: OCR_FALLBACK_ENABLED
-        value: "true"
-      - key: OCR_PROFILE
-        value: balanced
-      - key: OCR_LANGUAGE_HINTS
-        value: en,sw
-      - key: OCR_MAX_UPLOAD_MB
-        value: "10"
-      - key: OCR_MAX_IMAGE_EDGE
-        value: "3000"
-      - key: OCR_MAX_PDF_PAGES
-        value: "5"
-      - key: OCR_CONCURRENCY
-        value: "1"
-
-  # ZeroClaw agent runtime (https://github.com/zeroclaw-labs/zeroclaw, MIT OR Apache-2.0) - the
-  # default engine for the Shopkeeper agent (docs/adr/ADR-zeroclaw-default-agent-runtime.md).
-  # Private: only grogoni reaches its gateway. It runs no model itself; it calls OpenAI's
-  # GPT-6 Luna with Grogoni's key. Locked down: read-only risk profile with every ZeroClaw tool
-  # denied, so it can only produce text, which Grogoni then parses and approval-gates like any model
-  # output. No pairing tokens; the generated webhook secret is shared with grogoni above.
-  - type: pserv
-    name: grogoni-zeroclaw
-    runtime: image
-    image:
-      url: ghcr.io/zeroclaw-labs/zeroclaw:v0.8.5
-    plan: starter
-    region: oregon
-    envVars:
-      - key: ZEROCLAW_gateway__host
-        value: 0.0.0.0
-      - key: ZEROCLAW_gateway__allow_public_bind
-        value: "true"
-      - key: ZEROCLAW_gateway__port
-        value: "42617"
-      - key: ZEROCLAW_gateway__require_pairing
-        value: "false"
-      - key: ZEROCLAW_gateway__webhook_secret
-        generateValue: true
-      - key: ZEROCLAW_gateway__session_persistence
-        value: "false"
-      - key: ZEROCLAW_gateway__request_timeout_secs
-        value: "120"
-      - key: ZEROCLAW_providers__models__openai__default__model
-        value: gpt-6-luna
-      - key: ZEROCLAW_providers__models__openai__default__api_key
-        sync: false
-      - key: ZEROCLAW_risk_profiles__default__level
-        value: readonly
-      - key: ZEROCLAW_risk_profiles__default__deny_all_tools
-        value: "true"
-      - key: ZEROCLAW_risk_profiles__default__workspace_only
-        value: "true"
 
   - type: web
     name: grogoni-web-staging
@@ -447,8 +256,6 @@ services:
         value: production
       - key: PORT
         value: "8790"
-      - key: COMPUTER_RUNTIME_SERVICE_TOKEN
-        sync: false
 
   - type: cron
     name: grogoni-db-backup

@@ -212,10 +212,14 @@ export function buildRuntimeModelPrompt(
     | "retrievedContext"
     | "allowedTools"
     | "modelTemplate"
+    | "agentInstructions"
   >
 ): RuntimeModelPrompt {
   return {
     message,
+    ...(runtime?.agentInstructions === undefined
+      ? {}
+      : { agentInstructions: runtime.agentInstructions }),
     ...(conversationHistory === undefined ? {} : { conversationHistory }),
     ...(context === undefined ? {} : { context }),
     allowedTools: runtime?.allowedTools ?? (Object.keys(runtimeToolRegistry) as RuntimeToolName[]),

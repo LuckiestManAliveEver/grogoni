@@ -17,6 +17,11 @@ import type {
   TemplateReportCard
 } from "../services/api/src/cp2/domains/model-templates/types";
 
+/** Everything the model receives for a turn: trusted agent instructions plus the user turn. */
+function promptText(prompt: { message: string; agentInstructions?: string } | undefined): string {
+  return prompt === undefined ? "" : [prompt.agentInstructions ?? "", prompt.message].join("\n");
+}
+
 const baseModelId = "qwen2.5-0.5b-android";
 
 describe("Grogoni Model Templates expertise flywheel", () => {
@@ -277,7 +282,7 @@ describe("Grogoni Model Templates expertise flywheel", () => {
     await api(app, "POST", `/businesses/${owner.businessId}/runtime/turns`, owner.cookie, {
       message: "Classify 2kg Pishori rice"
     });
-    expect(prompts.at(-1)?.message.toLowerCase()).toContain("pishori rice =>");
+    expect(promptText(prompts.at(-1)).toLowerCase()).toContain("pishori rice =>");
     expect(prompts.at(-1)?.modelTemplate).toMatchObject({
       templateId: created.template.id,
       templateVersionId: improvement.candidateVersionId,

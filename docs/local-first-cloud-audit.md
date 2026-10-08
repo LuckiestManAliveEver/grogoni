@@ -100,3 +100,96 @@ per round trip). It now sends one multi-row upsert per 1,000 rows. A plain `VALU
 Postgres type each parameter from its target column. Repeated entity ids are collapsed to the
 last record first, matching the old loop's last-write-wins behavior, since a multi-row upsert
 rejects repeats.
+
+## Migration 108: retiring hosted-runtime data
+
+Code-level removal (hosted providers, BYOK keys, ZeroClaw, the Vercel client) leaves rows in
+existing databases that still point at the retired runtime. `infra/db/migrations/108_local_first_runtime_cleanup.sql`
+moves them onto local Ollama:
+
+| Before 108                                                                     | After 108                                                                                            |
+| ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| Global default slot: GPT-6 Luna primary on `builtin:provider-router:v1`        | SmolLM2 360M primary on the global `local` host (the exact rows `activateGlobalDefaultModel` writes) |
+| Encrypted BYOK keys in `inference_provider_credentials`                        | Deleted (irreversible by design; nothing can read or revoke them any more)                           |
+| Agents and catalog entries with `runtimeAdapterId: "zeroclaw"`                 | `grogoni` (the code also maps stored `zeroclaw` at load time)                                        |
+| Hosts of type `backend`/`vercel`; models `gpt-6-luna`, `openai-*`, `qwen3-4b*` | Hosts `disabled`, models `inactive`, catalog rows `available: false` and inference disabled          |
+| Shop binding whose primary used those hosts/models, with a surviving fallback  | First enabled fallback promoted to primary                                                           |
+| Shop binding left with no usable primary                                       | `inactive`; the next turn provisions a fresh local binding through the zero-setup path               |
+
+It is idempotent. Before changing anything it copies every runtime and catalog row it may touch into
+`migration_108_backup` (first run only; the deleted keys are deliberately not copied). The rollback
+(`infra/db/rollbacks/108_local_first_runtime_cleanup.down.sql`) restores those rows, removes the
+global local rows 108 created, and drops the backup; it cannot restore the deleted keys, and it is
+only valid together with reverting the application code. It assumes `PLATFORM_DEFAULT_MODEL_ID` is
+`smollm2-360m` (the model `services/api/src/index.ts` registers the Ollama adapter for).
+
+Runbook (Neon or any existing database):
+
+1. Make sure nothing runs migrations automatically. `render.yaml` still declares an auto-deploying
+   service whose build runs `pnpm db:migrate` while the previous instance keeps serving; if that
+   Render service is still linked, suspend it before 108 reaches `main`.
+2. Stop every API process. A running API re-saves its in-memory snapshot and would write the old
+   rows back over the migration.
+3. Snapshot the rows 108 touches:
+   `pg_dump "$DIRECT_DATABASE_URL" --data-only -t inference_provider_credentials -t cp2_native_runtime_agents -t cp2_agent_catalog -t cp2_native_runtime_models -t cp2_native_execution_hosts -t cp2_native_model_installations -t cp2_native_runtime_bindings -t cp2_native_runtime_binding_models -t cp2_model_catalog -t cp2_external_registry_connections > /tmp/grogoni-108-snapshot.sql`
+4. `PGOPTIONS='-c grogoni.allow_108=yes' pnpm db:migrate`, then start the API. Without the flag 108
+   raises before changing anything (and the runner stops), so an auto-deploy or a stray
+   `pnpm db:migrate` cannot run it.
+
+Ollama model naming: the API calls Ollama with `OLLAMA_MODEL` (default `smollm2:360m`), while the
+`smollm2-360m` catalog and native-runtime rows describe `smollm2:360m-instruct-q4_0`. Both tags are
+SmolLM2 360M Instruct; the eval report records the `OLLAMA_MODEL` actually used.
+
+Regression coverage: `tests/local-first-runtime-migration.test.ts` (Postgres-gated) rebuilds the
+pre-108 state (GPT-6 Luna global default, a self-healed shop, a stranded shop, a ZeroClaw shop agent
+and a stored key), applies 108 twice, boots a fresh store with only the Ollama adapter, sends a turn
+for each shop and flushes, then applies the rollback, checks the pre-108 graph is back, boots the
+current code on it (a regression for shop bindings marked isDefault, which Postgres rejects and
+which used to fail every later save), and re-applies 108.
+
+## Model quality: SmolLM2 360M fails the model-fallback eval
+
+`pnpm eval:ai` (services/api/scripts/run-ai-eval.ts) runs the platform default on local Ollama and
+grades replies with local Claude Code. On 2026-10-05 SmolLM2 360M passed 0/6 scenarios
+(threshold 80%): it mostly echoed the system prompt and few-shot examples instead of answering the
+merchant. Turns took 15-70s on this machine's CPU. The model is usable as a smoke test of the
+runtime, not as a shop assistant; choosing a larger Ollama model is an open product decision.
+
+Same day, qwen2.5:3b scored 3/6, but one pass copied a few-shot example: the prompt's KRA tax example
+matched the eval's out-of-scope scenario almost word for word. With that example replaced (and
+`tests/runtime-model-few-shot-examples.test.ts` now failing on any example that overlaps a
+scenario) plus explicit "when not to call a tool / answer in the merchant's language" rules,
+SmolLM2 stayed at 0/6 and qwen2.5:3b scored 1/6 (52-154s turns). Six scenarios are too few to
+separate prompt effects from judge variance (one scenario flipped on an identical reply). The
+platform default stays SmolLM2 360M: neither model is adequate, and SmolLM2's replies show it
+treating the assembled system text as content to grade or repeat, so the next lever is how agent
+instructions are placed in the prompt, then a larger eval set.
+
+The agent's trusted instructions (platform rules, identity, business policy, personality, tools,
+output rules) used to be concatenated into the user turn together with the merchant's message.
+They now go in the system message (`RuntimeModelPrompt.agentInstructions`); untrusted retrieved
+context, recall and memory stay in the user turn, delimited, so they never gain system authority.
+With that split, qwen2.5:3b scored 2/6 (it stopped parroting few-shot reasons and now asks for
+missing details) and SmolLM2 stayed at 0/6, now reciting the system prompt back: it cannot follow a
+system prompt of this size. Across all three prompt versions qwen2.5:3b led (3, 1, 2 vs 0, 0, 0)
+at roughly 3x the latency on this machine. Open quality gaps: it overclaims ("I can help you file
+your tax returns with KRA"), ignores delivery questions, and re-asks for details already given.
+
+`.github/workflows/ai-eval.yml` is manual-dispatch only: hosted runners have neither Ollama nor
+Claude Code, so a nightly run could only skip and report green. Run `pnpm eval:ai` on a machine with
+both (set `GROGONI_CLAUDE_BIN` if `claude` is not on PATH) before a ship.
+
+## Switching models from the model tab
+
+Every model installed in the Ollama at `OLLAMA_BASE_URL` appears in the model tab (Settings ->
+Model & inference -> Open model library, and the quick switcher) as `<tag> (local)`, with id
+`ollama-<tag>` (`services/api/src/inference/ollama-model-catalog.ts`). Clicking "Use with agent"
+tests and activates it for that shop; there is no cost step, because local models have no usage
+bill (`isPlatformIncludedModel`). The API re-reads Ollama every 30 seconds, so a model installed
+with `ollama pull <tag>` shows up without a restart. The configured `OLLAMA_MODEL` keeps serving the
+platform default and is not listed twice.
+
+Before this, a Postgres-backed API forwarded only a hand-picked subset of store options, silently
+dropping the local model catalog, the configured platform default runtime, the messaging channel
+gateway, the connected-mailbox client and the workspace settings. It now forwards all of them
+(`tests/local-model-switching.test.ts` covers this against Postgres).

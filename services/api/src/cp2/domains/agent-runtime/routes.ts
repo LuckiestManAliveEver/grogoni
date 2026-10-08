@@ -110,11 +110,6 @@ interface AgentModelBindingQuery {
   shopId?: string;
 }
 
-interface AgentModelBillingModeBody {
-  shopId?: unknown;
-  billingMode?: unknown;
-}
-
 interface AgentModelTestBody {
   shopId?: unknown;
   executionTarget?: unknown;
@@ -521,62 +516,6 @@ export function registerAgentRuntimeRoutes(app: FastifyInstance, store: Cp2Store
             errorCode: error instanceof Cp2Error ? error.code : "MODEL_BINDING_REMOVAL_FAILED"
           },
           "Agent model binding removal failed."
-        );
-        return sendCp2Error(reply, error);
-      }
-    }
-  );
-
-  app.post(
-    "/api/agents/:agentId/model-binding/billing-mode",
-    async (
-      request: FastifyRequest<{
-        Params: AgentModelBindingParams;
-        Body: AgentModelBillingModeBody;
-      }>,
-      reply
-    ) => {
-      const requestId = request.id;
-      const shopId = parseString(request.body.shopId, "shopId");
-      const agentId = parseString(request.params.agentId, "agentId");
-      const billingMode = request.body.billingMode;
-      if (billingMode !== "platform" && billingMode !== "own-account") {
-        return sendCp2Error(
-          reply,
-          new Cp2Error(
-            400,
-            "invalid_billing_mode",
-            "billingMode must be 'platform' or 'own-account'."
-          )
-        );
-      }
-      request.log.info(
-        { event: "model.billing_mode_change_started", requestId, shopId, agentId, billingMode },
-        "Agent model billing mode change started."
-      );
-      try {
-        const result = store.setAgentModelBillingMode({
-          sessionId: readSessionCookie(request.headers.cookie),
-          businessId: shopId,
-          agentId,
-          billingMode
-        });
-        request.log.info(
-          { event: "model.billing_mode_changed", requestId, shopId, agentId, billingMode },
-          "Agent model billing mode changed."
-        );
-        return result;
-      } catch (error) {
-        request.log.warn(
-          {
-            event: "model.billing_mode_change_failed",
-            requestId,
-            shopId,
-            agentId,
-            billingMode,
-            errorCode: error instanceof Cp2Error ? error.code : "MODEL_BILLING_MODE_CHANGE_FAILED"
-          },
-          "Agent model billing mode change failed."
         );
         return sendCp2Error(reply, error);
       }

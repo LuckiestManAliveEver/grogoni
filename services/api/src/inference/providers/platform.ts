@@ -1,22 +1,13 @@
-import type { AiModelSummary, ModelExecutionTarget } from "@grogoni/shared-types";
+import {
+  isDeviceExecutionTarget,
+  type AiModelSummary,
+  type ModelExecutionTarget
+} from "@grogoni/shared-types";
 
 import { DeviceInferenceBroker } from "../device-inference-broker.js";
 import type { ModelRuntimeAdapter } from "../model-runtime.js";
-import { ProviderConnectionService } from "./connections.js";
 import type { InferenceProvider, ModelDefinition } from "./contract.js";
-import {
-  createKeyringCipher,
-  CredentialResolver,
-  rotateCredentialKeys,
-  type SecretCipher
-} from "./credentials.js";
-import type { EndpointPolicy } from "./endpoint-policy.js";
 import { readInferenceEnvironment, type InferenceEnvironment } from "./environment.js";
-import {
-  createGuardedTransport,
-  transportFromFetch,
-  type ProviderTransport
-} from "./http-transport.js";
 import {
   InferenceRouter,
   type InferenceLogger,
@@ -29,7 +20,7 @@ import { createRoutedModelRuntimeAdapter } from "./routed-model-adapter.js";
 import { InferenceUsageGuard, type RequestRateLimiter } from "./usage-policy.js";
 
 /**
- * Everything the multi-provider layer needs, assembled once per process. Cp2Store owns the only
+ * Everything the device-local inference layer needs, assembled once per process. Cp2Store owns the only
  * reference used by request handling; services/api/src/index.ts constructs it with Postgres
  * repositories and the environment, tests construct it with memory repositories and fake transports.
  */
@@ -37,8 +28,6 @@ export interface InferencePlatform {
   readonly environment: InferenceEnvironment;
   readonly registry: InferenceProviderRegistry;
   readonly router: InferenceRouter;
-  readonly credentials: CredentialResolver;
-  readonly connections: ProviderConnectionService;
   readonly repositories: InferenceRepositories;
   /** Delivers device-local generations to members' own devices. */
   readonly deviceBroker: DeviceInferenceBroker;
@@ -54,21 +43,15 @@ export interface InferencePlatform {
   hostedExecutionTargetFor(modelId: string): ModelExecutionTarget | undefined;
   refresh(): Promise<void>;
   /**
-   * Re-encrypts stored credentials still on an older key version (INFERENCE_CREDENTIAL_KEYS).
-   * Idempotent; run at boot.
+   * Hard-deletes usage rows and any encrypted keys left by the retired BYOK connections for a
+   * deleted account or shop.
    */
-  rotateCredentialKeys(): Promise<{ rotated: number; failed: number }>;
-  /** Hard-deletes credentials and usage rows owned by a deleted account or shop. */
   purgeOwner(input: { tenantId?: string; userId?: string }): Promise<void>;
 }
 
 export interface CreateInferencePlatformOptions {
   environment?: InferenceEnvironment;
   repositories?: InferenceRepositories;
-  /** Production default: DNS-pinned node:https transport. Tests pass a fetch fake. */
-  fetchImpl?: typeof fetch;
-  transportFor?: (policy: EndpointPolicy) => ProviderTransport;
-  cipher?: SecretCipher;
   metrics?: InferenceMetricsSink;
   log?: InferenceLogger;
   providerOverrides?: ReadonlyMap<string, InferenceProvider>;
@@ -83,13 +66,6 @@ export function createInferencePlatform(
 ): InferencePlatform {
   const environment = options.environment ?? readInferenceEnvironment({});
   const repositories = options.repositories ?? createMemoryInferenceRepositories();
-  const keyring = createKeyringCipher(environment.credentialKeys);
-  const cipher = options.cipher ?? keyring;
-  const transportFor =
-    options.transportFor ??
-    (options.fetchImpl === undefined
-      ? (policy: EndpointPolicy) => createGuardedTransport(policy)
-      : (policy: EndpointPolicy) => transportFromFetch(options.fetchImpl as typeof fetch, policy));
   let catalogSource: () => readonly AiModelSummary[] = () => [];
   const deviceBroker = options.deviceBroker ?? new DeviceInferenceBroker();
 
@@ -99,23 +75,15 @@ export function createInferencePlatform(
   };
 
   const registry = new InferenceProviderRegistry({
-    environmentProviders: environment.providers,
+    builtinProviders: environment.providers,
     repository: repositories.providers,
     adapterDeps: {
-      transportFor,
       deviceBroker,
       ...(options.now === undefined ? {} : { now: options.now })
     },
     ...(options.providerOverrides === undefined
       ? {}
       : { providerOverrides: options.providerOverrides })
-  });
-  const credentials = new CredentialResolver({
-    repository: repositories.credentials,
-    cipher,
-    managedSecrets: environment.managedSecrets,
-    onDecryptFailure: (credentialId) =>
-      options.log?.("inference.credential_decrypt_failed", { credentialId })
   });
   const usage = new InferenceUsageGuard({
     runs: repositories.runs,
@@ -127,7 +95,6 @@ export function createInferencePlatform(
   const router = new InferenceRouter({
     registry,
     resolveModel: resolveModelDefinition,
-    credentials,
     usage,
     runs: repositories.runs,
     defaults: {
@@ -140,32 +107,19 @@ export function createInferencePlatform(
     ...(options.log === undefined ? {} : { log: options.log }),
     ...(options.now === undefined ? {} : { now: options.now })
   });
-  const connections = new ProviderConnectionService({
-    registry,
-    repository: repositories.credentials,
-    cipher,
-    router,
-    probeModelFor: (providerId) =>
-      catalogSource()
-        .map(modelDefinitionFromCatalog)
-        .find((model) => model !== null && model.enabled && model.providerId === providerId)
-        ?.providerModelId
-  });
-
   const servedTarget = (model: ModelDefinition): ModelExecutionTarget | undefined => {
     const registered = registry.get(model.providerId);
     if (registered === undefined || !registered.config.enabled || !model.enabled) return undefined;
     const target = nativeExecutionTargetFor(model.executionTarget);
-    // remote-shop-device models keep the owner-node broker; this router serves the rest.
-    return target === "remote-shop-device" ? undefined : target;
+    // The router serves only device-local models. Shop devices keep the owner-node broker and
+    // server-side models run through local Ollama (inference/model-runtime.ts).
+    return isDeviceExecutionTarget(target) ? target : undefined;
   };
 
   return {
     environment,
     registry,
     router,
-    credentials,
-    connections,
     repositories,
     deviceBroker,
     setModelCatalog(source) {
@@ -185,10 +139,6 @@ export function createInferencePlatform(
     },
     async refresh() {
       await registry.refresh();
-    },
-    async rotateCredentialKeys() {
-      if (options.cipher !== undefined) return { rotated: 0, failed: 0 };
-      return rotateCredentialKeys({ repository: repositories.credentials, cipher: keyring });
     },
     async purgeOwner(input) {
       await repositories.credentials.deleteForOwner(input);

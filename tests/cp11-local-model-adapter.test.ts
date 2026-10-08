@@ -7,12 +7,12 @@ import type {
 import { parseRuntimeModelOutput } from "../packages/tool-core/src";
 import { buildApi } from "../services/api/src/app";
 import { createCp2Store } from "../services/api/src/cp2/store";
-import type { ModelArtifactStore } from "../services/api/src/inference/model-artifact-store";
-import {
-  createVercelInferenceClient,
-  createVercelModelAdapter
-} from "../services/api/src/inference/model-runtime";
 import { activateGenericGlobalDefaultModel } from "./fixtures/native-runtime-test-helpers";
+
+/** Everything the model receives for a turn: trusted agent instructions plus the user turn. */
+function promptText(prompt: { message: string; agentInstructions?: string } | undefined): string {
+  return prompt === undefined ? "" : [prompt.agentInstructions ?? "", prompt.message].join("\n");
+}
 
 interface VerifyOtpResponse {
   session: {
@@ -121,105 +121,6 @@ describe("CP11 local model adapter", () => {
     });
   });
 
-  it("accepts a smaller model's tool proposal even when it omits the required type discriminator", async () => {
-    // Reproduces a live-verified failure: activating a weaker swap-in model against the real
-    // Vercel inference service, the model consistently answered with
-    // {"toolName":"products.list","input":{}} - valid JSON, but missing the "type":"tool" field
-    // parseRuntimeModelOutput requires, so every turn failed MODEL_RESPONSE_PARSE_FAILED even
-    // though the proposal was unambiguous. normalizeModelText (model-runtime.ts) is what tolerates
-    // this. Without it, the execution target is only swappable in theory - the moment a real
-    // deployment activates a weaker model, chat breaks despite activation's own health probe
-    // having passed.
-    const artifactStore: ModelArtifactStore = {
-      async resolveArtifact(modelId) {
-        return {
-          id: `test:${modelId}`,
-          modelId,
-          storageProvider: "neon-object-storage",
-          bucket: "grogoni-model-artifacts",
-          objectKey: `models/${modelId}/model.gguf`,
-          format: "gguf",
-          quantization: "Q4_0",
-          sizeBytes: 12,
-          sha256: null,
-          contentType: "application/octet-stream",
-          status: "available",
-          createdAt: "2026-08-31T00:00:00.000Z",
-          updatedAt: "2026-08-31T00:00:00.000Z"
-        };
-      },
-      async createDownloadUrl(artifact) {
-        return {
-          ...artifact,
-          downloadUrl: "https://storage.example.neon.tech/grogoni-model-artifacts/model.gguf",
-          expiresAt: new Date(Date.now() + 60_000).toISOString()
-        };
-      },
-      async verifyArtifact() {
-        return { ok: true, sizeMatches: true, hashMatches: null, errorCode: null };
-      }
-    };
-    const adapter = createVercelModelAdapter({
-      modelId: "qwen2.5-0.5b-android",
-      artifactStore,
-      client: createVercelInferenceClient({
-        baseUrl: "https://vercel-inference.example",
-        serviceToken: "a".repeat(32),
-        timeoutMs: 1_000,
-        request: async (input, init) => {
-          const url = input instanceof URL ? input : new URL(String(input));
-          if (url.pathname === "/health") {
-            return new Response(JSON.stringify({ ok: true }), { status: 200 });
-          }
-          const requestId =
-            typeof init?.body === "string"
-              ? ((JSON.parse(init.body) as { requestId?: string }).requestId ?? "req-1")
-              : "req-1";
-          const events = [
-            {
-              type: "result",
-              requestId,
-              text: JSON.stringify({ toolName: "products.list", input: {} }),
-              finishReason: "stop",
-              usage: { inputTokens: 10, outputTokens: 5 },
-              metrics: {}
-            }
-          ];
-          const encoder = new TextEncoder();
-          const body = new ReadableStream<Uint8Array>({
-            start(controller) {
-              for (const event of events) {
-                controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
-              }
-              controller.close();
-            }
-          });
-          return new Response(body, {
-            status: 200,
-            headers: { "content-type": "application/x-ndjson" }
-          });
-        }
-      })
-    });
-
-    const result = await adapter.generate({
-      context: { agentId: "agent", shopId: "shop", modelId: "qwen2.5-0.5b-android" },
-      prompt: {
-        message: "hello",
-        allowedTools: [],
-        schemaVersion: "cp11-runtime-model-v1"
-      }
-    });
-
-    expect(parseRuntimeModelOutput(result.text)).toMatchObject({
-      ok: true,
-      output: {
-        kind: "tool",
-        proposal: { toolName: "products.list" }
-      }
-    });
-  });
-
   it("reports an explicit fallback when the active model has no inference provider", async () => {
     let selectedModelId: string | null = null;
     const store = createCp2Store({
@@ -240,7 +141,7 @@ describe("CP11 local model adapter", () => {
       sessionCookie
     );
 
-    expect(selectedModelId).toBe("gpt-6-luna");
+    expect(selectedModelId).toBe("smollm2-360m");
     expect(turn.turn).toMatchObject({
       status: "completed",
       model: {
@@ -533,10 +434,10 @@ describe("CP11 local model adapter", () => {
     expect(JSON.stringify(capturedPrompt?.context)).not.toContain("Private Sugar");
     // assembleAgentInferenceMessage (services/api/src/cp2/domains/agent-runtime/*.ts) renders the
     // stored, persisted agent profile's compiled instructions into prompt.message before it ever
-    // reaches a model adapter (Vercel's createVercelModelAdapter, tested separately, sends this
-    // text through verbatim) - the per-turn agentProfile field in the request body above is not
+    // reaches a model adapter (createOllamaModelAdapter, tested in tests/ollama-model-adapter.test.ts,
+    // sends this text through verbatim) - the per-turn agentProfile field in the request body above is not
     // the source of truth and must never leak into what the model actually sees.
-    const assembledMessage = capturedPrompt?.message ?? "";
+    const assembledMessage = promptText(capturedPrompt);
     expect(assembledMessage).not.toContain("Private Sugar");
     expect(assembledMessage).toContain(
       "Use this agent profile as the guiding operating principles for how this store is run."

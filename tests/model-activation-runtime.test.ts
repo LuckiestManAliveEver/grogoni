@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import type {
   AgentModelActivationResult,
   AgentModelBindingSummary,
@@ -7,13 +7,15 @@ import type {
 } from "../packages/shared-types/src";
 import { buildApi } from "../services/api/src/app";
 import { createCp2Store } from "../services/api/src/cp2/store";
-import type { ModelArtifactStore } from "../services/api/src/inference/model-artifact-store";
 import {
-  createVercelInferenceClient,
-  createVercelModelAdapter,
   ModelRuntimeError,
   type ModelRuntimeAdapter
 } from "../services/api/src/inference/model-runtime";
+
+/** Everything the model receives for a turn: trusted agent instructions plus the user turn. */
+function promptText(prompt: { message: string; agentInstructions?: string } | undefined): string {
+  return prompt === undefined ? "" : [prompt.agentInstructions ?? "", prompt.message].join("\n");
+}
 
 const primaryModelId = "qwen2.5-0.5b-android";
 const replacementModelId = "qwen2.5-1.5b-android";
@@ -24,10 +26,10 @@ describe("agent model activation runtime", () => {
     const withBackend = createCp2Store({
       // "backend" here is the frontend's stable field name for "a hosted adapter is configured",
       // not the "backend" ModelExecutionTarget literal - it tracks whichever target the platform
-      // default actually is ("backend" for GPT-6 Luna; see repositoryDefaultRuntimePolicy).
+      // default actually is ("local" for SmolLM2 on Ollama; see repositoryDefaultRuntimePolicy).
       modelRuntimeAdapterResolver: ({ modelId, executionTarget }) =>
-        modelId === primaryModelId && executionTarget === "backend"
-          ? healthyAdapter(primaryModelId, { executionTarget: "backend" })
+        modelId === primaryModelId && executionTarget === "local"
+          ? healthyAdapter(primaryModelId, { executionTarget: "local" })
           : undefined
     });
 
@@ -267,7 +269,8 @@ describe("agent model activation runtime", () => {
     expect(provisioned).toHaveLength(1);
     expect(provisioned[0]).toMatchObject({
       status: "active",
-      isDefault: true,
+      // isDefault marks only the global slot; Postgres rejects it on a shop binding.
+      isDefault: false,
       agentId: owner.businessId
     });
 
@@ -517,8 +520,8 @@ describe("agent model activation runtime", () => {
       }
     });
     expect(prompts).toHaveLength(1);
-    expect(prompts[0]?.message).toContain("Always mention the market policy.");
-    expect(prompts[0]?.message).toContain("Concise market guide");
+    expect(promptText(prompts[0])).toContain("Always mention the market policy.");
+    expect(promptText(prompts[0])).toContain("Concise market guide");
     const view = await getJson<{ messages: Array<{ clientMessageId: string }> }>(
       app,
       `/v1/conversations/${conversationId}`,
@@ -764,12 +767,12 @@ describe("agent model activation runtime", () => {
     const app = buildApi({ cp2: { store } });
     const owner = await createOwnerBusiness(app, "+254700002006", "Hosted Model Shop");
 
-    // gpt-6-luna (the platform default) is a hosted catalog entry (format: "remote", no
+    // smollm2-360m (the platform default) is a hosted catalog entry (format: "remote", no
     // downloadable artifact) - it can only run through a server-reachable target, never the
     // merchant's own device.
     const response = await app.inject({
       method: "POST",
-      url: `/api/agents/${owner.businessId}/models/gpt-6-luna/activate`,
+      url: `/api/agents/${owner.businessId}/models/smollm2-360m/activate`,
       headers: jsonHeaders(owner.cookie),
       payload: JSON.stringify({
         ...activationPayload(owner.businessId),
@@ -831,263 +834,6 @@ describe("agent model activation runtime", () => {
     await app.close();
   });
 });
-
-describe("Vercel model adapter", () => {
-  it("validates artifact availability and captures usage and latency", async () => {
-    const requestMock = vercelInferenceFetch();
-    const adapter = createVercelModelAdapter({
-      modelId: primaryModelId,
-      artifactStore: fakeArtifactStore(),
-      client: createVercelInferenceClient({
-        baseUrl: "https://vercel-inference.example",
-        serviceToken: "test-inference-token-that-is-at-least-32-characters",
-        timeoutMs: 1_000,
-        request: requestMock
-      })
-    });
-    const health = await adapter.healthCheck({
-      agentId: "agent",
-      shopId: "shop",
-      modelId: primaryModelId
-    });
-    expect(health).toMatchObject({
-      available: true,
-      modelId: primaryModelId,
-      provider: "llama.cpp",
-      executionTarget: "vercel"
-    });
-    expect(requestMock).toHaveBeenCalledWith(
-      new URL("https://vercel-inference.example/health"),
-      expect.objectContaining({
-        method: "GET",
-        credentials: "omit",
-        headers: expect.objectContaining({
-          authorization: "Bearer test-inference-token-that-is-at-least-32-characters"
-        })
-      })
-    );
-  });
-
-  it("rejects an empty generation result and a mismatched result requestId", async () => {
-    const emptyText = createVercelModelAdapter({
-      modelId: primaryModelId,
-      artifactStore: fakeArtifactStore(),
-      client: createVercelInferenceClient({
-        baseUrl: "https://vercel-inference.example",
-        serviceToken: "test-inference-token-that-is-at-least-32-characters",
-        timeoutMs: 1_000,
-        request: vercelInferenceFetch({ text: "" })
-      })
-    });
-    await expect(
-      emptyText.generate({
-        context: { agentId: "agent", shopId: "shop", modelId: primaryModelId },
-        prompt: runtimePrompt("hello")
-      })
-    ).rejects.toMatchObject({ code: "INVALID_INFERENCE_RESPONSE" });
-
-    const mismatchedRequestId = createVercelModelAdapter({
-      modelId: primaryModelId,
-      artifactStore: fakeArtifactStore(),
-      client: createVercelInferenceClient({
-        baseUrl: "https://vercel-inference.example",
-        serviceToken: "test-inference-token-that-is-at-least-32-characters",
-        timeoutMs: 1_000,
-        request: vercelInferenceFetch({ resultRequestId: "a-different-request-id" })
-      })
-    });
-    await expect(
-      mismatchedRequestId.generate({
-        context: { agentId: "agent", shopId: "shop", modelId: primaryModelId },
-        prompt: runtimePrompt("hello")
-      })
-    ).rejects.toMatchObject({ code: "INVALID_INFERENCE_RESPONSE" });
-  });
-
-  it("requests the runtime JSON contract and normalizes a plain model response", async () => {
-    const requestMock = vercelInferenceFetch({ text: "market" });
-    const adapter = createVercelModelAdapter({
-      modelId: primaryModelId,
-      artifactStore: fakeArtifactStore(),
-      client: createVercelInferenceClient({
-        baseUrl: "https://vercel-inference.example",
-        serviceToken: "test-inference-token-that-is-at-least-32-characters",
-        timeoutMs: 1_000,
-        request: requestMock
-      })
-    });
-
-    const completion = await adapter.generate({
-      context: { agentId: "agent", shopId: "shop", modelId: primaryModelId },
-      prompt: runtimePrompt("Reply with the word market")
-    });
-
-    expect(JSON.parse(completion.text)).toEqual({ type: "response", message: "market" });
-    expect(completion).toMatchObject({
-      provider: "llama.cpp",
-      executionTarget: "vercel",
-      inferenceRequestId: expect.any(String),
-      promptTokens: 7,
-      completionTokens: 3
-    });
-    const generationCall = requestMock.mock.calls.find(([url]) =>
-      String(url).endsWith("/v1/inference")
-    );
-    const sentBody = JSON.parse(String(generationCall?.[1]?.body));
-    expect(sentBody).toMatchObject({
-      model: { id: primaryModelId },
-      generation: { jsonOutput: true }
-    });
-  });
-
-  it("does not retry generation after a single Vercel-reported failure", async () => {
-    const requestMock = vercelInferenceFetch({ generationErrorCode: "MODEL_GENERATION_FAILED" });
-    const adapter = createVercelModelAdapter({
-      modelId: primaryModelId,
-      artifactStore: fakeArtifactStore(),
-      client: createVercelInferenceClient({
-        baseUrl: "https://vercel-inference.example",
-        serviceToken: "test-inference-token-that-is-at-least-32-characters",
-        timeoutMs: 1_000,
-        request: requestMock
-      })
-    });
-
-    await expect(
-      adapter.generate({
-        context: { agentId: "agent", shopId: "shop", modelId: primaryModelId },
-        prompt: runtimePrompt("hello")
-      })
-    ).rejects.toMatchObject({ code: "MODEL_GENERATION_FAILED" });
-
-    expect(
-      requestMock.mock.calls.filter(([url]) => String(url).endsWith("/v1/inference"))
-    ).toHaveLength(1);
-  });
-
-  it("propagates a caller abort into an in-flight health check", async () => {
-    const controller = new AbortController();
-    const requestMock = vi.fn((input: URL | RequestInfo, init?: RequestInit) => {
-      if (String(input).endsWith("/health")) {
-        return new Promise<Response>((_resolve, reject) => {
-          init?.signal?.addEventListener(
-            "abort",
-            () => reject(init.signal?.reason ?? new DOMException("Aborted", "AbortError")),
-            { once: true }
-          );
-        });
-      }
-      return Promise.resolve(new Response(JSON.stringify({ ok: true }), { status: 200 }));
-    });
-    const adapter = createVercelModelAdapter({
-      modelId: primaryModelId,
-      artifactStore: fakeArtifactStore(),
-      client: createVercelInferenceClient({
-        baseUrl: "https://vercel-inference.example",
-        serviceToken: "test-inference-token-that-is-at-least-32-characters",
-        timeoutMs: 1_000,
-        request: requestMock as unknown as typeof fetch
-      })
-    });
-
-    const healthPromise = adapter.healthCheck({
-      agentId: "agent",
-      shopId: "shop",
-      modelId: primaryModelId,
-      signal: controller.signal
-    });
-    await vi.waitFor(() => expect(requestMock).toHaveBeenCalledTimes(1));
-    controller.abort();
-
-    await expect(healthPromise).resolves.toMatchObject({
-      available: false,
-      errorCode: "INFERENCE_CANCELLED"
-    });
-  });
-});
-
-function fakeArtifactStore(): ModelArtifactStore {
-  return {
-    async resolveArtifact(modelId) {
-      return {
-        id: `test:${modelId}`,
-        modelId,
-        storageProvider: "neon-object-storage",
-        bucket: "grogoni-model-artifacts",
-        objectKey: `models/${modelId}/model.gguf`,
-        format: "gguf",
-        quantization: "Q4_0",
-        sizeBytes: 12,
-        sha256: null,
-        contentType: "application/octet-stream",
-        status: "available",
-        createdAt: "2026-08-31T00:00:00.000Z",
-        updatedAt: "2026-08-31T00:00:00.000Z"
-      };
-    },
-    async createDownloadUrl(artifact) {
-      return {
-        ...artifact,
-        downloadUrl: "https://storage.example.neon.tech/grogoni-model-artifacts/model.gguf",
-        expiresAt: new Date(Date.now() + 60_000).toISOString()
-      };
-    },
-    async verifyArtifact() {
-      return { ok: true, sizeMatches: true, hashMatches: null, errorCode: null };
-    }
-  };
-}
-
-/** Mocks the NDJSON wire contract services/ai-runtime/src/vercel-handler.ts actually serves. */
-function vercelInferenceFetch(
-  overrides: {
-    text?: string;
-    resultRequestId?: string;
-    generationErrorCode?: string;
-  } = {}
-): ReturnType<typeof vi.fn> {
-  return vi.fn(async (input: URL | RequestInfo, init?: RequestInit) => {
-    const url = String(input);
-    if (url.endsWith("/health")) {
-      return new Response(JSON.stringify({ ok: true }), { status: 200 });
-    }
-    const requestId =
-      typeof init?.body === "string"
-        ? ((JSON.parse(init.body) as { requestId?: string }).requestId ?? "inference-request-1")
-        : "inference-request-1";
-    const events = overrides.generationErrorCode
-      ? [
-          { type: "status", state: "INITIALIZING" },
-          {
-            type: "error",
-            code: overrides.generationErrorCode,
-            message: "generation failed",
-            retryable: true
-          }
-        ]
-      : [
-          { type: "status", state: "INITIALIZING" },
-          { type: "status", state: "READY", cacheHit: false },
-          {
-            type: "result",
-            requestId: overrides.resultRequestId ?? requestId,
-            text: overrides.text ?? "GROGONI_MODEL_OK",
-            finishReason: "stop",
-            usage: { inputTokens: 7, outputTokens: 3 },
-            metrics: {}
-          }
-        ];
-    const encoder = new TextEncoder();
-    const body = new ReadableStream<Uint8Array>({
-      start(controller) {
-        for (const event of events)
-          controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
-        controller.close();
-      }
-    });
-    return new Response(body, { status: 200, headers: { "content-type": "application/x-ndjson" } });
-  });
-}
 
 function healthyAdapter(
   modelId: string,
@@ -1267,23 +1013,4 @@ function sessionCookie(header: string | string[] | undefined): string {
   const value = Array.isArray(header) ? header[0] : header;
   if (value === undefined) throw new Error("Expected a session cookie.");
   return value.split(";")[0] ?? value;
-}
-
-function runtimePrompt(message: string): RuntimeModelPrompt {
-  return {
-    message,
-    context: {
-      businessId: "shop",
-      userId: "user",
-      role: "owner",
-      productCount: 0,
-      customerCount: 0,
-      supplierCount: 0,
-      invoiceCount: 0,
-      paymentCount: 0,
-      importJobCount: 0
-    },
-    allowedTools: [],
-    schemaVersion: "cp11-runtime-model-v1"
-  };
 }

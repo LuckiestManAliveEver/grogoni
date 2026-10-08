@@ -1,7 +1,5 @@
 import { randomUUID } from "node:crypto";
 import type {
-  InferenceExecutionEvent,
-  InferenceExecutionRequest,
   ModelExecutionTarget,
   RuntimeModelCompletionResult,
   RuntimeModelPrompt,
@@ -18,7 +16,6 @@ import {
   CircuitOpenError
 } from "@grogoni/resource-control";
 
-import type { ModelArtifactStore } from "./model-artifact-store.js";
 import { currentTurnId, turnStreamHub } from "./turn-stream.js";
 
 export interface ModelRuntimeContext {
@@ -32,15 +29,8 @@ export interface ModelRuntimeContext {
   runtimeContractVersion?: string;
   signal?: AbortSignal;
   /**
-   * Set only when the business has explicitly authorized spending its own connected provider
-   * credential on this call (see ExternalConnectionsDomain.resolveInferenceToken). Never resolved
-   * inside this file - callers that want user-connected billing must resolve and pass it in.
-   */
-  providerCredential?: { token: string } | null;
-  /**
-   * The account the turn runs for. Only the multi-provider router reads it, to resolve that
-   * account's own (user-scoped) BYOK credential; the business is `shopId`. Never forwarded to any
-   * provider.
+   * The account the turn runs for: addresses its live reply stream and device inference jobs; the
+   * business is `shopId`. Never forwarded to a model.
    */
   accountId?: string;
 }
@@ -95,14 +85,6 @@ export class ModelRuntimeError extends Error {
   }
 }
 
-export interface VercelInferenceClient {
-  health(signal?: AbortSignal): Promise<void>;
-  infer(
-    request: InferenceExecutionRequest,
-    options?: { signal?: AbortSignal; onDelta?: (text: string) => void }
-  ): Promise<Extract<InferenceExecutionEvent, { type: "result" }>>;
-}
-
 export interface OllamaHealthResult {
   provider: "ollama";
   available: boolean;
@@ -118,8 +100,20 @@ interface OllamaChatMessage {
   content: string;
 }
 
+/** One model installed in Ollama, as GET /api/tags reports it. */
+export interface OllamaInstalledModel {
+  /** The Ollama tag, e.g. "qwen2.5:3b". */
+  name: string;
+  sizeBytes: number | null;
+  parameterSize: string | null;
+  quantization: string | null;
+  family: string | null;
+}
+
 export interface OllamaInferenceClient {
   health(signal?: AbortSignal): Promise<OllamaHealthResult>;
+  /** Every model installed in this Ollama. Throws a ModelRuntimeError when Ollama is unreachable. */
+  listModels(signal?: AbortSignal): Promise<OllamaInstalledModel[]>;
   chat(
     messages: OllamaChatMessage[],
     options?: { signal?: AbortSignal; onDelta?: (text: string) => void }
@@ -130,6 +124,9 @@ export interface OllamaInferenceClient {
     finishReason?: string;
   }>;
 }
+
+/** Same reply budget the runtime JSON contract was sized for on the retired hosted path. */
+export const ollamaMaxOutputTokens = 256;
 
 export function createOllamaInferenceClient(options: {
   baseUrl: string;
@@ -180,6 +177,32 @@ export function createOllamaInferenceClient(options: {
     }
   };
   return {
+    async listModels(signal) {
+      const response = await invoke("/api/tags", { method: "GET" }, signal);
+      if (!response.ok)
+        throw responseError(response.status, await response.json().catch(() => null));
+      const body = (await response.json().catch(() => ({}))) as {
+        models?: Array<{
+          name?: unknown;
+          size?: unknown;
+          details?: { parameter_size?: unknown; quantization_level?: unknown; family?: unknown };
+        }>;
+      };
+      const text = (value: unknown) => (typeof value === "string" && value !== "" ? value : null);
+      return (body.models ?? []).flatMap((entry) =>
+        typeof entry.name === "string" && entry.name.trim() !== ""
+          ? [
+              {
+                name: entry.name,
+                sizeBytes: typeof entry.size === "number" ? entry.size : null,
+                parameterSize: text(entry.details?.parameter_size),
+                quantization: text(entry.details?.quantization_level),
+                family: text(entry.details?.family)
+              }
+            ]
+          : []
+      );
+    },
     async health(signal) {
       try {
         const response = await invoke("/api/tags", { method: "GET" }, signal);
@@ -216,7 +239,14 @@ export function createOllamaInferenceClient(options: {
         "/api/chat",
         {
           method: "POST",
-          body: JSON.stringify({ model, messages, stream: true, options: { temperature: 0.2 } })
+          body: JSON.stringify({
+            model,
+            messages,
+            stream: true,
+            // num_predict bounds the reply. Without it a small model can keep generating until it
+            // fills its context window, holding the turn (and the host's CPU) for minutes.
+            options: { temperature: 0.2, num_predict: ollamaMaxOutputTokens }
+          })
         },
         callOptions.signal
       );
@@ -276,234 +306,6 @@ export function createOllamaInferenceClient(options: {
         ...(promptTokens === undefined ? {} : { promptTokens }),
         ...(completionTokens === undefined ? {} : { completionTokens }),
         ...(finishReason === undefined ? {} : { finishReason })
-      };
-    }
-  };
-}
-
-export function createVercelInferenceClient(options: {
-  baseUrl: string;
-  serviceToken: string;
-  timeoutMs: number;
-  request?: typeof fetch;
-}): VercelInferenceClient {
-  const baseUrl = normalizeBaseUrl(options.baseUrl, "VERCEL_INFERENCE_URL");
-  if (options.serviceToken.length < 32) throw new Error("Inference service token is too short.");
-  const invoke = async (path: string, init: RequestInit, signal?: AbortSignal) => {
-    const controller = new AbortController();
-    let externallyAborted = signal?.aborted === true;
-    const abort = () => {
-      externallyAborted = true;
-      controller.abort(signal?.reason);
-    };
-    signal?.addEventListener("abort", abort, { once: true });
-    const timeout = setTimeout(() => controller.abort(), options.timeoutMs);
-    try {
-      return await (options.request ?? fetch)(new URL(path, baseUrl), {
-        ...init,
-        headers: {
-          accept: "application/x-ndjson, application/json",
-          authorization: `Bearer ${options.serviceToken}`,
-          ...(init.body === undefined ? {} : { "content-type": "application/json" }),
-          ...init.headers
-        },
-        signal: controller.signal,
-        credentials: "omit"
-      });
-    } catch (error) {
-      if (controller.signal.aborted) {
-        throw new ModelRuntimeError(
-          externallyAborted ? "INFERENCE_CANCELLED" : "INFERENCE_TIMEOUT",
-          externallyAborted ? "Inference was cancelled." : "Vercel inference timed out.",
-          true,
-          { cause: error }
-        );
-      }
-      throw new ModelRuntimeError(
-        "INFERENCE_SERVICE_UNREACHABLE",
-        "Vercel inference is unreachable.",
-        true,
-        { cause: error }
-      );
-    } finally {
-      clearTimeout(timeout);
-      signal?.removeEventListener("abort", abort);
-    }
-  };
-  return {
-    async health(signal) {
-      const response = await invoke("/health", { method: "GET" }, signal);
-      if (!response.ok)
-        throw responseError(response.status, await response.json().catch(() => null));
-    },
-    async infer(request, callOptions = {}) {
-      const response = await invoke(
-        "/v1/inference",
-        { method: "POST", body: JSON.stringify(request) },
-        callOptions.signal
-      );
-      if (!response.ok)
-        throw responseError(response.status, await response.json().catch(() => null));
-      if (response.body === null) {
-        throw new ModelRuntimeError(
-          "INVALID_INFERENCE_RESPONSE",
-          "Vercel returned no stream.",
-          true
-        );
-      }
-      let buffer = "";
-      let result: Extract<InferenceExecutionEvent, { type: "result" }> | null = null;
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      try {
-        for (;;) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() ?? "";
-          for (const line of lines) {
-            if (line.trim() === "") continue;
-            const event = parseEvent(line);
-            if (event.type === "delta") callOptions.onDelta?.(event.text);
-            if (event.type === "error") {
-              throw new ModelRuntimeError(event.code, event.message, event.retryable);
-            }
-            if (event.type === "result") result = event;
-          }
-        }
-      } finally {
-        reader.releaseLock();
-      }
-      if (buffer.trim() !== "") {
-        const event = parseEvent(buffer);
-        if (event.type === "result") result = event;
-        if (event.type === "error")
-          throw new ModelRuntimeError(event.code, event.message, event.retryable);
-      }
-      if (result === null || result.requestId !== request.requestId || result.text.trim() === "") {
-        throw new ModelRuntimeError(
-          "INVALID_INFERENCE_RESPONSE",
-          "Vercel returned an invalid result.",
-          true
-        );
-      }
-      return result;
-    }
-  };
-}
-
-export function createVercelModelAdapter(input: {
-  modelId: string;
-  artifactStore: ModelArtifactStore;
-  client: VercelInferenceClient;
-  /**
-   * False for models with no GGUF artifact to verify (e.g. Hugging Face-routed models) - see
-   * RuntimeModelDefinition.requiresArtifact. Defaults to true so every adapter registered before
-   * this option existed keeps verifying an artifact exactly as before.
-   */
-  requiresArtifact?: boolean;
-}): ModelRuntimeAdapter {
-  const requiresArtifact = input.requiresArtifact ?? true;
-  // "llama.cpp" only accurately describes artifact-backed models; a model routed through a remote
-  // chat-completions provider (Hugging Face today) never touches llama.cpp at all, so mislabeling
-  // it would corrupt provider attribution in usage accounting and health reporting.
-  const provider = requiresArtifact ? "llama.cpp" : "remote-chat-completions";
-  return {
-    provider,
-    executionTarget: "vercel",
-    async canRun(context) {
-      if (context.modelId !== input.modelId) {
-        return {
-          available: false,
-          errorCode: "MODEL_IDENTITY_MISMATCH",
-          message: "The adapter does not serve this model."
-        };
-      }
-      try {
-        if (requiresArtifact) {
-          const artifact = await input.artifactStore.resolveArtifact(context.modelId);
-          const verification = await input.artifactStore.verifyArtifact(artifact, context.signal);
-          if (!verification.ok) {
-            return {
-              available: false,
-              errorCode: verification.errorCode,
-              message: "The model artifact is unavailable."
-            };
-          }
-        }
-        await input.client.health(context.signal);
-        return { available: true, errorCode: null, message: null };
-      } catch (error) {
-        const normalized = asModelRuntimeError(error);
-        return { available: false, errorCode: normalized.code, message: normalized.message };
-      }
-    },
-    async healthCheck(context) {
-      const startedAt = Date.now();
-      const availability = await this.canRun(context);
-      return {
-        ...availability,
-        modelId: context.modelId,
-        provider: this.provider,
-        executionTarget: this.executionTarget,
-        latencyMs: Date.now() - startedAt,
-        responsePreview: null,
-        retryable: availability.available || availability.errorCode === "ARTIFACT_NOT_FOUND"
-      };
-    },
-    async generate({ context, prompt }) {
-      const startedAt = Date.now();
-      const resolvedArtifact = requiresArtifact
-        ? await input.artifactStore.createDownloadUrl(
-            await input.artifactStore.resolveArtifact(context.modelId)
-          )
-        : undefined;
-      const requestId = randomUUID();
-      const publisher = turnStreamHub.replyPublisher(context.accountId, currentTurnId());
-      const result = await input.client.infer(
-        {
-          requestId,
-          conversationId: context.conversationId ?? `runtime:${context.shopId}`,
-          runtimeBindingId: context.runtimeBindingId ?? "runtime-unbound",
-          executionHostId: context.executionHostId ?? "builtin:vercel-inference:v1",
-          agent: { id: context.agentId, adapterId: context.agentAdapterId ?? "pi" },
-          model: {
-            id: context.modelId,
-            runtimeContractVersion: context.runtimeContractVersion ?? "1"
-          },
-          ...(resolvedArtifact === undefined ? {} : { artifact: resolvedArtifact }),
-          prompt: buildInferencePrompt(prompt),
-          generation: { maxTokens: 256, temperature: 0.2, jsonOutput: true },
-          ...(context.providerCredential === undefined
-            ? {}
-            : { providerCredential: context.providerCredential })
-        },
-        {
-          ...(context.signal === undefined ? {} : { signal: context.signal }),
-          // Live reply preview for a watching client (see inference/turn-stream.ts).
-          ...(publisher === null ? {} : { onDelta: (delta: string) => publisher.raw(delta) })
-        }
-      );
-      const text = normalizeModelText(result.text);
-      if (text === "")
-        throw new ModelRuntimeError(
-          "INVALID_INFERENCE_RESPONSE",
-          "The model returned malformed output.",
-          true
-        );
-      return {
-        text,
-        modelId: context.modelId,
-        provider,
-        executionTarget: "vercel",
-        ...(result.usage.inputTokens === null ? {} : { promptTokens: result.usage.inputTokens }),
-        ...(result.usage.outputTokens === null
-          ? {}
-          : { completionTokens: result.usage.outputTokens }),
-        latencyMs: Date.now() - startedAt,
-        ...(result.finishReason === null ? {} : { finishReason: result.finishReason }),
-        inferenceRequestId: requestId
       };
     }
   };
@@ -584,10 +386,9 @@ export function createOllamaModelAdapter(input: {
  * breaker, both shared across every model adapter targeting the same execution host - see
  * docs/architecture/resource-isolation.md §3/§7. This closes the highest-priority gap found in
  * the resource-isolation audit: before this wrapper existed, services/api placed no bound at all
- * on concurrent inference calls, relying entirely on ai-runtime's own single-generation-at-a-time
- * `busy` flag (services/ai-runtime/src/http-server.ts) to reject overload - which produced a burst
- * of user-visible failures under concurrent load instead of smooth, bounded queuing, and never
- * stopped repeatedly hammering an `ai-runtime` instance that was clearly down.
+ * on concurrent inference calls and relied on the (since retired) remote inference host to reject
+ * overload - which produced a burst of user-visible failures under concurrent load instead of
+ * smooth, bounded queuing, and never stopped hammering a host that was clearly down.
  *
  * `canRun`/`healthCheck` are intentionally left unwrapped: they're lightweight diagnostic calls
  * (health-check/model-artifact verification), not the expensive generation the budget protects,
@@ -712,7 +513,9 @@ export function buildInferenceInstructions(prompt: RuntimeModelPrompt): string {
   const fewShotExamples = renderRuntimeModelFewShotExamples(prompt.allowedTools);
   const templateRecipe = renderModelTemplateRecipe(prompt);
   return [
-    "You are the model behind the Grogoni agent runtime.",
+    ...(prompt.agentInstructions === undefined || prompt.agentInstructions.trim() === ""
+      ? ["You are the model behind the Grogoni agent runtime."]
+      : [prompt.agentInstructions]),
     renderRuntimeModelOutputInstructions(prompt.allowedTools),
     ...(fewShotExamples === "" ? [] : [fewShotExamples]),
     ...(templateRecipe === "" ? [] : [templateRecipe])
@@ -751,27 +554,6 @@ function renderModelTemplateRecipe(prompt: RuntimeModelPrompt): string {
   ].join("\n");
 }
 
-function parseEvent(line: string): InferenceExecutionEvent {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(line);
-  } catch {
-    throw new ModelRuntimeError(
-      "INVALID_INFERENCE_RESPONSE",
-      "Vercel returned malformed stream data.",
-      true
-    );
-  }
-  if (typeof parsed !== "object" || parsed === null || !("type" in parsed)) {
-    throw new ModelRuntimeError(
-      "INVALID_INFERENCE_RESPONSE",
-      "Vercel returned malformed stream data.",
-      true
-    );
-  }
-  return parsed as InferenceExecutionEvent;
-}
-
 function parseOllamaChatEvent(line: string): {
   message?: { content?: string };
   done?: boolean;
@@ -798,7 +580,9 @@ function responseError(status: number, body: unknown): ModelRuntimeError {
       : status === 401
         ? "INFERENCE_AUTHENTICATION_FAILED"
         : "INFERENCE_SERVICE_UNAVAILABLE",
-    typeof record.message === "string" ? record.message : "Vercel inference rejected the request.",
+    typeof record.message === "string"
+      ? record.message
+      : "The inference service rejected the request.",
     typeof record.retryable === "boolean" ? record.retryable : status >= 500
   );
 }

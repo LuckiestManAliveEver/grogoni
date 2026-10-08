@@ -185,7 +185,8 @@ wrong in principle (the paragraph below is preserved as the historical rationale
 never required infrastructure), but because no code in this repository constructs an OpenAI adapter
 any more. Re-introducing an OpenAI-backed model means writing a new `ModelRuntimeAdapter`
 implementation and registering it under a chosen `ModelExecutionTarget` key, the same way
-`createVercelModelAdapter` is registered today - not restoring the deleted file.
+`createOllamaModelAdapter` is registered today under `local` - not restoring the deleted file. (The
+Vercel adapter was itself removed with the local-first runtime, docs/local-first-cloud-audit.md.)
 
 Historical rationale (accurate for the OpenAI-provider era, kept for context): OpenAI was exactly
 one optional cloud provider. `render.yaml`'s `OPENAI_API_KEY` / `OPENAI_FAST_MODEL` /

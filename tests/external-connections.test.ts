@@ -243,115 +243,34 @@ describe("external registry connections (GitHub / Hugging Face token connect)", 
     await app.close();
   });
 
-  it("connecting an account never authorizes it for inference billing by default", async () => {
+  it("keeps a connection discovery-only: inference billing authorization was removed", async () => {
+    // Billing hosted inference to a user's own Hugging Face account was removed with the
+    // local-first runtime (docs/local-first-cloud-audit.md). Connecting still serves discovery.
     mockHuggingFaceValid();
     const store = createCp2Store();
     const app = buildApi({ cp2: { store } });
-    const cookie = await signUp(app, "hf-default-scope@example.test");
+    const cookie = await signUp(app, "hf-discovery-only@example.test");
 
     const connected = await post(
       app,
       "/v1/external-connections/huggingface",
-      { token: "hf_token_default" },
+      { token: "hf_token_discovery" },
       cookie
     );
-    const body = connected.json<ExternalRegistryConnection>();
-    expect(body.inferenceAuthorized).toBe(false);
-    expect(store.resolveExternalConnectionInferenceToken(body.accountId, "huggingface")).toBeNull();
-    // Discovery resolution must still work - authorization only gates the inference path.
+    expect(connected.statusCode).toBe(200);
+    const body = connected.json<ExternalRegistryConnection & Record<string, unknown>>();
+    expect(body).not.toHaveProperty("inferenceAuthorized");
     expect(store.resolveExternalConnectionToken(body.accountId, "huggingface")).toBe(
-      "hf_token_default"
+      "hf_token_discovery"
     );
 
-    await app.close();
-  });
-
-  it("authorizing inference makes the credential resolvable for billing, and revoking it removes that again", async () => {
-    mockHuggingFaceValid();
-    const store = createCp2Store();
-    const app = buildApi({ cp2: { store } });
-    const cookie = await signUp(app, "hf-authorize@example.test");
-
-    const connected = await post(
+    const authorize = await post(
       app,
-      "/v1/external-connections/huggingface",
-      { token: "hf_token_billable" },
-      cookie
-    );
-    const { id, accountId } = connected.json<ExternalRegistryConnection>();
-
-    const authorized = await post(
-      app,
-      `/v1/external-connections/${id}/inference-authorization`,
+      `/v1/external-connections/${body.id}/inference-authorization`,
       { authorized: true },
       cookie
     );
-    expect(authorized.statusCode).toBe(200);
-    expect(authorized.json<ExternalRegistryConnection>().inferenceAuthorized).toBe(true);
-    expect(store.resolveExternalConnectionInferenceToken(accountId, "huggingface")).toBe(
-      "hf_token_billable"
-    );
-
-    const revoked = await post(
-      app,
-      `/v1/external-connections/${id}/inference-authorization`,
-      { authorized: false },
-      cookie
-    );
-    expect(revoked.json<ExternalRegistryConnection>().inferenceAuthorized).toBe(false);
-    expect(store.resolveExternalConnectionInferenceToken(accountId, "huggingface")).toBeNull();
-    // Discovery resolution is unaffected by revoking inference authorization specifically.
-    expect(store.resolveExternalConnectionToken(accountId, "huggingface")).toBe(
-      "hf_token_billable"
-    );
-
-    await app.close();
-  });
-
-  it("rejects authorizing inference on a connection belonging to a different account", async () => {
-    mockHuggingFaceValid();
-    const app = buildApi({ cp2: { store: createCp2Store() } });
-    const ownerCookie = await signUp(app, "hf-authorize-owner@example.test");
-    const connected = await post(
-      app,
-      "/v1/external-connections/huggingface",
-      { token: "owner-hf-token" },
-      ownerCookie
-    );
-    const { id } = connected.json<ExternalRegistryConnection>();
-
-    const otherCookie = await signUp(app, "hf-authorize-other@example.test");
-    const attempt = await post(
-      app,
-      `/v1/external-connections/${id}/inference-authorization`,
-      { authorized: true },
-      otherCookie
-    );
-    expect(attempt.statusCode).toBe(404);
-
-    await app.close();
-  });
-
-  it("cannot authorize inference on a disconnected (revoked) connection", async () => {
-    mockHuggingFaceValid();
-    const app = buildApi({ cp2: { store: createCp2Store() } });
-    const cookie = await signUp(app, "hf-authorize-revoked@example.test");
-    const connected = await post(
-      app,
-      "/v1/external-connections/huggingface",
-      { token: "will-be-revoked-first" },
-      cookie
-    );
-    const { id } = connected.json<ExternalRegistryConnection>();
-    await del(app, `/v1/external-connections/${id}`, cookie);
-
-    const attempt = await post(
-      app,
-      `/v1/external-connections/${id}/inference-authorization`,
-      { authorized: true },
-      cookie
-    );
-    expect(attempt.statusCode).toBe(409);
+    expect(authorize.statusCode).toBe(404);
 
     await app.close();
   });

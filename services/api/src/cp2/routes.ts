@@ -866,7 +866,7 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
   registerOAuthRoutes(app, store, oauthAllowedRedirectOrigins);
 
   registerExternalConnectionsRoutes(app, store, authAttemptsByIp);
-  registerInferenceProviderRoutes(app, store, authAttemptsByIp);
+  registerInferenceProviderRoutes(app, store);
   registerInferenceRuntimeRoutes(app, store);
 
   app.post("/auth/pin/setup", async (request: FastifyRequest<{ Body: PinBody }>, reply) => {

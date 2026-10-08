@@ -56,17 +56,6 @@ describe("cp2_model_artifacts / cp2_runtime_model_artifacts migration ownership 
   });
 });
 
-describe("ModelArtifactStore runtime query (Test B)", () => {
-  it("queries cp2_runtime_model_artifacts, never the legacy account table", async () => {
-    const source = await readFile(
-      new URL("../services/api/src/inference/model-artifact-store.ts", import.meta.url),
-      "utf8"
-    );
-    expect(source).toMatch(/from cp2_runtime_model_artifacts\b/u);
-    expect(source).not.toMatch(/from cp2_model_artifacts\b/u);
-  });
-});
-
 describe("migration 080 corrects the runtime artifact table (Test C)", () => {
   it("080 and its rollback update cp2_runtime_model_artifacts, not the legacy table", async () => {
     const migration = await migrationSql("080_correct_smollm2_artifact_size.sql");

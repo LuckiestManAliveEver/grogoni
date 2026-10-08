@@ -4,6 +4,7 @@ import type {
   RuntimeModelPrompt,
   RuntimeModelProvider
 } from "@grogoni/shared-types";
+import { connectedAgentRuntimeAdapterId } from "./retired-agent-runtimes.js";
 
 export interface AgentRuntimeAvailabilityInput {
   agent: NativeRuntimeAgentSummary;
@@ -67,10 +68,14 @@ export class AgentRuntimeAdapterRegistry {
 /** Old native records predate adapter metadata and execute through the original Grogoni harness. */
 export const legacyAgentRuntimeAdapterId = "grogoni";
 
+/**
+ * The engine a native agent runs on. Records saved while a now-retired engine was deployed
+ * (e.g. "zeroclaw") resolve to Grogoni's built-in engine, so those shops keep chatting.
+ */
 export function runtimeAdapterIdForAgent(agent: NativeRuntimeAgentSummary): string {
   const configured = agent.configuration.runtimeAdapterId;
   return typeof configured === "string" && configured.trim() !== ""
-    ? normalizeAdapterId(configured)
+    ? connectedAgentRuntimeAdapterId(normalizeAdapterId(configured))
     : legacyAgentRuntimeAdapterId;
 }
 

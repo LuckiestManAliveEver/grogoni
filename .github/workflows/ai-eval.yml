@@ -1,11 +1,11 @@
 name: AI eval
 
 # Periodic eval lane (CLAUDE.md: paid, quality-measuring, threshold-gated) for the model-fallback
-# path - separate from ci.yml's fast deterministic gate, which runs on every push/PR. This runs
-# nightly and on manual dispatch (before a ship) only, since it makes real model calls.
+# path - separate from ci.yml's fast deterministic gate, which runs on every push/PR.
+# Manual only: hosted runners have neither Ollama nor Claude Code, so a scheduled run could only
+# skip and report a meaningless green. Run `pnpm eval:ai` on a machine with both before a ship, or
+# dispatch this job on a runner that has them.
 on:
-  schedule:
-    - cron: "0 2 * * *"
   workflow_dispatch:
 
 jobs:
@@ -33,21 +33,9 @@ jobs:
         run: pnpm -r --filter "./packages/**" --if-present build
 
       - name: Run AI eval
-        env:
-          VERCEL_INFERENCE_URL: ${{ vars.VERCEL_INFERENCE_URL }}
-          VERCEL_INFERENCE_TIMEOUT_MS: ${{ vars.VERCEL_INFERENCE_TIMEOUT_MS }}
-          GROGONI_INFERENCE_SERVICE_TOKEN: ${{ secrets.GROGONI_INFERENCE_SERVICE_TOKEN }}
-          NEON_MODEL_STORAGE_ENDPOINT: ${{ vars.NEON_MODEL_STORAGE_ENDPOINT }}
-          NEON_MODEL_STORAGE_REGION: ${{ vars.NEON_MODEL_STORAGE_REGION }}
-          NEON_MODEL_STORAGE_ACCESS_KEY_ID: ${{ secrets.NEON_MODEL_STORAGE_ACCESS_KEY_ID }}
-          NEON_MODEL_STORAGE_SECRET_ACCESS_KEY: ${{ secrets.NEON_MODEL_STORAGE_SECRET_ACCESS_KEY }}
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENAI_FAST_MODEL: ${{ vars.OPENAI_FAST_MODEL }}
-        # No Vercel inference host configured yet -> the script prints a clear skip message and
-        # exits 0. This job goes from a no-op to a real gate the moment those repo
-        # variables/secrets are set - no script change needed. OPENAI_API_KEY, if set, is used
-        # only as the eval judge's cloud fallback when the Vercel judge call fails.
+        # Runs the platform default model on local Ollama and grades replies with local Claude
+        # Code (services/api/scripts/run-ai-eval.ts). Hosted runners have neither, so the script
+        # prints why and exits 0; run it on a machine (or self-hosted runner) with both installed.
         run: pnpm eval:ai
 
       - name: Upload eval report

@@ -295,7 +295,7 @@ describe("persistent session authentication", () => {
   it("fails closed on unsafe production cookie and session configuration", () => {
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("COOKIE_SECURE", "false");
-    vi.stubEnv("WEBAUTHN_RP_ID", "grogoni");
+    vi.stubEnv("WEBAUTHN_RP_ID", "grogoni.com");
     vi.stubEnv("WEBAUTHN_EXPECTED_ORIGINS", "https://grogoni.com");
     for (const name of [
       "OTP_HMAC_SECRET",
@@ -328,7 +328,7 @@ describe("persistent session authentication", () => {
     vi.stubEnv("COOKIE_SECURE", "true");
     vi.stubEnv("SESSION_ROTATION_ENABLED", "true");
     vi.stubEnv("SESSION_REUSE_DETECTION_ENABLED", "true");
-    vi.stubEnv("WEBAUTHN_RP_ID", "grogoni");
+    vi.stubEnv("WEBAUTHN_RP_ID", "grogoni.com");
     vi.stubEnv("WEBAUTHN_EXPECTED_ORIGINS", "https://grogoni.com");
     for (const name of [
       "OTP_HMAC_SECRET",

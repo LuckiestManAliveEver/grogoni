@@ -146,22 +146,33 @@ export function PhoneFirstAuthentication({
     // primaryAuthDestination on a previous successful login), so it skips identifierBody()'s
     // phone parsing, which needs a country hint this screen no longer collects.
     const normalized = currentIdentifierBody();
-    const result = await apiFetch<AuthSessionView>(
-      identifierType === "store" ? "/auth/pin/store-login" : "/auth/pin/login",
-      {
-        method: "POST",
-        body:
-          identifierType === "store"
-            ? { grogoniId: normalized.identifier, pin }
-            : {
-                method: identifierType,
-                contact: normalized.identifier,
-                ...(identifierType === "phone" && !usingRemembered ? { country } : {}),
-                pin
-              }
+    try {
+      const result = await apiFetch<AuthSessionView>(
+        identifierType === "store" ? "/auth/pin/store-login" : "/auth/pin/login",
+        {
+          method: "POST",
+          body:
+            identifierType === "store"
+              ? { grogoniId: normalized.identifier, pin }
+              : {
+                  method: identifierType,
+                  contact: normalized.identifier,
+                  ...(identifierType === "phone" && !usingRemembered ? { country } : {}),
+                  pin
+                }
+        }
+      );
+      onAuthenticated(result);
+    } catch (error) {
+      if (
+        error instanceof ApiRequestError &&
+        error.code === "auth_credentials_invalid"
+      ) {
+        setMessage("We couldn't sign you in with that PIN. Check your account details and PIN, then try again.");
+        return;
       }
-    );
-    onAuthenticated(result);
+      throw error;
+    }
   }
 
   async function login() {

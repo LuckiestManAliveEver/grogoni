@@ -1,4 +1,5 @@
 import { isExplicitOfflineMode } from "../offline-runtime";
+import { createSessionContextRetry } from "../session-context-retry";
 import { useRef, useState } from "react";
 
 import type {
@@ -110,6 +111,8 @@ export function useAuthState(deps: UseAuthStateDeps) {
     deps.accountRestorationIntent
   );
   const sessionRefreshInFlightRef = useRef<Promise<SessionResponse | null> | null>(null);
+  // One per app instance: tracks whether this account's session context has applied yet.
+  const sessionContextRetryRef = useRef(createSessionContextRetry());
 
   const {
     business,
@@ -183,6 +186,17 @@ export function useAuthState(deps: UseAuthStateDeps) {
     }
   }
 
+  // A device-only session (progressive-identity.md) is not the identity a visitor on the login or
+  // signup screen is asking for, so online it never dismisses that screen; only a real account
+  // identity or the visitor (Cancel / Browse as guest) does. Without this, a device-session visitor
+  // who tapped Log in, or deep-linked to /login, was bounced back to chat by the next bootstrap.
+  // Of the session-acceptance paths, two still close it for a device session: offline restore
+  // (login needs the network anyway) and device recovery under a deletion/restoration intent
+  // (that panel needs it closed).
+  function dismissesAuthScreen(response: SessionResponse): boolean {
+    return response.account.identityLevel !== "device";
+  }
+
   function acceptAuthenticatedSession(response: SessionResponse) {
     sessionStorage.removeItem(guestBrowsingStorageKey);
     logAuthenticationLifecycle("session_response_received", response);
@@ -190,7 +204,7 @@ export function useAuthState(deps: UseAuthStateDeps) {
     saveCachedAuthSession(response);
     logAuthenticationLifecycle("frontend_session_stored", response);
     setAuthBootstrapState("authenticated");
-    setIsAuthOpen(false);
+    if (dismissesAuthScreen(response)) setIsAuthOpen(false);
   }
 
   function completePhoneFirstAuthentication(response: SessionResponse) {
@@ -390,7 +404,7 @@ export function useAuthState(deps: UseAuthStateDeps) {
       setSession(nextSession);
       saveCachedAuthSession(nextSession);
       setAuthBootstrapState("authenticated");
-      if (!accountDeletionIntent && !accountRestorationIntent) {
+      if (!accountDeletionIntent && !accountRestorationIntent && dismissesAuthScreen(nextSession)) {
         setIsAuthOpen(false);
         if (initialAuthenticationTarget !== null) {
           navigateToView("chat", { replace: true, mode: "marketplace" });
@@ -426,7 +440,14 @@ export function useAuthState(deps: UseAuthStateDeps) {
             setSession(recovered);
             saveCachedAuthSession(recovered);
             setAuthBootstrapState("authenticated");
-            setIsAuthOpen(false);
+            // A deletion/restoration intent's panel renders only once the auth screen is closed.
+            if (
+              accountDeletionIntent ||
+              accountRestorationIntent ||
+              dismissesAuthScreen(recovered)
+            ) {
+              setIsAuthOpen(false);
+            }
             setStatusMessage("Grogoni restored this device account.");
             await loadMarketplaceIntroState();
             await validateStoredBusiness();
@@ -561,11 +582,40 @@ export function useAuthState(deps: UseAuthStateDeps) {
   // domain hook (Phase 16), and this function's only external call site is a still-inline OwnerApp
   // effect that can supply it directly - same pattern used for Sync (Phase 7), Invoices/Logistics
   // (Phase 9), and Runtime history/Network (Phase 16).
+  /**
+   * Resolves true once the server's context was applied, false when it could not be loaded or a
+   * newer load superseded it (shouldApply, from session-context-retry.ts) before it returned.
+   *
+   * "restore" (sign-in, joining a shop) also restores where the owner last worked: shop, mode,
+   * view, conversation and route. "refresh" (a retry after a failed restore) applies only the
+   * data: by then the user may have moved on from the device cache, and moving them to the
+   * server's last place would yank them away. It keeps the current shop when the account still
+   * belongs to it and otherwise forgets it, without picking another.
+   */
   async function loadGrogoniSessionContext(
-    setActiveConversationId: (conversationId: string | null) => void
-  ) {
+    setActiveConversationId: (conversationId: string | null) => void,
+    shouldApply: () => boolean = () => true,
+    apply: "restore" | "refresh" = "restore"
+  ): Promise<boolean> {
     try {
+      const shopAtStart = readStoredBusiness()?.id ?? null;
       const context = await apiFetch<GrogoniSessionContext>("/v1/session/context");
+      if (!shouldApply()) return false;
+      if (apply === "refresh") {
+        const currentShop = readStoredBusiness();
+        // The user switched, created or restored a shop while this was in flight: the answer may
+        // predate it (and would forget the new shop). Drop it; a later retry fetches fresh data.
+        if ((currentShop?.id ?? null) !== shopAtStart) return false;
+        setGrogoniSessionContext(context);
+        if (
+          currentShop !== null &&
+          !context.shops.some((shop) => shop.business.id === currentShop.id)
+        ) {
+          setBusiness(null);
+          localStorage.removeItem(activeBusinessStorageKey);
+        }
+        return true;
+      }
       setGrogoniSessionContext(context);
       const activeShop =
         context.shops.find((shop) => shop.business.id === context.activeShopId) ?? context.shops[0];
@@ -602,8 +652,11 @@ export function useAuthState(deps: UseAuthStateDeps) {
         },
         { replace: true }
       );
+      return true;
     } catch {
-      // Offline launch continues from the device cache and catches up after reconnecting.
+      // Offline launch continues from the device cache; sessionContextRetry retries the load
+      // when GrogoniApplication sees a reconnect or the app shown again.
+      return false;
     }
   }
 
@@ -681,7 +734,16 @@ export function useAuthState(deps: UseAuthStateDeps) {
     shop: AccountShopSummary,
     setActiveConversationId: (conversationId: string | null) => void
   ) {
-    await loadGrogoniSessionContext(setActiveConversationId);
+    // The user chose this shop: a retry already in flight is superseded (its result is dropped)
+    // and retrying ends for this sign-in, so nothing re-applies the server's last shop over the
+    // one just joined, even if this load fails or hangs.
+    const load = sessionContextRetryRef.current.beginExternalLoad();
+    let applied = false;
+    try {
+      applied = await loadGrogoniSessionContext(setActiveConversationId, load.shouldApply);
+    } finally {
+      load.settle(applied);
+    }
     switchActiveBusiness(shop);
   }
 
@@ -694,6 +756,7 @@ export function useAuthState(deps: UseAuthStateDeps) {
   });
 
   return {
+    sessionContextRetry: sessionContextRetryRef.current,
     authBootstrapState,
     setAuthBootstrapState,
     oauthProviders,

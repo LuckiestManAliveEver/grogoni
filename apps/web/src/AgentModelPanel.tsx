@@ -5,10 +5,8 @@ import type {
   AgentModelBindingRemovalResult,
   AgentModelBindingSummary,
   EffectiveRuntimeSummary,
-  ModelExecutionTarget,
   ModelRuntimeHealthSummary
 } from "@grogoni/shared-types";
-import { platformSharedModelId } from "@grogoni/shared-types";
 
 import {
   readClientInferencePreferences,
@@ -33,7 +31,12 @@ import { formatDate, formatLatency, formatExecutionTarget } from "./formatters";
 import { isAgentModel } from "./owner-app-bootstrap";
 import { normalizeSearchText } from "./agent-command-engine";
 import { getErrorMessage } from "./chat-message-plumbing";
-import { applyDeploymentRuntimeAvailability } from "./agent-model-panel-utils";
+import {
+  applyDeploymentRuntimeAvailability,
+  isIncludedModel,
+  isServerExecutionTarget,
+  servedExecutionTarget
+} from "./agent-model-panel-utils";
 import { backendModelRuntimeStatusMessage } from "./backend-model-runtime-status";
 import { McpAccessTokensPanel } from "./McpAccessTokensPanel";
 
@@ -61,13 +64,11 @@ export interface AgentModelPanelProps {
 }
 
 /**
- * The advanced counterpart to QuickRuntimeSwitcher.tsx's simple "pick an agent + hosted model"
- * dropdown: this panel shows the full backend model binding (with a real test/activate/remove
- * round trip against /api/agents/:agentId/models/:modelId/{test,activate} and
- * /api/agents/:agentId/model-binding), plus GitHub and Hugging Face model discovery. Every model
- * this app can run is backend-hosted - there is no private per-device model copy. A discovered
- * model activates through the same hosted flow as a catalog model when the deployment has it
- * configured; otherwise it is shown browse-only until it is registered.
+ * The advanced counterpart to QuickRuntimeSwitcher.tsx's simple "pick an agent + model" dropdown:
+ * this panel shows the full model binding (with a real test/activate/remove round trip against
+ * /api/agents/:agentId/models/:modelId/{test,activate} and /api/agents/:agentId/model-binding).
+ * Every catalog model runs on the API's local Ollama runtime (execution target "local", see
+ * docs/local-first-cloud-audit.md); there is no cloud provider or private per-device model copy.
  */
 export function AgentModelPanel({
   accountId,
@@ -251,21 +252,21 @@ export function AgentModelPanel({
 
   async function testServerBackendModel(model: AiModelSummary) {
     if (modelRuntimeBusyRef.current || !navigator.onLine) {
-      setProfileMessage("Connect to the internet to test the backend model.");
+      setProfileMessage("Connect to the internet to test the model.");
       return;
     }
     modelRuntimeBusyRef.current = true;
     setModelRuntimeBusy(true);
     setTestingBackendModelId(model.id);
     try {
-      setProfileMessage(`Testing ${model.label} through real backend inference…`);
+      setProfileMessage(`Testing ${model.label} through real local inference…`);
       const result = await postJson<{ healthCheck: ModelRuntimeHealthSummary }>(
         `/api/agents/${encodeURIComponent(
           canonicalRuntimeAgentId
         )}/models/${encodeURIComponent(model.id)}/test`,
         {
           shopId: business.id,
-          executionTarget: hostedExecutionTarget(model)
+          executionTarget: servedExecutionTarget(model)
         },
         { timeoutMs: backendModelProbeRequestTimeoutMs }
       );
@@ -300,7 +301,7 @@ export function AgentModelPanel({
   }
 
   function requestActivateServerBackendModel(model: AiModelSummary) {
-    if (model.id !== platformSharedModelId) {
+    if (!isIncludedModel(model)) {
       setPendingCostConfirmationModelId(model.id);
       return;
     }
@@ -309,7 +310,7 @@ export function AgentModelPanel({
 
   async function activateServerBackendModel(model: AiModelSummary) {
     if (modelRuntimeBusyRef.current || !navigator.onLine) {
-      setProfileMessage("Connect to the internet to activate the backend model.");
+      setProfileMessage("Connect to the internet to activate the model.");
       return;
     }
     setPendingCostConfirmationModelId(null);
@@ -325,13 +326,13 @@ export function AgentModelPanel({
         )}/models/${encodeURIComponent(model.id)}/activate`,
         {
           shopId: business.id,
-          executionTarget: hostedExecutionTarget(model),
+          executionTarget: servedExecutionTarget(model),
           executionMode: "LOCAL_FIRST",
           permissions: {
             allowInstalledApp: false,
             allowRemoteShopDevice: inferencePreferences.ownerNodeAllowed
           },
-          ...(model.id === platformSharedModelId ? {} : { costResponsibility: "merchant" })
+          ...(isIncludedModel(model) ? {} : { costResponsibility: "merchant" })
         },
         { timeoutMs: backendModelProbeRequestTimeoutMs }
       );
@@ -420,8 +421,7 @@ export function AgentModelPanel({
     effectiveRuntime?.source === "default" ? null : activeAgentModelBinding;
   const activeBackendBinding =
     explicitAgentModelBinding?.status === "active" &&
-    (explicitAgentModelBinding.executionTarget === "backend" ||
-      explicitAgentModelBinding.executionTarget === "vercel");
+    isServerExecutionTarget(explicitAgentModelBinding.executionTarget);
   const activeBackendConfigured =
     activeBackendBinding && activeAiModel?.runtimeAvailability?.backend === "configured";
   const serverBackendModels = visibleAiModels.filter(
@@ -438,8 +438,8 @@ export function AgentModelPanel({
           <p className="eyebrow">Grogoni AI · {grogoniAiReady ? "Ready" : "Unavailable"}</p>
           <h3>Advanced model preferences</h3>
           <p>
-            Execution is automatic and always backend-hosted. There is no private per-device model
-            copy to install or manage.
+            Execution is automatic. Grogoni runs the model through Ollama on the machine running
+            Grogoni; there is no cloud AI provider to configure.
           </p>
         </div>
         {modelActivationState !== "idle" && profileMessage.length > 0 ? (
@@ -467,7 +467,7 @@ export function AgentModelPanel({
             {explicitAgentModelBinding === null
               ? grogoniAiReady
                 ? "A compatible execution host and model are selected automatically when you chat."
-                : "No backend-hosted model is currently configured for this deployment."
+                : "No local model is available. Start Ollama and pull the configured model."
               : `Running on: ${formatExecutionTarget(explicitAgentModelBinding.executionTarget)}`}
           </p>
           <small>
@@ -527,9 +527,9 @@ export function AgentModelPanel({
             <div>
               <strong>Client-first route permissions</strong>
               <p>
-                Grogoni routes chat through the configured backend-hosted model. A signed-in,
-                shop-owned device (for example a merchant's own laptop) can additionally be
-                registered as an allowed execution host. Server tools remain confirmation-gated.
+                Grogoni routes chat through the configured local model. A signed-in, shop-owned
+                device (for example a merchant's own laptop) can additionally be registered as an
+                allowed execution host. Server tools remain confirmation-gated.
               </p>
             </div>
             <label className="browser-model-toggle">
@@ -553,7 +553,7 @@ export function AgentModelPanel({
 
       <div className="record-form ai-model-library">
         <div className="section-heading">
-          <p className="eyebrow">Backend-hosted AI</p>
+          <p className="eyebrow">Local AI</p>
           <h3>Model library</h3>
           <p>
             Browse Grogoni's local model catalog. Every model runs through the local Grogoni
@@ -576,12 +576,12 @@ export function AgentModelPanel({
         ) : (
           <>
             {serverBackendModels.length > 0 ? (
-              <section aria-label="Grogoni backend models">
+              <section aria-label="Grogoni local models">
                 <div className="section-subheading">
-                  <h4>Grogoni backend models</h4>
+                  <h4>Grogoni local models</h4>
                   <p>
                     Available means the deployed runtime passed a real model probe. Active means
-                    this agent has a persisted binding that passed real backend inference.
+                    this agent has a persisted binding that passed real local inference.
                   </p>
                 </div>
                 <div className="ai-model-catalog">
@@ -589,8 +589,7 @@ export function AgentModelPanel({
                     const activeForAgent =
                       explicitAgentModelBinding?.status === "active" &&
                       explicitAgentModelBinding.modelId === model.id &&
-                      (explicitAgentModelBinding.executionTarget === "backend" ||
-                        explicitAgentModelBinding.executionTarget === "vercel");
+                      isServerExecutionTarget(explicitAgentModelBinding.executionTarget);
                     const runtime = serverBackendRuntime[model.id];
                     const runtimeLabel =
                       runtime?.status === "available"
@@ -602,7 +601,7 @@ export function AgentModelPanel({
                       <article className="ai-model-card" key={`backend:${model.id}`}>
                         <div>
                           <p className="eyebrow">
-                            Backend · {activeForAgent ? `Active for ${agent.name}` : runtimeLabel}
+                            Local · {activeForAgent ? `Active for ${agent.name}` : runtimeLabel}
                           </p>
                           <h4>{model.label}</h4>
                           <p>{model.description}</p>
@@ -751,13 +750,4 @@ export function normalizeModelDownloadUrl(downloadUrl: string | null): string | 
   } catch {
     return downloadUrl.split("?")[0]?.toLowerCase() ?? null;
   }
-}
-
-/**
- * The target the backend says a configured adapter serves this model on (GET /v1/ai-models ->
- * hostedExecutionTarget): "vercel" for artifact-backed models, "backend" for models routed through
- * the multi-provider inference router. Falls back to the hosted default for older API responses.
- */
-function hostedExecutionTarget(model: AiModelSummary): ModelExecutionTarget {
-  return model.hostedExecutionTarget ?? "vercel";
 }

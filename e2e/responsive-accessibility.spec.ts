@@ -183,6 +183,8 @@ test("clicking a public shop opens its storefront instead of a blank screen", as
 test("the agent catalogue hides an unavailable agent instead of listing it disabled", async ({
   page
 }) => {
+  // The account holds one valid saved agent and one that fails the install safety check
+  // (unverified license). The bad one is skipped; it must not hide the valid one with it.
   const unavailableAgent = {
     ...mockOssAgent,
     id: "github:example/unlicensed-agent",
@@ -192,17 +194,16 @@ test("the agent catalogue hides an unavailable agent instead of listing it disab
     licenseVerified: false,
     executionMode: "repository"
   };
-  await page.route("**/v1/oss-agents/github**", (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        agents: [unavailableAgent],
-        status: "available",
-        connection: "public",
-        message: "GitHub connected."
-      })
-    })
+  await page.route("**/v1/oss-agents/installed", (route) =>
+    route.request().method() === "GET"
+      ? route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            manifests: [savedManifest(unavailableAgent), savedManifest(mockOssAgent)]
+          })
+        })
+      : route.fallback()
   );
 
   await page.goto("/");
@@ -1129,7 +1130,7 @@ async function installApiMocks(page: Page): Promise<void> {
     userId: string;
     agent: unknown;
     installedAt: string;
-  }> = [];
+  }> = [savedManifest(mockOssAgent)];
   let activeModelBinding: {
     id: string;
     agentId: string;
@@ -1527,6 +1528,18 @@ const mockOwnerControlsConversationView = {
   ...mockConversationView,
   messages: [mockOwnerControlsMessage]
 };
+
+// The agent library is local-only (no GitHub/Hugging Face search since the local-first runtime):
+// it lists the definitions saved to the account via GET /v1/oss-agents/installed.
+function savedManifest(agent: unknown) {
+  return {
+    manifestVersion: 1 as const,
+    accountId: "responsive-account",
+    userId: "responsive-user",
+    agent,
+    installedAt: "2026-07-15T00:00:00.000Z"
+  };
+}
 
 const mockOssAgent = {
   id: "huggingface:example/retail-agent",

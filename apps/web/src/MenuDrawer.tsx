@@ -3,6 +3,8 @@ import { StackedModule } from "./StackedModule";
 export interface MenuDrawerProps {
   open: boolean;
   hasBusiness: boolean;
+  /** No session, or only a device session with no shop: GrogoniApplication's showsSignInEntry. */
+  signedOut: boolean;
   onClose: () => void;
   onBrowse: () => void;
   onMessageHistory: () => void;
@@ -11,6 +13,8 @@ export interface MenuDrawerProps {
   onAgentSettings: () => void;
   onAccountSettings: () => void;
   onSetUpShop: () => void;
+  onLogIn: () => void;
+  onSignUp: () => void;
 }
 
 /**
@@ -25,6 +29,11 @@ export interface MenuDrawerProps {
  * trap, Escape-to-close, and inert-background handling every other panel in the app already has;
  * .menu-drawer-module repositions it from the shared bottom-sheet layout to a left-edge drawer.
  *
+ * A signed-out visitor gets Log in / Sign up at the top. The customer home's header deliberately
+ * has no auth buttons (unified-chat spec) and its welcome has no auth action, so these are the
+ * only always-available sign-in entry there (the recognized-device pill shows only for a device
+ * that remembers a past login).
+ *
  * "Go to my shop" is a business owner's only in-app way back into seller/workspace mode now that
  * the customer-facing header has no Buy/Sell toggle (selling is reachable only through the header
  * shop icon before a shop exists, or here once one does).
@@ -32,6 +41,7 @@ export interface MenuDrawerProps {
 export function MenuDrawer({
   open,
   hasBusiness,
+  signedOut,
   onClose,
   onBrowse,
   onMessageHistory,
@@ -39,7 +49,9 @@ export function MenuDrawer({
   onShopSettings,
   onAgentSettings,
   onAccountSettings,
-  onSetUpShop
+  onSetUpShop,
+  onLogIn,
+  onSignUp
 }: MenuDrawerProps) {
   return (
     <StackedModule
@@ -49,6 +61,23 @@ export function MenuDrawer({
       title="Menu"
       onClose={onClose}
     >
+      {signedOut ? (
+        <>
+          <button className="menu-item" type="button" onClick={onLogIn}>
+            <span className="menu-item-icon">
+              <span className="menu-icon-account" aria-hidden="true" />
+            </span>
+            Log in
+          </button>
+          <button className="menu-item" type="button" onClick={onSignUp}>
+            <span className="menu-item-icon">
+              <span className="menu-icon-signup" aria-hidden="true" />
+            </span>
+            Sign up
+          </button>
+          <div className="menu-divider" />
+        </>
+      ) : null}
       <button className="menu-item" type="button" onClick={onMessageHistory}>
         <span className="menu-item-icon">
           <span className="menu-icon-history" aria-hidden="true" />

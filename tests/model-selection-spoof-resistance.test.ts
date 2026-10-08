@@ -10,7 +10,7 @@ describe("model selection spoof resistance", () => {
   it("uses an explicitly selected hosted adapter without a local prerequisite and ignores per-turn model spoofing", async () => {
     const { createCp2Store } = await import("../services/api/src/cp2/store");
     const resolvedModelIds: string[] = [];
-    // gpt-6-luna is the platform-included source: "hosted" catalog model (format: "remote", no
+    // smollm2-360m is the platform-included source: "hosted" catalog model (format: "remote", no
     // downloadable artifact) - it can only run through a server-reachable target, never a
     // per-device install, which is exactly the property this test exercises.
     const hostedProvider: RuntimeModelProvider = {
@@ -21,7 +21,7 @@ describe("model selection spoof resistance", () => {
           status: "available",
           outputText: JSON.stringify({
             type: "response",
-            message: "Vercel-hosted inference handled the request."
+            message: "Local inference handled the request."
           }),
           durationMs: 1,
           errorCode: null,
@@ -32,7 +32,7 @@ describe("model selection spoof resistance", () => {
     const store = createCp2Store({
       runtimeModelProviderResolver(modelId) {
         resolvedModelIds.push(modelId);
-        return modelId === "gpt-6-luna" ? hostedProvider : undefined;
+        return modelId === "smollm2-360m" ? hostedProvider : undefined;
       }
     });
     const auth = store.signupWithPhonePin({ destination: "+254700799991", pin: "2468" });
@@ -44,7 +44,7 @@ describe("model selection spoof resistance", () => {
     store.activateAiModel({
       sessionId: auth.session.id,
       businessId: created.business.id,
-      modelId: "gpt-6-luna"
+      modelId: "smollm2-360m"
     });
     expect(
       store.updateAgentProfile({
@@ -53,7 +53,7 @@ describe("model selection spoof resistance", () => {
         profile: {
           name: "Cross Device Agent",
           description: "Local-first shop agent",
-          modelId: "gpt-6-luna",
+          modelId: "smollm2-360m",
           role: "Business assistant",
           language: "en",
           personality: "Careful",
@@ -65,14 +65,14 @@ describe("model selection spoof resistance", () => {
           status: "active"
         }
       }).modelId
-    ).toBe("gpt-6-luna");
+    ).toBe("smollm2-360m");
 
     expect(
       store.getActiveAiModel({
         sessionId: auth.session.id,
         businessId: created.business.id
       }).modelId
-    ).toBe("gpt-6-luna");
+    ).toBe("smollm2-360m");
 
     const turn = await store.createRuntimeTurn({
       sessionId: auth.session.id,
@@ -83,16 +83,16 @@ describe("model selection spoof resistance", () => {
         contextScripts: [],
         integrations: [],
         knowledge: "Use saved shop records.",
-        model: "gpt-6-luna",
+        model: "smollm2-360m",
         role: "Business assistant",
         instructions: "Help with shop operations.",
         tools: []
       }
     });
-    expect(resolvedModelIds).toContain("gpt-6-luna");
+    expect(resolvedModelIds).toContain("smollm2-360m");
     expect(turn.turn).toMatchObject({
       model: { provider: "llama.cpp", status: "available" },
-      response: "Vercel-hosted inference handled the request."
+      response: "Local inference handled the request."
     });
 
     resolvedModelIds.length = 0;
@@ -111,7 +111,7 @@ describe("model selection spoof resistance", () => {
         tools: []
       }
     });
-    expect(resolvedModelIds).toEqual(["gpt-6-luna"]);
+    expect(resolvedModelIds).toEqual(["smollm2-360m"]);
     expect(spoofedLocalSelection.turn.model).toMatchObject({
       provider: "llama.cpp",
       status: "available"

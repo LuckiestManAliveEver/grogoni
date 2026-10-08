@@ -12,6 +12,7 @@ import { isDeviceInferenceSupported, listInstalledDeviceModels } from "./device-
 import { getErrorMessage } from "./chat-message-plumbing";
 import { buildAgentProfileUpdate } from "./agent-profile-payload";
 import { agentSettingsFromBusinessProfile } from "./owner-app-bootstrap";
+import { isIncludedModel, servedExecutionTarget } from "./agent-model-panel-utils";
 import type {
   ActiveBusiness,
   AgentSettings,
@@ -29,7 +30,7 @@ export interface QuickRuntimeSwitcherProps {
 /**
  * The common-case "pick one and go" surface for the two runtime dimensions that had no simple
  * selector at all: which built-in agent definition (which also fixes which engine runs it - see
- * AgentDefinition.runtimeAdapterId) and which backend-hosted model run this shop's agent. Engine
+ * AgentDefinition.runtimeAdapterId) and which model runs this shop's agent. Engine
  * choice is no longer its own dimension: picking a different agent definition is how a shop swaps
  * engines, the same way GitHub/HuggingFace-imported definitions are picked for personality - so
  * this only lists builtin:* definitions, leaving discovery of imported ones to AgentModelPanel's
@@ -127,7 +128,9 @@ export function QuickRuntimeSwitcher({
         .then((downloadBytes) => setPendingDeviceModel({ modelId, downloadBytes }));
       return;
     }
-    const isMerchantFunded = modelId !== platformSharedModelId;
+    const isMerchantFunded = !isIncludedModel(
+      modelOptions.find((candidate) => candidate.id === modelId)
+    );
     if (!isMerchantFunded) {
       void activateModel(modelId);
       return;
@@ -171,15 +174,18 @@ export function QuickRuntimeSwitcher({
         `/api/agents/${canonicalAgentId}/models/${encodeURIComponent(modelId)}/activate`,
         {
           shopId: business.id,
-          // Provider-routed models (OpenAI, Anthropic, Z.ai, Grogoni Cloud...) run on "backend";
-          // artifact-backed ones on "vercel". The catalog response says which.
-          executionTarget:
-            modelOptions.find((option) => option.id === modelId)?.hostedExecutionTarget ?? "vercel",
+          // The catalog response says which target serves the model: "local" (Ollama) for
+          // local-first deployments, "browser-local"/"installed-app" for on-device models.
+          executionTarget: servedExecutionTarget(
+            modelOptions.find((option) => option.id === modelId)
+          ),
           executionMode: isOnDeviceModel(modelOptions.find((option) => option.id === modelId))
             ? "LOCAL_ONLY"
             : "LOCAL_FIRST",
           permissions: { allowInstalledApp: false, allowRemoteShopDevice: false },
-          ...(modelId === platformSharedModelId ? {} : { costResponsibility: "merchant" })
+          ...(isIncludedModel(modelOptions.find((option) => option.id === modelId))
+            ? {}
+            : { costResponsibility: "merchant" })
         }
       );
       setSelectedModelId(result.binding.modelId);
@@ -239,8 +245,8 @@ export function QuickRuntimeSwitcher({
         <p className="eyebrow">Quick switch</p>
         <h3>Agent and model</h3>
         <p>
-          Pick an agent and a hosted model. The platform default applies immediately; a
-          merchant-funded model asks you to confirm first.
+          Pick an agent and a model. The platform default applies immediately; a merchant-funded
+          model asks you to confirm first.
         </p>
       </div>
       {message.length > 0 ? (
@@ -295,8 +301,10 @@ export function QuickRuntimeSwitcher({
             {isOnDeviceModel(activeModel)
               ? "Runs privately on each team member's own device. Free - nothing is sent to a cloud model. Members need the model installed on the device they chat from."
               : `Provider: ${activeModel.provider}. Billing: ${
-                  activeModel.id === platformSharedModelId
-                    ? "included with the platform, no extra charge."
+                  isIncludedModel(activeModel)
+                    ? activeModel.provider === "ollama"
+                      ? "none - runs in Ollama on the machine running Grogoni."
+                      : "included with the platform, no extra charge."
                     : "merchant-funded - your business is billed for usage."
                 }`}
           </p>
@@ -382,9 +390,10 @@ function formatMegabytes(bytes: number | null): string {
 
 function modelOptionTitle(option: AiModelSummary): string {
   if (isOnDeviceModel(option)) return "on this device · free";
-  const billing =
-    option.id === platformSharedModelId
-      ? "platform-included"
-      : "merchant-funded (usage billed to you)";
+  const billing = isIncludedModel(option)
+    ? option.provider === "ollama"
+      ? "local, no usage cost"
+      : "platform-included"
+    : "merchant-funded (usage billed to you)";
   return `${option.provider} · ${billing}`;
 }

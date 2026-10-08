@@ -1,14 +1,30 @@
 import type { AiModelSummary, AiModelInferenceRouting } from "../../packages/shared-types/src";
+import type {
+  InferenceChunk,
+  InferenceExecutionContext,
+  InferenceProvider,
+  InferenceRequest,
+  InferenceResponse,
+  InferenceUsage
+} from "../../services/api/src/inference/providers/contract";
 import { readInferenceEnvironment } from "../../services/api/src/inference/providers/environment";
+import { InferenceError } from "../../services/api/src/inference/providers/errors";
 import {
   createInferencePlatform,
   type CreateInferencePlatformOptions,
   type InferencePlatform
 } from "../../services/api/src/inference/providers/platform";
+import type { InferenceProviderConfig } from "../../services/api/src/inference/providers/provider-config";
 import {
   createMemoryInferenceRepositories,
   type InferencePolicyRecord
 } from "../../services/api/src/inference/providers/repositories";
+
+/**
+ * Test doubles for the device-local inference router. Hosted providers were removed with the
+ * local-first runtime, so every provider here is a "local" one; a scripted fake stands in for the
+ * member's device where a test needs to control what the device answers.
+ */
 
 export interface RecordedRequest {
   url: string;
@@ -37,62 +53,36 @@ export function scriptedFetch(
       rawBody
     };
     requests.push(request);
-    if (init?.signal?.aborted === true) {
-      throw Object.assign(new Error("The operation was aborted."), { name: "AbortError" });
-    }
     return handler(request);
   }) as typeof fetch;
   return { fetch: fake, requests };
 }
 
-export function jsonResponse(
-  body: unknown,
-  status = 200,
-  headers: Record<string, string> = {}
-): Response {
+export function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "content-type": "application/json", ...headers }
-  });
-}
-
-export function sseResponse(
-  events: Array<{ event?: string; data: unknown }>,
-  headers: Record<string, string> = {}
-): Response {
-  const text = events
-    .map(
-      (entry) =>
-        `${entry.event === undefined ? "" : `event: ${entry.event}\n`}data: ${
-          typeof entry.data === "string" ? entry.data : JSON.stringify(entry.data)
-        }\n\n`
-    )
-    .join("");
-  return new Response(text, {
-    status: 200,
-    headers: { "content-type": "text/event-stream", ...headers }
+    headers: { "content-type": "application/json" }
   });
 }
 
 export function catalogModel(input: {
   id: string;
-  providerId: string;
-  providerModelId: string;
+  providerId?: string;
+  providerModelId?: string;
   executionTarget?: AiModelInferenceRouting["executionTarget"];
   capabilities?: Partial<AiModelInferenceRouting["capabilities"]>;
   pricing?: AiModelInferenceRouting["pricing"];
   maxOutputTokens?: number | null;
-  available?: boolean;
   enabled?: boolean;
-  label?: string;
 }): AiModelSummary {
+  const providerId = input.providerId ?? "local";
   return {
     id: input.id,
-    label: input.label ?? input.id,
-    provider: input.providerId,
-    description: `${input.id} served through ${input.providerId}.`,
+    label: input.id,
+    provider: providerId,
+    description: `${input.id} served through ${providerId}.`,
     capabilities: ["chat"],
-    available: input.available ?? true,
+    available: true,
     source: "hosted",
     format: "remote",
     license: null,
@@ -105,9 +95,9 @@ export function catalogModel(input: {
     recommended: false,
     contextWindow: 32_768,
     inference: {
-      providerId: input.providerId,
-      providerModelId: input.providerModelId,
-      executionTarget: input.executionTarget ?? "remote-inference",
+      providerId,
+      providerModelId: input.providerModelId ?? `${input.id}-engine`,
+      executionTarget: input.executionTarget ?? "browser-local",
       capabilities: { text: true, ...input.capabilities },
       maxOutputTokens: input.maxOutputTokens ?? null,
       enabled: input.enabled ?? true,
@@ -116,106 +106,119 @@ export function catalogModel(input: {
   };
 }
 
-export const testSecrets = {
-  openai: "sk-test-openai-managed-0000000000000000AAAA",
-  anthropic: "sk-ant-test-managed-00000000000000000BBBB",
-  zai: "zai-test-managed-key-000000000000000CCCC",
-  llama: "llama-test-managed-key-0000000000000DDDD"
-} as const;
+/** An operator-managed device-local provider row (inference_providers). */
+export function localProviderConfig(
+  id: string,
+  overrides: Partial<InferenceProviderConfig> = {}
+): InferenceProviderConfig {
+  return {
+    id,
+    displayName: id,
+    type: "local",
+    executionTarget: "browser-local",
+    enabled: true,
+    capabilities: {},
+    source: "database",
+    ...overrides
+  };
+}
 
-/** Environment with every Grogoni-managed provider configured (fake keys) plus a llama.cpp host. */
-export function managedEnvironment(extra: Record<string, string> = {}) {
-  return readInferenceEnvironment({
-    OPENAI_API_KEY: testSecrets.openai,
-    ANTHROPIC_API_KEY: testSecrets.anthropic,
-    ZAI_API_KEY: testSecrets.zai,
-    GROGONI_LLAMA_BASE_URL: "https://inference.grogoni.example/v1",
-    GROGONI_LLAMA_API_KEY: testSecrets.llama,
-    INFERENCE_REQUEST_TIMEOUT_MS: "2000",
-    ...extra
-  });
+export interface FakeDeviceCall {
+  request: InferenceRequest;
+  context: InferenceExecutionContext;
+}
+
+/**
+ * A device-local provider whose "device" answers from a script. `reply` returns the text (or
+ * throws to simulate a device failure); every call is recorded with the context the router built.
+ */
+export function fakeDeviceProvider(
+  id: string,
+  reply: (request: InferenceRequest) => string = () => `reply from ${id}`,
+  options: { usage?: InferenceUsage; stream?: boolean } = {}
+): InferenceProvider & { calls: FakeDeviceCall[] } {
+  const calls: FakeDeviceCall[] = [];
+  const respond = (
+    request: InferenceRequest,
+    context: InferenceExecutionContext
+  ): InferenceResponse => {
+    calls.push({ request, context });
+    return {
+      requestId: request.requestId,
+      providerId: id,
+      modelId: request.modelId,
+      output: { text: reply(request), toolCalls: [] },
+      finishReason: "stop",
+      ...(options.usage === undefined ? {} : { usage: options.usage })
+    };
+  };
+  return {
+    id,
+    calls,
+    async supports(model) {
+      return model.providerId === id;
+    },
+    async health() {
+      return { providerId: id, status: "AVAILABLE", checkedAt: new Date(0).toISOString() };
+    },
+    async generate(request, context) {
+      return respond(request, context);
+    },
+    ...(options.stream === true
+      ? {
+          async *stream(request, context): AsyncIterable<InferenceChunk> {
+            const response = respond(request, context);
+            for (const word of response.output.text.split(/(?<= )/u)) {
+              yield { type: "text-delta", text: word };
+            }
+            if (response.usage !== undefined) yield { type: "usage", usage: response.usage };
+            yield { type: "completed", response };
+          }
+        }
+      : {})
+  };
+}
+
+/** A device that is reachable but whose generation fails with a retryable provider fault. */
+export function failingDeviceProvider(
+  id: string,
+  code: ConstructorParameters<typeof InferenceError>[0] = "PROVIDER_UNAVAILABLE"
+): InferenceProvider & { calls: FakeDeviceCall[] } {
+  const provider = fakeDeviceProvider(id);
+  return {
+    ...provider,
+    async generate(request, context) {
+      provider.calls.push({ request, context });
+      throw new InferenceError(code, { providerId: id, modelId: request.modelId });
+    }
+  };
 }
 
 export function createTestPlatform(input: {
   catalog: AiModelSummary[];
-  fetch: typeof fetch;
   env?: Record<string, string>;
   policies?: InferencePolicyRecord[];
-  options?: Omit<CreateInferencePlatformOptions, "environment" | "repositories" | "fetchImpl">;
+  /** Extra operator-managed local provider rows, loaded by refresh(). */
+  providers?: InferenceProviderConfig[];
+  /** Scripted stand-ins for providers' devices, keyed by provider id. */
+  devices?: Record<string, InferenceProvider>;
+  options?: Omit<CreateInferencePlatformOptions, "environment" | "repositories">;
 }): {
   platform: InferencePlatform;
   repositories: ReturnType<typeof createMemoryInferenceRepositories>;
 } {
   const repositories = createMemoryInferenceRepositories({
-    ...(input.policies === undefined ? {} : { policies: input.policies })
+    ...(input.policies === undefined ? {} : { policies: input.policies }),
+    ...(input.providers === undefined ? {} : { providers: input.providers })
   });
   const platform = createInferencePlatform({
-    environment: managedEnvironment(input.env),
+    environment: readInferenceEnvironment({ INFERENCE_REQUEST_TIMEOUT_MS: "2000", ...input.env }),
     repositories,
-    fetchImpl: input.fetch,
+    ...(input.devices === undefined
+      ? {}
+      : { providerOverrides: new Map(Object.entries(input.devices)) }),
     ...input.options
   });
   platform.setModelCatalog(() => input.catalog);
   return { platform, repositories };
-}
-
-export function openAiCompletion(input: {
-  content?: string | null;
-  toolCalls?: Array<{ id: string; name: string; arguments: string }>;
-  finishReason?: string;
-  usage?: { prompt_tokens: number; completion_tokens: number; cached?: number };
-}) {
-  return {
-    id: "chatcmpl-test",
-    object: "chat.completion",
-    choices: [
-      {
-        index: 0,
-        message: {
-          role: "assistant",
-          content: input.content ?? null,
-          ...(input.toolCalls === undefined
-            ? {}
-            : {
-                tool_calls: input.toolCalls.map((call) => ({
-                  id: call.id,
-                  type: "function",
-                  function: { name: call.name, arguments: call.arguments }
-                }))
-              })
-        },
-        finish_reason: input.finishReason ?? "stop"
-      }
-    ],
-    usage:
-      input.usage === undefined
-        ? { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 }
-        : {
-            prompt_tokens: input.usage.prompt_tokens,
-            completion_tokens: input.usage.completion_tokens,
-            total_tokens: input.usage.prompt_tokens + input.usage.completion_tokens,
-            ...(input.usage.cached === undefined
-              ? {}
-              : { prompt_tokens_details: { cached_tokens: input.usage.cached } })
-          }
-  };
-}
-
-export function anthropicMessage(input: {
-  text?: string;
-  toolUse?: { id: string; name: string; input: Record<string, unknown> };
-  stopReason?: string;
-  usage?: { input_tokens: number; output_tokens: number };
-}) {
-  return {
-    id: "msg_test",
-    type: "message",
-    role: "assistant",
-    content: [
-      ...(input.text === undefined ? [] : [{ type: "text", text: input.text }]),
-      ...(input.toolUse === undefined ? [] : [{ type: "tool_use", ...input.toolUse }])
-    ],
-    stop_reason: input.stopReason ?? "end_turn",
-    usage: input.usage ?? { input_tokens: 12, output_tokens: 6 }
-  };
 }

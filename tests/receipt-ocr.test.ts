@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   createRuntimeToolProposalFromReceiptContextScript,
   parseReceiptContextScriptCommand
@@ -129,62 +129,25 @@ interface RuntimeTurnResponse {
 }
 
 describe("Receipt OCR", () => {
-  it("sends binary receipt content through the configured OCR processor", async () => {
-    const process = vi.fn().mockResolvedValue({
-      engine: "tesseract" as const,
-      engineVersion: "tesseract-5",
-      modelVersion: "eng+swa",
-      profile: "balanced" as const,
-      fallbackUsed: true,
-      blocks: [
-        {
-          id: "p1-b1",
-          page: 1,
-          text: "Supplier: Binary Depot",
-          confidence: 0.77,
-          boundingBox: null
-        }
-      ],
-      fullText: "Supplier: Binary Depot\nMaize,1,100,100\nTotal: 100",
-      averageConfidence: 0.77,
-      warnings: ["PaddleOCR failed; Tesseract completed the scan."]
-    });
-    const store = createCp2Store();
-    const app = buildApi({
-      cp2: {
-        store,
-        ocrProcessor: { process }
-      }
-    });
+  it("refuses binary receipt content: text must come from an agent tool or the client", async () => {
+    // The server-side OCR worker was removed with the local-first runtime
+    // (docs/local-first-cloud-audit.md), so a receipt job needs already-extracted text.
+    const app = buildApi({ cp2: { store: createCp2Store() } });
     const { businessId, sessionCookie } = await createOwnerBusiness(app);
     const binary = Buffer.from("ffd8ffe000104a464946", "hex");
-    const job = await postJson<ReceiptOCRJobResponse>(
-      app,
-      `/businesses/${businessId}/receipt-ocr/jobs`,
-      {
+    const response = await app.inject({
+      method: "POST",
+      url: `/businesses/${businessId}/receipt-ocr/jobs`,
+      headers: { "content-type": "application/json", cookie: sessionCookie },
+      payload: JSON.stringify({
         fileName: "receipt.jpg",
         contentType: "image/jpeg",
         contentBase64: binary.toString("base64"),
-        fileSizeBytes: binary.byteLength,
-        fileSignature: "client-supplied-signature-is-not-trusted"
-      },
-      sessionCookie
-    );
-
-    expect(process).toHaveBeenCalledWith({
-      fileName: "receipt.jpg",
-      contentType: "image/jpeg",
-      contentBase64: binary.toString("base64")
+        fileSizeBytes: binary.byteLength
+      })
     });
-    expect(job).toMatchObject({
-      engine: "tesseract",
-      fallbackUsed: true,
-      averageConfidence: 0.77,
-      fullText: "Supplier: Binary Depot\nMaize,1,100,100\nTotal: 100"
-    });
-    expect(job.blocks).toEqual([expect.objectContaining({ id: "p1-b1", confidence: 0.77 })]);
-    expect(job.warnings).toContain("PaddleOCR failed; Tesseract completed the scan.");
-
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ code: "receipt_text_required" });
     await app.close();
   });
 

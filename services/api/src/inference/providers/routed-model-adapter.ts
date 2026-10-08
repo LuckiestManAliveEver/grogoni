@@ -26,8 +26,8 @@ import { currentTurnId, turnStreamHub } from "../turn-stream.js";
 
 /**
  * Exposes the inference router to the existing agent runtime as an ordinary ModelRuntimeAdapter,
- * registered under `backend:<modelId>` for server-reachable providers and under
- * `browser-local:<modelId>` / `installed-app:<modelId>` for device-local models. This is the only integration point: agents, the turn
+ * registered under `browser-local:<modelId>` / `installed-app:<modelId>` for device-local models
+ * (the only models the router serves). This is the only integration point: agents, the turn
  * pipeline, runtime handoff, tool execution and approvals are unchanged, and none of them learn
  * which provider served a turn.
  *
@@ -104,9 +104,6 @@ export function createRoutedModelRuntimeAdapter(input: {
       }
       const health = await router.checkHealth({
         providerId: model.providerId,
-        tenantId: context.shopId,
-        userId: context.accountId ?? null,
-        probeModelId: model.providerModelId,
         ...(context.signal === undefined ? {} : { signal: context.signal })
       });
       const ok = health.status === "AVAILABLE" || health.status === "DEGRADED";
@@ -170,9 +167,9 @@ export function createRoutedModelRuntimeAdapter(input: {
 
 /**
  * RuntimeModelPrompt (Grogoni's agent prompt) -> canonical chat request. The system message carries
- * the same instructions every other model gets; history becomes real chat turns. Business context
- * that the agent runtime already minimized (compiled instructions, retrieved context) arrives
- * inside `prompt.message` exactly as for the Vercel adapter - nothing extra is added here.
+ * the agent's trusted instructions plus the output contract (buildInferenceInstructions), exactly as
+ * the Ollama adapter sends them; history becomes real chat turns; the user turn is `prompt.message`
+ * (untrusted retrieved data, if any, then the merchant's message).
  */
 export function inferenceRequestFromPrompt(
   prompt: RuntimeModelPrompt,

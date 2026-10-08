@@ -76,9 +76,10 @@ export function computeModelAvailability(modelId: string, storedAvailable: boole
 }
 
 /**
- * On-device (browser-local) and Grogoni Cloud router models - also seeded into existing databases by
- * infra/db/migrations/102_inference_catalog_seeds.sql and 103_shopkeeper_zeroclaw_default.sql,
- * which must stay in step with this list.
+ * On-device (browser-local) router models - also seeded into existing databases by
+ * infra/db/migrations/102_inference_catalog_seeds.sql. The hosted Grogoni Cloud and GPT-6 Luna
+ * entries those migrations also seeded were retired with the cloud providers; rows already in a
+ * database name providers that no longer load, so they report themselves unconfigured.
  */
 export const inferenceRouterSeedModels: AiModelSummary[] = [
   {
@@ -201,123 +202,10 @@ export const inferenceRouterSeedModels: AiModelSummary[] = [
         currency: "USD"
       }
     }
-  },
-  {
-    id: "qwen3-4b-grogoni-cloud",
-    label: "Qwen3-4B (Grogoni Cloud)",
-    provider: "grogoni-llama",
-    description:
-      "Qwen3-4B served by Grogoni's own llama.cpp inference server. Available once an operator configures GROGONI_LLAMA_BASE_URL and enables this entry.",
-    capabilities: ["chat", "multilingual", "reasoning"],
-    available: false,
-    source: "hosted",
-    format: "remote",
-    license: "Apache-2.0",
-    licenseUrl: "https://huggingface.co/Qwen/Qwen3-4B/blob/main/LICENSE",
-    modelCardUrl: "https://huggingface.co/Qwen/Qwen3-4B",
-    downloadUrl: null,
-    fileName: null,
-    fileSizeBytes: null,
-    minimumMemoryGb: null,
-    recommended: false,
-    contextWindow: 32768,
-    canonicalModelId: "Qwen/Qwen3-4B",
-    supportsToolCalling: false,
-    supportsStructuredOutput: false,
-    inference: {
-      providerId: "grogoni-llama",
-      providerModelId: "qwen3-4b",
-      executionTarget: "remote-inference",
-      capabilities: {
-        text: true,
-        streaming: true,
-        reasoning: true
-      },
-      maxOutputTokens: 1024,
-      enabled: false,
-      pricing: null
-    }
-  },
-  {
-    // The platform default model (repositoryDefaultRuntimePolicy): Grogoni-funded, run by the
-    // Shopkeeper agent on the ZeroClaw runtime (ADR-zeroclaw-default-agent-runtime.md). Pricing is
-    // OpenAI's published short-context rate at seeding time; operators re-verify it through
-    // PUT /v1/platform/model-catalog/gpt-6-luna when it changes.
-    id: "gpt-6-luna",
-    label: "GPT-6 Luna",
-    provider: "openai",
-    description:
-      "OpenAI's efficient model for focused, high-volume tasks. Included with Grogoni: the platform pays for it within Grogoni's usage limits.",
-    capabilities: ["chat", "multilingual", "reasoning", "instruction-following"],
-    available: true,
-    source: "hosted",
-    format: "remote",
-    license: null,
-    licenseUrl: null,
-    modelCardUrl: "https://developers.openai.com/api/docs/models/gpt-6-luna",
-    downloadUrl: null,
-    fileName: null,
-    fileSizeBytes: null,
-    minimumMemoryGb: null,
-    recommended: true,
-    contextWindow: 1050000,
-    canonicalModelId: "gpt-6-luna",
-    supportsToolCalling: true,
-    supportsStructuredOutput: true,
-    inference: {
-      providerId: "openai",
-      providerModelId: "gpt-6-luna",
-      executionTarget: "remote-inference",
-      capabilities: {
-        text: true,
-        structuredOutput: true,
-        streaming: true,
-        reasoning: true
-      },
-      maxOutputTokens: 1024,
-      enabled: true,
-      pricing: {
-        inputPerMillionTokens: 0.1,
-        outputPerMillionTokens: 0.5,
-        currency: "USD"
-      }
-    }
   }
 ];
 
 export const aiModelRegistry: AiModelSummary[] = [
-  {
-    id: "qwen3-4b",
-    label: "Qwen3-4B",
-    provider: "huggingface",
-    description:
-      "Hosted Qwen3 4B reasoning/chat model, served remotely through Hugging Face Inference " +
-      "Providers. Merchant-funded: activating it accepts per-token inference costs.",
-    capabilities: ["chat", "reasoning", "multilingual"],
-    // Catalog presence, not a promise of live capacity - listAiModels() in
-    // services/api/src/cp2/domains/agent-runtime/store.ts computes real availability per request
-    // from whether a booted adapter actually answers for this id (requires ai-runtime's HF_TOKEN +
-    // HF_MODEL_MAP to include it). This flag only says "this id may be requested", matching every
-    // other "hosted" entry in this table (e.g. the default smollm2-360m below).
-    available: true,
-    source: "hosted",
-    format: "remote",
-    license: "Apache-2.0",
-    licenseUrl: "https://huggingface.co/Qwen/Qwen3-4B/blob/main/LICENSE",
-    modelCardUrl: "https://huggingface.co/Qwen/Qwen3-4B",
-    downloadUrl: null,
-    fileName: null,
-    fileSizeBytes: null,
-    minimumMemoryGb: null,
-    recommended: true,
-    canonicalModelId: "Qwen/Qwen3-4B",
-    // Not verified against the live featherless-ai-routed endpoint as of this registration (see
-    // docs/architecture/huggingface-inference.md) - do not flip these to true without confirming
-    // the exact provider actually honors `tools`/`response_format` for this model first.
-    supportsToolCalling: false,
-    supportsStructuredOutput: false,
-    contextWindow: 32_768
-  },
   {
     id: "smollm2-360m-android",
     label: "SmolLM2 360M (Android saver)",
@@ -386,7 +274,8 @@ export const aiModelRegistry: AiModelSummary[] = [
     id: "smollm2-360m",
     label: "SmolLM2 360M Instruct Q4_0",
     provider: "local",
-    description: "Small Apache-2.0 instruction model served by Grogoni's Vercel inference host.",
+    description:
+      "Small Apache-2.0 instruction model served by Ollama on the machine running Grogoni.",
     capabilities: ["chat", "english", "instruction-following"],
     available: true,
     source: "hosted",

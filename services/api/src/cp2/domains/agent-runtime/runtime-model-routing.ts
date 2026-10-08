@@ -186,6 +186,7 @@ export async function createRuntimeModelRoute(
     input.conversationHistory,
     {
       runtimeVersion: input.shopRuntime.version,
+      agentInstructions: assembled.instructions,
       compiledInstructions: assembled.compiled,
       retrievedContext: input.retrievedContext,
       allowedTools,

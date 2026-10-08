@@ -42,18 +42,22 @@ describe("Render Blueprint", () => {
       "AUTH_AUDIT_HMAC_SECRET",
       "OTP_HMAC_SECRET",
       "PIN_HASH_SECRET",
-      "AUTH_TOKEN_ENCRYPTION_KEY",
-      "GROGONI_INFERENCE_SERVICE_TOKEN"
+      "AUTH_TOKEN_ENCRYPTION_KEY"
     ]) {
       expect(api).toContain(`${continuitySecret}\n        sync: false`);
       expect(api).not.toContain(`${continuitySecret}\n        generateValue: true`);
     }
-    expect(api).toContain("RESEND_API_KEY\n        sync: false");
+    // Hosted transactional email (Resend) was retired with the cloud providers; the API rejects
+    // RESEND_API_KEY at boot, so the Blueprint must not provision it.
+    expect(api).not.toContain("RESEND_API_KEY");
     expect(api).not.toMatch(/AUTH_SMS|SMS_GATEWAY|ANDROID_SMS|LOCAL_SMS/u);
+    // The passkey RP ID must be the registrable domain of every expected origin, or
+    // readAuthRuntimeConfig refuses to boot (regression: the rename left it as "grogoni").
+    expect(api).toContain("WEBAUTHN_RP_ID\n        value: grogoni.com\n");
     expect(api).toContain('GROGONI_EMAIL_FROM\n        value: "Grogoni <messages@grogoni.com>"');
   });
 
-  it("routes inference to Vercel instead of hosting it on Render", async () => {
+  it("runs inference through local Ollama defaults and provisions no hosted inference", async () => {
     const blueprint = await readFile(new URL("../render.yaml", import.meta.url), "utf8");
     const rootManifest = JSON.parse(
       await readFile(new URL("../package.json", import.meta.url), "utf8")
@@ -91,12 +95,9 @@ describe("Render Blueprint", () => {
     expect(blueprint).toContain("corepack pnpm build:production");
     expect(rootManifest.scripts["build:production"]).toContain("check:render-inference-boundaries");
 
-    // Render no longer hosts a private inference service - Vercel executes inference
-    // (docs/architecture/inference-runtime.md), so none of the old inference private-service/
-    // Docker/disk machinery may appear in the Blueprint at all. A private service is not banned
-    // outright, though: grogoni-ocr-worker (docs/receipt-ocr.md) is a legitimate `type: pserv`
-    // for a bounded OCR tool, not a model runtime, and check:render-inference-boundaries already
-    // guards the API service block specifically against reintroducing `type: pserv` there.
+    // No hosted inference service of any kind: server-side generation goes to Ollama
+    // (docs/local-first-cloud-audit.md), so none of the old inference private-service/Docker/disk
+    // machinery may appear in the Blueprint at all.
     expect(blueprint).not.toContain("grogoni-inference");
     expect(blueprint).not.toContain("dockerfilePath: ./services/ai-runtime/Dockerfile");
     expect(blueprint).not.toContain("mountPath: /var/lib/grogoni-models");
@@ -111,24 +112,29 @@ describe("Render Blueprint", () => {
     expect(blueprint).not.toContain("VITE_NEON_MODEL_STORAGE");
     expect(blueprint).not.toContain("VITE_VERCEL_INFERENCE");
 
-    // The API service proxies to Vercel over a shared bearer token and mints signed Neon
-    // artifact URLs; it never runs llama.cpp/Ollama itself.
-    expect(api).not.toContain("OLLAMA_BASE_URL");
+    // The API never runs a model in-process and never reaches a hosted inference service: no
+    // Vercel, Neon model storage, or hosted provider settings are provisioned.
     expect(api).not.toContain("llama.cpp");
     expect(api).not.toContain(".gguf");
-    expect(api).toContain("key: VERCEL_INFERENCE_URL");
-    expect(api).toContain("key: GROGONI_INFERENCE_SERVICE_TOKEN");
-    expect(api).toContain("GROGONI_INFERENCE_SERVICE_TOKEN\n        sync: false");
-    expect(api).toContain("key: NEON_MODEL_STORAGE_ENDPOINT");
-    expect(api).toContain("key: NEON_MODEL_STORAGE_ACCESS_KEY_ID");
-    expect(api).toContain("key: NEON_MODEL_STORAGE_SECRET_ACCESS_KEY");
+    for (const retired of [
+      "VERCEL_INFERENCE_URL",
+      "GROGONI_INFERENCE_SERVICE_TOKEN",
+      "NEON_MODEL_STORAGE_",
+      "OPENAI_API_KEY",
+      "ANTHROPIC_API_KEY",
+      "ZAI_API_KEY",
+      "ZEROCLAW_",
+      "INFERENCE_CREDENTIAL_KEYS",
+      "gpt-6-luna"
+    ]) {
+      expect(api, retired).not.toContain(retired);
+    }
     expect(api).toContain('INFERENCE_REQUIRED\n        value: "true"');
-    // The default model (GPT-6 Luna) is provider-routed on the backend target; Vercel still hosts
-    // the self-hosted models a shop can choose.
-    expect(api).toContain("PLATFORM_DEFAULT_EXECUTION_TARGET\n        value: backend");
-    expect(api).toContain("PLATFORM_DEFAULT_MODEL_ID\n        value: gpt-6-luna");
-    expect(api).toContain("INFERENCE_DEFAULT_MODEL\n        value: gpt-6-luna");
-    expect(api).toContain("PLATFORM_DEFAULT_AGENT_ADAPTER_ID\n        value: zeroclaw");
+    // Same platform default as local mode: Shopkeeper on Grogoni's engine with SmolLM2 360M.
+    expect(api).toContain("PLATFORM_DEFAULT_EXECUTION_TARGET\n        value: local");
+    expect(api).toContain("PLATFORM_DEFAULT_MODEL_ID\n        value: smollm2-360m");
+    expect(api).toContain("INFERENCE_DEFAULT_MODEL\n        value: smollm2-360m");
+    expect(api).toContain("PLATFORM_DEFAULT_AGENT_ADAPTER_ID\n        value: grogoni");
 
     expect(blueprint).toContain('INFERENCE_OWNER_NODE_ENABLED\n        value: "true"');
     expect(blueprint).not.toContain("INFERENCE_CLOUD_FALLBACK_ENABLED");
@@ -137,60 +143,18 @@ describe("Render Blueprint", () => {
     expect(production).toContain('VITE_INFERENCE_MAX_FALLBACKS\n        value: "3"');
   });
 
-  it("deploys ZeroClaw as a locked-down private agent runtime wired to the API", async () => {
+  it("provisions no retired ZeroClaw or OCR worker services", async () => {
+    // Both were removed with the local-first runtime (docs/local-first-cloud-audit.md): the API
+    // rejects ZEROCLAW_* and OCR_WORKER_URL at boot and no code talks to either service.
     const blueprint = await readFile(new URL("../render.yaml", import.meta.url), "utf8");
-    const api = blueprint.slice(
-      blueprint.indexOf("name: grogoni"),
-      blueprint.indexOf("name: grogoni-rate-limit-cache")
-    );
-    const zeroclaw = blueprint.slice(
-      blueprint.indexOf("name: grogoni-zeroclaw\n"),
-      blueprint.indexOf("name: grogoni-web-staging")
-    );
-    expect(blueprint).toMatch(/type: pserv\n\s+name: grogoni-zeroclaw\n/u);
-    expect(zeroclaw).toContain("url: ghcr.io/zeroclaw-labs/zeroclaw:v0.8.5");
-    // Text only: no ZeroClaw tools, read-only, no cross-turn session memory.
-    expect(zeroclaw).toContain("ZEROCLAW_risk_profiles__default__level\n        value: readonly");
-    expect(zeroclaw).toContain(
-      'ZEROCLAW_risk_profiles__default__deny_all_tools\n        value: "true"'
-    );
-    expect(zeroclaw).toContain('ZEROCLAW_gateway__session_persistence\n        value: "false"');
-    expect(zeroclaw).toContain("ZEROCLAW_gateway__webhook_secret\n        generateValue: true");
-    expect(zeroclaw).toContain(
-      "ZEROCLAW_providers__models__openai__default__model\n        value: gpt-6-luna"
-    );
-    expect(zeroclaw).toContain(
-      "ZEROCLAW_providers__models__openai__default__api_key\n        sync: false"
-    );
-    expect(api).toContain("envVarKey: ZEROCLAW_gateway__webhook_secret");
-    expect(api).toMatch(/ZEROCLAW_GATEWAY_URL\n\s+fromService:\n\s+name: grogoni-zeroclaw/u);
-  });
-
-  it("deploys the OCR worker as a private service and wires the API to it", async () => {
-    const blueprint = await readFile(new URL("../render.yaml", import.meta.url), "utf8");
-    const api = blueprint.slice(
-      blueprint.indexOf("name: grogoni"),
-      blueprint.indexOf("name: grogoni-rate-limit-cache")
-    );
-    // The API's fromService reference to this worker (asserted below) textually precedes the
-    // worker's own service block, so anchor on the block header itself rather than a bare
-    // `indexOf("name: grogoni-ocr-worker")`, which would match that earlier reference first.
-    const ocrWorkerStart = blueprint.indexOf("- type: pserv\n    name: grogoni-ocr-worker");
-    const nextService = blueprint.indexOf("\n  - type:", ocrWorkerStart + 1);
-    const ocrWorker = blueprint.slice(ocrWorkerStart, nextService === -1 ? undefined : nextService);
-
-    expect(ocrWorkerStart).toBeGreaterThan(-1);
-    expect(ocrWorker).toContain("runtime: docker");
-    expect(ocrWorker).toContain("dockerfilePath: ./services/receipt-ocr-service/Dockerfile");
-    expect(ocrWorker).toContain("dockerContext: ./services/receipt-ocr-service");
-    expect(ocrWorker).toContain('key: OCR_WORKER_PORT\n        value: "8090"');
-    expect(ocrWorker).toContain("key: OCR_ENGINE_PRIMARY\n        value: paddleocr");
-
-    // The API resolves OCR_WORKER_URL from the worker's private-network address rather than a
-    // manually pasted URL - see the http:// normalization in services/api/src/cp2/ocr-provider.ts
-    // for the "hostport" -> URL translation this requires.
-    expect(api).toMatch(
-      /key: OCR_WORKER_URL\n\s+fromService:\n\s+name: grogoni-ocr-worker\n\s+type: pserv\n\s+property: hostport/u
-    );
+    for (const retired of [
+      "grogoni-zeroclaw",
+      "ghcr.io/zeroclaw-labs/zeroclaw",
+      "grogoni-ocr-worker",
+      "services/receipt-ocr-service",
+      "OCR_WORKER_URL"
+    ]) {
+      expect(blueprint, retired).not.toContain(retired);
+    }
   });
 });

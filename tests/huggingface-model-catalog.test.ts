@@ -1,9 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { buildApi } from "../services/api/src/app";
-import {
-  createHuggingFaceModelCatalog,
-  type HuggingFaceModelCatalog
-} from "../services/api/src/cp2/huggingface-model-catalog";
+import { createHuggingFaceModelCatalog } from "../services/api/src/cp2/huggingface-model-catalog";
 
 describe("Hugging Face on-device model catalog", () => {
   it("discovers Apache-2.0 phone-sized GGUF files and caches searches", async () => {
@@ -122,31 +119,15 @@ describe("Hugging Face on-device model catalog", () => {
     });
   });
 
-  it("exposes Hugging Face discovery through the API route", async () => {
-    const huggingFaceModelCatalog: HuggingFaceModelCatalog = {
-      async searchModels(search) {
-        return {
-          models: [],
-          status: "available",
-          connection: "authenticated",
-          message: `Hugging Face connected for ${search ?? "default"}.`
-        };
-      }
-    };
-    const app = buildApi({ cp2: { huggingFaceModelCatalog } });
+  it("no longer exposes Hugging Face discovery through the API", async () => {
+    // Hosted model discovery routes were removed with the local-first runtime
+    // (docs/local-first-cloud-audit.md); the catalog client above remains unit-tested only.
+    const app = buildApi();
     const response = await app.inject({
       method: "GET",
       url: "/v1/ai-models/huggingface?search=smol"
     });
-
-    expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({
-      models: [],
-      status: "available",
-      connection: "authenticated",
-      message: "Hugging Face connected for smol."
-    });
-
+    expect(response.statusCode).toBe(404);
     await app.close();
   });
 });

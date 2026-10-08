@@ -37,7 +37,7 @@ describe("quick runtime switcher", () => {
   function agent(): AgentSettings {
     return {
       name: "Shopkeeper",
-      model: "gpt-6-luna",
+      model: "smollm2-360m",
       agentDefinitionId: "builtin:shopkeeper",
       contextScripts: []
     } as unknown as AgentSettings;
@@ -76,7 +76,7 @@ describe("quick runtime switcher", () => {
     return fetchMock;
   }
 
-  it("loads the registered agent definitions and hosted models, and shows the shop's current selection", async () => {
+  it("loads the registered agent definitions and server-run models, and shows the shop's current selection", async () => {
     stubFetch({
       "/v1/platform/agent-catalog": () =>
         jsonResponse({
@@ -100,7 +100,7 @@ describe("quick runtime switcher", () => {
             name: "Shopkeeper (Pi engine)",
             runtimeAdapterId: "pi"
           },
-          model: { id: "gpt-6-luna", name: "GPT-6 Luna" },
+          model: { id: "smollm2-360m", name: "SmolLM2 360M" },
           execution: { type: "backend", hostId: "host-1", ready: true },
           binding: { id: "binding-1" },
           source: "default",
@@ -111,8 +111,8 @@ describe("quick runtime switcher", () => {
         jsonResponse({
           models: [
             {
-              id: "gpt-6-luna",
-              label: "GPT-6 Luna",
+              id: "smollm2-360m",
+              label: "SmolLM2 360M",
               provider: "local",
               description: "",
               capabilities: [],
@@ -171,9 +171,9 @@ describe("quick runtime switcher", () => {
     expect(agentSelect?.value).toBe("builtin:pi-assistant");
     const selects = host.querySelectorAll<HTMLSelectElement>("select");
     const modelSelect = selects[1] as HTMLSelectElement;
-    expect(modelSelect.value).toBe("gpt-6-luna");
+    expect(modelSelect.value).toBe("smollm2-360m");
     const modelOptionValues = [...modelSelect.options].map((option) => option.value);
-    expect(modelOptionValues).toEqual(["gpt-6-luna"]);
+    expect(modelOptionValues).toEqual(["smollm2-360m"]);
   });
 
   it("activates an agent-definition change immediately and reports the new selection", async () => {
@@ -189,7 +189,7 @@ describe("quick runtime switcher", () => {
       "/businesses/agent-shop-2/runtime/effective": () =>
         jsonResponse({
           agent: { id: "builtin:shopkeeper", name: "Shopkeeper", runtimeAdapterId: "grogoni" },
-          model: { id: "gpt-6-luna", name: "GPT-6 Luna" },
+          model: { id: "smollm2-360m", name: "SmolLM2 360M" },
           execution: { type: "backend", hostId: "host-1", ready: true },
           binding: { id: "binding-1" },
           source: "default",
@@ -200,8 +200,8 @@ describe("quick runtime switcher", () => {
         jsonResponse({
           models: [
             {
-              id: "gpt-6-luna",
-              label: "GPT-6 Luna",
+              id: "smollm2-360m",
+              label: "SmolLM2 360M",
               provider: "local",
               description: "",
               capabilities: [],
@@ -246,7 +246,7 @@ describe("quick runtime switcher", () => {
           agentDefinitionId: "builtin:pi-assistant",
           name: "Shopkeeper",
           description: "",
-          modelId: "gpt-6-luna",
+          modelId: "smollm2-360m",
           role: "General shopkeeper",
           language: "en",
           personality: "Warm",
@@ -291,7 +291,7 @@ describe("quick runtime switcher", () => {
       [`/businesses/${shopId}/runtime/effective`]: () =>
         jsonResponse({
           agent: { id: "builtin:shopkeeper", name: "Shopkeeper", runtimeAdapterId: "grogoni" },
-          model: { id: "gpt-6-luna", name: "GPT-6 Luna" },
+          model: { id: "smollm2-360m", name: "SmolLM2 360M" },
           execution: { type: "backend", hostId: "host-1", ready: true },
           binding: { id: "binding-1" },
           source: "default",
@@ -302,8 +302,8 @@ describe("quick runtime switcher", () => {
         jsonResponse({
           models: [
             {
-              id: "gpt-6-luna",
-              label: "GPT-6 Luna",
+              id: "smollm2-360m",
+              label: "SmolLM2 360M",
               provider: "local",
               description: "",
               capabilities: [],
@@ -379,7 +379,7 @@ describe("quick runtime switcher", () => {
     });
     // No activation request fired yet, and the dropdown still reflects the active model.
     expect(calledWithPath(fetchMock, `/api/agents/${shopId}/models/qwen3-4b/activate`)).toBe(false);
-    expect(modelSelect.value).toBe("gpt-6-luna");
+    expect(modelSelect.value).toBe("smollm2-360m");
     expect(host.textContent).toContain("merchant-funded");
     expect(updateAgent).not.toHaveBeenCalled();
 
@@ -430,7 +430,7 @@ describe("quick runtime switcher", () => {
     });
 
     expect(host.querySelector('[role="alertdialog"]')).toBeNull();
-    expect(modelSelect.value).toBe("gpt-6-luna");
+    expect(modelSelect.value).toBe("smollm2-360m");
     expect(calledWithPath(fetchMock, `/api/agents/${shopId}/models/qwen3-4b/activate`)).toBe(false);
   });
 
@@ -448,10 +448,10 @@ describe("quick runtime switcher", () => {
           status: "READY",
           ready: true
         }),
-      [`/api/agents/${shopId}/models/gpt-6-luna/activate`]: () =>
+      [`/api/agents/${shopId}/models/smollm2-360m/activate`]: () =>
         jsonResponse({
           status: "active",
-          binding: { id: "binding-1", agentId: shopId, modelId: "gpt-6-luna" },
+          binding: { id: "binding-1", agentId: shopId, modelId: "smollm2-360m" },
           healthCheck: { latencyMs: 5 }
         })
     });
@@ -472,15 +472,159 @@ describe("quick runtime switcher", () => {
 
     const modelSelect = host.querySelectorAll<HTMLSelectElement>("select")[1] as HTMLSelectElement;
     await act(async () => {
-      modelSelect.value = "gpt-6-luna";
+      modelSelect.value = "smollm2-360m";
       modelSelect.dispatchEvent(new Event("change", { bubbles: true }));
       await Promise.resolve();
       await Promise.resolve();
     });
 
     expect(host.querySelector('[role="alertdialog"]')).toBeNull();
-    expect(calledWithPath(fetchMock, `/api/agents/${shopId}/models/gpt-6-luna/activate`)).toBe(
+    expect(calledWithPath(fetchMock, `/api/agents/${shopId}/models/smollm2-360m/activate`)).toBe(
       true
     );
+  });
+
+  it("activates on the target the catalog reports, defaulting to local Ollama", async () => {
+    const shopId = "agent-shop-local-target";
+    const activationBodies: Array<Record<string, unknown>> = [];
+    const fixture = merchantFundedModelsFixture(shopId);
+    stubFetch({
+      ...fixture,
+      [`/businesses/${shopId}/runtime/effective`]: () =>
+        jsonResponse({
+          agent: { id: "builtin:shopkeeper", name: "Shopkeeper", runtimeAdapterId: "grogoni" },
+          model: { id: "qwen3-4b", name: "Qwen3-4B" },
+          execution: { type: "local", hostId: "ollama", ready: true },
+          binding: { id: "binding-1" },
+          source: "default",
+          status: "READY",
+          ready: true
+        }),
+      [`/api/agents/${shopId}/models/smollm2-360m/activate`]: (init) => {
+        activationBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return jsonResponse({
+          status: "active",
+          binding: { id: "binding-1", agentId: shopId, modelId: "smollm2-360m" },
+          healthCheck: { latencyMs: 5 }
+        });
+      }
+    });
+    await act(async () => {
+      root = createRoot(host);
+      root.render(
+        <QuickRuntimeSwitcher
+          business={business(shopId)}
+          agent={agent()}
+          updateAgent={vi.fn()}
+          onAgentChange={vi.fn()}
+        />
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const modelSelect = host.querySelectorAll<HTMLSelectElement>("select")[1] as HTMLSelectElement;
+    await act(async () => {
+      modelSelect.value = "smollm2-360m";
+      modelSelect.dispatchEvent(new Event("change", { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // The fixture's catalog omits hostedExecutionTarget, so the switcher must use the API's
+    // local-mode default rather than the retired "vercel" hosted runtime.
+    expect(activationBodies).toHaveLength(1);
+    expect(activationBodies[0]?.executionTarget).toBe("local");
+  });
+
+  it("switches to an installed local Ollama model without asking about cost", async () => {
+    const shopId = "agent-shop-ollama";
+    const activationBodies: Array<Record<string, unknown>> = [];
+    const fixture = merchantFundedModelsFixture(shopId);
+    stubFetch({
+      ...fixture,
+      "/v1/ai-models": () =>
+        jsonResponse({
+          models: [
+            {
+              id: "smollm2-360m",
+              label: "SmolLM2 360M",
+              provider: "local",
+              description: "",
+              capabilities: [],
+              available: true,
+              source: "hosted",
+              format: "remote",
+              license: null,
+              licenseUrl: null,
+              modelCardUrl: null,
+              downloadUrl: null,
+              fileName: null,
+              fileSizeBytes: null,
+              minimumMemoryGb: null,
+              recommended: true,
+              runtimeAvailability: { backend: "configured" }
+            },
+            {
+              id: "ollama-qwen2.5-3b",
+              label: "qwen2.5:3b (local)",
+              provider: "ollama",
+              description: "",
+              capabilities: [],
+              available: true,
+              source: "hosted",
+              format: "remote",
+              license: null,
+              licenseUrl: null,
+              modelCardUrl: null,
+              downloadUrl: null,
+              fileName: null,
+              fileSizeBytes: null,
+              minimumMemoryGb: null,
+              recommended: false,
+              costResponsibility: "platform-included",
+              hostedExecutionTarget: "local",
+              runtimeAvailability: { backend: "configured" }
+            }
+          ]
+        }),
+      [`/api/agents/${shopId}/models/ollama-qwen2.5-3b/activate`]: (init) => {
+        activationBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return jsonResponse({
+          status: "active",
+          binding: { id: "binding-1", agentId: shopId, modelId: "ollama-qwen2.5-3b" },
+          healthCheck: { latencyMs: 5 }
+        });
+      }
+    });
+    await act(async () => {
+      root = createRoot(host);
+      root.render(
+        <QuickRuntimeSwitcher
+          business={business(shopId)}
+          agent={agent()}
+          updateAgent={vi.fn()}
+          onAgentChange={vi.fn()}
+        />
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const modelSelect = host.querySelectorAll<HTMLSelectElement>("select")[1] as HTMLSelectElement;
+    expect([...modelSelect.options].map((option) => option.value)).toContain("ollama-qwen2.5-3b");
+    await act(async () => {
+      modelSelect.value = "ollama-qwen2.5-3b";
+      modelSelect.dispatchEvent(new Event("change", { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(host.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(activationBodies).toHaveLength(1);
+    expect(activationBodies[0]).not.toHaveProperty("costResponsibility");
+    expect(activationBodies[0]?.executionTarget).toBe("local");
   });
 });

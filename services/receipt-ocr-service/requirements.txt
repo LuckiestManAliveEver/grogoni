@@ -1,5 +1,0 @@
-paddlepaddle==2.6.2
-paddleocr==2.8.1
-pytesseract==0.3.13
-Pillow==10.4.0
-opencv-python-headless==4.10.0.84

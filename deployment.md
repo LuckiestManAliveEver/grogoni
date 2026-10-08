@@ -57,8 +57,24 @@ belong in the Vercel frontend project.
 
 Create a Supabase project and copy both database URLs:
 
-- `DATABASE_URL`: pooled connection string for normal API traffic.
-- `DIRECT_DATABASE_URL`: direct/session connection string for migrations and schema checks.
+- `DATABASE_URL`: direct connection or Supavisor session pooler (port 5432) for the persistent API.
+- `DIRECT_DATABASE_URL`: direct connection or Supavisor session pooler (port 5432) for migrations and schema checks. Do not use the transaction pooler on port 6543 for migrations: the migration runner uses session-level advisory locks.
+
+Use the session pooler when the deployment environment cannot reach the direct database's IPv6
+address. Copy the exact connection strings from the project's Connect dialog; do not infer the
+pooler region or hostname. Keep database passwords and these connection strings in server-only
+environment variables, never in `VITE_*` variables.
+
+Before migrating, decide whether to copy the remaining Neon data or initialize a fresh application
+schema. Deleting accounts does not mean every application table is empty. For a data-preserving
+move, use PostgreSQL dump/restore for the application tables and their migration ledger, excluding
+Supabase-managed schemas, then run the repository migration and schema checks. For a fresh start,
+run the repository migrations against the new database without restoring Neon data.
+
+Since the application already implements authentication and authorization in its API, disable
+Supabase's public Data API for this project unless access policies have been explicitly configured
+for the application tables. Changing the PostgreSQL connection does not migrate authentication to
+Supabase Auth.
 
 Use `sslmode=require` on both URLs. Keep `CP2_STORE=postgres`.
 
