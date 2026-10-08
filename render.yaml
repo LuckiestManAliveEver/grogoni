@@ -13,7 +13,7 @@ services:
     # and docs/architecture/native-runtime-deployment.md); running it only after build:production
     # succeeds means a failed build can never leave the schema migrated out from under whatever
     # instance is still serving traffic on the previous deploy.
-    buildCommand: COREPACK_HOME=/tmp/corepack corepack pnpm install --frozen-lockfile && COREPACK_HOME=/tmp/corepack corepack pnpm build:production && COREPACK_HOME=/tmp/corepack corepack pnpm db:migrate && REQUIRE_NEON_DATABASE=true COREPACK_HOME=/tmp/corepack corepack pnpm db:verify-schema
+    buildCommand: COREPACK_HOME=/tmp/corepack corepack pnpm install --frozen-lockfile && COREPACK_HOME=/tmp/corepack corepack pnpm build:production && COREPACK_HOME=/tmp/corepack corepack pnpm db:migrate && COREPACK_HOME=/tmp/corepack corepack pnpm db:verify-schema
     startCommand: COREPACK_HOME=/tmp/corepack corepack pnpm --filter @grogoni/api start
     healthCheckPath: /health/ready
     buildFilter:

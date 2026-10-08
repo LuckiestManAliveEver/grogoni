@@ -1,0 +1,9 @@
+{
+  "datasetId": "kenyan-commerce-v1",
+  "version": "1.0.0",
+  "productCount": 713,
+  "withCategory": 25,
+  "withWholesaleBuyingPrice": 25,
+  "withSupplier": 25,
+  "sourceWorkbookSha256": "c687a3cd6640397c14d9a46791ce5dd4844a146cc96858750decf9ffeed2b387"
+}

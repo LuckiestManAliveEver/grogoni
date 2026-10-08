@@ -19,7 +19,7 @@ web app:
 
 ```text
 installCommand: pnpm install --frozen-lockfile
-buildCommand: pnpm build:web:vercel
+buildCommand: pnpm -r --filter @grogoni/web... --if-present build
 outputDirectory: apps/web/dist
 ```
 
@@ -34,14 +34,47 @@ VITE_INFERENCE_MAX_FALLBACKS=3
 ```
 
 If the API is served from a different hostname, use that hostname for both `VITE_API_*` variables.
-The SPA fallback is handled by the Vercel rewrite in `vercel.json`.
+The SPA fallback is handled by the Vercel rewrite in `vercel.json`. Existing static files take
+precedence over this rewrite, so assets, icons, manifests, and the service worker remain files.
+
+The recursive build selects only `@grogoni/web` and its transitive workspace dependencies:
+`business-core`, `event-core`, `offline-runtime`, `shared-types`, `sync-core`, `tool-core`, and `ui`.
+It does not build or start the API, computer runtime, sync service, or inference service, and
+does not run database migrations. Only `apps/web/dist` is deployed; no Vercel Functions are needed.
+
+In Vercel Project Settings, use the repository root as Root Directory (not `apps/web`), Vite as
+the framework, Node.js 22.x, and the install/build/output values above. Clear any dashboard
+build-command override that invokes an obsolete frontend script. Keep database credentials,
+authentication secrets, and inference service tokens out of this frontend project's environment.
+All `VITE_*` values are public browser configuration. Set `VITE_API_BASE_URL` to the existing
+external API URL: without it, production browser requests default to the frontend's own origin.
+
+This frontend configuration does not determine where the backend or database is hosted. The
+backend sections below describe separate deployment options; no backend deployment commands
+belong in the Vercel frontend project.
 
 ## Supabase Postgres
 
 Create a Supabase project and copy both database URLs:
 
-- `DATABASE_URL`: pooled connection string for normal API traffic.
-- `DIRECT_DATABASE_URL`: direct/session connection string for migrations and schema checks.
+- `DATABASE_URL`: direct connection or Supavisor session pooler (port 5432) for the persistent API.
+- `DIRECT_DATABASE_URL`: direct connection or Supavisor session pooler (port 5432) for migrations and schema checks. Do not use the transaction pooler on port 6543 for migrations: the migration runner uses session-level advisory locks.
+
+Use the session pooler when the deployment environment cannot reach the direct database's IPv6
+address. Copy the exact connection strings from the project's Connect dialog; do not infer the
+pooler region or hostname. Keep database passwords and these connection strings in server-only
+environment variables, never in `VITE_*` variables.
+
+Before migrating, decide whether to copy the remaining Neon data or initialize a fresh application
+schema. Deleting accounts does not mean every application table is empty. For a data-preserving
+move, use PostgreSQL dump/restore for the application tables and their migration ledger, excluding
+Supabase-managed schemas, then run the repository migration and schema checks. For a fresh start,
+run the repository migrations against the new database without restoring Neon data.
+
+Since the application already implements authentication and authorization in its API, disable
+Supabase's public Data API for this project unless access policies have been explicitly configured
+for the application tables. Changing the PostgreSQL connection does not migrate authentication to
+Supabase Auth.
 
 Use `sslmode=require` on both URLs. Keep `CP2_STORE=postgres`.
 

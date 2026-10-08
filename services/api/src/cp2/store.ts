@@ -13165,7 +13165,26 @@ function verifyPinHash(
         p: pinScryptParallelization,
         maxmem: pinScryptMaximumMemory
       });
-      return timingSafeEqual(candidate, expected) ? "current" : "invalid";
+      if (timingSafeEqual(candidate, expected)) return "current";
+      if (
+        process.env.NODE_ENV !== "production" &&
+        (process.env.PIN_HASH_SECRET?.trim().length ?? 0) < 32
+      ) {
+        // The brand rename changed the development pepper; upgrade only after PIN verification.
+        const legacyCandidate = scryptSync(
+          `${accountId}:${pin}:soko-market-local-pin-hash-secret`,
+          salt,
+          pinScryptKeyLength,
+          {
+            N: pinScryptCost,
+            r: pinScryptBlockSize,
+            p: pinScryptParallelization,
+            maxmem: pinScryptMaximumMemory
+          }
+        );
+        if (timingSafeEqual(legacyCandidate, expected)) return "legacy";
+      }
+      return "invalid";
     } catch {
       return "invalid";
     }
