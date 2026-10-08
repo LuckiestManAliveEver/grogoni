@@ -82,6 +82,20 @@ describe("Claude Code eval judge", () => {
     broken.dispose();
   });
 
+  it("records the exit status when the CLI quits without reading a large prompt", async () => {
+    // A judge that exits before reading stdin (auth expired, rate limited) closes the pipe while
+    // the prompt is still being written. 1 MiB is far past the pipe buffer, so the write always
+    // hits EPIPE; with no stdin error listener that surfaced as an unhandled error and could crash
+    // the eval run instead of recording a FAIL.
+    const judge = createClaudeCodeJudge({ bin: fakeClaude('echo "auth expired" >&2; exit 3') });
+    const verdict = parseJudgeVerdict(await judge.grade("x".repeat(1024 * 1024)));
+    expect(verdict).toEqual({
+      verdict: "FAIL",
+      reason: expect.stringContaining("exit 3: auth expired")
+    });
+    judge.dispose();
+  });
+
   it("kills a hung judge after its timeout", async () => {
     const judge = createClaudeCodeJudge({ bin: fakeClaude("sleep 30"), timeoutMs: 200 });
     const startedAt = Date.now();

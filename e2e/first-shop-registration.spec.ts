@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 test("a signed-in account registers its first shop without OTP", async ({ page }) => {
   let createBusinessBody: Record<string, unknown> | null = null;
@@ -82,7 +82,9 @@ test("a signed-in account registers its first shop without OTP", async ({ page }
   await expect(page.getByRole("heading", { name: "Set up your business" })).toBeHidden();
 });
 
-test("captures and normalizes the compulsory owner phone without SMS", async ({ page }) => {
+// Mouse clicks and touch taps reach Continue differently. Both used to be at risk of losing the
+// first press: the phone field's blur check inserted a line above Continue and moved it mid-press.
+async function captureOwnerPhone(page: Page, press: (target: Locator) => Promise<void>) {
   let savedPhoneBody: Record<string, unknown> | null = null;
   let otpRequests = 0;
   const user = {
@@ -153,13 +155,25 @@ test("captures and normalizes the compulsory owner phone without SMS", async ({ 
   const continueButton = page.getByRole("button", { name: "Continue", exact: true });
   await expect(continueButton).toBeDisabled();
   await page.getByLabel("Phone number").fill("123");
-  await continueButton.click();
+  await press(continueButton);
   await expect(page.getByRole("alert")).toHaveText("The phone number is too short.");
 
   await page.getByLabel("Phone number").fill("254712345678");
-  await continueButton.click();
+  await press(continueButton);
 
   await expect.poll(() => savedPhoneBody).toEqual({ phoneNumber: "+254712345678", country: "KE" });
   await expect(page.getByRole("heading", { name: "Set up your business" })).toBeVisible();
   expect(otpRequests).toBe(0);
+}
+
+test("captures and normalizes the compulsory owner phone without SMS", async ({ page }) => {
+  await captureOwnerPhone(page, (target) => target.click());
+});
+
+test.describe("on a touch phone", () => {
+  test.use({ hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } });
+
+  test("captures the owner phone with a single tap on Continue", async ({ page }) => {
+    await captureOwnerPhone(page, (target) => target.tap());
+  });
 });

@@ -187,10 +187,10 @@ export function useNavigationState(deps: UseNavigationStateDeps) {
 
     if (nextMode === "seller" && business === null) {
       if (session === null) {
-        setIsBusinessSetupOpen(false);
-        setStatusMessage(
-          "Sign up or log in from the welcome message before registering your first shop."
-        );
+        // A shop needs an account, so the shop icon (or the menu's "Set up your shop") goes
+        // straight to signup; the signup screen links to login. The home welcome has no auth
+        // buttons since #41, so this used to point at a button that no longer existed.
+        openAuth("signup");
         return;
       }
 

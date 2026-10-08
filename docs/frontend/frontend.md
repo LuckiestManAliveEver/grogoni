@@ -1041,7 +1041,17 @@ enforced by `tests/grogoni-home-progressive-entry.test.ts`:
   `business === null` guard: a device
   account can own a shop, and a login would replace that account, so
   a shop owner upgrades by adding a PIN/passkey in account settings
-  instead. While online, a device session returned by bootstrap,
+  instead. `business` can briefly be a stale stored shop when the
+  server cannot confirm ownership. The session-context load
+  (`session-context-retry.ts`, driven from `GrogoniApplication.tsx`)
+  retries on reconnect and when the app is shown again until one load
+  for the current sign-in applies, then never re-runs. Only the
+  sign-in's first load restores where the owner last worked; a retry
+  applies data only (it forgets a stored shop the account does not
+  belong to) and never moves the user, who may have navigated since.
+  Joining a shop (`joinStaffShop`) ends retrying for that sign-in, so
+  a retry never moves the user off the shop they just joined. While
+  online, a device session returned by bootstrap,
   device recovery, or zero-form continue never dismisses an open
   login/signup screen (`dismissesAuthScreen` in `useAuthState.ts`);
   a real account identity or the visitor (Cancel / Browse as guest)

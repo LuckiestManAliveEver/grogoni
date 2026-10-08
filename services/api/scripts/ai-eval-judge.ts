@@ -85,6 +85,9 @@ export function createClaudeCodeJudge(options: {
         reject(error);
       });
       child.on("close", (code) => settle({ code: code ?? 1, stdout, stderr }));
+      // A CLI that exits before reading the prompt closes the pipe mid-write (EPIPE). The exit
+      // code and stderr already carry the real failure; unhandled, this error crashed the run.
+      child.stdin.on("error", () => undefined);
       child.stdin.end(input ?? "");
     });
 

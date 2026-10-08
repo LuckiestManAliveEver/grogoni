@@ -344,7 +344,8 @@ describe("frontend user guidance", () => {
     expect(shopSetup).not.toContain("Send SMS code");
     expect(shopSetup).not.toContain("Firebase");
     expect(shopSetup).not.toContain('autoComplete="one-time-code"');
-    expect(switchMode).toContain("Sign up or log in from the welcome message");
+    expect(switchMode).toContain('openAuth("signup");');
+    expect(switchMode).not.toContain("from the welcome message");
     const createBusinessRoute = authRoutes.slice(
       authRoutes.indexOf('app.post("/businesses"'),
       authRoutes.indexOf('app.post("/roles/check"')

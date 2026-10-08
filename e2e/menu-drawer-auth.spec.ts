@@ -117,3 +117,75 @@ test("a device account that owns a shop gets no Log in / Sign up anywhere", asyn
   await expect(menu.getByRole("button", { name: "Log in", exact: true })).toHaveCount(0);
   await expect(menu.getByRole("button", { name: "Sign up", exact: true })).toHaveCount(0);
 });
+
+test("a stale stored shop from a failed ownership check clears on reconnect and Log in returns", async ({
+  page
+}) => {
+  // The stored shop belongs to a previous account, not this device session. With the server
+  // failing, neither /roles/check nor /v1/session/context can say so, so the shop stays and Log in
+  // stays hidden. Once the device reconnects, the session context loads, shows the account has no
+  // shop, and the sign-in entry comes back without a reload.
+  await mockApi(page, "device");
+  let serverHealthy = false;
+  await page.route("http://127.0.0.1:4000/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path !== "/roles/check" && path !== "/v1/session/context") return route.fallback();
+    if (!serverHealthy) {
+      return route.fulfill({ status: 503, contentType: "application/json", body: "{}" });
+    }
+    if (path === "/roles/check") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ allowed: false })
+      });
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        accountId: "menu-auth-account",
+        userId: "menu-auth-user",
+        sessionId: "menu-auth-session",
+        // The server's last place differs from where the user is; a retry must not move them.
+        conversationId: "server-last-conversation",
+        activeShopId: null,
+        agentId: "grogoni",
+        activeModelId: "local",
+        mode: "marketplace",
+        activeSurface: "conversation",
+        permissions: [],
+        sessionVersion: 1,
+        shops: []
+      })
+    });
+  });
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      "grogoni.chatFirst.activeBusiness",
+      JSON.stringify({
+        id: "previous-account-shop",
+        name: "Previous Account Shop",
+        language: "en",
+        role: "owner",
+        grogoniId: "grogoni.previous-account-shop"
+      })
+    );
+  });
+  await page.goto("/");
+
+  let menu = await openMenu(page);
+  await expect(menu.getByRole("button", { name: "Go to my shop", exact: true })).toBeVisible();
+  await expect(menu.getByRole("button", { name: "Log in", exact: true })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+
+  serverHealthy = true;
+  await page.context().setOffline(true);
+  await page.context().setOffline(false);
+
+  menu = await openMenu(page);
+  await expect(menu.getByRole("button", { name: "Log in", exact: true })).toBeVisible();
+  await expect(menu.getByRole("button", { name: "Set up your shop", exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/127\.0\.0\.1:\d+\/$/u);
+});

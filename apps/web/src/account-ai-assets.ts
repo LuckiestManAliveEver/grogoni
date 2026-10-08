@@ -23,10 +23,23 @@ export async function hydrateAccountOssAgentManifests(): Promise<
   const response = await getJson<{ manifests: InstalledOssAgentManifestSummary[] }>(
     "/v1/oss-agents/installed"
   );
+  // Each manifest is checked on its own. A saved definition that fails the install safety check
+  // (unverified license, mismatched id, non-https source) is skipped rather than listed: its
+  // sourceUrl would render as a link. Before, the first one threw out of this loop and the
+  // callers' .catch(() => []) hid every saved agent on the account.
+  const usable: InstalledOssAgentManifestSummary[] = [];
   for (const manifest of response.manifests) {
-    installOssAgentManifest(manifest.agent, localStorage, manifest.installedAt);
+    try {
+      installOssAgentManifest(manifest.agent, localStorage, manifest.installedAt);
+      usable.push(manifest);
+    } catch (error) {
+      console.warn("Skipped a saved agent manifest that failed the install check.", {
+        agentId: manifest.agent?.id,
+        reason: error instanceof Error ? error.message : String(error)
+      });
+    }
   }
-  return response.manifests;
+  return usable;
 }
 
 // Uploading a device-installed model artifact (uploadLocalModelToAccount) and restoring one back

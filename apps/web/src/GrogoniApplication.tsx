@@ -662,6 +662,7 @@ export function OwnerApp() {
     authenticateSocialProfile,
     completeAccountRestoration,
     loadGrogoniSessionContext,
+    sessionContextRetry,
     patchGrogoniSessionContext,
     applySessionContextForConversation,
     switchActiveBusiness,
@@ -871,12 +872,32 @@ export function OwnerApp() {
     setConnectivityAuthentication(session !== null);
   }, [session]);
 
+  // The account's session context (its shops, last mode and surface) applies once per sign-in
+  // (session-context-retry.ts). A load that failed (offline, server down) used to stay failed until
+  // a reload, keeping a stale stored shop, which for a device session also hid Log in
+  // (showsSignInEntry). It now retries when the device comes back online or the app is shown
+  // again, and never re-runs once any load in this sign-in has applied. A retry only refreshes
+  // data (it never moves the user: they may have navigated since).
   useEffect(() => {
     if (session === null) {
+      sessionContextRetry.track(null);
       setGrogoniSessionContext(null);
       return;
     }
-    void loadGrogoniSessionContext(setActiveConversationId);
+    // The retry decides restore (first load of the sign-in) versus refresh (data-only retry).
+    sessionContextRetry.track(session.account.id, (shouldApply, apply) =>
+      loadGrogoniSessionContext(setActiveConversationId, shouldApply, apply)
+    );
+
+    function retryWhenVisible() {
+      if (document.visibilityState === "visible") sessionContextRetry.retry();
+    }
+    window.addEventListener("online", sessionContextRetry.retry);
+    document.addEventListener("visibilitychange", retryWhenVisible);
+    return () => {
+      window.removeEventListener("online", sessionContextRetry.retry);
+      document.removeEventListener("visibilitychange", retryWhenVisible);
+    };
   }, [session?.account.id]);
 
   useEffect(() => {
