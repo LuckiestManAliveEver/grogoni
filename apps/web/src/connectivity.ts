@@ -95,7 +95,11 @@ async function probeApi(): Promise<void> {
       credentials: "omit",
       signal: abortController.signal
     });
-    if (!response.ok) throw new Error(`Reachability check returned ${response.status}.`);
+    if (!response.ok || !response.headers.get("content-type")?.includes("application/json"))
+      throw new Error(`Reachability check returned ${response.status}.`);
+    const health = await response.json();
+    if (health.service !== "api" || health.status !== "ok")
+      throw new Error("Invalid API health response.");
     failureCount = 0;
     setState(authenticated ? "authenticated" : "api_reachable");
     scheduleProbe(60_000);

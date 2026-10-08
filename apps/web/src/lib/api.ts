@@ -80,7 +80,7 @@ export function readApiBaseUrl(): string {
   }
 
   if (import.meta.env.PROD) {
-    return "";
+    throw new Error("The API address is missing from this build.");
   }
 
   return "http://127.0.0.1:4000";

@@ -66,6 +66,8 @@ if (process.argv.includes("--deploy")) {
     "handler.ts",
     "session-routes.ts",
     "auth-routes.ts",
+    "application-routes.ts",
+    "public-routes.ts",
     "credentials.ts"
   ]) {
     const source = await readFile(
@@ -88,7 +90,7 @@ let failed = false;
 for (const [path, expectedStatus] of [
   ["/health/live", 200],
   ["/health/db", 200],
-  ["/health/ready", 503]
+  ["/health/ready", 200]
 ]) {
   const response = await fetch(`${functionBase}${path}`, {
     signal: globalThis.AbortSignal.timeout(20000)
@@ -100,7 +102,7 @@ for (const [path, expectedStatus] of [
   if (
     response.status !== expectedStatus ||
     (path === "/health/db" && result.database?.ok !== true) ||
-    (path === "/health/ready" && result.code !== "api_migration_incomplete")
+    (path === "/health/ready" && result.database?.ok !== true)
   )
     failed = true;
 }

@@ -8,6 +8,7 @@ import { createHandler } from "./handler.ts";
 import { createSessionRoutes } from "./session-routes.ts";
 import { createAuthRoutes } from "./auth-routes.ts";
 import { createApplicationRoutes } from "./application-routes.ts";
+import { createPublicRoutes } from "./public-routes.ts";
 import type { Transaction } from "./session-routes.ts";
 
 const connectionString = Deno.env.get("DATABASE_URL")?.trim();
@@ -68,9 +69,13 @@ const auth = createAuthRoutes({
   }
 });
 const application = createApplicationRoutes({ transaction });
+const publicRoutes = createPublicRoutes(transaction);
 const handler = createHandler({
   applicationRoutes: async (request, path) =>
-    (await auth(request, path)) ?? (await sessions(request, path)) ?? application(request, path),
+    (await auth(request, path)) ??
+    (await sessions(request, path)) ??
+    (await publicRoutes(request, path)) ??
+    application(request, path),
   complete: true,
   allowedOrigins: (Deno.env.get("WEB_ORIGINS") ?? "http://localhost:5173,http://127.0.0.1:5173")
     .split(",")

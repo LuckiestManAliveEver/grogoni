@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { generateKeyPairSync } from "node:crypto";
 import { createAuthRoutes } from "../supabase/functions/api/auth-routes";
 import {
   credentialHash,
@@ -85,6 +86,41 @@ function loginQuery(credential: string, attempts = 0, mfa = false) {
 }
 
 describe("Edge credential compatibility", () => {
+  it("requires a secure bootstrap key before creating a device account", async () => {
+    const query = vi.fn<SqlClient["query"]>(async () => ({ rows: [] }));
+    const { routes } = setup(query);
+    const response = await routes(request("/auth/continue"), "/auth/continue");
+    expect(response!.status).toBe(400);
+    expect(await response!.json()).toMatchObject({ code: "auth_continue_idempotency_required" });
+    expect(query.mock.calls.some(([sql]) => String(sql).includes("insert into accounts"))).toBe(
+      false
+    );
+  });
+  it("creates a device session without marking its PIN verified", async () => {
+    const publicKey = generateKeyPairSync("ec", { namedCurve: "prime256v1" }).publicKey.export({
+      format: "jwk"
+    });
+    const query = vi.fn(async (sql: string) => {
+      if (sql.includes("from accounts a"))
+        return { rows: [{ ...account, primary_auth_channel: "device" }] };
+      if (sql.includes("insert into sessions")) return { rows: [{ ...session }] };
+      return { rows: [] };
+    });
+    const { routes } = setup(query);
+    const req = request("/auth/continue", { devicePublicKeyJwk: publicKey });
+    req.headers.set("idempotency-key", "x".repeat(40));
+    const response = await routes(req, "/auth/continue");
+    expect(response!.status).toBe(200);
+    expect(await response!.json()).toMatchObject({
+      account: { identityLevel: "device" },
+      isNewAccount: true,
+      deviceRecoveryCredentialId: expect.any(String)
+    });
+    expect(response!.headers.get("set-cookie")).toContain("grogoni_session=");
+    expect(query).toHaveBeenCalledWith("update sessions set pin_verified_at = null where id = $1", [
+      id
+    ]);
+  });
   it.each([true, false])(
     "preserves scrypt formats and verifies secret and credential (PIN=%s)",
     (pin) => {

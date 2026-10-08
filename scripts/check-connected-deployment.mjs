@@ -1,8 +1,8 @@
 import { JSDOM } from "jsdom";
 import { URL } from "node:url";
 
-const frontend = "https://grogoni-frontend.vercel.app";
-const api = "https://gnmndzsughifhboqvsgd.supabase.co/functions/v1/api";
+const frontend = process.env.SMOKE_FRONTEND_URL ?? "https://grogoni.com";
+const api = process.env.SMOKE_API_URL ?? `${frontend}/api`;
 let failures = 0;
 async function check(name, run) {
   try {
@@ -29,6 +29,39 @@ await check("Vercel frontend and emitted assets", async () => {
       throw new Error("A static asset is missing or masked by the SPA fallback.");
     }
   }
+});
+await check("Production build identifies its commit", async () => {
+  const response = await get(`${frontend}/build-meta.json`);
+  const meta = await response.json();
+  if (!response.ok || !/^[a-f0-9]{40}$/.test(meta.buildId))
+    throw new Error("Missing commit identity.");
+  if (process.env.SMOKE_EXPECTED_COMMIT && meta.buildId !== process.env.SMOKE_EXPECTED_COMMIT)
+    throw new Error("The expected commit is not deployed.");
+});
+await check("Public browsing returns JSON", async () => {
+  for (const [path, field] of [
+    ["/public/storefronts", "storefronts"],
+    ["/auth/oauth/providers", "providers"]
+  ]) {
+    const response = await get(`${api}${path}`);
+    const body = await response.json();
+    if (response.status !== 200 || !Array.isArray(body[field]))
+      throw new Error(`${path} HTTP ${response.status}`);
+  }
+});
+await check("Guest bootstrap validates requests", async () => {
+  const response = await get(`${api}/auth/continue`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}"
+  });
+  const body = await response.json();
+  if (response.status !== 400 || !body.code)
+    throw new Error(`Guest bootstrap HTTP ${response.status}`);
+  const intro = await get(`${api}/v1/marketplace-intro`);
+  const result = await intro.json();
+  if (intro.status !== 401 || result.code !== "auth_required")
+    throw new Error(`Marketplace intro HTTP ${intro.status}`);
 });
 await check("Supabase liveness", async () => {
   const response = await get(`${api}/health/live`);

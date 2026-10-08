@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID } from "node:crypto";
+import { createPublicKey, randomBytes, randomUUID, type JsonWebKey } from "node:crypto";
 import { Buffer } from "node:buffer";
 import {
   credentialHash,
@@ -25,6 +25,7 @@ interface Dependencies {
   passwordEnabled?: boolean;
 }
 const postPaths = new Set([
+  "/auth/continue",
   "/auth/login/methods",
   "/auth/identify",
   "/auth/pin/login",
@@ -172,7 +173,9 @@ type MirrorTable =
   | "cp2_sessions"
   | "cp2_mfa_factors"
   | "cp2_recovery_codes"
-  | "cp2_auth_transactions";
+  | "cp2_auth_transactions"
+  | "cp2_device_account_bootstraps"
+  | "cp2_device_recovery_credentials";
 async function mirror(client: SqlClient, table: MirrorTable, id: string, record: Row) {
   await client.query(
     `insert into ${table} (entity_id, account_id, user_id, record)
@@ -395,7 +398,7 @@ export function createAuthRoutes({
   }
   async function newAccount(
     client: SqlClient,
-    id: ReturnType<typeof identifier>,
+    id: { type: string; value: string; phone: PhoneIdentity | null },
     displayName?: string
   ) {
     const accountId = randomUUID();
@@ -432,7 +435,7 @@ export function createAuthRoutes({
       createdAt: now
     });
     await mirror(client, "cp2_users", userId, { ...actor.user, userId, createdAt: now });
-    await addIdentity(client, row, id.type, id.value, true);
+    if (id.type !== "device") await addIdentity(client, row, id.type, id.value, true);
     return row;
   }
   async function addIdentity(
@@ -654,6 +657,128 @@ export function createAuthRoutes({
     ))
       return null;
     try {
+      if (path === "/auth/continue") {
+        const data = await body(request);
+        return await transaction(async (client) => {
+          const existing = await activeSession(client, request);
+          if (existing) {
+            const account = (
+              await client.query(`${accountSelect} where a.id = $1`, [existing.account_id])
+            ).rows[0];
+            return Response.json({
+              ...publicActor(account),
+              session: sessionView(existing),
+              isNewAccount: false
+            });
+          }
+          const key = request.headers.get("idempotency-key")?.trim() ?? "";
+          if (!/^[A-Za-z0-9_-]{32,128}$/.test(key))
+            return error(
+              400,
+              "auth_continue_idempotency_required",
+              "A secure Continue request key is required."
+            );
+          const jwk = data.devicePublicKeyJwk as Row | undefined;
+          if (
+            !jwk ||
+            jwk.kty !== "EC" ||
+            jwk.crv !== "P-256" ||
+            typeof jwk.x !== "string" ||
+            typeof jwk.y !== "string" ||
+            jwk.d !== undefined
+          )
+            return error(400, "device_recovery_key_required", "A device public key is required.");
+          const publicKey = { kty: "EC", crv: "P-256", x: jwk.x, y: jwk.y };
+          try {
+            createPublicKey({ key: publicKey as JsonWebKey, format: "jwk" });
+          } catch {
+            return error(400, "device_recovery_key_invalid", "The device public key is invalid.");
+          }
+          const keyHash = hash(`grogoni-device-bootstrap:${key}`);
+          const rateKey = correlation(
+            `device:${request.headers.get("x-forwarded-for")?.split(",")[0] ?? "unknown"}`,
+            secrets.audit
+          );
+          if (await limited(client, rateKey, true))
+            return error(429, "auth_rate_limited", "Too many Continue attempts. Try again later.");
+          await audit(client, "auth.edge.signup_attempt", rateKey);
+          await lock(client, `device-bootstrap:${keyHash}`);
+          const prior = (
+            await client.query(
+              "select record from cp2_device_account_bootstraps where entity_id = $1 and (record->>'expiresAt')::timestamptz > now()",
+              [keyHash]
+            )
+          ).rows[0]?.record as Row | undefined;
+          let account: Row;
+          if (prior) {
+            if (prior.keyFingerprint !== hash(JSON.stringify(publicKey)))
+              return error(
+                409,
+                "device_bootstrap_conflict",
+                "This Continue key belongs to another device."
+              );
+            account = (
+              await client.query(
+                `${accountSelect} where a.id = $1 and a.status = 'active' and a.deleted_at is null`,
+                [prior.accountId]
+              )
+            ).rows[0];
+            if (!account) return error(401, "auth_required", "The account is unavailable.");
+          } else {
+            account = await newAccount(
+              client,
+              {
+                type: "device",
+                value: `device:${randomBytes(24).toString("base64url")}`,
+                phone: null
+              },
+              "Grogoni user"
+            );
+            await client.query("update accounts set identity_level = 'device' where id = $1", [
+              account.account_id
+            ]);
+            account.identity_level = "device";
+            await mirror(client, "cp2_accounts", String(account.account_id), {
+              ...publicActor(account).account,
+              accountId: account.account_id
+            });
+          }
+          const credentialId = String(prior?.credentialId ?? randomUUID());
+          const now = new Date().toISOString();
+          await mirror(client, "cp2_device_recovery_credentials", credentialId, {
+            id: credentialId,
+            accountId: account.account_id,
+            publicKeyJwk: publicKey,
+            createdAt: now,
+            updatedAt: now,
+            revokedAt: null,
+            lastAssertionHash: null,
+            lastAssertionAt: null,
+            lastSessionId: null
+          });
+          const session = await makeSession(client, account, request);
+          await client.query("update sessions set pin_verified_at = null where id = $1", [
+            session.row.id
+          ]);
+          session.row.pin_verified_at = null;
+          await mirror(client, "cp2_sessions", String(session.row.id), sessionRecord(session.row));
+          await mirror(client, "cp2_device_account_bootstraps", keyHash, {
+            id: keyHash,
+            accountId: account.account_id,
+            sessionId: session.row.id,
+            credentialId,
+            keyFingerprint: hash(JSON.stringify(publicKey)),
+            createdAt: now,
+            expiresAt: new Date(Date.now() + 600000).toISOString()
+          });
+          const response = sessionResponse(account, session.row, session.refresh, false, !prior);
+          const view = await response.json();
+          return Response.json(
+            { ...view, deviceRecoveryCredentialId: credentialId },
+            { headers: response.headers }
+          );
+        });
+      }
       if (path === "/auth/session/refresh" || path === "/session/refresh") {
         const response = await transaction((client) => refreshSession(client, request));
         if (response.status === 401) {

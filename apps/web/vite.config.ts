@@ -85,6 +85,14 @@ function tesseractOfflineAssets(): Plugin {
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, workspaceRoot, "");
+  const apiBase =
+    process.env.VITE_API_BASE_URL ??
+    env.VITE_API_BASE_URL ??
+    process.env.VITE_API_URL ??
+    env.VITE_API_URL;
+  if (mode === "production" && !apiBase?.trim()) {
+    throw new Error("Production builds require VITE_API_BASE_URL or VITE_API_URL.");
+  }
   const usePolling =
     (process.env.VITE_USE_POLLING ?? env.VITE_USE_POLLING) === "true" ||
     process.env.CHOKIDAR_USEPOLLING === "true" ||
@@ -96,6 +104,7 @@ export default defineConfig(({ mode }) => {
     process.env.VITE_GIT_COMMIT_SHA ??
     env.VITE_GIT_COMMIT_SHA ??
     process.env.RENDER_GIT_COMMIT ??
+    process.env.VERCEL_GIT_COMMIT_SHA ??
     "local";
   const deploymentEnvironment =
     process.env.VITE_DEPLOYMENT_ENV ??
@@ -137,6 +146,12 @@ export default defineConfig(({ mode }) => {
       }
     },
     define: {
+      ...(process.env.VERCEL === "1"
+        ? {
+            "import.meta.env.VITE_API_BASE_URL": JSON.stringify("/api"),
+            "import.meta.env.VITE_API_URL": JSON.stringify("/api")
+          }
+        : {}),
       __APP_NAME__: JSON.stringify("Grogoni"),
       __APP_VERSION__: JSON.stringify(appVersion),
       __BUILD_TIMESTAMP__: JSON.stringify(buildTimestamp),

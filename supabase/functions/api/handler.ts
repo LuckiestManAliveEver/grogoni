@@ -26,7 +26,7 @@ export function createHandler({
       headers.set("Access-Control-Allow-Credentials", "true");
     }
     if (request.method === "OPTIONS") {
-      headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+      headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
       headers.set(
         "Access-Control-Allow-Headers",
         [
