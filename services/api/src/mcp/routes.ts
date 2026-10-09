@@ -10,7 +10,13 @@ import type {
 } from "@grogoni/shared-types";
 import { Cp2Error, readSessionCookie, type Cp2Store } from "../cp2/store.js";
 import type { FulfillmentService } from "../cp2/domains/fulfillment/service.js";
-import { mcpOAuthChallenge, mcpSecuritySchemes, registerMcpOAuthRoutes } from "./oauth.js";
+import {
+  mcpOAuthChallenge,
+  mcpSecuritySchemes,
+  registerMcpOAuthRoutes,
+  createMcpOAuthState,
+  type McpOAuthState
+} from "./oauth.js";
 import {
   describeFulfillmentMcpTool,
   findFulfillmentMcpTool,
@@ -26,6 +32,23 @@ export interface McpRouteOptions {
   publicOrigin: string;
   store: Cp2Store;
   fulfillmentService?: FulfillmentService;
+  state?: McpRouteState;
+}
+
+export interface McpRouteState {
+  sessions: Map<string, McpSession>;
+  rateWindows: Map<string, { startedAt: number; requests: number }>;
+  pendingCheckouts: Map<string, PendingCheckout>;
+  oauth: McpOAuthState;
+}
+
+export function createMcpRouteState(): McpRouteState {
+  return {
+    sessions: new Map(),
+    rateWindows: new Map(),
+    pendingCheckouts: new Map(),
+    oauth: createMcpOAuthState()
+  };
 }
 
 interface McpSession {
@@ -49,10 +72,12 @@ interface PendingCheckout {
 
 export function registerMcpRoutes(app: FastifyInstance, options: McpRouteOptions): void {
   const allowedOrigins = new Set(options.allowedOrigins);
-  const sessions = new Map<string, McpSession>();
-  const rateWindows = new Map<string, { startedAt: number; requests: number }>();
-  const pendingCheckouts = new Map<string, PendingCheckout>();
-  registerMcpOAuthRoutes(app, { store: options.store, publicOrigin: options.publicOrigin });
+  const { sessions, rateWindows, pendingCheckouts, oauth } = options.state ?? createMcpRouteState();
+  registerMcpOAuthRoutes(app, {
+    store: options.store,
+    publicOrigin: options.publicOrigin,
+    state: oauth
+  });
 
   app.post("/v1/mcp/tokens", async (request, reply) => {
     try {

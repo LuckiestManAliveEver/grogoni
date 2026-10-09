@@ -6,6 +6,7 @@ type Row = Record<string, unknown>;
 
 interface Dependencies {
   transaction: Transaction;
+  jobToken?: string;
 }
 
 interface RouteMatch {
@@ -123,9 +124,10 @@ function auth(request: Request) {
 async function actor(client: SqlClient, request: Request) {
   const sessionId = auth(request);
   const result = await client.query(
-    `select account_id, user_id from sessions
-     where id = $1 and revoked_at is null and expires_at > now()
-       and inactivity_expires_at > now() and absolute_expires_at > now()`,
+    `select s.account_id, s.user_id from sessions s join accounts a on a.id = s.account_id
+     where s.id = $1 and s.revoked_at is null and s.expires_at > now()
+       and s.inactivity_expires_at > now() and s.absolute_expires_at > now()
+       and a.status = 'active' and a.deleted_at is null`,
     [sessionId]
   );
   const row = result.rows[0];
@@ -196,11 +198,11 @@ function bearer(request: Request) {
   return value.slice(7).trim();
 }
 
-export function createApplicationRoutes({ transaction }: Dependencies) {
+export function createApplicationRoutes({ transaction, jobToken = "" }: Dependencies) {
   return async (request: Request, path: string): Promise<Response | null> => {
     try {
       if (path === "/v1/realtime/connect" || path === "/realtime") {
-        auth(request);
+        await transaction((client) => actor(client, request));
         return ok({
           transport: "http-poll",
           eventsUrl: "/v1/realtime/events",
@@ -208,6 +210,7 @@ export function createApplicationRoutes({ transaction }: Dependencies) {
           websocket: false
         });
       }
+      if (!Object.values(routes).some((route) => route.pattern.test(path))) return null;
       return await transaction(async (client) => {
         const captureList = params(routes.productCaptures, path);
         if (captureList && request.method === "GET") {
@@ -384,24 +387,20 @@ export function createApplicationRoutes({ transaction }: Dependencies) {
         const realtimeAck = params(routes.realtimeAck, path);
         if (realtimeAck && request.method === "POST") {
           const user = await actor(client, request);
-          await upsertRecord(
-            client,
-            "cp2_realtime_events",
-            { acknowledgedAt: new Date().toISOString() },
-            {
-              id: String(realtimeAck.eventId),
-              accountId: user.accountId,
-              userId: user.userId
-            }
+          const updated = await client.query(
+            "update cp2_realtime_events set record = record || jsonb_build_object('acknowledgedAt', $3::text), updated_at = now() where entity_id = $1 and account_id = $2 returning entity_id",
+            [String(realtimeAck.eventId), user.accountId, new Date().toISOString()]
           );
+          if (!updated.rows.length)
+            return ok({ code: "not_found", message: "Event not found" }, 404);
           return ok({ acknowledged: true });
         }
         const jobRun = params(routes.jobsRun, path);
         if (jobRun && request.method === "POST")
-          return jobResponse(client, request, String(jobRun.jobName), true);
+          return jobResponse(client, request, String(jobRun.jobName), true, jobToken);
         const jobStatus = params(routes.jobsStatus, path);
         if (jobStatus && request.method === "GET")
-          return jobResponse(client, request, String(jobStatus.jobName), false);
+          return jobResponse(client, request, String(jobStatus.jobName), false, jobToken);
         return null;
       });
     } catch (error) {
@@ -412,11 +411,17 @@ export function createApplicationRoutes({ transaction }: Dependencies) {
   };
 }
 
-async function jobResponse(client: SqlClient, request: Request, jobName: string, run: boolean) {
+async function jobResponse(
+  client: SqlClient,
+  request: Request,
+  jobName: string,
+  run: boolean,
+  expectedToken: string
+) {
   if (!jobNames.has(jobName))
     throw new EdgeRouteError(404, "job_not_found", "Background job was not found.");
   const token = request.headers.get("x-job-token") ?? "";
-  if (token.length < 16)
+  if (!expectedToken || expectedToken.length < 16 || token !== expectedToken)
     throw new EdgeRouteError(401, "job_token_required", "A job token is required.");
   const record = {
     job: jobName,

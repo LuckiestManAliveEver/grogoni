@@ -8,6 +8,7 @@ export interface AccountRealtimeOptions {
   onChangesAvailable: () => void | Promise<void>;
   onError?: (error: unknown) => void;
   reconnectDelayMs?: number;
+  transport?: "websocket" | "http-poll";
 }
 
 export interface AccountRealtimeSocket {
@@ -18,6 +19,30 @@ export interface AccountRealtimeSocket {
 }
 
 export function subscribeToAccountRealtime(options: AccountRealtimeOptions): () => void {
+  if (options.transport === "http-poll") {
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const poll = async () => {
+      try {
+        recordRealtimeConnection("connecting");
+        await options.onChangesAvailable();
+        if (!stopped) recordRealtimeConnection("ready");
+      } catch (error) {
+        if (!stopped) {
+          recordRealtimeConnection("failed");
+          options.onError?.(error);
+        }
+      } finally {
+        if (!stopped)
+          timer = setTimeout(() => void poll(), Math.max(1000, options.reconnectDelayMs ?? 5000));
+      }
+    };
+    void poll();
+    return () => {
+      stopped = true;
+      if (timer !== null) clearTimeout(timer);
+    };
+  }
   let stopped = false;
   let socket: AccountRealtimeSocket | null = null;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;

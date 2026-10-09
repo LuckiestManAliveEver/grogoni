@@ -24,6 +24,10 @@ export function createHandler({
       }
       headers.set("Access-Control-Allow-Origin", origin);
       headers.set("Access-Control-Allow-Credentials", "true");
+      headers.set(
+        "Access-Control-Expose-Headers",
+        "mcp-session-id, content-disposition, x-request-id"
+      );
     }
     if (request.method === "OPTIONS") {
       headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
@@ -35,6 +39,8 @@ export function createHandler({
           "apikey",
           "x-request-id",
           "idempotency-key",
+          "mcp-session-id",
+          "mcp-protocol-version",
           "x-grogoni-device-id",
           "x-grogoni-device-name",
           "x-grogoni-platform",
@@ -45,12 +51,18 @@ export function createHandler({
       return new Response(null, { status: 204, headers });
     }
     const pathname = new URL(request.url).pathname;
-    const path = pathname.replace(/^(?:\/functions\/v1)?\/api(?=\/|$)/, "") || "/";
+    const path =
+      pathname
+        .replace(/^\/functions\/v1\/[^/]+(?=\/|$)/, "")
+        .replace(/^\/api(?:-candidate)?(?=\/|$)/, "") || "/";
     if (applicationRoutes) {
       try {
         const result = await applicationRoutes(request, path);
         if (result) {
-          for (const [name, value] of headers) result.headers.set(name, value);
+          for (const [name, value] of headers) {
+            if (name === "content-type" && result.headers.has(name)) continue;
+            result.headers.set(name, value);
+          }
           return result;
         }
       } catch {

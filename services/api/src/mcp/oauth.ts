@@ -24,14 +24,23 @@ type AuthorizationCode = PendingAuthorization;
 export interface McpOAuthOptions {
   publicOrigin: string;
   store: Cp2Store;
+  state?: McpOAuthState;
+}
+
+export interface McpOAuthState {
+  pendingAuthorizations: Map<string, PendingAuthorization>;
+  authorizationCodes: Map<string, AuthorizationCode>;
+}
+
+export function createMcpOAuthState(): McpOAuthState {
+  return { pendingAuthorizations: new Map(), authorizationCodes: new Map() };
 }
 
 export function registerMcpOAuthRoutes(app: FastifyInstance, options: McpOAuthOptions): void {
   const publicOrigin = options.publicOrigin.replace(/\/+$/u, "");
   const issuer = publicOrigin;
   const resource = `${publicOrigin}/mcp`;
-  const pendingAuthorizations = new Map<string, PendingAuthorization>();
-  const authorizationCodes = new Map<string, AuthorizationCode>();
+  const { pendingAuthorizations, authorizationCodes } = options.state ?? createMcpOAuthState();
 
   app.addContentTypeParser(
     "application/x-www-form-urlencoded",

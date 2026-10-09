@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 const apiHelpers = readFileSync("apps/web/src/api-helpers.ts", "utf8");
 const apiCache = readFileSync("apps/web/src/api-request-cache.ts", "utf8");
 const application = readFileSync("apps/web/src/GrogoniApplication.tsx", "utf8");
+const viewRefresh = readFileSync("apps/web/src/hooks/useViewRefresh.ts", "utf8");
 
 const generatedManagementCards = [
   "ProductManagementCard.tsx",
@@ -23,9 +24,10 @@ describe("end-to-end CRUD consistency", () => {
   });
 
   it("refreshes the central domain state after successful business mutations", () => {
-    expect(application).toContain("subscribeToApiMutations");
-    expect(application).toContain("allRefreshers().map");
-    expect(application).toContain("shouldRefreshBusinessDomains");
+    expect(application).toContain("useBusinessViewRefresh(");
+    expect(viewRefresh).toContain("subscribeToApiMutations");
+    expect(viewRefresh).toContain("latestRefreshers.current().map");
+    expect(viewRefresh).toContain("shouldRefreshBusinessDomains");
   });
 
   it("refreshes independently mounted CRUD cards when their resources change", () => {

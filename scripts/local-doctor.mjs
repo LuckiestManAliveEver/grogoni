@@ -2,6 +2,7 @@ import net from "node:net";
 import { readFileSync, existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
+import { URL } from "node:url";
 
 const apiRequire = createRequire(new URL("../services/api/package.json", import.meta.url));
 const { Pool } = apiRequire("pg");
@@ -54,7 +55,7 @@ await record(checks, "Neon Postgres", async () => {
 
 await record(checks, "Ollama", async () => {
   const response = await fetch(new URL("/api/tags", ollamaBaseUrl), {
-    signal: AbortSignal.timeout(3000)
+    signal: globalThis.AbortSignal.timeout(3000)
   });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   return ollamaBaseUrl;
@@ -62,7 +63,7 @@ await record(checks, "Ollama", async () => {
 
 await record(checks, ollamaModel, async () => {
   const response = await fetch(new URL("/api/tags", ollamaBaseUrl), {
-    signal: AbortSignal.timeout(3000)
+    signal: globalThis.AbortSignal.timeout(3000)
   });
   const body = await response.json();
   const installed = (body.models || []).some((model) => model.name === ollamaModel);

@@ -9,6 +9,52 @@ afterEach(() => {
 });
 
 describe("CP22 web realtime client", () => {
+  it("polls without sockets and stops scheduling after teardown", async () => {
+    vi.useFakeTimers();
+    const createSocket = vi.fn();
+    const onChangesAvailable = vi.fn().mockResolvedValue(undefined);
+    const stop = subscribeToAccountRealtime({
+      accountId: "account-1",
+      endpoint: "/api/v1/realtime",
+      transport: "http-poll",
+      createSocket,
+      onChangesAvailable
+    });
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(onChangesAvailable).toHaveBeenCalledTimes(2);
+    expect(createSocket).not.toHaveBeenCalled();
+    stop();
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(onChangesAvailable).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not overlap pending polls and reports errors", async () => {
+    vi.useFakeTimers();
+    let reject!: (error: Error) => void;
+    const onChangesAvailable = vi.fn(
+      () =>
+        new Promise<void>((_, fail) => {
+          reject = fail;
+        })
+    );
+    const onError = vi.fn();
+    const stop = subscribeToAccountRealtime({
+      accountId: "account-1",
+      endpoint: "/api/v1/realtime",
+      transport: "http-poll",
+      onChangesAvailable,
+      onError
+    });
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(onChangesAvailable).toHaveBeenCalledTimes(1);
+    reject(new Error("offline"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(onError).toHaveBeenCalledOnce();
+    stop();
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(onChangesAvailable).toHaveBeenCalledTimes(1);
+  });
+
   it("triggers catch-up for valid account events and reconnects after closure", async () => {
     vi.useFakeTimers();
     const sockets: FakeRealtimeSocket[] = [];

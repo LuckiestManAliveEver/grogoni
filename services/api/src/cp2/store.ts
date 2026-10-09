@@ -3871,7 +3871,7 @@ export class Cp2Store {
     now?: Date;
   }): MarketplaceIntroStateSummary {
     const now = input.now ?? new Date();
-    const session = this.requirePinVerifiedSession(input.sessionId, now);
+    const session = this.requireAnySession(input.sessionId, now);
     const businessId = input.businessId ?? null;
 
     if (businessId !== null) {

@@ -17,6 +17,7 @@ function request(path: string, init: RequestInit = {}) {
 
 function setup(query: SqlClient["query"]) {
   return createApplicationRoutes({
+    jobToken: "j".repeat(32),
     transaction: async (action) => action({ query })
   });
 }
@@ -91,6 +92,14 @@ describe("Supabase Edge application routes", () => {
       "/internal/jobs/notification_delivery/run"
     );
     expect(denied!.status).toBe(401);
+    const forged = await routes(
+      request("/internal/jobs/notification_delivery/run", {
+        method: "POST",
+        headers: { "x-job-token": "x".repeat(32) }
+      }),
+      "/internal/jobs/notification_delivery/run"
+    );
+    expect(forged!.status).toBe(401);
     const accepted = await routes(
       request("/internal/jobs/notification_delivery/run", {
         method: "POST",
@@ -102,6 +111,31 @@ describe("Supabase Edge application routes", () => {
     expect(query.mock.calls.some(([sql]) => sql.includes("insert into cp2_background_jobs"))).toBe(
       true
     );
+  });
+
+  it("acknowledges only an owned event without replacing its payload", async () => {
+    const query = authQuery(async () => ({ rows: [{ entity_id: "event-1" }] }));
+    const response = await setup(query)(
+      request("/v1/realtime/events/event-1/ack", { method: "POST" }),
+      "/v1/realtime/events/event-1/ack"
+    );
+    expect(response!.status).toBe(200);
+    const update = query.mock.calls.find(([sql]) => sql.startsWith("update cp2_realtime_events"))!;
+    expect(update[0]).toContain("record = record ||");
+    expect(update[0]).toContain("account_id = $2");
+    expect(update[1]!.slice(0, 2)).toEqual(["event-1", accountId]);
+  });
+
+  it("does not create an event when acknowledging an unknown or foreign ID", async () => {
+    const query = authQuery();
+    const response = await setup(query)(
+      request("/v1/realtime/events/foreign/ack", { method: "POST" }),
+      "/v1/realtime/events/foreign/ack"
+    );
+    expect(response!.status).toBe(404);
+    expect(
+      query.mock.calls.some(([sql]) => sql.startsWith("insert into cp2_realtime_events"))
+    ).toBe(false);
   });
 
   it("allows readiness to go green only for the complete Edge host", async () => {

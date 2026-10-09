@@ -57,12 +57,12 @@ import { usePaymentsState } from "./hooks/usePaymentsState";
 import { useSuppliersState } from "./hooks/useSuppliersState";
 import { useNotificationsState } from "./hooks/useNotificationsState";
 import { useOssAgentSelectionState } from "./hooks/useOssAgentSelectionState";
-import { useViewRefreshRegistry } from "./hooks/useViewRefresh";
+import { useBusinessViewRefresh, useViewRefreshRegistry } from "./hooks/useViewRefresh";
 import { surfaceForShellView } from "./cross-device-session-context";
-import { clearPersistentApiRequestCache, subscribeToApiMutations } from "./api-request-cache";
+import { clearPersistentApiRequestCache } from "./api-request-cache";
 import { detectCapabilitySettings } from "./capability-profile";
 import { markNavigationCommitted, startNavigationMeasurement } from "./performance";
-import { likelyNextOwnerViews, prefetchOwnerView, scheduleIdleOwnerPrefetch } from "./prefetch";
+import { prefetchOwnerView } from "./prefetch";
 import { setConnectivityAuthentication } from "./connectivity";
 
 import { clearMessagingOutbox } from "./messaging/outbox";
@@ -146,20 +146,6 @@ const AgentProfileSurface = lazy(() =>
     () => import("./AgentProfileSurface")
   ).then((module) => ({ default: module.AgentProfileSurface }))
 );
-
-function shouldRefreshBusinessDomains(path: string, businessId: string): boolean {
-  const businessMutation = path.match(/^\/businesses\/([^/]+)\/([^/]+)/);
-  if (businessMutation !== null) {
-    const [, mutatedBusinessId, resource] = businessMutation;
-    return mutatedBusinessId === businessId && resource !== "runtime";
-  }
-
-  return (
-    path === "/network" ||
-    path.startsWith("/v1/oss-agents/installed") ||
-    path.startsWith("/v1/model-artifacts")
-  );
-}
 
 export function OwnerApp() {
   const installPrompt = useInstallPrompt();
@@ -1312,31 +1298,7 @@ export function OwnerApp() {
     };
   }, [business?.id, session?.account.id, setupComplete, view]);
 
-  useEffect(() => {
-    if (!setupComplete || business === null) return;
-    const businessId = business.id;
-    let refreshTimer: number | null = null;
-
-    const unsubscribe = subscribeToApiMutations((path) => {
-      if (!shouldRefreshBusinessDomains(path, businessId) || refreshTimer !== null) return;
-      refreshTimer = window.setTimeout(() => {
-        refreshTimer = null;
-        void Promise.allSettled(allRefreshers().map((refresh) => refresh(businessId)));
-      }, 50);
-    });
-
-    return () => {
-      unsubscribe();
-      if (refreshTimer !== null) window.clearTimeout(refreshTimer);
-    };
-  }, [business?.id, setupComplete]);
-
-  useEffect(() => {
-    if (!setupComplete || business === null) return;
-    const likelyViews = likelyNextOwnerViews(view);
-    if (likelyViews.length === 0) return;
-    return scheduleIdleOwnerPrefetch(likelyViews, business.id);
-  }, [business?.id, setupComplete, view]);
+  useBusinessViewRefresh(business?.id ?? null, setupComplete, view, allRefreshers);
 
   useEffect(() => {
     if (!setupComplete || view !== "chat" || business === null) return;

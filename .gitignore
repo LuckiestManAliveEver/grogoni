@@ -18,3 +18,7 @@ mongodb/*.env
 /.agents/
 /.codex/
 /.claude/
+# Generated Edge domain bundle is uploaded by the deployment script.
+supabase/.temp/
+supabase/functions/api/domain-bundle.mjs
+supabase/functions/api/pdf-worker.mjs

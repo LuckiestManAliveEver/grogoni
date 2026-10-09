@@ -39,7 +39,9 @@ const AccountDeletionPage = lazy(() =>
     () => import("./legal/AccountDeletionPage")
   )
 );
-const OwnerApp = lazy(() => loadGrogoniApplication().then((module) => ({ default: module.OwnerApp })));
+const OwnerApp = lazy(() =>
+  loadGrogoniApplication().then((module) => ({ default: module.OwnerApp }))
+);
 // Loaded on its own: a storefront visitor chats with a shop without downloading the owner app.
 const PublicStorefront = lazy(() =>
   loadLazyModuleWithRecovery(
