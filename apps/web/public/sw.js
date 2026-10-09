@@ -248,11 +248,14 @@ self.addEventListener("push", (event) => {
     event.waitUntil(
       Promise.all([
         self.registration.showNotification(
-          payload.title || (accepted ? "New Grogoni connection" : "New connection request on Grogoni"),
+          payload.title ||
+            (accepted ? "New Grogoni connection" : "New connection request on Grogoni"),
           {
             body:
               payload.body ||
-              (accepted ? "Open Grogoni to see your network." : "Open Grogoni to accept or decline."),
+              (accepted
+                ? "Open Grogoni to see your network."
+                : "Open Grogoni to accept or decline."),
             icon: "/icons/grogoni-icon-192.png",
             badge: "/icons/grogoni-icon-192.png",
             tag: payload.connectionId

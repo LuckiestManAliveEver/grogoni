@@ -164,11 +164,10 @@ export function PhoneFirstAuthentication({
       );
       onAuthenticated(result);
     } catch (error) {
-      if (
-        error instanceof ApiRequestError &&
-        error.code === "auth_credentials_invalid"
-      ) {
-        setMessage("We couldn't sign you in with that PIN. Check your account details and PIN, then try again.");
+      if (error instanceof ApiRequestError && error.code === "auth_credentials_invalid") {
+        setMessage(
+          "We couldn't sign you in with that PIN. Check your account details and PIN, then try again."
+        );
         return;
       }
       throw error;

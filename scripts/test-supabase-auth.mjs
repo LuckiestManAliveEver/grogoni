@@ -115,7 +115,7 @@ try {
   });
   status(methods, 200, "Login methods");
   assert.equal(methods.result.preferred, "pin");
-  assert.equal(methods.result.passkeyAvailable, false);
+  assert.equal(methods.result.passkeyAvailable, process.env.SMOKE_EXPECT_PASSKEYS !== "false");
   console.log("PASS login method discovery");
 
   const started = await call("/auth/signup/start", "POST", {

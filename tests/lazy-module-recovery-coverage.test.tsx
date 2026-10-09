@@ -154,7 +154,12 @@ describe("lazy module recovery coverage", () => {
   });
 
   it("never warms the owner app for a public storefront, but still for owner paths", () => {
-    for (const storefront of ["/agent/demo-shop", "/agent/x/products/p1", "/shop/x", "/grogoni/x/"]) {
+    for (const storefront of [
+      "/agent/demo-shop",
+      "/agent/x/products/p1",
+      "/shop/x",
+      "/grogoni/x/"
+    ]) {
       expect(matchStorefrontRoute(storefront)).not.toBeNull();
       expect(shouldWarmOwnerRoute(storefront)).toBe(false);
     }
