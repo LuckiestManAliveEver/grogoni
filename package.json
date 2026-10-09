@@ -61,6 +61,7 @@
     "health:connected": "node scripts/check-connected-deployment.mjs",
     "health:browser": "node scripts/smoke-production-browser.mjs",
     "health:api:supabase": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/deploy-supabase-api.mjs",
+    "test:business:supabase": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/test-supabase-business.mjs --live",
     "deploy:api:supabase": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/deploy-supabase-api.mjs --deploy",
     "lint": "eslint . --max-warnings=0",
     "local:doctor": "node scripts/local-doctor.mjs",

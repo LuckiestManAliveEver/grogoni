@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 import mammoth from "mammoth";
-import { PDFParse } from "pdf-parse";
 import * as XLSX from "xlsx";
 import type { DocumentImportSourceInput } from "@grogoni/business-core";
 import { Cp2Error } from "./store.js";
@@ -117,6 +116,10 @@ export async function extractDocumentBuffer(input: {
   const contentType = normalizeContentType(input.contentType);
 
   if (isPdf(extension, contentType)) {
+    const { PDFParse } = await import("pdf-parse");
+    const edgeWorkerUrl = (globalThis as typeof globalThis & { __edgePdfWorkerUrl?: string })
+      .__edgePdfWorkerUrl;
+    if (edgeWorkerUrl) PDFParse.setWorker(edgeWorkerUrl);
     const parser = new PDFParse({ data: new Uint8Array(input.buffer) });
 
     try {

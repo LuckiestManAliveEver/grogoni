@@ -1549,6 +1549,59 @@ async function loadNormalizedSnapshot(pool: Pool): Promise<Cp2Snapshot> {
   return snapshot;
 }
 
+/** The caller owns BEGIN/COMMIT and the normalized-store advisory lock. */
+export async function loadTransactionalCp2Snapshot(client: PoolClient): Promise<Cp2Snapshot> {
+  // Concurrent loaders share one transaction connection. Batch their parameter-free
+  // SELECTs so a remote database does not serialize dozens of network round trips.
+  let queued: {
+    sql: string;
+    resolve: (result: unknown) => void;
+    reject: (error: unknown) => void;
+  }[] = [];
+  const reader = {
+    query(sql: string, values?: unknown[]) {
+      if (values?.length) return client.query(sql, values);
+      return new Promise((resolve, reject) => {
+        queued.push({ sql, resolve, reject });
+        if (queued.length !== 1) return;
+        queueMicrotask(async () => {
+          const batch = queued;
+          queued = [];
+          try {
+            const result = await client.query(
+              batch.map((entry) => entry.sql.trim().replace(/;$/, "")).join(";\n")
+            );
+            const results = Array.isArray(result) ? result : [result];
+            if (results.length !== batch.length)
+              throw new Error("Snapshot query result count mismatch.");
+            batch.forEach((entry, index) => entry.resolve(results[index]));
+          } catch (error) {
+            batch.forEach((entry) => entry.reject(error));
+          }
+        });
+      });
+    }
+  };
+  return loadNormalizedSnapshot(reader as unknown as Pool);
+}
+
+export async function saveTransactionalCp2Snapshot(
+  client: PoolClient,
+  snapshot: Cp2Snapshot,
+  previous: Cp2Snapshot
+): Promise<void> {
+  for (const collection of normalizedCollections) {
+    const records = getSnapshotCollection(snapshot, collection.key);
+    if (!collectionUnchanged(records, getSnapshotCollection(previous, collection.key)))
+      await saveCollectionRecords(client, collection, records);
+  }
+  await reconcileConversationAttachmentBlobs(client, snapshot.conversationAttachments ?? []);
+  await saveRelationalCoreRecords(client, snapshot, previous);
+  for (const change of snapshot.syncChanges)
+    requireAccountSyncCollection(change.accountId, change.collection);
+  await replaceAccountSyncChanges(client, snapshot, previous);
+}
+
 /**
  * Loads every normalized collection in one round trip. Boot used to issue one query per table
  * (~150 tables), so against a remote database the API spent most of its startup waiting on
@@ -2707,7 +2760,7 @@ async function saveNormalizedSnapshot(
   }
 }
 
-function createPostgresAttachmentBlobStore(pool: Pool): ConversationAttachmentBlobStore {
+export function createPostgresAttachmentBlobStore(pool: Pool): ConversationAttachmentBlobStore {
   return {
     async put(blob) {
       await pool.query(
@@ -2740,7 +2793,7 @@ function createPostgresAttachmentBlobStore(pool: Pool): ConversationAttachmentBl
   };
 }
 
-function createPostgresAccountAiAssetStore(pool: Pool): AccountAiAssetStore {
+export function createPostgresAccountAiAssetStore(pool: Pool): AccountAiAssetStore {
   const readArtifact = async (
     artifactId: string,
     accountId: string,

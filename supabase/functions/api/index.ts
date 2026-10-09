@@ -21,14 +21,16 @@ url.searchParams.set("sslmode", "verify-full");
 const clientOptions = {
   connectionString: url.toString(),
   connectionTimeoutMillis: 5000,
-  query_timeout: 5000,
-  statement_timeout: 5000
+  query_timeout: 15000,
+  statement_timeout: 15000
 };
 const transaction: Transaction = async (action) => {
   const client = new pg.Client(clientOptions);
   try {
     await client.connect();
     await client.query("begin");
+    await client.query("set local lock_timeout = '10s'");
+    await client.query("select pg_advisory_xact_lock(hashtext('grogoni.cp2.normalized_store'))");
     const result = await action(client);
     await client.query("commit");
     return result;
@@ -49,6 +51,7 @@ const auth = createAuthRoutes({
     encryption: Deno.env.get("AUTH_TOKEN_ENCRYPTION_KEY") ?? ""
   },
   passwordEnabled: Deno.env.get("AUTH_PASSWORD_FALLBACK_ENABLED") !== "false",
+  passkeysEnabled: () => domain !== null && Deno.env.get("AUTH_PASSKEYS_ENABLED") !== "false",
   normalizePhone: (value, country) => {
     const normalizedCountry = country?.toUpperCase();
     if (normalizedCountry && !isSupportedCountry(normalizedCountry))
@@ -68,15 +71,46 @@ const auth = createAuthRoutes({
     return { e164: phone.number, country: phone.country, nationalNumber: phone.nationalNumber };
   }
 });
-const application = createApplicationRoutes({ transaction });
+const application = createApplicationRoutes({
+  transaction,
+  jobToken: Deno.env.get("BACKGROUND_JOB_TOKEN") ?? ""
+});
 const publicRoutes = createPublicRoutes(transaction);
+let domain: { routes: (request: Request, path: string) => Promise<Response | null> } | null = null;
+let domainStartupError: string | null = null;
+try {
+  const { createEdgeDomainRoutes } = await import("./domain-bundle.mjs");
+  domain = await createEdgeDomainRoutes({ transaction });
+} catch (error) {
+  domainStartupError =
+    error instanceof Error
+      ? (error.stack ?? `${error.name}: ${error.message}`)
+      : "Domain initialization failed";
+  console.error("Edge domain initialization failed", domainStartupError);
+}
 const handler = createHandler({
-  applicationRoutes: async (request, path) =>
-    (await auth(request, path)) ??
-    (await sessions(request, path)) ??
-    (await publicRoutes(request, path)) ??
-    application(request, path),
-  complete: true,
+  applicationRoutes: async (request, path) => {
+    if (path === "/internal/edge/domain-startup") {
+      const token = Deno.env.get("AUTH_AUDIT_HMAC_SECRET");
+      if (!token || request.headers.get("x-edge-diagnostic-token") !== token)
+        return Response.json({ code: "auth_required" }, { status: 401 });
+      return Response.json({ ready: domain !== null, error: domainStartupError });
+    }
+    return (
+      (await auth(request, path)) ??
+      (await sessions(request, path)) ??
+      (await domain?.routes(request, path)) ??
+      (await publicRoutes(request, path)) ??
+      (domain === null
+        ? Response.json({ code: "service_unavailable" }, { status: 503 })
+        : path === "/realtime" ||
+            path.startsWith("/v1/realtime/") ||
+            path.startsWith("/internal/jobs/")
+          ? application(request, path)
+          : null)
+    );
+  },
+  complete: domain !== null,
   allowedOrigins: (Deno.env.get("WEB_ORIGINS") ?? "http://localhost:5173,http://127.0.0.1:5173")
     .split(",")
     .map((origin) => origin.trim())

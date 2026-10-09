@@ -23,6 +23,7 @@ interface Dependencies {
   secrets: AuthSecrets;
   normalizePhone: (value: string, country?: string) => PhoneIdentity;
   passwordEnabled?: boolean;
+  passkeysEnabled?: () => boolean;
 }
 const postPaths = new Set([
   "/auth/continue",
@@ -203,7 +204,8 @@ export function createAuthRoutes({
   transaction,
   secrets,
   normalizePhone,
-  passwordEnabled = true
+  passwordEnabled = true,
+  passkeysEnabled = () => false
 }: Dependencies) {
   if (Object.values(secrets).some((value) => value.trim().length < 32))
     throw new Error("Production authentication secrets are required.");
@@ -840,7 +842,7 @@ export function createAuthRoutes({
           );
         return Response.json({
           preferred: "pin",
-          passkeyAvailable: false,
+          passkeyAvailable: passkeysEnabled(),
           passwordFallback: passwordEnabled,
           recoveryAvailable: false,
           smsLogin: false

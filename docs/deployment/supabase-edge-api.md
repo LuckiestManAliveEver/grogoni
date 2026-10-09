@@ -79,13 +79,15 @@ five-failure/15-minute limit across workers. Authentication writes mirror compat
 records within the same transaction. Refresh rotation preserves the absolute lifetime and
 15-second retry grace using an encrypted replacement token, and revokes the family on reuse.
 Logout and refresh acquire the same family lock to serialize concurrent revocations.
-Discovery does not advertise unfinished passkey/account-recovery routes. Password login for
+Discovery advertises passkeys only when the shared domain router is available; email recovery
+remains unavailable without delivery configuration. Passkey origins are restricted to
+`https://grogoni.com` and `https://www.grogoni.com`. Password login for
 accounts with enabled MFA returns a ten-minute challenge without issuing cookies. TOTP and
 single-use recovery codes complete it under row locks; failed attempts persist, five failures
 invalidate a challenge, and account-wide verification rate limits apply across challenges.
 TOTP uses the existing SHA-1/six-digit/30-second policy with a one-step clock-skew window and
 rejects reused time steps. PIN setup for MFA-enabled accounts also requires a second factor.
-MFA enrollment and management routes are not ported yet.
+MFA enrollment and management routes use the shared domain adapter.
 
 Email-based account recovery is intentionally unavailable: `RESEND_API_KEY` and
 `GROGONI_EMAIL_FROM` are not configured, and the operator confirmed there is no email
@@ -142,6 +144,31 @@ authentication before it is added; the project's Supabase Auth tokens are not su
 for existing application session credentials.
 
 ## Required Porting Work
+
+The Edge function now bundles the original CP2 and MCP HTTP route registrars. This
+includes user profiles/security, businesses, shops, products/inventory, customers,
+suppliers, staff invitations/roles, invoices/payments, fulfillment, reports,
+documents, marketplace, conversations/messages, and integration routes. The
+adapter keeps the original validation and authorization rather than substituting
+generic table CRUD. Deployment builds the domain bundle and PDF worker automatically.
+Apply migration `109_edge_protocol_state.sql` before deployment: MCP sessions,
+checkout confirmations and one-use OAuth grants must survive worker changes.
+
+Each request loads fresh state under the same transaction advisory lock used by
+native authentication, then writes changes before commit. Relational reads are
+batched on that connection. This prevents lost snapshot updates, but serializes
+domain requests and is not a substitute for future tenant-scoped persistence.
+The browser uses awaited HTTP sync polling for the first-party `/api` proxy.
+Turn-stream previews remain worker-local and best effort; durable messages are
+available through normal conversation and sync endpoints.
+
+Run `pnpm test:business:supabase` against the candidate, or set `SMOKE_API_URL` to
+the production function. It verifies business/product persistence, tenant
+isolation, public privacy and staff joining, and removes its own disposable rows.
+Candidate deployment: `pnpm deploy:api:supabase --slug=api-candidate`.
+External email, payment, inference and computer-runtime integrations still require
+their real credentials/services. Persisting a background-job trigger does not
+execute the job: a scheduler/worker is still required.
 
 - Keep all Edge-hosted routes on transaction-scoped PostgreSQL operations. Loading and
   flushing independent whole-store snapshots in concurrent workers can lose updates.

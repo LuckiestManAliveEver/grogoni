@@ -107,11 +107,15 @@ export function useSyncState(deps: UseSyncStateDeps) {
             isExplicitOfflineMode()
           )
             return;
-          const realtimeUrl = new URL("/v1/realtime", apiBaseUrl);
+          const realtimeUrl = new URL(`${apiBaseUrl}/v1/realtime`, window.location.origin);
           realtimeUrl.protocol = realtimeUrl.protocol === "https:" ? "wss:" : "ws:";
           closeRealtime = subscribeToAccountRealtime({
             accountId: session.account.id,
             endpoint: realtimeUrl.toString(),
+            transport:
+              apiBaseUrl.startsWith("/") || apiBaseUrl.includes("/functions/v1/")
+                ? "http-poll"
+                : "websocket",
             onChangesAvailable: catchUp
           });
         };

@@ -2,6 +2,24 @@ import { describe, expect, it, vi } from "vitest";
 import { createHandler } from "../supabase/functions/api/handler";
 
 describe("Supabase Edge migration entry point", () => {
+  it("preserves stream and download content types through the candidate gateway", async () => {
+    const applicationRoutes = vi.fn(
+      async () =>
+        new Response("data: ready\n\n", {
+          headers: { "content-type": "text/event-stream" }
+        })
+    );
+    const handler = createHandler({
+      checkDatabase: vi.fn(),
+      allowedOrigins: [],
+      applicationRoutes
+    });
+    const response = await handler(
+      new Request("https://example.com/functions/v1/api-candidate/v1/ai/turn-stream/test")
+    );
+    expect(applicationRoutes.mock.calls[0]?.[1]).toBe("/v1/ai/turn-stream/test");
+    expect(response.headers.get("content-type")).toBe("text/event-stream");
+  });
   it("permits the frontend's session and request headers in a browser preflight", async () => {
     const handler = createHandler({
       checkDatabase: vi.fn(),
@@ -20,6 +38,8 @@ describe("Supabase Edge migration entry point", () => {
     expect(response.status).toBe(204);
     expect(response.headers.get("access-control-allow-headers")).toContain("x-grogoni-device-id");
     expect(response.headers.get("access-control-allow-headers")).toContain("x-request-id");
+    expect(response.headers.get("access-control-allow-headers")).toContain("mcp-session-id");
+    expect(response.headers.get("access-control-expose-headers")).toContain("mcp-session-id");
   });
   it("handles the path forwarded by the hosted gateway", async () => {
     const handler = createHandler({ checkDatabase: vi.fn(), allowedOrigins: [] });
