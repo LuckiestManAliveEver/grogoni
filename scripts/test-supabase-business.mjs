@@ -4,6 +4,7 @@ import { randomInt, randomUUID } from "node:crypto";
 import { URL } from "node:url";
 import { Buffer } from "node:buffer";
 import { databasePoolConfig } from "../services/api/scripts/database-connection.mjs";
+import { connectDatabase } from "../supabase/functions/api/database-connection.ts";
 
 if (!process.argv.includes("--live"))
   throw new Error("Pass --live to create disposable business fixtures.");
@@ -11,8 +12,7 @@ const base =
   process.env.SMOKE_API_URL ??
   "https://gnmndzsughifhboqvsgd.supabase.co/functions/v1/api-candidate";
 const require = createRequire(new URL("../services/api/package.json", import.meta.url));
-const { Pool } = require("pg");
-const pool = new Pool(databasePoolConfig(process.env.DATABASE_URL, { max: 1 }));
+const { Client } = require("pg");
 const phones = [0, 1].map(() => `+254712${String(randomInt(1000000)).padStart(6, "0")}`);
 const cleanupDevice = process.argv.find((arg) => arg.startsWith("--cleanup-device="))?.slice(17);
 if (cleanupDevice && !/^edge-business-smoke-[a-f0-9-]{36}$/.test(cleanupDevice))
@@ -34,7 +34,9 @@ async function call(path, method = "GET", body, cookie = "", extraHeaders = {}) 
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     signal: globalThis.AbortSignal.timeout(30000)
   });
-  const result = await response.json();
+  const result = await response.json().catch(() => {
+    throw new Error(`${method} ${path} returned HTTP ${response.status} without valid JSON`);
+  });
   return {
     status: response.status,
     result,
@@ -50,6 +52,7 @@ function ok(response, label) {
   console.log(`PASS ${label}`);
   return response.result;
 }
+let workflowFailure;
 try {
   if (!cleanupDevice) {
     const owner = await call("/auth/pin/signup", "POST", {
@@ -197,12 +200,31 @@ try {
       "PASS live business creation, shop restore, product persistence, account isolation, and public privacy"
     );
   }
+} catch (error) {
+  workflowFailure = error;
+  throw error;
 } finally {
-  await cleanup();
+  await cleanupWithContext(workflowFailure);
+}
+
+async function cleanupWithContext(failure) {
+  try {
+    await cleanup();
+  } catch (error) {
+    if (failure)
+      throw new AggregateError([failure, error], "Workflow and fixture cleanup both failed");
+    throw error;
+  }
 }
 
 async function cleanup() {
-  const client = await pool.connect();
+  const client = await connectDatabase(
+    () =>
+      new Client({
+        ...databasePoolConfig(process.env.DATABASE_URL),
+        connectionTimeoutMillis: 10000
+      })
+  );
   try {
     await client.query("begin");
     await client.query("select pg_advisory_xact_lock(hashtext('grogoni.cp2.normalized_store'))");
@@ -296,8 +318,7 @@ async function cleanup() {
     await client.query("rollback");
     throw error;
   } finally {
-    client.release();
-    await pool.end();
+    await client.end();
   }
 }
 
