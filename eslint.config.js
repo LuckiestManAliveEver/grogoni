@@ -12,6 +12,9 @@ export default [
       "documentation/**",
       "MORE/**",
       "node_modules/**",
+      "supabase/.temp/**",
+      "supabase/functions/api/domain-bundle.mjs",
+      "supabase/functions/api/pdf-worker.mjs",
       "playwright-report/**",
       "pnpm-lock.yaml",
       "test-results/**"
