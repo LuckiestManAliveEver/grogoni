@@ -1595,7 +1595,13 @@ export async function saveTransactionalCp2Snapshot(
     if (!collectionUnchanged(records, getSnapshotCollection(previous, collection.key)))
       await saveCollectionRecords(client, collection, records);
   }
-  await reconcileConversationAttachmentBlobs(client, snapshot.conversationAttachments ?? []);
+  if (
+    !collectionUnchanged(
+      snapshotRecords(snapshot.conversationAttachments ?? []),
+      snapshotRecords(previous.conversationAttachments ?? [])
+    )
+  )
+    await reconcileConversationAttachmentBlobs(client, snapshot.conversationAttachments ?? []);
   await saveRelationalCoreRecords(client, snapshot, previous);
   for (const change of snapshot.syncChanges)
     requireAccountSyncCollection(change.accountId, change.collection);

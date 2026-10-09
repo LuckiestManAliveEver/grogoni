@@ -24,17 +24,39 @@ const clientOptions = {
   query_timeout: 15000,
   statement_timeout: 15000
 };
+let lastTransactionFailure: {
+  at: string;
+  stage: string;
+  category: string;
+  code: string | null;
+} | null = null;
 const transaction: Transaction = async (action) => {
   const client = new pg.Client(clientOptions);
+  let stage = "connect";
   try {
     await client.connect();
+    stage = "begin";
     await client.query("begin");
     await client.query("set local lock_timeout = '10s'");
+    stage = "store_lock";
     await client.query("select pg_advisory_xact_lock(hashtext('grogoni.cp2.normalized_store'))");
+    stage = "action";
     const result = await action(client);
+    stage = "commit";
     await client.query("commit");
     return result;
   } catch (error) {
+    lastTransactionFailure = {
+      at: new Date().toISOString(),
+      stage,
+      category:
+        error instanceof Error && /timeout|timed out/i.test(error.message)
+          ? "timeout"
+          : "database_failure",
+      code:
+        typeof error === "object" && error !== null && "code" in error ? String(error.code) : null
+    };
+    console.error(JSON.stringify({ event: "edge_transaction_failed", ...lastTransactionFailure }));
     await client.query("rollback").catch(() => {});
     throw error;
   } finally {
@@ -94,7 +116,11 @@ const handler = createHandler({
       const token = Deno.env.get("AUTH_AUDIT_HMAC_SECRET");
       if (!token || request.headers.get("x-edge-diagnostic-token") !== token)
         return Response.json({ code: "auth_required" }, { status: 401 });
-      return Response.json({ ready: domain !== null, error: domainStartupError });
+      return Response.json({
+        ready: domain !== null,
+        error: domainStartupError,
+        lastTransactionFailure
+      });
     }
     return (
       (await auth(request, path)) ??
