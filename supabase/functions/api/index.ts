@@ -5,6 +5,7 @@ import {
   type CountryCode
 } from "npm:libphonenumber-js@1.13.9/max";
 import { createHandler } from "./handler.ts";
+import { connectDatabase } from "./database-connection.ts";
 import { createSessionRoutes } from "./session-routes.ts";
 import { createAuthRoutes } from "./auth-routes.ts";
 import { createApplicationRoutes } from "./application-routes.ts";
@@ -20,7 +21,7 @@ if (!url.hostname.endsWith(".neon.tech") && !url.hostname.endsWith(".neon.databa
 url.searchParams.set("sslmode", "verify-full");
 const clientOptions = {
   connectionString: url.toString(),
-  connectionTimeoutMillis: 5000,
+  connectionTimeoutMillis: 10000,
   query_timeout: 15000,
   statement_timeout: 15000
 };
@@ -31,10 +32,10 @@ let lastTransactionFailure: {
   code: string | null;
 } | null = null;
 const transaction: Transaction = async (action) => {
-  const client = new pg.Client(clientOptions);
+  let client: pg.Client | undefined;
   let stage = "connect";
   try {
-    await client.connect();
+    client = await connectDatabase(() => new pg.Client(clientOptions));
     stage = "begin";
     await client.query("begin");
     await client.query("set local lock_timeout = '10s'");
@@ -57,10 +58,10 @@ const transaction: Transaction = async (action) => {
         typeof error === "object" && error !== null && "code" in error ? String(error.code) : null
     };
     console.error(JSON.stringify({ event: "edge_transaction_failed", ...lastTransactionFailure }));
-    await client.query("rollback").catch(() => {});
+    await client?.query("rollback").catch(() => {});
     throw error;
   } finally {
-    await client.end();
+    await client?.end();
   }
 };
 const sessions = createSessionRoutes(transaction);
@@ -142,9 +143,8 @@ const handler = createHandler({
     .map((origin) => origin.trim())
     .filter(Boolean),
   checkDatabase: async () => {
-    const client = new pg.Client(clientOptions);
+    const client = await connectDatabase(() => new pg.Client(clientOptions));
     try {
-      await client.connect();
       await client.query("select 1");
     } finally {
       await client.end();

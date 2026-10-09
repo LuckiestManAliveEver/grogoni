@@ -73,6 +73,7 @@ if (process.argv.includes("--deploy")) {
   );
   for (const filename of [
     "index.ts",
+    "database-connection.ts",
     "handler.ts",
     "session-routes.ts",
     "auth-routes.ts",
