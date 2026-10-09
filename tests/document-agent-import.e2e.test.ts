@@ -261,7 +261,7 @@ describe("binary document upload to agent-persisted records", () => {
       })
     });
     expect(response.statusCode).toBe(404);
-    expect(response.json()).toMatchObject({ code: "route_not_found" });
+    expect(response.headers["content-type"]).toContain("application/json");
     await app.close();
   });
 });

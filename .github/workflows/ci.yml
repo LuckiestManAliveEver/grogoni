@@ -47,9 +47,6 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium
 
       - name: Check
-        env:
-          VITE_API_BASE_URL: https://gnmndzsughifhboqvsgd.supabase.co/functions/v1/api
-          VITE_API_URL: https://gnmndzsughifhboqvsgd.supabase.co/functions/v1/api
         run: pnpm run ci
 
       - name: PostgreSQL migrations and integration tests
