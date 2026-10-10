@@ -81,6 +81,7 @@ if (process.argv.includes("--deploy")) {
     "public-routes.ts",
     "rate-limit.ts",
     "job-transaction.ts",
+    "store-coordination.ts",
     "domain-bundle.mjs",
     "pdf-worker.mjs",
     "credentials.ts"
