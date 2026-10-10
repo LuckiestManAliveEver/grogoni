@@ -7,7 +7,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://gnmndzsughifhboqvsgd.supabase.co/functions/v1/api/:path*"
+      "destination": "https://gnmndzsughifhboqvsgd.supabase.co/functions/v1/api/:path*?forceFunctionRegion=us-east-1"
     },
     {
       "source": "/(.*)",

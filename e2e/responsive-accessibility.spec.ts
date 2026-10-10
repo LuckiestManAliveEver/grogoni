@@ -268,7 +268,7 @@ test("offers Gmail contacts as the first network source for a verified Gmail acc
       })
     })
   );
-  await page.route("**/network", (route) =>
+  await page.route("http://127.0.0.1:4000/network", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -299,6 +299,9 @@ test("offers Gmail contacts as the first network source for a verified Gmail acc
 
   await page.goto("/");
   const card = page.locator(".identity-network-onboarding");
+  await expect(page.getByRole("textbox", { name: "Message", exact: true })).toBeVisible();
+  await expect(card).toHaveCount(0);
+  await page.goto("/network");
   await expect(card.getByRole("heading", { name: "Add your first contacts" })).toBeVisible();
 
   const importButton = card.getByRole("button", { name: "Import Google Contacts" });
@@ -312,6 +315,29 @@ test("offers Gmail contacts as the first network source for a verified Gmail acc
       purpose: "contacts"
     });
 });
+
+for (const width of [390, 1366]) {
+  test(`the Shop Hub offers setup instead of an empty drawer without a shop at ${width}px`, async ({
+    page
+  }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.addInitScript(() => {
+      localStorage.removeItem("grogoni.chatFirst.activeBusiness");
+      localStorage.setItem("grogoni.chatFirst.mode", "marketplace");
+    });
+    await page.goto("/sell/shop");
+    const setup = page.getByRole("button", { name: "Set up your shop", exact: true });
+    await expect(setup).toBeVisible();
+    await expect(page.locator(".identity-network-onboarding")).toHaveCount(0);
+    await expectNoViewportOverflow(page);
+    await page.screenshot({
+      path: `/tmp/grogoni-production-fixes/no-shop-${width}.png`,
+      fullPage: true
+    });
+    await setup.click();
+    await expect(page.getByLabel("Phone number", { exact: true })).toBeVisible();
+  });
+}
 
 test("the Shop Hub opens at /sell/shop, opens modules as drawers, and closes with Escape", async ({
   page

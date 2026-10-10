@@ -17,6 +17,11 @@ import {
   createPostgresFulfillmentService,
   fulfillmentDepsFromStore
 } from "./cp2/domains/fulfillment/service.js";
+import {
+  createEdgeSnapshotScope,
+  prepareEdgeHydration,
+  prepareEdgePersistence
+} from "./cp2/edge-snapshot-scope.js";
 
 export interface EdgeDomainDatabase {
   transaction: <T>(action: (client: PoolClient) => Promise<T>) => Promise<T>;
@@ -93,8 +98,17 @@ export async function createEdgeDomainRoutes(database: EdgeDomainDatabase) {
     if (payload && payload.length > 15_000_000)
       return Response.json({ code: "request_too_large" }, { status: 413 });
     return database.transaction(async (client) => {
-      await client.query("set local lock_timeout = '10s'");
-      await client.query("select pg_advisory_xact_lock(hashtext('grogoni.cp2.normalized_store'))");
+      const scope = await createEdgeSnapshotScope(client, request, path, payload);
+      if (request.method !== "GET" && request.method !== "HEAD") {
+        await client.query("set local lock_timeout = '10s'");
+        if (scope.accountId)
+          await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [
+            `edge:account:${scope.accountId}`
+          ]);
+        await client.query(
+          `${scope.withClause} select pg_advisory_xact_lock(hashtextextended('edge:business:' || id, 0)) from edge_business_ids order by id`
+        );
+      }
       const pool = transactionPool(client);
       const store = createCp2Store({
         messageWebBaseUrl: process.env.WEB_PUBLIC_URL ?? "https://grogoni.com",
@@ -102,9 +116,9 @@ export async function createEdgeDomainRoutes(database: EdgeDomainDatabase) {
         conversationAttachmentBlobStore: createPostgresAttachmentBlobStore(pool),
         accountAiAssetStore: createPostgresAccountAiAssetStore(pool)
       });
-      const snapshot = await loadTransactionalCp2Snapshot(client);
-      const baseline = structuredClone(snapshot);
-      store.hydrateSnapshot(snapshot);
+      const snapshot = await loadTransactionalCp2Snapshot(client, scope);
+      const baseline = snapshot;
+      store.hydrateSnapshot(prepareEdgeHydration(snapshot));
       if (request.method === "GET" && path.startsWith("/v1/ai/turn-stream/")) {
         const turnId = path.slice("/v1/ai/turn-stream/".length);
         if (!isValidTurnId(turnId))
@@ -177,6 +191,21 @@ export async function createEdgeDomainRoutes(database: EdgeDomainDatabase) {
         }
       }
       const app = Fastify({ logger: false, bodyLimit: 15_000_000 });
+      app.addHook("onError", async (failedRequest, reply, error) => {
+        if ((error.statusCode ?? 500) < 500) return;
+        const requestId = crypto.randomUUID();
+        reply.header("x-request-id", requestId);
+        console.error(
+          JSON.stringify({
+            event: "edge_domain_route_failed",
+            requestId,
+            method: failedRequest.method,
+            route: failedRequest.routeOptions.url,
+            errorType: error.name,
+            code: error.code ?? null
+          })
+        );
+      });
       try {
         await app.register(websocket);
         const fulfillment = createPostgresFulfillmentService({
@@ -208,6 +237,9 @@ export async function createEdgeDomainRoutes(database: EdgeDomainDatabase) {
           path.startsWith("/v1/mcp/") ||
           path.startsWith("/.well-known/");
         if (needsMcpState) {
+          await client.query(
+            "select pg_advisory_xact_lock(hashtextextended('edge:mcp-protocol', 0))"
+          );
           const saved = (
             await client.query(
               "select record from cp2_edge_protocol_state where entity_id = 'mcp' for update"
@@ -253,11 +285,16 @@ export async function createEdgeDomainRoutes(database: EdgeDomainDatabase) {
         const result = isValidTurnId(turnId)
           ? await turnContext.run({ turnId }, inject)
           : await inject();
-        const afterRoutes = structuredClone(store.snapshot());
-        await saveTransactionalCp2Snapshot(client, afterRoutes, baseline);
+        const afterRoutes = prepareEdgePersistence(store.snapshot(), baseline);
+        if ((request.method !== "GET" && request.method !== "HEAD") || needsMcpState)
+          await saveTransactionalCp2Snapshot(client, afterRoutes, baseline);
         for (const action of pendingActions) await action();
         if (pendingActions.length)
-          await saveTransactionalCp2Snapshot(client, store.snapshot(), afterRoutes);
+          await saveTransactionalCp2Snapshot(
+            client,
+            prepareEdgePersistence(store.snapshot(), afterRoutes),
+            afterRoutes
+          );
         if (needsMcpState) {
           const record = Object.fromEntries(
             Object.entries({

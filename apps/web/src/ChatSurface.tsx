@@ -927,7 +927,14 @@ export function ChatSurface({
                   />
                 </Suspense>
               </LazyModuleErrorBoundary>
-            ) : null
+            ) : (
+              <div className="record-form">
+                <p>No shop yet.</p>
+                <button type="button" onClick={() => onModeChange("seller")}>
+                  Set up your shop
+                </button>
+              </div>
+            )
           ) : workspaceCardView === "businessDashboard" ? (
             <MerchantWorkspaceDashboard
               businessName={businessName}

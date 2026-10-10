@@ -1527,12 +1527,20 @@ function warmPool(pool: Pool, connections: number): void {
   }
 }
 
-async function loadNormalizedSnapshot(pool: Pool): Promise<Cp2Snapshot> {
+const edgeNormalizedBaselines = new WeakMap<
+  Cp2Snapshot,
+  Map<SnapshotCollectionKey, SnapshotRecord[]>
+>();
+
+async function loadNormalizedSnapshot(
+  pool: Pool,
+  predicate?: (key: SnapshotCollectionKey) => string
+): Promise<Cp2Snapshot> {
   const snapshot = emptySnapshot();
   const result = await timedQuery<{ collection_index: number; records: SnapshotRecord[] }>(
     pool,
     "load normalized collections",
-    buildNormalizedSnapshotSql(normalizedCollections)
+    buildNormalizedSnapshotSql(normalizedCollections, predicate)
   );
   for (const row of result.rows) {
     const collection = normalizedCollections[row.collection_index];
@@ -1544,13 +1552,29 @@ async function loadNormalizedSnapshot(pool: Pool): Promise<Cp2Snapshot> {
     setSnapshotCollection(snapshot, collection.key, row.records);
   }
 
+  if (predicate)
+    edgeNormalizedBaselines.set(
+      snapshot,
+      new Map(
+        normalizedCollections.map(({ key }) => [
+          key,
+          structuredClone(getSnapshotCollection(snapshot, key))
+        ])
+      )
+    );
   await loadRelationalCoreSnapshot(pool, snapshot);
 
   return snapshot;
 }
 
-/** The caller owns BEGIN/COMMIT and the normalized-store advisory lock. */
-export async function loadTransactionalCp2Snapshot(client: PoolClient): Promise<Cp2Snapshot> {
+/** The caller owns BEGIN/COMMIT and the appropriate store or tenant locks. */
+export async function loadTransactionalCp2Snapshot(
+  client: PoolClient,
+  scope?: {
+    withClause: string;
+    predicate: (key: SnapshotCollectionKey) => string;
+  }
+): Promise<Cp2Snapshot> {
   // Concurrent loaders share one transaction connection. Batch their parameter-free
   // SELECTs so a remote database does not serialize dozens of network round trips.
   let queued: {
@@ -1562,7 +1586,7 @@ export async function loadTransactionalCp2Snapshot(client: PoolClient): Promise<
     query(sql: string, values?: unknown[]) {
       if (values?.length) return client.query(sql, values);
       return new Promise((resolve, reject) => {
-        queued.push({ sql, resolve, reject });
+        queued.push({ sql: scope ? `${scope.withClause} ${sql}` : sql, resolve, reject });
         if (queued.length !== 1) return;
         queueMicrotask(async () => {
           const batch = queued;
@@ -1582,8 +1606,10 @@ export async function loadTransactionalCp2Snapshot(client: PoolClient): Promise<
       });
     }
   };
-  return loadNormalizedSnapshot(reader as unknown as Pool);
+  return loadNormalizedSnapshot(reader as unknown as Pool, scope?.predicate);
 }
+
+const edgeRemovalBaselines = new WeakMap<PoolClient, Cp2Snapshot>();
 
 export async function saveTransactionalCp2Snapshot(
   client: PoolClient,
@@ -1593,7 +1619,13 @@ export async function saveTransactionalCp2Snapshot(
   for (const collection of normalizedCollections) {
     const records = getSnapshotCollection(snapshot, collection.key);
     if (!collectionUnchanged(records, getSnapshotCollection(previous, collection.key)))
-      await saveCollectionRecords(client, collection, records);
+      await saveCollectionRecords(
+        client,
+        collection,
+        records,
+        getSnapshotCollection(previous, collection.key),
+        edgeNormalizedBaselines.get(previous)?.get(collection.key)
+      );
   }
   if (
     !collectionUnchanged(
@@ -1601,11 +1633,22 @@ export async function saveTransactionalCp2Snapshot(
       snapshotRecords(previous.conversationAttachments ?? [])
     )
   )
-    await reconcileConversationAttachmentBlobs(client, snapshot.conversationAttachments ?? []);
-  await saveRelationalCoreRecords(client, snapshot, previous);
-  for (const change of snapshot.syncChanges)
-    requireAccountSyncCollection(change.accountId, change.collection);
-  await replaceAccountSyncChanges(client, snapshot, previous);
+    for (const attachment of previous.conversationAttachments ?? []) {
+      if (!(snapshot.conversationAttachments ?? []).some((entry) => entry.id === attachment.id)) {
+        await client.query("delete from cp2_conversation_attachment_blobs where storage_key = $1", [
+          attachment.storageKey
+        ]);
+      }
+    }
+  edgeRemovalBaselines.set(client, previous);
+  try {
+    await saveRelationalCoreRecords(client, snapshot, previous);
+    for (const change of snapshot.syncChanges)
+      requireAccountSyncCollection(change.accountId, change.collection);
+    await replaceAccountSyncChanges(client, snapshot, previous);
+  } finally {
+    edgeRemovalBaselines.delete(client);
+  }
 }
 
 /**
@@ -1615,11 +1658,14 @@ export async function saveTransactionalCp2Snapshot(
  * to the previous per-table `order by entity_id` query, and aggregating per table means the
  * union only ever combines jsonb values, so differing entity_id types never matter.
  */
-export function buildNormalizedSnapshotSql(collections: readonly NormalizedCollection[]): string {
+export function buildNormalizedSnapshotSql(
+  collections: readonly NormalizedCollection[],
+  predicate?: (key: SnapshotCollectionKey) => string
+): string {
   return collections
     .map(
       (collection, index) =>
-        `select ${index}::int as collection_index, coalesce(jsonb_agg(record order by entity_id), '[]'::jsonb) as records from ${collection.tableName}`
+        `select ${index}::int as collection_index, coalesce(jsonb_agg(record order by entity_id), '[]'::jsonb) as records from ${collection.tableName}${predicate ? ` where ${predicate(collection.key)}` : ""}`
     )
     .join("\nunion all\n");
 }
@@ -3113,21 +3159,47 @@ const collectionUpsertChunkSize = 1_000;
 export async function saveCollectionRecords(
   client: PoolClient,
   collection: NormalizedCollection,
-  records: SnapshotRecord[]
+  records: SnapshotRecord[],
+  previous?: SnapshotRecord[],
+  expected?: SnapshotRecord[]
 ): Promise<void> {
   const desiredIds = records.map((record) => recordEntityId(collection.key, record));
-  const existingResult = await client.query<{ entity_id: string }>(
-    `select entity_id from ${collection.tableName}`
-  );
+  const existingResult = previous
+    ? { rows: previous.map((record) => ({ entity_id: recordEntityId(collection.key, record) })) }
+    : await client.query<{ entity_id: string }>(`select entity_id from ${collection.tableName}`);
   const desiredIdSet = new Set(desiredIds);
   const removedIds = existingResult.rows
     .map((row) => row.entity_id)
     .filter((entityId) => !desiredIdSet.has(entityId));
 
   if (removedIds.length > 0) {
-    await client.query(`delete from ${collection.tableName} where entity_id = any($1::text[])`, [
-      removedIds
-    ]);
+    if (expected) {
+      const removed = expected.filter((record) =>
+        removedIds.includes(recordEntityId(collection.key, record))
+      );
+      const result = await client.query(
+        `delete from ${collection.tableName} persisted using jsonb_to_recordset($1::jsonb) as baseline(entity_id text, record jsonb)
+        where persisted.entity_id = baseline.entity_id and persisted.record = baseline.record`,
+        [
+          JSON.stringify(
+            removed.map((record) => ({ entity_id: recordEntityId(collection.key, record), record }))
+          )
+        ]
+      );
+      if (
+        result.rowCount !== undefined &&
+        result.rowCount !== null &&
+        result.rowCount !== removed.length
+      )
+        throw Object.assign(new Error("Concurrent snapshot update"), {
+          code: "40001",
+          table: collection.tableName
+        });
+    } else {
+      await client.query(`delete from ${collection.tableName} where entity_id = any($1::text[])`, [
+        removedIds
+      ]);
+    }
   }
 
   // One multi-row upsert per chunk instead of one round trip per record: against a remote
@@ -3136,7 +3208,7 @@ export async function saveCollectionRecords(
   // which differs across the normalized tables. The old loop let a repeated entity_id's last
   // record win; a multi-row upsert rejects repeats, so they are collapsed the same way first.
   const rowsByEntityId = new Map<string, unknown[]>();
-  for (const record of records) {
+  for (const record of previous ? recordsChangedSince(records, previous) : records) {
     const entityId = recordEntityId(collection.key, record);
     rowsByEntityId.delete(entityId);
     rowsByEntityId.set(entityId, [
@@ -3149,8 +3221,39 @@ export async function saveCollectionRecords(
     ]);
   }
   const rows = [...rowsByEntityId.values()];
+  const expectedById = new Map(
+    expected?.map((record) => [recordEntityId(collection.key, record), record])
+  );
   for (let offset = 0; offset < rows.length; offset += collectionUpsertChunkSize) {
     const chunk = rows.slice(offset, offset + collectionUpsertChunkSize);
+    if (expected) {
+      const placeholders = chunk
+        .map((_row, index) => {
+          const base = index * 7;
+          return `($${base + 1}::text,$${base + 2}::text,$${base + 3}::text,$${base + 4}::text,$${base + 5}::text,$${base + 6}::jsonb,$${base + 7}::jsonb)`;
+        })
+        .join(",");
+      const result = await client.query(
+        `with input(entity_id,business_id,account_id,user_id,parent_id,record,expected) as (values ${placeholders})
+        insert into ${collection.tableName} (entity_id,business_id,account_id,user_id,parent_id,record,updated_at)
+        select entity_id,business_id,account_id,user_id,parent_id,record,now() from input
+        on conflict (entity_id) do update set business_id=excluded.business_id, account_id=excluded.account_id,
+          user_id=excluded.user_id,parent_id=excluded.parent_id,record=excluded.record,updated_at=now()
+        where ${collection.tableName}.record = (select expected from input where input.entity_id = excluded.entity_id)
+        returning entity_id`,
+        chunk.flatMap((row) => [...row, JSON.stringify(expectedById.get(String(row[0])) ?? null)])
+      );
+      if (
+        result.rowCount !== undefined &&
+        result.rowCount !== null &&
+        result.rowCount !== chunk.length
+      )
+        throw Object.assign(new Error("Concurrent snapshot update"), {
+          code: "40001",
+          table: collection.tableName
+        });
+      continue;
+    }
     const placeholders = chunk
       .map((_row, index) => {
         const base = index * 6;
@@ -3933,6 +4036,21 @@ async function deleteRemovedAccountSyncChanges(
   client: PoolClient,
   snapshot: Cp2Snapshot
 ): Promise<void> {
+  const baseline = edgeRemovalBaselines.get(client);
+  if (baseline) {
+    const retained = new Set(
+      snapshot.syncChanges.map((change) => `${change.accountId}:${change.sequence}`)
+    );
+    for (const change of baseline.syncChanges) {
+      if (!retained.has(`${change.accountId}:${change.sequence}`)) {
+        await client.query(
+          "delete from account_sync_changes where account_id = $1 and sequence = $2",
+          [change.accountId, change.sequence]
+        );
+      }
+    }
+    return;
+  }
   await client.query(
     `
       delete from account_sync_changes as persisted
@@ -4159,18 +4277,24 @@ async function deleteRemovedAccountRelationalGraph(
   const desiredAccountIds = snapshot.accounts.map((item) => item.id);
   const desiredUserIds = snapshot.users.map((item) => item.id);
   const desiredBusinessIds = snapshot.businesses.map((item) => item.id);
-  const removedAccounts = await client.query<{ id: string }>(
-    "select id from accounts where not (id = any($1::uuid[]))",
-    [desiredAccountIds]
-  );
-  const removedUsers = await client.query<{ id: string }>(
-    "select id from users where not (id = any($1::uuid[]))",
-    [desiredUserIds]
-  );
-  const removedBusinesses = await client.query<{ id: string }>(
-    "select id from businesses where not (id = any($1::uuid[]))",
-    [desiredBusinessIds]
-  );
+  const baseline = edgeRemovalBaselines.get(client);
+  const removedAccounts = baseline
+    ? { rows: baseline.accounts.filter((item) => !desiredAccountIds.includes(item.id)) }
+    : await client.query<{ id: string }>(
+        "select id from accounts where not (id = any($1::uuid[]))",
+        [desiredAccountIds]
+      );
+  const removedUsers = baseline
+    ? { rows: baseline.users.filter((item) => !desiredUserIds.includes(item.id)) }
+    : await client.query<{ id: string }>("select id from users where not (id = any($1::uuid[]))", [
+        desiredUserIds
+      ]);
+  const removedBusinesses = baseline
+    ? { rows: baseline.businesses.filter((item) => !desiredBusinessIds.includes(item.id)) }
+    : await client.query<{ id: string }>(
+        "select id from businesses where not (id = any($1::uuid[]))",
+        [desiredBusinessIds]
+      );
   const accountIds = removedAccounts.rows.map((row) => row.id);
   const userIds = removedUsers.rows.map((row) => row.id);
   const businessIds = removedBusinesses.rows.map((row) => row.id);
@@ -4699,7 +4823,36 @@ async function deleteMissingRows(
   records: SnapshotRecord[]
 ): Promise<void> {
   const ids = records.map((record) => requiredText(record, "id"));
-
+  const baseline = edgeRemovalBaselines.get(client);
+  if (baseline) {
+    const keys: Record<string, keyof Cp2Snapshot> = {
+      mcp_access_tokens: "mcpAccessTokens",
+      cp2_external_registry_connections: "externalRegistryConnections",
+      receipt_line_items: "receiptLineItems",
+      payments: "payments",
+      purchase_receipts: "purchaseReceipts",
+      receipt_ocr_jobs: "receiptOCRJobs",
+      supplier_contact_links: "supplierContactLinks",
+      oauth_sessions: "oauthSessions",
+      auth_accounts: "userIdentities",
+      verification_challenges: "otpChallenges",
+      sms_delivery_attempts: "smsDeliveryAttempts",
+      user_identities: "userIdentities",
+      otp_challenges: "otpChallenges",
+      sales_agents: "salesAgents",
+      suppliers: "suppliers",
+      sessions: "sessions",
+      business_memberships: "memberships"
+    };
+    const key = keys[tableName];
+    if (!key) throw new Error(`Unsupported scoped deletion table: ${tableName}`);
+    const removed = snapshotRecords(baseline[key] ?? [])
+      .map((record) => requiredText(record, "id"))
+      .filter((id) => !ids.includes(id));
+    if (removed.length)
+      await client.query(`delete from ${tableName} where id = any($1::uuid[])`, [removed]);
+    return;
+  }
   await client.query(`delete from ${tableName} where not (id = any($1::uuid[]))`, [ids]);
 }
 
@@ -4708,7 +4861,17 @@ async function deleteMissingAccountPinHashes(
   records: SnapshotRecord[]
 ): Promise<void> {
   const accountIds = records.map((record) => requiredText(record, "accountId"));
-
+  const baseline = edgeRemovalBaselines.get(client);
+  if (baseline) {
+    const removed = baseline.accountPinHashes
+      .map((record) => record.accountId)
+      .filter((id) => !accountIds.includes(id));
+    if (removed.length)
+      await client.query("delete from account_pin_hashes where account_id = any($1::uuid[])", [
+        removed
+      ]);
+    return;
+  }
   await client.query("delete from account_pin_hashes where not (account_id = any($1::uuid[]))", [
     accountIds
   ]);
@@ -4725,7 +4888,18 @@ async function deleteMissingDeviceTrustRows(
       requiredText(record, "deviceId")
     ].join(":")
   );
-
+  const baseline = edgeRemovalBaselines.get(client);
+  if (baseline) {
+    for (const record of baseline.deviceTrust) {
+      if (!keys.includes([record.businessId, record.userId, record.deviceId].join(":"))) {
+        await client.query(
+          "delete from device_trust where business_id = $1 and user_id = $2 and device_id = $3",
+          [record.businessId, record.userId, record.deviceId]
+        );
+      }
+    }
+    return;
+  }
   await client.query(
     `
       delete from device_trust
@@ -4740,7 +4914,17 @@ async function deleteMissingInvoiceRows(
   records: SnapshotRecord[]
 ): Promise<void> {
   const invoiceIds = records.map((record) => requiredText(record, "id"));
-
+  const baseline = edgeRemovalBaselines.get(client);
+  if (baseline) {
+    const removed = baseline.invoices
+      .map((record) => record.id)
+      .filter((id) => !invoiceIds.includes(id));
+    if (removed.length) {
+      await client.query("delete from invoice_items where invoice_id = any($1::uuid[])", [removed]);
+      await client.query("delete from invoices where id = any($1::uuid[])", [removed]);
+    }
+    return;
+  }
   await client.query("delete from invoice_items where not (invoice_id = any($1::uuid[]))", [
     invoiceIds
   ]);

@@ -1,4 +1,5 @@
 import * as Screens from "./owner-workspace-screens";
+import type { ReactNode } from "react";
 import {
   emptyCustomerForm,
   emptyInvoiceForm,
@@ -219,6 +220,7 @@ type ChatThreadState = Pick<
 >;
 
 export interface OwnerWorkspaceBindings {
+  networkOnboarding?: ReactNode;
   businessId: string | null;
   /**
    * The viewer's permissions in the open business (display only: which cards to show; the server
@@ -258,6 +260,7 @@ export function renderOwnerWorkspace(input: OwnerWorkspaceBindings) {
 
 function renderOwnerWorkspaceScreen(input: OwnerWorkspaceBindings) {
   const { businessId, publicStorefrontUrl, view } = input;
+  if (view === "network") return renderNetworkWorkspace(input);
   if (businessId === null) return null;
   const { runAction } = input.asyncActions;
   const {
@@ -308,16 +311,6 @@ function renderOwnerWorkspaceScreen(input: OwnerWorkspaceBindings) {
     loadInvoices
   } = input.invoicesState;
   const {
-    networkGraph,
-    networkInvites,
-    loadNetworkGraph,
-    loadNetworkInvites,
-    syncPhoneNetwork,
-    syncSocialNetwork,
-    requestNetworkRoute,
-    approveNetworkRoute,
-    rejectNetworkRoute,
-    disconnectNetworkSource,
     shareOwnerStorefrontInvite,
     syncOwnerPhoneContacts,
     importContactsFile,
@@ -410,7 +403,6 @@ function renderOwnerWorkspaceScreen(input: OwnerWorkspaceBindings) {
   const { storefrontCareRequests, storefrontMessages, storefrontOrders, loadStorefrontInbox } =
     input.storefrontCareState;
   const { navigateToView, setRoutedProductId, openProduct } = input.navigationState;
-  const { authenticateSocialProfile, oauthProviders } = input.authState;
   const { setChatMessages, setRuntimeSessionId } = input.chatThreadState;
 
   switch (view) {
@@ -570,37 +562,6 @@ function renderOwnerWorkspaceScreen(input: OwnerWorkspaceBindings) {
             void runAction("invoice-confirm", () => confirmInvoice(invoiceId))
           }
           onPrint={printInvoice}
-        />
-      );
-    case "network":
-      return (
-        <NetworkSurface
-          businessId={businessId}
-          graph={networkGraph}
-          invites={networkInvites}
-          providers={oauthProviders}
-          onRefresh={() => {
-            void loadNetworkGraph();
-            void loadNetworkInvites(businessId);
-          }}
-          onSyncContacts={() => void runAction("network-sync", syncPhoneNetwork)}
-          onSyncSocial={(provider) =>
-            void runAction("network-social", () =>
-              syncSocialNetwork(provider, authenticateSocialProfile)
-            )
-          }
-          onRoute={(targetNodeId) =>
-            void runAction("network-route", () => requestNetworkRoute(targetNodeId))
-          }
-          onApproveRoute={(routeId) =>
-            void runAction("network-route-approve", () => approveNetworkRoute(routeId))
-          }
-          onRejectRoute={(routeId) =>
-            void runAction("network-route-reject", () => rejectNetworkRoute(routeId))
-          }
-          onDisconnectSource={(sourceId) =>
-            void runAction("network-disconnect", () => disconnectNetworkSource(sourceId))
-          }
         />
       );
     case "sync":
@@ -789,4 +750,40 @@ function renderOwnerWorkspaceScreen(input: OwnerWorkspaceBindings) {
     default:
       return null;
   }
+}
+
+function renderNetworkWorkspace(input: OwnerWorkspaceBindings) {
+  const { businessId, networkState: network, authState: auth } = input;
+  const { runAction } = input.asyncActions;
+  return (
+    <NetworkSurface
+      businessId={businessId}
+      onboarding={input.networkOnboarding}
+      graph={network.networkGraph}
+      invites={network.networkInvites}
+      providers={auth.oauthProviders}
+      onRefresh={() => {
+        void network.loadNetworkGraph();
+        if (businessId !== null) void network.loadNetworkInvites(businessId);
+      }}
+      onSyncContacts={() => void runAction("network-sync", network.syncPhoneNetwork)}
+      onSyncSocial={(provider) =>
+        void runAction("network-social", () =>
+          network.syncSocialNetwork(provider, auth.authenticateSocialProfile)
+        )
+      }
+      onRoute={(targetNodeId) =>
+        void runAction("network-route", () => network.requestNetworkRoute(targetNodeId))
+      }
+      onApproveRoute={(id) =>
+        void runAction("network-route-approve", () => network.approveNetworkRoute(id))
+      }
+      onRejectRoute={(id) =>
+        void runAction("network-route-reject", () => network.rejectNetworkRoute(id))
+      }
+      onDisconnectSource={(id) =>
+        void runAction("network-disconnect", () => network.disconnectNetworkSource(id))
+      }
+    />
+  );
 }

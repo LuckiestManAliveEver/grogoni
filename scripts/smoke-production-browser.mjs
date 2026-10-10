@@ -1,11 +1,13 @@
 import { chromium } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
-import { randomInt } from "node:crypto";
+import { createProductionSmokeFixtures } from "./production-smoke-fixtures.mjs";
 
 const frontend = process.env.SMOKE_FRONTEND_URL ?? "https://grogoni.com";
 const output = process.env.SMOKE_SCREENSHOT_DIR ?? "/tmp/grogoni-production-smoke";
 await mkdir(output, { recursive: true });
+const fixtures = createProductionSmokeFixtures();
 const browser = await chromium.launch({ headless: true });
+let workflowFailure;
 try {
   for (const [name, viewport] of [
     ["desktop", { width: 1366, height: 860 }],
@@ -18,16 +20,16 @@ try {
       page.on("response", (response) => {
         if (
           response.url().includes("/api/") &&
-          (response.status() === 405 ||
+          (response.status() >= 500 ||
+            response.status() === 405 ||
             (response.headers()["content-type"] ?? "").includes("text/html"))
         )
           failures.push(`${response.status()} ${response.url()}`);
       });
       try {
         await page.goto(`${frontend}/${route}`, { waitUntil: "domcontentloaded" });
-        await page
-          .getByLabel("Phone number", { exact: true })
-          .fill(`712${String(randomInt(1000000)).padStart(6, "0")}`);
+        await page.getByRole("combobox", { name: /^Country/ }).selectOption("GB");
+        await page.getByLabel("Phone number", { exact: true }).fill(fixtures.nextPhone());
         const path = route === "signup" ? "/auth/signup/start" : "/auth/login/methods";
         const pending = page.waitForResponse(
           (response) => response.url().endsWith(path) && response.request().method() === "POST",
@@ -41,6 +43,7 @@ try {
           .click();
         const response = await pending;
         const body = await response.json();
+        fixtures.track(body.transactionId);
         if (response.status() !== 200)
           throw new Error(`${path} HTTP ${response.status()}: ${body.code}`);
         if (route === "signup" && !body.transactionId)
@@ -55,6 +58,22 @@ try {
       }
     }
   }
+} catch (error) {
+  workflowFailure = error;
 } finally {
-  await browser.close();
+  try {
+    await browser.close();
+  } catch (error) {
+    workflowFailure = workflowFailure
+      ? new AggregateError([workflowFailure, error], "Smoke and browser shutdown failed")
+      : error;
+  }
+  try {
+    await fixtures.cleanup();
+  } catch (error) {
+    workflowFailure = workflowFailure
+      ? new AggregateError([workflowFailure, error], "Smoke and fixture cleanup failed")
+      : error;
+  }
 }
+if (workflowFailure) throw workflowFailure;

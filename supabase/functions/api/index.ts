@@ -5,7 +5,6 @@ import {
   type CountryCode
 } from "npm:libphonenumber-js@1.13.9/max";
 import { createHandler } from "./handler.ts";
-import { connectDatabase } from "./database-connection.ts";
 import { createSessionRoutes } from "./session-routes.ts";
 import { createAuthRoutes } from "./auth-routes.ts";
 import { createApplicationRoutes } from "./application-routes.ts";
@@ -13,18 +12,20 @@ import { createPublicRoutes } from "./public-routes.ts";
 import type { Transaction } from "./session-routes.ts";
 
 const connectionString = Deno.env.get("DATABASE_URL")?.trim();
-if (!connectionString) throw new Error("DATABASE_URL is required for the Neon database.");
+if (!connectionString) throw new Error("DATABASE_URL is required.");
 const url = new URL(connectionString);
-if (!url.hostname.endsWith(".neon.tech") && !url.hostname.endsWith(".neon.database")) {
-  throw new Error("This deployment requires a Neon database connection.");
-}
-url.searchParams.set("sslmode", "verify-full");
+if (!["postgres:", "postgresql:"].includes(url.protocol))
+  throw new Error("DATABASE_URL must use PostgreSQL.");
+if (!["localhost", "127.0.0.1"].includes(url.hostname))
+  url.searchParams.set("sslmode", "verify-full");
 const clientOptions = {
   connectionString: url.toString(),
   connectionTimeoutMillis: 10000,
   query_timeout: 15000,
   statement_timeout: 15000
 };
+const pool = new pg.Pool({ ...clientOptions, max: 4, idleTimeoutMillis: 30000 });
+pool.on("error", () => console.error(JSON.stringify({ event: "edge_idle_connection_failed" })));
 let lastTransactionFailure: {
   at: string;
   stage: string;
@@ -32,15 +33,13 @@ let lastTransactionFailure: {
   code: string | null;
 } | null = null;
 const transaction: Transaction = async (action) => {
-  let client: pg.Client | undefined;
+  let client: pg.PoolClient | undefined;
+  let discardConnection = false;
   let stage = "connect";
   try {
-    client = await connectDatabase(() => new pg.Client(clientOptions));
+    client = await pool.connect();
     stage = "begin";
     await client.query("begin");
-    await client.query("set local lock_timeout = '10s'");
-    stage = "store_lock";
-    await client.query("select pg_advisory_xact_lock(hashtext('grogoni.cp2.normalized_store'))");
     stage = "action";
     const result = await action(client);
     stage = "commit";
@@ -57,11 +56,22 @@ const transaction: Transaction = async (action) => {
       code:
         typeof error === "object" && error !== null && "code" in error ? String(error.code) : null
     };
-    console.error(JSON.stringify({ event: "edge_transaction_failed", ...lastTransactionFailure }));
-    await client?.query("rollback").catch(() => {});
+    console.error(
+      JSON.stringify({
+        event: "edge_transaction_failed",
+        ...lastTransactionFailure,
+        table:
+          typeof error === "object" && error !== null && "table" in error
+            ? String(error.table)
+            : null
+      })
+    );
+    await client?.query("rollback").catch(() => {
+      discardConnection = true;
+    });
     throw error;
   } finally {
-    await client?.end();
+    client?.release(discardConnection);
   }
 };
 const sessions = createSessionRoutes(transaction);
@@ -74,7 +84,7 @@ const auth = createAuthRoutes({
     encryption: Deno.env.get("AUTH_TOKEN_ENCRYPTION_KEY") ?? ""
   },
   passwordEnabled: Deno.env.get("AUTH_PASSWORD_FALLBACK_ENABLED") !== "false",
-  passkeysEnabled: () => domain !== null && Deno.env.get("AUTH_PASSKEYS_ENABLED") !== "false",
+  passkeysEnabled: () => Deno.env.get("AUTH_PASSKEYS_ENABLED") !== "false",
   normalizePhone: (value, country) => {
     const normalizedCountry = country?.toUpperCase();
     if (normalizedCountry && !isSupportedCountry(normalizedCountry))
@@ -101,15 +111,23 @@ const application = createApplicationRoutes({
 const publicRoutes = createPublicRoutes(transaction);
 let domain: { routes: (request: Request, path: string) => Promise<Response | null> } | null = null;
 let domainStartupError: string | null = null;
-try {
-  const { createEdgeDomainRoutes } = await import("./domain-bundle.mjs");
-  domain = await createEdgeDomainRoutes({ transaction });
-} catch (error) {
-  domainStartupError =
-    error instanceof Error
-      ? (error.stack ?? `${error.name}: ${error.message}`)
-      : "Domain initialization failed";
-  console.error("Edge domain initialization failed", domainStartupError);
+let domainInitialization: Promise<typeof domain> | undefined;
+function getDomain() {
+  return (domainInitialization ??= (async () => {
+    try {
+      const { createEdgeDomainRoutes } = await import("./domain-bundle.mjs");
+      domain = await createEdgeDomainRoutes({ transaction });
+      domainStartupError = null;
+      return domain;
+    } catch (error) {
+      domainStartupError = error instanceof Error ? error.name : "Domain initialization failed";
+      console.error(
+        JSON.stringify({ event: "edge_domain_startup_failed", errorType: domainStartupError })
+      );
+      domainInitialization = undefined;
+      return null;
+    }
+  })());
 }
 const handler = createHandler({
   applicationRoutes: async (request, path) => {
@@ -126,29 +144,28 @@ const handler = createHandler({
     return (
       (await auth(request, path)) ??
       (await sessions(request, path)) ??
-      (await domain?.routes(request, path)) ??
       (await publicRoutes(request, path)) ??
-      (domain === null
-        ? Response.json({ code: "service_unavailable" }, { status: 503 })
-        : path === "/realtime" ||
-            path.startsWith("/v1/realtime/") ||
-            path.startsWith("/internal/jobs/")
-          ? application(request, path)
-          : null)
+      (path === "/realtime" ||
+      path.startsWith("/v1/realtime/") ||
+      path.startsWith("/internal/jobs/")
+        ? application(request, path)
+        : ((await (await getDomain())?.routes(request, path)) ??
+          (domain === null
+            ? Response.json({ code: "service_unavailable" }, { status: 503 })
+            : null)))
     );
   },
-  complete: domain !== null,
+  complete: async () => (await getDomain()) !== null,
+  databaseProvider:
+    url.hostname.endsWith(".neon.tech") || url.hostname.endsWith(".neon.database")
+      ? "neon"
+      : "postgres",
   allowedOrigins: (Deno.env.get("WEB_ORIGINS") ?? "http://localhost:5173,http://127.0.0.1:5173")
     .split(",")
     .map((origin) => origin.trim())
     .filter(Boolean),
   checkDatabase: async () => {
-    const client = await connectDatabase(() => new pg.Client(clientOptions));
-    try {
-      await client.query("select 1");
-    } finally {
-      await client.end();
-    }
+    await pool.query("select 1");
   }
 });
 Deno.serve(handler);

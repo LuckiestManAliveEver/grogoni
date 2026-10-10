@@ -36,13 +36,15 @@ Run `pnpm health:browser` for desktop and phone signup/login Continue checks. Th
 the actual POST response and JSON contract, and save screenshots in
 `/tmp/grogoni-production-smoke`. They stop before account creation.
 
-Set both `VITE_API_BASE_URL` and `VITE_API_URL` in Vercel to the live Supabase URL.
-Production builds fail when neither is configured. Vercel builds use `/api` in the
-browser; `vercel.json` forwards that path to Supabase before the SPA fallback, so
-session cookies remain first-party on mobile browsers. Direct builds retain their
-configured API address. Build metadata includes `VERCEL_GIT_COMMIT_SHA`.
+Set both `VITE_API_BASE_URL` and `VITE_API_URL` in Vercel to `/api`.
+Production builds fail when neither is configured, and use the configured value
+without a Vercel-specific override. `vercel.json` forwards `/api` to Supabase before
+the SPA fallback, so session cookies remain first-party on mobile browsers. The
+rewrite pins invocation to `us-east-1`, near the existing Ohio database. Direct
+builds may configure the absolute API address. Build metadata includes
+`VERCEL_GIT_COMMIT_SHA`.
 
-The Vercel project's `VITE_API_BASE_URL` should point to the live API base URL before
+The Vercel project's `VITE_API_BASE_URL` should be `/api` before
 the frontend is rebuilt. Vercel management access is configured through the ignored
 local environment. Do not substitute the deployment token for a browser API key.
 Verified live: `/health/live` returns 200, `/health/db` returns 200 with
@@ -79,7 +81,8 @@ five-failure/15-minute limit across workers. Authentication writes mirror compat
 records within the same transaction. Refresh rotation preserves the absolute lifetime and
 15-second retry grace using an encrypted replacement token, and revokes the family on reuse.
 Logout and refresh acquire the same family lock to serialize concurrent revocations.
-Discovery advertises passkeys only when the shared domain router is available; email recovery
+Discovery advertises passkeys when configured; their routes initialize the shared
+domain router on demand. Email recovery
 remains unavailable without delivery configuration. Passkey origins are restricted to
 `https://grogoni.com` and `https://www.grogoni.com`. Password login for
 accounts with enabled MFA returns a ten-minute challenge without issuing cookies. TOTP and
@@ -132,7 +135,9 @@ reconnection; they cannot be decrypted with the new key.
 
 ## Runtime Secrets
 
-Set `DATABASE_URL` to the existing Neon connection, not a Supabase connection.
+Production uses the existing Neon `DATABASE_URL`. The host also accepts ordinary
+PostgreSQL URLs, including Supabase Postgres, provided the application schema and
+data have been migrated there. Changing providers is not part of this deployment.
 Set `WEB_ORIGINS` to the exact permitted frontend origins. Authentication and
 encryption secrets from the existing API must be preserved as their routes are ported.
 The Supabase personal access token is a deployment credential, not an Edge Function secret.
@@ -154,10 +159,17 @@ generic table CRUD. Deployment builds the domain bundle and PDF worker automatic
 Apply migration `109_edge_protocol_state.sql` before deployment: MCP sessions,
 checkout confirmations and one-use OAuth grants must survive worker changes.
 
-Each request loads fresh state under the same transaction advisory lock used by
-native authentication, then writes changes before commit. Relational reads are
-batched on that connection. This prevents lost snapshot updates, but serializes
-domain requests and is not a substitute for future tenant-scoped persistence.
+Connections are pooled per worker. Native public reads and liveness do not load
+the domain bundle or acquire a global lock. The domain bundle initializes lazily.
+Domain requests load only the actor's related tenant state, explicitly requested
+public businesses, and required shared catalog records. Mutations serialize on
+account and business locks; ordinary GET/HEAD reads do not take those locks or
+flush transient snapshot changes. MCP protocol state has a separate lock.
+Persistence updates changed records and deletes only rows removed from the loaded
+baseline, with optimistic checks against concurrent normalized-record updates.
+Offline sequence watermarks are per business rather than a global write hotspot.
+This remains an in-memory tenant adapter: a large individual tenant can still
+require substantial hydration, and future per-entity SQL persistence is desirable.
 The browser uses awaited HTTP sync polling for the first-party `/api` proxy.
 Turn-stream previews remain worker-local and best effort; durable messages are
 available through normal conversation and sync endpoints.
@@ -166,6 +178,11 @@ Run `pnpm test:business:supabase` against the candidate, or set `SMOKE_API_URL` 
 the production function. It verifies business/product persistence, tenant
 isolation, public privacy and staff joining, and removes its own disposable rows.
 Candidate deployment: `pnpm deploy:api:supabase --slug=api-candidate`.
+Run `node scripts/test-supabase-concurrency.mjs --live` for read-only bursts of
+10 and 25 requests against the candidate. Set `SMOKE_API_URL=https://grogoni.com/api`
+to verify the production proxy. Browser smoke uses reserved Ofcom drama numbers
+and requires database/audit credentials to remove its own unconsumed signup
+transactions and audit records; cleanup failures fail the run.
 External email, payment, inference and computer-runtime integrations still require
 their real credentials/services. Persisting a background-job trigger does not
 execute the job: a scheduler/worker is still required.

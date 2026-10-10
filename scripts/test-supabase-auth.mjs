@@ -13,7 +13,8 @@ if (!process.argv.includes("--live"))
 const require = createRequire(new URL("../services/api/package.json", import.meta.url));
 const { Pool } = require("pg");
 const pool = new Pool(databasePoolConfig(process.env.DATABASE_URL, { max: 1 }));
-const base = "https://gnmndzsughifhboqvsgd.supabase.co/functions/v1/api";
+const base =
+  process.env.SMOKE_API_URL ?? "https://gnmndzsughifhboqvsgd.supabase.co/functions/v1/api";
 // Use DNS queries directly when the host environment's OS resolver caches a negative answer.
 // HTTPS still verifies the original hostname and certificate normally.
 const agent = new Agent({
@@ -29,9 +30,10 @@ const agent = new Agent({
     }, callback);
   }
 });
+const fixturePhone = randomInt(0, 999);
 const phones = Array.from(
   { length: 2 },
-  () => `+254712${String(randomInt(1000000)).padStart(6, "0")}`
+  (_, offset) => `+442079460${String(fixturePhone + offset).padStart(3, "0")}`
 );
 const fixtureEmail = `edge-auth-${randomUUID()}@example.invalid`;
 const fixtureDevice = `edge-auth-${randomUUID()}`;
@@ -57,6 +59,7 @@ async function call(path, method = "POST", data = {}, cookie = "") {
         method,
         headers: {
           origin: "https://grogoni.com",
+          "x-region": process.env.SMOKE_FUNCTION_REGION ?? "us-east-1",
           "content-type": "application/json",
           cookie,
           "x-grogoni-device-id": fixtureDevice,

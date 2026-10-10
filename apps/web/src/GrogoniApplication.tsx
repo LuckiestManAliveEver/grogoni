@@ -1545,6 +1545,17 @@ export function OwnerApp() {
       loadStorefrontInbox
     },
     navigationState: { navigateToView, setRoutedProductId, openProduct },
+    networkOnboarding:
+      session === null ? null : (
+        <IdentityNetworkOnboardingCard
+          session={session}
+          graph={networkGraph}
+          oauthProviders={oauthProviders}
+          oauthProvidersLoaded={oauthProvidersLoaded}
+          onGoogleContacts={authenticateSocialProfile}
+          onPhoneContactsSync={syncSelectedNetworkPhoneContacts}
+        />
+      ),
     authState: { authenticateSocialProfile, oauthProviders },
     chatThreadState: { setChatMessages, setRuntimeSessionId }
   };
@@ -1885,16 +1896,6 @@ export function OwnerApp() {
             />
           ) : (
             <main className="chat-workspace-shell">
-              {session !== null ? (
-                <IdentityNetworkOnboardingCard
-                  session={session}
-                  graph={networkGraph}
-                  oauthProviders={oauthProviders}
-                  oauthProvidersLoaded={oauthProvidersLoaded}
-                  onGoogleContacts={authenticateSocialProfile}
-                  onPhoneContactsSync={syncSelectedNetworkPhoneContacts}
-                />
-              ) : null}
               <ChatSurface
                 chatDraft={chatDraft}
                 initialEmailSubject={

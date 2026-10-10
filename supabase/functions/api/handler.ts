@@ -2,14 +2,16 @@ interface Dependencies {
   checkDatabase: () => Promise<void>;
   allowedOrigins: string[];
   applicationRoutes?: (request: Request, path: string) => Promise<Response | null>;
-  complete?: boolean;
+  complete?: boolean | (() => Promise<boolean>);
+  databaseProvider?: string;
 }
 
 export function createHandler({
   checkDatabase,
   allowedOrigins,
   applicationRoutes,
-  complete = false
+  complete = false,
+  databaseProvider = "postgres"
 }: Dependencies) {
   return async (request: Request): Promise<Response> => {
     const headers = new Headers({
@@ -55,6 +57,29 @@ export function createHandler({
       pathname
         .replace(/^\/functions\/v1\/[^/]+(?=\/|$)/, "")
         .replace(/^\/api(?:-candidate)?(?=\/|$)/, "") || "/";
+    if (request.method === "GET" && (path === "/health" || path === "/health/live")) {
+      return Response.json({ service: "api", runtime: "supabase-edge", status: "ok" }, { headers });
+    }
+    if (request.method === "GET" && (path === "/health/db" || path === "/health/ready")) {
+      let ok = true;
+      try {
+        await checkDatabase();
+      } catch {
+        ok = false;
+      }
+      const ready = path === "/health/ready";
+      const completeApi = !ready || (typeof complete === "function" ? await complete() : complete);
+      const available = ok && completeApi;
+      return Response.json(
+        {
+          service: "api",
+          status: available ? "ok" : "unavailable",
+          database: { provider: databaseProvider, ok },
+          ...(ready && !completeApi ? { code: "api_migration_incomplete" } : {})
+        },
+        { status: available ? 200 : 503, headers }
+      );
+    }
     if (applicationRoutes) {
       try {
         const result = await applicationRoutes(request, path);
@@ -65,7 +90,22 @@ export function createHandler({
           }
           return result;
         }
-      } catch {
+      } catch (error) {
+        const requestId = crypto.randomUUID();
+        console.error(
+          JSON.stringify({
+            event: "edge_route_failed",
+            requestId,
+            method: request.method,
+            route: path,
+            errorType: error instanceof Error ? error.name : "UnknownError",
+            code:
+              typeof error === "object" && error !== null && "code" in error
+                ? String(error.code)
+                : null
+          })
+        );
+        headers.set("x-request-id", requestId);
         return Response.json(
           { code: "service_unavailable", message: "The service is temporarily unavailable." },
           { status: 503, headers }
@@ -74,28 +114,6 @@ export function createHandler({
     }
     if (request.method !== "GET") {
       return Response.json({ code: "route_not_found" }, { status: 404, headers });
-    }
-    if (path === "/health" || path === "/health/live") {
-      return Response.json({ service: "api", runtime: "supabase-edge", status: "ok" }, { headers });
-    }
-    if (path === "/health/db" || path === "/health/ready") {
-      let ok = true;
-      try {
-        await checkDatabase();
-      } catch {
-        ok = false;
-      }
-      const ready = path === "/health/ready";
-      const available = ok && (!ready || complete);
-      return Response.json(
-        {
-          service: "api",
-          status: available ? "ok" : "unavailable",
-          database: { provider: "neon", ok },
-          ...(ready && !complete ? { code: "api_migration_incomplete" } : {})
-        },
-        { status: available ? 200 : 503, headers }
-      );
     }
     return Response.json({ code: "route_not_found" }, { status: 404, headers });
   };

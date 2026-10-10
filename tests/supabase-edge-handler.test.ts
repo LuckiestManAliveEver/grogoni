@@ -2,6 +2,35 @@ import { describe, expect, it, vi } from "vitest";
 import { createHandler } from "../supabase/functions/api/handler";
 
 describe("Supabase Edge migration entry point", () => {
+  it("serves liveness without loading the application router or connecting to the database", async () => {
+    const applicationRoutes = vi.fn();
+    const checkDatabase = vi.fn();
+    const handler = createHandler({ applicationRoutes, checkDatabase, allowedOrigins: [] });
+    expect((await handler(new Request("https://example.com/api/health"))).status).toBe(200);
+    expect(applicationRoutes).not.toHaveBeenCalled();
+    expect(checkDatabase).not.toHaveBeenCalled();
+  });
+  it("logs route failures with a correlation ID without leaking exception messages", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const handler = createHandler({
+        checkDatabase: vi.fn(),
+        allowedOrigins: [],
+        applicationRoutes: async () => {
+          throw new Error("private credential data");
+        }
+      });
+      const response = await handler(new Request("https://example.com/api/v1/shops?secret=value"));
+      expect(response.status).toBe(503);
+      expect(response.headers.get("x-request-id")).toBeTruthy();
+      expect(log).toHaveBeenCalledOnce();
+      expect(log.mock.calls[0]?.[0]).toContain("edge_route_failed");
+      expect(log.mock.calls[0]?.[0]).not.toContain("private credential data");
+      expect(log.mock.calls[0]?.[0]).not.toContain("secret=value");
+    } finally {
+      log.mockRestore();
+    }
+  });
   it("preserves stream and download content types through the candidate gateway", async () => {
     const applicationRoutes = vi.fn(
       async () =>
@@ -49,7 +78,7 @@ describe("Supabase Edge migration entry point", () => {
   });
   it("checks Neon without reporting an unfinished API as ready", async () => {
     const checkDatabase = vi.fn(async () => {});
-    const handler = createHandler({ checkDatabase, allowedOrigins: [] });
+    const handler = createHandler({ checkDatabase, allowedOrigins: [], databaseProvider: "neon" });
     const db = await handler(new Request("https://example.com/functions/v1/api/health/db"));
     expect(db.status).toBe(200);
     expect((await db.json()).database).toEqual({ provider: "neon", ok: true });

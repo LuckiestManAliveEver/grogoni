@@ -3,14 +3,13 @@
 Grogoni now targets a split deployment:
 
 - Frontend: Vercel static Vite app from `apps/web`.
-- API: the existing Node/Fastify service from `services/api`.
-- Database: Supabase Postgres.
+- API: Supabase Edge function `api`, sharing the route registrars from `services/api`.
+- Database: existing Neon Postgres in Ohio (`us-east-2`).
 - Inference: the existing Vercel inference service in `services/ai-runtime`.
 
-The important boundary is that `services/api` is not a Supabase Edge Function today. It uses Node,
-Fastify, WebSockets, background runners, Redis-backed rate limits, and PostgreSQL pools. Supabase is
-the right replacement for the database layer, but the API process still needs a Node runtime unless
-the API is ported to Supabase Edge Functions separately.
+See [Supabase Edge deployment](docs/deployment/supabase-edge-api.md) for the active deployment.
+The Node service and Supabase Postgres instructions below are alternative deployment options,
+not the current production topology. PostgreSQL providers are configurable through `DATABASE_URL`.
 
 ## Frontend on Vercel
 
@@ -26,8 +25,8 @@ outputDirectory: apps/web/dist
 Set these Vercel environment variables for the frontend project:
 
 ```text
-VITE_API_BASE_URL=https://api.grogoni.com
-VITE_API_URL=https://api.grogoni.com
+VITE_API_BASE_URL=/api
+VITE_API_URL=/api
 VITE_DEPLOYMENT_ENV=production
 VITE_INFERENCE_OWNER_NODE_ENABLED=false
 VITE_INFERENCE_MAX_FALLBACKS=3
@@ -46,8 +45,9 @@ In Vercel Project Settings, use the repository root as Root Directory (not `apps
 the framework, Node.js 22.x, and the install/build/output values above. Clear any dashboard
 build-command override that invokes an obsolete frontend script. Keep database credentials,
 authentication secrets, and inference service tokens out of this frontend project's environment.
-All `VITE_*` values are public browser configuration. Set `VITE_API_BASE_URL` to the existing
-external API URL: without it, production browser requests default to the frontend's own origin.
+All `VITE_*` values are public browser configuration. `/api` selects the first-party Vercel proxy,
+which invokes Supabase in `us-east-1`, near Neon. A configured absolute API URL is used as supplied.
+Production builds reject a missing API address instead of silently using the frontend origin.
 
 This frontend configuration does not determine where the backend or database is hosted. The
 backend sections below describe separate deployment options; no backend deployment commands

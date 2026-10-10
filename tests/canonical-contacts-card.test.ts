@@ -45,7 +45,8 @@ describe("canonical contacts directory card", () => {
       'import CanonicalContactsCard from "./CanonicalContactsCard";'
     );
     expect(networkSurface).toContain("<CanonicalContactsCard businessId={props.businessId} />");
-    expect(networkSurface).toContain("businessId: string;");
+    expect(networkSurface).toContain("businessId: string | null;");
+    expect(networkSurface).toContain("props.businessId === null ? null");
   });
 
   it("OwnerWorkspace passes the in-scope businessId into NetworkSurface", () => {

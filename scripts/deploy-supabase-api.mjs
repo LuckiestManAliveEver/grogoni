@@ -29,12 +29,12 @@ if (process.argv.includes("--deploy")) {
   const databaseUrl = process.env.DATABASE_URL?.trim();
   if (!databaseUrl) throw new Error("DATABASE_URL is required.");
   const url = new URL(databaseUrl);
-  if (!url.hostname.endsWith(".neon.tech") && !url.hostname.endsWith(".neon.database")) {
-    throw new Error("The database must remain in Neon.");
+  if (!["postgres:", "postgresql:"].includes(url.protocol)) {
+    throw new Error("DATABASE_URL must use PostgreSQL.");
   }
   const existing = await (await management("/functions")).json();
   const api = existing.find((fn) => fn.slug === slug);
-  if (api && api.name !== "Grogoni API") {
+  if (api && api.name !== "Grogoni API" && api.name !== slug) {
     throw new Error("An unrelated function named api exists; refusing to overwrite it.");
   }
   await management("/secrets", {

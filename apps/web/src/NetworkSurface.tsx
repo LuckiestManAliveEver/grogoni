@@ -1,4 +1,5 @@
 import type { NetworkInviteSummary } from "@grogoni/shared-types";
+import type { ReactNode } from "react";
 
 import {
   type NetworkGraphSummary,
@@ -12,7 +13,8 @@ import { NetworkNodeList } from "./NetworkNodeList";
 import CanonicalContactsCard from "./CanonicalContactsCard";
 
 export interface NetworkSurfaceProps {
-  businessId: string;
+  businessId: string | null;
+  onboarding?: ReactNode;
   graph: NetworkGraphSummary | null;
   invites: NetworkInviteSummary[];
   providers: OAuthProviderSummary[];
@@ -38,6 +40,7 @@ export function NetworkSurface(props: NetworkSurfaceProps) {
 
   return (
     <>
+      {props.onboarding}
       <section className="record-list network-card">
         <div className="surface-header-row">
           <div>
@@ -174,7 +177,7 @@ export function NetworkSurface(props: NetworkSurfaceProps) {
           </div>
         ) : null}
       </section>
-      <CanonicalContactsCard businessId={props.businessId} />
+      {props.businessId === null ? null : <CanonicalContactsCard businessId={props.businessId} />}
     </>
   );
 }

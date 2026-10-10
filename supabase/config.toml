@@ -4,3 +4,8 @@ project_id = "gnmndzsughifhboqvsgd"
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/api/index.ts"
+
+[functions.api-candidate]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/api/index.ts"

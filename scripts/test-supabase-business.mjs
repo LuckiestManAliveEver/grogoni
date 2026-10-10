@@ -13,7 +13,10 @@ const base =
   "https://gnmndzsughifhboqvsgd.supabase.co/functions/v1/api-candidate";
 const require = createRequire(new URL("../services/api/package.json", import.meta.url));
 const { Client } = require("pg");
-const phones = [0, 1].map(() => `+254712${String(randomInt(1000000)).padStart(6, "0")}`);
+const fixturePhone = randomInt(0, 999);
+const phones = [0, 1].map(
+  (offset) => `+442079460${String(fixturePhone + offset).padStart(3, "0")}`
+);
 const cleanupDevice = process.argv.find((arg) => arg.startsWith("--cleanup-device="))?.slice(17);
 if (cleanupDevice && !/^edge-business-smoke-[a-f0-9-]{36}$/.test(cleanupDevice))
   throw new Error("Invalid cleanup fixture device.");
@@ -28,6 +31,7 @@ async function call(path, method = "GET", body, cookie = "", extraHeaders = {}) 
       Origin: "https://grogoni.com",
       "Content-Type": "application/json",
       "x-grogoni-device-id": device,
+      "x-region": process.env.SMOKE_EDGE_REGION ?? "us-east-1",
       cookie,
       ...extraHeaders
     },
@@ -102,6 +106,69 @@ try {
       "Product restore"
     );
     assert.ok(JSON.stringify(products).includes("EDGE-SMOKE"));
+    const concurrentProducts = await Promise.all(
+      [1, 2].map((number) =>
+        call(
+          `/businesses/${businessId}/products`,
+          "POST",
+          {
+            name: `Disposable concurrent rice ${number}`,
+            sku: `EDGE-CONCURRENT-${number}`,
+            unit: "bag",
+            quantity: 1,
+            buyingPrice: 100,
+            sellingPrice: 150
+          },
+          owner.cookie
+        )
+      )
+    );
+    concurrentProducts.forEach((response) => ok(response, "Concurrent product create"));
+    const restoredProducts = ok(
+      await call(`/businesses/${businessId}/products`, "GET", undefined, owner.cookie),
+      "Concurrent products restore"
+    );
+    for (const number of [1, 2])
+      assert.ok(JSON.stringify(restoredProducts).includes(`EDGE-CONCURRENT-${number}`));
+    const search = ok(
+      await call("/buy/search?query=Disposable%20rice", "GET", undefined, other.cookie),
+      "Marketplace search without a shop"
+    );
+    assert.ok(JSON.stringify(search).includes("Disposable rice"));
+    const conversation = ok(
+      await call(
+        "/v1/conversations",
+        "POST",
+        { kind: "storefront", activeShopId: businessId },
+        owner.cookie
+      ),
+      "Conversation create"
+    );
+    const message = ok(
+      await call(
+        "/v1/messages",
+        "POST",
+        {
+          conversationId: conversation.conversation.id,
+          clientMessageId: randomUUID(),
+          content: { type: "text", text: "Disposable message persistence check" },
+          selectedChannel: "grogoni"
+        },
+        owner.cookie
+      ),
+      "Message create"
+    );
+    assert.equal(message.status, "delivered");
+    const restoredConversation = ok(
+      await call(
+        `/v1/conversations/${conversation.conversation.id}`,
+        "GET",
+        undefined,
+        owner.cookie
+      ),
+      "Conversation and message restore"
+    );
+    assert.ok(JSON.stringify(restoredConversation).includes(message.id));
     const denied = await call(`/businesses/${businessId}/products`, "GET", undefined, other.cookie);
     assert.ok([403, 404].includes(denied.status), "Another account must not read products");
     const publicView = ok(

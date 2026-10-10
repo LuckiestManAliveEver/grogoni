@@ -75,82 +75,89 @@ describe("fresh shop, first AI message: hosted-first with no client model state"
     });
   }
 
-  it("routes marketplace buy intent to buyer search instead of requiring a shop", async () => {
-    const fetchMock = vi.fn(async (input: string | URL | Request) => {
-      const url = typeof input === "string" ? input : input.toString();
-      throw new Error(`Unexpected runtime fetch for buyer intent: ${url}`);
-    });
-    vi.stubGlobal("fetch", fetchMock);
-    const searchBuyFeed = vi.fn(async () => undefined);
-    const statusMessages: string[] = [];
-    const renderedMessages: Array<{ author: string; body: string }> = [];
-
-    let sendChatDraft: ((draft?: string) => Promise<void>) | null = null;
-    function Harness() {
-      const api = useChatRuntimeState({
-        business: null,
-        mode: "marketplace",
-        session: session(),
-        authBootstrapState: "authenticated",
-        ensureAuthenticatedSession: async () => session(),
-        rejectDefinitiveAuthenticationFailure: () => false,
-        agentSettings: agentSettings(),
-        setStatusMessage: (message) => statusMessages.push(message),
-        navigateToView: () => undefined,
-        requireMessagingSignIn: () => undefined,
-        searchBuyFeed,
-        loadProducts: async () => undefined,
-        loadSuppliers: async () => undefined,
-        loadCustomers: async () => undefined,
-        loadInvoices: async () => undefined,
-        loadReports: async () => undefined,
-        loadNotifications: async () => undefined,
-        loadRuntimeSessions: async () => undefined,
-        createManagedRuntimeSession: async () => "runtime-session-1",
-        ensureRuntimeSession: async (setRuntimeSessionId) => {
-          setRuntimeSessionId("runtime-session-1");
-          return "runtime-session-1";
-        },
-        loadDocumentImports: async () => undefined,
-        chatMessages: [],
-        setChatMessages: (next) => {
-          const resolved = typeof next === "function" ? next([]) : next;
-          renderedMessages.splice(0, renderedMessages.length, ...resolved);
-        },
-        chatDraft: "",
-        setChatDraft: () => undefined,
-        pendingAttachments: [],
-        setPendingAttachments: () => undefined,
-        runtimeSessionId: null,
-        setRuntimeSessionId: () => undefined,
-        replyToMessageId: null,
-        setReplyToMessageId: () => undefined,
-        activeConversationId: null,
-        activeConversation: null,
-        loadMessagingInbox: async () => undefined,
-        registerReset: () => undefined
+  it.each([
+    ["marketplace", "I want to buy sukuma from Kwa Jane", "sukuma from Kwa Jane"],
+    ["marketplace", "Do you have maize flour 2kg?", "maize flour 2kg"],
+    ["seller", "Do you have maize flour 2kg?", "maize flour 2kg"]
+  ] as const)(
+    "routes %s buyer question %s to search without requiring a shop",
+    async (mode, message, query) => {
+      const fetchMock = vi.fn(async (input: string | URL | Request) => {
+        const url = typeof input === "string" ? input : input.toString();
+        throw new Error(`Unexpected runtime fetch for buyer intent: ${url}`);
       });
-      sendChatDraft = api.sendChatDraft;
-      return null;
+      vi.stubGlobal("fetch", fetchMock);
+      const searchBuyFeed = vi.fn(async () => undefined);
+      const statusMessages: string[] = [];
+      const renderedMessages: Array<{ author: string; body: string }> = [];
+
+      let sendChatDraft: ((draft?: string) => Promise<void>) | null = null;
+      function Harness() {
+        const api = useChatRuntimeState({
+          business: null,
+          mode,
+          session: session(),
+          authBootstrapState: "authenticated",
+          ensureAuthenticatedSession: async () => session(),
+          rejectDefinitiveAuthenticationFailure: () => false,
+          agentSettings: agentSettings(),
+          setStatusMessage: (message) => statusMessages.push(message),
+          navigateToView: () => undefined,
+          requireMessagingSignIn: () => undefined,
+          searchBuyFeed,
+          loadProducts: async () => undefined,
+          loadSuppliers: async () => undefined,
+          loadCustomers: async () => undefined,
+          loadInvoices: async () => undefined,
+          loadReports: async () => undefined,
+          loadNotifications: async () => undefined,
+          loadRuntimeSessions: async () => undefined,
+          createManagedRuntimeSession: async () => "runtime-session-1",
+          ensureRuntimeSession: async (setRuntimeSessionId) => {
+            setRuntimeSessionId("runtime-session-1");
+            return "runtime-session-1";
+          },
+          loadDocumentImports: async () => undefined,
+          chatMessages: [],
+          setChatMessages: (next) => {
+            const resolved = typeof next === "function" ? next([]) : next;
+            renderedMessages.splice(0, renderedMessages.length, ...resolved);
+          },
+          chatDraft: "",
+          setChatDraft: () => undefined,
+          pendingAttachments: [],
+          setPendingAttachments: () => undefined,
+          runtimeSessionId: null,
+          setRuntimeSessionId: () => undefined,
+          replyToMessageId: null,
+          setReplyToMessageId: () => undefined,
+          activeConversationId: null,
+          activeConversation: null,
+          loadMessagingInbox: async () => undefined,
+          registerReset: () => undefined
+        });
+        sendChatDraft = api.sendChatDraft;
+        return null;
+      }
+
+      await act(async () => {
+        root = createRoot(host);
+        root.render(<Harness />);
+      });
+
+      await act(async () => {
+        await sendChatDraft!(message);
+      });
+
+      expect(searchBuyFeed).toHaveBeenCalledWith(query);
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(renderedMessages.map((message) => message.body)).toEqual([
+        message,
+        "I searched the marketplace for that. Open a result to review the shop and add items to your cart."
+      ]);
+      expect(statusMessages).toContain("Marketplace results updated.");
     }
-
-    await act(async () => {
-      root = createRoot(host);
-      root.render(<Harness />);
-    });
-
-    await act(async () => {
-      await sendChatDraft!("I want to buy sukuma from Kwa Jane");
-    });
-
-    expect(searchBuyFeed).toHaveBeenCalledWith("sukuma from Kwa Jane");
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(renderedMessages.map((message) => message.body)).toEqual([
-      "I want to buy sukuma from Kwa Jane",
-      "I searched the marketplace for that. Open a result to review the shop and add items to your cart."
-    ]);
-    expect(statusMessages).toContain("Marketplace results updated.");
-  });
+  );
 
   it("sends the first message straight to the plain server runtime turn, with no device/model fetch", async () => {
     const fetchedPaths: string[] = [];

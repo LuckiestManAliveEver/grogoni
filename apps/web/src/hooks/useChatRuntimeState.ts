@@ -203,12 +203,17 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
   function parseMarketplaceBuyIntent(message: string): string | null {
     const normalized = message.trim().replace(/\s+/gu, " ");
     if (normalized.length === 0) return null;
-    if (!/\b(?:buy|purchase|order|looking for)\b/iu.test(normalized)) return null;
+    if (
+      !/\b(?:buy|purchase|order|looking for|do you have|have you got|find me)\b/iu.test(normalized)
+    )
+      return null;
     return normalized
       .replace(/^i\s+(?:want|need|would like)\s+to\s+(?:buy|purchase|order|get)\s+/iu, "")
       .replace(/^i\s*(?:am|'m)?\s*looking\s+for\s+/iu, "")
       .replace(/^can\s+i\s+(?:buy|purchase|order|get)\s+/iu, "")
       .replace(/^where\s+can\s+i\s+(?:buy|purchase|get)\s+/iu, "")
+      .replace(/^(?:do you have|have you got|find me)\s+/iu, "")
+      .replace(/[?]+$/u, "")
       .trim();
   }
 
@@ -285,9 +290,15 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
     }
 
     const marketplaceSearch =
-      mode !== "seller" && attachments.length === 0 ? searchBuyFeed : undefined;
-    const buyQuery = marketplaceSearch ? parseMarketplaceBuyIntent(message) : null;
+      (mode !== "seller" || business === null) && attachments.length === 0
+        ? searchBuyFeed
+        : undefined;
+    const buyQuery = marketplaceSearch
+      ? (parseMarketplaceBuyIntent(message) ??
+        (business === null && helpCommand === undefined ? message : null))
+      : null;
     if (buyQuery !== null && marketplaceSearch) {
+      await marketplaceSearch(buyQuery);
       const createdAt = new Date().toISOString();
       setChatMessages((messages) => [
         ...messages,
@@ -310,7 +321,6 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       setPendingAttachments([]);
       setReplyToMessageId(null);
       navigateToView("chat", { mode: "marketplace" });
-      await marketplaceSearch(buyQuery);
       setStatusMessage("Marketplace results updated.");
       return;
     }
