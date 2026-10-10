@@ -82,13 +82,21 @@ the 20 existing entries:
   dependency), accurate to what each tool's proposal builder and `executeRuntimeAction` branch
   actually read from `input`.
 - `mcpExposable: boolean` — currently `false` on every entry. This is a statement of _current
-  fact_, not a policy default to route around: the existing MCP surface does not call any of these
-  20 tool names directly today (see the table above), so nothing changed about what MCP can do.
+  fact_, not a policy default to route around: the existing MCP surface does not call any of the
+  registry's tool names directly (62 as of October 2026; it was 20 when this was written); MCP
+  clients reach them through `grogoni.runtime_turn`, which runs the same governed pipeline.
   The field exists so that a future, deliberate decision to expose one specific tool as its own
   MCP-callable entry is a one-line, reviewable change with an obvious place to make it, instead of
   an accidental default. `mcpSchemaForRuntimeTool(name)` adapts a definition into the exact shape
   `services/api/src/mcp/routes.ts` already hand-writes for its other tools, for when that decision
   is made.
+
+Which API route groups a tool covers is recorded, and enforced, in
+`packages/tool-core/src/contracts/api-route-coverage.json`: every
+`/businesses/:businessId/<group>` group is `tool` (with the tools that perform it), `exempt` (with
+the reason an agent should not, e.g. self-modification of its own templates), or a known `gap`.
+`pnpm check:api-routes` fails on an unclassified group, a tool name that does not exist, or a
+client call to a route that does not exist.
 
 No input validation logic was added or changed. `packages/tool-core/src/index.ts` already has a
 thorough, tool-specific validator (`validateRuntimeToolInput`, used for model-proposed calls via

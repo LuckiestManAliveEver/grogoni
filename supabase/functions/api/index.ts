@@ -8,9 +8,17 @@ import { createHandler } from "./handler.ts";
 import { connectDatabase } from "./database-connection.ts";
 import { createSessionRoutes } from "./session-routes.ts";
 import { createAuthRoutes } from "./auth-routes.ts";
-import { createApplicationRoutes } from "./application-routes.ts";
+import { createApplicationRoutes, type EdgeJobOutcome } from "./application-routes.ts";
 import { createPublicRoutes } from "./public-routes.ts";
+import { createJobTransaction } from "./job-transaction.ts";
 import type { Transaction } from "./session-routes.ts";
+import {
+  createRateLimiter,
+  forwardingHeaders,
+  RateLimitExceededError,
+  rateLimitedResponse,
+  readRateLimitPolicy
+} from "./rate-limit.ts";
 
 const connectionString = Deno.env.get("DATABASE_URL")?.trim();
 if (!connectionString) throw new Error("DATABASE_URL is required for the Neon database.");
@@ -25,6 +33,7 @@ const clientOptions = {
   query_timeout: 15000,
   statement_timeout: 15000
 };
+const rateLimiter = createRateLimiter(readRateLimitPolicy((name) => Deno.env.get(name)));
 let lastTransactionFailure: {
   at: string;
   stage: string;
@@ -36,6 +45,8 @@ const transaction: Transaction = async (action) => {
   let stage = "connect";
   try {
     client = await connectDatabase(() => new pg.Client(clientOptions));
+    stage = "rate_limit";
+    await rateLimiter.check(client);
     stage = "begin";
     await client.query("begin");
     await client.query("set local lock_timeout = '10s'");
@@ -47,23 +58,46 @@ const transaction: Transaction = async (action) => {
     await client.query("commit");
     return result;
   } catch (error) {
-    lastTransactionFailure = {
-      at: new Date().toISOString(),
-      stage,
-      category:
-        error instanceof Error && /timeout|timed out/i.test(error.message)
-          ? "timeout"
-          : "database_failure",
-      code:
-        typeof error === "object" && error !== null && "code" in error ? String(error.code) : null
-    };
-    console.error(JSON.stringify({ event: "edge_transaction_failed", ...lastTransactionFailure }));
+    if (error instanceof RateLimitExceededError) throw error;
+    recordTransactionFailure(stage, error);
     await client?.query("rollback").catch(() => {});
     throw error;
   } finally {
     await client?.end();
   }
 };
+function recordTransactionFailure(stage: string, error: unknown) {
+  lastTransactionFailure = {
+    at: new Date().toISOString(),
+    stage,
+    category:
+      error instanceof Error && /timeout|timed out/i.test(error.message)
+        ? "timeout"
+        : "database_failure",
+    code: typeof error === "object" && error !== null && "code" in error ? String(error.code) : null
+  };
+  console.error(JSON.stringify({ event: "edge_transaction_failed", ...lastTransactionFailure }));
+}
+// Job records live outside the store snapshot; writing one takes no store lock.
+const recordTransaction: Transaction = async (action) => {
+  const client = await connectDatabase(() => new pg.Client(clientOptions));
+  try {
+    await client.query("begin");
+    const result = await action(client);
+    await client.query("commit");
+    return result;
+  } catch (error) {
+    recordTransactionFailure("job_record", error);
+    await client.query("rollback").catch(() => {});
+    throw error;
+  } finally {
+    await client.end();
+  }
+};
+const jobTransaction = createJobTransaction({
+  connect: () => connectDatabase(() => new pg.Client(clientOptions)),
+  onFailure: recordTransactionFailure
+});
 const sessions = createSessionRoutes(transaction);
 const auth = createAuthRoutes({
   transaction,
@@ -96,14 +130,22 @@ const auth = createAuthRoutes({
 });
 const application = createApplicationRoutes({
   transaction,
-  jobToken: Deno.env.get("BACKGROUND_JOB_TOKEN") ?? ""
+  jobToken: Deno.env.get("BACKGROUND_JOB_TOKEN") ?? "",
+  recordTransaction,
+  runJob: (jobName) => {
+    if (domain === null) throw new Error("The domain runtime failed to start.");
+    return domain.runJob(jobName);
+  }
 });
 const publicRoutes = createPublicRoutes(transaction);
-let domain: { routes: (request: Request, path: string) => Promise<Response | null> } | null = null;
+let domain: {
+  routes: (request: Request, path: string) => Promise<Response | null>;
+  runJob: (jobName: string) => Promise<EdgeJobOutcome>;
+} | null = null;
 let domainStartupError: string | null = null;
 try {
   const { createEdgeDomainRoutes } = await import("./domain-bundle.mjs");
-  domain = await createEdgeDomainRoutes({ transaction });
+  domain = await createEdgeDomainRoutes({ transaction, jobTransaction });
 } catch (error) {
   domainStartupError =
     error instanceof Error
@@ -111,32 +153,40 @@ try {
       : "Domain initialization failed";
   console.error("Edge domain initialization failed", domainStartupError);
 }
+async function routeRequest(request: Request, path: string): Promise<Response | null> {
+  if (path === "/internal/edge/domain-startup") {
+    const token = Deno.env.get("AUTH_AUDIT_HMAC_SECRET");
+    if (!token || request.headers.get("x-edge-diagnostic-token") !== token)
+      return Response.json({ code: "auth_required" }, { status: 401 });
+    return Response.json({
+      ready: domain !== null,
+      error: domainStartupError,
+      lastTransactionFailure,
+      forwardingHeaders: forwardingHeaders(request)
+    });
+  }
+  return (
+    (await auth(request, path)) ??
+    (await sessions(request, path)) ??
+    (await domain?.routes(request, path)) ??
+    (await publicRoutes(request, path)) ??
+    (domain === null
+      ? Response.json({ code: "service_unavailable" }, { status: 503 })
+      : path === "/realtime" ||
+          path.startsWith("/v1/realtime/") ||
+          path.startsWith("/internal/jobs/")
+        ? application(request, path)
+        : null)
+  );
+}
 const handler = createHandler({
-  applicationRoutes: async (request, path) => {
-    if (path === "/internal/edge/domain-startup") {
-      const token = Deno.env.get("AUTH_AUDIT_HMAC_SECRET");
-      if (!token || request.headers.get("x-edge-diagnostic-token") !== token)
-        return Response.json({ code: "auth_required" }, { status: 401 });
-      return Response.json({
-        ready: domain !== null,
-        error: domainStartupError,
-        lastTransactionFailure
-      });
-    }
-    return (
-      (await auth(request, path)) ??
-      (await sessions(request, path)) ??
-      (await domain?.routes(request, path)) ??
-      (await publicRoutes(request, path)) ??
-      (domain === null
-        ? Response.json({ code: "service_unavailable" }, { status: 503 })
-        : path === "/realtime" ||
-            path.startsWith("/v1/realtime/") ||
-            path.startsWith("/internal/jobs/")
-          ? application(request, path)
-          : null)
-    );
-  },
+  applicationRoutes: (request, path) =>
+    rateLimiter
+      .run(request, path, () => routeRequest(request, path))
+      .catch((error: unknown) => {
+        if (error instanceof RateLimitExceededError) return rateLimitedResponse(error);
+        throw error;
+      }),
   complete: domain !== null,
   allowedOrigins: (Deno.env.get("WEB_ORIGINS") ?? "http://localhost:5173,http://127.0.0.1:5173")
     .split(",")

@@ -84,9 +84,27 @@ describe("Supabase Edge application routes", () => {
     });
   });
 
-  it("persists scheduled job runs behind an operator token", async () => {
+  it("runs scheduled jobs behind an operator token and records the outcome", async () => {
     const query = vi.fn(async () => ({ rows: [] }));
-    const routes = setup(query);
+    let inTransaction = false;
+    const runJob = vi.fn(async (job: string) => {
+      // The job's own transaction takes the store lock; running it inside a route transaction
+      // would wait on a lock its caller holds.
+      expect(inTransaction).toBe(false);
+      return { job, status: "completed" as const, durationMs: 4, result: { checked: 2 } };
+    });
+    const routes = createApplicationRoutes({
+      jobToken: "j".repeat(32),
+      runJob,
+      transaction: async (action) => {
+        inTransaction = true;
+        try {
+          return await action({ query });
+        } finally {
+          inTransaction = false;
+        }
+      }
+    });
     const denied = await routes(
       request("/internal/jobs/notification_delivery/run", { method: "POST" }),
       "/internal/jobs/notification_delivery/run"
@@ -107,10 +125,131 @@ describe("Supabase Edge application routes", () => {
       }),
       "/internal/jobs/notification_delivery/run"
     );
-    expect(accepted!.status).toBe(202);
+    expect(accepted!.status).toBe(200);
+    expect(await accepted!.json()).toMatchObject({
+      job: "notification_delivery",
+      status: "completed",
+      result: { checked: 2 }
+    });
+    expect(runJob).toHaveBeenCalledTimes(1);
+    expect(runJob).toHaveBeenCalledWith("notification_delivery");
     expect(query.mock.calls.some(([sql]) => sql.includes("insert into cp2_background_jobs"))).toBe(
       true
     );
+  });
+
+  it("records a failed job run and answers 500 instead of pretending it was queued", async () => {
+    const query = vi.fn(async () => ({ rows: [] }));
+    const routes = createApplicationRoutes({
+      jobToken: "j".repeat(32),
+      runJob: async () => {
+        throw Object.assign(new Error("connection reset"), { code: "ECONNRESET" });
+      },
+      transaction: async (action) => action({ query })
+    });
+    const response = await routes(
+      request("/internal/jobs/notification_delivery/run", {
+        method: "POST",
+        headers: { "x-job-token": "j".repeat(32) }
+      }),
+      "/internal/jobs/notification_delivery/run"
+    );
+    expect(response!.status).toBe(500);
+    expect(await response!.json()).toMatchObject({
+      status: "failed",
+      error: { code: "ECONNRESET" }
+    });
+    const stored = query.mock.calls.find(([sql]) =>
+      sql.includes("insert into cp2_background_jobs")
+    );
+    expect(JSON.stringify(stored)).toContain('\\"status\\":\\"failed\\"');
+  });
+
+  it("rejects tokenless job requests before opening a database transaction", async () => {
+    let transactions = 0;
+    const routes = createApplicationRoutes({
+      jobToken: "j".repeat(32),
+      runJob: async (job) => ({ job, status: "completed", durationMs: 1 }),
+      transaction: async (action) => {
+        transactions++;
+        return action({ query: vi.fn(async () => ({ rows: [] })) });
+      }
+    });
+    for (const [method, path] of [
+      ["GET", "/internal/jobs/notification_delivery/status"],
+      ["POST", "/internal/jobs/notification_delivery/run"],
+      ["DELETE", "/internal/jobs/notification_delivery/run"]
+    ] as const) {
+      const response = await routes(request(path, { method }), path);
+      expect(response!.status, `${method} ${path}`).toBe(401);
+    }
+    const wrongMethod = await routes(
+      request("/internal/jobs/notification_delivery/run", {
+        method: "PUT",
+        headers: { "x-job-token": "j".repeat(32) }
+      }),
+      "/internal/jobs/notification_delivery/run"
+    );
+    expect(wrongMethod!.status).toBe(405);
+    expect(transactions).toBe(0);
+  });
+
+  it("writes job records without the store-locked transaction", async () => {
+    const recorded = vi.fn(async () => ({ rows: [] }));
+    const routes = createApplicationRoutes({
+      jobToken: "j".repeat(32),
+      runJob: async (job) => ({ job, status: "completed", durationMs: 1 }),
+      transaction: async () => {
+        throw new Error("The store-locked transaction must not be used for job records.");
+      },
+      recordTransaction: async (action) => action({ query: recorded })
+    });
+    const headers = { "x-job-token": "j".repeat(32) };
+    const run = await routes(
+      request("/internal/jobs/notification_delivery/run", { method: "POST", headers }),
+      "/internal/jobs/notification_delivery/run"
+    );
+    expect(run!.status).toBe(200);
+    const status = await routes(
+      request("/internal/jobs/notification_delivery/status", { headers }),
+      "/internal/jobs/notification_delivery/status"
+    );
+    expect(status!.status).toBe(200);
+    expect(recorded).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the last real run's record when an overlapping trigger is skipped", async () => {
+    const query = vi.fn(async () => ({ rows: [] }));
+    const routes = createApplicationRoutes({
+      jobToken: "j".repeat(32),
+      runJob: async (job) => ({ job, status: "skipped", durationMs: 1, reason: "already_running" }),
+      transaction: async (action) => action({ query })
+    });
+    const response = await routes(
+      request("/internal/jobs/notification_delivery/run", {
+        method: "POST",
+        headers: { "x-job-token": "j".repeat(32) }
+      }),
+      "/internal/jobs/notification_delivery/run"
+    );
+    expect(response!.status).toBe(200);
+    expect(await response!.json()).toMatchObject({ status: "skipped", reason: "already_running" });
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it("answers 503 when no job runner is wired and 404 for an unknown job", async () => {
+    const routes = setup(vi.fn(async () => ({ rows: [] })));
+    const headers = { "x-job-token": "j".repeat(32) };
+    const unavailable = await routes(
+      request("/internal/jobs/notification_delivery/run", { method: "POST", headers }),
+      "/internal/jobs/notification_delivery/run"
+    );
+    expect(unavailable!.status).toBe(503);
+    const unknown = await routes(
+      request("/internal/jobs/drop_everything/run", { method: "POST", headers }),
+      "/internal/jobs/drop_everything/run"
+    );
+    expect(unknown!.status).toBe(404);
   });
 
   it("acknowledges only an owned event without replacing its payload", async () => {

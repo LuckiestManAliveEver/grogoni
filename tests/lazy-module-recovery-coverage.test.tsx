@@ -37,6 +37,8 @@ const nonUiDynamicImports: Record<string, string[]> = {
   "webllm-runtime.ts": ["@mlc-ai/web-llm"],
   "offline-runtime.ts": ["./offline-ocr", "./lib/api"],
   "runtime-handoff.ts": ["./offline-ocr"],
+  // A failed import rejects that attachment's extraction, which the turn reports as unreadable.
+  "chat-message-plumbing.ts": ["./offline-ocr"],
   "QuickRuntimeSwitcher.tsx": ["./device-model-engine"],
   "prefetch.ts": ["./ProductCapturePanel", "./AccountBackendControls"],
   "inference/agent-turn-preview.ts": ["./agent-turn-companion"],
