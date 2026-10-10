@@ -1,12 +1,32 @@
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import { Buffer } from "node:buffer";
 import { sessionCookie, type SqlClient, type Transaction } from "./session-routes.ts";
 
 type Row = Record<string, unknown>;
 
+/** Outcome of one background job run (services/api/src/edge-job-runner.ts). */
+export interface EdgeJobOutcome {
+  job: string;
+  status: "completed" | "disabled" | "skipped";
+  durationMs: number;
+  result?: unknown;
+  reason?: string;
+}
+
 interface Dependencies {
   transaction: Transaction;
   jobToken?: string;
+  /**
+   * Runs a job to completion in its own transaction. Called outside any route transaction: the
+   * job's transaction takes the store lock, so starting it from inside another one would wait on
+   * a lock its own caller holds.
+   */
+  runJob?: (jobName: string) => Promise<EdgeJobOutcome>;
+  /**
+   * A transaction without the store lock, for writing job records: cp2_background_jobs is not
+   * part of the store snapshot, and a record must not wait behind (or fail on) the store lock.
+   */
+  recordTransaction?: Transaction;
 }
 
 interface RouteMatch {
@@ -34,7 +54,8 @@ const routes = {
 };
 
 const mutableMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
-const jobNames = new Set([
+/** Must match edgeJobDefinitions in services/api/src/edge-job-runner.ts (asserted by tests). */
+export const edgeBackgroundJobNames: ReadonlySet<string> = new Set([
   "account_deletion_purge",
   "agent_owner_correction_retention",
   "connected_mailbox_sync",
@@ -45,7 +66,8 @@ const jobNames = new Set([
   "fulfillment_outbox_delivery",
   "grogoniid_cooldown",
   "notification_delivery",
-  "runtime_experience_retention"
+  "runtime_experience_retention",
+  "edge_rate_limit_retention"
 ]);
 
 class EdgeRouteError extends Error {
@@ -198,9 +220,34 @@ function bearer(request: Request) {
   return value.slice(7).trim();
 }
 
-export function createApplicationRoutes({ transaction, jobToken = "" }: Dependencies) {
+export function createApplicationRoutes({
+  transaction,
+  jobToken = "",
+  runJob,
+  recordTransaction = transaction
+}: Dependencies) {
   return async (request: Request, path: string): Promise<Response | null> => {
     try {
+      // Job routes check the operator token before touching the database: they are exempt
+      // from the rate limit, so an unauthenticated caller must not reach a connection or lock.
+      const jobRun = params(routes.jobsRun, path);
+      const jobStatus = params(routes.jobsStatus, path);
+      if (jobRun || jobStatus) {
+        const jobName = String((jobRun ?? jobStatus)!.jobName);
+        authorizeJob(request, jobName, jobToken);
+        if (jobRun && request.method === "POST")
+          return await runBackgroundJob(recordTransaction, jobName, runJob);
+        if (jobStatus && request.method === "GET")
+          return await recordTransaction(async (client) => {
+            const stored = (
+              await client.query("select record from cp2_background_jobs where entity_id = $1", [
+                jobName
+              ])
+            ).rows[0]?.record;
+            return ok(stored ?? { job: jobName, status: "never_run" });
+          });
+        throw new EdgeRouteError(405, "method_not_allowed", "Method not allowed.");
+      }
       if (path === "/v1/realtime/connect" || path === "/realtime") {
         await transaction((client) => actor(client, request));
         return ok({
@@ -395,12 +442,6 @@ export function createApplicationRoutes({ transaction, jobToken = "" }: Dependen
             return ok({ code: "not_found", message: "Event not found" }, 404);
           return ok({ acknowledged: true });
         }
-        const jobRun = params(routes.jobsRun, path);
-        if (jobRun && request.method === "POST")
-          return jobResponse(client, request, String(jobRun.jobName), true, jobToken);
-        const jobStatus = params(routes.jobsStatus, path);
-        if (jobStatus && request.method === "GET")
-          return jobResponse(client, request, String(jobStatus.jobName), false, jobToken);
         return null;
       });
     } catch (error) {
@@ -411,25 +452,47 @@ export function createApplicationRoutes({ transaction, jobToken = "" }: Dependen
   };
 }
 
-async function jobResponse(
-  client: SqlClient,
-  request: Request,
-  jobName: string,
-  run: boolean,
-  expectedToken: string
-) {
-  if (!jobNames.has(jobName))
+function authorizeJob(request: Request, jobName: string, expectedToken: string) {
+  if (!edgeBackgroundJobNames.has(jobName))
     throw new EdgeRouteError(404, "job_not_found", "Background job was not found.");
-  const token = request.headers.get("x-job-token") ?? "";
-  if (!expectedToken || expectedToken.length < 16 || token !== expectedToken)
+  const token = Buffer.from(request.headers.get("x-job-token") ?? "");
+  const expected = Buffer.from(expectedToken);
+  if (expected.length < 16 || token.length !== expected.length || !timingSafeEqual(token, expected))
     throw new EdgeRouteError(401, "job_token_required", "A job token is required.");
-  const record = {
-    job: jobName,
-    status: run ? "queued" : "available",
-    lastRequestedAt: new Date().toISOString()
-  };
-  if (run) {
-    await upsertRecord(client, "cp2_background_jobs", record, { id: jobName });
+}
+
+async function runBackgroundJob(
+  transaction: Transaction,
+  jobName: string,
+  runJob: Dependencies["runJob"]
+) {
+  if (runJob === undefined)
+    throw new EdgeRouteError(503, "job_runner_unavailable", "The job runner is not available.");
+  const requestedAt = new Date().toISOString();
+  let record: Row;
+  let status = 200;
+  try {
+    const outcome = await runJob(jobName);
+    // An overlapping trigger changed nothing; keep the running job's record as the last result.
+    if (outcome.status === "skipped") return ok({ ...outcome, job: jobName }, 200);
+    record = { ...outcome, job: jobName, lastRequestedAt: requestedAt, lastRunAt: requestedAt };
+  } catch (error) {
+    status = 500;
+    record = {
+      job: jobName,
+      status: "failed",
+      lastRequestedAt: requestedAt,
+      lastRunAt: requestedAt,
+      error: {
+        type: error instanceof Error ? error.name : "UnknownError",
+        code:
+          typeof error === "object" && error !== null && "code" in error ? String(error.code) : null
+      }
+    };
+    console.error(JSON.stringify({ event: "edge_job_failed", ...record }));
   }
-  return ok(record, run ? 202 : 200);
+  await transaction((client) =>
+    upsertRecord(client, "cp2_background_jobs", record, { id: jobName })
+  );
+  return ok(record, status);
 }

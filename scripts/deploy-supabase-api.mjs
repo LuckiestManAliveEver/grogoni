@@ -79,6 +79,8 @@ if (process.argv.includes("--deploy")) {
     "auth-routes.ts",
     "application-routes.ts",
     "public-routes.ts",
+    "rate-limit.ts",
+    "job-transaction.ts",
     "domain-bundle.mjs",
     "pdf-worker.mjs",
     "credentials.ts"
@@ -103,7 +105,9 @@ let failed = false;
 for (const [path, expectedStatus] of [
   ["/health/live", 200],
   ["/health/db", 200],
-  ["/health/ready", 200]
+  ["/health/ready", 200],
+  // Health routes skip the rate limiter; a routed request proves the counted path works too.
+  ["/public/storefronts?limit=1", 200]
 ]) {
   const response = await fetch(`${functionBase}${path}`, {
     signal: globalThis.AbortSignal.timeout(20000)

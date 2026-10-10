@@ -326,11 +326,32 @@ export function appendAttachmentSummary(message: string, attachments: ChatAttach
   return `${message}${documentMarker}\n\nAttachments:\n${attachments.map(formatAttachmentForRuntime).join("\n")}`;
 }
 
+export interface AttachmentExtractionDependencies {
+  /** On-device OCR (offline-ocr.ts). Images never leave the device for text extraction. */
+  runLocalOcr: (input: {
+    fileName: string;
+    contentType: string;
+    contentBase64: string;
+  }) => Promise<{ fullText: string; averageConfidence: number; warnings: string[] }>;
+  postJson: (path: string, body: Record<string, unknown>) => Promise<unknown>;
+}
+
+const defaultExtractionDependencies: AttachmentExtractionDependencies = {
+  runLocalOcr: async (input) => (await import("./offline-ocr")).runLocalOcr(input),
+  postJson: (path, body) => postJson(path, body)
+};
+
 export async function appendExtractedDocumentContent(
   message: string,
   attachments: ChatAttachment[],
-  businessId: string
+  businessId: string,
+  options: {
+    /** Tells the person which files could not be read and why; the agent is told separately. */
+    onUnreadable?: (files: { name: string; reason: string }[]) => void;
+    dependencies?: AttachmentExtractionDependencies;
+  } = {}
 ): Promise<string> {
+  const dependencies = options.dependencies ?? defaultExtractionDependencies;
   const documents = attachments.filter(
     (attachment) => attachment.dataUrl !== undefined && isExtractableChatAttachment(attachment)
   );
@@ -339,15 +360,35 @@ export async function appendExtractedDocumentContent(
     return message;
   }
 
-  const extractions = await Promise.all(
-    documents.map((attachment) => extractChatAttachment(attachment, businessId))
+  // One unreadable attachment must not sink the whole turn: the agent still gets the message and
+  // the attachment list, plus a note naming the file whose text could not be read and why.
+  const extractions = await Promise.allSettled(
+    documents.map((attachment) => extractChatAttachment(attachment, businessId, dependencies))
   );
 
+  const unreadable = extractions.flatMap((extraction, index) =>
+    extraction.status === "rejected"
+      ? [
+          {
+            name: documents[index]?.name ?? "attachment",
+            reason: getUserFacingErrorMessage(
+              extraction.reason,
+              "The text in this file could not be read."
+            )
+          }
+        ]
+      : []
+  );
+  if (unreadable.length > 0) options.onUnreadable?.(unreadable);
+
   const extractedContent = extractions
-    .map(
-      (extraction) =>
-        `[document-extraction file="${extraction.fileName}" format="${extraction.format}"]\n` +
-        `${extraction.text.slice(0, 50_000)}\n[/document-extraction]`
+    .map((extraction, index) =>
+      extraction.status === "fulfilled"
+        ? `[document-extraction file="${extraction.value.fileName}" format="${extraction.value.format}"]\n` +
+          `${extraction.value.text.slice(0, 50_000)}\n[/document-extraction]`
+        : `[document-extraction file="${documents[index]?.name ?? "attachment"}" status="unreadable"]\n` +
+          `${getUserFacingErrorMessage(extraction.reason, "The text in this file could not be read.")}\n` +
+          `[/document-extraction]`
     )
     .join("\n\n");
 
@@ -365,32 +406,52 @@ export function isExtractableChatAttachment(attachment: ChatAttachment): boolean
   );
 }
 
+/**
+ * Images are read on this device (offline-ocr.ts); the server OCR route was retired with the
+ * local-first move (fcd42a35), so there is no server fallback to call. Documents with a text layer
+ * go to /documents/extract. A scanned PDF without one fails there and is reported as unreadable:
+ * the on-device engine reads images, not PDFs.
+ */
 export async function extractChatAttachment(
   attachment: ChatAttachment,
-  businessId: string
+  businessId: string,
+  dependencies: AttachmentExtractionDependencies = defaultExtractionDependencies
 ): Promise<DocumentExtractionResponse> {
-  const payload = {
-    fileName: attachment.name,
-    contentType: attachment.type,
-    contentBase64: dataUrlPayload(attachment.dataUrl ?? "")
-  };
-  const ocrEndpoint = `/businesses/${businessId}/documents/ocr`;
+  const contentBase64 = dataUrlPayload(attachment.dataUrl ?? "");
 
   if (attachment.category === "image") {
-    return postJson<DocumentExtractionResponse>(ocrEndpoint, payload);
+    const ocr = await dependencies.runLocalOcr({
+      fileName: attachment.name,
+      contentType: attachment.type,
+      contentBase64
+    });
+    // A photo with no text (most product photos) is a normal result, not a failure: the agent
+    // is told there was no text, and the person is not warned about it.
+    const noText = ocr.fullText.trim().length === 0;
+    return {
+      fileName: attachment.name,
+      contentType: attachment.type,
+      text: noText ? "(no readable text in this photo)" : ocr.fullText,
+      format: "ocr",
+      warnings: noText ? [...ocr.warnings, "no_readable_text"] : ocr.warnings,
+      sizeBytes: attachment.size,
+      checksum: await sha256Hex(contentBase64),
+      engine: "tesseract",
+      averageConfidence: ocr.averageConfidence
+    };
   }
 
-  try {
-    return await postJson<DocumentExtractionResponse>(
-      `/businesses/${businessId}/documents/extract`,
-      payload
-    );
-  } catch (error) {
-    if (!/\.pdf$/iu.test(attachment.name)) {
-      throw error;
-    }
-    return postJson<DocumentExtractionResponse>(ocrEndpoint, payload);
-  }
+  return (await dependencies.postJson(`/businesses/${businessId}/documents/extract`, {
+    fileName: attachment.name,
+    contentType: attachment.type,
+    contentBase64
+  })) as DocumentExtractionResponse;
+}
+
+async function sha256Hex(base64: string): Promise<string> {
+  const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 export function formatAttachmentForRuntime(attachment: ChatAttachment): string {

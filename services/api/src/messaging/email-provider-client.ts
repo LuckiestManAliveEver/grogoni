@@ -4,6 +4,10 @@ import type {
   ConnectedMailboxProviderSummary
 } from "@grogoni/shared-types";
 
+// Bounds each provider call. Background jobs make these calls while holding a database lock
+// (services/api/src/edge-job-runner.ts), so a hung provider must not hold it indefinitely.
+const providerRequestTimeoutMs = 15_000;
+
 export interface EmailProviderTokens {
   accessToken: string;
   refreshToken: string | null;
@@ -260,6 +264,7 @@ class EnvironmentEmailMailboxProviderClient implements EmailMailboxProviderClien
       `https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(input.accessToken)}`,
       {
         method: "POST",
+        signal: AbortSignal.timeout(providerRequestTimeoutMs),
         headers: { "content-type": "application/x-www-form-urlencoded" }
       }
     ).catch(() => undefined);
@@ -282,6 +287,7 @@ class EnvironmentEmailMailboxProviderClient implements EmailMailboxProviderClien
   ): Promise<EmailProviderTokens> {
     const response = await this.fetcher(configuration.tokenUrl, {
       method: "POST",
+      signal: AbortSignal.timeout(providerRequestTimeoutMs),
       headers: { accept: "application/json", "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
         client_id: configuration.clientId,
@@ -503,6 +509,7 @@ class EnvironmentEmailMailboxProviderClient implements EmailMailboxProviderClien
     init: RequestInit = {}
   ): Promise<Response> {
     const response = await this.fetcher(url, {
+      signal: AbortSignal.timeout(providerRequestTimeoutMs),
       ...init,
       headers: {
         accept: "application/json",

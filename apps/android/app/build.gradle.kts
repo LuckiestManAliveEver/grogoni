@@ -4,7 +4,7 @@ plugins {
 }
 
 val grogoniApiOrigin = providers.gradleProperty("GROGONI_API_ORIGIN")
-    .orElse("https://grogoni.com")
+    .orElse("https://grogoni.com/api")
 
 android {
     namespace = "market.grogoni.app"

@@ -146,7 +146,9 @@ describe("frontend user guidance", () => {
       "utf8"
     );
     expect(composerAttachmentWorkbench).toContain("OCR ready for scans and images");
-    expect(chatMessagePlumbing).toContain("/documents/ocr");
+    // Images are read on the device; the server OCR route was retired (fcd42a35).
+    expect(chatMessagePlumbing).toContain("runLocalOcr");
+    expect(chatMessagePlumbing).not.toContain("/documents/ocr");
     expect(composerAttachmentWorkbench).toContain("Extract all readable text");
   });
 

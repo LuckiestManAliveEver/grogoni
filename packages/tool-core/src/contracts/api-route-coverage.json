@@ -1,0 +1,240 @@
+{
+  "$comment": "Enforced by scripts/check-api-route-coverage.ts (pnpm check:api-routes). Principle: docs/architecture/governed-tool-runtime.md, 'Everything is an API. Every API can become a tool.' Every /businesses/:businessId/<group> route group must be listed here as 'tool' (names at least one runtime or MCP tool that performs its action), 'exempt' (not an action an agent should take, with the reason), or 'gap' (should be a tool and is not yet). A new group fails the check until it is classified.",
+  "version": 1,
+  "businessRouteGroups": {
+    "agent-profile": {
+      "status": "exempt",
+      "reason": "Owner configuration of the agent itself; an agent editing its own profile is self-modification."
+    },
+    "agent-runtime": {
+      "status": "exempt",
+      "reason": "Owner governance of the agent (versions, rollback, context sources, corrections, evaluations); self-modification."
+    },
+    "ai-model": {
+      "status": "exempt",
+      "reason": "Model selection for the agent; self-modification."
+    },
+    "beta": {
+      "status": "exempt",
+      "reason": "Beta program, feature flags, device tests and support telemetry; operator surface."
+    },
+    "capabilities": {
+      "status": "exempt",
+      "reason": "Read-only capability discovery used by clients to build their UI."
+    },
+    "catalogue-marketplace": {
+      "status": "tool",
+      "tools": ["commerce.search"],
+      "note": "Duplicating another shop's products (POST .../duplicate) has no tool yet."
+    },
+    "channel-endpoints": {
+      "status": "exempt",
+      "reason": "Messaging channel configuration; owner setup."
+    },
+    "channel-messages": {
+      "status": "tool",
+      "tools": ["messaging.send"]
+    },
+    "channels": {
+      "status": "exempt",
+      "reason": "Channel readiness diagnostics."
+    },
+    "compliance": {
+      "status": "tool",
+      "tools": ["compliance.review"],
+      "note": "Writes (tax config, verification, device trust, export, account deletion) stay owner-only."
+    },
+    "contacts": {
+      "status": "tool",
+      "tools": ["contacts.search", "network.contacts.resolve"]
+    },
+    "corrections": {
+      "status": "exempt",
+      "reason": "Approving corrections to the agent's own model template; self-modification."
+    },
+    "customer-debts": {
+      "status": "tool",
+      "tools": ["payments.debtors"]
+    },
+    "customers": {
+      "status": "tool",
+      "tools": ["customer.create", "customer.update"]
+    },
+    "datasets": {
+      "status": "exempt",
+      "reason": "Model template evaluation datasets; self-modification."
+    },
+    "documents": {
+      "status": "exempt",
+      "reason": "Text extraction utility a client calls before a turn; the turn itself is the action."
+    },
+    "evaluations": {
+      "status": "exempt",
+      "reason": "Model template evaluations; self-modification."
+    },
+    "fulfillment": {
+      "status": "tool",
+      "tools": ["fulfillment.create_corridor", "fulfillment.list_manifests"]
+    },
+    "grogoni-id": {
+      "status": "exempt",
+      "reason": "Renaming the shop's public identity; owner-only, and the old handle enters a cooldown."
+    },
+    "imports": {
+      "status": "tool",
+      "tools": ["document_import.confirm"]
+    },
+    "improvement-runs": {
+      "status": "exempt",
+      "reason": "Model template improvement runs; self-modification."
+    },
+    "invoices": {
+      "status": "tool",
+      "tools": ["invoice.draft", "invoices.list"]
+    },
+    "knowledge": {
+      "status": "exempt",
+      "reason": "The agent's own context sources."
+    },
+    "launch": {
+      "status": "exempt",
+      "reason": "Launch checklist and incident tracking; operator surface."
+    },
+    "logistics": {
+      "status": "tool",
+      "tools": ["logistics.update_status"]
+    },
+    "mailboxes": {
+      "status": "exempt",
+      "reason": "Connecting external mailboxes needs the owner's OAuth consent."
+    },
+    "model-template-versions": {
+      "status": "exempt",
+      "reason": "Model template export; self-modification."
+    },
+    "model-templates": {
+      "status": "exempt",
+      "reason": "The agent's own model templates; self-modification."
+    },
+    "network": {
+      "status": "gap",
+      "reason": "Sending and listing network invites has no tool."
+    },
+    "notifications": {
+      "status": "tool",
+      "tools": ["notifications.list"]
+    },
+    "observations": {
+      "status": "exempt",
+      "reason": "Reviewing observations about the agent's own behaviour; self-modification."
+    },
+    "offline-cache": {
+      "status": "exempt",
+      "reason": "Device sync plumbing."
+    },
+    "offline-runtime": {
+      "status": "exempt",
+      "reason": "Device sync plumbing."
+    },
+    "payment-summaries": {
+      "status": "tool",
+      "tools": ["payments.debtors", "reports.summary"]
+    },
+    "payments": {
+      "status": "tool",
+      "tools": ["payment.record"]
+    },
+    "presence": {
+      "status": "gap",
+      "reason": "Setting the shop online, busy or offline has no tool."
+    },
+    "product-captures": {
+      "status": "gap",
+      "reason": "Creating products from photos (capture jobs) has no tool; product.create covers typed products only."
+    },
+    "products": {
+      "status": "tool",
+      "tools": ["products.list", "product.create", "product.update", "product.stock_adjust"]
+    },
+    "purchase-receipts": {
+      "status": "tool",
+      "tools": ["receipt.list", "receipt.lookup"]
+    },
+    "purchases": {
+      "status": "tool",
+      "tools": ["purchase.record", "purchase.history"]
+    },
+    "receipt-ocr": {
+      "status": "tool",
+      "tools": ["receipt.scan", "receipt.confirm"]
+    },
+    "reports": {
+      "status": "tool",
+      "tools": ["reports.summary"]
+    },
+    "routes": {
+      "status": "tool",
+      "tools": ["route.record", "route.history"]
+    },
+    "runtime": {
+      "status": "tool",
+      "tools": ["grogoni.runtime_turn", "grogoni.runtime_status"]
+    },
+    "sales": {
+      "status": "tool",
+      "tools": ["sale.record", "sales.history"]
+    },
+    "sales-agents": {
+      "status": "gap",
+      "reason": "Linking a sales agent to a contact has no tool."
+    },
+    "shop-deletion": {
+      "status": "exempt",
+      "reason": "Destructive; requires the owner's explicit confirmation by design."
+    },
+    "social-accounts": {
+      "status": "exempt",
+      "reason": "Linked sign-in identities; owner-only."
+    },
+    "staff": {
+      "status": "gap",
+      "reason": "Inviting, revoking, changing roles of and removing staff has no tool."
+    },
+    "status-broadcasts": {
+      "status": "gap",
+      "reason": "Broadcasting a status update to customers has no tool."
+    },
+    "storefront": {
+      "status": "tool",
+      "tools": ["grogoni.get_inbox"]
+    },
+    "supplier-contacts": {
+      "status": "tool",
+      "tools": ["supplier.contact.attach"]
+    },
+    "suppliers": {
+      "status": "tool",
+      "tools": ["supplier.create", "supplier.update"]
+    },
+    "sync-queue": {
+      "status": "exempt",
+      "reason": "Device sync plumbing."
+    },
+    "vocabulary": {
+      "status": "exempt",
+      "reason": "Reviewing the agent's learned vocabulary; owner governance of the agent."
+    }
+  },
+  "clientPathExceptions": [
+    {
+      "file": "apps/web/src/hooks/useChatRuntimeState.ts",
+      "path": "/v1/inference/owner-node/presence",
+      "reason": "Owner-node inference: the server routes were removed in a6b515c0 ('Move inference off Render'). The call runs only when VITE_INFERENCE_OWNER_NODE_ENABLED is 'true'. The Vercel production build does not set it, but render.yaml still sets it to 'true' for its production and staging web services, so a Render web deploy would call these removed routes. Remove the call or the render.yaml setting before deploying the web app from Render."
+    },
+    {
+      "file": "apps/web/src/hooks/useChatRuntimeState.ts",
+      "path": "/v1/inference/owner-node/jobs",
+      "reason": "Owner-node inference: the server routes were removed in a6b515c0 ('Move inference off Render'). The call runs only when VITE_INFERENCE_OWNER_NODE_ENABLED is 'true'. The Vercel production build does not set it, but render.yaml still sets it to 'true' for its production and staging web services, so a Render web deploy would call these removed routes. Remove the call or the render.yaml setting before deploying the web app from Render."
+    }
+  ]
+}

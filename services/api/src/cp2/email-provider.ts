@@ -107,6 +107,8 @@ class ResendEmailProvider implements EmailProvider {
   }): Promise<void> {
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
+      // Bounded: notification jobs send while holding a database lock.
+      signal: AbortSignal.timeout(10_000),
       headers: {
         authorization: `Bearer ${this.configuration.apiKey}`,
         "content-type": "application/json",

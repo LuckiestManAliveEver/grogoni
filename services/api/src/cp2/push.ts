@@ -36,7 +36,8 @@ export function createWebPushSender(config: WebPushConfiguration): PushNotificat
           keys: subscription.keys
         },
         JSON.stringify(payload),
-        { TTL: 60 * 60, urgency: "high" }
+        // timeout bounds the send: notification jobs deliver while holding a database lock.
+        { TTL: 60 * 60, urgency: "high", timeout: 10_000 }
       );
       return "sent";
     } catch (error) {
