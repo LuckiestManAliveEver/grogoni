@@ -36,7 +36,8 @@ async function management(path, body) {
     throw new Error(
       `Supabase ${path} returned HTTP ${response.status}: ${redactJobToken(await response.text(), jobToken).slice(0, 2000)}`
     );
-  return response.status === 204 ? null : response.json();
+  const text = await response.text();
+  return text.trim() === "" ? null : JSON.parse(text);
 }
 
 // Two writes hold the token: the function secret (checked on each job call) and Vault (sent by
