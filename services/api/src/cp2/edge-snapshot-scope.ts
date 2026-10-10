@@ -53,6 +53,13 @@ export async function createEdgeSnapshotScope(
   const codeHash = createHash("sha256")
     .update(typeof input.code === "string" ? input.code : "")
     .digest("hex");
+  const callbackState =
+    typeof input.state === "string" ? input.state : new URL(request.url).searchParams.get("state");
+  const oauthStateHash = escapeLiteral(
+    /^\/(?:api\/)?auth\/oauth\/(?:callback|[^/]+\/callback)$/.test(path) && callbackState
+      ? createHash("sha256").update(callbackState).digest("hex")
+      : ""
+  );
   const businessId =
     path.match(/^\/businesses\/([^/]+)/)?.[1] ??
     (typeof input.businessId === "string" ? input.businessId : null);
@@ -140,7 +147,6 @@ export async function createEdgeSnapshotScope(
     ]
   ];
   const accountTables = [
-    "oauth_sessions",
     "sessions",
     "account_pin_hashes",
     "mcp_access_tokens",
@@ -159,6 +165,11 @@ export async function createEdgeSnapshotScope(
     "device_trust"
   ];
   ctes.push(
+    [
+      "oauth_sessions",
+      `select * from public.oauth_sessions where account_id = nullif(${actorAccount}, '')::uuid
+       or state_hash = nullif(${oauthStateHash}, '')`
+    ],
     [
       "accounts",
       "select * from public.accounts where id in (select id::uuid from edge_account_ids)"
@@ -213,6 +224,7 @@ export async function createEdgeSnapshotScope(
       if (globalCollections.has(key)) return "true";
       if (key === "offlineMetadata")
         return "entity_id = 'server-sequence' or entity_id in (select 'business:' || id from edge_business_ids)";
+      if (key === "oauthSessions") return "entity_id in (select id::text from oauth_sessions)";
       if (key === "accounts") return "entity_id in (select id from edge_account_ids)";
       if (key === "users") return "entity_id in (select id from edge_user_ids)";
       if (key === "businesses" || key === "shopPresences")

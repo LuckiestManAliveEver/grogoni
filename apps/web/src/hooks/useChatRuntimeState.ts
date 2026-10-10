@@ -1311,7 +1311,28 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       runtimeMessage = await appendExtractedDocumentContent(
         runtimeMessage,
         attachments,
-        business.id
+        business.id,
+        {
+          // Shown in the chat as well as the status line (the turn's progress status replaces
+          // the status line moments later), but kept local: it is not the agent's reply and is
+          // not saved to the conversation.
+          onUnreadable: (files) => {
+            const notice = files
+              .map((file) => `Couldn't read the text in ${file.name}. ${file.reason}`)
+              .join(" ");
+            setStatusMessage(notice);
+            setChatMessages((messages) => [
+              ...messages,
+              {
+                id: createClientMessageId("agent"),
+                author: "grogoniclaw",
+                body: notice,
+                createdAt: new Date().toISOString(),
+                status: "delivered"
+              }
+            ]);
+          }
+        }
       );
       const key = runtimeManagerKey(activeSession.account.id, business.id);
       const result = await withAgentTurnPreview({

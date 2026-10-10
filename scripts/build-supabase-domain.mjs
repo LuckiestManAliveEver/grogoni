@@ -42,7 +42,7 @@ await build({
               /^(fastify|@fastify\/websocket|pg|mammoth|pdf-parse|libphonenumber-js(?:\/max)?)$/
           },
           (args) => ({
-            // The self-contained browser build avoids shipping native canvas binaries to Edge.
+            // Avoid shipping native canvas binaries to Edge for PDF text extraction.
             path: args.path === "pdf-parse" ? pdfBrowserEntry : externalPackages.get(args.path),
             external: args.path !== "pdf-parse"
           })

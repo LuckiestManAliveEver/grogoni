@@ -4,7 +4,7 @@ import { registerMcpRoutes, createMcpRouteState } from "./mcp/routes.js";
 import { isValidTurnId, turnContext } from "./inference/turn-stream.js";
 import { Cp2Error } from "./cp2/cp2-error.js";
 import { createEmailProviderFromEnvironment } from "./cp2/email-provider.js";
-import type { Pool, PoolClient } from "pg";
+import type { PoolClient } from "pg";
 import { registerCp2Routes } from "./cp2/routes.js";
 import { createCp2Store, readSessionCookie } from "./cp2/store.js";
 import {
@@ -13,41 +13,31 @@ import {
   loadTransactionalCp2Snapshot,
   saveTransactionalCp2Snapshot
 } from "./cp2/postgres-store.js";
-import {
-  createPostgresFulfillmentService,
-  fulfillmentDepsFromStore
-} from "./cp2/domains/fulfillment/service.js";
+
+import { transactionPool } from "./edge-transaction-pool.js";
 import {
   createEdgeSnapshotScope,
   prepareEdgeHydration,
   prepareEdgePersistence
 } from "./cp2/edge-snapshot-scope.js";
+import {
+  createEdgeFulfillmentService,
+  createEdgeStoreDependencies,
+  readFulfillmentRetentionHours
+} from "./edge-store-dependencies.js";
+import { runEdgeJob, type EdgeJobDatabase } from "./edge-job-runner.js";
 
 export interface EdgeDomainDatabase {
   transaction: <T>(action: (client: PoolClient) => Promise<T>) => Promise<T>;
-}
-
-function transactionPool(client: PoolClient): Pool {
-  let sequence = 0;
-  return {
-    query: client.query.bind(client),
-    async connect() {
-      const name = `edge_domain_${++sequence}`;
-      return {
-        async query(sql: string, values?: unknown[]) {
-          const command = sql.trim().toLowerCase();
-          if (command === "begin") return client.query(`savepoint ${name}`);
-          if (command === "commit") return client.query(`release savepoint ${name}`);
-          if (command === "rollback") return client.query(`rollback to savepoint ${name}`);
-          return client.query(sql, values);
-        },
-        release() {}
-      };
-    }
-  } as unknown as Pool;
+  /** Required to run background jobs; see EdgeJobDatabase. */
+  jobTransaction?: EdgeJobDatabase["jobTransaction"];
 }
 
 export async function createEdgeDomainRoutes(database: EdgeDomainDatabase) {
+  // Push, email, SMS and mailbox providers, built once from the environment like the Node API's.
+  const storeDependencies = createEdgeStoreDependencies();
+  // Parsed once: an invalid value fails startup (readiness), not every request.
+  const fulfillmentRetentionHours = readFulfillmentRetentionHours();
   // Only route metadata is shared. Every request gets fresh state and a transaction.
   const inventoryApp = Fastify({ logger: false });
   await inventoryApp.register(websocket);
@@ -111,7 +101,7 @@ export async function createEdgeDomainRoutes(database: EdgeDomainDatabase) {
       }
       const pool = transactionPool(client);
       const store = createCp2Store({
-        messageWebBaseUrl: process.env.WEB_PUBLIC_URL ?? "https://grogoni.com",
+        ...storeDependencies,
         workspaceRoot: "/tmp/grogoni-workspace",
         conversationAttachmentBlobStore: createPostgresAttachmentBlobStore(pool),
         accountAiAssetStore: createPostgresAccountAiAssetStore(pool)
@@ -208,10 +198,7 @@ export async function createEdgeDomainRoutes(database: EdgeDomainDatabase) {
       });
       try {
         await app.register(websocket);
-        const fulfillment = createPostgresFulfillmentService({
-          pool,
-          deps: fulfillmentDepsFromStore(store)
-        });
+        const fulfillment = createEdgeFulfillmentService(pool, store, fulfillmentRetentionHours);
         const pendingActions: (() => Promise<unknown>)[] = [];
         store.setFulfillmentIntakeListener(async (input) => {
           pendingActions.push(() => fulfillment.intakeOrder(input));
@@ -286,8 +273,8 @@ export async function createEdgeDomainRoutes(database: EdgeDomainDatabase) {
           ? await turnContext.run({ turnId }, inject)
           : await inject();
         const afterRoutes = prepareEdgePersistence(store.snapshot(), baseline);
-        if ((request.method !== "GET" && request.method !== "HEAD") || needsMcpState)
-          await saveTransactionalCp2Snapshot(client, afterRoutes, baseline);
+        // OAuth start/callback and session maintenance can mutate state on GET as well.
+        await saveTransactionalCp2Snapshot(client, afterRoutes, baseline);
         for (const action of pendingActions) await action();
         if (pendingActions.length)
           await saveTransactionalCp2Snapshot(
@@ -331,5 +318,14 @@ export async function createEdgeDomainRoutes(database: EdgeDomainDatabase) {
       }
     });
   };
-  return { routes, inventory };
+  return {
+    routes,
+    inventory,
+    runJob: (jobName: string) => {
+      const { jobTransaction } = database;
+      if (jobTransaction === undefined)
+        throw new Error("Background jobs need a jobTransaction on the Edge database.");
+      return runEdgeJob({ jobTransaction }, jobName, { storeDependencies });
+    }
+  };
 }

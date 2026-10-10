@@ -6,8 +6,10 @@ not a WebView bridge and the PWA never receives Android telephony privileges.
 ## Local build
 
 Use JDK 17 and an Android SDK with API 35. From this directory, run the project with a compatible
-Gradle installation or import it into Android Studio. Override the API origin for a development
-backend with:
+Gradle installation or import it into Android Studio. The default API origin is
+`https://grogoni.com/api`: production serves the API under `/api` (the `vercel.json` rewrite to the
+Supabase Edge function), and `https://grogoni.com` itself is the web app, which answers API paths
+with HTML or 405. Override the API origin for a development backend with:
 
 ```text
 ./gradlew :app:assembleDebug -PGROGONI_API_ORIGIN=https://your-api.example

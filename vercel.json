@@ -10,6 +10,14 @@
       "destination": "https://gnmndzsughifhboqvsgd.supabase.co/functions/v1/api/:path*?forceFunctionRegion=us-east-1"
     },
     {
+      "source": "/.well-known/oauth-authorization-server/api",
+      "destination": "https://gnmndzsughifhboqvsgd.supabase.co/functions/v1/api/.well-known/oauth-authorization-server"
+    },
+    {
+      "source": "/.well-known/oauth-protected-resource/api/mcp",
+      "destination": "https://gnmndzsughifhboqvsgd.supabase.co/functions/v1/api/.well-known/oauth-protected-resource"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

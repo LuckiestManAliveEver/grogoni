@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { Pool as PgPool } from "pg";
 import { createCp2Store } from "../services/api/src/cp2/store";
 import { createEdgeSnapshotScope } from "../services/api/src/cp2/edge-snapshot-scope";
+import { coordinateStoreRequest } from "../supabase/functions/api/store-coordination";
 import {
   loadTransactionalCp2Snapshot,
   saveTransactionalCp2Snapshot
@@ -14,6 +15,94 @@ const requireApi = createRequire(new URL("../services/api/package.json", import.
 const { Pool } = requireApi("pg") as { Pool: typeof PgPool };
 
 describe.skipIf(!databaseUrl)("Edge tenant scoping on PostgreSQL", () => {
+  it("allows concurrent requests but excludes full-snapshot jobs until they commit", async () => {
+    const pool = new Pool({ connectionString: databaseUrl, max: 3 });
+    const clients = await Promise.all([pool.connect(), pool.connect(), pool.connect()]);
+    const [first, second, job] = clients;
+    try {
+      for (const client of clients) await client.query("begin");
+      await coordinateStoreRequest(first);
+      await coordinateStoreRequest(second);
+      const attempt = () =>
+        job.query(
+          "select pg_try_advisory_xact_lock(hashtext('grogoni.cp2.normalized_store')) as acquired"
+        );
+      expect((await attempt()).rows[0].acquired).toBe(false);
+      await first.query("commit");
+      expect((await attempt()).rows[0].acquired).toBe(false);
+      await second.query("commit");
+      expect((await attempt()).rows[0].acquired).toBe(true);
+      expect(
+        (
+          await first.query(
+            "select pg_try_advisory_xact_lock_shared(hashtext('grogoni.cp2.normalized_store')) as acquired"
+          )
+        ).rows[0].acquired
+      ).toBe(false);
+    } finally {
+      for (const client of clients) {
+        await client.query("rollback");
+        client.release();
+      }
+      await pool.end();
+    }
+  });
+  it("loads only the anonymous OAuth state requested by a callback and validates CSRF", async () => {
+    const pool = new Pool({ connectionString: databaseUrl, max: 1 });
+    const client = await pool.connect();
+    try {
+      await client.query("begin");
+      const store = createCp2Store();
+      const baseline = store.snapshot();
+      for (const state of ["requested", "unrelated"])
+        store.beginOAuthSession({
+          accountSessionId: null,
+          authorizationUrl: "https://example.com",
+          codeChallenge: "challenge",
+          codeVerifier: "verifier",
+          csrfToken: "csrf",
+          provider: "google",
+          redirectUri: "https://grogoni.com/oauth/callback",
+          state
+        });
+      await saveTransactionalCp2Snapshot(client, store.snapshot(), baseline);
+      for (const method of ["GET", "POST"]) {
+        const path = method === "GET" ? "/auth/oauth/google/callback" : "/auth/oauth/callback";
+        const request = new Request(`https://grogoni.com${path}?state=requested`, {
+          method,
+          headers: { "content-type": "application/json" }
+        });
+        const scope = await createEdgeSnapshotScope(
+          client,
+          request,
+          path,
+          method === "POST" ? Buffer.from(JSON.stringify({ state: "requested" })) : undefined
+        );
+        const snapshot = await loadTransactionalCp2Snapshot(client, scope);
+        expect(snapshot.oauthSessions).toHaveLength(1);
+        const restored = createCp2Store();
+        restored.hydrateSnapshot(snapshot);
+        expect(
+          restored.getOAuthExchangeData({
+            provider: "google",
+            state: "requested",
+            csrfToken: "csrf"
+          }).codeVerifier
+        ).toBe("verifier");
+        expect(() =>
+          restored.getOAuthExchangeData({
+            provider: "google",
+            state: "requested",
+            csrfToken: "wrong"
+          })
+        ).toThrow();
+      }
+    } finally {
+      await client.query("rollback");
+      client.release();
+      await pool.end();
+    }
+  });
   it("preserves unrelated accounts and loads contact-shared statuses without the sender's tenant", async () => {
     const pool = new Pool({ connectionString: databaseUrl, max: 1 });
     const client = await pool.connect();

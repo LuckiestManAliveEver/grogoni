@@ -106,6 +106,31 @@ describe("Edge shared user and business routes", () => {
     expect(await routes(new Request("https://example.com/unknown"), "/unknown")).toBeNull();
     expect(transaction).not.toHaveBeenCalled();
   });
+  it("persists OAuth state created by anonymous GET starts", async () => {
+    vi.stubEnv("OAUTH_GOOGLE_CLIENT_ID", "test-client");
+    vi.stubEnv("OAUTH_GOOGLE_ENABLED", "true");
+    vi.stubEnv("OAUTH_GOOGLE_CLIENT_SECRET", "test-secret");
+    try {
+      const { call } = await setup();
+      const response = await call("/auth/oauth/google/start", "");
+      expect(response!.status).toBe(200);
+      const body = await response!.json();
+      expect(body.state).toBeTruthy();
+      expect(state.snapshot!.oauthSessions).toHaveLength(1);
+      const restored = createCp2Store();
+      restored.hydrateSnapshot(state.snapshot!);
+      expect(
+        restored.getOAuthExchangeData({
+          provider: "google",
+          state: body.state,
+          csrfToken: body.csrfToken
+        }).codeVerifier
+      ).toBeTruthy();
+      expect(state.saves).toBe(1);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
   it("authorizes SSE previews and allows cancellation without holding a DB transaction", async () => {
     const { call } = await setup();
     const path = "/v1/ai/turn-stream/00000000-0000-4000-8000-000000000001";
