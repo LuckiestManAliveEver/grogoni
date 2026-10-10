@@ -34,7 +34,7 @@ if (process.argv.includes("--deploy")) {
   }
   const existing = await (await management("/functions")).json();
   const api = existing.find((fn) => fn.slug === slug);
-  if (api && api.name !== "Grogoni API") {
+  if (api && api.name !== "Grogoni API" && api.name !== slug) {
     throw new Error("An unrelated function named api exists; refusing to overwrite it.");
   }
   await management("/secrets", {

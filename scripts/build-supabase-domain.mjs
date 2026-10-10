@@ -1,15 +1,21 @@
 import { createRequire } from "node:module";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { URL } from "node:url";
 const require = createRequire(import.meta.url);
 const viteRequire = createRequire(require.resolve("vite"));
 const { build } = viteRequire("esbuild");
+const apiRequire = createRequire(
+  fileURLToPath(new URL("../services/api/package.json", import.meta.url))
+);
+const pdfRequire = createRequire(apiRequire.resolve("pdf-parse"));
+const pdfBrowserEntry = fileURLToPath(
+  new URL("../web/pdf-parse.es.js", pathToFileURL(apiRequire.resolve("pdf-parse")))
+);
 const externalPackages = new Map([
   ["fastify", "npm:fastify@5.9.0"],
   ["@fastify/websocket", "npm:@fastify/websocket@11.3.0"],
   ["pg", "npm:pg@8.22.0"],
   ["mammoth", "npm:mammoth@1.12.0"],
-  ["pdf-parse", "npm:pdf-parse@2.4.5"],
   ["libphonenumber-js", "npm:libphonenumber-js@1.13.9"],
   ["libphonenumber-js/max", "npm:libphonenumber-js@1.13.9/max"]
 ]);
@@ -36,8 +42,9 @@ await build({
               /^(fastify|@fastify\/websocket|pg|mammoth|pdf-parse|libphonenumber-js(?:\/max)?)$/
           },
           (args) => ({
-            path: externalPackages.get(args.path),
-            external: true
+            // Avoid shipping native canvas binaries to Edge for PDF text extraction.
+            path: args.path === "pdf-parse" ? pdfBrowserEntry : externalPackages.get(args.path),
+            external: args.path !== "pdf-parse"
           })
         );
       }
@@ -45,10 +52,6 @@ await build({
   ],
   logLevel: "info"
 });
-const apiRequire = createRequire(
-  fileURLToPath(new URL("../services/api/package.json", import.meta.url))
-);
-const pdfRequire = createRequire(apiRequire.resolve("pdf-parse"));
 await build({
   entryPoints: [pdfRequire.resolve("pdfjs-dist/legacy/build/pdf.worker.mjs")],
   outfile: fileURLToPath(new URL("../supabase/functions/api/pdf-worker.mjs", import.meta.url)),
