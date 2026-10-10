@@ -146,8 +146,12 @@ export default defineConfig(({ mode }) => {
       }
     },
     define: {
-      "import.meta.env.VITE_API_BASE_URL": JSON.stringify(apiBase),
-      "import.meta.env.VITE_API_URL": JSON.stringify(apiBase),
+      ...(process.env.VERCEL === "1"
+        ? {
+            "import.meta.env.VITE_API_BASE_URL": JSON.stringify("/api"),
+            "import.meta.env.VITE_API_URL": JSON.stringify("/api")
+          }
+        : {}),
       __APP_NAME__: JSON.stringify("Grogoni"),
       __APP_VERSION__: JSON.stringify(appVersion),
       __BUILD_TIMESTAMP__: JSON.stringify(buildTimestamp),

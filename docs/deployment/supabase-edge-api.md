@@ -38,8 +38,9 @@ the actual POST response and JSON contract, and save screenshots in
 `/tmp/grogoni-production-smoke`. They stop before account creation.
 
 Set both `VITE_API_BASE_URL` and `VITE_API_URL` in Vercel to `/api`.
-Production builds fail when neither is configured, and use the configured value
-without a Vercel-specific override. `vercel.json` forwards `/api` to Supabase before
+Production builds fail when neither is configured. Vercel builds currently retain
+the `/api` override until the project's environment values can be verified; removing
+that override is a separate configuration migration. `vercel.json` forwards `/api` to Supabase before
 the SPA fallback, so session cookies remain first-party on mobile browsers. The
 rewrite pins invocation to `us-east-1`, near the existing Ohio database. Direct
 builds may configure the absolute API address. Build metadata includes
