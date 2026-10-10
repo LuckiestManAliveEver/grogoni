@@ -11,6 +11,14 @@ const apiUrl = "https://example.supabase.co/functions/v1/api";
 const token = "t".repeat(48);
 
 describe("Supabase Cron schedule for Edge background jobs", () => {
+  it("pins Supabase jobs near Neon without changing custom API hosts", () => {
+    const sql = buildSupabaseCronSql({ apiUrl });
+    expect(sql).toContain("/run?forceFunctionRegion=us-east-1");
+    expect(sql).toContain("'x-region', 'us-east-1'");
+    expect(buildSupabaseCronSql({ apiUrl: "https://api.example.com" })).not.toContain(
+      "forceFunctionRegion"
+    );
+  });
   it("schedules every runner job exactly once, with its own cadence", () => {
     const sql = buildSupabaseCronSql({ apiUrl });
     for (const [name, definition] of Object.entries(edgeJobDefinitions)) {

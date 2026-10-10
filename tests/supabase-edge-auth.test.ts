@@ -305,7 +305,7 @@ describe("native Edge authentication routes", () => {
   });
   it("does not query Neon for missing, malformed, or duplicate refresh cookies", async () => {
     const query = vi.fn();
-    const { routes } = setup(query);
+    const { routes, transaction } = setup(query);
     for (const cookie of [
       "",
       "grogoni_refresh=bad",
@@ -316,6 +316,7 @@ describe("native Edge authentication routes", () => {
       expect(r!.headers.getSetCookie()).toHaveLength(2);
     }
     expect(query).not.toHaveBeenCalled();
+    expect(transaction).not.toHaveBeenCalled();
   });
   it("rejects browser origins before executing authentication", async () => {
     const { routes, transaction } = setup(vi.fn());

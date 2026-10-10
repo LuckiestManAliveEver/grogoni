@@ -19,6 +19,7 @@ function literal(value: string): string {
 export function buildSupabaseCronSql(input: { apiUrl: string; jobToken?: string }): string {
   if (!/^https:\/\/[^\s'"]+$/u.test(input.apiUrl)) throw new Error("apiUrl must be an https URL.");
   const jobs = Object.entries(edgeJobDefinitions).sort(([a], [b]) => a.localeCompare(b));
+  const region = new URL(input.apiUrl).hostname.endsWith(".supabase.co") ? "us-east-1" : null;
   const statements = [
     "create extension if not exists pg_cron;",
     "create extension if not exists pg_net;"
@@ -45,9 +46,10 @@ security definer
 set search_path = ''
 as $function$
   select net.http_post(
-    url := ${literal(input.apiUrl)} || '/internal/jobs/' || job || '/run',
+    url := ${literal(input.apiUrl)} || '/internal/jobs/' || job || ${literal(region ? `/run?forceFunctionRegion=${region}` : "/run")},
     headers := jsonb_build_object(
       'content-type', 'application/json',
+      ${region ? `'x-region', '${region}',` : ""}
       'x-job-token', (select decrypted_secret from vault.decrypted_secrets where name = ${literal(vaultTokenName)})
     ),
     body := '{}'::jsonb,

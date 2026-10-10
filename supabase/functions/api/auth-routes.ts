@@ -565,14 +565,15 @@ export function createAuthRoutes({
       );
     }
   }
-  async function refreshSession(client: SqlClient, request: Request) {
+  function refreshToken(request: Request): string | null {
     const cookies = (request.headers.get("cookie") ?? "")
       .split(";")
       .map((part) => part.trim())
       .filter((part) => part.startsWith("grogoni_refresh="));
     const token = cookies.length === 1 ? cookies[0].slice("grogoni_refresh=".length) : "";
-    if (!/^[A-Za-z0-9_-]{43}$/.test(token))
-      return error(401, "auth_refresh_required", "A refresh session is required.");
+    return /^[A-Za-z0-9_-]{43}$/.test(token) ? token : null;
+  }
+  async function refreshSession(client: SqlClient, request: Request, token: string) {
     const first = (
       await client.query("select session_family_id from sessions where refresh_token_hash = $1", [
         hash(token)
@@ -782,7 +783,10 @@ export function createAuthRoutes({
         });
       }
       if (path === "/auth/session/refresh" || path === "/session/refresh") {
-        const response = await transaction((client) => refreshSession(client, request));
+        const token = refreshToken(request);
+        const response = token
+          ? await transaction((client) => refreshSession(client, request, token))
+          : error(401, "auth_refresh_required", "A refresh session is required.");
         if (response.status === 401) {
           for (const name of ["grogoni_session", "grogoni_refresh"])
             response.headers.append(
