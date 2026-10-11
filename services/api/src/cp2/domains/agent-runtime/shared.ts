@@ -513,6 +513,7 @@ import {
 } from "./model-catalog.js";
 export {
   defaultAiModelId,
+  localFallbackAiModelId,
   downloadableAiModelIdPattern,
   documentUploadContextScript,
   defaultBusinessAgentContextScripts,

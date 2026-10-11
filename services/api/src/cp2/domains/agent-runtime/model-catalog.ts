@@ -1,7 +1,10 @@
 import type { AiModelSummary } from "@grogoni/shared-types";
 import { platformSharedModelId, resolveRuntimeModel } from "@grogoni/shared-types";
+import { lunaModel } from "../../../inference/openrouter-model-runtime.js";
 
 export const defaultAiModelId = platformSharedModelId;
+/** The local model the API always registers (local:smollm2-360m) as the offline fallback. */
+export const localFallbackAiModelId = "smollm2-360m";
 export const downloadableAiModelIdPattern =
   /^(?:custom:[a-z0-9][a-z0-9._-]{0,79}|github:[a-z0-9][a-z0-9._-]{0,149}|huggingface:[a-z0-9][a-z0-9._-]{0,167})$/;
 export const documentUploadContextScript = [
@@ -82,6 +85,7 @@ export function computeModelAvailability(modelId: string, storedAvailable: boole
  * database name providers that no longer load, so they report themselves unconfigured.
  */
 export const inferenceRouterSeedModels: AiModelSummary[] = [
+  lunaModel,
   {
     id: "smollm2-360m-device",
     label: "SmolLM2 360M (on this device)",

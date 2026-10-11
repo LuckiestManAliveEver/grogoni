@@ -55,16 +55,15 @@ export interface PlatformDefaultRuntimePolicy {
 }
 
 /**
- * Before a shop swaps anything it runs the Shopkeeper agent on Grogoni's built-in engine with
- * SmolLM2 360M served by local Ollama (docs/local-first-cloud-audit.md). The hosted ZeroClaw +
- * GPT-6 Luna default was retired with the cloud providers.
+ * Before a shop swaps anything it runs Shopkeeper on Grogoni with GPT-6 Luna through OpenRouter.
+ * Local execution remains available through an explicit deployment or shop binding.
  */
 export const repositoryDefaultRuntimePolicy: PlatformDefaultRuntimePolicy = {
   agentId: "builtin:shopkeeper:v1",
   agentName: "Shopkeeper",
   agentRuntimeAdapterId: "grogoni",
-  modelId: "smollm2-360m",
-  executionTarget: "local"
+  modelId: "gpt-6-luna",
+  executionTarget: "backend"
 };
 
 export type InferenceRuntime =
@@ -969,8 +968,8 @@ export interface MarketplaceIntroStateSummary {
 
 /** Stable provider-registry key. Providers are runtime extensions, not a closed platform enum. */
 export type ModelProviderId = string;
-/** The platform-included default model (local SmolLM2 360M); every other model is merchant-funded. */
-export const platformSharedModelId = "smollm2-360m" as const;
+/** The platform funds Luna within its configured limits. */
+export const platformSharedModelId = "gpt-6-luna" as const;
 export type ModelCostResponsibility = "platform-included" | "merchant";
 
 /**
@@ -979,7 +978,9 @@ export type ModelCostResponsibility = "platform-included" | "merchant";
  * other models need the merchant to accept costs before activation.
  */
 export function isPlatformIncludedModel(model: Pick<AiModelSummary, "id" | "provider">): boolean {
-  return model.id === platformSharedModelId || model.provider === "ollama";
+  return (
+    model.id === platformSharedModelId || model.id === "smollm2-360m" || model.provider === "ollama"
+  );
 }
 
 export interface AiModelSummary {

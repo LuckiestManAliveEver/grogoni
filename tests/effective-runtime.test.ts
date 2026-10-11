@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { buildApi } from "../services/api/src/app";
-import { createCp2Store } from "../services/api/src/cp2/store";
+import { createLocalDefaultCp2Store as createCp2Store } from "./fixtures/local-default-store";
 import type { ModelRuntimeAdapter } from "../services/api/src/inference/model-runtime";
 
 describe("effective runtime API", () => {

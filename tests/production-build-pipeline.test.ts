@@ -30,8 +30,11 @@ describe("production workspace build pipeline", () => {
     expect(rootManifest.scripts).not.toHaveProperty("inference:build");
     // Loads a local .env when present (Render production has none - --env-file-if-exists is a
     // no-op there, same pattern as pnpm verify:production-runtime) so `pnpm dev`/`pnpm start`
-    // pick up OLLAMA_BASE_URL and DATABASE_URL locally without a separate env-loading step.
-    expect(apiManifest.scripts.start).toBe("node --env-file-if-exists=../../.env dist/index.js");
+    // pick up OLLAMA_BASE_URL and DATABASE_URL locally without a separate env-loading step. The
+    // ignored .env.openrouter holds OPENROUTER_API_KEY locally.
+    expect(apiManifest.scripts.start).toBe(
+      "node --env-file-if-exists=../../.env --env-file-if-exists=../../.env.openrouter dist/index.js"
+    );
   });
 
   it("uses the same production command in the Render API service", async () => {

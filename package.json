@@ -17,6 +17,7 @@
     }
   },
   "scripts": {
+    "test:live-openrouter": "node --env-file-if-exists=.env.openrouter --import tsx scripts/test-openrouter-runtime.ts",
     "android:identity:gate": "node scripts/verify-android-release-identity.mjs --require-approved",
     "android:identity:verify": "node scripts/verify-android-release-identity.mjs",
     "android:legal:gate": "node scripts/verify-play-legal-readiness.mjs --require-approved",

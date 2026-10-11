@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { buildApi } from "../services/api/src/app";
-import { createCp2Store } from "../services/api/src/cp2/store";
+import { createLocalDefaultCp2Store as createCp2Store } from "./fixtures/local-default-store";
 import type { AgentRuntimeAdapter } from "../services/api/src/agent-harness/agent-runtime-adapter";
 import {
   ModelRuntimeError,

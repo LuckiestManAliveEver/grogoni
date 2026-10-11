@@ -54,13 +54,13 @@ export function readEnvironment(): EnvironmentConfig {
         "PLATFORM_DEFAULT_AGENT_ADAPTER_ID",
         repositoryDefaultRuntimePolicy.agentRuntimeAdapterId
       ),
-      modelId:
-        runtimeMode === "local"
-          ? portableIdFromEnv("PLATFORM_DEFAULT_MODEL_ID", "smollm2-360m")
-          : portableIdFromEnv("PLATFORM_DEFAULT_MODEL_ID", repositoryDefaultRuntimePolicy.modelId),
+      modelId: portableIdFromEnv(
+        "PLATFORM_DEFAULT_MODEL_ID",
+        repositoryDefaultRuntimePolicy.modelId
+      ),
       executionTarget: executionTargetFromEnv(
         "PLATFORM_DEFAULT_EXECUTION_TARGET",
-        runtimeMode === "local" ? "local" : repositoryDefaultRuntimePolicy.executionTarget
+        repositoryDefaultRuntimePolicy.executionTarget
       )
     }
   };

@@ -14,6 +14,8 @@ describe("DB-hosted platform model/agent catalog", () => {
     const models = store.listModelCatalog();
     expect(models.map((model) => model.id).sort()).toEqual(
       [
+        // Hosted default through OpenRouter (migration 111).
+        "gpt-6-luna",
         "smollm2-360m-android",
         "smollm2-360m",
         "tinyllama-1.1b-chat-q3-k-m-android",
@@ -22,8 +24,8 @@ describe("DB-hosted platform model/agent catalog", () => {
         "qwen2.5-1.5b-android",
         "grogoniclaw-local",
         "llama-cpp-configured",
-        // Device-local router seeds (migration 102). The hosted Grogoni Cloud, Hugging Face
-        // Qwen3-4B and GPT-6 Luna entries were retired with the cloud providers.
+        // Device-local router seeds (migration 102). The hosted Grogoni Cloud and Hugging Face
+        // Qwen3-4B entries were retired with the cloud providers.
         "smollm2-360m-device",
         "qwen2.5-0.5b-device",
         "qwen3-1.7b-device"
@@ -145,6 +147,13 @@ describe("DB-hosted platform model/agent catalog", () => {
       });
       expect(removeDefaultModel.statusCode).toBe(409);
       expect(removeDefaultModel.json()).toMatchObject({ code: "model_catalog_entry_protected" });
+
+      const removeHostedDefault = await app.inject({
+        method: "DELETE",
+        url: "/v1/platform/model-catalog/gpt-6-luna",
+        headers: { cookie: operator.cookie }
+      });
+      expect(removeHostedDefault.statusCode).toBe(409);
 
       const removeCompatibilityModel = await app.inject({
         method: "DELETE",

@@ -3,6 +3,7 @@ import { createMetrics, type Metrics } from "@grogoni/observability";
 import { Pool } from "pg";
 import { buildApi } from "./app.js";
 import { readEnvironment } from "./config.js";
+import { createOpenRouterRuntime } from "./inference/openrouter-runtime.js";
 import { buildPgPoolConfig } from "./db-pool-config.js";
 import {
   DEFAULT_DATABASE_STARTUP_RETRY,
@@ -93,14 +94,22 @@ const client = createOllamaInferenceClient({
 });
 const adapter = instrumentModelAdapter(
   createOllamaModelAdapter({
-    modelId: config.platformDefaultRuntime.modelId,
+    modelId: "smollm2-360m",
     ollamaModel: config.ollamaModel,
     client
   }),
   metrics
 );
-modelRuntimeAdapters.set(`local:${config.platformDefaultRuntime.modelId}`, adapter);
-primaryInferenceAdapter = adapter;
+modelRuntimeAdapters.set("local:smollm2-360m", adapter);
+const openRouterRuntime = createOpenRouterRuntime();
+primaryInferenceAdapter =
+  openRouterRuntime.resolve({
+    modelId: config.platformDefaultRuntime.modelId,
+    executionTarget: config.platformDefaultRuntime.executionTarget
+  }) ??
+  modelRuntimeAdapters.get(
+    `${config.platformDefaultRuntime.executionTarget}:${config.platformDefaultRuntime.modelId}`
+  );
 // Every other model installed in Ollama is listed in the model tab and served on demand, so a shop
 // switches models by picking one from the list - no restart or configuration change.
 const localModelCatalog = createOllamaModelCatalog({
@@ -112,7 +121,7 @@ const localModelCatalog = createOllamaModelCatalog({
 void localModelCatalog.refresh();
 const localModelCatalogRefresh = setInterval(() => void localModelCatalog.refresh(), 30_000);
 localModelCatalogRefresh.unref();
-const modelRuntimeAdapterResolver = createLocalModelAdapterResolver({
+const localModelRuntimeAdapterResolver = createLocalModelAdapterResolver({
   registered: modelRuntimeAdapters,
   catalog: localModelCatalog,
   createAdapter: (input) =>
@@ -129,6 +138,8 @@ const modelRuntimeAdapterResolver = createLocalModelAdapterResolver({
       metrics
     )
 });
+const modelRuntimeAdapterResolver: typeof localModelRuntimeAdapterResolver = (input) =>
+  openRouterRuntime.resolve(input) ?? localModelRuntimeAdapterResolver(input);
 const cp2StoreMode = process.env.CP2_STORE?.trim().toLowerCase();
 const databaseUrl = process.env.DATABASE_URL?.trim() ?? "";
 const webPushConfiguration = readWebPushConfiguration();

@@ -5,7 +5,8 @@ import type {
   RuntimeModelProvider
 } from "../packages/shared-types/src";
 import { buildApi } from "../services/api/src/app";
-import { createCp2Store, type BusinessAgentProfileSummary } from "../services/api/src/cp2/store";
+import type { BusinessAgentProfileSummary } from "../services/api/src/cp2/store";
+import { createLocalDefaultCp2Store as createCp2Store } from "./fixtures/local-default-store";
 
 /** Everything the model receives for a turn: trusted agent instructions plus the user turn. */
 function promptText(prompt: { message: string; agentInstructions?: string } | undefined): string {

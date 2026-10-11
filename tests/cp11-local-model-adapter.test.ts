@@ -6,7 +6,7 @@ import type {
 } from "../packages/shared-types/src";
 import { parseRuntimeModelOutput } from "../packages/tool-core/src";
 import { buildApi } from "../services/api/src/app";
-import { createCp2Store } from "../services/api/src/cp2/store";
+import { createLocalDefaultCp2Store as createCp2Store } from "./fixtures/local-default-store";
 import { activateGenericGlobalDefaultModel } from "./fixtures/native-runtime-test-helpers";
 
 /** Everything the model receives for a turn: trusted agent instructions plus the user turn. */

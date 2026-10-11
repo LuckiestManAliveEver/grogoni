@@ -14,7 +14,7 @@ import type {
 import { isModelExecutionTarget, modelExecutionTargets } from "../packages/shared-types/src";
 import { Cp2Error } from "../services/api/src/cp2/cp2-error";
 import { buildApi } from "../services/api/src/app";
-import { createCp2Store } from "../services/api/src/cp2/store";
+import { createLocalDefaultCp2Store as createCp2Store } from "./fixtures/local-default-store";
 import {
   resolveExecutionTarget,
   resolveNativeRuntimeModelProvider

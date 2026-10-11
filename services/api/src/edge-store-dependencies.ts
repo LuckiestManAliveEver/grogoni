@@ -1,4 +1,6 @@
 import { positiveIntegerFromEnv } from "@grogoni/resource-control";
+import { repositoryDefaultRuntimePolicy } from "@grogoni/shared-types";
+import { createOpenRouterRuntime } from "./inference/openrouter-runtime.js";
 import { readAccountDeletionProcessors } from "./cp2/account-deletion-processors.js";
 import { createEmailProviderFromEnvironment } from "./cp2/email-provider.js";
 import { createNetworkInviteSenderFromEnvironment } from "./cp2/network-invite-provider.js";
@@ -32,12 +34,16 @@ export function createEdgeStoreDependencies(
   | "emailMailboxProviderClient"
   | "accountDeletionProcessors"
   | "messageWebBaseUrl"
+  | "modelRuntimeAdapterResolver"
+  | "platformDefaultRuntime"
 > {
   const webPush = readWebPushConfiguration();
   const emailProvider = createEmailProviderFromEnvironment(environment);
   const networkInviteSender = createNetworkInviteSenderFromEnvironment(environment);
   const accountDeletionProcessors = readAccountDeletionProcessors(environment);
   return {
+    modelRuntimeAdapterResolver: createOpenRouterRuntime(environment).resolve,
+    platformDefaultRuntime: repositoryDefaultRuntimePolicy,
     ...(webPush === null ? {} : { pushNotificationSender: createWebPushSender(webPush) }),
     messageEmailNotificationSender:
       emailProvider.sendEncryptedMessageNotification.bind(emailProvider),

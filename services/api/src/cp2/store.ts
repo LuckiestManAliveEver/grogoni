@@ -128,6 +128,7 @@ import {
   inferenceRouterSeedModels,
   computeModelAvailability,
   defaultAiModelId,
+  localFallbackAiModelId,
   buildRuntimeModelPrompt,
   cloneAgentContextSource,
   cloneAgentRuntimeVersion,
@@ -8638,10 +8639,18 @@ export class Cp2Store {
         this.modelCatalog.set(model.id, cloneModelCatalogEntry(model));
       }
     }
+    // Existing snapshots predate the hosted default; add it without changing selected bindings.
+    const hostedDefault = inferenceRouterSeedModels.find((model) => model.id === "gpt-6-luna");
+    if (hostedDefault && !this.modelCatalog.has(hostedDefault.id)) {
+      this.modelCatalog.set(hostedDefault.id, cloneModelCatalogEntry(hostedDefault));
+    }
     if (this.agentCatalog.size === 0) {
       this.agentCatalog.set(
         defaultAgentDefinitionId,
-        cloneAgentCatalogEntry(defaultAgentDefinition)
+        cloneAgentCatalogEntry({
+          ...defaultAgentDefinition,
+          runtimeAdapterId: this.platformDefaultRuntime.agentRuntimeAdapterId
+        })
       );
       // A second built-in definition so the Pi engine stays choosable now that engine choice is a
       // property of the agent definition, not an independent dimension - a shop picks this instead
@@ -9058,7 +9067,13 @@ export class Cp2Store {
   removeModelCatalogEntry(input: { sessionId: string | null; modelId: string; now?: Date }): void {
     const now = input.now ?? new Date();
     const session = this.requirePlatformOperator(input.sessionId, now);
-    if (input.modelId === defaultAiModelId || input.modelId === "grogoniclaw-local") {
+    // The hosted default, the local fallback adapter (local:smollm2-360m) and the compatibility
+    // entry all back live runtime paths; removing any of them strands shops mid-conversation.
+    if (
+      input.modelId === defaultAiModelId ||
+      input.modelId === localFallbackAiModelId ||
+      input.modelId === "grogoniclaw-local"
+    ) {
       throw new Cp2Error(
         409,
         "model_catalog_entry_protected",

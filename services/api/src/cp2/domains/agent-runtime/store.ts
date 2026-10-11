@@ -616,9 +616,11 @@ export class AgentRuntimeDomain {
     };
 
     const fallbackModelId = resolveDefaultDeviceModelId(
-      this.activeAiModels.get(input.businessId)?.modelId ?? defaultAiModelId,
+      this.activeAiModels.get(input.businessId)?.modelId ??
+        this.deps.platformDefaultRuntime.modelId,
       this.deps.resolveCatalogModel(
-        this.activeAiModels.get(input.businessId)?.modelId ?? defaultAiModelId
+        this.activeAiModels.get(input.businessId)?.modelId ??
+          this.deps.platformDefaultRuntime.modelId
       )
     );
     const revised: BusinessAgentProfileSummary = {
@@ -1023,7 +1025,9 @@ export class AgentRuntimeDomain {
     const business = this.deps.requireBusiness(input.businessId);
     return createDefaultBusinessAgentProfile({
       business,
-      modelId: this.activeAiModels.get(input.businessId)?.modelId ?? defaultAiModelId,
+      modelId:
+        this.activeAiModels.get(input.businessId)?.modelId ??
+        this.deps.platformDefaultRuntime.modelId,
       updatedAt: now.toISOString(),
       updatedBy: session.user.id,
       agentDefinition: this.deps.resolveAgentCatalogEntry(defaultAgentDefinitionId)
@@ -1049,7 +1053,9 @@ export class AgentRuntimeDomain {
       this.agentProfiles.get(input.businessId) ??
         createDefaultBusinessAgentProfile({
           business,
-          modelId: this.activeAiModels.get(input.businessId)?.modelId ?? defaultAiModelId,
+          modelId:
+            this.activeAiModels.get(input.businessId)?.modelId ??
+            this.deps.platformDefaultRuntime.modelId,
           updatedAt: now.toISOString(),
           updatedBy: session.user.id,
           agentDefinition: this.deps.resolveAgentCatalogEntry(defaultAgentDefinitionId)
@@ -3058,9 +3064,9 @@ export class AgentRuntimeDomain {
       ...(conversationId === undefined ? {} : { conversationId })
     });
     const selectedCloudFallbackModelId = resolveDefaultDeviceModelId(
-      this.activeAiModels.get(businessId)?.modelId ?? defaultAiModelId,
+      this.activeAiModels.get(businessId)?.modelId ?? this.deps.platformDefaultRuntime.modelId,
       this.deps.resolveCatalogModel(
-        this.activeAiModels.get(businessId)?.modelId ?? defaultAiModelId
+        this.activeAiModels.get(businessId)?.modelId ?? this.deps.platformDefaultRuntime.modelId
       )
     );
     const requestedModelId = storedAgentProfile.modelId;

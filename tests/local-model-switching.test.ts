@@ -4,7 +4,7 @@ import type { AgentModelActivationResult, AiModelSummary } from "../packages/sha
 import { isPlatformIncludedModel } from "../packages/shared-types/src";
 import { buildApi } from "../services/api/src/app";
 import { createPostgresCp2Store } from "../services/api/src/cp2/postgres-store";
-import { createCp2Store } from "../services/api/src/cp2/store";
+import { createLocalDefaultCp2Store as createCp2Store } from "./fixtures/local-default-store";
 import {
   createOllamaInferenceClient,
   createOllamaModelAdapter,
