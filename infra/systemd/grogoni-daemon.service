@@ -1,0 +1,30 @@
+[Unit]
+Description=Grogoni native agent daemon
+Wants=network-online.target
+After=network-online.target
+# Unlimited restarts: a long database outage must not leave the unit permanently failed.
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=grogoni
+Group=grogoni
+WorkingDirectory=/opt/grogoni
+Environment=NODE_ENV=production
+EnvironmentFile=/etc/grogoni/daemon.env
+ExecStart=/usr/bin/node /opt/grogoni/services/api/dist/daemon/index.js
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=40
+KillSignal=SIGTERM
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+RestrictSUIDSGID=true
+CapabilityBoundingSet=
+UMask=0077
+MemoryMax=1G
+
+[Install]
+WantedBy=multi-user.target

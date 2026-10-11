@@ -1,0 +1,14 @@
+services:
+  daemon-test-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: daemon_test
+      POSTGRES_USER: daemon_test
+      POSTGRES_PASSWORD: daemon_test_only
+    ports:
+      - "127.0.0.1:55439:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U daemon_test -d daemon_test"]
+      interval: 1s
+      timeout: 3s
+      retries: 20

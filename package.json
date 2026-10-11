@@ -17,6 +17,9 @@
     }
   },
   "scripts": {
+    "daemon:dev": "pnpm --filter @grogoni/api daemon:dev",
+    "daemon:start": "pnpm --filter @grogoni/api daemon:start",
+    "eval:daemon-live": "pnpm --filter @grogoni/api eval:daemon-live",
     "test:live-openrouter": "node --env-file-if-exists=.env.openrouter --import tsx scripts/test-openrouter-runtime.ts",
     "android:identity:gate": "node scripts/verify-android-release-identity.mjs --require-approved",
     "android:identity:verify": "node scripts/verify-android-release-identity.mjs",

@@ -15,6 +15,9 @@
     "dist"
   ],
   "scripts": {
+    "daemon:dev": "tsx --env-file-if-exists=../../.env.openrouter --env-file-if-exists=../../.env.daemon src/daemon/index.ts",
+    "daemon:start": "node --env-file-if-exists=../../.env.openrouter --env-file-if-exists=../../.env.daemon dist/daemon/index.js",
+    "eval:daemon-live": "node --env-file-if-exists=../../.env.openrouter --import tsx scripts/eval-daemon-live.ts",
     "db:backfill-native-runtime": "node scripts/backfill-native-runtime-bindings.mjs",
     "db:grant-platform-operator": "node scripts/grant-platform-operator.mjs",
     "db:backup": "node scripts/backup-db.mjs",

@@ -31,9 +31,13 @@ describe("production workspace build pipeline", () => {
     // Loads a local .env when present (Render production has none - --env-file-if-exists is a
     // no-op there, same pattern as pnpm verify:production-runtime) so `pnpm dev`/`pnpm start`
     // pick up OLLAMA_BASE_URL and DATABASE_URL locally without a separate env-loading step. The
-    // ignored .env.openrouter holds OPENROUTER_API_KEY locally.
+    // ignored .env.openrouter holds OPENROUTER_API_KEY locally; the daemon ships from the same build
+    // but reads its own .env.daemon, never the app's .env (its DATABASE_URL and GROGONI_API_URL).
     expect(apiManifest.scripts.start).toBe(
       "node --env-file-if-exists=../../.env --env-file-if-exists=../../.env.openrouter dist/index.js"
+    );
+    expect(apiManifest.scripts["daemon:start"]).toBe(
+      "node --env-file-if-exists=../../.env.openrouter --env-file-if-exists=../../.env.daemon dist/daemon/index.js"
     );
   });
 
