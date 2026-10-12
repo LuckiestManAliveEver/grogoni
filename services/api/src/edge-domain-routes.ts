@@ -6,6 +6,7 @@ import { Cp2Error } from "./cp2/cp2-error.js";
 import { createEmailProviderFromEnvironment } from "./cp2/email-provider.js";
 import type { PoolClient } from "pg";
 import { registerCp2Routes } from "./cp2/routes.js";
+import { createPostgresBusinessTaskStore } from "./cp2/domains/agent-runtime/business-task-store.js";
 import { createCp2Store, readSessionCookie } from "./cp2/store.js";
 import {
   createPostgresAccountAiAssetStore,
@@ -208,6 +209,9 @@ export async function createEdgeDomainRoutes(database: EdgeDomainDatabase) {
         });
         registerCp2Routes(app, {
           store,
+          businessTaskStore: createPostgresBusinessTaskStore(pool, (input) =>
+            store.authorizeBusinessPermission(input)
+          ),
           emailProvider: createEmailProviderFromEnvironment({
             ...process.env,
             NODE_ENV: "production"

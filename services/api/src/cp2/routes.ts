@@ -79,6 +79,10 @@ import {
   registerSalesRoutes
 } from "./domains/sales/routes.js";
 import { registerAgentRuntimeRoutes } from "./domains/agent-runtime/routes.js";
+import {
+  registerBusinessTaskRoutes,
+  type BusinessTaskStore
+} from "./domains/agent-runtime/business-task-routes.js";
 import { registerRuntimeHandoffRoutes } from "./domains/runtime-handoff/routes.js";
 import { registerComputerRuntimeRoutes } from "./domains/computer-runtime/routes.js";
 import { registerMessagingRoutes } from "./domains/messaging/routes.js";
@@ -107,6 +111,7 @@ import type { RuntimeRegistryAdapter } from "./runtime-registry/types.js";
 import { HttpComputerWorkerClient } from "../computer-runtime/client.js";
 
 export interface Cp2RouteOptions {
+  businessTaskStore?: BusinessTaskStore;
   binaryUploadPipeline?: BinaryUploadPipeline;
   emailProvider?: EmailProvider;
   oauthAllowedRedirectOrigins?: string[];
@@ -1539,6 +1544,7 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
   );
 
   registerAgentRuntimeRoutes(app, store);
+  registerBusinessTaskRoutes(app, store, options.businessTaskStore);
   registerRuntimeHandoffRoutes(app, store);
   registerComputerRuntimeRoutes(app, store);
   registerModelTemplateRoutes(app, store);
