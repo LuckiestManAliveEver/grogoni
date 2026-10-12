@@ -12,6 +12,7 @@ import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import type { PlatformDefaultRuntimePolicy } from "@grogoni/shared-types";
 
 import { buildApi } from "../services/api/src/app";
 import { createPostgresCp2Store } from "../services/api/src/cp2/postgres-store";
@@ -66,7 +67,15 @@ function localOllamaAdapter(modelId: string): ModelRuntimeAdapter {
   };
 }
 
-// Exactly what services/api/src/index.ts registers: local Ollama serving smollm2-360m only.
+const localRuntimePolicy: PlatformDefaultRuntimePolicy = {
+  agentId: "builtin:shopkeeper:v1",
+  agentName: "Shopkeeper",
+  agentRuntimeAdapterId: "grogoni",
+  modelId: "smollm2-360m",
+  executionTarget: "local"
+};
+
+// Historical local-only deployment under test, independent of today's hosted default.
 const onlyLocalOllama = ({
   modelId,
   executionTarget
@@ -138,6 +147,7 @@ describePostgres("migration 108: local-first runtime cleanup", () => {
     const pool = new Pool({ connectionString });
     let store = await createPostgresCp2Store({
       databaseUrl: connectionString,
+      platformDefaultRuntime: localRuntimePolicy,
       modelRuntimeAdapterResolver: onlyLocalOllama
     });
     let app = buildApi({ cp2: { store } });
@@ -168,6 +178,9 @@ describePostgres("migration 108: local-first runtime cleanup", () => {
       // Rebuild the pre-108 state (the migration runner already applied 108 to this database, so
       // its backup goes too): 103/104 put GPT-6 Luna back as the global primary...
       await pool.query("drop table if exists migration_108_backup");
+      // Migration 103 preserves existing catalog rows. Recreate its legacy model shape so
+      // newer catalog defaults cannot change the historical state this test exercises.
+      await pool.query("delete from cp2_model_catalog where entity_id = 'gpt-6-luna'");
       await pool.query(await migration("103_shopkeeper_zeroclaw_default.sql"));
       await pool.query(await migration("104_openai_primary_vercel_fallback.sql"));
       // ...and both shops were provisioned on GPT-6 Luna through a backend host. "healed" also got
@@ -289,6 +302,7 @@ describePostgres("migration 108: local-first runtime cleanup", () => {
       // A fresh API process (only local Ollama) loads the migrated graph and serves both shops.
       store = await createPostgresCp2Store({
         databaseUrl: connectionString,
+        platformDefaultRuntime: localRuntimePolicy,
         modelRuntimeAdapterResolver: onlyLocalOllama
       });
       app = buildApi({ cp2: { store } });
@@ -356,6 +370,7 @@ describePostgres("migration 108: local-first runtime cleanup", () => {
       // rejects, and every later save in the process failed.
       store = await createPostgresCp2Store({
         databaseUrl: connectionString,
+        platformDefaultRuntime: localRuntimePolicy,
         modelRuntimeAdapterResolver: onlyLocalOllama
       });
       app = buildApi({ cp2: { store } });
@@ -376,6 +391,7 @@ describePostgres("migration 108: local-first runtime cleanup", () => {
       expect(reapplied.rows).toEqual([{ model_id: "smollm2-360m" }]);
       store = await createPostgresCp2Store({
         databaseUrl: connectionString,
+        platformDefaultRuntime: localRuntimePolicy,
         modelRuntimeAdapterResolver: onlyLocalOllama
       });
       app = buildApi({ cp2: { store } });

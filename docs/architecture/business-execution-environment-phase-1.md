@@ -64,7 +64,13 @@ runtime until fixture isolation and external-effect suppression are implemented.
   capability schema projection change.
 - Architectural boundaries and API route coverage: passed.
 - Formatting and lint on changed TypeScript files: passed.
-- Full lint, formatting, configured build, and GitHub CI: pending at PR creation.
+- Full lint, formatting, and configured build: passed.
+- GitHub's general Check step passed. The PostgreSQL lane exposed a historical
+  migration fixture that depended on today's model catalog and platform default.
+  The fixture now explicitly recreates the migration-103 model row and selects
+  the historical local-only runtime policy. Both migration tests pass against
+  real PostgreSQL, including rollback and reapplication. Production migration
+  behavior is unchanged. Updated GitHub CI and Vercel preview are pending.
 
 The first sandboxed full suite failed because test servers could not bind local
 ports; it passed outside the sandbox. Plain `pnpm build` requires an API base URL;
