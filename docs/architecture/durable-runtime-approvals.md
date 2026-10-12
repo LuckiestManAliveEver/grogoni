@@ -24,7 +24,14 @@ lock. Rolling back a request after an external write cannot reopen its approval.
 In-memory stores retain bounded-expiry ephemeral approvals for local/test use;
 they do not provide cross-process recovery.
 
+The existing daily experience maintenance job also purges approval rows after a
+24-hour post-expiry audit window. Account deletion awaits scoped native approval
+deletion before anonymizing data or reporting completion; failures retain a
+retryable partial-deletion record. Edge maintenance may purge records but cannot
+issue or claim approvals inside its snapshot transaction.
+
 Tests cover token hashing, scope binding, expiry, competing claims, persistence
-failure, and confirmation through a fresh canonical runtime with no in-memory
-pending actions. Production retention/account-deletion cleanup and authoritative
-reconciliation must be completed before enabling business environment execution.
+failure, confirmation through a fresh canonical runtime, retention, and failed
+account-deletion recovery. Authoritative uncertain-write reconciliation and
+cleanup for the later task/verification entities still need completion before
+enabling business environment execution.
