@@ -726,12 +726,27 @@ export async function createPostgresCp2Store(
   async function connectRealtimeListener(): Promise<void> {
     if (realtimeClosed || realtimeClient !== null) return;
     let client: PoolClient | null = null;
+    let released = false;
+    const releaseClient = (destroy = false) => {
+      if (client === null || released) return;
+      released = true;
+      client.release(destroy);
+    };
     try {
       client = await realtimePool.connect();
       const connectedClient = client;
+      // A fatal server error can be followed by a socket error. Keep a listener for both,
+      // including during LISTEN setup, but discard the checked-out client only once.
+      connectedClient.on("error", (error) => {
+        lastRealtimeListenerError = error;
+        if (realtimeClient === connectedClient) realtimeClient = null;
+        releaseClient(true);
+        scheduleRealtimeReconnect();
+      });
       await connectedClient.query(`listen ${realtimeChannel}`);
+      if (released) return;
       if (realtimeClosed) {
-        connectedClient.release();
+        releaseClient();
         return;
       }
       realtimeClient = connectedClient;
@@ -747,15 +762,9 @@ export async function createPostgresCp2Store(
           lastRealtimeListenerError = error;
         }
       });
-      connectedClient.once("error", (error) => {
-        lastRealtimeListenerError = error;
-        if (realtimeClient === connectedClient) realtimeClient = null;
-        connectedClient.release(true);
-        scheduleRealtimeReconnect();
-      });
     } catch (error) {
       lastRealtimeListenerError = error;
-      client?.release(true);
+      releaseClient(true);
       scheduleRealtimeReconnect();
     }
   }
