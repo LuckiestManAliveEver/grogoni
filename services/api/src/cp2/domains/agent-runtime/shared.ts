@@ -123,6 +123,10 @@ export interface PendingRuntimeAction {
   sessionId: string;
   businessId: string;
   actorId: string;
+  conversationId: string | null;
+  expiresAt: string;
+  /** Parser intent at proposal time: confirmation re-checks skill policy against this intent. */
+  intent: RuntimeParserIntent;
   action: RuntimePlannedAction;
 }
 

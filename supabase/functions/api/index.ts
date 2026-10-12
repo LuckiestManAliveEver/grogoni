@@ -155,7 +155,11 @@ function getDomain() {
   return (domainInitialization ??= (async () => {
     try {
       const { createEdgeDomainRoutes } = await import("./domain-bundle.mjs");
-      domain = await createEdgeDomainRoutes({ transaction, jobTransaction });
+      domain = await createEdgeDomainRoutes({
+        transaction,
+        jobTransaction,
+        approvalTransaction: recordTransaction
+      });
       domainStartupError = null;
       return domain;
     } catch (error) {

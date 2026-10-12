@@ -7,7 +7,8 @@ import { createIntervalRunner } from "./interval-runner.js";
 const defaultIntervalMs = 24 * 60 * 60 * 1000;
 
 export interface RuntimeExperienceRetentionRunnerOptions {
-  store: Pick<Cp2Store, "purgeExpiredRuntimeExperiences">;
+  store: Pick<Cp2Store, "purgeExpiredRuntimeExperiences"> &
+    Partial<Pick<Cp2Store, "purgeExpiredRuntimeApprovals">>;
   intervalMs?: number;
   runOnStart?: boolean;
   now?: () => Date;
@@ -27,7 +28,11 @@ export function startRuntimeExperienceRetentionRunner(
   return createIntervalRunner({
     job: "runtime_experience_retention",
     intervalMs: normalizeInterval(options.intervalMs),
-    run: async () => options.store.purgeExpiredRuntimeExperiences(options.now?.() ?? new Date()),
+    run: async () => {
+      const now = options.now?.() ?? new Date();
+      await options.store.purgeExpiredRuntimeApprovals?.(now);
+      return options.store.purgeExpiredRuntimeExperiences(now);
+    },
     ...(options.runOnStart === undefined ? {} : { runOnStart: options.runOnStart }),
     ...(options.onResult === undefined ? {} : { onResult: options.onResult }),
     ...(options.onError === undefined ? {} : { onError: options.onError }),

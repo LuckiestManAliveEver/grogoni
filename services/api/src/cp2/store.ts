@@ -429,6 +429,7 @@ import {
 } from "@grogoni/business-core";
 import { parseRuntimeModelOutput, parseMerchantCommand } from "@grogoni/tool-core";
 import type { ConversationAttachmentRecord } from "./workspace-file-delivery.js";
+import type { RuntimeApprovalStore } from "./domains/agent-runtime/runtime-approval-store.js";
 import {
   createMemoryConversationAttachmentBlobStore,
   type ConversationAttachmentBlobStore
@@ -815,6 +816,7 @@ export interface Cp2Snapshot
 }
 
 export interface Cp2StoreOptions {
+  runtimeApprovalStore?: RuntimeApprovalStore;
   computerWorkerClient?: ComputerWorkerClient;
   passkeyAuthenticationVerifier?: typeof verifyAuthenticationResponse;
   runtimeModelProvider?: RuntimeModelProvider;
@@ -1366,6 +1368,9 @@ export class Cp2Store {
     });
     this.vocabularyDomain.initializeApprovedCache();
     this.agentRuntimeDomain = new AgentRuntimeDomain({
+      ...(options.runtimeApprovalStore === undefined
+        ? {}
+        : { runtimeApprovalStore: options.runtimeApprovalStore }),
       executeComputerCapability: async (input) => {
         const domain = this.requireComputerRuntime();
         const toolName = input.action.toolName;
@@ -6779,7 +6784,26 @@ export class Cp2Store {
         continue;
       }
 
-      const deletedRecordCount = this.deleteAccountOwnedData(request, subjects);
+      let deletedRecordCount: number;
+      try {
+        deletedRecordCount = await this.deleteAccountOwnedData(request, subjects);
+      } catch {
+        this.accountDeletionRequests.set(request.id, {
+          ...request,
+          status: "PARTIALLY_FAILED",
+          failureReason: "Native data deletion failed and will be retried."
+        });
+        this.accountDeletionProofs.set(request.id, {
+          requestId: request.id,
+          subjectDigest,
+          status: "PARTIALLY_FAILED",
+          completedAt: null,
+          deletedRecordCount: 0,
+          processorReceipts
+        });
+        summary.partiallyFailed += 1;
+        continue;
+      }
       this.accountDeletionProofs.set(request.id, {
         requestId: request.id,
         subjectDigest,
@@ -11944,10 +11968,23 @@ export class Cp2Store {
     this.businesses.delete(businessId);
   }
 
-  private deleteAccountOwnedData(
+  async purgeExpiredRuntimeApprovals(now = new Date()): Promise<number> {
+    if (this.options.runtimeApprovalStore)
+      return this.options.runtimeApprovalStore.purgeExpired(now);
+    let purged = 0;
+    for (const [token, pending] of this.agentRuntimeDomain.pendingRuntimeActionsMap) {
+      if (Date.parse(pending.expiresAt) <= now.getTime()) {
+        this.agentRuntimeDomain.pendingRuntimeActionsMap.delete(token);
+        purged += 1;
+      }
+    }
+    return purged;
+  }
+
+  private async deleteAccountOwnedData(
     request: AccountDeletionRequestSummary,
     subjects: AccountDeletionSubject[]
-  ): number {
+  ): Promise<number> {
     const userIds = new Set(
       [...this.users.values()]
         .filter((user) => user.accountId === request.accountId)
@@ -11971,7 +12008,12 @@ export class Cp2Store {
       ...exclusivelyOwnedBusinessIds,
       ...subjects.map((subject) => subject.subject)
     ]);
-    let deletedRecordCount = 0;
+    // A native deletion failure must stop the job before anonymization is reported complete.
+    const deletedRuntimeApprovals = await this.options.runtimeApprovalStore?.deleteScope(
+      [...userIds],
+      [...exclusivelyOwnedBusinessIds]
+    );
+    let deletedRecordCount = deletedRuntimeApprovals ?? 0;
     let previousScopeSize = -1;
 
     deletedRecordCount += this.messagingDomain.deleteConversationAttachmentsForAccount(

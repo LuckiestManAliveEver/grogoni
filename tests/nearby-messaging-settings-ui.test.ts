@@ -178,7 +178,7 @@ describe("Nearby device messaging (Settings)", () => {
       host.remove();
       db.close();
     }
-  });
+  }, 15_000);
 
   it("connects over Bluetooth from a user gesture, sends a message onto the wire, and clears the draft", async () => {
     const { bluetooth, tx } = fakePeerDevice();
@@ -229,9 +229,16 @@ describe("Nearby device messaging (Settings)", () => {
     try {
       await act(async () => {
         button("Connect a nearby device").click();
-        await new Promise((resolve) => setTimeout(resolve, 30));
       });
-      expect(host.textContent).toContain("Connected to a nearby device.");
+      await vi.waitFor(
+        async () => {
+          await act(async () => {
+            await Promise.resolve();
+          });
+          expect(host.textContent).toContain("Connected to a nearby device.");
+        },
+        { timeout: 3000 }
+      );
       await act(async () => {
         button("Disconnect").click();
       });

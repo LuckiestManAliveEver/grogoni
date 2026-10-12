@@ -139,7 +139,6 @@ import { normalizeRequiredBoundedText } from "../../text-normalization.js";
 import {
   agentAudienceForBusinessRole,
   contextRecipeRegistry,
-  enforceAgentPolicy,
   evaluateGrounding,
   groundingAbstentionMessage,
   resolveAgentContext,
@@ -166,10 +165,8 @@ import {
   type ExecutionTargetResolutionSource
 } from "./native-runtime-routing.js";
 import { projectActiveNativeBinding, projectNativeBinding } from "./native-binding-projection.js";
-import {
-  executeRuntimeCapability,
-  findRuntimeUnknownEntityReferenceError
-} from "./capabilities.js";
+import { executeRuntimeCapability } from "./capabilities.js";
+import { runtimeActionPolicyErrors } from "./runtime-action-policy.js";
 import {
   createRuntimeDocumentImportProposal,
   createRuntimeCommerceProposal,
@@ -2353,6 +2350,8 @@ export class AgentRuntimeDomain {
 
     if (input.confirmationToken !== undefined) {
       return await this.confirmRuntimeAction({
+        authenticatedSessionId: input.sessionId,
+        runtime: shopRuntime,
         authUserId: auth.user.id,
         businessId: input.businessId,
         context,
@@ -2598,21 +2597,13 @@ export class AgentRuntimeDomain {
         now
       });
     }
-    const entityReferenceError = findRuntimeUnknownEntityReferenceError(
-      this.deps,
-      input.businessId,
-      proposal.toolName,
-      proposal.input
-    );
-    const policyErrors = [
-      ...(entityReferenceError === null ? [] : [entityReferenceError]),
-      ...enforceAgentPolicy({
-        runtime: shopRuntime,
-        toolName: proposal.toolName,
-        toolInput: proposal.input,
-        intent: parserResult.intent
-      })
-    ];
+    const policyErrors = runtimeActionPolicyErrors(this.deps, {
+      runtime: shopRuntime,
+      businessId: input.businessId,
+      toolName: proposal.toolName,
+      toolInput: proposal.input,
+      intent: parserResult.intent
+    });
     const skillBinding = shopRuntime.skills.find(
       (binding) => binding.skillId === proposal.toolName
     );
@@ -2621,7 +2612,8 @@ export class AgentRuntimeDomain {
       shopRuntime.instructions.ownerApprovalRequiredFor.includes(proposal.toolName) ||
       (skillBinding !== undefined && skillBinding.requiredConfirmationLevel !== "none");
     const proposalAllowed = proposal.validation.ok && policyErrors.length === 0;
-    const confirmationToken = proposalAllowed && runtimeRequiresConfirmation ? randomUUID() : null;
+    const confirmationToken =
+      proposalAllowed && roleAllowed && runtimeRequiresConfirmation ? randomUUID() : null;
     const plan = createRuntimePlan({
       toolName: proposal.toolName,
       input: proposal.input,
@@ -2671,12 +2663,18 @@ export class AgentRuntimeDomain {
     }
 
     if (confirmationToken !== null) {
-      this.pendingRuntimeActions.set(confirmationToken, {
+      const pending: PendingRuntimeAction = {
         sessionId: runtimeSession.id,
         businessId: input.businessId,
         actorId: auth.user.id,
+        conversationId: input.conversationId ?? null,
+        expiresAt: new Date(now.getTime() + 15 * 60 * 1000).toISOString(),
+        intent: parserResult.intent,
         action: plan
-      });
+      };
+      if (this.deps.runtimeApprovalStore)
+        await this.deps.runtimeApprovalStore.put(confirmationToken, pending);
+      else this.pendingRuntimeActions.set(confirmationToken, pending);
       appendTelemetry("confirmation.required", "needs_confirmation", plan.toolName, plan.risk, {
         actionId: plan.id
       });
@@ -2794,6 +2792,8 @@ export class AgentRuntimeDomain {
   }
 
   private async confirmRuntimeAction(input: {
+    authenticatedSessionId: string | null;
+    runtime: ShopAgentRuntime;
     authUserId: string;
     businessId: string;
     context: RuntimeContextSummary;
@@ -2807,7 +2807,16 @@ export class AgentRuntimeDomain {
     runtimeVersion: number;
     conversationId?: string;
   }): Promise<RuntimeTurnResult> {
-    const pending = this.pendingRuntimeActions.get(input.token);
+    const pending = this.deps.runtimeApprovalStore
+      ? await this.deps.runtimeApprovalStore.claim({
+          token: input.token,
+          businessId: input.businessId,
+          actorId: input.authUserId,
+          runtimeSessionId: input.runtimeSession.id,
+          conversationId: input.conversationId ?? null,
+          now: input.now
+        })
+      : this.pendingRuntimeActions.get(input.token);
 
     if (pending === undefined) {
       throw new Cp2Error(
@@ -2820,7 +2829,9 @@ export class AgentRuntimeDomain {
     if (
       pending.sessionId !== input.runtimeSession.id ||
       pending.businessId !== input.businessId ||
-      pending.actorId !== input.authUserId
+      pending.actorId !== input.authUserId ||
+      pending.conversationId !== (input.conversationId ?? null) ||
+      Date.parse(pending.expiresAt) <= input.now.getTime()
     ) {
       throw new Cp2Error(
         403,
@@ -2828,6 +2839,8 @@ export class AgentRuntimeDomain {
         "Runtime confirmation is not valid."
       );
     }
+    // Consume before dispatch, including in-memory mode. A timeout is not proof of no write.
+    this.pendingRuntimeActions.delete(input.token);
 
     const action: RuntimePlannedAction = {
       ...pending.action,
@@ -2855,7 +2868,17 @@ export class AgentRuntimeDomain {
       confirmationSatisfied: true,
       roleAllowed,
       rateLimited: false,
-      errors: roleAllowed ? [] : ["Actor role cannot use the confirmed runtime tool."]
+      errors: [
+        ...(roleAllowed ? [] : ["Actor role cannot use the confirmed runtime tool."]),
+        ...validateRuntimeToolInput(action.toolName as RuntimeToolName, action.input).errors,
+        ...runtimeActionPolicyErrors(this.deps, {
+          runtime: input.runtime,
+          businessId: input.businessId,
+          toolName: action.toolName as RuntimeToolName,
+          toolInput: action.input,
+          intent: pending.intent
+        })
+      ]
     });
     const appendTelemetry = (
       state: RuntimeTelemetryEvent["state"],
@@ -2925,8 +2948,9 @@ export class AgentRuntimeDomain {
       }
       try {
         toolResult = await executeRuntimeCapability(this.deps, {
-          sessionId: this.requireSessionIdForUser(input.authUserId),
+          sessionId: input.authenticatedSessionId,
           businessId: input.businessId,
+          ...(input.conversationId === undefined ? {} : { conversationId: input.conversationId }),
           action,
           now: input.now
         });
@@ -2954,14 +2978,6 @@ export class AgentRuntimeDomain {
         errorCode: executionError.code,
         retryable: executionError.retryable ?? false
       });
-    }
-
-    // A retryable execution failure keeps the confirmation token alive so a plain follow-up
-    // "confirm" retries the SAME already-approved action, instead of forcing the merchant to
-    // redraft it from scratch - a non-retryable failure (or a success, which no longer needs the
-    // token) consumes it, since retrying identical input would only fail identically again.
-    if (executed || (executionError !== null && executionError.retryable !== true)) {
-      this.pendingRuntimeActions.delete(input.token);
     }
 
     appendTelemetry("response.generated", executed ? "completed" : "blocked", {

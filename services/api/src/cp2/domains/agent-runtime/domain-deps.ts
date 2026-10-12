@@ -36,8 +36,10 @@ import type { ModelRuntimeAdapter } from "../../../inference/model-runtime.js";
 import type { AgentRuntimeAdapter } from "../../../agent-harness/agent-runtime-adapter.js";
 import type { SessionRecord } from "../../store.js";
 import type { AgentRuntimeCommerceDeps } from "./domain-deps-commerce.js";
+import type { RuntimeApprovalStore } from "./runtime-approval-store.js";
 
 export interface AgentRuntimeDomainDeps extends AgentRuntimeCommerceDeps {
+  runtimeApprovalStore?: RuntimeApprovalStore;
   executeComputerCapability?: (input: {
     sessionId: string | null;
     businessId: string;

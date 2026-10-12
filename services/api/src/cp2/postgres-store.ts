@@ -9,6 +9,7 @@ import {
 import { Pool, type PoolClient, type QueryResultRow } from "pg";
 import { positiveIntegerFromEnv } from "@grogoni/resource-control";
 import { buildPgPoolConfig } from "../db-pool-config.js";
+import { createPostgresRuntimeApprovalStore } from "./domains/agent-runtime/runtime-approval-store.js";
 import {
   createCp2Store,
   type Cp2Snapshot,
@@ -592,6 +593,8 @@ export async function createPostgresCp2Store(
     void _metrics;
     store = createCp2Store({
       ...storeOptions,
+      runtimeApprovalStore:
+        options.runtimeApprovalStore ?? createPostgresRuntimeApprovalStore(pool),
       conversationAttachmentBlobStore:
         options.conversationAttachmentBlobStore ?? createPostgresAttachmentBlobStore(pool),
       accountAiAssetStore: options.accountAiAssetStore ?? createPostgresAccountAiAssetStore(pool)
