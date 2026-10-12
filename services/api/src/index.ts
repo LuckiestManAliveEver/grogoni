@@ -2,6 +2,7 @@ import { type RuntimeModelProviderName } from "@grogoni/shared-types";
 import { createMetrics, type Metrics } from "@grogoni/observability";
 import { Pool } from "pg";
 import { buildApi } from "./app.js";
+import { createPostgresBusinessTaskStore } from "./cp2/domains/agent-runtime/business-task-store.js";
 import { readEnvironment } from "./config.js";
 import { createOpenRouterRuntime } from "./inference/openrouter-runtime.js";
 import { buildPgPoolConfig } from "./db-pool-config.js";
@@ -330,6 +331,13 @@ const apiOptions = {
   ...(config.metricsAuthToken === "" ? {} : { metricsAuthToken: config.metricsAuthToken }),
   cp2: {
     store: cp2Store,
+    ...(fulfillmentPool === undefined
+      ? {}
+      : {
+          businessTaskStore: createPostgresBusinessTaskStore(fulfillmentPool, (input) =>
+            cp2Store.authorizeBusinessPermission(input)
+          )
+        }),
     emailProvider,
     webPublicUrl: messageWebBaseUrl,
     telegramBotUsername: "",
