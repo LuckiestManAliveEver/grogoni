@@ -123,7 +123,9 @@ import {
   parseRuntimeHashtagInvocation,
   productContextScriptMatchToParseResult,
   receiptContextScriptMatchToParseResult,
-  runtimeToolRegistry
+  runtimeToolRegistry,
+  validateRuntimeToolInput,
+  type BusinessTaskPlanStep
 } from "@grogoni/tool-core";
 import { queryCatalogueProducts, roleCan, type BusinessPermission } from "@grogoni/business-core";
 import { Cp2Error } from "../../cp2-error.js";
@@ -206,6 +208,7 @@ import {
   runtimeEvaluationSampled,
   runtimeExecutionFailureResponse,
   runtimeStatusFromPlan,
+  stableUuid,
   validateAgentModelBindingConfiguration,
   type BusinessAgentProfileInput,
   type BusinessAgentProfileSummary,
@@ -2140,6 +2143,8 @@ export class AgentRuntimeDomain {
     message: string;
     conversationHistory?: RuntimeModelConversationMessage[];
     confirmationToken?: string;
+    /** Server-only compiled task step; HTTP and MCP parsers never accept this field. */
+    plannedStep?: BusinessTaskPlanStep;
     signal?: AbortSignal;
     now?: Date;
   }): Promise<RuntimeTurnResult> {
@@ -2170,7 +2175,9 @@ export class AgentRuntimeDomain {
         readiness.issues.map((issue) => issue.message).join(" ")
       );
     }
-    const hashtagInvocation = parseRuntimeHashtagInvocation(input.message);
+    const hashtagInvocation = input.plannedStep
+      ? null
+      : parseRuntimeHashtagInvocation(input.message);
     const storedAgentProfile = this.currentAgentProfile(input.businessId, now);
     if (input.confirmationToken === undefined && hashtagInvocation === null) {
       await this.ensureDefaultRuntimeForTurn({
@@ -2424,6 +2431,7 @@ export class AgentRuntimeDomain {
       diagnostics: contextDiagnostics
     });
     const willCallModel =
+      input.plannedStep === undefined &&
       hashtagInvocation === null &&
       documentImportProposal === null &&
       messagingProposal === null &&
@@ -2512,21 +2520,23 @@ export class AgentRuntimeDomain {
       intent: parserResult.intent,
       confidence: parserResult.confidence,
       source:
-        hashtagInvocation !== null
-          ? "hashtag"
-          : documentImportProposal !== null
-            ? "document_import"
-            : messagingProposal !== null
-              ? "messaging"
-              : networkProposal !== null
-                ? "network"
-                : commerceProposal !== null
-                  ? "commerce"
-                  : effectiveContextScriptMatch === null
-                    ? modelRoute.proposal === null
-                      ? "parser"
-                      : "local_model"
-                    : "context_script",
+        input.plannedStep !== undefined
+          ? "business_task"
+          : hashtagInvocation !== null
+            ? "hashtag"
+            : documentImportProposal !== null
+              ? "document_import"
+              : messagingProposal !== null
+                ? "messaging"
+                : networkProposal !== null
+                  ? "network"
+                  : commerceProposal !== null
+                    ? "commerce"
+                    : effectiveContextScriptMatch === null
+                      ? modelRoute.proposal === null
+                        ? "parser"
+                        : "local_model"
+                      : "context_script",
       scriptId: effectiveContextScriptMatch?.scriptId ?? null,
       matchedPhrase: effectiveContextScriptMatch?.matchedPhrase ?? null,
       canonicalIntent: effectiveContextScriptMatch?.intent ?? null,
@@ -2535,6 +2545,17 @@ export class AgentRuntimeDomain {
       fallbackReason: effectiveContextScriptMatch === null ? "no_context_script_match" : null
     });
     const resolvedProposal =
+      (input.plannedStep === undefined
+        ? null
+        : {
+            toolName: input.plannedStep.capability,
+            input: structuredClone(input.plannedStep.input),
+            reason: "Compiled business task step",
+            validation: validateRuntimeToolInput(
+              input.plannedStep.capability,
+              input.plannedStep.input
+            )
+          }) ??
       hashtagInvocation?.proposal ??
       documentImportProposal ??
       messagingProposal ??
@@ -2612,6 +2633,7 @@ export class AgentRuntimeDomain {
           : "safe_to_execute"
         : "clarification_required"
     });
+    if (input.plannedStep) plan.id = stableUuid(input.plannedStep.idempotencyKey);
     const verificationErrors = [
       ...proposal.validation.errors,
       ...policyErrors,

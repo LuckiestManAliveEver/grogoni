@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { RuntimeModelProvider } from "../packages/shared-types/src";
 import { buildApi } from "../services/api/src/app";
 import { createCp2Store } from "../services/api/src/cp2/store";
+import { compileBusinessTask } from "../packages/tool-core/src";
 
 interface RuntimeTurnResponse {
   session: { id: string };
@@ -17,6 +18,69 @@ interface RuntimeTurnResponse {
 }
 
 describe("runtime capability execution", () => {
+  it("runs server-compiled steps through canonical validation without accepting them from HTTP", async () => {
+    const store = createCp2Store();
+    const app = buildApi({ cp2: { store } });
+    try {
+      const { businessId, cookie } = await createOwnerBusiness(app);
+      const sessionId = cookie.slice(cookie.indexOf("=") + 1);
+      const task = compileBusinessTask({
+        taskId: "test-task",
+        businessId,
+        actorId: "test-actor",
+        objective: "Inspect inventory",
+        manifest: {
+          id: "test.inventory",
+          version: "1.0.0",
+          name: "Test",
+          description: "Fixture",
+          domain: "retail",
+          capabilities: ["products.list"],
+          observationSchema: {},
+          verificationPolicyId: "test.verify",
+          evaluationPolicyId: "test.evaluate",
+          executionMode: "READ_ONLY",
+          status: "ACTIVE"
+        },
+        authorizedCapabilities: ["products.list"],
+        executionMode: "READ_ONLY",
+        constraints: { budgetMinor: null, currency: null, horizonDays: null },
+        steps: [
+          {
+            id: "observe",
+            capability: "products.list",
+            input: {},
+            dependencies: [],
+            expectedOutput: "Inventory"
+          }
+        ],
+        now: new Date()
+      });
+      const result = await store.createRuntimeTurn({
+        sessionId,
+        businessId,
+        message: "Inspect inventory",
+        plannedStep: task.plan[0]
+      });
+      expect(result.turn.plan.toolName).toBe("products.list");
+      expect(result.turn.status).toBe("completed");
+      expect(result.turn.model).toBeNull();
+      const repeated = await store.createRuntimeTurn({
+        sessionId,
+        businessId,
+        message: "Inspect inventory",
+        plannedStep: task.plan[0]
+      });
+      expect(repeated.turn.plan.id).toBe(result.turn.plan.id);
+      const { parseRuntimeTurnBody } =
+        await import("../services/api/src/cp2/domains/agent-runtime/runtime-turn-request");
+      expect(
+        parseRuntimeTurnBody({ message: "hello", plannedStep: task.plan[0] } as never)
+      ).not.toHaveProperty("plannedStep");
+    } finally {
+      await app.close();
+    }
+  });
   it("executes every formerly placeholder mutation through canonical domain operations", async () => {
     let modelOutput = JSON.stringify({ type: "response", message: "Ready." });
     const provider: RuntimeModelProvider = {
