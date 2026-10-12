@@ -2,7 +2,10 @@ import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { Pool } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { createPostgresRuntimeApprovalStore } from "./runtime-approval-store.js";
+import {
+  createPostgresRuntimeApprovalStore,
+  createPostgresRuntimeApprovalMaintenance
+} from "./runtime-approval-store.js";
 import type { PendingRuntimeAction } from "./shared.js";
 import { createCp2Store } from "../../store.js";
 import { buildApi } from "../../../app.js";
@@ -108,6 +111,31 @@ describe.skipIf(!url)("durable exact-action runtime approvals", () => {
         "alter table business_runtime_approvals drop constraint reject_approval_test"
       );
     }
+  });
+  it("purges expired records after the bounded audit window and deletes only the requested ownership scope", async () => {
+    await approvals.put("recent", pending());
+    await approvals.put("old", {
+      ...pending(),
+      expiresAt: new Date(now.getTime() - 2 * 24 * 60 * 60_000).toISOString()
+    });
+    await approvals.put("other", { ...pending(), actorId: "other", businessId: "other" });
+    expect(await approvals.purgeExpired(now)).toBe(1);
+    expect(await approvals.deleteScope(["actor"], [])).toBe(1);
+    expect((await pool.query("select business_id from business_runtime_approvals")).rows).toEqual([
+      { business_id: "other" }
+    ]);
+    expect(await approvals.deleteScope([], ["other"])).toBe(1);
+  });
+  it("does not allow maintenance transactions to issue or claim approvals", async () => {
+    const maintenance = createPostgresRuntimeApprovalMaintenance(pool);
+    await expect(maintenance.put(claim.token, pending())).rejects.toMatchObject({
+      code: "runtime_approval_maintenance_only"
+    });
+    await approvals.put(claim.token, pending());
+    await expect(maintenance.claim(claim)).rejects.toMatchObject({
+      code: "runtime_approval_maintenance_only"
+    });
+    await expect(approvals.claim(claim)).resolves.toMatchObject({ actorId: "actor" });
   });
   it("confirms through a fresh canonical runtime using no in-memory pending action", async () => {
     const store = createCp2Store({

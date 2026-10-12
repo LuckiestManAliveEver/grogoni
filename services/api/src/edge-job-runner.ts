@@ -6,6 +6,7 @@ import {
   saveTransactionalCp2Snapshot
 } from "./cp2/postgres-store.js";
 import { createCp2Store, type Cp2Store, type Cp2StoreOptions } from "./cp2/store.js";
+import { createPostgresRuntimeApprovalMaintenance } from "./cp2/domains/agent-runtime/runtime-approval-store.js";
 import type { FulfillmentService } from "./cp2/domains/fulfillment/service.js";
 import {
   createEdgeFulfillmentService,
@@ -174,7 +175,10 @@ export const edgeJobDefinitions: Record<string, EdgeJobDefinition> = {
     schedule: "30 3 * * *",
     enabled: onUnlessDisabled("ENABLE_RUNTIME_EXPERIENCE_RETENTION_RUNNER"),
     needsStore: true,
-    run: async ({ store, now }) => ({ deprecated: store.purgeExpiredRuntimeExperiences(now) })
+    run: async ({ store, now }) => ({
+      deprecated: store.purgeExpiredRuntimeExperiences(now),
+      approvalsPurged: await store.purgeExpiredRuntimeApprovals(now)
+    })
   },
   edge_rate_limit_retention: {
     schedule: "25 * * * *",
@@ -249,6 +253,7 @@ export async function runEdgeJob(
       const pool = transactionPool(client);
       const store = createCp2Store({
         ...options.storeDependencies,
+        runtimeApprovalStore: createPostgresRuntimeApprovalMaintenance(client),
         workspaceRoot: "/tmp/grogoni-workspace",
         conversationAttachmentBlobStore: createPostgresAttachmentBlobStore(pool),
         accountAiAssetStore: createPostgresAccountAiAssetStore(pool)
