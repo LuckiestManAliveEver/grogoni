@@ -4,9 +4,10 @@ import { registerMcpRoutes, createMcpRouteState } from "./mcp/routes.js";
 import { isValidTurnId, turnContext } from "./inference/turn-stream.js";
 import { Cp2Error } from "./cp2/cp2-error.js";
 import { createEmailProviderFromEnvironment } from "./cp2/email-provider.js";
-import type { PoolClient } from "pg";
+import type { PoolClient, QueryResultRow } from "pg";
 import { registerCp2Routes } from "./cp2/routes.js";
 import { createPostgresBusinessTaskStore } from "./cp2/domains/agent-runtime/business-task-store.js";
+import { createPostgresRuntimeApprovalStore } from "./cp2/domains/agent-runtime/runtime-approval-store.js";
 import { createCp2Store, readSessionCookie } from "./cp2/store.js";
 import {
   createPostgresAccountAiAssetStore,
@@ -32,6 +33,8 @@ export interface EdgeDomainDatabase {
   transaction: <T>(action: (client: PoolClient) => Promise<T>) => Promise<T>;
   /** Required to run background jobs; see EdgeJobDatabase. */
   jobTransaction?: EdgeJobDatabase["jobTransaction"];
+  /** Independent connection/commit with no snapshot coordination lock. */
+  approvalTransaction?: EdgeDomainDatabase["transaction"];
 }
 
 export async function createEdgeDomainRoutes(database: EdgeDomainDatabase) {
@@ -103,6 +106,17 @@ export async function createEdgeDomainRoutes(database: EdgeDomainDatabase) {
       const pool = transactionPool(client);
       const store = createCp2Store({
         ...storeDependencies,
+        // Independent transaction: rolling back this request must not reopen an executed approval.
+        ...(database.approvalTransaction === undefined
+          ? {}
+          : {
+              runtimeApprovalStore: createPostgresRuntimeApprovalStore({
+                query: <R extends QueryResultRow>(sql: string, values: unknown[]) =>
+                  database.approvalTransaction!((approvalClient) =>
+                    approvalClient.query<R>(sql, values)
+                  )
+              })
+            }),
         workspaceRoot: "/tmp/grogoni-workspace",
         conversationAttachmentBlobStore: createPostgresAttachmentBlobStore(pool),
         accountAiAssetStore: createPostgresAccountAiAssetStore(pool)

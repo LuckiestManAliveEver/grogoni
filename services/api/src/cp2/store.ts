@@ -429,6 +429,7 @@ import {
 } from "@grogoni/business-core";
 import { parseRuntimeModelOutput, parseMerchantCommand } from "@grogoni/tool-core";
 import type { ConversationAttachmentRecord } from "./workspace-file-delivery.js";
+import type { RuntimeApprovalStore } from "./domains/agent-runtime/runtime-approval-store.js";
 import {
   createMemoryConversationAttachmentBlobStore,
   type ConversationAttachmentBlobStore
@@ -815,6 +816,7 @@ export interface Cp2Snapshot
 }
 
 export interface Cp2StoreOptions {
+  runtimeApprovalStore?: RuntimeApprovalStore;
   computerWorkerClient?: ComputerWorkerClient;
   passkeyAuthenticationVerifier?: typeof verifyAuthenticationResponse;
   runtimeModelProvider?: RuntimeModelProvider;
@@ -1366,6 +1368,9 @@ export class Cp2Store {
     });
     this.vocabularyDomain.initializeApprovedCache();
     this.agentRuntimeDomain = new AgentRuntimeDomain({
+      ...(options.runtimeApprovalStore === undefined
+        ? {}
+        : { runtimeApprovalStore: options.runtimeApprovalStore }),
       executeComputerCapability: async (input) => {
         const domain = this.requireComputerRuntime();
         const toolName = input.action.toolName;
