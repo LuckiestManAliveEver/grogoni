@@ -44,7 +44,7 @@ describe.skipIf(!url)("committed inventory procurement drafts", () => {
     capabilities: ["procurement.prepare"],
     observationSchema: {},
     verificationPolicyId: "grogoni.inventory.replenishment.v1",
-    evaluationPolicyId: "fixture.evaluate",
+    evaluationPolicyId: "grogoni.inventory.outcomes.v1",
     executionMode: "LIVE",
     status: "ACTIVE"
   };
@@ -333,6 +333,17 @@ describe.skipIf(!url)("committed inventory procurement drafts", () => {
     await executed();
     const report = await verify();
     expect(report.status).toBe("PASSED");
+    expect(report.evaluation).toMatchObject({
+      executionSuccess: true,
+      reward: null,
+      outcomeStatus: "PENDING",
+      inventory: {
+        budgetCompliance: 1,
+        orderAccuracy: 1,
+        forecastAccuracy: null,
+        stockoutReduction: null
+      }
+    });
     expect(report.checks).toHaveLength(6);
     expect(report.checks.every((check) => check.status === "PASSED")).toBe(true);
     await environments.transition(actor, "task", 2, "VERIFYING");

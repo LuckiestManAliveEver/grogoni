@@ -4661,6 +4661,7 @@ export interface RuntimeExperience {
 }
 
 export type AgentEvaluationEventType =
+  | "business_task_verification"
   | "intent_classification"
   | "context_retrieval"
   | "tool_selection"
@@ -4722,6 +4723,35 @@ export interface AgentEvaluationSummary {
    */
   averageSessionTurnCountAtClarify: number | null;
   recentEvents: AgentEvaluationEvent[];
+  environmentOutcomes?: EnvironmentEvaluation[];
+}
+
+export interface EnvironmentEvaluation {
+  verificationId: string;
+  taskId: string;
+  stepId: string;
+  environmentId: string;
+  environmentVersion: string;
+  evaluationPolicyId: string | null;
+  executionSuccess: boolean | null;
+  constraintViolations: number | null;
+  executionAccuracy: number | null;
+  toolCalls: number | null;
+  toolEfficiency: number | null;
+  latencyMs: number | null;
+  modelLatencyMs: number | null;
+  promptTokens: number | null;
+  completionTokens: number | null;
+  humanInterventions: number | null;
+  reward: number | null;
+  outcomeStatus: "VERIFIED" | "PENDING" | "INCONCLUSIVE" | "FAILED";
+  inventory: {
+    budgetCompliance: number | null;
+    orderAccuracy: number | null;
+    forecastAccuracy: number | null;
+    stockoutReduction: number | null;
+  } | null;
+  event: AgentEvaluationEvent;
 }
 
 /**

@@ -431,6 +431,7 @@ import { parseRuntimeModelOutput, parseMerchantCommand } from "@grogoni/tool-cor
 import type { ConversationAttachmentRecord } from "./workspace-file-delivery.js";
 import type { RuntimeApprovalStore } from "./domains/agent-runtime/runtime-approval-store.js";
 import type { InventoryProcurementStore } from "./domains/agent-runtime/inventory-procurement-store.js";
+import type { BusinessTaskEvaluationReader } from "./domains/agent-runtime/business-task-evaluation-reader.js";
 import {
   createMemoryConversationAttachmentBlobStore,
   type ConversationAttachmentBlobStore
@@ -817,6 +818,7 @@ export interface Cp2Snapshot
 }
 
 export interface Cp2StoreOptions {
+  businessTaskEvaluations?: BusinessTaskEvaluationReader;
   inventoryProcurement?: InventoryProcurementStore;
   runtimeApprovalStore?: RuntimeApprovalStore;
   computerWorkerClient?: ComputerWorkerClient;
@@ -1370,6 +1372,9 @@ export class Cp2Store {
     });
     this.vocabularyDomain.initializeApprovedCache();
     this.agentRuntimeDomain = new AgentRuntimeDomain({
+      ...(options.businessTaskEvaluations === undefined
+        ? {}
+        : { businessTaskEvaluations: options.businessTaskEvaluations }),
       ...(options.inventoryProcurement === undefined
         ? {}
         : { inventoryProcurement: options.inventoryProcurement }),

@@ -865,7 +865,7 @@ export function registerAgentRuntimeRoutes(app: FastifyInstance, store: Cp2Store
     "/businesses/:businessId/agent-runtime/evaluations",
     async (request: FastifyRequest<{ Params: BusinessParams }>, reply) => {
       try {
-        return store.getAgentEvaluationSummary({
+        return await store.getAgentEvaluationSummary({
           sessionId: readSessionCookie(request.headers.cookie),
           businessId: request.params.businessId
         });

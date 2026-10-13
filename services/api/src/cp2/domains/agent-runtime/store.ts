@@ -1783,15 +1783,19 @@ export class AgentRuntimeDomain {
     });
   }
 
-  getAgentEvaluationSummary(input: {
+  async getAgentEvaluationSummary(input: {
     sessionId: string | null;
     businessId: string;
     now?: Date;
-  }): AgentEvaluationSummary {
+  }): Promise<AgentEvaluationSummary> {
     const now = input.now ?? new Date();
     this.deps.requireAuthorizedSession(input.sessionId, input.businessId, "business:read", now);
     const profile = this.currentAgentProfile(input.businessId, now);
-    const events = this.evaluationEventsForBusiness(input.businessId);
+    const environmentOutcomes = (await this.deps.businessTaskEvaluations?.list(input)) ?? [];
+    const events = [
+      ...this.evaluationEventsForBusiness(input.businessId),
+      ...environmentOutcomes.map((entry) => entry.event)
+    ].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
     const scores = events
       .map((event) => event.score)
       .filter((score): score is number => score !== null);
@@ -1816,7 +1820,8 @@ export class AgentRuntimeDomain {
           ? null
           : clarifyingTurnCounts.reduce((sum, turnCount) => sum + turnCount, 0) /
             clarifyingTurnCounts.length,
-      recentEvents: events.slice(0, 20).map((event) => ({ ...event }))
+      recentEvents: events.slice(0, 20).map((event) => ({ ...event })),
+      environmentOutcomes
     };
   }
 
