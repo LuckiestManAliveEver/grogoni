@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type {
   AgentContextSource,
   RuntimeExperience,
@@ -15,6 +15,7 @@ import {
 import { buildRuntimeReportCard } from "../services/api/src/cp2/domains/agent-runtime/report-card";
 import { nextRuntimeExperienceState } from "../services/api/src/cp2/domains/agent-runtime/shared";
 import { createCp2Store } from "../services/api/src/cp2/store";
+import { Cp2Error } from "../services/api/src/cp2/cp2-error";
 
 function source(overrides: {
   id: string;
@@ -454,6 +455,37 @@ describe("buildRuntimeReportCard", () => {
 });
 
 describe("recall tenant isolation and grounding gate at the real HTTP seam", () => {
+  it("authorizes native outcome reads and returns asynchronous persistence errors through the existing API", async () => {
+    const list = vi.fn(async () => []);
+    const store = createCp2Store({ businessTaskEvaluations: { list } });
+    const app = buildApi({ cp2: { store } });
+    try {
+      const owner = await createOwnerBusiness(app, "+254700009005", "Evaluation Shop");
+      const path = `/businesses/${owner.businessId}/agent-runtime/evaluations`;
+      const response = await app.inject({
+        method: "GET",
+        url: path,
+        headers: { cookie: owner.cookie }
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json().environmentOutcomes).toEqual([]);
+      expect(list).toHaveBeenCalledTimes(1);
+      expect((await app.inject({ method: "GET", url: path })).statusCode).toBe(401);
+      expect(list).toHaveBeenCalledTimes(1);
+      list.mockRejectedValueOnce(
+        new Cp2Error(503, "evaluation_unavailable", "Evaluation read unavailable.")
+      );
+      const failed = await app.inject({
+        method: "GET",
+        url: path,
+        headers: { cookie: owner.cookie }
+      });
+      expect(failed.statusCode).toBe(503);
+      expect(failed.json().code).toBe("evaluation_unavailable");
+    } finally {
+      await app.close();
+    }
+  });
   it("records no model attribution or latency for a parser-only runtime action", async () => {
     const store = createCp2Store({});
     const app = buildApi({ cp2: { store } });

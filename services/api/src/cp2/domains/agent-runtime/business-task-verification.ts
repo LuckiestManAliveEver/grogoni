@@ -1,7 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { Pool } from "pg";
 import type { BusinessPermission } from "@grogoni/business-core";
-import type { RuntimeTurnSummary, ProductSummary } from "@grogoni/shared-types";
+import type {
+  RuntimeTurnSummary,
+  ProductSummary,
+  EnvironmentEvaluation
+} from "@grogoni/shared-types";
 import type {
   BusinessTask,
   BusinessEnvironmentInstance,
@@ -12,6 +16,7 @@ import { canonicalJson } from "../model-templates/manifest.js";
 import { Cp2Error } from "../../cp2-error.js";
 import { stableUuid } from "./shared.js";
 import { verifyProcurementDrafts } from "./procurement-verification.js";
+import { evaluateBusinessTaskStep } from "./business-task-evaluation.js";
 
 type Status = "PASSED" | "FAILED" | "INCONCLUSIVE";
 export interface BusinessTaskVerificationReport {
@@ -25,6 +30,7 @@ export interface BusinessTaskVerificationReport {
   policyId: string;
   status: Status;
   checkedAt: string;
+  evaluation?: EnvironmentEvaluation;
   checks: {
     category: EnvironmentVerificationCategory;
     status: Status;
@@ -147,7 +153,7 @@ export function createPostgresBusinessTaskVerifier(
         const stateVersion = createHash("sha256")
           .update(
             canonicalJson({
-              verifierVersion: "inventory-and-procurement.v2",
+              verifierVersion: "inventory-and-procurement.v3",
               environmentIdentity: {
                 id: environment.instance.id,
                 runtimeInstanceId: environment.instance.runtimeInstanceId,
@@ -250,6 +256,7 @@ export function createPostgresBusinessTaskVerifier(
           checkedAt: now.toISOString(),
           checks
         };
+        report.evaluation = evaluateBusinessTaskStep(row.task, environment.instance, report, turn);
         const saved = await client.query<{ report: BusinessTaskVerificationReport }>(
           `insert into business_environment_task_verifications
              (id,business_id,task_id,step_id,actor_id,runtime_turn_id,state_version,status,report)

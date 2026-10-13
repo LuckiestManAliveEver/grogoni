@@ -10,6 +10,7 @@ import { createPostgresBusinessTaskStore } from "./cp2/domains/agent-runtime/bus
 import { createPostgresRuntimeApprovalStore } from "./cp2/domains/agent-runtime/runtime-approval-store.js";
 import { createCp2Store, readSessionCookie, type Cp2Store } from "./cp2/store.js";
 import { createInventoryProcurementStore } from "./cp2/domains/agent-runtime/inventory-procurement-store.js";
+import { createBusinessTaskEvaluationReader } from "./cp2/domains/agent-runtime/business-task-evaluation-reader.js";
 import {
   createPostgresAccountAiAssetStore,
   createPostgresAttachmentBlobStore,
@@ -107,6 +108,9 @@ export async function createEdgeDomainRoutes(database: EdgeDomainDatabase) {
       const pool = transactionPool(client);
       const store: Cp2Store = createCp2Store({
         ...storeDependencies,
+        businessTaskEvaluations: createBusinessTaskEvaluationReader(pool, (input) =>
+          store.authorizeBusinessPermission(input)
+        ),
         // Independent transaction: rolling back this request must not reopen an executed approval.
         ...(database.approvalTransaction === undefined
           ? {}

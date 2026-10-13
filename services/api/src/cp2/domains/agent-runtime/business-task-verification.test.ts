@@ -7,6 +7,7 @@ import { createPostgresBusinessTaskStepStore } from "./business-task-step-store.
 import { createPostgresBusinessTaskVerifier } from "./business-task-verification.js";
 import { createPostgresBusinessEnvironmentStore } from "./business-environment-store.js";
 import { stableUuid } from "./shared.js";
+import { createBusinessTaskEvaluationReader } from "./business-task-evaluation-reader.js";
 import type { BusinessEnvironmentManifest } from "@grogoni/tool-core";
 
 const url = process.env.CP2_POSTGRES_TEST_DATABASE_URL;
@@ -31,7 +32,7 @@ describe.skipIf(!url)("independent committed inventory verification", () => {
     capabilities: ["products.list"],
     observationSchema: {},
     verificationPolicyId: "grogoni.inventory.read.v1",
-    evaluationPolicyId: "test.evaluate",
+    evaluationPolicyId: "grogoni.inventory.outcomes.v1",
     executionMode: "READ_ONLY",
     status: "ACTIVE"
   };
@@ -118,6 +119,12 @@ describe.skipIf(!url)("independent committed inventory verification", () => {
   it("independently checks all six categories and durably deduplicates identical evidence", async () => {
     const first = await verifier.verify(request);
     expect(first.status).toBe("PASSED");
+    expect(first.evaluation).toMatchObject({
+      executionSuccess: true,
+      reward: null,
+      outcomeStatus: "VERIFIED",
+      event: { modelId: null, agentId: "agent" }
+    });
     expect(first.checks).toHaveLength(6);
     expect(
       first.checks.every((check) => check.status === "PASSED" && check.evidenceRefs.length > 0)
@@ -129,6 +136,55 @@ describe.skipIf(!url)("independent committed inventory verification", () => {
       (await pool.query("select count(*)::int as n from business_environment_task_verifications"))
         .rows[0].n
     ).toBe(1);
+  });
+  it("reads only current, actor-scoped committed evaluations and never falls back to an older pass", async () => {
+    const reader = createBusinessTaskEvaluationReader(pool, authorize);
+    const first = await verifier.verify(request);
+    expect(await reader.list(actor)).toEqual([first.evaluation]);
+    expect(await reader.list({ ...actor, sessionId: "other" })).toEqual([]);
+    expect(await reader.list({ ...actor, businessId: "other" })).toEqual([]);
+    await pool.query("update cp2_products set record=jsonb_set(record,'{quantity}','9')");
+    const changed = await verifier.verify(request);
+    expect(changed.evaluation).toMatchObject({
+      executionSuccess: null,
+      outcomeStatus: "INCONCLUSIVE",
+      reward: null
+    });
+    expect(await reader.list(actor)).toEqual([changed.evaluation]);
+  });
+  it("does not persist an evaluation when its verification transaction rolls back", async () => {
+    await pool.query(
+      `create function reject_report() returns trigger language plpgsql as $$ begin raise exception 'injected persistence failure'; end $$`
+    );
+    await pool.query(
+      "create trigger reject_report before insert on business_environment_task_verifications for each row execute function reject_report()"
+    );
+    try {
+      await expect(verifier.verify(request)).rejects.toThrow("injected persistence failure");
+      expect(await createBusinessTaskEvaluationReader(pool, authorize).list(actor)).toEqual([]);
+    } finally {
+      await pool.query("drop trigger reject_report on business_environment_task_verifications");
+      await pool.query("drop function reject_report()");
+    }
+  });
+  it("does not manufacture eligibility for a legacy or unsupported evaluation policy", async () => {
+    await pool.query("update business_environment_tasks set task=task-'evaluationPolicyId'");
+    const legacy = await verifier.verify(request);
+    expect(legacy.status).toBe("PASSED");
+    expect(legacy.evaluation).toMatchObject({
+      executionSuccess: null,
+      outcomeStatus: "INCONCLUSIVE",
+      reward: null,
+      evaluationPolicyId: null
+    });
+    await pool.query(
+      `update business_environment_tasks set task=jsonb_set(task,'{evaluationPolicyId}','"unregistered"')`
+    );
+    expect((await verifier.verify(request)).evaluation).toMatchObject({
+      executionSuccess: null,
+      outcomeStatus: "INCONCLUSIVE",
+      reward: null
+    });
   });
   it("does not accept runtime success or model prose when authoritative inventory differs", async () => {
     await pool.query("update cp2_products set record=jsonb_set(record,'{quantity}','9')");
