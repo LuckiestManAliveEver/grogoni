@@ -54,6 +54,11 @@ export function recordFallbackExperience(
     [...runtimeExperiences.values()].find(
       (experience) =>
         experience.shopId === input.businessId &&
+        experience.agentId === input.agentId &&
+        experience.recipeId === (input.recipe?.id ?? null) &&
+        experience.recipeVersion === (input.recipe?.version ?? null) &&
+        experience.toolSequence.length === 1 &&
+        experience.toolSequence[0] === input.toolName &&
         experience.lessonKey === lessonKey &&
         experience.validationState !== "deprecated"
     ) ?? null;

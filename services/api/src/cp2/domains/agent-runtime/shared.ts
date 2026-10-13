@@ -1072,7 +1072,24 @@ export function nextRuntimeExperienceState(
   const lessonKey = `fallback:${input.intent}:${input.fallbackReason}`;
   const nowIso = input.now.toISOString();
   if (existing !== null) {
-    const corroborationCount = existing.corroborationCount + 1;
+    if (
+      existing.shopId !== input.businessId ||
+      existing.tenantId !== input.businessId ||
+      existing.agentId !== input.agentId ||
+      existing.lessonKey !== lessonKey ||
+      existing.recipeId !== input.recipeId ||
+      existing.recipeVersion !== input.recipeVersion ||
+      existing.toolSequence.length !== 1 ||
+      existing.toolSequence[0] !== input.toolName ||
+      existing.validationState === "deprecated"
+    ) {
+      throw new Error("Experience corroboration scope does not match.");
+    }
+    const turnIds = [...new Set(existing.corroboratingTurnIds ?? [existing.sourceTurnId])];
+    // Never evict identifiers: eviction would allow an old replay to count again.
+    const canCount = !turnIds.includes(input.turnId) && turnIds.length < 64;
+    if (canCount) turnIds.push(input.turnId);
+    const corroborationCount = turnIds.length;
     const wasValidated = existing.validationState === "validated";
     const validationState: RuntimeExperience["validationState"] =
       corroborationCount >= runtimeExperienceValidationThreshold
@@ -1081,9 +1098,10 @@ export function nextRuntimeExperienceState(
     const experience: RuntimeExperience = {
       ...existing,
       corroborationCount,
+      corroboratingTurnIds: turnIds,
       validationState,
-      sourceTurnId: input.turnId,
-      updatedAt: nowIso
+      sourceTurnId: canCount ? input.turnId : existing.sourceTurnId,
+      updatedAt: canCount ? nowIso : existing.updatedAt
     };
     const telemetryEvents: RuntimeExperienceTelemetryEvent[] = [
       {
@@ -1117,6 +1135,7 @@ export function nextRuntimeExperienceState(
     lesson: `For "${input.intent}" requests, the primary model has failed with ${input.fallbackReason}; the configured fallback model completed the request successfully when this happened.`,
     validationState: "candidate",
     corroborationCount: 1,
+    corroboratingTurnIds: [input.turnId],
     sourceTurnId: input.turnId,
     createdAt: nowIso,
     updatedAt: nowIso,

@@ -44,6 +44,7 @@ interface RuntimeExperience {
   lesson: string;
   validationState: "candidate" | "validated" | "deprecated";
   corroborationCount: number;
+  corroboratingTurnIds?: string[]; // bounded durable replay ledger
   sourceTurnId: string; // diagnostic only - never used to resume execution
   createdAt;
   updatedAt: string;
@@ -73,9 +74,11 @@ what the brief's "do not create disconnected placeholders" warns against.
 ```mermaid
 flowchart LR
   T[Turn: fallback succeeded] --> L[lessonKey = fallback:intent:reason]
-  L --> Q{Existing non-deprecated row with this lessonKey for this business?}
+  L --> Q{Existing non-deprecated row with matching business, agent, recipe and tool?}
   Q -->|no| C[Insert candidate, corroborationCount=1]
-  Q -->|yes| B[Bump corroborationCount]
+  Q -->|yes| R{Previously counted turn or ledger full?}
+  R -->|yes| D[Keep count and retention timestamp]
+  R -->|no| B[Add turn identifier and increment count]
   B --> P{corroborationCount >= threshold 2?}
   P -->|yes| V[validationState = validated]
   P -->|no| K[stays candidate]
@@ -87,6 +90,13 @@ promotion decision is unit-tested independent of `Cp2Store` (`tests/muse-adoptio
 The calling store method does the Map lookup/write and emits the telemetry events the pure function
 returns (`recall.candidate_generated`, `recall.deduplicated`, `recall.persisted` - finally giving
 those long-declared states real emissions).
+
+The durable ledger prevents consecutive and nonconsecutive replay inflation and
+freezes at 64 identifiers without eviction. Legacy rows without the ledger can
+prove only their last source turn, not their historical count. See
+[replay safety](experience-replay-safety.md) for the compatibility limits. Distinct
+turns are not independent business-outcome verification; this existing fallback
+lesson is about model-routing reliability, not verified replenishment success.
 
 A `candidate` is **never** surfaced into a prompt - only `validated` experiences are synthesized into
 `recall`-type context sources. This is the brief's "one bad execution must not permanently poison

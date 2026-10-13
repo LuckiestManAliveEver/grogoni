@@ -232,7 +232,7 @@ describe("nextRuntimeExperienceState", () => {
     ]);
   });
 
-  it("stays a candidate below the corroboration threshold, and never surfaces a fabricated recipe/evidence change", () => {
+  it("promotes after a distinct corroborating turn without fabricating recipe/evidence changes", () => {
     const candidate: RuntimeExperience = nextRuntimeExperienceState(null, baseInput).experience;
     const result = nextRuntimeExperienceState(candidate, {
       ...baseInput,
@@ -254,6 +254,51 @@ describe("nextRuntimeExperienceState", () => {
     expect(third.experience.validationState).toBe("validated");
     expect(third.experience.corroborationCount).toBe(3);
     expect(third.telemetryEvents.map((event) => event.state)).toEqual(["recall.deduplicated"]);
+  });
+
+  it("does not count replayed turns, including nonconsecutive replays after rehydration", () => {
+    const first = nextRuntimeExperienceState(null, baseInput).experience;
+    const replay = nextRuntimeExperienceState(first, { ...baseInput, now: new Date("2026-09-02") });
+    expect(replay.experience).toEqual(first);
+    expect(replay.experience.validationState).toBe("candidate");
+    const second = nextRuntimeExperienceState(first, { ...baseInput, turnId: "turn-2" }).experience;
+    const restored = JSON.parse(JSON.stringify(second)) as RuntimeExperience;
+    expect(nextRuntimeExperienceState(restored, baseInput).experience).toEqual(second);
+  });
+
+  it("does not invent a legacy record's untracked corroborating identities", () => {
+    const legacy = nextRuntimeExperienceState(null, baseInput).experience;
+    delete legacy.corroboratingTurnIds;
+    legacy.corroborationCount = 30;
+    const result = nextRuntimeExperienceState(legacy, baseInput).experience;
+    expect(result.corroborationCount).toBe(1);
+    expect(result.validationState).toBe("candidate");
+  });
+
+  it("rejects cross-business, agent, recipe, tool and deprecated corroborations", () => {
+    const first = nextRuntimeExperienceState(null, baseInput).experience;
+    for (const changed of [
+      { ...first, shopId: "other" },
+      { ...first, agentId: "other" },
+      { ...first, recipeVersion: 2 },
+      { ...first, toolSequence: ["customer.create" as const] },
+      { ...first, validationState: "deprecated" as const }
+    ]) {
+      expect(() => nextRuntimeExperienceState(changed, baseInput)).toThrow("scope");
+    }
+  });
+
+  it("bounds replay history without evicting older identifiers or refreshing retention on replay", () => {
+    let experience = nextRuntimeExperienceState(null, baseInput).experience;
+    for (let index = 2; index <= 70; index++) {
+      experience = nextRuntimeExperienceState(experience, {
+        ...baseInput,
+        turnId: `turn-${index}`
+      }).experience;
+    }
+    expect(experience.corroborationCount).toBe(64);
+    expect(experience.corroboratingTurnIds).toHaveLength(64);
+    expect(nextRuntimeExperienceState(experience, baseInput).experience).toEqual(experience);
   });
 });
 
