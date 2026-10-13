@@ -4649,6 +4649,8 @@ export interface RuntimeExperience {
   /** Independent turns that produced this exact `lessonKey`. Promotion threshold in
    *  `docs/architecture/experience-memory.md`. */
   corroborationCount: number;
+  /** Bounded durable replay ledger. Older records may only identify sourceTurnId. */
+  corroboratingTurnIds?: string[];
   /** The turn extraction last ran from - diagnostic only, never used to resume execution. */
   sourceTurnId: string;
   createdAt: string;
