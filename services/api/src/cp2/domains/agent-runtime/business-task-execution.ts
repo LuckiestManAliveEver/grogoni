@@ -4,6 +4,7 @@ import type { Cp2Store } from "../../store.js";
 import { Cp2Error } from "../../cp2-error.js";
 import type { createPostgresBusinessTaskStore } from "./business-task-store.js";
 import type { createPostgresBusinessTaskStepStore } from "./business-task-step-store.js";
+import type { createPostgresBusinessEnvironmentStore } from "./business-environment-store.js";
 
 /** Composes the canonical runtime; deliberately not exposed until verification/approval recovery exist. */
 export async function executeBusinessTaskRootStep(input: {
@@ -15,6 +16,7 @@ export async function executeBusinessTaskRootStep(input: {
   manifest: BusinessEnvironmentManifest;
   tasks: ReturnType<typeof createPostgresBusinessTaskStore>;
   steps: ReturnType<typeof createPostgresBusinessTaskStepStore>;
+  environments: Pick<ReturnType<typeof createPostgresBusinessEnvironmentStore>, "get">;
   runtime: Pick<Cp2Store, "createRuntimeTurn" | "getConversation">;
   /** Must await the authoritative runtime write, not just queue a snapshot. */
   commitRuntime: () => Promise<void>;
@@ -65,10 +67,23 @@ export async function executeBusinessTaskRootStep(input: {
       "Read-only tasks cannot mutate business data."
     );
   }
+  const environment = await input.environments.get(actor, task.id);
+  if (
+    !environment ||
+    environment.revision !== input.expectedEnvironmentRevision ||
+    environment.instance.status !== "RUNNING"
+  ) {
+    throw new Cp2Error(
+      409,
+      "business_environment_not_running",
+      "The pinned environment is not running at this revision."
+    );
+  }
   const claim = await input.steps.claim(actor, task.id, step.id, input.expectedEnvironmentRevision);
   try {
     const result = await input.runtime.createRuntimeTurn({
       ...actor,
+      runtimeSessionId: environment.instance.runtimeSessionId,
       conversationId: task.id,
       message: task.objective,
       plannedStep: step
@@ -79,7 +94,11 @@ export async function executeBusinessTaskRootStep(input: {
         ? "AWAITING_APPROVAL"
         : result.turn.status === "completed"
           ? "VERIFYING"
-          : "FAILED";
+          : result.turn.status === "blocked" &&
+              result.turn.verification.ok &&
+              !runtimeToolRegistry[step.capability].readOnly
+            ? "INCONCLUSIVE"
+            : "FAILED";
     return await input.steps.record(actor, task.id, step.id, claim.claim_id, {
       status,
       runtimeTurnId: result.turn.id,

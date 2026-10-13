@@ -10,6 +10,7 @@ import { Pool, type PoolClient, type QueryResultRow } from "pg";
 import { positiveIntegerFromEnv } from "@grogoni/resource-control";
 import { buildPgPoolConfig } from "../db-pool-config.js";
 import { createPostgresRuntimeApprovalStore } from "./domains/agent-runtime/runtime-approval-store.js";
+import { createPostgresInventoryProcurementStore } from "./domains/agent-runtime/inventory-procurement-store.js";
 import {
   createCp2Store,
   type Cp2Snapshot,
@@ -593,6 +594,11 @@ export async function createPostgresCp2Store(
     void _metrics;
     store = createCp2Store({
       ...storeOptions,
+      inventoryProcurement:
+        options.inventoryProcurement ??
+        createPostgresInventoryProcurementStore(pool, (input) =>
+          store.authorizeBusinessPermission(input)
+        ),
       runtimeApprovalStore:
         options.runtimeApprovalStore ?? createPostgresRuntimeApprovalStore(pool),
       conversationAttachmentBlobStore:

@@ -62,6 +62,29 @@ const whole = (value: number) => Number.isSafeInteger(value) && value >= 0;
 const positive = (value: number) => whole(value) && value > 0;
 const ceilDivide = (value: bigint, divisor: bigint) => (value + divisor - 1n) / divisor;
 
+export function validateInventorySupplierOffer(
+  offer: InventoryReplenishmentObservation["offers"][number],
+  businessId: string
+): void {
+  if (
+    !offer.id ||
+    offer.businessId !== businessId ||
+    !offer.productId ||
+    !offer.supplierId ||
+    typeof offer.supplierActive !== "boolean" ||
+    !offer.sourceRef.trim() ||
+    !positive(offer.unitPriceMinor) ||
+    !positive(offer.minQuantityMilli) ||
+    !positive(offer.incrementMilli) ||
+    !whole(offer.availableQuantityMilli) ||
+    !whole(offer.leadTimeDays) ||
+    offer.leadTimeDays > 365 ||
+    !/^[A-Z]{3}$/u.test(offer.currency) ||
+    !Number.isFinite(Date.parse(offer.expiresAt))
+  )
+    throw new Error("Invalid or cross-business supplier quote.");
+}
+
 /** Deterministic advisory planning only. Submission still requires canonical authorization/approval. */
 export function planInventoryReplenishment(input: {
   businessId: string;
@@ -103,23 +126,8 @@ export function planInventoryReplenishment(input: {
   }
   const quoteIds = new Set<string>();
   for (const offer of observation.offers) {
-    if (
-      !offer.id ||
-      quoteIds.has(offer.id) ||
-      offer.businessId !== input.businessId ||
-      !productIds.has(offer.productId) ||
-      !offer.supplierId ||
-      typeof offer.supplierActive !== "boolean" ||
-      !offer.sourceRef.trim() ||
-      !positive(offer.unitPriceMinor) ||
-      !positive(offer.minQuantityMilli) ||
-      !positive(offer.incrementMilli) ||
-      !whole(offer.availableQuantityMilli) ||
-      !whole(offer.leadTimeDays) ||
-      offer.leadTimeDays > 365 ||
-      !/^[A-Z]{3}$/u.test(offer.currency) ||
-      !Number.isFinite(Date.parse(offer.expiresAt))
-    ) {
+    validateInventorySupplierOffer(offer, input.businessId);
+    if (quoteIds.has(offer.id) || !productIds.has(offer.productId)) {
       throw new Error("Invalid or cross-business supplier quote.");
     }
     quoteIds.add(offer.id);

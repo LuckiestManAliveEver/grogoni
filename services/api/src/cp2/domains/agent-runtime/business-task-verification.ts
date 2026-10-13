@@ -2,11 +2,16 @@ import { createHash, randomUUID } from "node:crypto";
 import type { Pool } from "pg";
 import type { BusinessPermission } from "@grogoni/business-core";
 import type { RuntimeTurnSummary, ProductSummary } from "@grogoni/shared-types";
-import type { BusinessTask, EnvironmentVerificationCategory } from "@grogoni/tool-core";
+import type {
+  BusinessTask,
+  BusinessEnvironmentInstance,
+  EnvironmentVerificationCategory
+} from "@grogoni/tool-core";
 import { runtimeToolRegistry } from "@grogoni/tool-core";
 import { canonicalJson } from "../model-templates/manifest.js";
 import { Cp2Error } from "../../cp2-error.js";
 import { stableUuid } from "./shared.js";
+import { verifyProcurementDrafts } from "./procurement-verification.js";
 
 type Status = "PASSED" | "FAILED" | "INCONCLUSIVE";
 export interface BusinessTaskVerificationReport {
@@ -49,19 +54,12 @@ export function createPostgresBusinessTaskVerifier(
       try {
         await client.query("begin isolation level repeatable read");
         const environment = (
-          await client.query<{ instance: { status: string } }>(
+          await client.query<{ instance: BusinessEnvironmentInstance }>(
             `select instance from business_environment_instances
            where business_id=$1 and task_id=$2 and actor_id=$3 for update`,
             [input.businessId, input.taskId, userId]
           )
         ).rows[0];
-        if (environment && !["RUNNING", "VERIFYING"].includes(environment.instance.status)) {
-          throw new Cp2Error(
-            409,
-            "business_environment_not_verifiable",
-            "Environment is not accepting verification."
-          );
-        }
         const row = (
           await client.query<{
             task: BusinessTask;
@@ -80,6 +78,13 @@ export function createPostgresBusinessTaskVerifier(
           )
         ).rows[0];
         if (!row) throw new Cp2Error(404, "business_task_step_not_found", "Task step not found.");
+        if (!environment || !["RUNNING", "VERIFYING"].includes(environment.instance.status)) {
+          throw new Cp2Error(
+            409,
+            "business_environment_not_verifiable",
+            "Environment is not accepting verification."
+          );
+        }
         if (row.status !== "VERIFYING" || !row.runtime_turn_id) {
           throw new Cp2Error(
             409,
@@ -100,18 +105,36 @@ export function createPostgresBusinessTaskVerifier(
             [input.businessId]
           )
         ).rows.map((product) => product.record);
-        const supported =
+        const readSupported =
           row.task.environmentId === "grogoni.retail.inventory" &&
           row.task.environmentVersion === "1.0.0" &&
           row.task.executionMode === "READ_ONLY" &&
           step.capability === "products.list" &&
           Object.keys(step.input).length === 0 &&
           step.verificationPolicyId === "grogoni.inventory.read.v1";
+        const procurementSupported =
+          row.task.environmentId === "grogoni.retail.inventory" &&
+          row.task.environmentVersion === "1.0.0" &&
+          row.task.executionMode === "LIVE" &&
+          step.capability === "procurement.prepare" &&
+          step.input.taskId === row.task.id &&
+          step.verificationPolicyId === "grogoni.inventory.replenishment.v1";
+        if (procurementSupported)
+          for (const permission of [
+            "product:read",
+            "invoice:read",
+            "supplier:read"
+          ] as BusinessPermission[])
+            authorize({ ...input, permission });
+        const procurement = procurementSupported
+          ? await verifyProcurementDrafts(client, row.task, step, row.turn)
+          : null;
         const turn = row.turn;
         const structurallyValid =
           turn !== null &&
           turn.businessId === input.businessId &&
           turn.actorId === userId &&
+          turn.sessionId === environment.instance.runtimeSessionId &&
           turn.id === row.runtime_turn_id &&
           turn.plan?.id === stableUuid(step.idempotencyKey) &&
           turn.plan.toolName === step.capability &&
@@ -124,11 +147,18 @@ export function createPostgresBusinessTaskVerifier(
         const stateVersion = createHash("sha256")
           .update(
             canonicalJson({
-              verifierVersion: "inventory-read.v1",
+              verifierVersion: "inventory-and-procurement.v2",
+              environmentIdentity: {
+                id: environment.instance.id,
+                runtimeInstanceId: environment.instance.runtimeInstanceId,
+                runtimeSessionId: environment.instance.runtimeSessionId,
+                environmentVersion: environment.instance.environmentVersion
+              },
               task: row.task,
               stepId: input.stepId,
               turn,
-              products
+              products,
+              procurement: procurement?.state ?? null
             })
           )
           .digest("hex");
@@ -138,7 +168,7 @@ export function createPostgresBusinessTaskVerifier(
             category,
             status,
             reason,
-            evidenceRefs: [...refs, `state:${stateVersion}`]
+            evidenceRefs: [...refs, `state:${stateVersion}`, ...(procurement?.evidenceRefs ?? [])]
           });
         check(
           "STRUCTURAL",
@@ -152,10 +182,12 @@ export function createPostgresBusinessTaskVerifier(
         );
         check(
           "CONSTRAINT",
-          supported ? "PASSED" : "INCONCLUSIVE",
-          supported
+          readSupported ? "PASSED" : (procurement?.constraints ?? "INCONCLUSIVE"),
+          readSupported
             ? "The verified operation is read-only and has no monetary side effect."
-            : "No independent constraint policy is implemented for this operation."
+            : procurementSupported
+              ? "Native draft quantities, immutable quote prices and aggregate task budget were checked independently."
+              : "No independent constraint policy is implemented for this operation."
         );
         check(
           "EXECUTION",
@@ -166,7 +198,9 @@ export function createPostgresBusinessTaskVerifier(
         );
         check(
           "PERSISTENCE",
-          structurallyValid ? "PASSED" : "FAILED",
+          structurallyValid && (!procurementSupported || procurement?.persisted)
+            ? "PASSED"
+            : "FAILED",
           "Canonical turn and claimed step were reread from committed PostgreSQL state."
         );
         const normalized = (value: ProductSummary[]) =>
@@ -183,7 +217,7 @@ export function createPostgresBusinessTaskVerifier(
               product.businessId === input.businessId
           );
         const outcome =
-          supported &&
+          readSupported &&
           structurallyValid &&
           products.length <= 1000 &&
           validProductRecords(products) &&
@@ -191,9 +225,11 @@ export function createPostgresBusinessTaskVerifier(
           canonicalJson(normalized(turn.toolResult)) === canonicalJson(normalized(products));
         check(
           "OUTCOME",
-          outcome ? "PASSED" : "INCONCLUSIVE",
-          outcome
-            ? "Returned inventory matches independently read authoritative inventory."
+          outcome || (structurallyValid && procurement?.outcome) ? "PASSED" : "INCONCLUSIVE",
+          outcome || (structurallyValid && procurement?.outcome)
+            ? procurementSupported
+              ? "Purchase drafts and recommendations match independently read authoritative records and source evidence."
+              : "Returned inventory matches independently read authoritative inventory."
             : "Unsupported policy, changed inventory, incomplete evidence, or observation limit; success is unproven."
         );
         const status: Status = checks.some((entry) => entry.status === "FAILED")

@@ -12,6 +12,14 @@ export async function deleteNativeRuntimeScope(
     `with scoped_tasks as materialized (
        select business_id,task_id from business_environment_tasks
        where actor_id=any($1::text[]) or business_id=any($2::text[])
+     ), deleted_drafts as (
+       delete from business_purchase_drafts
+       where (business_id,task_id) in (select business_id,task_id from scoped_tasks) returning 1
+     ), deleted_quotes as (
+       delete from business_supplier_quotes where business_id=any($2::text[]) returning 1
+     ), redacted_quotes as (
+       update business_supplier_quotes set created_by='deleted-user'
+       where created_by=any($1::text[]) and not (business_id=any($2::text[])) returning 1
      ), deleted_verifications as (
        delete from business_environment_task_verifications
        where (business_id,task_id) in (select business_id,task_id from scoped_tasks) returning 1
@@ -26,14 +34,16 @@ export async function deleteNativeRuntimeScope(
        delete from business_environment_tasks
        where (business_id,task_id) in (select business_id,task_id from scoped_tasks)
          and (select count(*) from deleted_steps)>=0
-         and (select count(*) from deleted_instances)>=0 returning 1
+         and (select count(*) from deleted_instances)>=0
+         and (select count(*) from deleted_drafts)>=0 returning 1
      ), deleted_approvals as (
        delete from business_runtime_approvals
        where actor_id=any($1::text[]) or business_id=any($2::text[]) returning 1
      )
      select ((select count(*) from deleted_verifications)+(select count(*) from deleted_instances)
        +(select count(*) from deleted_steps)+(select count(*) from deleted_tasks)
-       +(select count(*) from deleted_approvals))::int as deleted_count`,
+       +(select count(*) from deleted_approvals)+(select count(*) from deleted_drafts)
+       +(select count(*) from deleted_quotes)+(select count(*) from redacted_quotes))::int as deleted_count`,
     [actorIds, businessIds]
   );
   return result.rows[0]?.deleted_count ?? 0;

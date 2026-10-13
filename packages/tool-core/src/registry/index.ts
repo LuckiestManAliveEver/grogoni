@@ -7,6 +7,7 @@ import { productsRuntimeTools } from "../domains/products.js";
 import { customersRuntimeTools } from "../domains/customers.js";
 import { suppliersRuntimeTools } from "../domains/suppliers.js";
 import { commercialRecordsRuntimeTools } from "../domains/commercial-records.js";
+import { procurementRuntimeTools } from "../domains/procurement.js";
 import { invoicesRuntimeTools } from "../domains/invoices.js";
 import { paymentsRuntimeTools } from "../domains/payments.js";
 import { logisticsRuntimeTools } from "../domains/logistics.js";
@@ -30,6 +31,7 @@ export const runtimeToolRegistry: Record<RuntimeToolName, RuntimeToolDefinition>
   ...customersRuntimeTools,
   ...suppliersRuntimeTools,
   ...commercialRecordsRuntimeTools,
+  ...procurementRuntimeTools,
   ...invoicesRuntimeTools,
   ...paymentsRuntimeTools,
   ...logisticsRuntimeTools,
