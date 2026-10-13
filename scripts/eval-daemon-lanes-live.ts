@@ -126,22 +126,44 @@ function check(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
 
+/**
+ * fetch, retried on network failures (no response at all) for reads only: a write that failed
+ * this way may still have reached the server, and repeating a claim or an execute would not be
+ * the same request. HTTP errors are never retried; they are results.
+ */
+async function fetchRead(url: string, init: RequestInit, read: boolean): Promise<Response> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await fetch(url, init);
+    } catch (error) {
+      if (!read || attempt >= 4) throw error;
+      log(`network error on a read (attempt ${attempt}), retrying: ${String(error)}`);
+      await delay(2_000 * attempt);
+    }
+  }
+}
+
 async function call(
   path: string,
   init: { method?: string; body?: unknown; cookie?: string; bearer?: string } = {}
 ) {
-  const response = await fetch(base + path, {
-    method: init.method ?? "GET",
-    headers: {
-      ...(target === "production" ? { origin: "https://grogoni.com" } : {}),
-      "content-type": "application/json",
-      "x-grogoni-device-id": device,
-      ...(init.cookie ? { cookie: init.cookie } : {}),
-      ...(init.bearer ? { authorization: `Bearer ${init.bearer}` } : {})
+  const method = init.method ?? "GET";
+  const response = await fetchRead(
+    base + path,
+    {
+      method,
+      headers: {
+        ...(target === "production" ? { origin: "https://grogoni.com" } : {}),
+        "content-type": "application/json",
+        "x-grogoni-device-id": device,
+        ...(init.cookie ? { cookie: init.cookie } : {}),
+        ...(init.bearer ? { authorization: `Bearer ${init.bearer}` } : {})
+      },
+      ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
+      signal: AbortSignal.timeout(120_000)
     },
-    ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
-    signal: AbortSignal.timeout(120_000)
-  });
+    method === "GET"
+  );
   const text = await response.text();
   let json = null as unknown as Body;
   try {
@@ -235,7 +257,8 @@ async function supabaseSql<Row = Record<string, string | number | null>>(
       await client.end();
     }
   }
-  const response = await fetch(
+  // Production only ever sends selects here, so a network failure is safe to retry.
+  const response = await fetchRead(
     `https://api.supabase.com/v1/projects/${projectRef}/database/query`,
     {
       method: "POST",
@@ -245,7 +268,8 @@ async function supabaseSql<Row = Record<string, string | number | null>>(
       },
       body: JSON.stringify({ query }),
       signal: AbortSignal.timeout(60_000)
-    }
+    },
+    true
   );
   check(response.ok, `Supabase query HTTP ${response.status}`);
   return (await response.json()) as Row[];
