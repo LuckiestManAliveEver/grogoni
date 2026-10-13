@@ -245,6 +245,9 @@ export function contextSourcesForRuntime(
   for (const experience of profile.memoryPolicy.reusableWorkflowMemoryEnabled
     ? state.runtimeExperiences
     : []) {
+    // Task-scoped advice requires exact environment and constraint matching, not generic recall.
+    if (experience.environmentScope !== undefined || experience.agentId !== profile.agentId)
+      continue;
     sources.push(
       contextSourceRecord({
         id: experience.id,

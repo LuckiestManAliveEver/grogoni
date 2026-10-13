@@ -34,7 +34,7 @@ export async function verifyProcurementDrafts(
     canonicalJson(normalize(result.drafts as PurchaseDraft[])) === canonicalJson(normalize(drafts));
   let constraints: "PASSED" | "FAILED" | "INCONCLUSIVE" = "INCONCLUSIVE";
   let outcome = false;
-  let observation: unknown = null;
+  let observation: Awaited<ReturnType<typeof observeProcurementInventory>> | null = null;
   const budget = task.constraints.budgetMinor;
   const currency = task.constraints.currency;
   const horizonDays = task.constraints.horizonDays;

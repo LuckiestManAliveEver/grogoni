@@ -13,6 +13,10 @@ import type { ProductSummary, InvoiceSummary, SupplierSummary } from "@grogoni/s
 import { canonicalJson } from "../model-templates/manifest.js";
 import { Cp2Error } from "../../cp2-error.js";
 import { stableUuid } from "./shared.js";
+import {
+  experienceSourceEvidence,
+  type ExperienceSourceEvidence
+} from "./experience-source-evidence.js";
 
 interface Actor {
   sessionId: string | null;
@@ -25,6 +29,7 @@ export type SupplierQuoteInput = Omit<
 > & { priceIncludesCharges: true; unit: string };
 type StoredSupplierQuote = SupplierQuoteInput & { businessId: string; unit: string };
 type ProcurementObservation = Omit<InventoryReplenishmentObservation, "offers"> & {
+  sourceEvidence: ExperienceSourceEvidence;
   offers: (InventoryReplenishmentObservation["offers"][number] & { unit: string })[];
 };
 export interface PurchaseDraft {
@@ -113,6 +118,7 @@ export async function observeProcurementInventory(
     { sold: bigint; refs: Set<string>; hash: ReturnType<typeof createHash> }
   >();
   let lines = 0;
+  const sourceInvoices = new Set<string>();
   for (const invoice of invoices) {
     if (!Array.isArray(invoice.items)) throw invalid("Sales line evidence is missing.");
     lines += invoice.items.length;
@@ -121,6 +127,7 @@ export async function observeProcurementInventory(
       if (!productIds.has(item.productId)) continue;
       const quantity = milli(item.quantity);
       if (quantity === 0) throw invalid("Confirmed sales must have positive quantities.");
+      sourceInvoices.add(invoice.id);
       const sale = sales.get(item.productId) ?? {
         sold: 0n,
         refs: new Set<string>(),
@@ -138,6 +145,7 @@ export async function observeProcurementInventory(
   return {
     businessId,
     observedAt: now.toISOString(),
+    sourceEvidence: experienceSourceEvidence(businessId, sourceInvoices),
     sourceRefs: [
       inventoryRef,
       `confirmed-sales-window:${new Date(earliest).toISOString()}:${now.toISOString()}`

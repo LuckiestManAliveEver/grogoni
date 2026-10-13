@@ -82,7 +82,6 @@ import type {
   AgentModelBindingSummary,
   AgentOwnerCorrection,
   AgentRuntimeReadiness,
-  ContextRecipe,
   EffectiveRuntimeSummary,
   AgentRuntimeVersion,
   AiModelSummary,
@@ -92,7 +91,6 @@ import type {
   NativeRuntimeAgentSummary,
   PreferredExecutionMode,
   RuntimeContextSummary,
-  RuntimeParserIntent,
   RuntimeModelConversationMessage,
   RuntimeModelProvider,
   RuntimeModelTemplateRecipe,
@@ -155,6 +153,11 @@ import {
 import { createRuntimeModelRoute } from "./runtime-model-routing.js";
 import { buildRuntimeReportCard } from "./report-card.js";
 import { runtimeExecutedModelId, runtimeModelEvidence } from "./runtime-model-evidence.js";
+import {
+  retainCompletedTaskExperience,
+  retrieveBusinessTaskAdvice,
+  type TaskExperienceInput
+} from "./task-experience-access.js";
 import {
   purgeExpiredRuntimeExperiences as purgeExpiredRuntimeExperiencesModule,
   recordFallbackExperience as recordFallbackExperienceModule,
@@ -378,7 +381,7 @@ export class AgentRuntimeDomain {
 
     for (const experience of snapshot.runtimeExperiences ?? []) {
       this.runtimeExperiences.set(experience.id, {
-        ...experience,
+        ...structuredClone(experience),
         evidenceRefs: [...experience.evidenceRefs],
         toolSequence: [...experience.toolSequence]
       });
@@ -1699,32 +1702,35 @@ export class AgentRuntimeDomain {
     return updated;
   }
 
-  /** See experience.ts for the extraction logic itself - split out for store.ts's line budget. */
-  private recordFallbackExperience(input: {
-    businessId: string;
-    agentId: string;
-    turnId: string;
-    intent: RuntimeParserIntent;
-    recipe: ContextRecipe | undefined;
-    evidenceRefs: string[];
-    toolName: RuntimeToolName;
-    fallbackReason: string;
-    now: Date;
-    appendTelemetry: (
-      state: RuntimeTelemetryEvent["state"],
-      status: RuntimeTelemetryEvent["status"],
-      toolName: RuntimeToolName | null,
-      risk: RuntimePlannedAction["risk"] | null,
-      metadata?: RuntimeTelemetryEvent["metadata"]
-    ) => void;
-  }): void {
-    recordFallbackExperienceModule(this.runtimeExperiences, input);
-  }
-
   /** Recall-eligible experiences for a business: validated only, per the brief's "prevent one bad
    *  execution from poisoning memory" requirement - a "candidate" is never surfaced into a prompt. */
   validatedRuntimeExperiencesForBusiness(businessId: string): RuntimeExperience[] {
     return validatedRuntimeExperiencesForBusinessModule(this.runtimeExperiences, businessId);
+  }
+
+  /** Server composition hook. The caller must await the existing snapshot commit barrier. */
+  recordVerifiedBusinessTaskExperience(
+    input: TaskExperienceInput
+  ): Promise<RuntimeExperience | null> {
+    return retainCompletedTaskExperience(
+      {
+        experiences: this.runtimeExperiences,
+        deps: this.deps,
+        profile: (businessId, now) => this.currentAgentProfile(businessId, now)
+      },
+      input
+    );
+  }
+
+  businessTaskExperienceAdvice(input: TaskExperienceInput): Promise<RuntimeExperience[]> {
+    return retrieveBusinessTaskAdvice(
+      {
+        experiences: this.runtimeExperiences,
+        deps: this.deps,
+        profile: (businessId, now) => this.currentAgentProfile(businessId, now)
+      },
+      input
+    );
   }
 
   /**
@@ -2729,7 +2735,7 @@ export class AgentRuntimeDomain {
     });
 
     if (modelRoute.trace?.fallbackUsed === true && status === "completed" && verification.ok) {
-      this.recordFallbackExperience({
+      recordFallbackExperienceModule(this.runtimeExperiences, {
         businessId: input.businessId,
         agentId: shopRuntime.agentId,
         turnId,
