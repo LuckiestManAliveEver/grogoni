@@ -46,15 +46,26 @@ describe.skipIf(!url)("durable exact-action runtime approvals", () => {
   };
   beforeAll(async () => {
     await admin.query(`create schema ${schema}`);
-    await pool.query(
-      await readFile(
-        new URL("../../../../../../infra/db/migrations/115_runtime_approvals.sql", import.meta.url),
-        "utf8"
-      )
-    );
+    for (const name of [
+      "113_business_tasks.sql",
+      "114_business_task_steps.sql",
+      "115_runtime_approvals.sql",
+      "117_business_task_verifications.sql",
+      "118_task_verification_sequence.sql",
+      "119_business_environment_instances.sql"
+    ]) {
+      await pool.query(
+        await readFile(
+          new URL(`../../../../../../infra/db/migrations/${name}`, import.meta.url),
+          "utf8"
+        )
+      );
+    }
   });
   beforeEach(async () => {
-    await pool.query("truncate business_runtime_approvals");
+    await pool.query(
+      "truncate business_runtime_approvals,business_environment_instances,business_environment_task_verifications,business_environment_task_steps,business_environment_tasks"
+    );
   });
   afterAll(async () => {
     await pool.end();
@@ -136,6 +147,35 @@ describe.skipIf(!url)("durable exact-action runtime approvals", () => {
       code: "runtime_approval_maintenance_only"
     });
     await expect(approvals.claim(claim)).resolves.toMatchObject({ actorId: "actor" });
+  });
+  it("fences canonical confirmations while the task environment is stopped or rebound", async () => {
+    await pool.query(`insert into business_environment_tasks (business_id,task_id,actor_id,environment_id,environment_version,task)
+      values ('business','conversation','actor','inventory','1.0.0','{"id":"conversation","businessId":"business","actorId":"actor","environmentId":"inventory","environmentVersion":"1.0.0"}')`);
+    await pool.query(
+      `insert into business_environment_instances (business_id,task_id,actor_id,instance,expires_at)
+      values ('business','conversation','actor','{"businessId":"business","taskId":"conversation","status":"SUSPENDED","runtimeSessionId":"runtime-session"}',$1)`,
+      [new Date(now.getTime() + 60_000)]
+    );
+    await approvals.put(claim.token, pending());
+    for (const status of ["SUSPENDED", "CANCELLED", "FAILED", "COMPLETED", "VERIFYING"]) {
+      await pool.query(
+        "update business_environment_instances set instance=jsonb_set(instance,'{status}',to_jsonb($1::text))",
+        [status]
+      );
+      await expect(approvals.claim(claim)).rejects.toMatchObject({
+        code: "runtime_confirmation_not_found"
+      });
+    }
+    await pool.query(
+      "update business_environment_instances set instance=jsonb_set(jsonb_set(instance,'{status}','\"AWAITING_APPROVAL\"'),'{runtimeSessionId}','\"different\"')"
+    );
+    await expect(approvals.claim(claim)).rejects.toMatchObject({
+      code: "runtime_confirmation_not_found"
+    });
+    await pool.query(
+      "update business_environment_instances set instance=jsonb_set(instance,'{runtimeSessionId}','\"runtime-session\"')"
+    );
+    await expect(approvals.claim(claim)).resolves.toMatchObject({ businessId: "business" });
   });
   it("confirms through a fresh canonical runtime using no in-memory pending action", async () => {
     const store = createCp2Store({

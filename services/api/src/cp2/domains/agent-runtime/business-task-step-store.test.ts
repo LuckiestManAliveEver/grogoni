@@ -13,7 +13,15 @@ describe.skipIf(!url)("durable business task step claims", () => {
     if (!sessionId || sessionId === "denied") throw new Error("unauthorized");
     return { userId: sessionId };
   };
-  const store = createPostgresBusinessTaskStepStore(pool, authorize);
+  const repository = createPostgresBusinessTaskStepStore(pool, authorize);
+  const store = {
+    ...repository,
+    claim: (
+      actor: { sessionId: string | null; businessId: string },
+      taskId: string,
+      stepId: string
+    ) => repository.claim(actor, taskId, stepId, 0)
+  };
   const actor = { sessionId: "actor", businessId: "business" };
   beforeAll(async () => {
     await admin.query(`create schema ${schema}`);
@@ -21,7 +29,8 @@ describe.skipIf(!url)("durable business task step claims", () => {
       "113_business_tasks.sql",
       "114_business_task_steps.sql",
       "117_business_task_verifications.sql",
-      "118_task_verification_sequence.sql"
+      "118_task_verification_sequence.sql",
+      "119_business_environment_instances.sql"
     ]) {
       await pool.query(
         await readFile(
@@ -33,7 +42,7 @@ describe.skipIf(!url)("durable business task step claims", () => {
   });
   beforeEach(async () => {
     await pool.query(
-      "truncate business_environment_task_verifications,business_environment_task_steps,business_environment_tasks"
+      "truncate business_environment_instances,business_environment_task_verifications,business_environment_task_steps,business_environment_tasks"
     );
     const task = {
       id: "task",
@@ -52,6 +61,8 @@ describe.skipIf(!url)("durable business task step claims", () => {
       values ('business','task','actor','test','1.0.0',$1::jsonb)`,
       [JSON.stringify(task)]
     );
+    await pool.query(`insert into business_environment_instances (business_id,task_id,actor_id,instance,expires_at)
+      values ('business','task','actor','{"businessId":"business","taskId":"task","status":"RUNNING"}',now()+interval '1 day')`);
   });
   afterAll(async () => {
     await pool.end();
@@ -66,9 +77,27 @@ describe.skipIf(!url)("durable business task step claims", () => {
     expect(attempts.filter((attempt) => attempt.status === "fulfilled")).toHaveLength(1);
     const fresh = createPostgresBusinessTaskStepStore(pool, authorize);
     expect(await fresh.list(actor, "task")).toHaveLength(1);
-    await expect(fresh.claim(actor, "task", "observe")).rejects.toMatchObject({
+    await expect(fresh.claim(actor, "task", "observe", 0)).rejects.toMatchObject({
       code: "business_task_step_already_started"
     });
+  });
+  it("fences claims by running lifecycle state, revision and expiry", async () => {
+    await expect(repository.claim(actor, "task", "observe", 1)).rejects.toMatchObject({
+      code: "business_environment_not_running"
+    });
+    await pool.query(
+      "update business_environment_instances set instance=jsonb_set(instance,'{status}','\"SUSPENDED\"')"
+    );
+    await expect(store.claim(actor, "task", "observe")).rejects.toMatchObject({
+      code: "business_environment_not_running"
+    });
+    await pool.query(
+      "update business_environment_instances set instance=jsonb_set(instance,'{status}','\"RUNNING\"'),expires_at=now()-interval '1 second'"
+    );
+    await expect(store.claim(actor, "task", "observe")).rejects.toMatchObject({
+      code: "business_environment_not_running"
+    });
+    expect(await store.list(actor, "task")).toEqual([]);
   });
   it("requires the exact claim and writes a result only once", async () => {
     const claim = await store.claim(actor, "task", "observe");
