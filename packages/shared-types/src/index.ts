@@ -545,7 +545,12 @@ export interface EncryptedMessageEnvelope {
 }
 
 export type ConversationMessageContent =
-  | { type: "text"; text: string; attachments?: ConversationAttachment[] }
+  | {
+      type: "text";
+      text: string;
+      attachments?: ConversationAttachment[];
+      businessTask?: { businessId: string; taskId: string };
+    }
   | { type: "product-card"; product: CatalogueProductSummary }
   | {
       type: "encrypted";
@@ -567,6 +572,44 @@ export type ConversationMessageContent =
   | { type: "payment-management"; businessId: string; customerName?: string }
   | { type: "import-management"; businessId: string; importJobId?: string }
   | { type: "logistics-management"; businessId: string; customerName?: string };
+
+export interface BusinessExecutionTaskView {
+  taskId: string;
+  businessId: string;
+  environmentName: string;
+  objective: string;
+  status:
+    | "CREATED"
+    | "READY"
+    | "RUNNING"
+    | "AWAITING_APPROVAL"
+    | "VERIFYING"
+    | "COMPLETED"
+    | "FAILED"
+    | "SUSPENDED"
+    | "CANCELLED"
+    | "EXPIRED"
+    | "INCOMPLETE";
+  revision: number;
+  verificationStatus: "PASSED" | "FAILED" | "INCONCLUSIVE" | "NOT_VERIFIED";
+  budgetMinor: number | null;
+  currency: string | null;
+  horizonDays: number | null;
+  reason: string | null;
+  issues: { productName: string | null; message: string }[];
+  steps: { id: string; label: string; status: string }[];
+  orders: {
+    id: string;
+    supplierName: string;
+    totalMinor: number;
+    currency: string;
+    submissionStatus: "NOT_SUBMITTED";
+    requiresSubmissionApproval: true;
+    items: { productName: string; quantityMilli: number; unit: string; totalMinor: number }[];
+  }[];
+  evaluation: EnvironmentEvaluation | null;
+  experienceRetained: boolean | null;
+}
 
 export interface AccountShopSummary {
   business: BusinessSummary;
@@ -825,6 +868,8 @@ export interface ProviderUpdateReceiptSummary {
 }
 
 export interface ConversationSummary {
+  /** Internal task thread linked to its ordinary owner chat. */
+  taskParentConversationId?: string;
   id: string;
   accountId: string;
   kind: ConversationKind;

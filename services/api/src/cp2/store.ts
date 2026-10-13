@@ -432,6 +432,7 @@ import type { ConversationAttachmentRecord } from "./workspace-file-delivery.js"
 import type { RuntimeApprovalStore } from "./domains/agent-runtime/runtime-approval-store.js";
 import type { InventoryProcurementStore } from "./domains/agent-runtime/inventory-procurement-store.js";
 import type { BusinessTaskEvaluationReader } from "./domains/agent-runtime/business-task-evaluation-reader.js";
+import type { InventoryTaskController } from "./domains/agent-runtime/inventory-task-controller.js";
 import {
   createMemoryConversationAttachmentBlobStore,
   type ConversationAttachmentBlobStore
@@ -4543,6 +4544,10 @@ export class Cp2Store {
     ...args: Parameters<AgentRuntimeDomain["businessTaskExperienceAdvice"]>
   ): ReturnType<AgentRuntimeDomain["businessTaskExperienceAdvice"]> {
     return this.agentRuntimeDomain.businessTaskExperienceAdvice(...args);
+  }
+
+  setInventoryTaskController(controller: InventoryTaskController): void {
+    this.messagingDomain.setInventoryTaskController(controller);
   }
   listConversations(
     ...args: Parameters<MessagingDomain["listConversations"]>

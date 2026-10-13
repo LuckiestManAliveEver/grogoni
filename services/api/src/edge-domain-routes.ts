@@ -11,6 +11,7 @@ import { createPostgresRuntimeApprovalStore } from "./cp2/domains/agent-runtime/
 import { createCp2Store, readSessionCookie, type Cp2Store } from "./cp2/store.js";
 import { createInventoryProcurementStore } from "./cp2/domains/agent-runtime/inventory-procurement-store.js";
 import { createBusinessTaskEvaluationReader } from "./cp2/domains/agent-runtime/business-task-evaluation-reader.js";
+import { createInventoryTaskController } from "./cp2/domains/agent-runtime/inventory-task-controller.js";
 import {
   createPostgresAccountAiAssetStore,
   createPostgresAttachmentBlobStore,
@@ -106,9 +107,16 @@ export async function createEdgeDomainRoutes(database: EdgeDomainDatabase) {
         );
       }
       const pool = transactionPool(client);
+      const nativeRecords =
+        database.approvalTransaction === undefined
+          ? pool
+          : {
+              query: <R extends QueryResultRow>(sql: string, values: unknown[]) =>
+                database.approvalTransaction!((recordClient) => recordClient.query<R>(sql, values))
+            };
       const store: Cp2Store = createCp2Store({
         ...storeDependencies,
-        businessTaskEvaluations: createBusinessTaskEvaluationReader(pool, (input) =>
+        businessTaskEvaluations: createBusinessTaskEvaluationReader(nativeRecords, (input) =>
           store.authorizeBusinessPermission(input)
         ),
         // Independent transaction: rolling back this request must not reopen an executed approval.
@@ -119,20 +127,34 @@ export async function createEdgeDomainRoutes(database: EdgeDomainDatabase) {
                 database.approvalTransaction,
                 (input) => store.authorizeBusinessPermission(input)
               ),
-              runtimeApprovalStore: createPostgresRuntimeApprovalStore({
-                query: <R extends QueryResultRow>(sql: string, values: unknown[]) =>
-                  database.approvalTransaction!((approvalClient) =>
-                    approvalClient.query<R>(sql, values)
-                  )
-              })
+              runtimeApprovalStore: createPostgresRuntimeApprovalStore(nativeRecords)
             }),
         workspaceRoot: "/tmp/grogoni-workspace",
         conversationAttachmentBlobStore: createPostgresAttachmentBlobStore(pool),
         accountAiAssetStore: createPostgresAccountAiAssetStore(pool)
       });
       const snapshot = await loadTransactionalCp2Snapshot(client, scope);
-      const baseline = snapshot;
+      let baseline = snapshot;
       store.hydrateSnapshot(prepareEdgeHydration(snapshot));
+      const inventoryTaskController =
+        database.approvalTransaction === undefined
+          ? undefined
+          : createInventoryTaskController(
+              store,
+              (work) =>
+                database.approvalTransaction!(async (recordClient) => {
+                  await recordClient.query("set local statement_timeout = '15s'");
+                  return work(transactionPool(recordClient));
+                }),
+              async () => {
+                const next = prepareEdgePersistence(store.snapshot(), baseline);
+                await database.approvalTransaction!((recordClient) =>
+                  saveTransactionalCp2Snapshot(recordClient, next, baseline)
+                );
+                baseline = next;
+              }
+            );
+      if (inventoryTaskController) store.setInventoryTaskController(inventoryTaskController);
       if (request.method === "GET" && path.startsWith("/v1/ai/turn-stream/")) {
         const turnId = path.slice("/v1/ai/turn-stream/".length);
         if (!isValidTurnId(turnId))
@@ -232,6 +254,7 @@ export async function createEdgeDomainRoutes(database: EdgeDomainDatabase) {
         });
         registerCp2Routes(app, {
           store,
+          ...(inventoryTaskController === undefined ? {} : { inventoryTaskController }),
           businessTaskStore: createPostgresBusinessTaskStore(pool, (input) =>
             store.authorizeBusinessPermission(input)
           ),

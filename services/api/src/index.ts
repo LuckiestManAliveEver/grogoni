@@ -3,6 +3,7 @@ import { createMetrics, type Metrics } from "@grogoni/observability";
 import { Pool } from "pg";
 import { buildApi } from "./app.js";
 import { createPostgresBusinessTaskStore } from "./cp2/domains/agent-runtime/business-task-store.js";
+import { createInventoryTaskController } from "./cp2/domains/agent-runtime/inventory-task-controller.js";
 import { readEnvironment } from "./config.js";
 import { createOpenRouterRuntime } from "./inference/openrouter-runtime.js";
 import { buildPgPoolConfig } from "./db-pool-config.js";
@@ -320,6 +321,19 @@ if (fulfillmentPool !== undefined) {
   // A member who leaves or loses the delivery role is released from their open trips (§16).
   cp2Store.setMembershipChangedListener((input) => intakeService.releaseDriverAssignments(input));
 }
+const inventoryTaskController =
+  fulfillmentPool === undefined
+    ? undefined
+    : createInventoryTaskController(
+        cp2Store,
+        (work) => work(fulfillmentPool!),
+        async () => {
+          if (!isFlushableStore(cp2Store))
+            throw new Error("Durable runtime persistence is unavailable.");
+          await cp2Store.flush();
+        }
+      );
+if (inventoryTaskController) cp2Store.setInventoryTaskController(inventoryTaskController);
 const apiOptions = {
   allowedCorsOrigins: config.allowedCorsOrigins,
   bodyLimit: Math.max(
@@ -331,6 +345,7 @@ const apiOptions = {
   ...(config.metricsAuthToken === "" ? {} : { metricsAuthToken: config.metricsAuthToken }),
   cp2: {
     store: cp2Store,
+    ...(inventoryTaskController === undefined ? {} : { inventoryTaskController }),
     ...(fulfillmentPool === undefined
       ? {}
       : {
