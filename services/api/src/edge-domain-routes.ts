@@ -27,7 +27,15 @@ import {
   createEdgeStoreDependencies,
   readFulfillmentRetentionHours
 } from "./edge-store-dependencies.js";
-import { runEdgeJob, type EdgeJobDatabase } from "./edge-job-runner.js";
+import { runEdgeJob, type EdgeJobDatabase, type EdgeJobOutcome } from "./edge-job-runner.js";
+import {
+  createEdgeDaemon,
+  DaemonHttpError,
+  maintenanceFromJobRunner,
+  type EdgeDaemon
+} from "./daemon/edge-lane.js";
+import { createPostgresWakeHint } from "./daemon/wake-hint.js";
+import type { DaemonPool, DaemonQueryable } from "./daemon/task-store.js";
 
 export interface EdgeDomainDatabase {
   transaction: <T>(action: (client: PoolClient) => Promise<T>) => Promise<T>;
@@ -35,6 +43,15 @@ export interface EdgeDomainDatabase {
   jobTransaction?: EdgeJobDatabase["jobTransaction"];
   /** Independent connection/commit with no snapshot coordination lock. */
   approvalTransaction?: EdgeDomainDatabase["transaction"];
+  /** Daemon lanes (docs/deployment/daemon-lanes.md); absent means /v1/daemon is not served. */
+  daemon?: {
+    /** The queue database; every statement commits on its own, with no store lock. */
+    queue: DaemonPool;
+    /** Supabase's own Postgres, holding the wake hint; null when SUPABASE_DB_URL is unset. */
+    hint: DaemonQueryable | null;
+    /** The signed-in user, or null. Must not hold any lock after it returns. */
+    findUser: (request: Request) => Promise<{ userId: string } | null>;
+  };
 }
 
 export async function createEdgeDomainRoutes(database: EdgeDomainDatabase) {
@@ -336,14 +353,59 @@ export async function createEdgeDomainRoutes(database: EdgeDomainDatabase) {
       }
     });
   };
+  const runJob = (jobName: string): Promise<EdgeJobOutcome> => {
+    const { jobTransaction } = database;
+    if (jobTransaction === undefined)
+      throw new Error("Background jobs need a jobTransaction on the Edge database.");
+    return runEdgeJob({ jobTransaction }, jobName, {
+      storeDependencies,
+      ...(daemon === null ? {} : { daemon })
+    });
+  };
+  const daemonDatabase = database.daemon;
+  // A bad DAEMON_* setting disables the daemon lanes, never the whole API.
+  let daemonStartupError: string | null = null;
+  const startDaemon = (): EdgeDaemon | null => {
+    if (daemonDatabase === undefined) return null;
+    try {
+      return createEdgeDaemon({
+        queue: daemonDatabase.queue,
+        hint: daemonDatabase.hint === null ? null : createPostgresWakeHint(daemonDatabase.hint),
+        authenticate: async (request) => {
+          const user = await daemonDatabase.findUser(request);
+          if (user === null)
+            throw new DaemonHttpError(401, "auth_required", "Authentication is required.");
+          return user;
+        },
+        environment: process.env,
+        // A queued maintenance task runs the same job in-process, under its own job lock.
+        runMaintenance: maintenanceFromJobRunner(runJob),
+        report: (event) => console.log(JSON.stringify({ event: "daemon", ...event }))
+      });
+    } catch (error) {
+      daemonStartupError = error instanceof Error ? error.message : "Daemon configuration failed.";
+      console.error(
+        JSON.stringify({ event: "daemon_config_invalid", message: daemonStartupError })
+      );
+      return null;
+    }
+  };
+  const daemon = startDaemon();
   return {
     routes,
     inventory,
-    runJob: (jobName: string) => {
-      const { jobTransaction } = database;
-      if (jobTransaction === undefined)
-        throw new Error("Background jobs need a jobTransaction on the Edge database.");
-      return runEdgeJob({ jobTransaction }, jobName, { storeDependencies });
-    }
+    daemonRoutes: async (request: Request, path: string) =>
+      daemon !== null
+        ? daemon.routes(request, path)
+        : daemonStartupError !== null
+          ? Response.json(
+              {
+                code: "daemon_unavailable",
+                message: "Background tasks are not available right now."
+              },
+              { status: 503 }
+            )
+          : null,
+    runJob
   };
 }

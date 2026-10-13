@@ -2,12 +2,13 @@ import { Pool } from "pg";
 import { repositoryDefaultRuntimePolicy } from "@grogoni/shared-types";
 import { buildPgPoolConfig } from "../db-pool-config.js";
 import { connectedAgentRuntimeAdapterId } from "../agent-harness/retired-agent-runtimes.js";
-import { createPostgresDaemonTaskStore } from "./task-store.js";
+import { createPostgresDaemonTaskStore, defaultUserTakeoverMs } from "./task-store.js";
 import { buildDaemonGateway } from "./gateway.js";
 import { createDaemonExecutor, readDaemonCapabilities } from "./executor.js";
 import { DEFAULT_DATABASE_STARTUP_RETRY, retryDatabaseStartup } from "../db-startup-retry.js";
 import { pause, runDaemonWorker, type DaemonEvent } from "./worker.js";
 import { daemonRetentionMsFromEnv, runDaemonRetention } from "./retention.js";
+import { integerFromEnv, readDaemonNetworkConfig } from "./config.js";
 
 /** SIGTERM arrived while waiting for the database at boot: exit cleanly, nothing started. */
 class BootAborted extends Error {}
@@ -15,18 +16,7 @@ class BootAborted extends Error {}
 const databaseUrl =
   process.env.DAEMON_DATABASE_URL?.trim() || process.env.DATABASE_URL?.trim() || "";
 if (!databaseUrl) throw new Error("DAEMON_DATABASE_URL or DATABASE_URL is required.");
-/** Plain decimal integers only: Number() would also accept "0x50", "1e3" and "0b1010000". */
-function integerFromEnv(name: string, fallback: number, min: number, max: number): number {
-  const raw = process.env[name]?.trim() ?? "";
-  if (raw === "") return fallback;
-  const value = /^\d+$/u.test(raw) ? Number(raw) : Number.NaN;
-  if (!(value >= min && value <= max))
-    throw new Error(`${name} must be a decimal integer from ${min} to ${max}.`);
-  return value;
-}
-const port = integerFromEnv("DAEMON_PORT", 42700, 1, 65535);
-// Blank means default, like every other setting: never let "DAEMON_HOST=" bind all interfaces.
-const host = process.env.DAEMON_HOST?.trim() || "127.0.0.1";
+const { port, host, pollMs } = readDaemonNetworkConfig();
 const retentionMs = daemonRetentionMsFromEnv(process.env.DAEMON_RETENTION_DAYS);
 // Must stay well below systemd TimeoutStopSec (40s): release, HTTP close and pool close follow it.
 // Capped at 25s so, with a responsive database, settlement, release and close fit inside
@@ -47,7 +37,15 @@ const capabilities = readDaemonCapabilities(process.env, defaultModelId);
 // slow operator query from delaying lease renewals.
 const pool = new Pool(buildPgPoolConfig(databaseUrl, { max: 6 }));
 pool.on("error", () => console.error(JSON.stringify({ type: "database_pool_error" })));
-const store = createPostgresDaemonTaskStore(pool);
+const store = createPostgresDaemonTaskStore(pool, {
+  // Same rule as the Edge lane: a user's task waits this long for their browser first.
+  userTakeoverMs: integerFromEnv(
+    "DAEMON_USER_TAKEOVER_MS",
+    defaultUserTakeoverMs,
+    60_000,
+    86_400_000
+  )
+});
 const controller = new AbortController();
 const app = buildDaemonGateway({
   store,
@@ -110,7 +108,7 @@ try {
     })
   );
   await Promise.all([
-    runDaemonWorker({ store, execute, signal: controller.signal, shutdownGraceMs, report }),
+    runDaemonWorker({ store, execute, signal: controller.signal, pollMs, shutdownGraceMs, report }),
     retentionMs === null
       ? undefined
       : runDaemonRetention({ store, retentionMs, signal: controller.signal, report })

@@ -34,7 +34,11 @@ export interface DaemonCapabilities {
  */
 export function readDaemonCapabilities(
   environment: NodeJS.ProcessEnv,
-  defaultModelId: string
+  defaultModelId: string,
+  options: {
+    /** The Edge lane runs maintenance jobs in-process, so it needs no GROGONI_API_URL. */
+    maintenanceInProcess?: boolean;
+  } = {}
 ): DaemonCapabilities {
   const models = createOpenRouterRuntime(environment);
   const agents = (environment.OPENROUTER_API_KEY?.trim() ?? "") !== "";
@@ -48,8 +52,8 @@ export function readDaemonCapabilities(
   if (!["", "true", "false"].includes(allowLocal))
     throw new Error("DAEMON_ALLOW_LOCAL_API must be true or false.");
   const apiUrl = environment.GROGONI_API_URL?.trim() ?? "";
-  const maintenance = apiUrl !== "";
-  if (maintenance) {
+  const maintenance = apiUrl !== "" || options.maintenanceInProcess === true;
+  if (apiUrl !== "") {
     hostedEndpoint(apiUrl, allowLocal === "true");
     if (!environment.BACKGROUND_JOB_TOKEN?.trim())
       throw new Error("BACKGROUND_JOB_TOKEN is required when GROGONI_API_URL is set.");
@@ -75,7 +79,16 @@ export function readDaemonCapabilities(
   };
 }
 
-export function createDaemonExecutor(environment: NodeJS.ProcessEnv): DaemonExecutor {
+export function createDaemonExecutor(
+  environment: NodeJS.ProcessEnv,
+  options: {
+    /**
+     * Runs a maintenance job in-process. The Edge lane passes this so a job never costs a second
+     * function invocation; without it, jobs are triggered over HTTP at GROGONI_API_URL.
+     */
+    runMaintenance?: (job: string, signal: AbortSignal) => Promise<unknown>;
+  } = {}
+): DaemonExecutor {
   const models = createOpenRouterRuntime(environment);
   const agents = createDefaultAgentRuntimeAdapterRegistry();
   const execute: DaemonExecutor = async (task, signal) => {
@@ -83,6 +96,7 @@ export function createDaemonExecutor(environment: NodeJS.ProcessEnv): DaemonExec
     if (payload.kind === "maintenance") {
       if (!Object.hasOwn(edgeJobDefinitions, payload.job))
         throw new DaemonTaskError("UNKNOWN_JOB", false);
+      if (options.runMaintenance) return await options.runMaintenance(payload.job, signal);
       if (!environment.GROGONI_API_URL || !environment.BACKGROUND_JOB_TOKEN)
         throw new DaemonTaskError("JOB_API_NOT_CONFIGURED", false);
       const base = hostedEndpoint(

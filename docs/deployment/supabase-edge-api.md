@@ -229,6 +229,11 @@ savepoints inside the job transaction), where the Node runner commits each event
 own, so a run that fails after sending re-sends its whole batch; the batch is capped at 25
 events. The same holds for invites sent while handling a request.
 
+The `daemon_worker` job is the server lane of the background task queue: an hourly sweep, plus
+a per-minute wake check (`grogoni-daemon-wake`) that runs in Supabase's own Postgres and calls
+the job only when server work is due. Users' tasks run first in their open browsers. See
+[Daemon lanes](daemon-lanes.md).
+
 Supabase Cron triggers the jobs. The schedule is generated from the job definitions:
 
 ```bash

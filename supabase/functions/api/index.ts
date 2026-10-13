@@ -8,7 +8,11 @@ import { createHandler } from "./handler.ts";
 import { connectDatabase } from "./database-connection.ts";
 import { createSessionRoutes } from "./session-routes.ts";
 import { createAuthRoutes } from "./auth-routes.ts";
-import { createApplicationRoutes, type EdgeJobOutcome } from "./application-routes.ts";
+import {
+  createApplicationRoutes,
+  findSessionUser,
+  type EdgeJobOutcome
+} from "./application-routes.ts";
 import { createPublicRoutes } from "./public-routes.ts";
 import { createJobTransaction } from "./job-transaction.ts";
 import { coordinateStoreRequest } from "./store-coordination.ts";
@@ -37,6 +41,24 @@ const clientOptions = {
 const pool = new pg.Pool({ ...clientOptions, max: 4, idleTimeoutMillis: 30000 });
 pool.on("error", () => console.error(JSON.stringify({ event: "edge_idle_connection_failed" })));
 const rateLimiter = createRateLimiter(readRateLimitPolicy((name) => Deno.env.get(name)));
+// Supabase's own Postgres, injected into every function as SUPABASE_DB_URL. It holds only the
+// daemon wake hint that Supabase Cron reads (docs/deployment/daemon-lanes.md); no business data.
+const supabaseDatabaseUrl = Deno.env.get("SUPABASE_DB_URL")?.trim();
+const hintPool = supabaseDatabaseUrl
+  ? new pg.Pool({
+      connectionString: supabaseDatabaseUrl,
+      // Two connections and a 10s wait: a hint write that cannot get one is retried once, then
+      // left to the hourly sweep (services/api/src/daemon/wake-hint.ts).
+      connectionTimeoutMillis: 10000,
+      query_timeout: 5000,
+      statement_timeout: 5000,
+      max: 2,
+      idleTimeoutMillis: 10000
+    })
+  : null;
+hintPool?.on("error", () =>
+  console.error(JSON.stringify({ event: "edge_hint_connection_failed" }))
+);
 let lastTransactionFailure: {
   at: string;
   stage: string;
@@ -147,6 +169,7 @@ const application = createApplicationRoutes({
 const publicRoutes = createPublicRoutes(transaction);
 let domain: {
   routes: (request: Request, path: string) => Promise<Response | null>;
+  daemonRoutes: (request: Request, path: string) => Promise<Response | null>;
   runJob: (jobName: string) => Promise<EdgeJobOutcome>;
 } | null = null;
 let domainStartupError: string | null = null;
@@ -158,7 +181,14 @@ function getDomain() {
       domain = await createEdgeDomainRoutes({
         transaction,
         jobTransaction,
-        approvalTransaction: recordTransaction
+        approvalTransaction: recordTransaction,
+        daemon: {
+          // Queue statements commit one by one on the shared pool: no store lock, no snapshot.
+          queue: pool,
+          hint: hintPool,
+          // A short transaction (rate limit + session lookup) that commits before any model call.
+          findUser: (request) => transaction((client) => findSessionUser(client, request))
+        }
       });
       domainStartupError = null;
       return domain;
@@ -190,8 +220,15 @@ async function routeRequest(request: Request, path: string): Promise<Response | 
     (await publicRoutes(request, path)) ??
     (path === "/realtime" || path.startsWith("/v1/realtime/") || path.startsWith("/internal/jobs/")
       ? application(request, path)
-      : ((await (await getDomain())?.routes(request, path)) ??
-        (domain === null ? Response.json({ code: "service_unavailable" }, { status: 503 }) : null)))
+      : path.startsWith("/v1/daemon/") || path.startsWith("/internal/daemon/")
+        ? ((await (await getDomain())?.daemonRoutes(request, path)) ??
+          (domain === null
+            ? Response.json({ code: "service_unavailable" }, { status: 503 })
+            : null))
+        : ((await (await getDomain())?.routes(request, path)) ??
+          (domain === null
+            ? Response.json({ code: "service_unavailable" }, { status: 503 })
+            : null)))
   );
 }
 const handler = createHandler({

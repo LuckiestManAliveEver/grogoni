@@ -204,6 +204,8 @@ const task: DaemonTask = {
   interval_ms: null,
   result: null,
   error_code: null,
+  owner_user_id: null,
+  lane: "server",
   created_at: new Date("2026-10-11T00:00:00Z"),
   updated_at: new Date("2026-10-11T00:00:01Z")
 };
@@ -219,6 +221,14 @@ function fakeStore(): DaemonTaskStore {
     cancel: vi.fn(async () => true),
     expireExhausted: vi.fn(async () => []),
     claim: vi.fn(async () => task),
+    claimOwned: vi.fn(async () => null),
+    getOwned: vi.fn(async () => null),
+    listOwned: vi.fn(async () => []),
+    cancelOwned: vi.fn(async () => false),
+    countActiveOwned: vi.fn(async () => 0),
+    nextOwnedDueInMs: vi.fn(async () => null),
+    clearCancelledLease: vi.fn(async () => undefined),
+    nextServerDueAt: vi.fn(async () => null),
     renew: vi.fn(async () => true),
     settle: vi.fn(async () => true),
     release: vi.fn(async () => true),
@@ -335,6 +345,7 @@ describe("native daemon gateway", () => {
         leaseUntil: "2026-10-11T00:00:30.000Z",
         result: null,
         errorCode: null,
+        lane: "server",
         createdAt: "2026-10-11T00:00:00.000Z",
         updatedAt: "2026-10-11T00:00:01.000Z"
       });

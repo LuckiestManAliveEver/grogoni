@@ -31,9 +31,10 @@ flows remain authoritative. Model tool requests are proposals; the engine has no
 database, shell, filesystem, or business-mutation capability. Memory comes from
 authorized request context rather than shared process state.
 
-For always-on execution and durable scheduling, use the optional native service
-described in `docs/deployment/native-daemon.md`. It runs separately from Edge;
-the request-scoped engine itself does not start a daemon or shell sandbox.
+For durable, scheduled background work, use the daemon lanes described in
+`docs/deployment/daemon-lanes.md`: a queue worked by users' open browsers and by
+the Edge API's own `daemon_worker` job, with no separate host. The request-scoped
+engine itself does not start a daemon or shell sandbox.
 Per-request bounds are not a daily spending cap; set OpenRouter key limits for that.
 The initial model transport is non-streaming.
 

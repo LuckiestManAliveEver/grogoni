@@ -1,5 +1,10 @@
 import type { DaemonTask, DaemonTaskStore } from "./task-store.js";
 
+/**
+ * Runs one task. It must stop promptly when `signal` aborts (the real executors pass it to
+ * fetch): callers stop waiting at their deadline, and a run that ignored the abort could still be
+ * going when the task is handed to another worker.
+ */
 export interface DaemonExecutor {
   (task: DaemonTask, signal: AbortSignal): Promise<unknown>;
 }
@@ -33,10 +38,19 @@ export async function runDaemonWorker(input: {
   taskTimeoutMs?: number;
   /** How long in-flight work may keep running after shutdown starts before it is aborted. */
   shutdownGraceMs?: number;
+  /**
+   * Bounded runs (an Edge job): a performance.now() instant after which no task may still be
+   * running. A task is claimed only while a full taskTimeoutMs fits before it.
+   */
+  runUntil?: number;
+  /** Return when the queue has nothing due instead of polling (an Edge job's run ends). */
+  exitWhenIdle?: boolean;
   report?: (event: DaemonEvent) => void;
 }): Promise<void> {
   const leaseMs = input.leaseMs ?? 30_000;
+  const taskTimeoutMs = input.taskTimeoutMs ?? 130_000;
   while (!input.signal.aborted) {
+    if (input.runUntil !== undefined && performance.now() + taskTimeoutMs > input.runUntil) return;
     let task: DaemonTask | null;
     // Taken before the claim runs: the database lease starts no earlier than this instant.
     // performance.now() is monotonic, so wall-clock adjustments cannot stretch the estimate.
@@ -47,12 +61,19 @@ export async function runDaemonWorker(input: {
       task = await input.store.claim(leaseMs);
     } catch {
       input.report?.({ type: "queue_unavailable" });
+      if (input.exitWhenIdle) return;
       await pause(input.pollMs ?? 1000, input.signal);
       continue;
     }
     if (!task) {
+      if (input.exitWhenIdle) return;
       await pause(input.pollMs ?? 1000, input.signal);
       continue;
+    }
+    if (input.runUntil !== undefined && performance.now() + taskTimeoutMs > input.runUntil) {
+      // The claim itself was slow: the task no longer fits, so hand it back unstarted.
+      await input.store.release(task).catch(() => undefined);
+      return;
     }
     if (input.signal.aborted) {
       // Shutdown arrived while claiming: hand the task straight back rather than start new work.
@@ -114,7 +135,7 @@ export async function runDaemonWorker(input: {
     );
     const deadline = setTimeout(
       () => controller.abort(new DaemonTaskError("TASK_TIMEOUT", true)),
-      input.taskTimeoutMs ?? 130_000
+      taskTimeoutMs
     );
     let abortListener: () => void = () => {};
     const aborted = new Promise<never>((_, reject) => {
@@ -206,7 +227,7 @@ export function pause(ms: number, signal: AbortSignal): Promise<void> {
  * A PostgreSQL data exception (SQLSTATE class 22) on settlement is permanent for that result:
  * retrying would repeat the paid work forever. Record a clear dead letter instead.
  */
-async function settleStorably(
+export async function settleStorably(
   store: DaemonTaskStore,
   task: DaemonTask,
   outcome: { result: unknown } | { errorCode: string; retryable: boolean }

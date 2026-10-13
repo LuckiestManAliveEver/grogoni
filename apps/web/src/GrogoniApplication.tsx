@@ -51,6 +51,7 @@ import { useReportsState } from "./hooks/useReportsState";
 import { useRuntimeHistoryState } from "./hooks/useRuntimeHistoryState";
 import { useStorefrontCareState } from "./hooks/useStorefrontCareState";
 import { useNetworkState } from "./hooks/useNetworkState";
+import { stopDaemonLane, useDaemonLane } from "./hooks/useDaemonLane";
 import { useProductsState } from "./hooks/useProductsState";
 import { useSyncState } from "./hooks/useSyncState";
 import { usePaymentsState } from "./hooks/usePaymentsState";
@@ -789,6 +790,7 @@ export function OwnerApp() {
   // screen for it the same as no session at all. completePhoneFirstAuthentication's new session
   // response simply replaces this temporary one, exactly like a fresh signup/login would.
   const isSignedOut = session === null || session.account.identityLevel === "device";
+  useDaemonLane(session?.account.id ?? null);
   const shouldShowAuth = !authBootstrapPending && isAuthOpen && isSignedOut;
   // Log in / Sign up entry points (menu drawer, seller header). A device account can already own a
   // shop; offering it a login that replaces that account would strand the shop, so a shop owner's
@@ -1374,6 +1376,7 @@ export function OwnerApp() {
 
   async function logout(allSessions = false) {
     const accountId = session?.account.id ?? null;
+    await stopDaemonLane();
     try {
       await postJson(allSessions ? "/auth/logout-all" : "/auth/logout", {});
     } catch {
