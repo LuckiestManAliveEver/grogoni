@@ -303,6 +303,7 @@ const mutatingMethodNames = new Set([
   "createReceiptOCRJob",
   "createRuntimeSession",
   "createRuntimeTurn",
+  "recordVerifiedBusinessTaskExperience",
   "createSalesAgent",
   "createSalesAgentFromPhoneContact",
   "createSupplier",
