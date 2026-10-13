@@ -14,8 +14,8 @@ export async function executeBusinessTaskRootStep(input: {
   stepId: string;
   expectedEnvironmentRevision: number;
   manifest: BusinessEnvironmentManifest;
-  tasks: ReturnType<typeof createPostgresBusinessTaskStore>;
-  steps: ReturnType<typeof createPostgresBusinessTaskStepStore>;
+  tasks: Pick<ReturnType<typeof createPostgresBusinessTaskStore>, "get">;
+  steps: Pick<ReturnType<typeof createPostgresBusinessTaskStepStore>, "claim" | "record">;
   environments: Pick<ReturnType<typeof createPostgresBusinessEnvironmentStore>, "get">;
   runtime: Pick<Cp2Store, "createRuntimeTurn" | "getConversation">;
   /** Must await the authoritative runtime write, not just queue a snapshot. */

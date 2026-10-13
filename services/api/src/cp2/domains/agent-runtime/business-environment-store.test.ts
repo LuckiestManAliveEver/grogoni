@@ -132,6 +132,36 @@ describe.skipIf(!url)("durable environment lifecycle", () => {
     expect(await store.get({ ...actor, sessionId: "other" }, "task")).toBeNull();
     expect(await store.get({ ...actor, businessId: "other" }, "task")).toBeNull();
   });
+  it("serializes concurrent admission and does not extend existing environments at capacity", async () => {
+    for (let index = 0; index < 4; index++)
+      await pool.query(
+        `insert into business_environment_tasks(business_id,task_id,actor_id,environment_id,environment_version,task)
+        select business_id,$1,actor_id,environment_id,environment_version,jsonb_set(task,'{id}',to_jsonb($1::text))
+        from business_environment_tasks where task_id='task'`,
+        [`capacity-${index}`]
+      );
+    const attempts = await Promise.allSettled(
+      Array.from({ length: 4 }, (_, index) => store.create(actor, `capacity-${index}`))
+    );
+    expect(attempts.filter((result) => result.status === "fulfilled")).toHaveLength(3);
+    const created = attempts.find((result) => result.status === "fulfilled");
+    if (created?.status !== "fulfilled") throw new Error("Expected an admitted environment");
+    expect(await store.create(actor, created.value.instance.taskId)).toEqual(created.value);
+  });
+  it("supports asynchronous binding resolution and permits cancellation when the runtime disappears", async () => {
+    let unavailable = false;
+    const asyncStore = createPostgresBusinessEnvironmentStore(pool, authorize, async () => {
+      if (unavailable) throw new Error("runtime unavailable");
+      return binding;
+    });
+    await asyncStore.create(actor, "task", now);
+    await asyncStore.transition(actor, "task", 0, "READY", now);
+    await asyncStore.transition(actor, "task", 1, "RUNNING", now);
+    unavailable = true;
+    expect((await asyncStore.transition(actor, "task", 2, "CANCELLED", now)).instance.status).toBe(
+      "CANCELLED"
+    );
+  });
   it("serializes competing revisions and rejects stale controllers", async () => {
     await store.create(actor, "task", now);
     const attempts = await Promise.allSettled([

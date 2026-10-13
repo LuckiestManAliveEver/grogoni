@@ -32,7 +32,7 @@ const conflict = (message: string) => new Cp2Error(409, "business_environment_co
 export function createPostgresBusinessEnvironmentStore(
   pool: Pool,
   authorize: (input: Actor & { permission: BusinessPermission }) => { userId: string },
-  resolveBinding: (actor: Actor) => Binding
+  resolveBinding: (actor: Actor) => Binding | Promise<Binding>
 ) {
   return {
     async get(actor: Actor, taskId: string): Promise<DurableBusinessEnvironment | null> {
@@ -70,7 +70,7 @@ export function createPostgresBusinessEnvironmentStore(
         )
       ).rows[0]?.task;
       if (!task) throw new Cp2Error(404, "business_task_not_found", "Task not found.");
-      const binding = resolveBinding(actor);
+      const binding = await resolveBinding(actor);
       if (Object.values(binding).some((id) => !id.trim()))
         throw conflict("Canonical runtime binding is unavailable.");
       const instance: BusinessEnvironmentInstance = {
@@ -85,26 +85,74 @@ export function createPostgresBusinessEnvironmentStore(
         suspendedFrom: null
       };
       const expiresAt = new Date(now.getTime() + 24 * 60 * 60_000).toISOString();
-      const row = (
-        await pool.query<{
-          instance: BusinessEnvironmentInstance;
-          revision: number;
-          expires_at: Date;
-        }>(
-          `insert into business_environment_instances (business_id,task_id,actor_id,instance,expires_at)
+      const client = await pool.connect();
+      try {
+        await client.query("begin");
+        // The business lock serializes admission; the following statement sees prior commits.
+        await client.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [
+          `business-environments:${actor.businessId}`
+        ]);
+        const existing = await client.query(
+          "select 1 from business_environment_instances where business_id=$1 and task_id=$2 and actor_id=$3",
+          [actor.businessId, taskId, userId]
+        );
+        if (!existing.rows[0]) {
+          const capacity = (
+            await client.query<{
+              business_active: number;
+              actor_active: number;
+              business_recent: number;
+              actor_recent: number;
+            }>(
+              `select
+            (select count(*)::int from business_environment_instances where business_id=$1 and expires_at>now()
+              and instance->>'status' not in ('COMPLETED','FAILED','CANCELLED','EXPIRED')) as business_active,
+            (select count(*)::int from business_environment_instances where business_id=$1 and actor_id=$2 and expires_at>now()
+              and instance->>'status' not in ('COMPLETED','FAILED','CANCELLED','EXPIRED')) as actor_active,
+            (select count(*)::int from business_environment_tasks where business_id=$1 and created_at>now()-interval '1 hour') as business_recent,
+            (select count(*)::int from business_environment_tasks where business_id=$1 and actor_id=$2 and created_at>now()-interval '1 hour') as actor_recent`,
+              [actor.businessId, userId]
+            )
+          ).rows[0]!;
+          if (
+            capacity.business_active >= 6 ||
+            capacity.actor_active >= 3 ||
+            capacity.business_recent > 100 ||
+            capacity.actor_recent > 20
+          )
+            throw new Cp2Error(
+              429,
+              "business_environment_capacity",
+              "Finish or cancel existing tasks before starting another replenishment task."
+            );
+        }
+        const row = (
+          await client.query<{
+            instance: BusinessEnvironmentInstance;
+            revision: number;
+            expires_at: Date;
+          }>(
+            `insert into business_environment_instances (business_id,task_id,actor_id,instance,expires_at)
          values ($1,$2,$3,$4::jsonb,$5)
          on conflict (business_id,task_id) do update set instance=business_environment_instances.instance
          where business_environment_instances.actor_id=excluded.actor_id
          returning instance,revision,expires_at`,
-          [actor.businessId, taskId, userId, JSON.stringify(instance), expiresAt]
-        )
-      ).rows[0];
-      if (!row) throw conflict("Environment ownership does not match.");
-      return {
-        instance: row.instance,
-        revision: row.revision,
-        expiresAt: row.expires_at.toISOString()
-      };
+            [actor.businessId, taskId, userId, JSON.stringify(instance), expiresAt]
+          )
+        ).rows[0];
+        if (!row) throw conflict("Environment ownership does not match.");
+        await client.query("commit");
+        return {
+          instance: row.instance,
+          revision: row.revision,
+          expiresAt: row.expires_at.toISOString()
+        };
+      } catch (error) {
+        await client.query("rollback").catch(() => undefined);
+        throw error;
+      } finally {
+        client.release();
+      }
     },
     async transition(
       actor: Actor,
@@ -144,9 +192,10 @@ export function createPostgresBusinessEnvironmentStore(
           throw conflict("Environment has expired.");
         if (next === "EXPIRED" && now < row.expires_at)
           throw conflict("Environment has not expired.");
-        const binding = resolveBinding(actor);
+        const binding = next === "RUNNING" ? await resolveBinding(actor) : null;
         if (
           next === "RUNNING" &&
+          binding !== null &&
           Object.entries(binding).some(
             ([key, value]) => row.instance[key as keyof Binding] !== value
           )
@@ -233,7 +282,14 @@ export function createPostgresBusinessEnvironmentStore(
               .digest("hex")
           };
         }
-        const instance = transitionBusinessEnvironment(row.instance, next, completion);
+        let instance: BusinessEnvironmentInstance;
+        try {
+          instance = transitionBusinessEnvironment(row.instance, next, completion);
+        } catch (error) {
+          throw conflict(
+            error instanceof Error ? error.message : "Invalid environment transition."
+          );
+        }
         const updated = (
           await client.query<{ revision: number }>(
             `update business_environment_instances set instance=$4::jsonb,revision=revision+1,

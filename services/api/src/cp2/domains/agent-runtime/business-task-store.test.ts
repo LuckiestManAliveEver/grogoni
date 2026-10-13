@@ -75,6 +75,19 @@ describe.skipIf(!url)("PostgreSQL business task contracts", () => {
       (await pool.query("select count(*)::int as n from business_environment_tasks")).rows[0].n
     ).toBe(1);
   });
+  it("atomically bounds concurrent task creation while allowing exact retries at the limit", async () => {
+    const results = await Promise.allSettled(
+      Array.from({ length: 23 }, (_, index) =>
+        store.create(actor, manifest, { ...proposal(), taskId: `limited-${index}` })
+      )
+    );
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(20);
+    expect(results.filter((result) => result.status === "rejected")).toHaveLength(3);
+    const existing = (await store.list(actor))[0]!;
+    expect(await store.create(actor, manifest, { ...proposal(), taskId: existing.id })).toEqual(
+      existing
+    );
+  });
 
   it("deduplicates concurrent identical submissions and rejects changed intent", async () => {
     const tasks = await Promise.all([

@@ -65,6 +65,7 @@
  *   `sendEmailTransport`, all of which live here now.
  */
 import { randomBytes, randomUUID } from "node:crypto";
+import type { InventoryTaskController } from "../agent-runtime/inventory-task-controller.js";
 import { resolve } from "node:path";
 import type {
   AccountSummary,
@@ -344,6 +345,7 @@ export interface MessagingDomainDeps {
 }
 
 export class MessagingDomain {
+  private inventoryTaskController: InventoryTaskController | undefined;
   private readonly conversations = new Map<string, ConversationSummary>();
   private readonly conversationParticipants = new Map<string, ConversationParticipantSummary>();
   private readonly conversationMessages = new Map<string, ConversationMessageSummary>();
@@ -371,6 +373,10 @@ export class MessagingDomain {
   >();
   private readonly messageByClientId = new Map<string, string>();
   private readonly messageByIdempotencyKey = new Map<string, string>();
+
+  setInventoryTaskController(controller: InventoryTaskController): void {
+    this.inventoryTaskController = controller;
+  }
 
   constructor(private readonly deps: MessagingDomainDeps) {
     this.deps.channelGateway.registerAdapter(
@@ -667,6 +673,9 @@ export class MessagingDomain {
     recipient?: string | null;
     title?: string | null;
     runtimeBindingId?: string | null;
+    /** Trusted server-only identity for idempotent task conversations; not parsed from HTTP. */
+    taskConversationId?: string;
+    taskParentConversationId?: string;
     now?: Date;
   }): ConversationView {
     const now = input.now ?? new Date();
@@ -695,6 +704,39 @@ export class MessagingDomain {
       }
     }
 
+    if (input.taskConversationId !== undefined) {
+      if (
+        input.kind !== "personal" ||
+        input.recipient ||
+        !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/u.test(input.taskConversationId)
+      )
+        throw new Cp2Error(400, "task_conversation_invalid", "Invalid task conversation.");
+      if (input.taskParentConversationId !== undefined) {
+        const parent = this.requireAccountConversation(
+          input.taskParentConversationId,
+          session.account.id
+        );
+        if (parent.activeShopId !== input.activeShopId)
+          throw new Cp2Error(
+            403,
+            "task_conversation_parent_mismatch",
+            "Task parent belongs to another business."
+          );
+      }
+      const existing = this.conversations.get(input.taskConversationId);
+      if (existing) {
+        const owned = this.requireAccountConversation(existing.id, session.account.id);
+        if (
+          owned.accountId !== session.account.id ||
+          owned.activeShopId !== input.activeShopId ||
+          owned.kind !== input.kind ||
+          owned.taskParentConversationId !== input.taskParentConversationId
+        )
+          throw new Cp2Error(409, "task_conversation_conflict", "Task conversation scope changed.");
+        return this.conversationView(owned);
+      }
+    }
+
     const conversation = this.createAccountConversation({
       accountId: session.account.id,
       userId: session.user.id,
@@ -702,6 +744,12 @@ export class MessagingDomain {
       activeShopId: input.activeShopId,
       recipientAccountId,
       title: input.title?.trim() || null,
+      ...(input.taskConversationId === undefined
+        ? {}
+        : { taskConversationId: input.taskConversationId }),
+      ...(input.taskParentConversationId === undefined
+        ? {}
+        : { taskParentConversationId: input.taskParentConversationId }),
       ...(input.runtimeBindingId === undefined ? {} : { runtimeBindingId: input.runtimeBindingId }),
       now
     });
@@ -3189,6 +3237,45 @@ export class MessagingDomain {
       };
     }
 
+    if (this.inventoryTaskController && message.content.type === "text") {
+      const handled = await this.inventoryTaskController.handle({
+        sessionId: input.sessionId,
+        businessId: input.businessId,
+        conversationId: conversation.id,
+        messageId: message.id,
+        text: message.content.text
+      });
+      if (handled) {
+        const agentMessage = this.createConversationMessage({
+          sessionId: input.sessionId,
+          conversationId: conversation.id,
+          clientMessageId: `agent-reply-${message.id}`,
+          idempotencyKey: `grogoni-agent-reply:${message.id}`,
+          author: "agent",
+          replyToMessageId: message.id,
+          content: {
+            type: "text",
+            text: handled.text,
+            ...(handled.taskId === null
+              ? {}
+              : { businessTask: { businessId: input.businessId, taskId: handled.taskId } })
+          },
+          now
+        });
+        return {
+          message: this.markAgentProcessedMessageDelivered(message, now),
+          agentMessage,
+          runtime: null,
+          processing: {
+            correlationId: message.id,
+            status: "completed",
+            errorCode: null,
+            retryable: false
+          }
+        };
+      }
+    }
+
     const conversationHistory = this.runtimeConversationHistory(conversation.id, message.id);
     let runtime: RuntimeTurnResult;
     try {
@@ -4410,10 +4497,15 @@ export class MessagingDomain {
     recipientAccountId?: string | null;
     title?: string | null;
     runtimeBindingId?: string | null;
+    taskConversationId?: string;
+    taskParentConversationId?: string;
     now: Date;
   }): ConversationSummary {
     const conversation: ConversationSummary = {
-      id: randomUUID(),
+      id: input.taskConversationId ?? randomUUID(),
+      ...(input.taskParentConversationId === undefined
+        ? {}
+        : { taskParentConversationId: input.taskParentConversationId }),
       accountId: input.accountId,
       kind: input.kind,
       activeShopId: input.activeShopId,
