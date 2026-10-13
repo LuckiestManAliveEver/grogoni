@@ -431,6 +431,65 @@ describe("shop-specialized agent runtime", () => {
   });
 });
 
+describe("runtime confirmation policy", () => {
+  it("confirms an action whose skill binding restricts intents, using the proposal's intent", async () => {
+    const provider: RuntimeModelProvider = {
+      name: "confirmation-intent-test",
+      async complete() {
+        return {
+          provider: "confirmation-intent-test",
+          status: "available",
+          outputText: JSON.stringify({
+            type: "tool",
+            toolName: "product.create",
+            input: { name: "Sugar", unit: "kg", quantity: 10, sellingPrice: 150 },
+            reason: "Create product"
+          }),
+          durationMs: 1,
+          errorCode: null,
+          metadata: {}
+        };
+      }
+    };
+    const app = buildApi({ cp2: { store: createCp2Store({ runtimeModelProvider: provider }) } });
+    const owner = await createOwnerBusiness(app, "+254700001187", "Intent Shop");
+    const profileUrl = `/businesses/${owner.businessId}/agent-profile`;
+    const profile = await getJson<BusinessAgentProfileSummary>(app, profileUrl, owner.cookie);
+    await putJson<BusinessAgentProfileSummary>(
+      app,
+      profileUrl,
+      {
+        ...profile,
+        skillBindings: profile.skillBindings.map((binding) =>
+          binding.skillId === "product.create"
+            ? { ...binding, allowedIntents: ["add_product"], requiredConfirmationLevel: "owner" }
+            : binding
+        )
+      },
+      owner.cookie
+    );
+    const turnsUrl = `/businesses/${owner.businessId}/runtime/turns`;
+    const proposed = await postJson<{
+      session: { id: string };
+      turn: { status: string; plan: { confirmationToken: string | null } };
+    }>(app, turnsUrl, { message: "Add product Sugar, 10 kg, selling price 150" }, owner.cookie);
+    expect(proposed.turn.status).toBe("needs_confirmation");
+
+    const confirmed = await postJson<{ turn: { status: string; verification: unknown } }>(
+      app,
+      turnsUrl,
+      {
+        runtimeSessionId: proposed.session.id,
+        confirmationToken: proposed.turn.plan.confirmationToken,
+        message: "confirm"
+      },
+      owner.cookie
+    );
+    expect(confirmed.turn.status, JSON.stringify(confirmed.turn.verification)).toBe("completed");
+    await app.close();
+  });
+});
+
 describe("caller audience derivation", () => {
   it("maps only the owner role to the owner audience", () => {
     expect(agentAudienceForBusinessRole("owner")).toBe("owner");
