@@ -98,6 +98,7 @@ describe.skipIf(!url)("independent committed inventory verification", () => {
     ]);
     const turn = {
       id: "turn",
+      sessionId: "session",
       businessId: "business",
       actorId: "actor",
       status: "completed",
@@ -154,6 +155,12 @@ describe.skipIf(!url)("independent committed inventory verification", () => {
     );
     expect((await verifier.verify(request)).status).toBe("FAILED");
     await pool.query("delete from cp2_runtime_turns");
+    expect((await verifier.verify(request)).status).toBe("FAILED");
+  });
+  it("rejects a completed turn from a runtime session other than the pinned instance", async () => {
+    await pool.query(
+      "update cp2_runtime_turns set record=jsonb_set(record,'{sessionId}','\"other-session\"')"
+    );
     expect((await verifier.verify(request)).status).toBe("FAILED");
   });
   it("does not bless an unimplemented verification policy", async () => {

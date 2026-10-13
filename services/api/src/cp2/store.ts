@@ -816,6 +816,7 @@ export interface Cp2Snapshot
 }
 
 export interface Cp2StoreOptions {
+  inventoryProcurement?: import("./domains/agent-runtime/inventory-procurement-store.js").InventoryProcurementStore;
   runtimeApprovalStore?: RuntimeApprovalStore;
   computerWorkerClient?: ComputerWorkerClient;
   passkeyAuthenticationVerifier?: typeof verifyAuthenticationResponse;
@@ -1368,6 +1369,9 @@ export class Cp2Store {
     });
     this.vocabularyDomain.initializeApprovedCache();
     this.agentRuntimeDomain = new AgentRuntimeDomain({
+      ...(options.inventoryProcurement === undefined
+        ? {}
+        : { inventoryProcurement: options.inventoryProcurement }),
       ...(options.runtimeApprovalStore === undefined
         ? {}
         : { runtimeApprovalStore: options.runtimeApprovalStore }),

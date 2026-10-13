@@ -52,7 +52,8 @@ describe.skipIf(!url)("durable exact-action runtime approvals", () => {
       "115_runtime_approvals.sql",
       "117_business_task_verifications.sql",
       "118_task_verification_sequence.sql",
-      "119_business_environment_instances.sql"
+      "119_business_environment_instances.sql",
+      "120_inventory_procurement.sql"
     ]) {
       await pool.query(
         await readFile(
@@ -64,7 +65,7 @@ describe.skipIf(!url)("durable exact-action runtime approvals", () => {
   });
   beforeEach(async () => {
     await pool.query(
-      "truncate business_runtime_approvals,business_environment_instances,business_environment_task_verifications,business_environment_task_steps,business_environment_tasks"
+      "truncate business_purchase_drafts,business_supplier_quotes,business_runtime_approvals,business_environment_instances,business_environment_task_verifications,business_environment_task_steps,business_environment_tasks"
     );
   });
   afterAll(async () => {

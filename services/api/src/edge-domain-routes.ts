@@ -8,7 +8,8 @@ import type { PoolClient, QueryResultRow } from "pg";
 import { registerCp2Routes } from "./cp2/routes.js";
 import { createPostgresBusinessTaskStore } from "./cp2/domains/agent-runtime/business-task-store.js";
 import { createPostgresRuntimeApprovalStore } from "./cp2/domains/agent-runtime/runtime-approval-store.js";
-import { createCp2Store, readSessionCookie } from "./cp2/store.js";
+import { createCp2Store, readSessionCookie, type Cp2Store } from "./cp2/store.js";
+import { createInventoryProcurementStore } from "./cp2/domains/agent-runtime/inventory-procurement-store.js";
 import {
   createPostgresAccountAiAssetStore,
   createPostgresAttachmentBlobStore,
@@ -104,12 +105,16 @@ export async function createEdgeDomainRoutes(database: EdgeDomainDatabase) {
         );
       }
       const pool = transactionPool(client);
-      const store = createCp2Store({
+      const store: Cp2Store = createCp2Store({
         ...storeDependencies,
         // Independent transaction: rolling back this request must not reopen an executed approval.
         ...(database.approvalTransaction === undefined
           ? {}
           : {
+              inventoryProcurement: createInventoryProcurementStore(
+                database.approvalTransaction,
+                (input) => store.authorizeBusinessPermission(input)
+              ),
               runtimeApprovalStore: createPostgresRuntimeApprovalStore({
                 query: <R extends QueryResultRow>(sql: string, values: unknown[]) =>
                   database.approvalTransaction!((approvalClient) =>
