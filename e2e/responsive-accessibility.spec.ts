@@ -36,6 +36,96 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
+for (const width of [320, 1440]) {
+  test(`inventory task review stays readable and revision fenced at ${width}px`, async ({
+    page
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    const businessId = "responsive-certification-shop";
+    const task = {
+      taskId: "inventory-review",
+      businessId,
+      environmentName: "Inventory",
+      objective: "Prepare purchase drafts within KES 15,000 for the next three days.",
+      status: "INCOMPLETE",
+      revision: 4,
+      verificationStatus: "INCONCLUSIVE",
+      budgetMinor: 1500000,
+      currency: "KES",
+      horizonDays: 3,
+      reason: "Some supplier offers are unavailable.",
+      issues: [],
+      steps: [],
+      evaluation: null,
+      experienceRetained: null,
+      orders: [
+        {
+          id: "draft",
+          supplierName: "Jane's Neighborhood Wholesale and Distribution",
+          totalMinor: 125000,
+          currency: "KES",
+          submissionStatus: "NOT_SUBMITTED",
+          requiresSubmissionApproval: true,
+          items: [
+            {
+              productName: "Long grain rice family pack",
+              quantityMilli: 2500,
+              unit: "kg",
+              totalMinor: 125000
+            }
+          ]
+        }
+      ]
+    };
+    await page.route("**/v1/conversations/responsive-conversation", (route) =>
+      route.fulfill({
+        json: {
+          ...mockConversationView,
+          conversation: { ...mockConversationInbox, activeShopId: businessId },
+          messages: [
+            {
+              ...mockMessage,
+              content: {
+                type: "text",
+                text: "Purchase drafts prepared; review the remaining supplier issues.",
+                businessTask: { businessId, taskId: task.taskId }
+              }
+            }
+          ]
+        }
+      })
+    );
+    await page.route("**/runtime/tasks/inventory-review/view", (route) =>
+      route.fulfill({ json: task })
+    );
+    await page.route("**/runtime/tasks/inventory-review/control", async (route) => {
+      expect(route.request().postDataJSON()).toEqual({ command: "RESUME", revision: 4 });
+      await route.fulfill({
+        json: {
+          ...task,
+          status: "COMPLETED",
+          revision: 6,
+          verificationStatus: "PASSED",
+          reason: null
+        }
+      });
+    });
+    await page.goto("/sell/conversations/responsive-conversation");
+    const card = page.getByRole("region", { name: "Inventory replenishment task" });
+    await expect(card.getByText("Incomplete", { exact: true })).toBeVisible({ timeout: 15000 });
+    await expect(card.getByText("2.5 kg", { exact: true })).toBeVisible();
+    await expect
+      .poll(() => card.evaluate((element) => element.scrollWidth <= element.clientWidth))
+      .toBe(true);
+    const violations = await new AxeBuilder({ page }).include(".inventory-task-card").analyze();
+    expect(violations.violations).toEqual([]);
+    await card.screenshot({ path: `/tmp/grogoni-inventory-task-${width}.png` });
+    await card.getByRole("button", { name: "Resume", exact: true }).click();
+    await expect(card.getByText("Drafts verified", { exact: true })).toBeVisible();
+    await expect(card.getByRole("button", { name: "Cancel task" })).toHaveCount(0);
+  });
+}
+
 for (const width of [360, 1280]) {
   test(`runtime handoff is visible before Edit at ${width}px and explains an unavailable host`, async ({
     page

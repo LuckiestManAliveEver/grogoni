@@ -20,6 +20,7 @@ export const agentProfileModuleKeys = {
 
 /** Lazy panels and cards of the owner app (apps/web/src/grogoni-application-shared.ts). */
 export const ownerModuleKeys = {
+  inventoryTaskCard: "inventory-task-card",
   productCaptureItemsCard: "product-capture-items-card",
   productManagementCard: "product-management-card",
   supplierManagementCard: "supplier-management-card",
