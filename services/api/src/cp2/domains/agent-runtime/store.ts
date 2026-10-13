@@ -154,6 +154,7 @@ import {
 } from "./runtime-context.js";
 import { createRuntimeModelRoute } from "./runtime-model-routing.js";
 import { buildRuntimeReportCard } from "./report-card.js";
+import { runtimeExecutedModelId, runtimeModelEvidence } from "./runtime-model-evidence.js";
 import {
   purgeExpiredRuntimeExperiences as purgeExpiredRuntimeExperiencesModule,
   recordFallbackExperience as recordFallbackExperienceModule,
@@ -3646,6 +3647,7 @@ export class AgentRuntimeDomain {
       }
     });
     const profile = this.currentAgentProfile(input.turn.businessId, input.now);
+    const modelEvidence = runtimeModelEvidence(input.turn);
     if (
       profile.evaluationPolicy.enabled &&
       runtimeEvaluationSampled(input.turn.id, profile.evaluationPolicy.sampleRate)
@@ -3659,7 +3661,7 @@ export class AgentRuntimeDomain {
       this.recordAgentEvaluationEvent({
         businessId: input.turn.businessId,
         runtimeVersion: input.turn.runtimeVersion,
-        modelId: profile.modelId,
+        modelId: runtimeExecutedModelId(input.turn),
         eventType:
           input.turn.plan.executedAt !== null && profile.evaluationPolicy.recordToolOutcomes
             ? "tool_execution"
@@ -3688,21 +3690,18 @@ export class AgentRuntimeDomain {
         messageId: null,
         now: input.now
       });
-      if (
-        profile.evaluationPolicy.recordLatency &&
-        typeof input.turn.model?.durationMs === "number"
-      ) {
+      if (profile.evaluationPolicy.recordLatency && typeof modelEvidence?.durationMs === "number") {
         this.recordAgentEvaluationEvent({
           businessId: input.turn.businessId,
           runtimeVersion: input.turn.runtimeVersion,
-          modelId: profile.modelId,
+          modelId: runtimeExecutedModelId(input.turn),
           eventType: "response_latency",
-          outcome: input.turn.model?.status === "available" ? "success" : "partial",
+          outcome: modelEvidence?.status === "available" ? "success" : "partial",
           score: null,
           reason: "Provider-neutral model completion latency.",
           metadata: {
-            durationMs: input.turn.model?.durationMs ?? 0,
-            provider: input.turn.model?.provider ?? "none"
+            durationMs: modelEvidence?.durationMs ?? 0,
+            provider: modelEvidence?.provider ?? "none"
           },
           sessionId: input.turn.sessionId,
           messageId: null,

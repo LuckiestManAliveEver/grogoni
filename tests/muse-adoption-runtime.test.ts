@@ -425,9 +425,58 @@ describe("buildRuntimeReportCard", () => {
     expect(v2Card.key).toEqual({ runtimeVersion: 2, modelId: "model-b", recipeId: null });
     expect(v2Card.groundedAcceptRate).toBeNull();
   });
+
+  it("does not credit deterministic business tasks to a configured model or its usage", () => {
+    const planned = turn({ id: "planned" });
+    planned.telemetry = [
+      {
+        id: "route",
+        sessionId: planned.sessionId,
+        turnId: planned.id,
+        state: "intent.routed",
+        occurredAt: planned.createdAt,
+        toolName: null,
+        risk: null,
+        status: "completed",
+        metadata: { source: "business_task" }
+      }
+    ];
+    planned.model = { ...planned.model!, promptTokens: 30, completionTokens: 20 };
+    const cards = buildRuntimeReportCard([planned, turn({ id: "model-invoked" })]);
+    expect(cards).toHaveLength(2);
+    const deterministic = cards.find((card) => card.key.modelId === null)!;
+    expect(deterministic.sampleSize).toBe(1);
+    expect(deterministic.averageLatencyMs).toBeNull();
+    expect(deterministic.averagePromptTokens).toBeNull();
+    expect(deterministic.averageCompletionTokens).toBeNull();
+    expect(cards.find((card) => card.key.modelId === "model-a")?.sampleSize).toBe(1);
+  });
 });
 
 describe("recall tenant isolation and grounding gate at the real HTTP seam", () => {
+  it("records no model attribution or latency for a parser-only runtime action", async () => {
+    const store = createCp2Store({});
+    const app = buildApi({ cp2: { store } });
+    try {
+      const owner = await createOwnerBusiness(app, "+254700009004", "Parser Shop");
+      const result = await postJson<{ turn: RuntimeTurnSummary }>(
+        app,
+        `/businesses/${owner.businessId}/runtime/turns`,
+        { message: "show products" },
+        owner.cookie
+      );
+      expect(result.turn.model).toBeNull();
+      const events = store
+        .snapshot()
+        .agentEvaluationEvents!.filter((event) => event.shopId === owner.businessId);
+      expect(events.length).toBeGreaterThan(0);
+      expect(events.every((event) => event.modelId === null)).toBe(true);
+      expect(events.some((event) => event.eventType === "response_latency")).toBe(false);
+    } finally {
+      await app.close();
+    }
+  });
+
   it("never lets Business B see a validated experience recorded for Business A", async () => {
     const store = createCp2Store({});
     const app = buildApi({ cp2: { store } });

@@ -51,6 +51,16 @@ Turns are grouped by the literal `(runtimeVersion, modelId, recipeId)` tuple the
 already recorded, so `M + C + T + R` combinations that actually ran can be compared without
 re-instrumenting anything.
 
+Model attribution comes from the turn's execution trace, never the shop's configured model.
+Parser-only turns therefore have a null model ID. Server-planned business-task steps also have
+null model attribution and null model latency/token usage, including historical records with
+configuration metadata attached. These deterministic samples are not model benchmarks.
+The existing evaluation-event pipeline uses the same attribution rule.
+
+The historical `taskSuccessRate` field measures completed runtime turns, not independently
+verified multi-step business outcomes. It must not be interpreted as evidence of supplier
+delivery, prevented stockouts, or any other delayed business reward.
+
 ## Access
 
 `Cp2Store.runtimeReportCard({ sessionId, businessId })` (session-authorized, `business:read`, same
