@@ -1,4 +1,8 @@
 import { withRuntimeDeadline } from "../../runtime-deadline.js";
+import {
+  rejectRuntimeApproval,
+  type RuntimeApprovalRejection
+} from "./runtime-approval-rejection.js";
 /**
  * Ninth slice of in-process domain modularization for the Cp2Store monolith (see
  * docs/architecture/domain-modularization-roadmap.md). The largest slice by method count and by
@@ -1915,6 +1919,15 @@ export class AgentRuntimeDomain {
     });
 
     return runtimeSession;
+  }
+
+  rejectRuntimeAction(input: RuntimeApprovalRejection) {
+    return rejectRuntimeApproval(
+      this.deps,
+      this.runtimeSessions,
+      this.pendingRuntimeActions,
+      input
+    );
   }
 
   listRuntimeSessions(input: {

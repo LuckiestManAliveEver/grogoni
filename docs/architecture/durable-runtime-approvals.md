@@ -28,10 +28,24 @@ The existing daily experience maintenance job also purges approval rows after a
 24-hour post-expiry audit window. Account deletion awaits scoped native approval
 deletion before anonymizing data or reporting completion; failures retain a
 retryable partial-deletion record. Edge maintenance may purge records but cannot
-issue or claim approvals inside its snapshot transaction.
+issue, claim or reject approvals inside its snapshot transaction.
+
+Migration 121 adds durable `REJECTED` state and a rejection timestamp. The authenticated
+`/businesses/:businessId/runtime/approvals/reject` endpoint requires the exact actor,
+business, runtime session, conversation and unexpired token scope. Rejection is a conditional
+native update acknowledged before returning; it cannot reopen a claimed token. A concurrent
+claim and rejection have only one winner. Rejection does not require a reachable model host
+or permission to execute the proposed operation, but does require current business access.
+
+Server-generated chat confirmations carry their original runtime-session/conversation scope.
+Chat controls use that scope rather than the most recently selected runtime session. Confirm
+and Reject are disabled while a decision is pending and removed locally only after acknowledgement.
+Rejected or already-claimed tokens remain unusable if an old message is loaded again; stale UI
+is not authorization. Rejection never dispatches a business capability.
 
 Tests cover token hashing, scope binding, expiry, competing claims, persistence
-failure, confirmation through a fresh canonical runtime, retention, and failed
-account-deletion recovery. Authoritative uncertain-write reconciliation and
-cleanup for the later task/verification entities still need completion before
-enabling business environment execution.
+failure, confirmation/rejection through a fresh canonical runtime, racing decisions,
+retention, and failed account-deletion recovery. The native task reconciler checks committed
+canonical evidence without redispatch; native runtime scope deletion covers the complete task,
+verification, supplier quote and purchase-draft graph. Browser coverage asserts that rejection
+uses the original approval scope and waits for the server before removing controls.

@@ -126,6 +126,50 @@ for (const width of [320, 1440]) {
   });
 }
 
+test("chat rejection sends the persisted approval scope and waits for acknowledgement", async ({
+  page
+}) => {
+  const businessId = "responsive-certification-shop";
+  await page.route("**/v1/conversations/responsive-conversation", (route) =>
+    route.fulfill({
+      json: {
+        ...mockConversationView,
+        conversation: { ...mockConversationInbox, activeShopId: businessId },
+        messages: [
+          {
+            ...mockMessage,
+            content: {
+              type: "confirmation",
+              confirmationToken: "fixture-approval",
+              prompt: "Record the supplier offer?",
+              approvalScope: {
+                businessId,
+                runtimeSessionId: "original-approval-session",
+                conversationId: "responsive-conversation"
+              }
+            }
+          }
+        ]
+      }
+    })
+  );
+  let rejected = false;
+  await page.route("**/runtime/approvals/reject", async (route) => {
+    expect(route.request().postDataJSON()).toEqual({
+      runtimeSessionId: "original-approval-session",
+      confirmationToken: "fixture-approval",
+      conversationId: "responsive-conversation"
+    });
+    rejected = true;
+    await route.fulfill({ json: { status: "REJECTED" } });
+  });
+  await page.goto("/sell/conversations/responsive-conversation");
+  await page.getByRole("button", { name: "Reject", exact: true }).click({ timeout: 15000 });
+  await expect.poll(() => rejected).toBe(true);
+  await expect(page.getByRole("button", { name: "Confirm", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Reject", exact: true })).toHaveCount(0);
+});
+
 for (const width of [360, 1280]) {
   test(`runtime handoff is visible before Edit at ${width}px and explains an unavailable host`, async ({
     page

@@ -53,7 +53,8 @@ describe.skipIf(!url)("durable exact-action runtime approvals", () => {
       "117_business_task_verifications.sql",
       "118_task_verification_sequence.sql",
       "119_business_environment_instances.sql",
-      "120_inventory_procurement.sql"
+      "120_inventory_procurement.sql",
+      "121_runtime_approval_rejection.sql"
     ]) {
       await pool.query(
         await readFile(
@@ -72,6 +73,35 @@ describe.skipIf(!url)("durable exact-action runtime approvals", () => {
     await pool.end();
     await admin.query(`drop schema ${schema} cascade`);
     await admin.end();
+  });
+  it("durably rejects exact-scoped approvals across recreation", async () => {
+    await approvals.put(claim.token, pending());
+    await expect(approvals.reject({ ...claim, actorId: "other" })).rejects.toMatchObject({
+      statusCode: 404
+    });
+    await approvals.reject(claim);
+    const fresh = createPostgresRuntimeApprovalStore(pool);
+    await expect(fresh.claim(claim)).rejects.toMatchObject({ statusCode: 404 });
+    await expect(fresh.reject(claim)).rejects.toMatchObject({ statusCode: 404 });
+    const row = (
+      await pool.query("select status,rejected_at,claimed_at from business_runtime_approvals")
+    ).rows[0];
+    expect(row.status).toBe("REJECTED");
+    expect(row.rejected_at).toBeInstanceOf(Date);
+    expect(row.claimed_at).toBeNull();
+  });
+  it("allows only one winner in a confirmation/rejection race", async () => {
+    await approvals.put(claim.token, pending());
+    const results = await Promise.allSettled([approvals.claim(claim), approvals.reject(claim)]);
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
+  });
+  it("cannot reject through snapshot maintenance", async () => {
+    await approvals.put(claim.token, pending());
+    await expect(
+      createPostgresRuntimeApprovalMaintenance(pool).reject(claim)
+    ).rejects.toMatchObject({ statusCode: 503 });
+    await expect(approvals.claim(claim)).resolves.toBeDefined();
   });
   it("stores only a token digest and preserves the exact proposed action across recreation", async () => {
     const proposal = pending();
@@ -341,6 +371,42 @@ describe.skipIf(!url)("durable exact-action runtime approvals", () => {
       expect(confirmed.json().turn.status).toBe("completed");
       expect(confirmed.json().turn.plan.input).toEqual({ productName: "Sugar", sellingPrice: 175 });
       expect(confirmed.json().turn.toolResult).toMatchObject({ name: "Sugar" });
+      const second = await app.inject({
+        method: "POST",
+        url: `/businesses/${businessId}/runtime/turns`,
+        headers: { cookie },
+        payload: {
+          runtimeSessionId: proposed.json().session.id,
+          message: "Please process another item"
+        }
+      });
+      expect(second.statusCode, second.body).toBe(200);
+      const rejection = {
+        runtimeSessionId: second.json().session.id,
+        confirmationToken: second.json().turn.plan.confirmationToken
+      };
+      expect(rejection.confirmationToken).toBeTypeOf("string");
+      const anonymous = await freshApp.inject({
+        method: "POST",
+        url: `/businesses/${businessId}/runtime/approvals/reject`,
+        payload: rejection
+      });
+      expect(anonymous.statusCode).toBe(401);
+      const rejected = await freshApp.inject({
+        method: "POST",
+        url: `/businesses/${businessId}/runtime/approvals/reject`,
+        headers: { cookie },
+        payload: rejection
+      });
+      expect(rejected.statusCode, rejected.body).toBe(200);
+      expect(rejected.json()).toEqual({ status: "REJECTED" });
+      const blocked = await freshApp.inject({
+        method: "POST",
+        url: `/businesses/${businessId}/runtime/turns`,
+        headers: { cookie },
+        payload: { ...rejection, message: "confirm" }
+      });
+      expect(blocked.statusCode).toBe(404);
     } finally {
       await app.close();
       await freshApp?.close();

@@ -1359,11 +1359,28 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
     }
   }
 
+  function clearApproval(confirmationToken: string) {
+    setChatMessages((messages) =>
+      messages.map((item) => {
+        if (item.confirmationToken !== confirmationToken) return item;
+        const next = { ...item };
+        delete next.confirmationToken;
+        return next;
+      })
+    );
+  }
+
   async function confirmRuntimeAction(confirmationToken: string) {
-    if (business === null || runtimeSessionId === null) {
+    if (business === null) {
       return;
     }
 
+    const content = chatMessages.find(
+      (item) => item.confirmationToken === confirmationToken
+    )?.content;
+    const scope = content?.type === "confirmation" ? content.approvalScope : undefined;
+    if (scope && scope.businessId !== business.id) return;
+    if (!scope && runtimeSessionId === null) return;
     const merchantMessage: ChatMessage = {
       id: `merchant-${Date.now()}`,
       author: "merchant",
@@ -1379,11 +1396,17 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
         run: (turnHeaders) =>
           postJson<RuntimeTurnResult>(
             `/businesses/${business.id}/runtime/turns`,
-            { runtimeSessionId, message: "confirm", confirmationToken },
+            {
+              runtimeSessionId: scope?.runtimeSessionId ?? runtimeSessionId,
+              message: "confirm",
+              confirmationToken,
+              ...(scope?.conversationId ? { conversationId: scope.conversationId } : {})
+            },
             { headers: turnHeaders }
           )
       });
       setRuntimeSessionId(result.session.id);
+      clearApproval(confirmationToken);
       setChatMessages((messages) => [
         ...messages,
         {
@@ -1419,6 +1442,27 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
     }
   }
 
+  async function rejectRuntimeAction(confirmationToken: string) {
+    if (business === null) return;
+    const content = chatMessages.find(
+      (item) => item.confirmationToken === confirmationToken
+    )?.content;
+    const scope = content?.type === "confirmation" ? content.approvalScope : undefined;
+    if (scope && scope.businessId !== business.id) return;
+    if (!scope && runtimeSessionId === null) return;
+    try {
+      await postJson(`/businesses/${business.id}/runtime/approvals/reject`, {
+        runtimeSessionId: scope?.runtimeSessionId ?? runtimeSessionId,
+        confirmationToken,
+        ...(scope?.conversationId ? { conversationId: scope.conversationId } : {})
+      });
+      clearApproval(confirmationToken);
+      setStatusMessage("Approval rejected. No action was executed.");
+    } catch (error) {
+      setStatusMessage(getErrorMessage(error));
+    }
+  }
+
   function cancelGeneration() {
     activeClientInferenceCancelRef.current?.();
   }
@@ -1432,6 +1476,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
     isBrowserGenerating,
     sendChatDraft,
     confirmRuntimeAction,
+    rejectRuntimeAction,
     cancelGeneration
   };
 }

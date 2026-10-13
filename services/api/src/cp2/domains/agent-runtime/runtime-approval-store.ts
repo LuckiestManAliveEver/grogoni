@@ -16,6 +16,7 @@ export interface RuntimeApprovalStore {
   deleteScope(actorIds: string[], businessIds: string[]): Promise<number>;
   purgeExpired(now: Date): Promise<number>;
   put(token: string, pending: PendingRuntimeAction): Promise<void>;
+  reject(input: Parameters<RuntimeApprovalStore["claim"]>[0]): Promise<void>;
   claim(input: {
     token: string;
     businessId: string;
@@ -62,6 +63,23 @@ export function createPostgresRuntimeApprovalStore(database: {
           pending.expiresAt
         ]
       );
+    },
+    async reject(input) {
+      if (input.token.length > 200 || !Number.isFinite(input.now.getTime())) throw notFound();
+      const result = await database.query(
+        `update business_runtime_approvals set status='REJECTED',rejected_at=$6
+         where token_hash=$1 and business_id=$2 and actor_id=$3 and runtime_session_id=$4
+           and conversation_id is not distinct from $5 and status='PENDING' and expires_at>$6`,
+        [
+          hash(input.token),
+          input.businessId,
+          input.actorId,
+          input.runtimeSessionId,
+          input.conversationId,
+          input.now
+        ]
+      );
+      if (result.rowCount !== 1) throw notFound();
     },
     async claim(input) {
       if (input.token.length > 200 || !Number.isFinite(input.now.getTime())) throw notFound();
@@ -118,5 +136,5 @@ export function createPostgresRuntimeApprovalMaintenance(
       "Runtime approvals are unavailable in this maintenance transaction."
     );
   };
-  return { ...store, put: unavailable, claim: unavailable };
+  return { ...store, put: unavailable, claim: unavailable, reject: unavailable };
 }

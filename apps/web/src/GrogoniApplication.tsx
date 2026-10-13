@@ -600,15 +600,8 @@ export function OwnerApp() {
     registerReset: domainResetRegistry.registerReset,
     registerRefresh
   });
-  // Chat/messaging was originally one useChatState hook (Phase 16); later split into five smaller
-  // hooks (Thread/Inbox/Attachments/BuyCart/Runtime) once it was the only remaining hook mixing
-  // several loosely-related sub-concerns. Thread is the state hub (chatMessages/chatDraft/
-  // pendingAttachments/replyToMessageId/runtimeSessionId) and is called first so every sibling can
-  // take its setters as plain deps - same "core-context values never relocate" shape as
-  // OwnerCoreContext, just scoped to chat. Called before useBusinessSetupState because BusinessSetup's
-  // own deps object references setConversationInbox/setActiveConversationId/loadConversationThread,
-  // all three returned by useChatInboxState - same TDZ-avoidance reasoning as every other domain
-  // hook ordering decision in this effort.
+  // Thread owns shared chat state. Inbox must follow it, and BusinessSetup must follow Inbox
+  // because its dependencies reference the inbox setters and loadConversationThread.
   const {
     chatDraft,
     setChatDraft,
@@ -740,44 +733,49 @@ export function OwnerApp() {
     setBuyFeed,
     setChatMessages
   });
-  const { isBrowserGenerating, sendChatDraft, confirmRuntimeAction, cancelGeneration } =
-    useChatRuntimeState({
-      business,
-      mode,
-      session,
-      authBootstrapState,
-      ensureAuthenticatedSession,
-      rejectDefinitiveAuthenticationFailure,
-      agentSettings,
-      setStatusMessage,
-      navigateToView,
-      requireMessagingSignIn,
-      searchBuyFeed: handleSearchBuyFeed,
-      loadProducts,
-      loadSuppliers,
-      loadCustomers,
-      loadInvoices,
-      loadReports,
-      loadNotifications,
-      loadRuntimeSessions,
-      createManagedRuntimeSession,
-      ensureRuntimeSession,
-      loadDocumentImports,
-      chatMessages,
-      setChatMessages,
-      chatDraft,
-      setChatDraft,
-      pendingAttachments,
-      setPendingAttachments,
-      runtimeSessionId,
-      setRuntimeSessionId,
-      replyToMessageId,
-      setReplyToMessageId,
-      activeConversationId,
-      activeConversation,
-      loadMessagingInbox,
-      registerReset: domainResetRegistry.registerReset
-    });
+  const {
+    isBrowserGenerating,
+    sendChatDraft,
+    confirmRuntimeAction,
+    rejectRuntimeAction,
+    cancelGeneration
+  } = useChatRuntimeState({
+    business,
+    mode,
+    session,
+    authBootstrapState,
+    ensureAuthenticatedSession,
+    rejectDefinitiveAuthenticationFailure,
+    agentSettings,
+    setStatusMessage,
+    navigateToView,
+    requireMessagingSignIn,
+    searchBuyFeed: handleSearchBuyFeed,
+    loadProducts,
+    loadSuppliers,
+    loadCustomers,
+    loadInvoices,
+    loadReports,
+    loadNotifications,
+    loadRuntimeSessions,
+    createManagedRuntimeSession,
+    ensureRuntimeSession,
+    loadDocumentImports,
+    chatMessages,
+    setChatMessages,
+    chatDraft,
+    setChatDraft,
+    pendingAttachments,
+    setPendingAttachments,
+    runtimeSessionId,
+    setRuntimeSessionId,
+    replyToMessageId,
+    setReplyToMessageId,
+    activeConversationId,
+    activeConversation,
+    loadMessagingInbox,
+    registerReset: domainResetRegistry.registerReset
+  });
   // useAuthState is called after useNetworkState/the chat hook group (whose setNetworkGraph escape
   // hatch and requireMessagingSignIn/setConversationInbox/setActiveConversationId/
   // loadConversationThread it depends on) and before useBusinessSetupState (whose deps object
@@ -1956,6 +1954,9 @@ export function OwnerApp() {
                 onBackToChat={returnToChat}
                 onConfirm={(token) =>
                   void runAction("runtime-confirm", () => confirmRuntimeAction(token))
+                }
+                onReject={(token) =>
+                  void runAction("runtime-confirm", () => rejectRuntimeAction(token))
                 }
                 onDraftChange={(draft) => void signalTyping(draft)}
                 onSelectConversation={(conversationId) => void selectConversation(conversationId)}

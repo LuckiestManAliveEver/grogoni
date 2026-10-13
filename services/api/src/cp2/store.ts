@@ -7726,6 +7726,9 @@ export class Cp2Store {
   ): ReturnType<AgentRuntimeDomain["listRuntimeTurns"]> {
     return this.agentRuntimeDomain.listRuntimeTurns(...args);
   }
+  rejectRuntimeAction(...args: Parameters<AgentRuntimeDomain["rejectRuntimeAction"]>) {
+    return this.agentRuntimeDomain.rejectRuntimeAction(...args);
+  }
   createRuntimeTurn(
     ...args: Parameters<AgentRuntimeDomain["createRuntimeTurn"]>
   ): ReturnType<AgentRuntimeDomain["createRuntimeTurn"]> {
