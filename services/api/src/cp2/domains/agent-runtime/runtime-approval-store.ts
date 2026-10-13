@@ -12,6 +12,8 @@ const notFound = () =>
   );
 
 export interface RuntimeApprovalStore {
+  deleteScope(actorIds: string[], businessIds: string[]): Promise<number>;
+  purgeExpired(now: Date): Promise<number>;
   put(token: string, pending: PendingRuntimeAction): Promise<void>;
   claim(input: {
     token: string;
@@ -29,6 +31,27 @@ export function createPostgresRuntimeApprovalStore(database: {
 }): RuntimeApprovalStore {
   const hash = (token: string) => createHash("sha256").update(token).digest("hex");
   return {
+    async deleteScope(actorIds, businessIds) {
+      return (
+        (
+          await database.query(
+            "delete from business_runtime_approvals where actor_id=any($1::text[]) or business_id=any($2::text[])",
+            [actorIds, businessIds]
+          )
+        ).rowCount ?? 0
+      );
+    },
+    async purgeExpired(now) {
+      if (!Number.isFinite(now.getTime())) throw new Error("Invalid retention time.");
+      return (
+        (
+          await database.query(
+            "delete from business_runtime_approvals where expires_at <= $1::timestamptz - interval '24 hours'",
+            [now]
+          )
+        ).rowCount ?? 0
+      );
+    },
     async put(token, pending) {
       await database.query(
         `insert into business_runtime_approvals
@@ -79,4 +102,19 @@ export function createPostgresRuntimeApprovalStore(database: {
       };
     }
   };
+}
+
+/** Snapshot maintenance can delete approval records, but must never issue or claim approvals. */
+export function createPostgresRuntimeApprovalMaintenance(
+  database: Parameters<typeof createPostgresRuntimeApprovalStore>[0]
+): RuntimeApprovalStore {
+  const store = createPostgresRuntimeApprovalStore(database);
+  const unavailable = async (): Promise<never> => {
+    throw new Cp2Error(
+      503,
+      "runtime_approval_maintenance_only",
+      "Runtime approvals are unavailable in this maintenance transaction."
+    );
+  };
+  return { ...store, put: unavailable, claim: unavailable };
 }
