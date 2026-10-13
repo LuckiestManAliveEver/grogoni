@@ -1,0 +1,3 @@
+drop index if exists business_task_latest_verification_idx;
+alter table business_environment_task_verifications drop column if exists evidence_sequence;
+alter table business_environment_task_verifications drop column if exists claim_eligible;

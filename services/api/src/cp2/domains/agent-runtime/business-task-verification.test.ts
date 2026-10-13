@@ -41,7 +41,8 @@ describe.skipIf(!url)("independent committed inventory verification", () => {
     for (const name of [
       "113_business_tasks.sql",
       "114_business_task_steps.sql",
-      "117_business_task_verifications.sql"
+      "117_business_task_verifications.sql",
+      "118_task_verification_sequence.sql"
     ]) {
       await pool.query(
         await readFile(
@@ -125,6 +126,17 @@ describe.skipIf(!url)("independent committed inventory verification", () => {
     expect(report.checks.find((check) => check.category === "OUTCOME")?.status).toBe(
       "INCONCLUSIVE"
     );
+  });
+  it("orders a fresh recheck after changed-state evidence even when the original report is reused", async () => {
+    const original = await verifier.verify(request);
+    await pool.query("update cp2_products set record=jsonb_set(record,'{quantity}','9')");
+    expect((await verifier.verify(request)).status).toBe("INCONCLUSIVE");
+    await pool.query("update cp2_products set record=jsonb_set(record,'{quantity}','10')");
+    expect(await verifier.verify(request)).toEqual(original);
+    const latest = await pool.query(
+      "select status from business_environment_task_verifications order by evidence_sequence desc limit 1"
+    );
+    expect(latest.rows[0].status).toBe("PASSED");
   });
   it("fails forged action identity and missing durable turns", async () => {
     await pool.query(
