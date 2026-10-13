@@ -76,9 +76,17 @@ export function createPostgresRuntimeApprovalStore(database: {
         action: PendingRuntimeAction["action"];
         expires_at: Date;
       }>(
-        `update business_runtime_approvals set status='CLAIMED',claimed_at=$6
+        `with environment as materialized (
+           select instance,expires_at from business_environment_instances
+           where business_id=$2 and task_id=$5 and actor_id=$3 for update
+         )
+         update business_runtime_approvals set status='CLAIMED',claimed_at=$6
          where token_hash=$1 and business_id=$2 and actor_id=$3 and runtime_session_id=$4
            and conversation_id is not distinct from $5 and status='PENDING' and expires_at>$6
+           and (not exists (select 1 from environment) or exists (
+             select 1 from environment where instance->>'status' in ('RUNNING','AWAITING_APPROVAL')
+               and instance->>'runtimeSessionId'=$4 and expires_at>$6
+           ))
          returning intent,action,expires_at`,
         [
           hash(input.token),

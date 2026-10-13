@@ -15,6 +15,9 @@ Step claims lock the instance and require RUNNING, an exact revision and a futur
 expiry. A suspension prevents new claims, not an already claimed in-flight
 external operation; interruption is not permission to replay. Journal results can
 still record that operation's uncertainty or outcome after a suspension.
+Native canonical approval claims take the same instance lock and reject stopped,
+expired or rebound task environments without consuming the token. Ordinary
+approvals with no associated environment retain their existing behavior.
 
 Completion is assembled server-side from the latest native verifier report for
 every planned step, bound to business, actor, task, step, exact runtime turn and
