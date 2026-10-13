@@ -3,6 +3,7 @@ import type { QueryResult, QueryResultRow } from "pg";
 import type { RuntimeParserIntent } from "@grogoni/shared-types";
 import type { PendingRuntimeAction } from "./shared.js";
 import { Cp2Error } from "../../cp2-error.js";
+import { deleteNativeRuntimeScope } from "./native-runtime-maintenance.js";
 
 const notFound = () =>
   new Cp2Error(
@@ -32,14 +33,7 @@ export function createPostgresRuntimeApprovalStore(database: {
   const hash = (token: string) => createHash("sha256").update(token).digest("hex");
   return {
     async deleteScope(actorIds, businessIds) {
-      return (
-        (
-          await database.query(
-            "delete from business_runtime_approvals where actor_id=any($1::text[]) or business_id=any($2::text[])",
-            [actorIds, businessIds]
-          )
-        ).rowCount ?? 0
-      );
+      return deleteNativeRuntimeScope(database, actorIds, businessIds);
     },
     async purgeExpired(now) {
       if (!Number.isFinite(now.getTime())) throw new Error("Invalid retention time.");
