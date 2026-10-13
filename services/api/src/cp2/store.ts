@@ -4532,6 +4532,18 @@ export class Cp2Store {
   ): ReturnType<AgentRuntimeDomain["getAgentEvaluationSummary"]> {
     return this.agentRuntimeDomain.getAgentEvaluationSummary(...args);
   }
+
+  recordVerifiedBusinessTaskExperience(
+    ...args: Parameters<AgentRuntimeDomain["recordVerifiedBusinessTaskExperience"]>
+  ): ReturnType<AgentRuntimeDomain["recordVerifiedBusinessTaskExperience"]> {
+    return this.agentRuntimeDomain.recordVerifiedBusinessTaskExperience(...args);
+  }
+
+  businessTaskExperienceAdvice(
+    ...args: Parameters<AgentRuntimeDomain["businessTaskExperienceAdvice"]>
+  ): ReturnType<AgentRuntimeDomain["businessTaskExperienceAdvice"]> {
+    return this.agentRuntimeDomain.businessTaskExperienceAdvice(...args);
+  }
   listConversations(
     ...args: Parameters<MessagingDomain["listConversations"]>
   ): ReturnType<MessagingDomain["listConversations"]> {
@@ -8065,7 +8077,7 @@ export class Cp2Store {
       ),
       runtimeExperiences: [...this.agentRuntimeDomain.runtimeExperiencesMap.values()].map(
         (experience) => ({
-          ...experience,
+          ...structuredClone(experience),
           evidenceRefs: [...experience.evidenceRefs],
           toolSequence: [...experience.toolSequence]
         })

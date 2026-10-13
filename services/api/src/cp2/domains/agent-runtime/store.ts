@@ -156,6 +156,11 @@ import { createRuntimeModelRoute } from "./runtime-model-routing.js";
 import { buildRuntimeReportCard } from "./report-card.js";
 import { runtimeExecutedModelId, runtimeModelEvidence } from "./runtime-model-evidence.js";
 import {
+  retainCompletedTaskExperience,
+  retrieveBusinessTaskAdvice,
+  type TaskExperienceInput
+} from "./task-experience-access.js";
+import {
   purgeExpiredRuntimeExperiences as purgeExpiredRuntimeExperiencesModule,
   recordFallbackExperience as recordFallbackExperienceModule,
   validatedRuntimeExperiencesForBusiness as validatedRuntimeExperiencesForBusinessModule
@@ -378,7 +383,7 @@ export class AgentRuntimeDomain {
 
     for (const experience of snapshot.runtimeExperiences ?? []) {
       this.runtimeExperiences.set(experience.id, {
-        ...experience,
+        ...structuredClone(experience),
         evidenceRefs: [...experience.evidenceRefs],
         toolSequence: [...experience.toolSequence]
       });
@@ -1725,6 +1730,31 @@ export class AgentRuntimeDomain {
    *  execution from poisoning memory" requirement - a "candidate" is never surfaced into a prompt. */
   validatedRuntimeExperiencesForBusiness(businessId: string): RuntimeExperience[] {
     return validatedRuntimeExperiencesForBusinessModule(this.runtimeExperiences, businessId);
+  }
+
+  /** Server composition hook. The caller must await the existing snapshot commit barrier. */
+  recordVerifiedBusinessTaskExperience(
+    input: TaskExperienceInput
+  ): Promise<RuntimeExperience | null> {
+    return retainCompletedTaskExperience(
+      {
+        experiences: this.runtimeExperiences,
+        deps: this.deps,
+        profile: (businessId, now) => this.currentAgentProfile(businessId, now)
+      },
+      input
+    );
+  }
+
+  businessTaskExperienceAdvice(input: TaskExperienceInput): Promise<RuntimeExperience[]> {
+    return retrieveBusinessTaskAdvice(
+      {
+        experiences: this.runtimeExperiences,
+        deps: this.deps,
+        profile: (businessId, now) => this.currentAgentProfile(businessId, now)
+      },
+      input
+    );
   }
 
   /**

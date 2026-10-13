@@ -4648,8 +4648,8 @@ export interface RuntimeExperience {
   outcome: RuntimeExperienceOutcome;
   lesson: string;
   validationState: RuntimeExperienceValidationState;
-  /** Independent turns that produced this exact `lessonKey`. Promotion threshold in
-   *  `docs/architecture/experience-memory.md`. */
+  /** Corroborations under the trigger's evidence policy. Business-task lessons additionally
+   *  require disjoint authoritative source episodes, not just distinct turns. */
   corroborationCount: number;
   /** Bounded durable replay ledger. Older records may only identify sourceTurnId. */
   corroboratingTurnIds?: string[];
@@ -4658,6 +4658,14 @@ export interface RuntimeExperience {
   createdAt: string;
   updatedAt: string;
   deprecatedAt: string | null;
+  environmentScope?: {
+    environmentId: string;
+    environmentVersion: string;
+    contextKey: string;
+    sourceMask: string;
+    sourceFingerprints: string[];
+    taskIds: string[];
+  };
 }
 
 export type AgentEvaluationEventType =

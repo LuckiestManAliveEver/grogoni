@@ -10,6 +10,9 @@ import { createPostgresBusinessTaskStore } from "./business-task-store.js";
 import { createPostgresBusinessEnvironmentStore } from "./business-environment-store.js";
 import { createPostgresBusinessTaskStepStore } from "./business-task-step-store.js";
 import { stableUuid } from "./shared.js";
+import { createBusinessTaskEvaluationReader } from "./business-task-evaluation-reader.js";
+import { recordVerifiedTaskExperience } from "./task-experience.js";
+import type { RuntimeExperience } from "@grogoni/shared-types";
 import { deleteNativeRuntimeScope } from "./native-runtime-maintenance.js";
 import { createPostgresBusinessTaskVerifier } from "./business-task-verification.js";
 import { compileBusinessTask, type BusinessEnvironmentManifest } from "@grogoni/tool-core";
@@ -346,10 +349,26 @@ describe.skipIf(!url)("committed inventory procurement drafts", () => {
     });
     expect(report.checks).toHaveLength(6);
     expect(report.checks.every((check) => check.status === "PASSED")).toBe(true);
+    const reader = createBusinessTaskEvaluationReader(pool, authorize);
+    expect(await reader.completedTask!(actor, "task")).toBeNull();
     await environments.transition(actor, "task", 2, "VERIFYING");
     expect((await environments.transition(actor, "task", 3, "COMPLETED")).instance.status).toBe(
       "COMPLETED"
     );
+    const proof = await reader.completedTask!(actor, "task");
+    expect(proof?.report.experienceEvidence?.count).toBeGreaterThan(0);
+    const experiences = new Map<string, RuntimeExperience>();
+    const extracted = recordVerifiedTaskExperience(experiences, proof!, new Date());
+    expect(extracted).toMatchObject({ validationState: "candidate", corroborationCount: 1 });
+    expect(
+      recordVerifiedTaskExperience(
+        experiences,
+        (await reader.completedTask!(actor, "task"))!,
+        new Date()
+      )
+    ).toEqual(extracted);
+    expect(await reader.completedTask!({ ...actor, sessionId: "other" }, "task")).toBeNull();
+    expect(await reader.completedTask!({ ...actor, businessId: "other" }, "task")).toBeNull();
   });
   it("does not trust runtime success after a draft record or its quote price is changed", async () => {
     await executed();
@@ -372,6 +391,9 @@ describe.skipIf(!url)("committed inventory procurement drafts", () => {
   });
   it("prepares and independently verifies drafts through the real canonical runtime", async () => {
     const runtime = createCp2Store({
+      businessTaskEvaluations: createBusinessTaskEvaluationReader(pool, (input) =>
+        runtime.authorizeBusinessPermission(input)
+      ),
       inventoryProcurement: createPostgresInventoryProcurementStore(pool, (input) =>
         runtime.authorizeBusinessPermission(input)
       )
@@ -556,6 +578,25 @@ describe.skipIf(!url)("committed inventory procurement drafts", () => {
           })
         ).status
       ).toBe("PASSED");
+      await actualEnvironments.transition(actualActor, taskId, 2, "VERIFYING");
+      await actualEnvironments.transition(actualActor, taskId, 3, "COMPLETED");
+      const experience = await runtime.recordVerifiedBusinessTaskExperience({
+        ...actualActor,
+        taskId
+      });
+      expect(experience).toMatchObject({
+        validationState: "candidate",
+        corroborationCount: 1,
+        agentId: agent.agentId
+      });
+      expect(await runtime.businessTaskExperienceAdvice({ ...actualActor, taskId })).toEqual([]);
+      const fresh = createCp2Store({
+        businessTaskEvaluations: createBusinessTaskEvaluationReader(pool, authorizeActual)
+      });
+      fresh.hydrateSnapshot(runtime.snapshot());
+      expect(await fresh.recordVerifiedBusinessTaskExperience({ ...actualActor, taskId })).toEqual(
+        experience
+      );
     } finally {
       await app.close();
     }
