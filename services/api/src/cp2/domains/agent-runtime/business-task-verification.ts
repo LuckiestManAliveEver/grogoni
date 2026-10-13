@@ -48,6 +48,20 @@ export function createPostgresBusinessTaskVerifier(
       const client = await pool.connect();
       try {
         await client.query("begin isolation level repeatable read");
+        const environment = (
+          await client.query<{ instance: { status: string } }>(
+            `select instance from business_environment_instances
+           where business_id=$1 and task_id=$2 and actor_id=$3 for update`,
+            [input.businessId, input.taskId, userId]
+          )
+        ).rows[0];
+        if (environment && !["RUNNING", "VERIFYING"].includes(environment.instance.status)) {
+          throw new Cp2Error(
+            409,
+            "business_environment_not_verifiable",
+            "Environment is not accepting verification."
+          );
+        }
         const row = (
           await client.query<{
             task: BusinessTask;

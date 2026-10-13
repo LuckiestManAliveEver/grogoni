@@ -5,6 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createPostgresBusinessTaskStore } from "./business-task-store.js";
 import { createPostgresBusinessTaskStepStore } from "./business-task-step-store.js";
 import { createPostgresBusinessTaskVerifier } from "./business-task-verification.js";
+import { createPostgresBusinessEnvironmentStore } from "./business-environment-store.js";
 import { stableUuid } from "./shared.js";
 import type { BusinessEnvironmentManifest } from "@grogoni/tool-core";
 
@@ -42,7 +43,8 @@ describe.skipIf(!url)("independent committed inventory verification", () => {
       "113_business_tasks.sql",
       "114_business_task_steps.sql",
       "117_business_task_verifications.sql",
-      "118_task_verification_sequence.sql"
+      "118_task_verification_sequence.sql",
+      "119_business_environment_instances.sql"
     ]) {
       await pool.query(
         await readFile(
@@ -60,7 +62,7 @@ describe.skipIf(!url)("independent committed inventory verification", () => {
   });
   beforeEach(async () => {
     await pool.query(
-      "truncate business_environment_task_verifications,business_environment_task_steps,business_environment_tasks,cp2_products,cp2_runtime_turns"
+      "truncate business_environment_instances,business_environment_task_verifications,business_environment_task_steps,business_environment_tasks,cp2_products,cp2_runtime_turns"
     );
     const task = await tasks.create(actor, manifest, {
       taskId: "task",
@@ -77,7 +79,15 @@ describe.skipIf(!url)("independent committed inventory verification", () => {
         }
       ]
     });
-    const claim = await steps.claim(actor, task.id, "observe");
+    const environments = createPostgresBusinessEnvironmentStore(pool, authorize, () => ({
+      agentId: "agent",
+      runtimeInstanceId: "runtime",
+      runtimeSessionId: "session"
+    }));
+    await environments.create(actor, task.id);
+    await environments.transition(actor, task.id, 0, "READY");
+    await environments.transition(actor, task.id, 1, "RUNNING");
+    const claim = await steps.claim(actor, task.id, "observe", 2);
     await steps.record(actor, task.id, "observe", claim.claim_id, {
       status: "VERIFYING",
       runtimeTurnId: "turn",
@@ -180,5 +190,20 @@ describe.skipIf(!url)("independent committed inventory verification", () => {
         "alter table business_environment_task_verifications drop constraint reject_report_test"
       );
     }
+  });
+  it("cannot add verification after the environment becomes terminal", async () => {
+    const environments = createPostgresBusinessEnvironmentStore(pool, authorize, () => ({
+      agentId: "agent",
+      runtimeInstanceId: "runtime",
+      runtimeSessionId: "session"
+    }));
+    await environments.transition(actor, "task", 2, "CANCELLED");
+    await expect(verifier.verify(request)).rejects.toMatchObject({
+      code: "business_environment_not_verifiable"
+    });
+    expect(
+      (await pool.query("select count(*)::int as n from business_environment_task_verifications"))
+        .rows[0].n
+    ).toBe(0);
   });
 });

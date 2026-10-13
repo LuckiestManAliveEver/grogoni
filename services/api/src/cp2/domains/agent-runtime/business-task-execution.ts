@@ -11,6 +11,7 @@ export async function executeBusinessTaskRootStep(input: {
   businessId: string;
   taskId: string;
   stepId: string;
+  expectedEnvironmentRevision: number;
   manifest: BusinessEnvironmentManifest;
   tasks: ReturnType<typeof createPostgresBusinessTaskStore>;
   steps: ReturnType<typeof createPostgresBusinessTaskStepStore>;
@@ -64,7 +65,7 @@ export async function executeBusinessTaskRootStep(input: {
       "Read-only tasks cannot mutate business data."
     );
   }
-  const claim = await input.steps.claim(actor, task.id, step.id);
+  const claim = await input.steps.claim(actor, task.id, step.id, input.expectedEnvironmentRevision);
   try {
     const result = await input.runtime.createRuntimeTurn({
       ...actor,

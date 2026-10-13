@@ -42,6 +42,7 @@ function fixture() {
     businessId: "business",
     taskId: task.id,
     stepId: "observe",
+    expectedEnvironmentRevision: 2,
     manifest,
     tasks: { get: vi.fn(async () => task) },
     steps: {
