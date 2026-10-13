@@ -205,7 +205,8 @@ export function createPostgresBusinessTaskVerifier(
              (id,business_id,task_id,step_id,actor_id,runtime_turn_id,state_version,status,report)
            values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)
            on conflict (business_id,task_id,step_id,state_version) do update
-             set report=business_environment_task_verifications.report returning report`,
+             set report=business_environment_task_verifications.report,
+                 evidence_sequence=default,claim_eligible=true returning report`,
           [
             report.id,
             input.businessId,

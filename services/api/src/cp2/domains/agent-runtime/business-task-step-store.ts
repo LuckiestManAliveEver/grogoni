@@ -40,24 +40,42 @@ export function createPostgresBusinessTaskStepStore(
         ...actor,
         permission: runtimeToolRegistry[step.capability].requiredPermission as BusinessPermission
       });
-      // Dependency outputs are not verified merely because their runtime turns returned.
-      // Until the independent verifier lands, only root steps may be claimed.
-      if (step.dependencies.length) {
-        throw new Cp2Error(
-          409,
-          "business_task_dependencies_unverified",
-          "Dependencies need verification."
-        );
-      }
+      // Evidence and the claim are read/written in one statement snapshot.
       const result = await pool.query<BusinessTaskStepRecord>(
         `insert into business_environment_task_steps
           (business_id,task_id,step_id,actor_id,claim_id,status)
-         values ($1,$2,$3,$4,$5,'RUNNING')
+         select $1,$2,$3,$4,$5,'RUNNING'
+         where not exists (
+           select 1 from unnest($6::text[]) as dependency(step_id)
+           left join business_environment_task_steps s
+             on s.business_id=$1 and s.task_id=$2 and s.step_id=dependency.step_id and s.actor_id=$4
+           left join lateral (
+             select v.status,v.runtime_turn_id,v.claim_eligible from business_environment_task_verifications v
+             where v.business_id=$1 and v.task_id=$2 and v.step_id=dependency.step_id and v.actor_id=$4
+             order by v.evidence_sequence desc limit 1
+           ) latest on true
+           where s.status is distinct from 'VERIFYING' or s.runtime_turn_id is null
+             or latest.status is distinct from 'PASSED'
+             or latest.claim_eligible is distinct from true
+             or latest.runtime_turn_id is distinct from s.runtime_turn_id
+         )
          on conflict (business_id,task_id,step_id) do nothing
          returning step_id,claim_id,status,runtime_turn_id,observation`,
-        [actor.businessId, taskId, stepId, task.actorId, randomUUID()]
+        [actor.businessId, taskId, stepId, task.actorId, randomUUID(), step.dependencies]
       );
       if (!result.rows[0]) {
+        const started = await pool.query(
+          `select 1 from business_environment_task_steps
+           where business_id=$1 and task_id=$2 and step_id=$3 and actor_id=$4`,
+          [actor.businessId, taskId, stepId, task.actorId]
+        );
+        if (!started.rows[0]) {
+          throw new Cp2Error(
+            409,
+            "business_task_dependencies_unverified",
+            "Dependencies need current, matching independent verification."
+          );
+        }
         throw new Cp2Error(
           409,
           "business_task_step_already_started",

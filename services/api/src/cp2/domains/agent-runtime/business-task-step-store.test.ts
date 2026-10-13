@@ -17,7 +17,12 @@ describe.skipIf(!url)("durable business task step claims", () => {
   const actor = { sessionId: "actor", businessId: "business" };
   beforeAll(async () => {
     await admin.query(`create schema ${schema}`);
-    for (const name of ["113_business_tasks.sql", "114_business_task_steps.sql"]) {
+    for (const name of [
+      "113_business_tasks.sql",
+      "114_business_task_steps.sql",
+      "117_business_task_verifications.sql",
+      "118_task_verification_sequence.sql"
+    ]) {
       await pool.query(
         await readFile(
           new URL(`../../../../../../infra/db/migrations/${name}`, import.meta.url),
@@ -27,7 +32,9 @@ describe.skipIf(!url)("durable business task step claims", () => {
     }
   });
   beforeEach(async () => {
-    await pool.query("truncate business_environment_task_steps,business_environment_tasks");
+    await pool.query(
+      "truncate business_environment_task_verifications,business_environment_task_steps,business_environment_tasks"
+    );
     const task = {
       id: "task",
       businessId: "business",
@@ -85,6 +92,64 @@ describe.skipIf(!url)("durable business task step claims", () => {
     });
   });
   it("does not confuse returned output with verified dependencies", async () => {
+    const claim = await store.claim(actor, "task", "observe");
+    await store.record(actor, "task", "observe", claim.claim_id, {
+      status: "VERIFYING",
+      runtimeTurnId: "turn",
+      observation: {}
+    });
+    await expect(store.claim(actor, "task", "dependent")).rejects.toMatchObject({
+      code: "business_task_dependencies_unverified"
+    });
+  });
+  async function evidence(status: string, turnId = "turn") {
+    await pool.query(
+      `insert into business_environment_task_verifications
+       (id,business_id,task_id,step_id,actor_id,runtime_turn_id,state_version,status,report)
+       values ($1,'business','task','observe','actor',$2,$3,$4,'{}'::jsonb)`,
+      [randomUUID(), turnId, randomUUID(), status]
+    );
+  }
+  async function observed() {
+    const claim = await store.claim(actor, "task", "observe");
+    await store.record(actor, "task", "observe", claim.claim_id, {
+      status: "VERIFYING",
+      runtimeTurnId: "turn",
+      observation: {}
+    });
+  }
+  it("claims a dependent only after matching committed independent verification", async () => {
+    await observed();
+    await evidence("PASSED");
+    const attempts = await Promise.allSettled([
+      store.claim(actor, "task", "dependent"),
+      store.claim(actor, "task", "dependent")
+    ]);
+    expect(attempts.filter((attempt) => attempt.status === "fulfilled")).toHaveLength(1);
+    expect(await store.list(actor, "task")).toHaveLength(2);
+  });
+  it.each(["FAILED", "INCONCLUSIVE"])(
+    "does not reuse an older pass after newer %s evidence",
+    async (status) => {
+      await observed();
+      await evidence("PASSED");
+      await evidence(status);
+      await expect(store.claim(actor, "task", "dependent")).rejects.toMatchObject({
+        code: "business_task_dependencies_unverified"
+      });
+    }
+  );
+  it("rejects a passing report for a different canonical turn", async () => {
+    await observed();
+    await evidence("PASSED", "other-turn");
+    await expect(store.claim(actor, "task", "dependent")).rejects.toMatchObject({
+      code: "business_task_dependencies_unverified"
+    });
+  });
+  it("requires a fresh check before historical evidence can unlock execution", async () => {
+    await observed();
+    await evidence("PASSED");
+    await pool.query("update business_environment_task_verifications set claim_eligible=false");
     await expect(store.claim(actor, "task", "dependent")).rejects.toMatchObject({
       code: "business_task_dependencies_unverified"
     });
