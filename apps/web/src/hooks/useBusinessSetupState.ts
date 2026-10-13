@@ -107,7 +107,9 @@ export function useBusinessSetupState(deps: UseBusinessSetupStateDeps) {
         });
         conversationId = created.conversation.id;
         response = await getJson<{ conversations: ConversationInboxItem[] }>("/v1/conversations");
-        deps.setConversationInbox(response.conversations);
+        deps.setConversationInbox(
+          response.conversations.filter((item) => !item.taskParentConversationId)
+        );
       }
 
       await postJson<ConversationMessageSummary>("/v1/messages", {

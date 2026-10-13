@@ -105,9 +105,12 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
     try {
       const response = await getJson<{ conversations: ConversationInboxItem[] }>(
         "/v1/conversations",
-        (refreshed) => setConversationInbox(refreshed.conversations)
+        (refreshed) =>
+          setConversationInbox(
+            refreshed.conversations.filter((item) => !item.taskParentConversationId)
+          )
       );
-      setConversationInbox(response.conversations);
+      setConversationInbox(response.conversations.filter((item) => !item.taskParentConversationId));
       const selectedId =
         preferredConversationId !== null &&
         response.conversations.some((conversation) => conversation.id === preferredConversationId)
