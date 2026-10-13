@@ -430,6 +430,7 @@ import {
 import { parseRuntimeModelOutput, parseMerchantCommand } from "@grogoni/tool-core";
 import type { ConversationAttachmentRecord } from "./workspace-file-delivery.js";
 import type { RuntimeApprovalStore } from "./domains/agent-runtime/runtime-approval-store.js";
+import type { InventoryProcurementStore } from "./domains/agent-runtime/inventory-procurement-store.js";
 import {
   createMemoryConversationAttachmentBlobStore,
   type ConversationAttachmentBlobStore
@@ -816,7 +817,7 @@ export interface Cp2Snapshot
 }
 
 export interface Cp2StoreOptions {
-  inventoryProcurement?: import("./domains/agent-runtime/inventory-procurement-store.js").InventoryProcurementStore;
+  inventoryProcurement?: InventoryProcurementStore;
   runtimeApprovalStore?: RuntimeApprovalStore;
   computerWorkerClient?: ComputerWorkerClient;
   passkeyAuthenticationVerifier?: typeof verifyAuthenticationResponse;
