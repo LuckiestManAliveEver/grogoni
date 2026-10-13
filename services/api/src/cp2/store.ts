@@ -12009,11 +12009,11 @@ export class Cp2Store {
       ...subjects.map((subject) => subject.subject)
     ]);
     // A native deletion failure must stop the job before anonymization is reported complete.
-    const deletedRuntimeApprovals = await this.options.runtimeApprovalStore?.deleteScope(
+    const deletedNativeRuntimeRecords = await this.options.runtimeApprovalStore?.deleteScope(
       [...userIds],
       [...exclusivelyOwnedBusinessIds]
     );
-    let deletedRecordCount = deletedRuntimeApprovals ?? 0;
+    let deletedRecordCount = deletedNativeRuntimeRecords ?? 0;
     let previousScopeSize = -1;
 
     deletedRecordCount += this.messagingDomain.deleteConversationAttachmentsForAccount(

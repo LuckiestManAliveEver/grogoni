@@ -148,6 +148,76 @@ describe.skipIf(!url)("durable exact-action runtime approvals", () => {
     });
     await expect(approvals.claim(claim)).resolves.toMatchObject({ actorId: "actor" });
   });
+  async function nativeTask(businessId: string, actorId: string) {
+    const taskId = `native-task-${actorId}`;
+    const task = {
+      id: taskId,
+      businessId,
+      actorId,
+      environmentId: "inventory",
+      environmentVersion: "1.0.0"
+    };
+    await pool.query(
+      `insert into business_environment_tasks (business_id,task_id,actor_id,environment_id,environment_version,task)
+      values ($1,$4,$2,'inventory','1.0.0',$3::jsonb)`,
+      [businessId, actorId, JSON.stringify(task), taskId]
+    );
+    await pool.query(
+      `insert into business_environment_task_steps (business_id,task_id,step_id,actor_id,claim_id,status,runtime_turn_id)
+      values ($1,$4,'observe',$2,$3,'VERIFYING','turn')`,
+      [businessId, actorId, randomUUID(), taskId]
+    );
+    await pool.query(
+      `insert into business_environment_task_verifications (id,business_id,task_id,step_id,actor_id,runtime_turn_id,state_version,status,report)
+      values ($1,$2,$4,'observe',$3,'turn','state','PASSED','{}')`,
+      [randomUUID(), businessId, actorId, taskId]
+    );
+    await pool.query(
+      `insert into business_environment_instances (business_id,task_id,actor_id,instance,expires_at)
+      values ($1,$5,$2,$3::jsonb,$4)`,
+      [
+        businessId,
+        actorId,
+        JSON.stringify({ businessId, taskId, status: "VERIFYING" }),
+        new Date(now.getTime() + 60_000),
+        taskId
+      ]
+    );
+    await approvals.put(`native-${actorId}`, { ...pending(), businessId, actorId });
+  }
+  it("atomically deletes the complete native task graph within actor or business scope", async () => {
+    await nativeTask("business", "actor");
+    await nativeTask("business", "other");
+    expect(await approvals.deleteScope([], [])).toBe(0);
+    expect(await approvals.deleteScope(["actor"], [])).toBe(5);
+    expect((await pool.query("select actor_id from business_environment_tasks")).rows).toEqual([
+      { actor_id: "other" }
+    ]);
+    expect(await approvals.deleteScope([], ["business"])).toBe(5);
+    expect(await approvals.deleteScope(["actor"], ["business"])).toBe(0);
+  });
+  it("rolls back approvals and the task graph together when any native deletion fails", async () => {
+    await nativeTask("business", "actor");
+    await pool.query(
+      "create table delete_blocker_fixture (business_id text,task_id text,foreign key (business_id,task_id) references business_environment_tasks (business_id,task_id))"
+    );
+    await pool.query("insert into delete_blocker_fixture values ('business','native-task-actor')");
+    try {
+      await expect(approvals.deleteScope(["actor"], [])).rejects.toThrow();
+      for (const table of [
+        "business_runtime_approvals",
+        "business_environment_tasks",
+        "business_environment_task_steps",
+        "business_environment_task_verifications",
+        "business_environment_instances"
+      ]) {
+        expect((await pool.query(`select count(*)::int as n from ${table}`)).rows[0].n).toBe(1);
+      }
+    } finally {
+      await pool.query("drop table delete_blocker_fixture");
+    }
+    expect(await approvals.deleteScope(["actor"], [])).toBe(5);
+  });
   it("fences canonical confirmations while the task environment is stopped or rebound", async () => {
     await pool.query(`insert into business_environment_tasks (business_id,task_id,actor_id,environment_id,environment_version,task)
       values ('business','conversation','actor','inventory','1.0.0','{"id":"conversation","businessId":"business","actorId":"actor","environmentId":"inventory","environmentVersion":"1.0.0"}')`);
