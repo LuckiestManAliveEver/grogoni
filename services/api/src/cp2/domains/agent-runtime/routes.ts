@@ -994,6 +994,28 @@ export function registerAgentRuntimeRoutes(app: FastifyInstance, store: Cp2Store
   );
 
   app.post(
+    "/businesses/:businessId/runtime/approvals/reject",
+    async (request: FastifyRequest<{ Params: BusinessParams; Body: unknown }>, reply) => {
+      try {
+        const body = parseRequestBody(request.body);
+        const conversationId =
+          body.conversationId === undefined || body.conversationId === null
+            ? undefined
+            : parseString(body.conversationId, "conversationId");
+        return await store.rejectRuntimeAction({
+          sessionId: readSessionCookie(request.headers.cookie),
+          businessId: request.params.businessId,
+          runtimeSessionId: parseString(body.runtimeSessionId, "runtimeSessionId"),
+          confirmationToken: parseString(body.confirmationToken, "confirmationToken"),
+          ...(conversationId === undefined ? {} : { conversationId })
+        });
+      } catch (error) {
+        return sendCp2Error(reply, error);
+      }
+    }
+  );
+
+  app.post(
     "/businesses/:businessId/runtime/turns",
     async (request: FastifyRequest<{ Params: BusinessParams; Body: RuntimeTurnBody }>, reply) => {
       const cancellation = new AbortController();

@@ -7,6 +7,7 @@ import { createInventoryTaskController } from "./cp2/domains/agent-runtime/inven
 import { readEnvironment } from "./config.js";
 import { createOpenRouterRuntime } from "./inference/openrouter-runtime.js";
 import { buildPgPoolConfig } from "./db-pool-config.js";
+import { guardPgPoolErrors } from "./pg-pool-errors.js";
 import {
   DEFAULT_DATABASE_STARTUP_RETRY,
   retryDatabaseStartup,
@@ -199,7 +200,7 @@ if (shouldUsePostgresStore) {
   metrics.instrumentPgPool(inferencePool, { poolName: "inference" });
   // pg-pool emits "error" when an idle client's connection dies (network reset, Neon compute
   // restart); without a listener that is an unhandled 'error' event and the process exits.
-  inferencePool.on("error", (error) => {
+  guardPgPoolErrors(inferencePool, (error) => {
     console.error("Unexpected PostgreSQL inference pool error.", error);
   });
   const schemaPool = inferencePool;
@@ -280,7 +281,7 @@ if (shouldUsePostgresStore) {
   metrics.instrumentPgPool(fulfillmentPool, { poolName: "fulfillment" });
   // pg-pool emits "error" when an idle client's connection dies (network reset, Neon compute
   // restart); without a listener that is an unhandled 'error' event and the process exits.
-  fulfillmentPool.on("error", (error) => {
+  guardPgPoolErrors(fulfillmentPool, (error) => {
     console.error("Unexpected PostgreSQL fulfillment pool error.", error);
   });
   const schemaPool = fulfillmentPool;

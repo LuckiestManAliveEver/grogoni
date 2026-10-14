@@ -3339,6 +3339,11 @@ export class MessagingDomain {
             : {
                 type: "confirmation",
                 confirmationToken,
+                approvalScope: {
+                  businessId: input.businessId,
+                  runtimeSessionId: runtime.session.id,
+                  conversationId: conversation.id
+                },
                 prompt: runtime.turn.response
               },
         replyToMessageId: message.id,

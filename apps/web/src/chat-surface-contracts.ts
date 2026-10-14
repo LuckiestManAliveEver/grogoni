@@ -132,6 +132,7 @@ export interface ChatSurfaceProps {
   onRemoveAttachment: (attachmentId: string) => void;
   onStatusChange: (status: ShopPresenceStatus) => void;
   onConfirm: (confirmationToken: string) => void;
+  onReject?: (confirmationToken: string) => void;
   onSend: (draft: string, provider?: ChannelProvider, subject?: string, invoiceId?: string) => void;
   onCancelGeneration: () => void;
   onSmsHandoff: (status: MessageHandoffStatus, normalizedErrorCode: string | null) => void;

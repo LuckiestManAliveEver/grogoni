@@ -561,7 +561,16 @@ export type ConversationMessageContent =
     }
   | { type: "storefront"; shopId: string }
   | { type: "owner-controls"; shopId: string }
-  | { type: "confirmation"; confirmationToken: string; prompt: string }
+  | {
+      type: "confirmation";
+      confirmationToken: string;
+      prompt: string;
+      approvalScope?: {
+        businessId: string;
+        runtimeSessionId: string;
+        conversationId: string | null;
+      };
+    }
   | { type: "product-capture-progress"; captureJobId: string }
   | { type: "status-broadcast"; statusBroadcastId: string }
   | { type: "unified-checkout"; unifiedCheckoutId: string }

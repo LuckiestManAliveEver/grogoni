@@ -13,6 +13,7 @@ describe("approval privacy and retention wiring", () => {
       deleteScope,
       purgeExpired: async () => 0,
       put: async () => {},
+      reject: async () => {},
       claim: async () => {
         throw new Error("not used");
       }

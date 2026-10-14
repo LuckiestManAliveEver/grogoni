@@ -263,7 +263,7 @@ describe("API boot wiring", () => {
   it.each(["inferencePool", "fulfillmentPool"])(
     "attaches an error listener to %s so a dropped idle connection cannot crash the process",
     (pool) => {
-      expect(entrypoint).toMatch(new RegExp(String.raw`\b${pool}\.on\("error"`));
+      expect(entrypoint).toMatch(new RegExp(String.raw`guardPgPoolErrors\(${pool},`));
     }
   );
 
