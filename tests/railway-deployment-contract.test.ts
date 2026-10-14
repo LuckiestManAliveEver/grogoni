@@ -33,8 +33,7 @@ describe("Railway deployment boundaries", () => {
     expect(api.buildCommand).toContain("build:production");
     expect(api.buildCommand).not.toContain("db:migrate");
     expect(api.preDeployCommand).toEqual([
-      "COREPACK_HOME=/tmp/corepack corepack pnpm db:migrate",
-      "REQUIRE_NEON_DATABASE=true COREPACK_HOME=/tmp/corepack corepack pnpm db:verify-schema"
+      "COREPACK_HOME=/tmp/corepack corepack pnpm db:migrate && REQUIRE_NEON_DATABASE=true COREPACK_HOME=/tmp/corepack corepack pnpm db:verify-schema"
     ]);
     expect(JSON.stringify(api)).not.toContain("grogoni.allow_108");
     expect(api.healthcheckPath).toBe("/health/ready");
