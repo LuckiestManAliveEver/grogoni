@@ -46,6 +46,12 @@ jobs:
       - name: Install Playwright Chromium
         run: pnpm exec playwright install --with-deps chromium
 
+      - name: Validate Railway proxy configuration
+        run: >-
+          docker run --rm -e API_UPSTREAM=https://example.invalid
+          -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro"
+          caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+
       - name: Check
         run: pnpm run ci
 
