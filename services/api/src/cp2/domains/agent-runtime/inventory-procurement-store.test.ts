@@ -15,7 +15,7 @@ import { recordVerifiedTaskExperience } from "./task-experience.js";
 import type { RuntimeExperience } from "@grogoni/shared-types";
 import { deleteNativeRuntimeScope } from "./native-runtime-maintenance.js";
 import { createPostgresBusinessTaskVerifier } from "./business-task-verification.js";
-import { compileBusinessTask, type BusinessEnvironmentManifest } from "@grogoni/tool-core";
+import type { BusinessEnvironmentManifest } from "@grogoni/tool-core";
 import { createCp2Store, readSessionCookie } from "../../store.js";
 import { buildApi } from "../../../app.js";
 import { executeBusinessTaskRootStep } from "./business-task-execution.js";
@@ -537,32 +537,14 @@ describe.skipIf(!url)("committed inventory procurement drafts", () => {
       ]);
       const actualProcurement = createPostgresInventoryProcurementStore(pool, authorizeActual);
       const confirmedOffer = quote("actual-expensive", "actual-beans", "actual-a", 30_000);
-      const quoteTask = compileBusinessTask({
-        taskId: `${taskId}-quote`,
-        businessId,
-        actorId: userId,
-        objective: "Record the supplier offer",
-        manifest: { ...manifest, capabilities: ["procurement.quote.record"] },
-        authorizedCapabilities: ["procurement.quote.record"],
-        executionMode: "LIVE",
-        constraints: { budgetMinor: null, currency: null, horizonDays: null },
-        steps: [
-          {
-            id: "quote",
-            capability: "procurement.quote.record",
-            input: { ...confirmedOffer },
-            dependencies: [],
-            expectedOutput: "Owner-confirmed supplier quote"
-          }
-        ],
-        now: new Date()
+      const proposedResponse = await app.inject({
+        method: "POST",
+        url: `/businesses/${businessId}/runtime/turns`,
+        headers: { cookie },
+        payload: { message: `#procurement.quote.record ${JSON.stringify(confirmedOffer)}` }
       });
-      const proposal = await runtime.createRuntimeTurn({
-        ...actualActor,
-        conversationId: taskId,
-        plannedStep: quoteTask.plan[0]!,
-        message: "Record this supplier offer"
-      });
+      expect(proposedResponse.statusCode, proposedResponse.body).toBe(200);
+      const proposal = proposedResponse.json();
       expect(proposal.turn.status).toBe("needs_confirmation");
       expect(
         (
@@ -572,13 +554,18 @@ describe.skipIf(!url)("committed inventory procurement drafts", () => {
           )
         ).rows[0].n
       ).toBe(0);
-      const confirmed = await runtime.createRuntimeTurn({
-        ...actualActor,
-        conversationId: taskId,
-        runtimeSessionId: proposal.session.id,
-        confirmationToken: proposal.turn.plan.confirmationToken!,
-        message: "Confirm the exact supplier offer"
+      const confirmedResponse = await app.inject({
+        method: "POST",
+        url: `/businesses/${businessId}/runtime/turns`,
+        headers: { cookie },
+        payload: {
+          runtimeSessionId: proposal.session.id,
+          confirmationToken: proposal.turn.plan.confirmationToken,
+          message: "confirm"
+        }
       });
+      expect(confirmedResponse.statusCode, confirmedResponse.body).toBe(200);
+      const confirmed = confirmedResponse.json();
       expect(confirmed.turn.status).toBe("completed");
       for (const offer of [
         quote("actual-cheap", "actual-beans", "actual-b", 20_000),
@@ -686,6 +673,27 @@ describe.skipIf(!url)("committed inventory procurement drafts", () => {
         evaluation: { executionSuccess: true, reward: null, outcomeStatus: "PENDING" }
       });
       expect(view.json().orders).toHaveLength(2);
+      const offersView = await app.inject({
+        method: "GET",
+        url: `/businesses/${businessId}/runtime/procurement/offers`,
+        headers: { cookie }
+      });
+      expect(offersView.statusCode, offersView.body).toBe(200);
+      expect(offersView.json().truncated).toBe(false);
+      expect(offersView.json().offers.length).toBeGreaterThan(0);
+      expect(
+        offersView
+          .json()
+          .offers.every(
+            (offer: { unit: string; priceIncludesCharges: boolean }) =>
+              offer.unit && offer.priceIncludesCharges === true
+          )
+      ).toBe(true);
+      const anonymousOffers = await app.inject({
+        method: "GET",
+        url: `/businesses/${businessId}/runtime/procurement/offers`
+      });
+      expect(anonymousOffers.statusCode).toBe(401);
       expect(
         view
           .json()

@@ -582,6 +582,23 @@ export type ConversationMessageContent =
   | { type: "import-management"; businessId: string; importJobId?: string }
   | { type: "logistics-management"; businessId: string; customerName?: string };
 
+export interface SupplierOfferReview {
+  id: string;
+  productId: string;
+  productName: string;
+  supplierId: string;
+  supplierName: string;
+  currency: string;
+  unit: string;
+  unitPriceMinor: number;
+  priceIncludesCharges: true;
+  minQuantityMilli: number;
+  incrementMilli: number;
+  availableQuantityMilli: number;
+  leadTimeDays: number;
+  expiresAt: string;
+}
+
 export interface BusinessExecutionTaskView {
   taskId: string;
   businessId: string;
