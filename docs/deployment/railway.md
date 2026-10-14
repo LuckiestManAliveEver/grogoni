@@ -1,7 +1,11 @@
 # Railway Service Recovery
 
-Each service uses its own configuration file, with the repository root as its
-build context. Configure the Railway service's config-file path explicitly.
+Each service uses a versioned settings payload, with the repository root as its
+build context. These JSON files are inputs for Railway's `serviceInstanceUpdate`
+API, not automatically loaded `railway.json` files. Railway now rejects the
+legacy `railwayConfigFile` pointer; do not set it. Apply only the intended
+service/environment settings, preserving unrelated project resources. Future
+automatic infrastructure management should use Railway's current IaC tooling.
 API and frontend build manifests use `RAILWAY_GIT_COMMIT_SHA` for deployment
 identity; do not manually pin that variable to an old commit.
 

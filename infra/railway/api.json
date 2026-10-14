@@ -1,18 +1,13 @@
 {
-  "$schema": "https://railway.com/railway.schema.json",
-  "build": {
-    "builder": "RAILPACK",
-    "buildCommand": "COREPACK_HOME=/tmp/corepack corepack pnpm install --frozen-lockfile && COREPACK_HOME=/tmp/corepack corepack pnpm build:production"
-  },
-  "deploy": {
-    "preDeployCommand": [
-      "COREPACK_HOME=/tmp/corepack corepack pnpm db:migrate",
-      "REQUIRE_NEON_DATABASE=true COREPACK_HOME=/tmp/corepack corepack pnpm db:verify-schema"
-    ],
-    "startCommand": "COREPACK_HOME=/tmp/corepack corepack pnpm --filter @grogoni/api start",
-    "healthcheckPath": "/health/ready",
-    "healthcheckTimeout": 300,
-    "restartPolicyType": "ON_FAILURE",
-    "restartPolicyMaxRetries": 3
-  }
+  "builder": "RAILPACK",
+  "buildCommand": "COREPACK_HOME=/tmp/corepack corepack pnpm install --frozen-lockfile && COREPACK_HOME=/tmp/corepack corepack pnpm build:production",
+  "preDeployCommand": [
+    "COREPACK_HOME=/tmp/corepack corepack pnpm db:migrate",
+    "REQUIRE_NEON_DATABASE=true COREPACK_HOME=/tmp/corepack corepack pnpm db:verify-schema"
+  ],
+  "startCommand": "COREPACK_HOME=/tmp/corepack corepack pnpm --filter @grogoni/api start",
+  "healthcheckPath": "/health/ready",
+  "healthcheckTimeout": 300,
+  "restartPolicyType": "ON_FAILURE",
+  "restartPolicyMaxRetries": 3
 }

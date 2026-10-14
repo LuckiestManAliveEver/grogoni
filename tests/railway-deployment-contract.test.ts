@@ -30,28 +30,29 @@ describe("Railway deployment boundaries", () => {
   });
   it("runs guarded migrations before API startup, never in the image build", async () => {
     const api = await config("api");
-    expect(api.build.buildCommand).toContain("build:production");
-    expect(api.build.buildCommand).not.toContain("db:migrate");
-    expect(api.deploy.preDeployCommand).toEqual([
+    expect(api.buildCommand).toContain("build:production");
+    expect(api.buildCommand).not.toContain("db:migrate");
+    expect(api.preDeployCommand).toEqual([
       "COREPACK_HOME=/tmp/corepack corepack pnpm db:migrate",
       "REQUIRE_NEON_DATABASE=true COREPACK_HOME=/tmp/corepack corepack pnpm db:verify-schema"
     ]);
     expect(JSON.stringify(api)).not.toContain("grogoni.allow_108");
-    expect(api.deploy.healthcheckPath).toBe("/health/ready");
+    expect(api.healthcheckPath).toBe("/health/ready");
+    expect(api.railwayConfigFile).toBeUndefined();
   });
 
   it("builds staging as a static SPA without starting the root API script", async () => {
     const web = await config("web");
-    expect(web.build.buildCommand).toContain("--filter @grogoni/web... build");
-    expect(web.deploy.startCommand).toBeUndefined();
-    expect(web.deploy.healthcheckPath).toBe("/health");
+    expect(web.buildCommand).toContain("--filter @grogoni/web... build");
+    expect(web.startCommand).toBeNull();
+    expect(web.healthcheckPath).toBe("/health");
   });
 
   it("uses the existing browser-ready computer runtime image and its CMD", async () => {
     const computer = await config("computer-runtime");
-    expect(computer.build.dockerfilePath).toBe("services/computer-runtime/Dockerfile");
-    expect(computer.build.buildCommand).toBeUndefined();
-    expect(computer.deploy.startCommand).toBeUndefined();
+    expect(computer.dockerfilePath).toBe("services/computer-runtime/Dockerfile");
+    expect(computer.buildCommand).toBeNull();
+    expect(computer.startCommand).toBeNull();
   });
 
   it("proxies only the API prefix without stripping Origin or changing cookies", async () => {
