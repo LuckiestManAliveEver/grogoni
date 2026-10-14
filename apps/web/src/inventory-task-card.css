@@ -103,3 +103,20 @@
 .inventory-task-outcome {
   color: var(--grogoni-ink-soft, #c7cbd4);
 }
+.inventory-task-steps {
+  font-size: 13px;
+  line-height: 1.5;
+  margin-block: 12px;
+}
+.inventory-task-steps summary {
+  cursor: pointer;
+}
+.inventory-task-steps ol {
+  padding-left: 20px;
+}
+.inventory-task-steps li {
+  padding-block: 4px;
+}
+.inventory-task-steps strong {
+  display: block;
+}

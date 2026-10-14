@@ -146,6 +146,30 @@ export async function createEdgeSnapshotScope(
       union select id::text from public.invoices where business_id in (select id::uuid from edge_business_ids)`
     ]
   ];
+  // Binding edges lack tenant columns. Follow only authorized bindings instead of
+  // dropping their model graph or loading every other tenant's installations.
+  ctes.push(
+    [
+      "edge_runtime_binding_ids",
+      `select entity_id as id from public.cp2_native_runtime_bindings
+       where (account_id is null and business_id is null and user_id is null)
+       or account_id = nullif(${actorAccount}, '')
+       or business_id in (select id from edge_business_ids)`
+    ],
+    [
+      "edge_runtime_roles",
+      `select record from public.cp2_native_runtime_binding_models
+       where record->>'runtimeBindingId' in (select id from edge_runtime_binding_ids)`
+    ],
+    [
+      "edge_runtime_host_ids",
+      `select entity_id as id from public.cp2_native_execution_hosts
+       where ((account_id is null and business_id is null and user_id is null)
+       or account_id = nullif(${actorAccount}, '')
+       or business_id in (select id from edge_business_ids))
+       and entity_id in (select record->>'executionHostId' from edge_runtime_roles)`
+    ]
+  );
   const accountTables = [
     "sessions",
     "account_pin_hashes",
@@ -222,6 +246,15 @@ export async function createEdgeSnapshotScope(
     withClause: `with ${ctes.map(([name, sql]) => `${name} as (${sql})`).join(",\n")}`,
     predicate(key: keyof Cp2Snapshot) {
       if (globalCollections.has(key)) return "true";
+      if (key === "nativeRuntimeBindingModels")
+        return "record->>'runtimeBindingId' in (select id from edge_runtime_binding_ids)";
+      if (key === "nativeRuntimeModels")
+        return "entity_id in (select record->>'modelId' from edge_runtime_roles)";
+      if (key === "nativeModelInstallations")
+        return `record->>'executionHostId' in (select id from edge_runtime_host_ids)
+          and exists (select 1 from edge_runtime_roles role
+            where role.record->>'modelId' = cp2_native_model_installations.record->>'modelId'
+            and role.record->>'executionHostId' = cp2_native_model_installations.record->>'executionHostId')`;
       if (key === "offlineMetadata")
         return "entity_id = 'server-sequence' or entity_id in (select 'business:' || id from edge_business_ids)";
       if (key === "oauthSessions") return "entity_id in (select id::text from oauth_sessions)";
@@ -235,7 +268,7 @@ export async function createEdgeSnapshotScope(
         return "business_id in (select id from edge_business_ids) or entity_id in (select id from edge_received_status_ids)";
       if (key === "passkeyCeremonies")
         return `entity_id = ${escapeLiteral(ceremony)} or account_id = nullif(${actorAccount}, '')`;
-      return `${key === "nativeRuntimeAgents" || key === "nativeRuntimeBindings" ? "(account_id is null and business_id is null and user_id is null) or " : ""}(account_id = ${actorAccount} and ${actorAccount} <> '')
+      return `${key === "nativeRuntimeAgents" || key === "nativeRuntimeBindings" ? "(account_id is null and business_id is null and user_id is null) or " : key === "nativeExecutionHosts" ? "entity_id in (select id from edge_runtime_host_ids) or " : ""}(account_id = ${actorAccount} and ${actorAccount} <> '')
         or business_id in (select id from edge_business_ids)
         or user_id in (select id from edge_user_ids)
         or parent_id in (select id from edge_parent_ids)

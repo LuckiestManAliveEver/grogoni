@@ -135,6 +135,7 @@ export async function createEdgeDomainRoutes(database: EdgeDomainDatabase) {
       });
       const snapshot = await loadTransactionalCp2Snapshot(client, scope);
       let baseline = snapshot;
+      let independentlyCommitted = false;
       store.hydrateSnapshot(prepareEdgeHydration(snapshot));
       const inventoryTaskController =
         database.approvalTransaction === undefined
@@ -152,6 +153,7 @@ export async function createEdgeDomainRoutes(database: EdgeDomainDatabase) {
                   saveTransactionalCp2Snapshot(recordClient, next, baseline)
                 );
                 baseline = next;
+                independentlyCommitted = true;
               }
             );
       if (inventoryTaskController) store.setInventoryTaskController(inventoryTaskController);
@@ -324,11 +326,18 @@ export async function createEdgeDomainRoutes(database: EdgeDomainDatabase) {
           : await inject();
         const afterRoutes = prepareEdgePersistence(store.snapshot(), baseline);
         // OAuth start/callback and session maintenance can mutate state on GET as well.
-        await saveTransactionalCp2Snapshot(client, afterRoutes, baseline);
+        // A repeatable-read outer snapshot cannot CAS rows committed by the task's own
+        // independent transaction. Keep its final chat acknowledgement on that same path.
+        const saveRequestSnapshot = (next: typeof snapshot, previous: typeof snapshot) =>
+          independentlyCommitted
+            ? database.approvalTransaction!((recordClient) =>
+                saveTransactionalCp2Snapshot(recordClient, next, previous)
+              )
+            : saveTransactionalCp2Snapshot(client, next, previous);
+        await saveRequestSnapshot(afterRoutes, baseline);
         for (const action of pendingActions) await action();
         if (pendingActions.length)
-          await saveTransactionalCp2Snapshot(
-            client,
+          await saveRequestSnapshot(
             prepareEdgePersistence(store.snapshot(), afterRoutes),
             afterRoutes
           );
