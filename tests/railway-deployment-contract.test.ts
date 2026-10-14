@@ -1,10 +1,33 @@
-import { readFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const config = async (name: string) =>
   JSON.parse(await readFile(`infra/railway/${name}.json`, "utf8"));
 
 describe("Railway deployment boundaries", () => {
+  it("stamps the actual Railway commit even when the build checkout has no git metadata", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "grogoni-railway-build-"));
+    const commit = "a".repeat(40);
+    try {
+      execFileSync(process.execPath, [resolve("services/api/scripts/write-build-manifest.mjs")], {
+        cwd: directory,
+        env: { ...process.env, RENDER_GIT_COMMIT: "", RAILWAY_GIT_COMMIT_SHA: commit }
+      });
+      const manifest = JSON.parse(
+        await readFile(join(directory, "dist/build-manifest.json"), "utf8")
+      );
+      expect(manifest.gitCommitSha).toBe(commit);
+      expect(manifest.runtimeArchitecture).toBe("native");
+      expect(await readFile("apps/web/vite.config.ts", "utf8")).toContain(
+        "process.env.RAILWAY_GIT_COMMIT_SHA"
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
   it("runs guarded migrations before API startup, never in the image build", async () => {
     const api = await config("api");
     expect(api.build.buildCommand).toContain("build:production");

@@ -2,6 +2,8 @@
 
 Each service uses its own configuration file, with the repository root as its
 build context. Configure the Railway service's config-file path explicitly.
+API and frontend build manifests use `RAILWAY_GIT_COMMIT_SHA` for deployment
+identity; do not manually pin that variable to an old commit.
 
 | Service          | Configuration                          | Required Settings                                                                                                                                                                          |
 | ---------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
