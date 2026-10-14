@@ -37,7 +37,8 @@ Paths below are relative to the repository. Runtime modules are under
   procurement and environment lifecycle tests.
 - `tests/edge-inventory-persistence.test.ts` exercises the actual Edge route
   factory on PostgreSQL: independently acknowledged drafts, canonical turns
-  and verification survive an outer request rollback; retry does not dispatch
+  and verification survive read-committed and repeatable-read outer request
+  rollbacks; retry does not dispatch
   another purchase preparation. Its binding-graph check excludes another
   business's models, roles, hosts and installations.
 - Tenant boundaries, current authorization, deletion and retention apply to
