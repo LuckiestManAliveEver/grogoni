@@ -126,6 +126,144 @@ for (const width of [320, 1440]) {
   });
 }
 
+for (const width of [320, 1440]) {
+  test(`supplier offer review confirms exact values at ${width}px`, async ({ page }) => {
+    test.setTimeout(60000);
+    await page.setViewportSize({ width, height: 900 });
+    const businessId = "responsive-certification-shop";
+    let quote: Record<string, unknown> | null = null;
+    let committed = false;
+    await page.route("**/v1/conversations/responsive-conversation", (route) =>
+      route.fulfill({
+        json: {
+          ...mockConversationView,
+          conversation: { ...mockConversationInbox, activeShopId: businessId },
+          messages: [{ ...mockMessage, content: { type: "supplier-management", businessId } }]
+        }
+      })
+    );
+    await page.route(`**/businesses/${businessId}/products`, (route) =>
+      route.fulfill({
+        json: [
+          {
+            id: "rice",
+            businessId,
+            name: "Long grain rice family pack",
+            unit: "kg",
+            quantity: 5,
+            buyingPrice: 100,
+            sellingPrice: 150,
+            sku: null
+          }
+        ]
+      })
+    );
+    await page.route(`**/businesses/${businessId}/suppliers`, (route) =>
+      route.fulfill({
+        json: [
+          {
+            id: "supplier",
+            businessId,
+            name: "Jane's Wholesale and Distribution",
+            phone: null,
+            email: null,
+            notes: null,
+            salesAgents: [],
+            purchaseReceipts: []
+          }
+        ]
+      })
+    );
+    await page.route("**/runtime/procurement/offers", (route) =>
+      route.fulfill({
+        json: {
+          offers: committed
+            ? [
+                {
+                  ...quote,
+                  productName: "Long grain rice family pack",
+                  supplierName: "Jane's Wholesale and Distribution"
+                }
+              ]
+            : [],
+          truncated: false
+        }
+      })
+    );
+    await page.route(`**/businesses/${businessId}/runtime/turns`, async (route) => {
+      const body = route.request().postDataJSON();
+      if (body.confirmationToken) {
+        expect(body).toEqual({
+          runtimeSessionId: "quote-runtime",
+          confirmationToken: "quote-token",
+          message: "confirm"
+        });
+        committed = true;
+        await route.fulfill({
+          json: {
+            session: { id: "quote-runtime", businessId },
+            turn: { status: "completed", toolResult: quote }
+          }
+        });
+      } else {
+        expect(body.message).toMatch(/^#procurement\.quote\.record /);
+        quote = JSON.parse(body.message.slice("#procurement.quote.record ".length));
+        expect(quote).toMatchObject({
+          productId: "rice",
+          supplierId: "supplier",
+          unit: "kg",
+          unitPriceMinor: 12050,
+          availableQuantityMilli: 25125,
+          priceIncludesCharges: true
+        });
+        await route.fulfill({
+          json: {
+            session: { id: "quote-runtime", businessId },
+            turn: {
+              status: "needs_confirmation",
+              plan: {
+                toolName: "procurement.quote.record",
+                input: quote,
+                confirmationToken: "quote-token"
+              }
+            }
+          }
+        });
+      }
+    });
+    await page.goto("/sell/conversations/responsive-conversation");
+    const panel = page.getByRole("region", { name: "Supplier offers", exact: true });
+    await panel
+      .getByRole("combobox", { name: "Product", exact: true })
+      .selectOption("rice", { timeout: 30000 });
+    await panel.getByRole("combobox", { name: "Supplier", exact: true }).selectOption("supplier");
+    await panel.getByLabel("Unit price (KES per kg)", { exact: true }).fill("120.50");
+    await panel.getByLabel("Available quantity", { exact: true }).fill("25.125");
+    await panel.getByLabel("Lead time (days)", { exact: true }).fill("1");
+    await panel.getByLabel("Offer expires", { exact: true }).fill("2099-10-15T12:00");
+    await panel.getByLabel("Price includes tax, delivery and all other charges").check();
+    await panel.getByRole("button", { name: "Review offer", exact: true }).click();
+    await expect(panel.getByRole("heading", { name: "Confirm supplier offer" })).toBeVisible();
+    expect(committed).toBe(false);
+    await expect(panel.getByRole("combobox", { name: "Product", exact: true })).toBeDisabled();
+    await expect(panel.getByRole("combobox", { name: "Supplier", exact: true })).toBeDisabled();
+    await expect
+      .poll(() => panel.evaluate((element) => element.scrollWidth <= element.clientWidth))
+      .toBe(true);
+    expect(
+      (await new AxeBuilder({ page }).include(".supplier-offer-panel").analyze()).violations
+    ).toEqual([]);
+    await panel
+      .locator(".supplier-offer-review")
+      .screenshot({ path: `/tmp/grogoni-supplier-offer-${width}.png` });
+    await panel.getByRole("button", { name: "Confirm offer", exact: true }).click();
+    await expect(
+      panel.getByText("Supplier offer recorded. No purchase order was submitted.")
+    ).toBeVisible();
+    expect(committed).toBe(true);
+  });
+}
+
 test("chat rejection sends the persisted approval scope and waits for acknowledgement", async ({
   page
 }) => {

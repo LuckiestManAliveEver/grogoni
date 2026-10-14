@@ -40,6 +40,23 @@ export function registerBusinessTaskRoutes(
     return tasks;
   }
   app.get(
+    "/businesses/:businessId/runtime/procurement/offers",
+    async (request: FastifyRequest<{ Params: BusinessParams }>, reply) => {
+      try {
+        const principal = actor(request);
+        if (!controller)
+          throw new Cp2Error(
+            503,
+            "procurement_storage_unavailable",
+            "Durable supplier offers are unavailable."
+          );
+        return await controller.supplierOffers(principal);
+      } catch (error) {
+        return sendCp2Error(reply, error);
+      }
+    }
+  );
+  app.get(
     "/businesses/:businessId/runtime/tasks/:taskId/view",
     async (request: FastifyRequest<{ Params: BusinessParams & { taskId: string } }>, reply) => {
       try {

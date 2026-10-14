@@ -14,6 +14,7 @@ import { isExplicitOfflineMode } from "./offline-runtime";
 import { formatMoney } from "./formatters";
 import PurchaseSaleRecordsCard from "./PurchaseSaleRecordsCard";
 import SupplierContactRolesCard from "./SupplierContactRolesCard";
+import SupplierOfferPanel from "./SupplierOfferPanel";
 
 export interface SupplierSurfaceProps {
   businessId: string;
@@ -86,6 +87,13 @@ export function SupplierSurface(props: SupplierSurfaceProps) {
 
   return (
     <div className="records-surface">
+      {!offline && typeof props.businessId === "string" && props.businessId.length > 0 && (
+        <SupplierOfferPanel
+          key={props.businessId}
+          businessId={props.businessId}
+          suppliers={props.suppliers}
+        />
+      )}
       <PurchaseSaleRecordsCard businessId={props.businessId} />
 
       <section className="record-list" aria-label="Receipt scans">

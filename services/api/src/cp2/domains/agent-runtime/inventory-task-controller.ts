@@ -17,10 +17,12 @@ import { executeBusinessTaskRootStep } from "./business-task-execution.js";
 import { inventoryReplenishmentEnvironment } from "./inventory-environment.js";
 import { parseInventoryTaskObjective } from "./inventory-task-objective.js";
 import type { PurchaseDraft } from "./inventory-procurement-store.js";
+import { readSupplierOffers } from "./supplier-offer-review.js";
 
 type Actor = { sessionId: string | null; businessId: string };
 type Native = <T>(work: (pool: Pool) => Promise<T>) => Promise<T>;
 export interface InventoryTaskController {
+  supplierOffers(actor: Actor): ReturnType<typeof readSupplierOffers>;
   handle(
     input: Actor & { conversationId: string; messageId: string; text: string }
   ): Promise<{ text: string; taskId: string | null } | null>;
@@ -335,6 +337,7 @@ export function createInventoryTaskController(
     await commitRuntime();
   }
   return {
+    supplierOffers: (actor) => readSupplierOffers(runtime, native, actor),
     inspect,
     async handle(input) {
       const objective = parseInventoryTaskObjective(input.text);
