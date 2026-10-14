@@ -55,7 +55,7 @@ for (const width of [320, 1440]) {
       horizonDays: 3,
       reason: "Some supplier offers are unavailable.",
       issues: [],
-      steps: [],
+      steps: [{ id: "prepare", label: "Prepare purchase drafts", status: "VERIFYING" }],
       evaluation: null,
       experienceRetained: null,
       orders: [
@@ -114,6 +114,8 @@ for (const width of [320, 1440]) {
     const card = page.getByRole("region", { name: "Inventory replenishment task" });
     await expect(card.getByText("Incomplete", { exact: true })).toBeVisible({ timeout: 15000 });
     await expect(card.getByText("2.5 kg", { exact: true })).toBeVisible();
+    await card.getByText("Execution steps", { exact: true }).click();
+    await expect(card.getByText("Execution recorded", { exact: true })).toBeVisible();
     await expect
       .poll(() => card.evaluate((element) => element.scrollWidth <= element.clientWidth))
       .toBe(true);

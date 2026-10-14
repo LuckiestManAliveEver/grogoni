@@ -92,6 +92,24 @@ describe("verified inventory task card", () => {
     });
     expect(host.textContent).toContain("Drafts verified");
   });
+  it("shows journal steps without treating recorded execution as verified success", async () => {
+    api.fetchFreshJson.mockResolvedValue(
+      fixture({
+        status: "VERIFYING",
+        verificationStatus: "NOT_VERIFIED",
+        steps: [
+          { id: "prepare", label: "Prepare purchase drafts", status: "VERIFYING" },
+          { id: "reconcile", label: "Reconcile interrupted execution", status: "INCONCLUSIVE" }
+        ]
+      })
+    );
+    await render();
+    expect(host.textContent).toContain("Execution steps");
+    expect(host.textContent).toContain("Prepare purchase drafts");
+    expect(host.textContent).toContain("Execution recorded");
+    expect(host.textContent).toContain("Needs reconciliation");
+    expect(host.textContent).not.toContain("Drafts verified");
+  });
   it("requires cancellation confirmation", async () => {
     api.fetchFreshJson.mockResolvedValue(fixture({ status: "RUNNING" }));
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);

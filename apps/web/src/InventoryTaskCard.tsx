@@ -19,6 +19,14 @@ const labels: Record<BusinessExecutionTaskView["status"], string> = {
   INCOMPLETE: "Incomplete"
 };
 const terminal = new Set(["COMPLETED", "FAILED", "CANCELLED", "EXPIRED"]);
+const stepLabels: Record<string, string> = {
+  NOT_STARTED: "Not started",
+  RUNNING: "Running",
+  AWAITING_APPROVAL: "Awaiting approval",
+  VERIFYING: "Execution recorded",
+  FAILED: "Failed",
+  INCONCLUSIVE: "Needs reconciliation"
+};
 const money = (minor: number, currency: string) =>
   new Intl.NumberFormat("en-KE", { style: "currency", currency }).format(minor / 100);
 
@@ -142,6 +150,19 @@ export default function InventoryTaskCard({
               </dd>
             </div>
           </dl>
+          {task.steps.length > 0 && (
+            <details className="inventory-task-steps">
+              <summary>Execution steps</summary>
+              <ol>
+                {task.steps.map((step) => (
+                  <li key={step.id}>
+                    <span>{step.label}</span>
+                    <strong>{stepLabels[step.status] ?? "Unknown"}</strong>
+                  </li>
+                ))}
+              </ol>
+            </details>
+          )}
           {task.reason && <p>{task.reason}</p>}
           {task.issues.length > 0 && (
             <ul className="inventory-task-issues">

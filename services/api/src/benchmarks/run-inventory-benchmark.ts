@@ -63,7 +63,7 @@ try {
     });
   if (!selected.length) discoveryStatus = "NOT_RUN_NO_INSTALLED_MODELS";
 } catch {
-  discoveryStatus = "NOT_RUN_LOCAL_MODEL_UNAVAILABLE";
+  discoveryStatus = "NOT_RUN_INFERENCE_UNAVAILABLE";
 }
 const report = {
   ...(await runInventoryBenchmark({ databaseUrl, configurations })),
