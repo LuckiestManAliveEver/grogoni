@@ -53,10 +53,12 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/grogoni_test
           CP2_POSTGRES_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/grogoni_test
+          INVENTORY_BENCHMARK_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/grogoni_inventory_benchmark
           # Throwaway database: opt in to migration 108 (see docs/local-first-cloud-audit.md).
           PGOPTIONS: -c grogoni.allow_108=yes
         run: |
           pnpm db:migrate
+          pnpm exec tsx services/api/src/benchmarks/prepare-inventory-benchmark-database.ts
           pnpm test:postgres
 
       - name: Responsive and accessibility certification

@@ -31,7 +31,12 @@ const candidates = [
 ];
 const files = [];
 for (const file of candidates.sort()) {
-  if ((await readFile(file, "utf8")).includes("CP2_POSTGRES_TEST_DATABASE_URL")) files.push(file);
+  const contents = await readFile(file, "utf8");
+  if (
+    contents.includes("CP2_POSTGRES_TEST_DATABASE_URL") ||
+    contents.includes("INVENTORY_BENCHMARK_TEST_DATABASE_URL")
+  )
+    files.push(file);
 }
 
 if (files.length === 0) {
