@@ -15,7 +15,7 @@ import { recordVerifiedTaskExperience } from "./task-experience.js";
 import type { RuntimeExperience } from "@grogoni/shared-types";
 import { deleteNativeRuntimeScope } from "./native-runtime-maintenance.js";
 import { createPostgresBusinessTaskVerifier } from "./business-task-verification.js";
-import { compileBusinessTask, type BusinessEnvironmentManifest } from "@grogoni/tool-core";
+import type { BusinessEnvironmentManifest } from "@grogoni/tool-core";
 import { createCp2Store, readSessionCookie } from "../../store.js";
 import { buildApi } from "../../../app.js";
 import { executeBusinessTaskRootStep } from "./business-task-execution.js";
