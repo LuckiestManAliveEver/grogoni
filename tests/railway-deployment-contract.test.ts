@@ -3,11 +3,24 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { shouldInitializeOllama } from "../services/api/src/config.js";
 
 const config = async (name: string) =>
   JSON.parse(await readFile(`infra/railway/${name}.json`, "utf8"));
 
 describe("Railway deployment boundaries", () => {
+  it("does not initialize an unconfigured local provider for hosted production inference", () => {
+    expect(shouldInitializeOllama("backend", { NODE_ENV: "production" })).toBe(false);
+    expect(shouldInitializeOllama("vercel", { NODE_ENV: "production" })).toBe(false);
+    expect(shouldInitializeOllama("local", { NODE_ENV: "production" })).toBe(true);
+    expect(shouldInitializeOllama("backend", { NODE_ENV: "development" })).toBe(true);
+    expect(
+      shouldInitializeOllama("backend", {
+        NODE_ENV: "production",
+        OLLAMA_BASE_URL: "https://ollama.example.com"
+      })
+    ).toBe(true);
+  });
   it("stamps the actual Railway commit even when the build checkout has no git metadata", async () => {
     const directory = await mkdtemp(join(tmpdir(), "grogoni-railway-build-"));
     const commit = "a".repeat(40);

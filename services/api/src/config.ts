@@ -4,6 +4,17 @@ import {
   type ModelExecutionTarget
 } from "@grogoni/shared-types";
 
+export function shouldInitializeOllama(
+  executionTarget: ModelExecutionTarget,
+  env: NodeJS.ProcessEnv = process.env
+): boolean {
+  return (
+    env.NODE_ENV !== "production" ||
+    executionTarget === "local" ||
+    Boolean(env.OLLAMA_BASE_URL?.trim())
+  );
+}
+
 export function readEnvironment(): EnvironmentConfig {
   const runtimeMode = runtimeModeFromEnv();
   rejectRemovedCloudConfiguration();

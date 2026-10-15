@@ -4,7 +4,7 @@ import { Pool } from "pg";
 import { buildApi } from "./app.js";
 import { createPostgresBusinessTaskStore } from "./cp2/domains/agent-runtime/business-task-store.js";
 import { createInventoryTaskController } from "./cp2/domains/agent-runtime/inventory-task-controller.js";
-import { readEnvironment } from "./config.js";
+import { readEnvironment, shouldInitializeOllama } from "./config.js";
 import { createOpenRouterRuntime } from "./inference/openrouter-runtime.js";
 import { buildPgPoolConfig } from "./db-pool-config.js";
 import { guardPgPoolErrors } from "./pg-pool-errors.js";
@@ -90,20 +90,24 @@ const metrics = createMetrics({ serviceName: "api" });
 
 const modelRuntimeAdapters = new Map<string, ModelRuntimeAdapter>();
 let primaryInferenceAdapter: ModelRuntimeAdapter | undefined;
-const client = createOllamaInferenceClient({
-  baseUrl: config.ollamaBaseUrl,
-  model: config.ollamaModel,
-  timeoutMs: config.inferenceTimeoutMs
-});
-const adapter = instrumentModelAdapter(
-  createOllamaModelAdapter({
-    modelId: "smollm2-360m",
-    ollamaModel: config.ollamaModel,
-    client
-  }),
-  metrics
-);
-modelRuntimeAdapters.set("local:smollm2-360m", adapter);
+const client = shouldInitializeOllama(config.platformDefaultRuntime.executionTarget)
+  ? createOllamaInferenceClient({
+      baseUrl: config.ollamaBaseUrl,
+      model: config.ollamaModel,
+      timeoutMs: config.inferenceTimeoutMs
+    })
+  : undefined;
+if (client !== undefined) {
+  const adapter = instrumentModelAdapter(
+    createOllamaModelAdapter({
+      modelId: "smollm2-360m",
+      ollamaModel: config.ollamaModel,
+      client
+    }),
+    metrics
+  );
+  modelRuntimeAdapters.set("local:smollm2-360m", adapter);
+}
 const openRouterRuntime = createOpenRouterRuntime();
 primaryInferenceAdapter =
   openRouterRuntime.resolve({
@@ -115,18 +119,24 @@ primaryInferenceAdapter =
   );
 // Every other model installed in Ollama is listed in the model tab and served on demand, so a shop
 // switches models by picking one from the list - no restart or configuration change.
-const localModelCatalog = createOllamaModelCatalog({
-  client,
-  excludeTags: [config.ollamaModel],
-  log: (event, fields) => console.log({ event, ...fields })
-});
+const localModelCatalog =
+  client === undefined
+    ? undefined
+    : createOllamaModelCatalog({
+        client,
+        excludeTags: [config.ollamaModel],
+        log: (event, fields) => console.log({ event, ...fields })
+      });
 // Not awaited: a slow or stopped Ollama must never delay boot; the list fills in when it answers.
-void localModelCatalog.refresh();
-const localModelCatalogRefresh = setInterval(() => void localModelCatalog.refresh(), 30_000);
-localModelCatalogRefresh.unref();
+void localModelCatalog?.refresh();
+const localModelCatalogRefresh =
+  localModelCatalog === undefined
+    ? undefined
+    : setInterval(() => void localModelCatalog.refresh(), 30_000);
+localModelCatalogRefresh?.unref();
 const localModelRuntimeAdapterResolver = createLocalModelAdapterResolver({
   registered: modelRuntimeAdapters,
-  catalog: localModelCatalog,
+  catalog: localModelCatalog ?? { ollamaTagFor: () => undefined },
   createAdapter: (input) =>
     instrumentModelAdapter(
       createOllamaModelAdapter({
@@ -250,7 +260,7 @@ const cp2StoreOptions = {
   emailMailboxProviderClient,
   metrics,
   modelRuntimeAdapterResolver,
-  localModelCatalog,
+  ...(localModelCatalog === undefined ? {} : { localModelCatalog }),
   inferencePlatform,
   platformDefaultRuntime: config.platformDefaultRuntime,
   ...(pushNotificationSender === undefined ? {} : { pushNotificationSender }),
@@ -264,8 +274,8 @@ const cp2StoreOptions = {
 };
 
 // Runtime resources remain provider-neutral and independently swappable. Deployments that promise
-// zero-setup AI set INFERENCE_REQUIRED=true, making /health/ready fail unless local Ollama
-// (OLLAMA_BASE_URL) answers with the configured model.
+// zero-setup AI set INFERENCE_REQUIRED=true, making /health/ready fail unless the configured
+// default model's provider answers successfully.
 // Corridor fulfillment is Postgres-authoritative (docs/architecture/corridor-fulfillment.md §5):
 // its own instrumented pool, per-request transactions, and no participation in the in-memory
 // snapshot. Memory mode gets no service, so its routes answer 503 fulfillment_requires_postgres.

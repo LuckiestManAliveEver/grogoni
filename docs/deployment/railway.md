@@ -9,6 +9,11 @@ automatic infrastructure management should use Railway's current IaC tooling.
 API and frontend build manifests use `RAILWAY_GIT_COMMIT_SHA` for deployment
 identity; do not manually pin that variable to an old commit.
 
+Production hosted inference does not initialize an unconfigured Ollama client.
+Local-default deployments still initialize it, and an explicit `OLLAMA_BASE_URL`
+enables the local catalog alongside hosted inference. Explicit production
+endpoints retain the HTTPS requirement; required-inference readiness stays on.
+
 | Service          | Configuration                          | Required Settings                                                                                                                                                                          |
 | ---------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | API              | `/infra/railway/api.json`              | Existing pooled `DATABASE_URL`, unpooled `DIRECT_DATABASE_URL`, production auth secrets, existing model provider credential; `VITE_API_BASE_URL=/` for its same-origin embedded web bundle |
