@@ -20,6 +20,8 @@ git -C "$temporary/source" fetch --depth 1 https://github.com/neondatabase/pg_se
 git -C "$temporary/source" checkout --detach FETCH_HEAD
 test "$(git -C "$temporary/source" rev-parse HEAD)" = "$source_commit"
 cd "$temporary/source"
+# The pinned tag's lockfile has a stale workspace version; dependency pins stay unchanged.
+sed -i '/^name = "pg_session_jwt"$/,/^$/ s/^version = "0.4.0"$/version = "0.5.0"/' Cargo.lock
 cargo fetch --locked
 CARGO_NET_OFFLINE=true cargo pgrx package --pg-config /usr/lib/postgresql/18/bin/pg_config --no-default-features --features pg18 --out-dir "$temporary/package"
 library=$(find "$temporary/package" -type f -name pg_session_jwt.so -print -quit)
