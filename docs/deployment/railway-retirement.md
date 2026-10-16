@@ -1,9 +1,11 @@
 # Railway Retirement
 
-Railway hosting and repository deployment links are retired at the owner's
+Railway hosting and repository deployment links are being retired at the owner's
 request. The API, staging web, private computer worker, database backup job and
-shop-purge job must not be recreated automatically. Their schedules and Railway
-URLs are no longer operational.
+shop-purge job must not be recreated automatically. This repository cleanup
+alone does not stop deployed services or disconnect account-level integrations.
+The available project credential cannot delete services or disconnect sources;
+an owner must complete those operations before retirement is operationally done.
 
 Neon remains the existing business database. Retiring Railway does not delete,
 migrate or replace its data. Existing Vercel and Supabase configuration and
@@ -16,12 +18,22 @@ proxy validation CI step have been removed. Provider-neutral startup safety
 and build identity compatibility remain; no inference, approval, persistence
 or production-backup safety checks are weakened to hide deployment failures.
 
-The Railway backup and purge schedules no longer run. Before relying on an
-alternative host in production, explicitly provision durable private backups
-and the required maintenance schedules there. No replacement backup destination
-is assumed, and no production data is exported as part of this retirement.
+Deleting the Railway services also removes their backup and purge schedules.
+Until the owner confirms deletion, those schedules and endpoints may remain
+active. Before relying on an alternative host in production, explicitly
+provision durable private backups and the required maintenance schedules there.
+No replacement backup destination is assumed, and no production data is exported
+as part of this retirement.
 
-Project-scoped credentials are not committed. Revoke retired Railway tokens
-and remove this repository's Railway GitHub App access in GitHub settings if
-account-level access remains after the service source links are disconnected.
-Do not uninstall a shared app from unrelated repositories.
+Owner checklist:
+
+- Delete the five services in the GroGoni Railway project, or delete that
+  dedicated project after confirming it contains no additional resources.
+- Remove only `grogoni` from Railway's GitHub App repository access.
+- Revoke the retired project token after verifying the services are gone.
+- Verify the retired URLs no longer serve the application and a new commit
+  does not create Railway deployments or checks.
+
+Project-scoped credentials are not committed. Do not uninstall a shared app
+from unrelated repositories. Neon is external to Railway and must not be
+deleted as part of these operations.
