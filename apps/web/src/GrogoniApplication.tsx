@@ -783,12 +783,10 @@ export function OwnerApp() {
   // references refreshSession by name at hook-call time) - same TDZ-avoidance reasoning as every
   // other domain hook ordering decision in this effort.
   const authBootstrapPending = isAuthBootstrapPending(authBootstrapState);
-  // A device-only session (progressive-identity.md) is a real, cookie-backed session, but it is
-  // not yet the identity someone deliberately asking to log in or sign up wants - show the auth
-  // screen for it the same as no session at all. completePhoneFirstAuthentication's new session
-  // response simply replaces this temporary one, exactly like a fresh signup/login would.
+  // Device-only identities are cookie-backed but still need explicit signup/login.
+  // Auth completion upgrades this temporary session, as it does a fresh session.
   const isSignedOut = session === null || session.account.identityLevel === "device";
-  useDaemonLane(session?.account.id ?? null);
+  useDaemonLane(isSignedOut ? null : (session?.account.id ?? null));
   const shouldShowAuth = !authBootstrapPending && isAuthOpen && isSignedOut;
   // Log in / Sign up entry points (menu drawer, seller header). A device account can already own a
   // shop; offering it a login that replaces that account would strand the shop, so a shop owner's
