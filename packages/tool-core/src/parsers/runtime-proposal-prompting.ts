@@ -1,4 +1,5 @@
 import type { RuntimeToolName } from "../contracts/runtime.js";
+import { procurementRuntimeTools } from "../domains/procurement.js";
 
 /** Canonical structured-output contract shared by server and on-device model adapters. */
 export function renderRuntimeModelOutputInstructions(
@@ -17,6 +18,12 @@ export function renderRuntimeModelOutputInstructions(
     'or {"type":"clarification","message":"..."}',
     'or {"type":"response","message":"..."}.',
     `Allowed tools: ${tools || "none"}.`,
+    ...allowedTools
+      .filter((name) => Object.hasOwn(procurementRuntimeTools, name))
+      .map((name) => {
+        const tool = procurementRuntimeTools[name as keyof typeof procurementRuntimeTools];
+        return `Tool ${name}: ${tool.description} Input contract: ${JSON.stringify(tool.inputSchema)}. Include only these input properties; source observations and constraints are not tool arguments.`;
+      }),
     "A tool proposal is only a request; the Grogoni server validates permissions and confirmation before execution.",
     "Propose a tool only when the merchant clearly asks for exactly what that tool does and gave the details it needs. Never propose a tool that does not match the request.",
     "If the request is unclear, raises several issues at once, or is missing details, return a clarification that names each issue or missing detail.",

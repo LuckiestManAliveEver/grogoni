@@ -36,6 +36,12 @@ and malformed or truncated proposals. The required quality gate exited 1.
 This is a failed bounded evaluation, not a production model certification or
 proof that a larger allowance will pass. No automatic paid retries were made.
 
+A separate evaluation at the runtime's 2,048-token default passed 5/7 and 6/7
+respectively. Remaining failures copied source observations into tool arguments
+instead of the permitted task-only input. The model instructions now render the
+existing procurement tool input contracts; validators and fixtures are unchanged.
+That instruction change requires a fresh measured evaluation before certification.
+
 The default runtime allowance is separately configured by
 `OPENROUTER_MAX_OUTPUT_TOKENS`; a future evaluation with a different allowance
 must record its actual results before claiming readiness. The weak local
