@@ -23,9 +23,7 @@ import { createPurchaseOrderStore } from "./purchase-order-store.js";
 type Actor = { sessionId: string | null; businessId: string };
 type Native = <T>(work: (pool: Pool) => Promise<T>) => Promise<T>;
 export interface InventoryTaskController {
-  purchaseOrders(
-    actor: Actor
-  ): Promise<
+  purchaseOrders(actor: Actor): Promise<
     Awaited<ReturnType<ReturnType<typeof createPurchaseOrderStore>["orders"]>> & {
       whatsappAvailable: boolean;
       emailMailboxIds: string[];
@@ -369,16 +367,14 @@ export function createInventoryTaskController(
       try {
         for (const mailbox of runtime.listConnectedMailboxes(actor).slice(0, 20)) {
           try {
-            await runtime
-              .purchaseOrderDelivery()
-              .check(actor, {
-                draftId: "readiness",
-                draftDigest: "0".repeat(64),
-                channel: "email",
-                recipient: "readiness@example.test",
-                mailboxId: mailbox.id,
-                optInConfirmed: true
-              });
+            await runtime.purchaseOrderDelivery().check(actor, {
+              draftId: "readiness",
+              draftDigest: "0".repeat(64),
+              channel: "email",
+              recipient: "readiness@example.test",
+              mailboxId: mailbox.id,
+              optInConfirmed: true
+            });
             emailMailboxIds.push(mailbox.id);
           } catch {
             /* Unavailable mailboxes cannot be selected for order delivery. */
