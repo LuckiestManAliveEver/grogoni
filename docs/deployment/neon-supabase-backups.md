@@ -29,9 +29,27 @@ private storage, without production data or storage credentials.
 
 ## Activation
 
-Production activation is pending renewed Supabase owner access. The workspace
-Management API credential returned HTTP 401 during certification; no private
-bucket, credentials or production dump have been created by this section.
+Supabase owner access was restored on 2026-10-16. The private bucket and three
+repository backup secrets are configured. An independent recovery key is retained
+in the owning workspace's ignored `.env.backup`, with owner-only file permissions.
+Scheduling remains disabled until the first complete remote restore drill passes.
+
+The first manual run failed before upload because libpq could not find its default
+root certificate file. The workflow installs the container's CA trust store;
+the backup step explicitly selects its system bundle and checks it exists. The audited production Neon
+connection retains `sslmode=verify-full` and `channel_binding=require`. The local
+restore step does not inherit the production-only trust configuration.
+See [PostgreSQL TLS verification](https://www.postgresql.org/docs/18/libpq-ssl.html).
+
+The subsequent manual run encrypted, uploaded and verified its stored object, but
+the full restore failed. Production uses `pg_session_jwt` version `0.5.0`, which
+is not included in the stock PostgreSQL image. A separate job without production
+secrets builds the pinned upstream extension for PostgreSQL 18. Only compiled
+extension files are cached and shared with the isolated restore service; no dump
+or customer data enters that cache. The verifier requires matching source and
+restored extension versions, and reports only fixed error codes rather than raw
+restore errors that could contain business records. Scheduling remains disabled
+until this complete restore path passes.
 
 1. Create `grogoni-neon-backups` in project `gnmndzsughifhboqvsgd`, with public
    access disabled. Do not grant anonymous or authenticated-user object access.

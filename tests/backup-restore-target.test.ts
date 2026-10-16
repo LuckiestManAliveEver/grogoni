@@ -41,6 +41,14 @@ describe("isolated backup restore safety", () => {
     expect(workflow).toContain("cancel-in-progress: false");
     expect(workflow).toContain("postgres:18-bookworm");
     expect(workflow).toContain("verify-supabase-backup.mjs");
+    expect(workflow).toContain("PGSSLROOTCERT: /etc/ssl/certs/ca-certificates.crt");
+    expect(workflow).toContain("apt-get install --no-install-recommends -y ca-certificates");
+    expect(workflow).toContain("needs: restore-extension");
+    expect(workflow).toContain("BACKUP_RESTORE_EXTENSION_PATH: /grogoni-restore-extensions/share");
+    expect(workflow.split("  backup:")[0]).not.toContain("secrets.");
+    expect(workflow).toContain('test -s "$PGSSLROOTCERT"');
+    expect(workflow).not.toContain("sslmode=disable");
+    expect(workflow).not.toContain("rejectUnauthorized: false");
     expect(workflow).not.toContain("ALLOW_DB_ROLLBACK");
   });
 });

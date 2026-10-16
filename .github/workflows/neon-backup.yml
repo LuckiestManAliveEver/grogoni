@@ -8,19 +8,43 @@ on:
 permissions:
   contents: read
 
+env:
+  NEON_RESTORE_EXTENSION_CACHE_KEY: pg-session-jwt-937a79a65e596d916295d078b3a82ab421291665-pg18-bookworm-rust190
+
 concurrency:
   group: neon-private-backup
   cancel-in-progress: false
 
 jobs:
+  restore-extension:
+    if: github.event_name == 'workflow_dispatch' || vars.NEON_BACKUPS_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    container: postgres:18-bookworm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        id: extension-cache
+        with:
+          path: /grogoni-restore-extensions
+          key: ${{ env.NEON_RESTORE_EXTENSION_CACHE_KEY }}
+      - name: Build Pinned Neon Restore Extension Without Production Secrets
+        if: steps.extension-cache.outputs.cache-hit != 'true'
+        run: bash scripts/build-neon-restore-extension.sh
   backup:
+    needs: restore-extension
     if: github.event_name == 'workflow_dispatch' || vars.NEON_BACKUPS_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    container: postgres:18-bookworm
+    container:
+      image: postgres:18-bookworm
+      volumes:
+        - grogoni-restore-extensions:/grogoni-restore-extensions
     services:
       restore-db:
         image: postgres:18-bookworm
+        volumes:
+          - grogoni-restore-extensions:/grogoni-restore-extensions
         env:
           POSTGRES_USER: backup_restore
           POSTGRES_PASSWORD: backup_restore_ci_only
@@ -40,6 +64,18 @@ jobs:
       BACKUP_RESTORE_TEST_DATABASE_URL: postgres://backup_restore:backup_restore_ci_only@restore-db:5432/grogoni_backup_restore
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/cache/restore@v4
+        with:
+          path: /grogoni-restore-extensions
+          key: ${{ env.NEON_RESTORE_EXTENSION_CACHE_KEY }}
+          fail-on-cache-miss: true
+      - name: Install TLS Trust Store
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          apt-get update
+          apt-get install --no-install-recommends -y ca-certificates
+          update-ca-certificates
       - uses: pnpm/action-setup@v4
         with:
           version: 10.28.2
@@ -57,6 +93,12 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Create Encrypted Private Backup and Verify Read-Back
-        run: pnpm db:backup
+        env:
+          PGSSLROOTCERT: /etc/ssl/certs/ca-certificates.crt
+        run: |
+          test -s "$PGSSLROOTCERT"
+          pnpm db:backup
       - name: Download, Authenticate, and Fully Restore Into Isolated PostgreSQL
+        env:
+          BACKUP_RESTORE_EXTENSION_PATH: /grogoni-restore-extensions/share
         run: pnpm --filter @grogoni/api exec node scripts/verify-supabase-backup.mjs
