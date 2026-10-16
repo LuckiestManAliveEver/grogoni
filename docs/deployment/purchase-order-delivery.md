@@ -48,6 +48,9 @@ inbox only. External email/WhatsApp replies do not automatically change the
 order's supplier-response state. No webhook delivery or reply claim is inferred
 from a send acknowledgment. No stock or payment mutation is performed.
 
+New preparation drafts capture product names with their lines, so names are bound
+to the immutable draft digest rather than looked up after approval. Older drafts
+without captured names retain their canonical product identifiers as labels.
 Supplier-visible snapshots contain only the order's own lines, units and totals;
 internal forecasts, invoice evidence and competing supplier quotes are excluded.
 Native deletion cascades remove scoped order records. Review retention obligations

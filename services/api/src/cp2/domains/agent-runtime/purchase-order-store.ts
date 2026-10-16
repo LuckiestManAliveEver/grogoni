@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { PoolClient } from "pg";
 import { validateRuntimeToolInput } from "@grogoni/tool-core";
 import type { BusinessPermission } from "@grogoni/business-core";
-import type { SupplierSummary } from "@grogoni/shared-types";
+import type { SupplierSummary, PurchaseOrderSnapshot } from "@grogoni/shared-types";
 import { canonicalJson } from "../model-templates/manifest.js";
 import { Cp2Error } from "../../cp2-error.js";
 import { stableUuid } from "./shared.js";
@@ -27,14 +27,7 @@ export interface PurchaseOrderReceipt {
   recipient: string;
   recipient_business_id: string | null;
   mailbox_id: string | null;
-  snapshot: {
-    id: string;
-    businessId: string;
-    supplierId: string;
-    currency: string;
-    totalMinor: number;
-    items: { productId: string; quantityMilli: number; totalMinor: number; unit: string }[];
-  };
+  snapshot: PurchaseOrderSnapshot;
   status:
     | "SUBMITTED_IN_APP"
     | "DISPATCHING"
@@ -71,6 +64,7 @@ const supplierSnapshot = (draft: PurchaseDraft): PurchaseOrderReceipt["snapshot"
   totalMinor: draft.totalMinor,
   items: draft.items.map((item) => ({
     productId: item.productId,
+    productName: draft.productNames?.[item.productId] ?? item.productId,
     quantityMilli: item.quantityMilli,
     totalMinor: item.totalMinor,
     unit: draft.units[item.productId]!

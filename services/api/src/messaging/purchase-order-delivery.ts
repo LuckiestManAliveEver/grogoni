@@ -11,7 +11,7 @@ export function purchaseOrderMessage(order: PurchaseOrderReceipt): string {
     `Buyer: ${order.business_id}`,
     ...draft.items.map(
       (item) =>
-        `${item.productId}: ${item.quantityMilli / 1000} ${item.unit}; ${draft.currency} ${(item.totalMinor / 100).toFixed(2)}`
+        `${item.productName ?? item.productId}: ${item.quantityMilli / 1000} ${item.unit}; ${draft.currency} ${(item.totalMinor / 100).toFixed(2)}`
     ),
     `Total: ${draft.currency} ${(draft.totalMinor / 100).toFixed(2)}`,
     "Please confirm acceptance. This message is not proof of payment or delivery."

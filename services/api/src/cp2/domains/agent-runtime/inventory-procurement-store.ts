@@ -30,6 +30,7 @@ export type SupplierQuoteInput = Omit<
 > & { priceIncludesCharges: true; unit: string };
 type StoredSupplierQuote = SupplierQuoteInput & { businessId: string; unit: string };
 type ProcurementObservation = Omit<InventoryReplenishmentObservation, "offers"> & {
+  productNames: Record<string, string>;
   sourceEvidence: ExperienceSourceEvidence;
   offers: (InventoryReplenishmentObservation["offers"][number] & { unit: string })[];
 };
@@ -46,6 +47,7 @@ export interface PurchaseDraft {
   totalMinor: number;
   items: InventoryReplenishmentPlan["items"];
   units: Record<string, string>;
+  productNames?: Record<string, string>;
   recommendation: InventoryReplenishmentPlan;
   createdAt: string;
 }
@@ -71,14 +73,14 @@ export async function observeProcurementInventory(
 ): Promise<ProcurementObservation> {
   const { products, invoices, suppliers, quotes } = (
     await client.query<{
-      products: Pick<ProductSummary, "id" | "businessId" | "quantity" | "unit">[];
+      products: Pick<ProductSummary, "id" | "businessId" | "quantity" | "unit" | "name">[];
       invoices: Pick<InvoiceSummary, "id" | "businessId" | "confirmedAt" | "items">[];
       suppliers: Pick<SupplierSummary, "id" | "businessId">[];
       quotes: StoredSupplierQuote[];
     }>(
       `select
     (select coalesce(jsonb_agg(record order by entity_id),'[]'::jsonb) from
-      (select entity_id,jsonb_build_object('id',record->'id','businessId',record->'businessId','quantity',record->'quantity','unit',record->'unit') as record
+      (select entity_id,jsonb_build_object('id',record->'id','businessId',record->'businessId','quantity',record->'quantity','unit',record->'unit','name',record->'name') as record
        from cp2_products where business_id=$1 order by entity_id limit 501) p) as products,
     (select coalesce(jsonb_agg(record order by entity_id),'[]'::jsonb) from
       (select entity_id,jsonb_build_object('id',record->'id','businessId',record->'businessId','confirmedAt',record->'confirmedAt','items',record->'items') as record
@@ -142,10 +144,27 @@ export async function observeProcurementInventory(
       sales.set(item.productId, sale);
     }
   }
-  const inventoryRef = `inventory:${createHash("sha256").update(canonicalJson(products)).digest("hex")}`;
+  const inventoryRef = `inventory:${createHash("sha256")
+    .update(
+      canonicalJson(
+        products.map(({ id, businessId: scope, quantity, unit }) => ({
+          id,
+          businessId: scope,
+          quantity,
+          unit
+        }))
+      )
+    )
+    .digest("hex")}`;
   return {
     businessId,
     observedAt: now.toISOString(),
+    productNames: Object.fromEntries(
+      products.map((product) => [
+        product.id,
+        typeof product.name === "string" && product.name.trim() ? product.name : product.id
+      ])
+    ),
     sourceEvidence: experienceSourceEvidence(businessId, sourceInvoices),
     sourceRefs: [
       inventoryRef,
@@ -363,6 +382,9 @@ export function createInventoryProcurementStore(
                 item.productId,
                 observation.offers.find((offer) => offer.id === item.quoteId)!.unit
               ])
+            ),
+            productNames: Object.fromEntries(
+              items.map((item) => [item.productId, observation.productNames[item.productId]!])
             ),
             recommendation,
             createdAt: now.toISOString()

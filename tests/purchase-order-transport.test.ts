@@ -76,6 +76,15 @@ describe("buyer-scoped WhatsApp purchase order transport", () => {
     );
     await delivery.check(actor, input);
     expect(await delivery.send(actor, input, order)).toEqual({ providerMessageId: "wamid.real" });
+    expect(
+      purchaseOrderMessage({
+        ...order,
+        snapshot: {
+          ...order.snapshot,
+          items: [{ ...order.snapshot.items[0]!, productName: "Kidney beans" }]
+        }
+      })
+    ).toContain("Kidney beans: 2 kg");
     const [url, options] = request.mock.calls[0]!;
     expect(url).toBe("https://graph.facebook.com/v23.0/123456/messages");
     expect(options.redirect).toBe("error");

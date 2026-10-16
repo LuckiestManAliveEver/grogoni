@@ -214,7 +214,7 @@ export default function PurchaseOrderPanel({
       <ul>
         {snapshot.items.map((item) => (
           <li key={item.productId}>
-            {item.productId}: {item.quantityMilli / 1000} {item.unit}{" "}
+            {item.productName ?? item.productId}: {item.quantityMilli / 1000} {item.unit}{" "}
             <span>{money(item.totalMinor, snapshot.currency)}</span>
           </li>
         ))}

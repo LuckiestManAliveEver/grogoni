@@ -4,7 +4,13 @@ export interface PurchaseOrderSnapshot {
   supplierId: string;
   currency: string;
   totalMinor: number;
-  items: { productId: string; quantityMilli: number; totalMinor: number; unit: string }[];
+  items: {
+    productId: string;
+    productName?: string;
+    quantityMilli: number;
+    totalMinor: number;
+    unit: string;
+  }[];
 }
 export type PurchaseOrderStatus =
   | "SUBMITTED_IN_APP"

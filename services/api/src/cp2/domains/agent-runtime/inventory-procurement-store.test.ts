@@ -115,8 +115,8 @@ describe.skipIf(!url)("committed inventory procurement drafts", () => {
       "truncate business_purchase_drafts,business_supplier_quotes,business_environment_instances,business_environment_task_verifications,business_environment_task_steps,business_environment_tasks,cp2_products,cp2_invoices,cp2_suppliers,cp2_runtime_turns"
     );
     for (const product of [
-      { id: "beans", quantity: 1 },
-      { id: "rice", quantity: 10 }
+      { id: "beans", name: "Beans", quantity: 1 },
+      { id: "rice", name: "Long-grain rice", quantity: 10 }
     ])
       await pool.query("insert into cp2_products values ($1,'business',$2::jsonb)", [
         product.id,
@@ -173,6 +173,10 @@ describe.skipIf(!url)("committed inventory procurement drafts", () => {
     expect(result.recommendation).toMatchObject({ status: "READY", totalMinor: 600_000 });
     expect(result.drafts).toHaveLength(2);
     expect(result.drafts.map((draft) => draft.supplierId)).toEqual(["b", "c"]);
+    expect(result.drafts.map((draft) => draft.productNames)).toEqual([
+      { beans: "Beans" },
+      { rice: "Long-grain rice" }
+    ]);
     expect(
       result.drafts.every(
         (draft) =>
