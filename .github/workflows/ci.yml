@@ -61,5 +61,11 @@ jobs:
           pnpm exec tsx services/api/src/benchmarks/prepare-inventory-benchmark-database.ts
           pnpm test:postgres
 
+      - name: Private Backup Restore Certification
+        env:
+          BACKUP_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/grogoni_test
+          PG_DUMP_CONTAINER_ID: ${{ job.services.postgres.id }}
+        run: node scripts/test-private-backup-restore.mjs
+
       - name: Responsive and accessibility certification
         run: pnpm test:ui-cert
