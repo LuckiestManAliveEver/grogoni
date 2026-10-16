@@ -20,7 +20,8 @@ git -C "$temporary/source" fetch --depth 1 https://github.com/neondatabase/pg_se
 git -C "$temporary/source" checkout --detach FETCH_HEAD
 test "$(git -C "$temporary/source" rev-parse HEAD)" = "$source_commit"
 cd "$temporary/source"
-cargo pgrx package --locked --pg-config /usr/lib/postgresql/18/bin/pg_config --no-default-features --features pg18 --out-dir "$temporary/package"
+cargo fetch --locked
+CARGO_NET_OFFLINE=true cargo pgrx package --pg-config /usr/lib/postgresql/18/bin/pg_config --no-default-features --features pg18 --out-dir "$temporary/package"
 library=$(find "$temporary/package" -type f -name pg_session_jwt.so -print -quit)
 control=$(find "$temporary/package" -type f -name pg_session_jwt.control -print -quit)
 test -s "$library"
