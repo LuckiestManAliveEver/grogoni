@@ -57,6 +57,10 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Create Encrypted Private Backup and Verify Read-Back
-        run: pnpm db:backup
+        env:
+          PGSSLROOTCERT: /etc/ssl/certs/ca-certificates.crt
+        run: |
+          test -s "$PGSSLROOTCERT"
+          pnpm db:backup
       - name: Download, Authenticate, and Fully Restore Into Isolated PostgreSQL
         run: pnpm --filter @grogoni/api exec node scripts/verify-supabase-backup.mjs

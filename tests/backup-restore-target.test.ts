@@ -41,6 +41,10 @@ describe("isolated backup restore safety", () => {
     expect(workflow).toContain("cancel-in-progress: false");
     expect(workflow).toContain("postgres:18-bookworm");
     expect(workflow).toContain("verify-supabase-backup.mjs");
+    expect(workflow).toContain("PGSSLROOTCERT: /etc/ssl/certs/ca-certificates.crt");
+    expect(workflow).toContain('test -s "$PGSSLROOTCERT"');
+    expect(workflow).not.toContain("sslmode=disable");
+    expect(workflow).not.toContain("rejectUnauthorized: false");
     expect(workflow).not.toContain("ALLOW_DB_ROLLBACK");
   });
 });
