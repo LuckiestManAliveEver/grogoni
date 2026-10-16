@@ -35,8 +35,8 @@ in the owning workspace's ignored `.env.backup`, with owner-only file permission
 Scheduling remains disabled until the first complete remote restore drill passes.
 
 The first manual run failed before upload because libpq could not find its default
-root certificate file. The backup step now explicitly uses the PostgreSQL
-container's system CA bundle and checks it exists; the audited production Neon
+root certificate file. The workflow installs the container's CA trust store;
+the backup step explicitly selects its system bundle and checks it exists. The audited production Neon
 connection retains `sslmode=verify-full` and `channel_binding=require`. The local
 restore step does not inherit the production-only trust configuration.
 See [PostgreSQL TLS verification](https://www.postgresql.org/docs/18/libpq-ssl.html).

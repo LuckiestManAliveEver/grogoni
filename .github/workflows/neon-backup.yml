@@ -40,6 +40,13 @@ jobs:
       BACKUP_RESTORE_TEST_DATABASE_URL: postgres://backup_restore:backup_restore_ci_only@restore-db:5432/grogoni_backup_restore
     steps:
       - uses: actions/checkout@v4
+      - name: Install TLS Trust Store
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          apt-get update
+          apt-get install --no-install-recommends -y ca-certificates
+          update-ca-certificates
       - uses: pnpm/action-setup@v4
         with:
           version: 10.28.2
