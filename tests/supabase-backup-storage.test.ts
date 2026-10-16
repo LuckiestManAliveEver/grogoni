@@ -41,9 +41,9 @@ describe("private encrypted Supabase backups", () => {
     );
     expect(request).toHaveBeenCalledTimes(1);
     const destination = join(directory, "download.dump");
-    await expect(
-      storage.download(`neon/${basename(source)}.enc`, destination)
-    ).rejects.toThrow("size limit");
+    await expect(storage.download(`neon/${basename(source)}.enc`, destination)).rejects.toThrow(
+      "size limit"
+    );
     await expect(stat(destination)).rejects.toMatchObject({ code: "ENOENT" });
     await expect(stat(`${destination}.enc`)).rejects.toMatchObject({ code: "ENOENT" });
   });
