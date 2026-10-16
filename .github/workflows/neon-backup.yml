@@ -50,10 +50,10 @@ jobs:
       - name: Validate Backup Configuration
         run: >-
           node --input-type=module -e '
-          import {readBackupStorageConfig} from "./scripts/supabase-backup-storage.mjs";
+          import {readBackupStorageConfig, createBackupStorage} from "./scripts/supabase-backup-storage.mjs";
           import {assertNeonBackupSource} from "./scripts/backup-restore-target.mjs";
-          readBackupStorageConfig();
-          assertNeonBackupSource(process.env.DIRECT_DATABASE_URL);'
+          assertNeonBackupSource(process.env.DIRECT_DATABASE_URL);
+          await createBackupStorage(readBackupStorageConfig()).checkPrivateBucket();'
       - name: Install
         run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Create Encrypted Private Backup and Verify Read-Back

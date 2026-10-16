@@ -129,6 +129,7 @@ export function createBackupStorage(config, request = fetch) {
     return `${config.bucket}/${key.split("/").map(encodeURIComponent).join("/")}`;
   }
   return {
+    checkPrivateBucket: requirePrivateBucket,
     async upload(source) {
       const file = basename(source);
       if (!/^grogoni-[0-9TZ-]+\.dump$/.test(file))

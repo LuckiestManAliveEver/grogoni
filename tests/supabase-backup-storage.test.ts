@@ -1,6 +1,6 @@
 import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   backupEncryptionKey,
@@ -24,6 +24,30 @@ afterEach(async () => {
 });
 
 describe("private encrypted Supabase backups", () => {
+  it("bounds transfers and rejects object-path traversal before requesting data", async () => {
+    const config = readBackupStorageConfig({ ...environment, BACKUP_MAX_BYTES: "1024" });
+    const source = join(directory, "grogoni-2026-10-16T00-00-00-000Z.dump");
+    await writeFile(source, Buffer.alloc(2048));
+    const request = vi.fn(async (url: string) =>
+      url.includes("/bucket/")
+        ? Response.json({ id: config.bucket, public: false })
+        : new Response(new Uint8Array(2048))
+    );
+    const storage = createBackupStorage(config, request);
+    await expect(storage.upload(source)).rejects.toThrow("size limit");
+    expect(request).toHaveBeenCalledTimes(1);
+    await expect(storage.download("../unrelated", join(directory, "bad.dump"))).rejects.toThrow(
+      "object key"
+    );
+    expect(request).toHaveBeenCalledTimes(1);
+    const destination = join(directory, "download.dump");
+    await expect(
+      storage.download(`neon/${basename(source)}.enc`, destination)
+    ).rejects.toThrow("size limit");
+    await expect(stat(destination)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(stat(`${destination}.enc`)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it("round-trips authenticated encryption with fresh nonces and private files", async () => {
     const source = join(directory, "source.dump");
     await writeFile(source, "PGDMP fixture: private customer records");
