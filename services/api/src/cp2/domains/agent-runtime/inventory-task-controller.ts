@@ -18,10 +18,17 @@ import { inventoryReplenishmentEnvironment } from "./inventory-environment.js";
 import { parseInventoryTaskObjective } from "./inventory-task-objective.js";
 import type { PurchaseDraft } from "./inventory-procurement-store.js";
 import { readSupplierOffers } from "./supplier-offer-review.js";
+import { createPurchaseOrderStore } from "./purchase-order-store.js";
 
 type Actor = { sessionId: string | null; businessId: string };
 type Native = <T>(work: (pool: Pool) => Promise<T>) => Promise<T>;
 export interface InventoryTaskController {
+  purchaseOrders(actor: Actor): Promise<
+    Awaited<ReturnType<ReturnType<typeof createPurchaseOrderStore>["orders"]>> & {
+      whatsappAvailable: boolean;
+      emailMailboxIds: string[];
+    }
+  >;
   supplierOffers(actor: Actor): ReturnType<typeof readSupplierOffers>;
   handle(
     input: Actor & { conversationId: string; messageId: string; text: string }
@@ -338,6 +345,46 @@ export function createInventoryTaskController(
   }
   return {
     supplierOffers: (actor) => readSupplierOffers(runtime, native, actor),
+    purchaseOrders: async (actor) => {
+      const orders = await createPurchaseOrderStore(
+        (work) => native((pool) => work(pool)),
+        authorize
+      ).orders(actor);
+      let whatsappAvailable = false;
+      try {
+        await runtime.purchaseOrderDelivery().check(actor, {
+          draftId: "readiness",
+          draftDigest: "0".repeat(64),
+          channel: "whatsapp",
+          recipient: "+254700000000",
+          optInConfirmed: true
+        });
+        whatsappAvailable = true;
+      } catch {
+        /* Availability does not expose provider configuration. */
+      }
+      const emailMailboxIds: string[] = [];
+      try {
+        for (const mailbox of runtime.listConnectedMailboxes(actor).slice(0, 20)) {
+          try {
+            await runtime.purchaseOrderDelivery().check(actor, {
+              draftId: "readiness",
+              draftDigest: "0".repeat(64),
+              channel: "email",
+              recipient: "readiness@example.test",
+              mailboxId: mailbox.id,
+              optInConfirmed: true
+            });
+            emailMailboxIds.push(mailbox.id);
+          } catch {
+            /* Unavailable mailboxes cannot be selected for order delivery. */
+          }
+        }
+      } catch {
+        /* Supplier readers need not have mailbox administration access. */
+      }
+      return { ...orders, whatsappAvailable, emailMailboxIds };
+    },
     inspect,
     async handle(input) {
       const objective = parseInventoryTaskObjective(input.text);

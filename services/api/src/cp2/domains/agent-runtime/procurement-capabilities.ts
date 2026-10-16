@@ -1,6 +1,7 @@
 import type { RuntimePlannedAction } from "@grogoni/shared-types";
 import { Cp2Error } from "../../cp2-error.js";
 import type { AgentRuntimeDomainDeps } from "./domain-deps.js";
+import type { PurchaseOrderSubmission } from "./purchase-order-store.js";
 
 /** Called only by the canonical post-policy capability dispatcher. */
 export function executeProcurementCapability(
@@ -20,6 +21,19 @@ export function executeProcurementCapability(
     );
   const actor = { sessionId: input.sessionId, businessId: input.businessId };
   const values = input.action.input;
+  if (input.action.toolName === "procurement.submit")
+    return deps.inventoryProcurement.submit(
+      actor,
+      values as PurchaseOrderSubmission,
+      input.action.id,
+      input.now
+    );
+  if (input.action.toolName === "procurement.respond")
+    return deps.inventoryProcurement.respond(
+      actor,
+      values as { orderId: string; revision: number; decision: "ACCEPTED" | "REJECTED" },
+      input.now
+    );
   if (input.action.toolName === "procurement.prepare")
     return deps.inventoryProcurement.prepare(
       actor,

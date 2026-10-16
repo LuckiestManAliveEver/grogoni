@@ -10,6 +10,58 @@ export function validateRuntimeToolInput(
   input: Record<string, unknown>
 ): ValidationResult {
   switch (toolName) {
+    case "procurement.submit": {
+      const allowed = [
+        "draftId",
+        "draftDigest",
+        "channel",
+        "recipient",
+        "mailboxId",
+        "optInConfirmed"
+      ];
+      if (Object.keys(input).some((key) => !allowed.includes(key)))
+        return invalid("Unexpected purchase order arguments.");
+      if (
+        typeof input.draftId !== "string" ||
+        !input.draftId.trim() ||
+        input.draftId.length > 200 ||
+        typeof input.draftDigest !== "string" ||
+        !/^[a-f0-9]{64}$/.test(input.draftDigest) ||
+        typeof input.recipient !== "string" ||
+        !input.recipient.trim() ||
+        input.recipient.length > 254 ||
+        /[\r\n]/.test(input.recipient)
+      )
+        return invalid("An exact draft digest and recipient are required.");
+      if (input.channel === "grogoni")
+        return input.mailboxId === undefined && input.optInConfirmed === undefined
+          ? valid()
+          : invalid("Inbox orders do not use external channel settings.");
+      if (input.optInConfirmed !== true)
+        return invalid("Supplier consent to the external channel must be confirmed.");
+      if (input.channel === "email")
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.recipient) &&
+          typeof input.mailboxId === "string" &&
+          !!input.mailboxId.trim() &&
+          input.mailboxId.length <= 200
+          ? valid()
+          : invalid("A supplier email and exact sending mailbox are required.");
+      if (input.channel === "whatsapp")
+        return /^\+[1-9][0-9]{7,14}$/.test(input.recipient) && input.mailboxId === undefined
+          ? valid()
+          : invalid("WhatsApp requires an E.164 number.");
+      return invalid("Select a supported order delivery channel.");
+    }
+    case "procurement.respond":
+      return Object.keys(input).every((key) => ["orderId", "revision", "decision"].includes(key)) &&
+        typeof input.orderId === "string" &&
+        !!input.orderId.trim() &&
+        input.orderId.length <= 200 &&
+        Number.isSafeInteger(input.revision) &&
+        Number(input.revision) >= 0 &&
+        ["ACCEPTED", "REJECTED"].includes(String(input.decision))
+        ? valid()
+        : invalid("An exact order, revision and decision are required.");
     case "procurement.prepare":
       return typeof input.taskId === "string" &&
         input.taskId.trim().length > 0 &&

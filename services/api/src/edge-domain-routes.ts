@@ -142,7 +142,12 @@ export async function createEdgeDomainRoutes(database: EdgeDomainDatabase) {
           : {
               inventoryProcurement: createInventoryProcurementStore(
                 database.approvalTransaction,
-                (input) => store.authorizeBusinessPermission(input)
+                (input) => store.authorizeBusinessPermission(input),
+                {
+                  check: (actor, input) => store.purchaseOrderDelivery().check(actor, input),
+                  send: (actor, input, order) =>
+                    store.purchaseOrderDelivery().send(actor, input, order)
+                }
               ),
               runtimeApprovalStore: createPostgresRuntimeApprovalStore(nativeRecords)
             }),

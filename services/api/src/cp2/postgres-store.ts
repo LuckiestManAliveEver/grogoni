@@ -604,8 +604,13 @@ export async function createPostgresCp2Store(
         ),
       inventoryProcurement:
         options.inventoryProcurement ??
-        createPostgresInventoryProcurementStore(pool, (input) =>
-          store.authorizeBusinessPermission(input)
+        createPostgresInventoryProcurementStore(
+          pool,
+          (input) => store.authorizeBusinessPermission(input),
+          {
+            check: (actor, input) => store.purchaseOrderDelivery().check(actor, input),
+            send: (actor, input, order) => store.purchaseOrderDelivery().send(actor, input, order)
+          }
         ),
       runtimeApprovalStore:
         options.runtimeApprovalStore ?? createPostgresRuntimeApprovalStore(pool),
