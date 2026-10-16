@@ -2,6 +2,7 @@ export type RuntimeName = "api" | "sync" | "ai-runtime" | "web";
 
 export * from "./commerce-address.js";
 export * from "./daemon-lanes.js";
+export * from "./purchase-orders.js";
 export * from "./computer-runtime.js";
 export * from "./fulfillment.js";
 export * from "./grams.js";
@@ -3825,6 +3826,8 @@ export type RuntimeToolName =
   | "purchase.history"
   | "procurement.quote.record"
   | "procurement.prepare"
+  | "procurement.submit"
+  | "procurement.respond"
   | "sale.record"
   | "sales.history"
   | "route.record"

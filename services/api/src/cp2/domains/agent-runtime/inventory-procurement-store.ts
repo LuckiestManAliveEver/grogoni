@@ -13,6 +13,7 @@ import type { ProductSummary, InvoiceSummary, SupplierSummary } from "@grogoni/s
 import { canonicalJson } from "../model-templates/manifest.js";
 import { Cp2Error } from "../../cp2-error.js";
 import { stableUuid } from "./shared.js";
+import { createPurchaseOrderStore, type PurchaseOrderDelivery } from "./purchase-order-store.js";
 import {
   experienceSourceEvidence,
   type ExperienceSourceEvidence
@@ -181,8 +182,13 @@ export async function observeProcurementInventory(
 }
 
 /** Native operations used only by the canonical capability dispatcher; no alternate agent loop. */
-export function createInventoryProcurementStore(transaction: Transaction, authorize: Authorize) {
+export function createInventoryProcurementStore(
+  transaction: Transaction,
+  authorize: Authorize,
+  delivery?: PurchaseOrderDelivery
+) {
   return {
+    ...createPurchaseOrderStore(transaction, authorize, delivery),
     async recordQuote(actor: Actor, quote: SupplierQuoteInput, now = new Date()) {
       const { userId } = authorize({ ...actor, permission: "supplier:write" });
       authorize({ ...actor, permission: "product:read" });
@@ -383,21 +389,29 @@ export function createInventoryProcurementStore(transaction: Transaction, author
   };
 }
 
-export function createPostgresInventoryProcurementStore(pool: Pool, authorize: Authorize) {
-  return createInventoryProcurementStore(async (work) => {
-    const client = await pool.connect();
-    try {
-      await client.query("begin");
-      const result = await work(client);
-      await client.query("commit");
-      return result;
-    } catch (error) {
-      await client.query("rollback").catch(() => undefined);
-      throw error;
-    } finally {
-      client.release();
-    }
-  }, authorize);
+export function createPostgresInventoryProcurementStore(
+  pool: Pool,
+  authorize: Authorize,
+  delivery?: PurchaseOrderDelivery
+) {
+  return createInventoryProcurementStore(
+    async (work) => {
+      const client = await pool.connect();
+      try {
+        await client.query("begin");
+        const result = await work(client);
+        await client.query("commit");
+        return result;
+      } catch (error) {
+        await client.query("rollback").catch(() => undefined);
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+    authorize,
+    delivery
+  );
 }
 
 export type InventoryProcurementStore = ReturnType<typeof createInventoryProcurementStore>;

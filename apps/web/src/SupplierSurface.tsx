@@ -15,6 +15,7 @@ import { formatMoney } from "./formatters";
 import PurchaseSaleRecordsCard from "./PurchaseSaleRecordsCard";
 import SupplierContactRolesCard from "./SupplierContactRolesCard";
 import SupplierOfferPanel from "./SupplierOfferPanel";
+import PurchaseOrderPanel from "./PurchaseOrderPanel";
 
 export interface SupplierSurfaceProps {
   businessId: string;
@@ -90,6 +91,13 @@ export function SupplierSurface(props: SupplierSurfaceProps) {
       {!offline && typeof props.businessId === "string" && props.businessId.length > 0 && (
         <SupplierOfferPanel
           key={props.businessId}
+          businessId={props.businessId}
+          suppliers={props.suppliers}
+        />
+      )}
+      {!offline && typeof props.businessId === "string" && props.businessId.length > 0 && (
+        <PurchaseOrderPanel
+          key={`orders:${props.businessId}`}
           businessId={props.businessId}
           suppliers={props.suppliers}
         />

@@ -126,6 +126,8 @@ export type RuntimeToolName =
   | "purchase.history"
   | "procurement.quote.record"
   | "procurement.prepare"
+  | "procurement.submit"
+  | "procurement.respond"
   | "sale.record"
   | "sales.history"
   | "route.record"

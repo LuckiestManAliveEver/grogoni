@@ -73,6 +73,8 @@ export async function executeRuntimeCapability(
   switch (input.action.toolName) {
     case "procurement.quote.record":
     case "procurement.prepare":
+    case "procurement.submit":
+    case "procurement.respond":
       return executeProcurementCapability(deps, input);
     case "contacts.search":
     case "supplier.contact.attach":

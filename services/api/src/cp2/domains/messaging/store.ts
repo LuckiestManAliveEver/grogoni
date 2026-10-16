@@ -66,6 +66,11 @@
  */
 import { randomBytes, randomUUID } from "node:crypto";
 import type { InventoryTaskController } from "../agent-runtime/inventory-task-controller.js";
+import type {
+  PurchaseOrderActor,
+  PurchaseOrderDelivery,
+  PurchaseOrderSubmission
+} from "../agent-runtime/purchase-order-store.js";
 import { resolve } from "node:path";
 import type {
   AccountSummary,
@@ -5067,6 +5072,71 @@ export class MessagingDomain {
         now
       });
     }
+  }
+
+  purchaseOrderDelivery(): PurchaseOrderDelivery {
+    const emailMailbox = (actor: PurchaseOrderActor, input: PurchaseOrderSubmission) => {
+      const auth = this.deps.requireAuthorizedSession(
+        actor.sessionId,
+        actor.businessId,
+        "supplier:write",
+        new Date()
+      );
+      const mailbox = this.requireConnectedMailbox(actor.businessId, input.mailboxId ?? "");
+      const providerConfigured = this.deps.emailMailboxProviderClient
+        .providers()
+        .some((provider) => provider.provider === mailbox.provider && provider.configured);
+      if (
+        !providerConfigured ||
+        mailbox.accountId !== auth.account.id ||
+        mailbox.status !== "connected" ||
+        !mailbox.canSend
+      )
+        throw new Cp2Error(
+          503,
+          "purchase_order_channel_unavailable",
+          "The exact buyer mailbox must be connected and authorized."
+        );
+      return mailbox;
+    };
+    return {
+      check: async (actor, input) => {
+        if (input.channel === "whatsapp") {
+          const { createWhatsAppPurchaseOrderDelivery } =
+            await import("../../../messaging/purchase-order-delivery.js");
+          return createWhatsAppPurchaseOrderDelivery().check(actor, input);
+        }
+        if (input.channel !== "email")
+          throw new Cp2Error(
+            503,
+            "purchase_order_channel_unavailable",
+            "Unsupported external purchase order channel."
+          );
+        emailMailbox(actor, input);
+      },
+      send: async (actor, input, order) => {
+        const { createWhatsAppPurchaseOrderDelivery, purchaseOrderMessage } =
+          await import("../../../messaging/purchase-order-delivery.js");
+        if (input.channel === "whatsapp")
+          return createWhatsAppPurchaseOrderDelivery().send(actor, input, order);
+        const authorized = await this.authorizedMailbox(emailMailbox(actor, input), new Date());
+        const result = await this.deps.emailMailboxProviderClient.send({
+          provider: authorized.mailbox.provider,
+          accessToken: authorized.accessToken,
+          senderAddress: authorized.mailbox.address,
+          recipientAddress: input.recipient,
+          subject: `Purchase order ${order.order_id}`,
+          text: purchaseOrderMessage(order),
+          idempotencyKey: order.order_id,
+          externalThreadId: null,
+          replyToProviderMessageId: null,
+          attachments: []
+        });
+        if (!result.externalMessageId)
+          throw new Error("Email provider acknowledgment unavailable.");
+        return { providerMessageId: result.externalMessageId };
+      }
+    };
   }
 
   private emailTransportReadiness(businessId: string | undefined) {

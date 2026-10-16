@@ -3872,6 +3872,9 @@ export class Cp2Store {
   ): ReturnType<MessagingDomain["sendChannelMessage"]> {
     return this.messagingDomain.sendChannelMessage(...args);
   }
+  purchaseOrderDelivery(): ReturnType<MessagingDomain["purchaseOrderDelivery"]> {
+    return this.messagingDomain.purchaseOrderDelivery();
+  }
   deliverFulfillmentNotification(
     ...args: Parameters<MessagingDomain["deliverFulfillmentNotification"]>
   ): ReturnType<MessagingDomain["deliverFulfillmentNotification"]> {

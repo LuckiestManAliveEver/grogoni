@@ -1,0 +1,72 @@
+.purchase-order-panel {
+  min-width: 0;
+  padding-block: 1rem;
+  border-top: 1px solid #d4d4d4;
+}
+.purchase-order-panel form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.5rem;
+  max-width: 42rem;
+}
+.purchase-order-panel > .section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.purchase-order-panel > .section-heading > button {
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  flex: 0 0 2.5rem;
+}
+.purchase-order-panel li span {
+  margin-inline-start: 0.5rem;
+  white-space: nowrap;
+}
+.purchase-order-panel input:not([type="checkbox"]),
+.purchase-order-panel select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+}
+.purchase-order-panel p,
+.purchase-order-panel li,
+.purchase-order-panel strong {
+  overflow-wrap: anywhere;
+}
+.purchase-order-panel button {
+  color: #ffffff;
+  background: #176c4a;
+  border-color: #176c4a;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 2.5rem;
+  white-space: normal;
+}
+.purchase-order-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.purchase-order-row {
+  padding-block: 1rem;
+  border-bottom: 1px solid #d4d4d4;
+}
+.purchase-order-approval {
+  padding-block: 1rem;
+  border-block: 2px solid #26926a;
+}
+.purchase-order-panel .row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.purchase-order-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}

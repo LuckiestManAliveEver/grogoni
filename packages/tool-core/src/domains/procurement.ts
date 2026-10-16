@@ -1,6 +1,81 @@
 import type { RuntimeToolDefinition, RuntimeToolName } from "../contracts/runtime.js";
 
 export const procurementRuntimeTools = {
+  "procurement.submit": {
+    name: "procurement.submit",
+    hub: {
+      module: "suppliers",
+      label: { en: "Submit purchase order", sw: "Tuma agizo la ununuzi" }
+    },
+    description:
+      "Submit one immutable purchase draft to the exact approved supplier and channel. Never changes stock or records supplier acceptance.",
+    risk: "high",
+    requiresConfirmation: true,
+    readOnly: false,
+    requiredPermission: "supplier:write",
+    mcpExposable: false,
+    inputSchema: {
+      type: "object",
+      properties: {
+        draftId: {
+          type: "string",
+          required: true,
+          description: "Durable purchase draft identifier."
+        },
+        draftDigest: {
+          type: "string",
+          required: true,
+          description: "SHA-256 of the exact reviewed canonical draft."
+        },
+        channel: {
+          type: "string",
+          required: true,
+          description: "grogoni, email, or whatsapp; no automatic fallback."
+        },
+        recipient: {
+          type: "string",
+          required: true,
+          description: "Linked supplier business ID, email, or E.164 WhatsApp number."
+        },
+        mailboxId: {
+          type: "string",
+          required: false,
+          description: "Exact buyer-connected sending mailbox for email."
+        },
+        optInConfirmed: {
+          type: "boolean",
+          required: false,
+          description: "Buyer confirms supplier consent to this external channel."
+        }
+      }
+    }
+  },
+  "procurement.respond": {
+    name: "procurement.respond",
+    hub: {
+      module: "suppliers",
+      label: { en: "Respond to purchase order", sw: "Jibu agizo la ununuzi" }
+    },
+    description:
+      "Accept or reject an order in this supplier business's inbox at its current revision. Does not change inventory or payments.",
+    risk: "high",
+    requiresConfirmation: true,
+    readOnly: false,
+    requiredPermission: "supplier:write",
+    mcpExposable: false,
+    inputSchema: {
+      type: "object",
+      properties: {
+        orderId: {
+          type: "string",
+          required: true,
+          description: "Incoming durable purchase order identifier."
+        },
+        revision: { type: "number", required: true, description: "Current order revision." },
+        decision: { type: "string", required: true, description: "ACCEPTED or REJECTED." }
+      }
+    }
+  },
   "procurement.quote.record": {
     name: "procurement.quote.record",
     hub: {
