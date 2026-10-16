@@ -1,4 +1,4 @@
-import { createDefaultAgentRuntimeAdapterRegistry } from "../agent-harness/default-agent-runtime-adapters.js";
+import type { createDefaultAgentRuntimeAdapterRegistry } from "../agent-harness/default-agent-runtime-adapters.js";
 import { createOpenRouterRuntime } from "../inference/openrouter-runtime.js";
 import {
   ModelRuntimeError,
@@ -7,7 +7,6 @@ import {
   type ModelRuntimeAdapter
 } from "../inference/model-runtime.js";
 import { hostedJsonRequest, hostedEndpoint } from "../inference/hosted-http.js";
-import { edgeJobDefinitions } from "../edge-job-runner.js";
 import { DaemonTaskError, type DaemonExecutor } from "./worker.js";
 import type { DaemonPayload } from "./task-store.js";
 import { defaultGrogoniMaxPromptBytes } from "../agent-harness/grogoni-agent-runtime-adapter.js";
@@ -34,7 +33,11 @@ export interface DaemonCapabilities {
  */
 export function readDaemonCapabilities(
   environment: NodeJS.ProcessEnv,
-  defaultModelId: string
+  defaultModelId: string,
+  options: {
+    /** The Edge lane runs maintenance jobs in-process, so it needs no GROGONI_API_URL. */
+    maintenanceInProcess?: boolean;
+  } = {}
 ): DaemonCapabilities {
   const models = createOpenRouterRuntime(environment);
   const agents = (environment.OPENROUTER_API_KEY?.trim() ?? "") !== "";
@@ -48,8 +51,8 @@ export function readDaemonCapabilities(
   if (!["", "true", "false"].includes(allowLocal))
     throw new Error("DAEMON_ALLOW_LOCAL_API must be true or false.");
   const apiUrl = environment.GROGONI_API_URL?.trim() ?? "";
-  const maintenance = apiUrl !== "";
-  if (maintenance) {
+  const maintenance = apiUrl !== "" || options.maintenanceInProcess === true;
+  if (apiUrl !== "") {
     hostedEndpoint(apiUrl, allowLocal === "true");
     if (!environment.BACKGROUND_JOB_TOKEN?.trim())
       throw new Error("BACKGROUND_JOB_TOKEN is required when GROGONI_API_URL is set.");
@@ -75,14 +78,25 @@ export function readDaemonCapabilities(
   };
 }
 
-export function createDaemonExecutor(environment: NodeJS.ProcessEnv): DaemonExecutor {
+export function createDaemonExecutor(
+  environment: NodeJS.ProcessEnv,
+  options: {
+    /**
+     * Runs a maintenance job in-process. The Edge lane passes this so a job never costs a second
+     * function invocation; without it, jobs are triggered over HTTP at GROGONI_API_URL.
+     */
+    runMaintenance?: (job: string, signal: AbortSignal) => Promise<unknown>;
+  } = {}
+): DaemonExecutor {
   const models = createOpenRouterRuntime(environment);
-  const agents = createDefaultAgentRuntimeAdapterRegistry();
+  let agents: Promise<ReturnType<typeof createDefaultAgentRuntimeAdapterRegistry>> | undefined;
   const execute: DaemonExecutor = async (task, signal) => {
     const payload = task.payload;
     if (payload.kind === "maintenance") {
+      const { edgeJobDefinitions } = await import("../edge-job-runner.js");
       if (!Object.hasOwn(edgeJobDefinitions, payload.job))
         throw new DaemonTaskError("UNKNOWN_JOB", false);
+      if (options.runMaintenance) return await options.runMaintenance(payload.job, signal);
       if (!environment.GROGONI_API_URL || !environment.BACKGROUND_JOB_TOKEN)
         throw new DaemonTaskError("JOB_API_NOT_CONFIGURED", false);
       const base = hostedEndpoint(
@@ -118,7 +132,10 @@ export function createDaemonExecutor(environment: NodeJS.ProcessEnv): DaemonExec
       }
     }
     const adapter = models.resolve({ modelId: payload.modelId, executionTarget: "backend" });
-    const agentAdapter = agents.resolve(payload.agentAdapterId);
+    agents ??= import("../agent-harness/default-agent-runtime-adapters.js").then(
+      ({ createDefaultAgentRuntimeAdapterRegistry }) => createDefaultAgentRuntimeAdapterRegistry()
+    );
+    const agentAdapter = (await agents).resolve(payload.agentAdapterId);
     if (!adapter || !agentAdapter) throw new DaemonTaskError("RUNTIME_NOT_CONFIGURED", false);
     // runtimeProviderFromAdapter flattens a model failure into a completion code and drops the
     // runtime's own retryable verdict; capture it here so transient failures are retried.

@@ -4,6 +4,7 @@ import { edgeJobDefinitions } from "../services/api/src/edge-job-runner";
 import {
   buildSupabaseCronSql,
   cronJobPrefix,
+  daemonWakeJobName,
   redactJobToken
 } from "../services/api/src/edge-job-schedule";
 
@@ -25,8 +26,12 @@ describe("Supabase Cron schedule for Edge background jobs", () => {
       const line = `select cron.schedule('${cronJobPrefix}${name}', '${definition.schedule}', `;
       expect(sql.split(line).length - 1, name).toBe(1);
     }
+    // Plus the daemon wake guard, which is not a job of its own.
     expect(sql.match(/select cron\.schedule\(/gu)).toHaveLength(
-      Object.keys(edgeJobDefinitions).length
+      Object.keys(edgeJobDefinitions).length + 1
+    );
+    expect(sql).toContain(
+      `select cron.schedule('${daemonWakeJobName}', '* * * * *', 'select public.grogoni_daemon_wake()');`
     );
   });
 

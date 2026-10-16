@@ -7,7 +7,7 @@ import { once } from "node:events";
 import { setTimeout as delay } from "node:timers/promises";
 import { createServer } from "node:net";
 import { createServer as createHttpServer } from "node:http";
-import { createPostgresDaemonTaskStore } from "./task-store.js";
+import { createPostgresDaemonTaskStore, daemonQueueMigrations } from "./task-store.js";
 
 const url = process.env.CP2_POSTGRES_TEST_DATABASE_URL;
 describe.skipIf(!url)("durable native daemon queue", () => {
@@ -30,12 +30,10 @@ describe.skipIf(!url)("durable native daemon queue", () => {
     });
   beforeAll(async () => {
     await admin.query(`create schema ${schema}`);
-    await pool.query(
-      await readFile(
-        new URL("../../../../infra/db/migrations/112_native_daemon.sql", import.meta.url),
-        "utf8"
-      )
-    );
+    for (const file of daemonQueueMigrations)
+      await pool.query(
+        await readFile(new URL(`../../../../infra/db/migrations/${file}`, import.meta.url), "utf8")
+      );
   });
   beforeEach(async () => {
     await pool.query("truncate grogoni_daemon_tasks");

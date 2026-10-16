@@ -6,6 +6,9 @@ import type * as WebLLM from "@mlc-ai/web-llm";
 import {
   isDeviceInferenceSupported,
   listInstalledDeviceModels,
+  idleLoadedDeviceModel,
+  noteDeviceModelReady,
+  whileDeviceGenerating,
   writeInstalledDeviceModels
 } from "./device-models";
 
@@ -55,7 +58,8 @@ export class DeviceModelError extends Error {
       | "MODEL_NOT_APPROVED"
       | "MODEL_NOT_INSTALLED"
       | "INSUFFICIENT_STORAGE"
-      | "GENERATION_FAILED",
+      | "GENERATION_FAILED"
+      | "MODEL_NOT_LOADED",
     message: string
   ) {
     super(message);
@@ -82,13 +86,18 @@ async function engineFor(
     initProgressCallback: (report) => onProgress?.(Math.max(0, Math.min(1, report.progress)))
   });
   loadedEngine = { modelId: providerModelId, engine };
+  // The previous model stops being offered the moment another starts loading, not when the load
+  // ends: background work must not reach for a model that is about to be unloaded.
+  noteDeviceModelReady(null);
   try {
     const ready = await engine;
+    if (loadedEngine?.engine === engine) noteDeviceModelReady(providerModelId);
     // One model in memory at a time: phones cannot hold two.
     if (previous !== null) void previous.engine.then((old) => old.unload()).catch(() => undefined);
     return ready;
   } catch (error) {
     loadedEngine = null;
+    noteDeviceModelReady(null);
     throw error;
   }
 }
@@ -130,6 +139,7 @@ export async function removeDeviceModel(providerModelId: string): Promise<void> 
   if (loadedEngine?.modelId === providerModelId) {
     const engine = loadedEngine.engine;
     loadedEngine = null;
+    noteDeviceModelReady(null);
     await engine.then((ready) => ready.unload()).catch(() => undefined);
   }
   try {
@@ -153,7 +163,36 @@ export interface DeviceGenerationResult {
  * device adds nothing and executes nothing - the output goes back to the server, which parses,
  * validates and confirmation-gates it like any other model's output.
  */
-export async function runDeviceGeneration(
+export function runDeviceGeneration(
+  job: Pick<DeviceInferenceJob, "providerModelId" | "messages" | "generation">,
+  onDelta: (text: string) => void,
+  signal?: AbortSignal
+): Promise<DeviceGenerationResult> {
+  // Every generation, chat or background, marks the engine busy while it runs.
+  return whileDeviceGenerating(() => generate(job, onDelta, signal));
+}
+
+/**
+ * Background generation (the daemon browser lane): runs only on the model already loaded and
+ * idle, and never loads, downloads or swaps one. Anything else is refused with MODEL_NOT_LOADED,
+ * and the caller has the server run the work instead.
+ */
+export function runLoadedDeviceGeneration(
+  job: Pick<DeviceInferenceJob, "providerModelId" | "messages" | "generation">,
+  onDelta: (text: string) => void,
+  signal?: AbortSignal
+): Promise<DeviceGenerationResult> {
+  if (
+    idleLoadedDeviceModel() !== job.providerModelId ||
+    loadedEngine?.modelId !== job.providerModelId
+  )
+    return Promise.reject(
+      new DeviceModelError("MODEL_NOT_LOADED", "This model is not loaded and idle on this device.")
+    );
+  return runDeviceGeneration(job, onDelta, signal);
+}
+
+async function generate(
   job: Pick<DeviceInferenceJob, "providerModelId" | "messages" | "generation">,
   onDelta: (text: string) => void,
   signal?: AbortSignal
@@ -207,4 +246,5 @@ export async function runDeviceGeneration(
 export function resetDeviceModelEngineForTests(): void {
   loadedEngine = null;
   webllmModule = null;
+  noteDeviceModelReady(null);
 }

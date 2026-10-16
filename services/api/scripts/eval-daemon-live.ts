@@ -15,6 +15,7 @@ import { once } from "node:events";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { setTimeout as delay } from "node:timers/promises";
 import { Pool } from "pg";
+import { daemonQueueMigrations } from "../src/daemon/task-store.js";
 
 interface EvalCase {
   key: string;
@@ -77,12 +78,10 @@ const headers = { authorization: `Bearer ${token}`, "content-type": "application
 const evidenceDir = "/tmp/daemon-live-eval";
 
 await admin.query(`create schema ${schema}`);
-await pool.query(
-  await readFile(
-    new URL("../../../infra/db/migrations/112_native_daemon.sql", import.meta.url),
-    "utf8"
-  )
-);
+for (const file of daemonQueueMigrations)
+  await pool.query(
+    await readFile(new URL(`../../../infra/db/migrations/${file}`, import.meta.url), "utf8")
+  );
 const child = spawn(process.execPath, ["--import", "tsx", "src/daemon/index.ts"], {
   stdio: ["ignore", "pipe", "inherit"],
   env: {

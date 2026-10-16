@@ -1,12 +1,15 @@
 # Native Grogoni Daemon
 
-The native daemon is a standalone always-on Node process, not a timer inside
-Supabase Edge. Supabase remains the authenticated domain API and Neon remains
-the durable database. Host this process on a VM or persistent Node/container host.
+Production needs no daemon host: the queue is worked by users' browsers and by
+the Edge API's `daemon_worker` job ([Daemon lanes](daemon-lanes.md)). This
+standalone always-on Node process is an optional extra server worker on the same
+queue, for any VM or persistent Node/container host you already run. Supabase
+remains the authenticated domain API and Neon remains the durable database.
 
 ## Setup
 
-1. Apply migration `112_native_daemon.sql` to the daemon's PostgreSQL database.
+1. Apply migrations `112_native_daemon.sql` and `116_daemon_lanes.sql` to the daemon's
+   PostgreSQL database (`pnpm db:migrate` applies both).
 2. Create a dedicated login role and grant it access to the queue table only. The
    password is hex, so it needs no escaping in SQL or a connection URL. It travels
    only through shell builtins and stdin (never a command line visible in `ps`) and
@@ -72,16 +75,21 @@ Do not set `DAEMON_HOST=0.0.0.0` without those protections.
 
 ## Configuration
 
-| Variable                                   | Default               | Meaning                                                                     |
-| ------------------------------------------ | --------------------- | --------------------------------------------------------------------------- |
-| `DAEMON_DATABASE_URL`                      | `DATABASE_URL`        | Queue database, ideally as the `grogoni_daemon` role.                       |
-| `DAEMON_SERVICE_TOKEN`                     | required              | Bearer token for every endpoint except `/health/live`.                      |
-| `DAEMON_HOST` / `DAEMON_PORT`              | `127.0.0.1` / `42700` | Gateway bind address.                                                       |
-| `DAEMON_RETENTION_DAYS`                    | `30`                  | Days to keep completed, failed and cancelled tasks. `0` keeps them forever. |
-| `DAEMON_SHUTDOWN_GRACE_MS`                 | `20000`               | How long in-flight work may finish after SIGTERM. Max `25000`.              |
-| `PLATFORM_DEFAULT_MODEL_ID`                | `gpt-6-luna`          | Model for agent tasks that omit `modelId`.                                  |
-| `PLATFORM_DEFAULT_AGENT_ADAPTER_ID`        | `grogoni`             | Engine for agent tasks that omit it (`grogoni` or `pi`).                    |
-| `GROGONI_API_URL` / `BACKGROUND_JOB_TOKEN` | unset                 | Required only for maintenance tasks.                                        |
+`PORT` is the fallback when `DAEMON_PORT` is unset; `DAEMON_POLL_MS` configures idle
+polling (250–60000 ms, default 1000 ms). Like the Edge lane, this worker leaves a user's
+task to their browser for the takeover delay before running it.
+
+| Variable                                   | Default               | Meaning                                                                                            |
+| ------------------------------------------ | --------------------- | -------------------------------------------------------------------------------------------------- |
+| `DAEMON_DATABASE_URL`                      | `DATABASE_URL`        | Queue database, ideally as the `grogoni_daemon` role.                                              |
+| `DAEMON_SERVICE_TOKEN`                     | required              | Bearer token for every endpoint except `/health/live`.                                             |
+| `DAEMON_HOST` / `DAEMON_PORT`              | `127.0.0.1` / `42700` | Gateway bind address.                                                                              |
+| `DAEMON_RETENTION_DAYS`                    | `30`                  | Days to keep completed, failed and cancelled tasks. `0` keeps them forever.                        |
+| `DAEMON_SHUTDOWN_GRACE_MS`                 | `20000`               | How long in-flight work may finish after SIGTERM. Max `25000`.                                     |
+| `DAEMON_USER_TAKEOVER_MS`                  | `600000`              | How long a user's due task waits for their browser before this worker runs it (60000 to 86400000). |
+| `PLATFORM_DEFAULT_MODEL_ID`                | `gpt-6-luna`          | Model for agent tasks that omit `modelId`.                                                         |
+| `PLATFORM_DEFAULT_AGENT_ADAPTER_ID`        | `grogoni`             | Engine for agent tasks that omit it (`grogoni` or `pi`).                                           |
+| `GROGONI_API_URL` / `BACKGROUND_JOB_TOKEN` | unset                 | Required only for maintenance tasks.                                                               |
 
 Startup validates configuration and exits non-zero rather than falling back:
 invalid numbers, a token shorter than 32 characters or containing whitespace,

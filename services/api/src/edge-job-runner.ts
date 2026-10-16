@@ -1,18 +1,8 @@
 import type { PoolClient } from "pg";
-import {
-  createPostgresAccountAiAssetStore,
-  createPostgresAttachmentBlobStore,
-  loadTransactionalCp2Snapshot,
-  saveTransactionalCp2Snapshot
-} from "./cp2/postgres-store.js";
-import { createCp2Store, type Cp2Store, type Cp2StoreOptions } from "./cp2/store.js";
-import { createPostgresRuntimeApprovalMaintenance } from "./cp2/domains/agent-runtime/runtime-approval-store.js";
+import type { Cp2Store, Cp2StoreOptions } from "./cp2/store.js";
 import type { FulfillmentService } from "./cp2/domains/fulfillment/service.js";
-import {
-  createEdgeFulfillmentService,
-  readFulfillmentRetentionHours
-} from "./edge-store-dependencies.js";
 import { transactionPool } from "./edge-transaction-pool.js";
+import type { EdgeDaemon } from "./daemon/edge-lane.js";
 
 /**
  * Background jobs on the Edge runtime. The Node API runs these as in-process interval runners
@@ -33,6 +23,8 @@ interface JobContext {
   client: PoolClient;
   now: Date;
   environment: NodeJS.ProcessEnv;
+  /** The daemon's server lane; absent where no queue database is wired. */
+  daemon?: Pick<EdgeDaemon, "runWorker">;
 }
 
 interface EdgeJobDefinition {
@@ -180,6 +172,20 @@ export const edgeJobDefinitions: Record<string, EdgeJobDefinition> = {
       approvalsPurged: await store.purgeExpiredRuntimeApprovals(now)
     })
   },
+  daemon_worker: {
+    // The hourly unconditional sweep. Between sweeps, the per-minute wake check in Supabase's
+    // own Postgres (grogoni-daemon-wake, edge-job-schedule.ts) triggers this job only when the
+    // wake hint says server work is due, so idle minutes touch neither Neon nor this function.
+    schedule: "17 * * * *",
+    // Always runs: ENABLE_DAEMON_WORKER=false is honored inside runWorker, which also clears the
+    // wake hint so a switched-off lane stops being woken every minute.
+    enabled: () => true,
+    // Its own table only. The job transaction is just the overlap lock: queue writes commit on
+    // their own connections, so a failed run never rolls back a settled (possibly paid) task.
+    needsStore: false,
+    run: async ({ daemon }) =>
+      daemon === undefined ? { skipped: "daemon_unavailable" } : daemon.runWorker()
+  },
   edge_rate_limit_retention: {
     schedule: "25 * * * *",
     enabled: () => true,
@@ -228,6 +234,7 @@ export async function runEdgeJob(
     storeDependencies?: Partial<Cp2StoreOptions>;
     environment?: NodeJS.ProcessEnv;
     now?: () => Date;
+    daemon?: Pick<EdgeDaemon, "runWorker">;
   } = {}
 ): Promise<EdgeJobOutcome> {
   const definition = edgeJobDefinitions[jobName];
@@ -249,6 +256,17 @@ export async function runEdgeJob(
       ...(definition.idle === undefined ? {} : { idle: definition.idle })
     },
     async (client) => {
+      const {
+        createPostgresAccountAiAssetStore,
+        createPostgresAttachmentBlobStore,
+        loadTransactionalCp2Snapshot,
+        saveTransactionalCp2Snapshot
+      } = await import("./cp2/postgres-store.js");
+      const { createCp2Store } = await import("./cp2/store.js");
+      const { createPostgresRuntimeApprovalMaintenance } =
+        await import("./cp2/domains/agent-runtime/runtime-approval-store.js");
+      const { createEdgeFulfillmentService, readFulfillmentRetentionHours } =
+        await import("./edge-store-dependencies.js");
       const now = options.now?.() ?? new Date();
       const pool = transactionPool(client);
       const store = createCp2Store({
@@ -265,7 +283,14 @@ export async function runEdgeJob(
         store,
         readFulfillmentRetentionHours(environment)
       );
-      const result = await definition.run({ store, fulfillment, client, now, environment });
+      const result = await definition.run({
+        store,
+        fulfillment,
+        client,
+        now,
+        environment,
+        ...(options.daemon === undefined ? {} : { daemon: options.daemon })
+      });
       if (baseline !== null) await saveTransactionalCp2Snapshot(client, store.snapshot(), baseline);
       return result;
     }

@@ -1,11 +1,25 @@
 import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
+import type {
+  DaemonLane,
+  DaemonPayload,
+  DaemonTaskStatus,
+  PublicDaemonTask
+} from "@grogoni/shared-types";
 
-export type DaemonPayload =
-  | { kind: "agent"; message: string; modelId: string; agentAdapterId: "grogoni" | "pi" }
-  | { kind: "maintenance"; job: string };
+export type { DaemonLane, DaemonPayload, DaemonTaskStatus, PublicDaemonTask };
 
-export type DaemonTaskStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
+/** Anything that runs one statement at a time: a pg Pool, or an Edge connection wrapper. */
+export type DaemonQueryable = Pick<Pool, "query">;
+/** A queryable that can also hold one connection for a transaction (a pg Pool). */
+export type DaemonPool = Pick<Pool, "query" | "connect">;
+
+/** Every migration that shapes grogoni_daemon_tasks, in order (infra/db/migrations). */
+export const daemonQueueMigrations = ["112_native_daemon.sql", "116_daemon_lanes.sql"] as const;
+
+/** How long a user's due task waits for their browser before a server worker takes it. */
+export const defaultUserTakeoverMs = 10 * 60_000;
+
 export const terminalDaemonTaskStatuses = ["completed", "failed", "cancelled"] as const;
 
 /** Internal row shape. Lease tokens fence workers and must never leave the process. */
@@ -23,26 +37,11 @@ export interface DaemonTask {
   interval_ms: number | string | null;
   result: unknown;
   error_code: string | null;
+  /** Null for operator tasks; set for tasks a signed-in user owns. */
+  owner_user_id: string | null;
+  lane: DaemonLane | null;
   created_at: Date;
   updated_at: Date;
-}
-
-/** What operators see over HTTP: no lease token, numeric counters, camelCase names. */
-export interface PublicDaemonTask {
-  id: string;
-  key: string;
-  payload: DaemonPayload;
-  status: DaemonTaskStatus;
-  runAt: string;
-  intervalMs: number | null;
-  attempts: number;
-  maxAttempts: number;
-  executions: number;
-  leaseUntil: string | null;
-  result: unknown;
-  errorCode: string | null;
-  createdAt: string;
-  updatedAt: string;
 }
 
 export function toPublicDaemonTask(task: DaemonTask): PublicDaemonTask {
@@ -60,6 +59,7 @@ export function toPublicDaemonTask(task: DaemonTask): PublicDaemonTask {
     leaseUntil: task.lease_until === null ? null : iso(task.lease_until),
     result: task.result,
     errorCode: task.error_code,
+    lane: task.lane ?? null,
     createdAt: iso(task.created_at),
     updatedAt: iso(task.updated_at)
   };
@@ -80,6 +80,8 @@ export interface DaemonTaskStore {
     runAt: Date;
     intervalMs?: number;
     maxAttempts: number;
+    /** Makes it a user task. Callers namespace `key` per owner: keys are globally unique. */
+    ownerUserId?: string;
   }): Promise<DaemonTask>;
   get(id: string): Promise<DaemonTask | null>;
   list(): Promise<DaemonTask[]>;
@@ -87,7 +89,46 @@ export interface DaemonTaskStore {
   cancel(id: string): Promise<boolean>;
   /** Dead-letters expired claims that have no attempts left; returns their IDs. */
   expireExhausted(): Promise<string[]>;
+  /**
+   * Server claim: operator tasks as soon as they are due, user tasks only once they have waited
+   * past the takeover delay (their browser had first chance). Records lane 'server'.
+   */
   claim(leaseMs: number): Promise<DaemonTask | null>;
+  /** Browser claim: one due task of this owner, no takeover delay. Records lane 'browser'. */
+  claimOwned(ownerUserId: string, leaseMs: number): Promise<DaemonTask | null>;
+  getOwned(ownerUserId: string, id: string): Promise<DaemonTask | null>;
+  listOwned(ownerUserId: string, limit: number): Promise<DaemonTask[]>;
+  cancelOwned(ownerUserId: string, id: string): Promise<boolean>;
+  /** Milliseconds until this owner's next task is claimable by their browser; null if none. */
+  nextOwnedDueInMs(ownerUserId: string): Promise<number | null>;
+  /**
+   * The per-user cap's count: queued and running tasks, plus cancelled ones whose run may still
+   * be in flight (their lease has not ended).
+   */
+  countActiveOwned(ownerUserId: string): Promise<number>;
+  /**
+   * Adds a user task, or returns the existing one for its key, atomically per owner: concurrent
+   * calls can neither pass the cap together nor both report creating the same key.
+   */
+  enqueueOwned(
+    input: Parameters<DaemonTaskStore["enqueue"]>[0] & { ownerUserId: string },
+    maxActive: number
+  ): Promise<{ task: DaemonTask; created: boolean } | { limited: true }>;
+  /**
+   * Swaps a live claim's lease token for a fresh one with a new lease length. Exactly one caller
+   * holding the old token wins; it alone may run the task. Null when the claim is gone.
+   */
+  rotateLease(task: DaemonTask, leaseMs: number): Promise<DaemonTask | null>;
+  /**
+   * After a cancelled task's in-flight run has stopped: drops the lease that kept it counting
+   * toward its owner's cap (cancel keeps it so that nothing re-runs the task meanwhile).
+   */
+  clearCancelledLease(task: DaemonTask): Promise<void>;
+  /**
+   * The earliest instant a server worker could have something to do (a due operator task, a user
+   * task past its takeover delay, or a lease to recover), or null when the queue is empty.
+   */
+  nextServerDueAt(): Promise<Date | null>;
   renew(task: DaemonTask, leaseMs: number): Promise<boolean>;
   settle(
     task: DaemonTask,
@@ -102,12 +143,32 @@ export interface DaemonTaskStore {
 }
 
 /** Every state transition is fenced by a unique claim token; stale workers cannot overwrite work. */
-export function createPostgresDaemonTaskStore(pool: Pool): DaemonTaskStore {
+export function createPostgresDaemonTaskStore(
+  pool: DaemonPool,
+  options: { userTakeoverMs?: number } = {}
+): DaemonTaskStore {
+  const takeoverMs = options.userTakeoverMs ?? defaultUserTakeoverMs;
+  if (!Number.isSafeInteger(takeoverMs) || takeoverMs < 0)
+    throw new Error("userTakeoverMs must be a non-negative integer.");
+  const claimWhere = async (where: string, values: unknown[], lane: DaemonLane, leaseMs: number) =>
+    (
+      await pool.query<DaemonTask>(
+        `with candidate as (
+           select id from grogoni_daemon_tasks
+           where ${where} and attempts < max_attempts
+           order by run_at,id for update skip locked limit 1
+         ) update grogoni_daemon_tasks t set status='running',attempts=t.attempts+1,lane=$3,
+           lease_token=$1,lease_until=now()+$2::bigint*interval '1 millisecond',updated_at=now()
+         from candidate where t.id=candidate.id returning t.*`,
+        [randomUUID(), leaseMs, lane, ...values]
+      )
+    ).rows[0] ?? null;
   return {
     async enqueue(input) {
       const result = await pool.query<DaemonTask>(
-        `insert into grogoni_daemon_tasks (id,idempotency_key,payload,run_at,interval_ms,max_attempts)
-         values ($1,$2,$3,$4,$5,$6)
+        `insert into grogoni_daemon_tasks
+           (id,idempotency_key,payload,run_at,interval_ms,max_attempts,owner_user_id)
+         values ($1,$2,$3,$4,$5,$6,$7)
          on conflict (idempotency_key) do update set idempotency_key=excluded.idempotency_key
          returning *`,
         [
@@ -116,7 +177,8 @@ export function createPostgresDaemonTaskStore(pool: Pool): DaemonTaskStore {
           JSON.stringify(input.payload),
           input.runAt,
           input.intervalMs ?? null,
-          input.maxAttempts
+          input.maxAttempts,
+          input.ownerUserId ?? null
         ]
       );
       return result.rows[0]!;
@@ -174,20 +236,168 @@ export function createPostgresDaemonTaskStore(pool: Pool): DaemonTaskStore {
       ).rows.map((row) => row.id);
     },
     async claim(leaseMs) {
+      // $4: takeover delay. A user task's server due time is its due time plus that delay.
+      return claimWhere(
+        `((status='queued' and run_at <= now()-case when owner_user_id is null then interval '0'
+             else $4::bigint*interval '1 millisecond' end)
+          or (status='running' and lease_until <= now()-case when owner_user_id is null
+             then interval '0' else $4::bigint*interval '1 millisecond' end))`,
+        [takeoverMs],
+        "server",
+        leaseMs
+      );
+    },
+    async claimOwned(ownerUserId, leaseMs) {
+      return claimWhere(
+        `owner_user_id=$4 and ((status='queued' and run_at <= now())
+          or (status='running' and lease_until <= now()))`,
+        [ownerUserId],
+        "browser",
+        leaseMs
+      );
+    },
+    async getOwned(ownerUserId, id) {
       return (
         (
           await pool.query<DaemonTask>(
-            `with candidate as (
-           select id from grogoni_daemon_tasks
-           where ((status='queued' and run_at <= now()) or (status='running' and lease_until <= now()))
-             and attempts < max_attempts
-           order by run_at,id for update skip locked limit 1
-         ) update grogoni_daemon_tasks t set status='running',attempts=t.attempts+1,
-           lease_token=$1,lease_until=now()+$2::bigint*interval '1 millisecond',updated_at=now()
-         from candidate where t.id=candidate.id returning t.*`,
-            [randomUUID(), leaseMs]
+            "select * from grogoni_daemon_tasks where id=$1 and owner_user_id=$2",
+            [id, ownerUserId]
           )
         ).rows[0] ?? null
+      );
+    },
+    async listOwned(ownerUserId, limit) {
+      return (
+        await pool.query<DaemonTask>(
+          `select * from grogoni_daemon_tasks where owner_user_id=$1
+           order by updated_at desc,id limit $2`,
+          [ownerUserId, limit]
+        )
+      ).rows;
+    },
+    async cancelOwned(ownerUserId, id) {
+      return (
+        (
+          await pool.query(
+            `update grogoni_daemon_tasks set status='cancelled',lease_token=null,updated_at=now()
+             where id=$1 and owner_user_id=$2 and status in ('queued','running')`,
+            [id, ownerUserId]
+          )
+        ).rowCount === 1
+      );
+    },
+    async nextOwnedDueInMs(ownerUserId) {
+      // The same predicate claimOwned uses, as a delay: queued at run_at, running at lease end.
+      const result = await pool.query<{ due_in_ms: string | null }>(
+        // greatest() ignores NULL, so "nothing queued" must stay NULL outside it, not become 0.
+        `select case when due is null then null
+           else greatest(0, ceil(extract(epoch from due - now()) * 1000)) end as due_in_ms
+         from (select min(case when status='queued' then run_at else lease_until end) as due
+         from grogoni_daemon_tasks
+         where owner_user_id=$1 and status in ('queued','running') and attempts < max_attempts
+         ) as owned`,
+        [ownerUserId]
+      );
+      const value = result.rows[0]?.due_in_ms ?? null;
+      return value === null ? null : Number(value);
+    },
+    async countActiveOwned(ownerUserId) {
+      const result = await pool.query<{ total: string }>(
+        `select count(*) as total from grogoni_daemon_tasks
+         where owner_user_id=$1 and (status in ('queued','running')
+           or (status='cancelled' and lease_until > now()))`,
+        [ownerUserId]
+      );
+      return Number(result.rows[0]?.total ?? 0);
+    },
+    async nextServerDueAt() {
+      // Exactly what claim and expireExhausted act on: a claimable task at its due time (plus
+      // the takeover delay for a user's), and an exhausted claim when its lease ends (no delay).
+      const result = await pool.query<{ next_due_at: Date | null }>(
+        `select min(case
+           when attempts >= max_attempts then
+             case when status='running' then lease_until end
+           else (case when status='queued' then run_at else lease_until end)
+             + case when owner_user_id is null then interval '0'
+               else $1::bigint*interval '1 millisecond' end
+         end) as next_due_at
+         from grogoni_daemon_tasks where status in ('queued','running')`,
+        [takeoverMs]
+      );
+      const value = result.rows[0]?.next_due_at ?? null;
+      return value === null ? null : new Date(value);
+    },
+    async enqueueOwned(input, maxActive) {
+      const client = await pool.connect();
+      try {
+        await client.query("begin");
+        await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [
+          `grogoni_daemon_owner:${input.ownerUserId}`
+        ]);
+        const existing = await client.query<DaemonTask>(
+          "select * from grogoni_daemon_tasks where idempotency_key=$1",
+          [input.key]
+        );
+        if (existing.rows[0]) {
+          await client.query("commit");
+          return { task: existing.rows[0], created: false };
+        }
+        const active = await client.query<{ total: string }>(
+          `select count(*) as total from grogoni_daemon_tasks
+           where owner_user_id=$1 and (status in ('queued','running')
+             or (status='cancelled' and lease_until > now()))`,
+          [input.ownerUserId]
+        );
+        if (Number(active.rows[0]?.total ?? 0) >= maxActive) {
+          await client.query("commit");
+          return { limited: true as const };
+        }
+        const inserted = await client.query<DaemonTask>(
+          `insert into grogoni_daemon_tasks
+             (id,idempotency_key,payload,run_at,interval_ms,max_attempts,owner_user_id)
+           values ($1,$2,$3,$4,$5,$6,$7)
+           on conflict (idempotency_key) do update set idempotency_key=excluded.idempotency_key
+           returning *, (xmax = 0) as inserted`,
+          [
+            randomUUID(),
+            input.key,
+            JSON.stringify(input.payload),
+            input.runAt,
+            input.intervalMs ?? null,
+            input.maxAttempts,
+            input.ownerUserId
+          ]
+        );
+        await client.query("commit");
+        const { inserted: created, ...task } = inserted.rows[0]! as DaemonTask & {
+          inserted: boolean;
+        };
+        return { task, created };
+      } catch (error) {
+        await client.query("rollback").catch(() => undefined);
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+    async rotateLease(task, leaseMs) {
+      return (
+        (
+          await pool.query<DaemonTask>(
+            `update grogoni_daemon_tasks set lease_token=$3,
+               lease_until=now()+$4::bigint*interval '1 millisecond',updated_at=now()
+             where id=$1 and lease_token=$2 and status='running' and lease_until > now()
+             returning *`,
+            [task.id, task.lease_token, randomUUID(), leaseMs]
+          )
+        ).rows[0] ?? null
+      );
+    },
+    async clearCancelledLease(task) {
+      await pool.query(
+        `update grogoni_daemon_tasks set lease_until=null,updated_at=now()
+         where id=$1 and status='cancelled' and lease_token is null`,
+        [task.id]
       );
     },
     async renew(task, leaseMs) {
