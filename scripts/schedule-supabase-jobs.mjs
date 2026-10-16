@@ -1,9 +1,10 @@
 // Schedules the Edge API's background jobs with Supabase Cron.
 //
 //   pnpm jobs:schedule:supabase            print the SQL that would be applied (no changes)
-//   pnpm jobs:schedule:supabase --apply    rotate the job token and apply the schedule
+//   pnpm jobs:schedule:supabase --apply    reuse the job token and apply the schedule
+//   pnpm jobs:schedule:supabase --apply --rotate-token    explicitly rotate the token
 //
-// --apply generates a fresh BACKGROUND_JOB_TOKEN, sets it as the Edge function secret, stores the
+// --apply reuses the Vault token (or creates one on first setup), sets the Edge function secret, stores the
 // same value in Supabase Vault, and (re)creates one pg_cron entry per job in
 // services/api/src/edge-job-runner.ts. Requires SUPABASE_ACCESS_TOKEN. Safe to re-run.
 import { randomBytes } from "node:crypto";
@@ -23,7 +24,8 @@ if (!apply) {
 const accessToken = process.env.SUPABASE_ACCESS_TOKEN?.trim();
 if (!accessToken) throw new Error("SUPABASE_ACCESS_TOKEN is required.");
 
-const jobToken = randomBytes(32).toString("base64url");
+let jobToken = "";
+const rotate = process.argv.includes("--rotate-token");
 
 async function management(path, body) {
   const response = await fetch(`${managementBase}${path}`, {
@@ -40,16 +42,28 @@ async function management(path, body) {
   return text.trim() === "" ? null : JSON.parse(text);
 }
 
+const existing = rotate
+  ? []
+  : await management("/database/query", {
+      query:
+        "select decrypted_secret as token from vault.decrypted_secrets where name = 'grogoni_background_job_token'"
+    });
+if (!Array.isArray(existing) || existing.length > 1)
+  throw new Error("Expected at most one background job token in Vault.");
+const saved = existing[0]?.token;
+if (saved !== undefined && (typeof saved !== "string" || !/^[A-Za-z0-9_-]{32,}$/.test(saved)))
+  throw new Error("Existing Vault token is invalid; inspect before explicit rotation.");
+jobToken = saved ?? randomBytes(32).toString("base64url");
+
 // Two writes hold the token: the function secret (checked on each job call) and Vault (sent by
-// cron). If only the first lands, the two differ and every job answers 401 until a re-run, which
-// rotates the token again and writes both.
+// cron). Reusing it avoids an authentication gap on ordinary schedule updates.
 await management("/secrets", [{ name: "BACKGROUND_JOB_TOKEN", value: jobToken }]);
 try {
   await management("/database/query", { query: buildSupabaseCronSql({ apiUrl, jobToken }) });
 } catch (error) {
   console.error(
     "The function secret was updated but the schedule was not applied, so job calls will answer " +
-      "401 until this script runs again. Re-run: pnpm jobs:schedule:supabase --apply"
+      "401 if the token changed. Re-run: pnpm jobs:schedule:supabase --apply"
   );
   throw error;
 }
@@ -58,7 +72,5 @@ const scheduled = await management("/database/query", {
     "select jobname, schedule from cron.job where jobname like 'grogoni-job-%' order by jobname"
 });
 console.log(JSON.stringify({ scheduled }, null, 2));
-console.log(
-  "Applied. The function reads BACKGROUND_JOB_TOKEN at cold start; job calls answer 401 until " +
-    "running isolates recycle (minutes)."
-);
+console.log("Applied. Existing Vault token reused: " + Boolean(saved));
+if (!saved) console.log("The new token is read at cold start; allow running isolates to recycle.");

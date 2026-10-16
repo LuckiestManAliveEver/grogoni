@@ -1,6 +1,11 @@
 import Fastify from "fastify";
 import { createHash, timingSafeEqual } from "node:crypto";
-import { toPublicDaemonTask, type DaemonPayload, type DaemonTaskStore } from "./task-store.js";
+import {
+  toPublicDaemonTask,
+  type DaemonPayload,
+  type DaemonTask,
+  type DaemonTaskStore
+} from "./task-store.js";
 import { edgeJobDefinitions } from "../edge-job-runner.js";
 
 export function buildDaemonGateway(input: {
@@ -12,6 +17,8 @@ export function buildDaemonGateway(input: {
   /** Returns an error code when this daemon cannot run the payload (answered with 422). */
   refusal?: (payload: DaemonPayload) => string | null;
   report?: (event: { type: string; errorCode?: string }) => void;
+  /** After a task is queued (submitted, or retried): the Edge lane lowers its wake hint here. */
+  onQueued?: (task: DaemonTask) => Promise<void>;
 }) {
   if (input.token.length < 32 || /\s/u.test(input.token))
     throw new Error("DAEMON_SERVICE_TOKEN must be at least 32 characters with no whitespace.");
@@ -128,6 +135,7 @@ export function buildDaemonGateway(input: {
         ...(body.intervalMs === undefined ? {} : { intervalMs: body.intervalMs }),
         maxAttempts: body.maxAttempts ?? 3
       });
+      await input.onQueued?.(task);
       return reply.code(202).send(toPublicDaemonTask(task));
     }
   );
@@ -164,7 +172,12 @@ export function buildDaemonGateway(input: {
       const task = input.refusal ? await input.store.get(request.params.id) : null;
       const refused = task ? input.refusal!(task.payload) : null;
       if (refused) return reply.code(422).send({ error: refused });
-      return { queued: await input.store.retry(request.params.id) };
+      const queued = await input.store.retry(request.params.id);
+      if (queued && input.onQueued) {
+        const requeued = await input.store.get(request.params.id);
+        if (requeued) await input.onQueued(requeued);
+      }
+      return { queued };
     }
   );
   app.setErrorHandler((error, _request, reply) => {

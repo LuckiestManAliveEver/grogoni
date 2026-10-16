@@ -51,6 +51,7 @@ import { useReportsState } from "./hooks/useReportsState";
 import { useRuntimeHistoryState } from "./hooks/useRuntimeHistoryState";
 import { useStorefrontCareState } from "./hooks/useStorefrontCareState";
 import { useNetworkState } from "./hooks/useNetworkState";
+import { stopDaemonLane, useDaemonLane } from "./hooks/useDaemonLane";
 import { useProductsState } from "./hooks/useProductsState";
 import { useSyncState } from "./hooks/useSyncState";
 import { usePaymentsState } from "./hooks/usePaymentsState";
@@ -782,11 +783,10 @@ export function OwnerApp() {
   // references refreshSession by name at hook-call time) - same TDZ-avoidance reasoning as every
   // other domain hook ordering decision in this effort.
   const authBootstrapPending = isAuthBootstrapPending(authBootstrapState);
-  // A device-only session (progressive-identity.md) is a real, cookie-backed session, but it is
-  // not yet the identity someone deliberately asking to log in or sign up wants - show the auth
-  // screen for it the same as no session at all. completePhoneFirstAuthentication's new session
-  // response simply replaces this temporary one, exactly like a fresh signup/login would.
+  // Device-only identities are cookie-backed but still need explicit signup/login.
+  // Auth completion upgrades this temporary session, as it does a fresh session.
   const isSignedOut = session === null || session.account.identityLevel === "device";
+  useDaemonLane(isSignedOut ? null : (session?.account.id ?? null));
   const shouldShowAuth = !authBootstrapPending && isAuthOpen && isSignedOut;
   // Log in / Sign up entry points (menu drawer, seller header). A device account can already own a
   // shop; offering it a login that replaces that account would strand the shop, so a shop owner's
@@ -1372,6 +1372,7 @@ export function OwnerApp() {
 
   async function logout(allSessions = false) {
     const accountId = session?.account.id ?? null;
+    await stopDaemonLane();
     try {
       await postJson(allSessions ? "/auth/logout-all" : "/auth/logout", {});
     } catch {

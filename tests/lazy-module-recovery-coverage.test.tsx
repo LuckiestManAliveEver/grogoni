@@ -42,7 +42,9 @@ const nonUiDynamicImports: Record<string, string[]> = {
   "QuickRuntimeSwitcher.tsx": ["./device-model-engine"],
   "prefetch.ts": ["./ProductCapturePanel", "./AccountBackendControls"],
   "inference/agent-turn-preview.ts": ["./agent-turn-companion"],
-  "inference/agent-turn-companion.ts": ["../device-model-engine"]
+  "inference/agent-turn-companion.ts": ["../device-model-engine"],
+  // A failed import fails that task's device run; the daemon lane then has the server run it.
+  "hooks/useDaemonLane.ts": ["../device-model-engine"]
 };
 
 function sourceFiles(directory: string): string[] {

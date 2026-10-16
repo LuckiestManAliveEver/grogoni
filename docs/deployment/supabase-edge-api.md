@@ -229,19 +229,26 @@ savepoints inside the job transaction), where the Node runner commits each event
 own, so a run that fails after sending re-sends its whole batch; the batch is capped at 25
 events. The same holds for invites sent while handling a request.
 
+The `daemon_worker` job is the server lane of the background task queue: an hourly sweep, plus
+a per-minute wake check (`grogoni-daemon-wake`) that runs in Supabase's own Postgres and calls
+the job only when server work is due. Users' tasks run first in their open browsers. See
+[Daemon lanes](daemon-lanes.md).
+
 Supabase Cron triggers the jobs. The schedule is generated from the job definitions:
 
 ```bash
 pnpm jobs:schedule:supabase           # print the SQL, change nothing
-pnpm jobs:schedule:supabase --apply   # rotate the job token, apply the schedule
+pnpm jobs:schedule:supabase --apply   # reuse the Vault token, apply the schedule
+pnpm jobs:schedule:supabase --apply --rotate-token # explicit token rotation
 ```
 
-`--apply` (needs `SUPABASE_ACCESS_TOKEN`) generates a fresh `BACKGROUND_JOB_TOKEN`, sets it as
+`--apply` (needs `SUPABASE_ACCESS_TOKEN`) reuses the existing Vault token or generates one on
+first setup, sets it as `BACKGROUND_JOB_TOKEN`,
 a function secret, stores the same value in Supabase Vault, creates one `grogoni-job-*` pg_cron
 entry per job and removes entries for jobs that no longer exist. The token is read from Vault
-at call time and never appears in `cron.job`. Every `--apply` rotates the token: function
-isolates that are already warm keep the old secret and answer 401 to job calls until they
-recycle (minutes), so re-run it only to change the schedule or rotate the token, not routinely.
+at call time and never appears in `cron.job`. Only first setup or explicit `--rotate-token`
+changes it: warm function isolates can answer 401 until they recycle (minutes). Ordinary
+schedule updates preserve the token to avoid that authentication gap.
 Check runs with `select * from cron.job_run_details order by start_time desc` and `GET
 /internal/jobs/<job>/status`.
 

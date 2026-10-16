@@ -1,6 +1,7 @@
 export type RuntimeName = "api" | "sync" | "ai-runtime" | "web";
 
 export * from "./commerce-address.js";
+export * from "./daemon-lanes.js";
 export * from "./computer-runtime.js";
 export * from "./fulfillment.js";
 export * from "./grams.js";

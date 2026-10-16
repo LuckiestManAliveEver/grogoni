@@ -2418,7 +2418,12 @@ export async function checkApiRouteCoverage() {
     handler: edgeFile("handler.ts"),
     publicRoutes: edgeFile("public-routes.ts")
   });
-  const inventory = domain.inventory.filter((route) => route.method !== "HEAD");
+  const { daemonLaneRoutes } = await import("../services/api/src/daemon/edge-lane.ts");
+  const inventory = [
+    ...domain.inventory.filter((route) => route.method !== "HEAD"),
+    // Served by the daemon lane outside the domain layer (index.ts routes /v1/daemon/* to it).
+    ...daemonLaneRoutes.map((route) => ({ ...route, websocket: false }))
+  ];
   const inventoryPaths = new Set(inventory.map((route) => route.path));
   // A path the method-aware inventory also has keeps the inventory's methods (domain routes are
   // matched first in production).

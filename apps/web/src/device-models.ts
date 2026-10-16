@@ -41,3 +41,30 @@ export function writeInstalledDeviceModels(ids: string[]): void {
     // Storage blocked (private mode): the model still works for this page session.
   }
 }
+
+/**
+ * What the on-device engine (device-model-engine.ts) holds right now, kept here so callers can
+ * read it without loading the engine. Background work (the daemon browser lane) uses a device
+ * model only when it is already loaded and idle: it never swaps out the model a person's chat is
+ * using, never loads one in the background, and never queues ahead of their turn.
+ */
+const engineState = { readyModelId: null as string | null, generating: 0 };
+
+export function noteDeviceModelReady(providerModelId: string | null): void {
+  engineState.readyModelId = providerModelId;
+}
+
+/** Wraps one generation so idleLoadedDeviceModel() sees the engine as busy meanwhile. */
+export async function whileDeviceGenerating<T>(run: () => Promise<T>): Promise<T> {
+  engineState.generating++;
+  try {
+    return await run();
+  } finally {
+    engineState.generating--;
+  }
+}
+
+/** The loaded model's ID when nothing is generating on it, otherwise null. */
+export function idleLoadedDeviceModel(): string | null {
+  return engineState.generating === 0 ? engineState.readyModelId : null;
+}

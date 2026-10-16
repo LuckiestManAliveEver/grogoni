@@ -60,6 +60,7 @@ export const edgeBackgroundJobNames: ReadonlySet<string> = new Set([
   "agent_owner_correction_retention",
   "connected_mailbox_sync",
   "conversation_recycle_bin_purge",
+  "daemon_worker",
   "fulfillment_dispatch_evaluation",
   "fulfillment_idempotency_retention",
   "fulfillment_intake_reconcile",
@@ -143,8 +144,13 @@ function auth(request: Request) {
   return sessionId;
 }
 
-async function actor(client: SqlClient, request: Request) {
-  const sessionId = auth(request);
+/** The live session's account and user, or null for a missing, expired or revoked session. */
+export async function findSessionUser(
+  client: SqlClient,
+  request: Request
+): Promise<{ sessionId: string; accountId: string; userId: string } | null> {
+  const sessionId = sessionCookie(request);
+  if (!sessionId) return null;
   const result = await client.query(
     `select s.account_id, s.user_id from sessions s join accounts a on a.id = s.account_id
      where s.id = $1 and s.revoked_at is null and s.expires_at > now()
@@ -153,8 +159,15 @@ async function actor(client: SqlClient, request: Request) {
     [sessionId]
   );
   const row = result.rows[0];
-  if (!row) throw new EdgeRouteError(401, "auth_required", "Authentication is required.");
+  if (!row) return null;
   return { sessionId, accountId: String(row.account_id), userId: String(row.user_id) };
+}
+
+async function actor(client: SqlClient, request: Request) {
+  auth(request);
+  const user = await findSessionUser(client, request);
+  if (!user) throw new EdgeRouteError(401, "auth_required", "Authentication is required.");
+  return user;
 }
 
 async function listRecords(client: SqlClient, table: string, where: string, values: unknown[]) {
