@@ -52,7 +52,19 @@ const child = spawn(
   }
 );
 
+let finished = false;
+child.on("error", async () => {
+  if (finished) return;
+  finished = true;
+  console.error("pg_dump could not start; no successful backup was recorded.");
+  await recordBackupFailed("pg_dump could not start.").catch(() => undefined);
+  await pool.end();
+  process.exitCode = 1;
+});
+
 child.on("exit", async (code) => {
+  if (finished) return;
+  finished = true;
   if (code !== 0) {
     await recordBackupFailed(`pg_dump failed with exit code ${code ?? 1}.`).catch(() => undefined);
     await pool.end();
@@ -88,6 +100,7 @@ async function runUploadCommand(commandTemplate, filePath) {
   });
 
   await new Promise((resolvePromise, rejectPromise) => {
+    upload.on("error", () => rejectPromise(new Error("Backup upload process could not start.")));
     upload.on("exit", (code) => {
       if (code === 0) {
         resolvePromise();

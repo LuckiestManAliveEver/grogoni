@@ -1,0 +1,62 @@
+name: Neon Private Backup
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 2 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neon-private-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    if: github.event_name == 'workflow_dispatch' || vars.NEON_BACKUPS_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container: postgres:18-bookworm
+    services:
+      restore-db:
+        image: postgres:18-bookworm
+        env:
+          POSTGRES_USER: backup_restore
+          POSTGRES_PASSWORD: backup_restore_ci_only
+          POSTGRES_DB: grogoni_backup_restore
+        options: >-
+          --health-cmd "pg_isready -U backup_restore -d grogoni_backup_restore"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+    env:
+      NODE_ENV: production
+      DIRECT_DATABASE_URL: ${{ secrets.BACKUP_DIRECT_DATABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_BACKUP_SERVICE_ROLE_KEY }}
+      BACKUP_ENCRYPTION_KEY: ${{ secrets.NEON_BACKUP_ENCRYPTION_KEY }}
+      BACKUP_SUPABASE_PROJECT_REF: gnmndzsughifhboqvsgd
+      BACKUP_SUPABASE_BUCKET: grogoni-neon-backups
+      BACKUP_DIR: ${{ github.workspace }}/backups
+      BACKUP_UPLOAD_COMMAND: node ../../scripts/upload-supabase-backup.mjs {file}
+      BACKUP_RESTORE_TEST_DATABASE_URL: postgres://backup_restore:backup_restore_ci_only@restore-db:5432/grogoni_backup_restore
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+          cache: pnpm
+      - name: Validate Backup Configuration
+        run: >-
+          node --input-type=module -e '
+          import {readBackupStorageConfig} from "./scripts/supabase-backup-storage.mjs";
+          import {assertNeonBackupSource} from "./scripts/backup-restore-target.mjs";
+          readBackupStorageConfig();
+          assertNeonBackupSource(process.env.DIRECT_DATABASE_URL);'
+      - name: Install
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Create Encrypted Private Backup and Verify Read-Back
+        run: pnpm db:backup
+      - name: Download, Authenticate, and Fully Restore Into Isolated PostgreSQL
+        run: pnpm --filter @grogoni/api exec node scripts/verify-supabase-backup.mjs
