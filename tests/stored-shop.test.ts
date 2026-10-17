@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { AccountShopSummary } from "../packages/shared-types/src";
 import {
   decideStoredShop,
+  ownedShop,
   resolveStoredShopAtLaunch,
   shopAfterLeaving
 } from "../apps/web/src/stored-shop";
@@ -20,6 +21,15 @@ const stored = {
 } as const;
 
 describe("stored shop on a device", () => {
+  it("finds the shop this account owns for a repeated shop create, ignoring staff roles", () => {
+    expect(ownedShop([shop("b", "driver"), shop("c", "owner")])).toMatchObject({
+      id: "c",
+      role: "owner"
+    });
+    expect(ownedShop([shop("b", "driver")])).toBeNull();
+    expect(ownedShop([])).toBeNull();
+  });
+
   it("forgets a shop the account no longer belongs to (removed or left)", () => {
     expect(decideStoredShop(stored, [shop("b", "driver")])).toEqual({ action: "forget" });
     expect(decideStoredShop(stored, [])).toEqual({ action: "forget" });

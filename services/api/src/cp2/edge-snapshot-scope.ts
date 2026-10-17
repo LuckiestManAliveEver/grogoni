@@ -17,6 +17,21 @@ const conversationChildren = new Set<keyof Cp2Snapshot>([
   "messageNotificationDeliveries"
 ]);
 
+/**
+ * Runtime checkpoint rows carry no tenant columns: they belong to a task, and a task id is a
+ * conversation id. They load with the conversations the caller works in
+ * (edge_task_conversation_ids). Without this every
+ * later agent turn in a conversation saw no checkpoint, bootstrapped version 1 again, and failed
+ * on cp2_runtime_handoffs_task_version_idx (23505), answering 503 to the second message.
+ */
+const taskColumn = new Map<keyof Cp2Snapshot, string>([
+  ["runtimeHandoffs", "task_id"],
+  ["runtimeTransfers", "task_id"],
+  ["runtimeExecutionEvents", "task_id"],
+  ["runtimeTaskHeads", "entity_id"],
+  ["runtimeTaskInstances", "entity_id"]
+]);
+
 /** CTEs shadow only loader reads. Persistence always targets the real tables by explicit IDs. */
 export async function createEdgeSnapshotScope(
   client: PoolClient,
@@ -136,6 +151,16 @@ export async function createEdgeSnapshotScope(
       "edge_conversation_ids",
       `select entity_id as id from public.cp2_conversations where account_id = ${actorAccount}
       or business_id in (select id from edge_business_ids)
+      union select record->>'conversationId' from public.cp2_conversation_participants where account_id = ${actorAccount} or user_id = ${actorUser}`
+    ],
+    [
+      // Only conversations the caller works in: their own, ones they take part in, and those of
+      // shops they are a member of. Not a viewed storefront's or a searched shop's: runtime
+      // checkpoints and execution events grow with every agent turn and are none of a
+      // visitor's business.
+      "edge_task_conversation_ids",
+      `select entity_id as id from public.cp2_conversations where account_id = ${actorAccount}
+      or business_id in (select business_id::text from public.business_memberships where user_id = nullif(${actorUser}, '')::uuid)
       union select record->>'conversationId' from public.cp2_conversation_participants where account_id = ${actorAccount} or user_id = ${actorUser}`
     ],
     [
@@ -273,17 +298,24 @@ export async function createEdgeSnapshotScope(
         or user_id in (select id from edge_user_ids)
         or parent_id in (select id from edge_parent_ids)
         ${conversationChildren.has(key) ? "or record->>'conversationId' in (select id from edge_conversation_ids)" : ""}
+        ${taskColumn.has(key) ? `or ${taskColumn.get(key)} in (select id from edge_task_conversation_ids)` : ""}
         ${key === "networkInvites" ? `or record->>'fromUserId' = nullif(${actorUser}, '') or record->>'toUserId' = nullif(${actorUser}, '')` : ""}
         ${key === "staffInvitations" ? `or record->>'destination' = nullif(${destination}, '')` : ""}`;
     }
   };
 }
 
-export function prepareEdgeHydration(snapshot: Cp2Snapshot): Cp2Snapshot {
+/**
+ * Offline change sequence numbers are unique across every shop (cp2_offline_changes_sequence),
+ * but a request loads only its own shops' changes and markers. `globalSequence` is the highest
+ * sequence any shop has used (offlineSequenceHighWater): without it a shop allocated numbers
+ * another shop already took and its write failed with 23505.
+ */
+export function prepareEdgeHydration(snapshot: Cp2Snapshot, globalSequence = 0): Cp2Snapshot {
   const hydrated = structuredClone(snapshot);
   const watermark = (snapshot.offlineMetadata ?? []).reduce(
     (max, entry) => Math.max(max, entry.sequence),
-    0
+    globalSequence
   );
   hydrated.offlineMetadata = [
     {
@@ -310,4 +342,53 @@ export function prepareEdgePersistence(snapshot: Cp2Snapshot, baseline: Cp2Snaps
   }
   snapshot.offlineMetadata = [...metadata.values()];
   return snapshot;
+}
+
+/** The highest offline change sequence any shop has used (one index lookup). */
+export async function offlineSequenceHighWater(client: PoolClient): Promise<number> {
+  const result = await client.query<{ sequence: string }>(
+    `select (record->>'sequence')::bigint as sequence from cp2_offline_changes
+     order by (record->>'sequence')::bigint desc limit 1`
+  );
+  return Number(result.rows[0]?.sequence ?? 0);
+}
+
+/**
+ * Gives a request's new offline changes their final sequence numbers just before they are saved,
+ * under a lock that every write creating offline changes takes, then reads the highest number in
+ * use. Two shops writing at the same moment used to take the same next number (each request sees
+ * only its own shops' changes) and the later commit failed with 23505. The lock is held only from
+ * this point to commit, and only by requests that actually create offline changes. `assigned`
+ * remembers the numbers given within this request, so a later save of the same request (whose
+ * store still holds the provisional numbers) writes the same ones. Changes are standalone rows,
+ * and a sync cursor a client already holds only gets lower than the final numbers, so it re-reads
+ * them; it never skips one.
+ */
+export async function allocateOfflineSequences(
+  client: PoolClient,
+  next: Cp2Snapshot,
+  previous: Cp2Snapshot,
+  assigned: Map<string, number>
+): Promise<void> {
+  const known = new Set((previous.offlineChanges ?? []).map((change) => change.id));
+  const changes = next.offlineChanges ?? [];
+  for (const change of changes) {
+    const sequence = assigned.get(change.id);
+    if (sequence !== undefined) change.sequence = sequence;
+  }
+  const fresh = changes
+    .filter((change) => !known.has(change.id) && !assigned.has(change.id))
+    .sort((left, right) => left.sequence - right.sequence);
+  if (fresh.length === 0) return;
+  await client.query("select pg_advisory_xact_lock(hashtext('grogoni.cp2.offline_sequence'))");
+  let sequence = await offlineSequenceHighWater(client);
+  const metadata = new Map((next.offlineMetadata ?? []).map((entry) => [entry.id, entry]));
+  for (const change of fresh) {
+    sequence += 1;
+    change.sequence = sequence;
+    assigned.set(change.id, sequence);
+    const key = `business:${change.businessId}`;
+    metadata.set(key, { id: key, sequence: Math.max(metadata.get(key)?.sequence ?? 0, sequence) });
+  }
+  next.offlineMetadata = [...metadata.values()];
 }

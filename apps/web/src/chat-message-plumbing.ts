@@ -93,6 +93,8 @@ export function mapConversationMessage(
   );
   return {
     id: message.id,
+    // Lets a refresh recognize a message this device queued and the server has since received.
+    ...(message.clientMessageId ? { clientMessageId: message.clientMessageId } : {}),
     author:
       message.authorId === session.user.id
         ? "merchant"

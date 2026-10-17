@@ -29,6 +29,8 @@ interface ChatComposerProps {
   isAuthenticated: boolean;
   isBrowserGenerating: boolean;
   isSending: boolean;
+  /** The conversation in the URL is still being opened: there is nothing to send to yet. */
+  isOpening?: boolean;
   mode: GrogoniMode;
   activeAgentName: string;
   pendingAttachments: ChatAttachment[];
@@ -54,6 +56,7 @@ export function ChatComposer({
   isAuthenticated,
   isBrowserGenerating,
   isSending,
+  isOpening = false,
   mode,
   activeAgentName,
   pendingAttachments,
@@ -226,15 +229,18 @@ export function ChatComposer({
             value={liveDraft}
             onChange={(event) => updateLiveDraft(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey && !isSending) {
+              if (event.key === "Enter" && !event.shiftKey) {
+                // Enter never adds a newline here, even while a send runs or the chat opens.
                 event.preventDefault();
-                sendLiveDraft();
+                if (!isSending && !isOpening) sendLiveDraft();
               }
             }}
             placeholder={
-              mode === "seller"
-                ? "Ask your agent, or type # to call a capability"
-                : "Ask Grogoni..."
+              isOpening
+                ? "Opening this chat…"
+                : mode === "seller"
+                  ? "Ask your agent, or type # to call a capability"
+                  : "Ask Grogoni..."
             }
           />
         </label>
@@ -285,6 +291,7 @@ export function ChatComposer({
               onClick={sendLiveDraft}
               disabled={
                 isSending ||
+                isOpening ||
                 (sendViaBluetooth && bluetoothBusy) ||
                 (selectedProvider === "email" && emailSubject.trim().length === 0) ||
                 (liveDraft.trim().length === 0 && pendingAttachments.length === 0)

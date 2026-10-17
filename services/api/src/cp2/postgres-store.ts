@@ -1642,6 +1642,38 @@ export async function loadTransactionalCp2Snapshot(
 
 const edgeRemovalBaselines = new WeakMap<PoolClient, Cp2Snapshot>();
 
+/**
+ * A baseline for change detection in which `keys` hold the records as the store sees them right
+ * after hydration, for rows that were loaded. Restoring fills defaults a stored row may lack (a
+ * message's provider, direction and channel ids); without this, every request rewrote every
+ * loaded message of the conversation, and a concurrent write to one of them (marking it read)
+ * failed the request with 40001. The optimistic check still compares against the stored rows.
+ * Only rows present in `loaded` are rebased, so a row the store creates while hydrating is still
+ * saved as new.
+ */
+export function rebaseLoadNormalizedCollections(
+  loaded: Cp2Snapshot,
+  hydrated: Cp2Snapshot,
+  keys: readonly SnapshotCollectionKey[]
+): Cp2Snapshot {
+  const rebased = { ...loaded } as Cp2Snapshot;
+  for (const key of keys) {
+    const loadedIds = new Set(
+      getSnapshotCollection(loaded, key).map((record) => recordEntityId(key, record))
+    );
+    setSnapshotCollection(
+      rebased,
+      key,
+      getSnapshotCollection(hydrated, key).filter((record) =>
+        loadedIds.has(recordEntityId(key, record))
+      )
+    );
+  }
+  const stored = edgeNormalizedBaselines.get(loaded);
+  if (stored !== undefined) edgeNormalizedBaselines.set(rebased, stored);
+  return rebased;
+}
+
 export async function saveTransactionalCp2Snapshot(
   client: PoolClient,
   snapshot: Cp2Snapshot,

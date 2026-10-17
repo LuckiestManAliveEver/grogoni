@@ -4,7 +4,13 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { BuyResultSummary } from "@grogoni/shared-types";
 import { useChatRuntimeState } from "../apps/web/src/hooks/useChatRuntimeState";
+import {
+  keepDeviceOnlyMessages,
+  readDeviceOnlyMessages
+} from "../apps/web/src/chat-device-only-messages";
+import { queueMessagingOutbox, readMessagingOutbox } from "../apps/web/src/messaging/outbox";
 import type {
   ActiveBusiness,
   AgentSettings,
@@ -87,8 +93,13 @@ describe("fresh shop, first AI message: hosted-first with no client model state"
         throw new Error(`Unexpected runtime fetch for buyer intent: ${url}`);
       });
       vi.stubGlobal("fetch", fetchMock);
-      const searchBuyFeed = vi.fn(async () => undefined);
+      const searchBuyFeed = vi.fn(async (searched: string) => ({
+        query: searched,
+        results: [{ sourceLabel: "Kwa Jane" }] as BuyResultSummary[],
+        marketplaceConnectorAvailable: true
+      }));
       const statusMessages: string[] = [];
+      const navigateToView = vi.fn();
       const renderedMessages: Array<{ author: string; body: string }> = [];
 
       let sendChatDraft: ((draft?: string) => Promise<void>) | null = null;
@@ -102,7 +113,7 @@ describe("fresh shop, first AI message: hosted-first with no client model state"
           rejectDefinitiveAuthenticationFailure: () => false,
           agentSettings: agentSettings(),
           setStatusMessage: (message) => statusMessages.push(message),
-          navigateToView: () => undefined,
+          navigateToView,
           requireMessagingSignIn: () => undefined,
           searchBuyFeed,
           loadProducts: async () => undefined,
@@ -153,9 +164,12 @@ describe("fresh shop, first AI message: hosted-first with no client model state"
       expect(fetchMock).not.toHaveBeenCalled();
       expect(renderedMessages.map((message) => message.body)).toEqual([
         message,
-        "I searched the marketplace for that. Open a result to review the shop and add items to your cart."
+        `I found 1 item from 1 shop for "${query}". Open a result to see the shop and add it to your cart.`
       ]);
-      expect(statusMessages).toContain("Marketplace results updated.");
+      expect(statusMessages).toContain("1 item found.");
+      // A buyer stays in their thread; leaving its route reloads the inbox and wipes the reply.
+      if (mode === "marketplace") expect(navigateToView).not.toHaveBeenCalled();
+      else expect(navigateToView).toHaveBeenCalledWith("chat", { mode: "marketplace" });
     }
   );
 
@@ -262,5 +276,546 @@ describe("fresh shop, first AI message: hosted-first with no client model state"
     expect(storedKeys).not.toContain("grogoni.agent-model-assignment.v1");
     expect(storedKeys.some((key) => key.includes("model-scope"))).toBe(false);
     expect(storedKeys.some((key) => key.includes("browser-inference"))).toBe(false);
+  });
+
+  it("keeps a send that failed with 503 on screen, marked and queued, across thread refreshes", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const path = new URL(String(input), "http://localhost").pathname;
+        if (path === "/v1/messages")
+          return jsonResponse({ code: "service_unavailable", message: "Busy" }, 503);
+        return jsonResponse({});
+      })
+    );
+    let messages: Array<{
+      id: string;
+      body: string;
+      status?: string;
+      deviceOnlyIn?: string | null;
+    }> = [];
+    const statusMessages: string[] = [];
+    let sendChatDraft: ((draft?: string) => Promise<void>) | null = null;
+    function Harness() {
+      const api = useChatRuntimeState({
+        business: business(),
+        mode: "seller",
+        session: session(),
+        authBootstrapState: "authenticated",
+        ensureAuthenticatedSession: async () => session(),
+        rejectDefinitiveAuthenticationFailure: () => false,
+        agentSettings: agentSettings(),
+        setStatusMessage: (message) => statusMessages.push(message),
+        navigateToView: () => undefined,
+        requireMessagingSignIn: () => undefined,
+        loadProducts: async () => undefined,
+        loadSuppliers: async () => undefined,
+        loadCustomers: async () => undefined,
+        loadInvoices: async () => undefined,
+        loadReports: async () => undefined,
+        loadNotifications: async () => undefined,
+        loadRuntimeSessions: async () => undefined,
+        createManagedRuntimeSession: async () => "runtime-session-1",
+        ensureRuntimeSession: async () => "runtime-session-1",
+        loadDocumentImports: async () => undefined,
+        chatMessages: [],
+        setChatMessages: (next) => {
+          messages = typeof next === "function" ? next(messages as never) : (next as never);
+        },
+        chatDraft: "",
+        setChatDraft: () => undefined,
+        pendingAttachments: [],
+        setPendingAttachments: () => undefined,
+        runtimeSessionId: null,
+        setRuntimeSessionId: () => undefined,
+        replyToMessageId: null,
+        setReplyToMessageId: () => undefined,
+        activeConversationId: "conversation-1",
+        activeConversation: null,
+        loadMessagingInbox: async () => undefined,
+        registerReset: () => undefined
+      });
+      sendChatDraft = api.sendChatDraft;
+      return null;
+    }
+    await act(async () => {
+      root = createRoot(host);
+      root.render(<Harness />);
+    });
+    await act(async () => {
+      await sendChatDraft!("Add 5 bags of sugar to stock");
+    });
+
+    const sent = messages.find((message) => message.body === "Add 5 bags of sugar to stock");
+    expect(sent).toMatchObject({
+      status: "failed",
+      outboxState: "retrying",
+      deviceOnlyIn: "conversation-1"
+    });
+    // Stored, so a thread switch or a reload does not lose it either.
+    expect(readDeviceOnlyMessages("account-1").map((message) => message.id)).toEqual([sent!.id]);
+    expect(readMessagingOutbox("account-1").map((entry) => entry.clientMessageId)).toEqual([
+      sent!.id
+    ]);
+    expect(statusMessages).toContain("Message not sent yet. Grogoni will keep trying.");
+    // The next 4-second refresh returns only what the server has: the queued message stays.
+    expect(keepDeviceOnlyMessages(messages as never, [], "conversation-1")).toContainEqual(sent);
+  });
+  it("gives the text back when the chat the URL names cannot be opened", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const path = new URL(String(input), "http://localhost").pathname;
+        if (path === "/v1/messages") throw new Error("nothing to post to: no conversation is open");
+        return jsonResponse({});
+      })
+    );
+    let messages: Array<{
+      id: string;
+      body: string;
+      status?: string;
+      deviceOnlyIn?: string | null;
+    }> = [];
+    const statusMessages: string[] = [];
+    const drafts: string[] = [];
+    // The URL names a conversation that never gets selected (loadMessagingInbox finds nothing).
+    window.history.replaceState(null, "", "/workspace/conversations/never-opens");
+    let sendChatDraft: ((draft?: string) => Promise<void>) | null = null;
+    function Harness() {
+      const api = useChatRuntimeState({
+        business: business(),
+        mode: "seller",
+        session: session(),
+        authBootstrapState: "authenticated",
+        ensureAuthenticatedSession: async () => session(),
+        rejectDefinitiveAuthenticationFailure: () => false,
+        agentSettings: agentSettings(),
+        setStatusMessage: (message) => statusMessages.push(message),
+        navigateToView: () => undefined,
+        requireMessagingSignIn: () => undefined,
+        loadProducts: async () => undefined,
+        loadSuppliers: async () => undefined,
+        loadCustomers: async () => undefined,
+        loadInvoices: async () => undefined,
+        loadReports: async () => undefined,
+        loadNotifications: async () => undefined,
+        loadRuntimeSessions: async () => undefined,
+        createManagedRuntimeSession: async () => "runtime-session-1",
+        ensureRuntimeSession: async () => "runtime-session-1",
+        loadDocumentImports: async () => undefined,
+        chatMessages: [],
+        setChatMessages: (next) => {
+          messages = typeof next === "function" ? next(messages as never) : (next as never);
+        },
+        chatDraft: "",
+        setChatDraft: (draft) => drafts.push(draft),
+        pendingAttachments: [],
+        setPendingAttachments: () => undefined,
+        runtimeSessionId: null,
+        setRuntimeSessionId: () => undefined,
+        replyToMessageId: null,
+        setReplyToMessageId: () => undefined,
+        activeConversationId: null,
+        activeConversation: null,
+        loadMessagingInbox: async () => undefined,
+        registerReset: () => undefined
+      });
+      sendChatDraft = api.sendChatDraft;
+      return null;
+    }
+    await act(async () => {
+      root = createRoot(host);
+      root.render(<Harness />);
+    });
+    await act(async () => {
+      await sendChatDraft!("Add 5 bags of sugar to stock");
+    });
+
+    expect(messages.some((message) => message.body === "Add 5 bags of sugar to stock")).toBe(false);
+    expect(drafts.at(-1)).toBe("Add 5 bags of sugar to stock");
+    expect(statusMessages.at(-1)).toMatch(/still opening.*back in the box/u);
+    window.history.replaceState(null, "", "/");
+  });
+
+  it("opens the chat the URL names and sends there when it has not been selected yet", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const path = new URL(String(input), "http://localhost").pathname;
+        if (path === "/v1/messages") {
+          posted.push(JSON.parse(String((init as RequestInit | undefined)?.body ?? "{}")));
+          return jsonResponse({
+            id: "server-1",
+            conversationId: "conversation-1",
+            clientMessageId: "x",
+            author: "account",
+            authorId: "user-1",
+            content: { type: "text", text: "Add 5 bags of sugar to stock" }
+          });
+        }
+        return jsonResponse({});
+      })
+    );
+    let messages: Array<{
+      id: string;
+      body: string;
+      status?: string;
+      deviceOnlyIn?: string | null;
+    }> = [];
+    const statusMessages: string[] = [];
+    const drafts: string[] = [];
+    const posted: Array<{ conversationId?: string }> = [];
+    let selected: string | null = null;
+    window.history.replaceState(null, "", "/workspace/conversations/conversation-1");
+    let sendChatDraft: ((draft?: string) => Promise<void>) | null = null;
+    function Harness() {
+      const api = useChatRuntimeState({
+        business: business(),
+        mode: "seller",
+        session: session(),
+        authBootstrapState: "authenticated",
+        ensureAuthenticatedSession: async () => session(),
+        rejectDefinitiveAuthenticationFailure: () => false,
+        agentSettings: agentSettings(),
+        setStatusMessage: (message) => statusMessages.push(message),
+        navigateToView: () => undefined,
+        requireMessagingSignIn: () => undefined,
+        loadProducts: async () => undefined,
+        loadSuppliers: async () => undefined,
+        loadCustomers: async () => undefined,
+        loadInvoices: async () => undefined,
+        loadReports: async () => undefined,
+        loadNotifications: async () => undefined,
+        loadRuntimeSessions: async () => undefined,
+        createManagedRuntimeSession: async () => "runtime-session-1",
+        ensureRuntimeSession: async () => "runtime-session-1",
+        loadDocumentImports: async () => undefined,
+        chatMessages: [],
+        setChatMessages: (next) => {
+          messages = typeof next === "function" ? next(messages as never) : (next as never);
+        },
+        chatDraft: "",
+        setChatDraft: (draft) => drafts.push(draft),
+        pendingAttachments: [],
+        setPendingAttachments: () => undefined,
+        runtimeSessionId: null,
+        setRuntimeSessionId: () => undefined,
+        replyToMessageId: null,
+        setReplyToMessageId: () => undefined,
+        activeConversationId: selected,
+        activeConversation: null,
+        // Selecting the conversation re-renders with it, as the app does.
+        loadMessagingInbox: async (preferred) => {
+          selected = preferred ?? null;
+          root.render(<Harness />);
+        },
+        registerReset: () => undefined
+      });
+      sendChatDraft = api.sendChatDraft;
+      return null;
+    }
+    await act(async () => {
+      root = createRoot(host);
+      root.render(<Harness />);
+    });
+    // Outside act: the send waits for the app to render the newly selected conversation, which
+    // act would hold back until the send itself finished.
+    (
+      globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT = false;
+    try {
+      await sendChatDraft!("Add 5 bags of sugar to stock");
+    } finally {
+      (
+        globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
+      ).IS_REACT_ACT_ENVIRONMENT = true;
+    }
+
+    // The user's message, sent once, to the conversation the URL named (the client also persists
+    // the agent's reply there).
+    expect(
+      posted
+        .filter((payload) => (payload as { author?: string }).author !== "agent")
+        .map((payload) => payload.conversationId)
+    ).toEqual(["conversation-1"]);
+    expect(statusMessages).toContain("Opening this chat…");
+    expect(statusMessages.some((message) => /still opening/u.test(message))).toBe(false);
+    window.history.replaceState(null, "", "/");
+  });
+
+  it("keeps what was typed while the send waited for the chat to open", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const path = new URL(String(input), "http://localhost").pathname;
+        if (path === "/v1/messages") {
+          posted.push(JSON.parse(String((init as RequestInit | undefined)?.body ?? "{}")));
+          return jsonResponse({
+            id: "server-1",
+            conversationId: "conversation-1",
+            clientMessageId: "x",
+            author: "account",
+            authorId: "user-1",
+            content: { type: "text", text: "Add 5 bags of sugar to stock" }
+          });
+        }
+        return jsonResponse({});
+      })
+    );
+    let messages: Array<{
+      id: string;
+      body: string;
+      status?: string;
+      deviceOnlyIn?: string | null;
+    }> = [];
+    const statusMessages: string[] = [];
+    const drafts: string[] = [];
+    const posted: Array<{ conversationId?: string }> = [];
+    let selected: string | null = null;
+    let typedMeanwhile = "";
+    let openedAt = -1;
+    window.history.replaceState(null, "", "/workspace/conversations/conversation-1");
+    let sendChatDraft: ((draft?: string) => Promise<void>) | null = null;
+    function Harness() {
+      const api = useChatRuntimeState({
+        business: business(),
+        mode: "seller",
+        session: session(),
+        authBootstrapState: "authenticated",
+        ensureAuthenticatedSession: async () => session(),
+        rejectDefinitiveAuthenticationFailure: () => false,
+        agentSettings: agentSettings(),
+        setStatusMessage: (message) => statusMessages.push(message),
+        navigateToView: () => undefined,
+        requireMessagingSignIn: () => undefined,
+        loadProducts: async () => undefined,
+        loadSuppliers: async () => undefined,
+        loadCustomers: async () => undefined,
+        loadInvoices: async () => undefined,
+        loadReports: async () => undefined,
+        loadNotifications: async () => undefined,
+        loadRuntimeSessions: async () => undefined,
+        createManagedRuntimeSession: async () => "runtime-session-1",
+        ensureRuntimeSession: async () => "runtime-session-1",
+        loadDocumentImports: async () => undefined,
+        chatMessages: [],
+        setChatMessages: (next) => {
+          messages = typeof next === "function" ? next(messages as never) : (next as never);
+        },
+        chatDraft: typedMeanwhile,
+        setChatDraft: (draft) => drafts.push(draft),
+        pendingAttachments: [],
+        setPendingAttachments: () => undefined,
+        runtimeSessionId: null,
+        setRuntimeSessionId: () => undefined,
+        replyToMessageId: null,
+        setReplyToMessageId: () => undefined,
+        activeConversationId: selected,
+        activeConversation: null,
+        // Selecting the conversation re-renders with it, as the app does.
+        loadMessagingInbox: async (preferred) => {
+          selected = preferred ?? null;
+          typedMeanwhile = "Also 2 bags of rice";
+          openedAt = drafts.length;
+          root.render(<Harness />);
+        },
+        registerReset: () => undefined
+      });
+      sendChatDraft = api.sendChatDraft;
+      return null;
+    }
+    await act(async () => {
+      root = createRoot(host);
+      root.render(<Harness />);
+    });
+    // Outside act: the send waits for the app to render the newly selected conversation, which
+    // act would hold back until the send itself finished.
+    (
+      globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT = false;
+    try {
+      await sendChatDraft!("Add 5 bags of sugar to stock");
+    } finally {
+      (
+        globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
+      ).IS_REACT_ACT_ENVIRONMENT = true;
+    }
+
+    // Sent once, and the box was not cleared: it now holds something else.
+    expect(
+      posted.filter((payload) => (payload as { author?: string }).author !== "agent")
+    ).toHaveLength(1);
+    // After the chat opened, the retried send did not wipe what was typed meanwhile.
+    expect(openedAt).toBeGreaterThanOrEqual(0);
+    expect(drafts.slice(openedAt)).not.toContain("");
+    window.history.replaceState(null, "", "/");
+  });
+
+  it("waits out the backoff before rerunning an agent turn that failed after the message was saved", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const path = new URL(String(input), "http://localhost").pathname;
+        if (path === "/v1/messages")
+          return jsonResponse({
+            id: "saved-1",
+            conversationId: "conversation-1",
+            clientMessageId: "saved-client",
+            author: "account",
+            authorId: "user-1",
+            content: { type: "text", text: "Add 5 bags of sugar to stock" },
+            processing: { status: "failed", errorCode: "MODEL_PROVIDER_TIMEOUT" }
+          });
+        return jsonResponse({});
+      })
+    );
+    let messages: Array<{
+      id: string;
+      body: string;
+      status?: string;
+      deviceOnlyIn?: string | null;
+    }> = [];
+    const statusMessages: string[] = [];
+    let sendChatDraft: ((draft?: string) => Promise<void>) | null = null;
+    function Harness() {
+      const api = useChatRuntimeState({
+        business: business(),
+        mode: "seller",
+        session: session(),
+        authBootstrapState: "authenticated",
+        ensureAuthenticatedSession: async () => session(),
+        rejectDefinitiveAuthenticationFailure: () => false,
+        agentSettings: agentSettings(),
+        setStatusMessage: (message) => statusMessages.push(message),
+        navigateToView: () => undefined,
+        requireMessagingSignIn: () => undefined,
+        loadProducts: async () => undefined,
+        loadSuppliers: async () => undefined,
+        loadCustomers: async () => undefined,
+        loadInvoices: async () => undefined,
+        loadReports: async () => undefined,
+        loadNotifications: async () => undefined,
+        loadRuntimeSessions: async () => undefined,
+        createManagedRuntimeSession: async () => "runtime-session-1",
+        ensureRuntimeSession: async () => "runtime-session-1",
+        loadDocumentImports: async () => undefined,
+        chatMessages: [],
+        setChatMessages: (next) => {
+          messages = typeof next === "function" ? next(messages as never) : (next as never);
+        },
+        chatDraft: "",
+        setChatDraft: () => undefined,
+        pendingAttachments: [],
+        setPendingAttachments: () => undefined,
+        runtimeSessionId: null,
+        setRuntimeSessionId: () => undefined,
+        replyToMessageId: null,
+        setReplyToMessageId: () => undefined,
+        activeConversationId: "conversation-1",
+        activeConversation: null,
+        loadMessagingInbox: async () => undefined,
+        registerReset: () => undefined
+      });
+      sendChatDraft = api.sendChatDraft;
+      return null;
+    }
+    await act(async () => {
+      root = createRoot(host);
+      root.render(<Harness />);
+    });
+    await act(async () => {
+      await sendChatDraft!("Add 5 bags of sugar to stock");
+    });
+
+    const [entry] = readMessagingOutbox("account-1");
+    expect(entry).toMatchObject({ attempts: 0 });
+    // Not due at once: the next 4-second refresh must not rerun a paid model turn.
+    expect(entry!.nextAttemptAt).toBeGreaterThan(Date.now() + 10_000);
+  });
+
+  it("sends nothing past an earlier message still waiting in the same conversation", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const path = new URL(String(input), "http://localhost").pathname;
+        if (path === "/v1/messages") throw new Error("must not post past a waiting message");
+        return jsonResponse({});
+      })
+    );
+    let messages: Array<{
+      id: string;
+      body: string;
+      status?: string;
+      deviceOnlyIn?: string | null;
+    }> = [];
+    const statusMessages: string[] = [];
+    let sendChatDraft: ((draft?: string) => Promise<void>) | null = null;
+    function Harness() {
+      const api = useChatRuntimeState({
+        business: business(),
+        mode: "seller",
+        session: session(),
+        authBootstrapState: "authenticated",
+        ensureAuthenticatedSession: async () => session(),
+        rejectDefinitiveAuthenticationFailure: () => false,
+        agentSettings: agentSettings(),
+        setStatusMessage: (message) => statusMessages.push(message),
+        navigateToView: () => undefined,
+        requireMessagingSignIn: () => undefined,
+        loadProducts: async () => undefined,
+        loadSuppliers: async () => undefined,
+        loadCustomers: async () => undefined,
+        loadInvoices: async () => undefined,
+        loadReports: async () => undefined,
+        loadNotifications: async () => undefined,
+        loadRuntimeSessions: async () => undefined,
+        createManagedRuntimeSession: async () => "runtime-session-1",
+        ensureRuntimeSession: async () => "runtime-session-1",
+        loadDocumentImports: async () => undefined,
+        chatMessages: [],
+        setChatMessages: (next) => {
+          messages = typeof next === "function" ? next(messages as never) : (next as never);
+        },
+        chatDraft: "",
+        setChatDraft: () => undefined,
+        pendingAttachments: [],
+        setPendingAttachments: () => undefined,
+        runtimeSessionId: null,
+        setRuntimeSessionId: () => undefined,
+        replyToMessageId: null,
+        setReplyToMessageId: () => undefined,
+        activeConversationId: "conversation-1",
+        activeConversation: null,
+        loadMessagingInbox: async () => undefined,
+        registerReset: () => undefined
+      });
+      sendChatDraft = api.sendChatDraft;
+      return null;
+    }
+    queueMessagingOutbox({
+      accountId: "account-1",
+      clientMessageId: "earlier-message",
+      payload: { conversationId: "conversation-1", clientMessageId: "earlier-message" },
+      attempts: 1,
+      nextAttemptAt: Date.now() + 60_000
+    });
+    await act(async () => {
+      root = createRoot(host);
+      root.render(<Harness />);
+    });
+    await act(async () => {
+      await sendChatDraft!("Add 5 bags of sugar to stock");
+    });
+
+    const sent = messages.find((message) => message.body === "Add 5 bags of sugar to stock");
+    expect(sent).toMatchObject({ status: "queued", outboxState: "retrying" });
+    // Behind the earlier one: the resend pass sends them in the order they were typed.
+    expect(readMessagingOutbox("account-1").map((entry) => entry.clientMessageId)).toEqual([
+      "earlier-message",
+      sent!.id
+    ]);
+    expect(statusMessages).toContain(
+      "This message will send right after your earlier one, which is still waiting."
+    );
   });
 });

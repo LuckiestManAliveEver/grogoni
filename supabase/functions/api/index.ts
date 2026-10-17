@@ -64,6 +64,7 @@ let lastTransactionFailure: {
   stage: string;
   category: string;
   code: string | null;
+  table: string | null;
 } | null = null;
 const transaction: Transaction = async (action) => {
   let client: pg.PoolClient | undefined;
@@ -102,7 +103,11 @@ function recordTransactionFailure(stage: string, error: unknown) {
       error instanceof Error && /timeout|timed out/i.test(error.message)
         ? "timeout"
         : "database_failure",
-    code: typeof error === "object" && error !== null && "code" in error ? String(error.code) : null
+    code:
+      typeof error === "object" && error !== null && "code" in error ? String(error.code) : null,
+    // Which normalized table a concurrent-update conflict (40001) hit; null otherwise.
+    table:
+      typeof error === "object" && error !== null && "table" in error ? String(error.table) : null
   };
   console.error(JSON.stringify({ event: "edge_transaction_failed", ...lastTransactionFailure }));
 }

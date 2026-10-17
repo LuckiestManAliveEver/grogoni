@@ -52,6 +52,8 @@ import { useRuntimeHistoryState } from "./hooks/useRuntimeHistoryState";
 import { useStorefrontCareState } from "./hooks/useStorefrontCareState";
 import { useNetworkState } from "./hooks/useNetworkState";
 import { stopDaemonLane, useDaemonLane } from "./hooks/useDaemonLane";
+import { useSessionContextLoading } from "./hooks/useSessionContextLoading";
+import { useMessagingOutboxCount } from "./hooks/useMessagingOutboxCount";
 import { useProductsState } from "./hooks/useProductsState";
 import { useSyncState } from "./hooks/useSyncState";
 import { usePaymentsState } from "./hooks/usePaymentsState";
@@ -223,7 +225,7 @@ export function OwnerApp() {
     }),
     [session, grogoniSessionContext, business, agentSettings, view, mode]
   );
-  const { hasPending, isPending, runAction } = useAsyncActions();
+  const { hasPending, isPending, isRunning, runAction } = useAsyncActions();
   const domainResetRegistry = useDomainResetRegistry();
   const { allRefreshers, registerRefresh, refreshersFor } = useViewRefreshRegistry();
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
@@ -413,6 +415,7 @@ export function OwnerApp() {
     browseAsGuest,
     switchMode,
     openShopHub,
+    openShopOrBrowse,
     closeShopHub,
     updateShopPresenceStatus
   } = useNavigationState({
@@ -438,6 +441,11 @@ export function OwnerApp() {
     getBusinessSetupSetters: () => ({ setIsBusinessSetupOpen, setBusinessSetupStep }),
     getChatSetters: () => ({ setIsMessagingInboxOpen, setChatMessages }),
     getContinueToGrogoni: () => continueToGrogoni,
+    sessionContextLoaded: grogoniSessionContext !== null,
+    getSessionContextLoad: () => ({
+      loaded: grogoniSessionContext !== null,
+      retry: sessionContextRetry.retry
+    }),
     registerReset: domainResetRegistry.registerReset
   });
   // useMarketplaceState is called after useNavigationState (completeMarketplaceIntro/
@@ -708,6 +716,8 @@ export function OwnerApp() {
     applySessionContextForConversation,
     requireMessagingSignIn,
     chatMessages,
+    chatDraft,
+    isSendInFlight: () => isRunning("chat-send"),
     setChatMessages,
     setChatDraft,
     setReplyToMessageId,
@@ -856,33 +866,23 @@ export function OwnerApp() {
     setConnectivityAuthentication(session !== null);
   }, [session]);
 
-  // The account's session context (its shops, last mode and surface) applies once per sign-in
-  // (session-context-retry.ts). A load that failed (offline, server down) used to stay failed until
-  // a reload, keeping a stale stored shop, which for a device session also hid Log in
-  // (showsSignInEntry). It now retries when the device comes back online or the app is shown
-  // again, and never re-runs once any load in this sign-in has applied. A retry only refreshes
-  // data (it never moves the user: they may have navigated since).
-  useEffect(() => {
-    if (session === null) {
-      sessionContextRetry.track(null);
-      setGrogoniSessionContext(null);
-      return;
-    }
-    // The retry decides restore (first load of the sign-in) versus refresh (data-only retry).
-    sessionContextRetry.track(session.account.id, (shouldApply, apply) =>
-      loadGrogoniSessionContext(setActiveConversationId, shouldApply, apply)
-    );
-
-    function retryWhenVisible() {
-      if (document.visibilityState === "visible") sessionContextRetry.retry();
-    }
-    window.addEventListener("online", sessionContextRetry.retry);
-    document.addEventListener("visibilitychange", retryWhenVisible);
-    return () => {
-      window.removeEventListener("online", sessionContextRetry.retry);
-      document.removeEventListener("visibilitychange", retryWhenVisible);
-    };
-  }, [session?.account.id]);
+  const queuedMessageCount = useMessagingOutboxCount(
+    session?.account.id ?? null,
+    activeConversationId
+  );
+  // The menu's "Browse" and a swipe right on the chat for someone without a shop.
+  function browseShops() {
+    if (mode !== "marketplace") switchMode("marketplace");
+    if (view !== "chat" && view !== "home") returnToChat();
+    setIsMarketplaceShortcutOpen(true);
+  }
+  useSessionContextLoading({
+    accountId: session?.account.id ?? null,
+    retry: sessionContextRetry,
+    load: (shouldApply, apply) =>
+      loadGrogoniSessionContext(setActiveConversationId, shouldApply, apply),
+    clear: () => setGrogoniSessionContext(null)
+  });
 
   useEffect(() => {
     if (session === null || grogoniSessionContext === null) return;
@@ -1092,6 +1092,7 @@ export function OwnerApp() {
     if (session === null || e2eeIdentity === null) return;
     let cancelled = false;
     const refresh = async () => {
+      void retryQueuedMessages({ automatic: true });
       const notificationConversationId = new URLSearchParams(window.location.search).get(
         "conversation"
       );
@@ -1115,7 +1116,7 @@ export function OwnerApp() {
     void refresh();
     const interval = window.setInterval(() => void refresh(), 4_000);
     const onOnline = () => {
-      void retryQueuedMessages();
+      void retryQueuedMessages({ reconnect: true });
       void refresh();
     };
     const onServiceWorkerMessage = (event: MessageEvent<unknown>) => {
@@ -1681,9 +1682,7 @@ export function OwnerApp() {
               onClose={() => setIsMenuDrawerOpen(false)}
               onBrowse={() => {
                 setIsMenuDrawerOpen(false);
-                if (mode !== "marketplace") switchMode("marketplace");
-                if (view !== "chat" && view !== "home") returnToChat();
-                setIsMarketplaceShortcutOpen(true);
+                browseShops();
               }}
               onMessageHistory={() => {
                 setIsMenuDrawerOpen(false);
@@ -2024,6 +2023,8 @@ export function OwnerApp() {
                   void runAction("message-forward", () => forwardMessage(messageId, conversationId))
                 }
                 onRetryMessages={() => void runAction("message-retry", retryQueuedMessages)}
+                queuedMessageCount={queuedMessageCount}
+                onOpenShop={() => openShopOrBrowse(browseShops)}
                 onCloseWorkspace={closeShopHub}
                 onOpenWorkspace={openShopHub}
                 onNavigate={navigateToView}

@@ -3,10 +3,7 @@ import { Fragment, Suspense, lazy, useEffect, useRef, useState } from "react";
 import type { CountryCode } from "libphonenumber-js";
 import type { Scope } from "@grogoni/offline-runtime";
 
-import type {
-  ConversationMessageContent,
-  MessageDeliveryAttemptSummary
-} from "@grogoni/shared-types";
+import type { ConversationMessageContent } from "@grogoni/shared-types";
 
 import { readStableDeviceId } from "./lib/api";
 
@@ -18,22 +15,25 @@ import { RuntimeConfirmationButtons } from "./RuntimeConfirmationButtons";
 import { useOwnerCore } from "./hooks/OwnerCoreContext";
 import { useChatComposerState } from "./hooks/useChatComposerState";
 import { useCompactViewport } from "./hooks/useCompactViewport";
+import { useSwipeNavigation } from "./hooks/useSwipeNavigation";
+import { chatSwipeEnabled } from "./swipe-navigation";
 import { ChatComposer } from "./ChatComposer";
+import { readCurrentOwnerRoute } from "./browser-navigation";
 import { ConversationAttachmentCard } from "./ConversationAttachmentCard";
 import { ConversationListPanel } from "./ConversationListPanel";
 
 import { SmsHandoffDialog } from "./grogoni-application-shared";
 import { renderGeneratedSurface } from "./generated-surface-registry";
 
-import { getJson } from "./api-helpers";
 import { formatFileSize, formatMessageTime } from "./formatters";
 
 import { viewLabel } from "./agent-command-engine";
 import {
-  conversationMessageText,
-  isRedundantAgentErrorMessage,
-  getErrorMessage
-} from "./chat-message-plumbing";
+  MessageDeliveryMeta,
+  WaitingMessagesButton,
+  useDeliveryAttempts
+} from "./MessageDeliveryMeta";
+import { conversationMessageText, isRedundantAgentErrorMessage } from "./chat-message-plumbing";
 
 import { ShopPresenceButtons } from "./ShopPresenceButtons";
 
@@ -155,6 +155,8 @@ export function ChatSurface({
   onAgentFeedback,
   onForwardMessage,
   onRetryMessages,
+  queuedMessageCount,
+  onOpenShop,
   onNavigate,
   onOpenWorkspace,
   onModeChange,
@@ -205,6 +207,7 @@ export function ChatSurface({
 
   const isCompactViewport = useCompactViewport();
   const messageListRef = useRef<HTMLDivElement | null>(null);
+  const chatSurfaceRef = useRef<HTMLDivElement | null>(null);
   const defaultMessageWindow = useRef(detectCapabilitySettings().messageWindowSize).current;
   const [messageWindowSize, setMessageWindowSize] = useState(defaultMessageWindow);
   const [inboxSearch, setInboxSearch] = useState("");
@@ -217,37 +220,7 @@ export function ChatSurface({
   const [deletingConversationId, setDeletingConversationId] = useState<string | null>(null);
   const [isRecycleBinOpen, setIsRecycleBinOpen] = useState(false);
   const [activeMessageMenuId, setActiveMessageMenuId] = useState<string | null>(null);
-  const [openDeliveryAttemptsMessageId, setOpenDeliveryAttemptsMessageId] = useState<string | null>(
-    null
-  );
-  const [deliveryAttemptsByMessage, setDeliveryAttemptsByMessage] = useState<
-    Record<string, MessageDeliveryAttemptSummary[]>
-  >({});
-  const [deliveryAttemptsLoading, setDeliveryAttemptsLoading] = useState<string | null>(null);
-  const [deliveryAttemptsError, setDeliveryAttemptsError] = useState<string | null>(null);
-
-  async function toggleDeliveryAttempts(messageId: string) {
-    if (openDeliveryAttemptsMessageId === messageId) {
-      setOpenDeliveryAttemptsMessageId(null);
-      return;
-    }
-    setOpenDeliveryAttemptsMessageId(messageId);
-    if (activeConversationId === null || deliveryAttemptsByMessage[messageId] !== undefined) return;
-    setDeliveryAttemptsLoading(messageId);
-    setDeliveryAttemptsError(null);
-    try {
-      const response = await getJson<{ attempts: MessageDeliveryAttemptSummary[] }>(
-        `/v1/conversations/${encodeURIComponent(activeConversationId)}/messages/${encodeURIComponent(
-          messageId
-        )}/delivery-attempts`
-      );
-      setDeliveryAttemptsByMessage((current) => ({ ...current, [messageId]: response.attempts }));
-    } catch (error) {
-      setDeliveryAttemptsError(getErrorMessage(error));
-    } finally {
-      setDeliveryAttemptsLoading(null);
-    }
-  }
+  const deliveryAttempts = useDeliveryAttempts(activeConversationId);
   const [forwardingMessageId, setForwardingMessageId] = useState<string | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editingMessageText, setEditingMessageText] = useState("");
@@ -434,8 +407,30 @@ export function ChatSurface({
     (message) => !isHomeConversation || message.id !== "welcome"
   );
 
+  useSwipeNavigation(chatSurfaceRef, {
+    enabled: chatSwipeEnabled({
+      moduleOpen: activeModuleView !== null,
+      workspaceOpen,
+      inboxCoversChat: isCompactViewport && isInboxOpen,
+      overlays: [
+        marketplaceShortcutOpen,
+        isRecycleBinOpen,
+        isNewSessionOpen,
+        smsHandoffRequest !== null,
+        forwardingMessageId !== null,
+        activeMessageMenuId !== null,
+        editingMessageId !== null
+      ]
+    }),
+    onSwipeLeft: () => onNavigate("network"),
+    onSwipeRight: onOpenShop
+  });
+
   return (
-    <div className={`chat-surface ${showMessageThread && isInboxOpen ? "inbox-open" : ""}`}>
+    <div
+      ref={chatSurfaceRef}
+      className={`chat-surface ${showMessageThread && isInboxOpen ? "inbox-open" : ""}`}
+    >
       {showMessageThread ? (
         isCompactViewport ? (
           <StackedModule
@@ -520,9 +515,7 @@ export function ChatSurface({
               </small>
             </div>
             {!showBlankSessionState ? (
-              <button className="secondary" type="button" onClick={onRetryMessages}>
-                Retry failed
-              </button>
+              <WaitingMessagesButton count={queuedMessageCount} onSend={onRetryMessages} />
             ) : null}
           </header>
         ) : null}
@@ -630,45 +623,7 @@ export function ChatSurface({
                     ))}
                   </div>
                 ) : null}
-                <div className="message-meta">
-                  {message.createdAt ? (
-                    <time dateTime={message.createdAt}>{formatMessageTime(message.createdAt)}</time>
-                  ) : null}
-                  {message.editedAt ? <span>edited</span> : null}
-                  {message.author === "merchant" && message.status ? (
-                    <span>{message.status}</span>
-                  ) : null}
-                  {message.author === "merchant" && !message.id.startsWith("welcome") ? (
-                    <button type="button" onClick={() => void toggleDeliveryAttempts(message.id)}>
-                      {openDeliveryAttemptsMessageId === message.id
-                        ? "Hide delivery attempts"
-                        : "Delivery attempts"}
-                    </button>
-                  ) : null}
-                </div>
-                {openDeliveryAttemptsMessageId === message.id ? (
-                  <div className="message-context" aria-label="Delivery attempts">
-                    {deliveryAttemptsLoading === message.id ? (
-                      <small>Loading delivery attempts…</small>
-                    ) : deliveryAttemptsError !== null &&
-                      deliveryAttemptsByMessage[message.id] === undefined ? (
-                      <small>{deliveryAttemptsError}</small>
-                    ) : (deliveryAttemptsByMessage[message.id] ?? []).length === 0 ? (
-                      <small>No delivery attempts recorded for this message.</small>
-                    ) : (
-                      (deliveryAttemptsByMessage[message.id] ?? []).map((attempt) => (
-                        <small key={attempt.id}>
-                          #{attempt.attemptNumber} · {attempt.channel} via {attempt.provider} ·{" "}
-                          {attempt.result.replace(/_/gu, " ")}
-                          {attempt.normalizedFailureCode
-                            ? ` (${attempt.normalizedFailureCode})`
-                            : ""}{" "}
-                          · {formatMessageTime(attempt.requestedAt)}
-                        </small>
-                      ))
-                    )}
-                  </div>
-                ) : null}
+                <MessageDeliveryMeta message={message} attempts={deliveryAttempts} />
                 {message.reactions?.length ? (
                   <div className="message-reactions" aria-label="Reactions">
                     {message.reactions.map((reaction) => (
@@ -676,7 +631,9 @@ export function ChatSurface({
                     ))}
                   </div>
                 ) : null}
-                {!message.deletedAt && !message.id.startsWith("welcome") ? (
+                {!message.deletedAt &&
+                message.deviceOnlyIn === undefined &&
+                !message.id.startsWith("welcome") ? (
                   <div className="message-actions">
                     <button type="button" onClick={() => onReply(message.id)}>
                       Reply
@@ -1086,6 +1043,9 @@ export function ChatSurface({
           isAuthenticated={isAuthenticated}
           isBrowserGenerating={isBrowserGenerating}
           isSending={isSending}
+          isOpening={
+            activeConversationId === null && readCurrentOwnerRoute()?.conversationId != null
+          }
           mode={mode}
           pendingAttachments={pendingAttachments}
           replyToMessageId={replyToMessageId}

@@ -21,17 +21,24 @@ interface UseBuyCartStateDeps {
 export function useBuyCartState(deps: UseBuyCartStateDeps) {
   const { runAction, setStatusMessage, buyCart, setBuyCart, setBuyFeed, setChatMessages } = deps;
 
-  async function handleSearchBuyFeed(query: string) {
-    await runAction("buy-search", async () => {
+  /** Runs the search and returns the feed, or null when the search failed. */
+  async function handleSearchBuyFeed(query: string): Promise<BuyFeedSummary | null> {
+    const search = async (): Promise<BuyFeedSummary | null> => {
       try {
-        const feed = await getJson<BuyFeedSummary>(
+        const result = await getJson<BuyFeedSummary>(
           `/buy/search?query=${encodeURIComponent(query)}`
         );
-        setBuyFeed(feed);
+        setBuyFeed(result);
+        return result;
       } catch (error) {
         setStatusMessage(getErrorMessage(error));
+        return null;
       }
-    });
+    };
+    const feed = await runAction("buy-search", search);
+    // undefined: another search (the marketplace sheet's) is running. That is not a failure, so
+    // this one runs on its own rather than telling the buyer to check their connection.
+    return feed === undefined ? search() : feed;
   }
 
   function handleAddToCart(result: BuyResultSummary) {

@@ -60,6 +60,21 @@ export interface ChatMessage {
   replyToMessageId?: string | null;
   forwardedFromMessageId?: string | null;
   reactions?: Array<{ emoji: string; actorId: string }>;
+  /** The sender's own id for a server message (the id it had while queued on this device). */
+  clientMessageId?: string;
+  /**
+   * Exists on this device only: a buyer's marketplace search and its answer (never sent), or a
+   * message waiting in the outbox (until it is resent). The value is the conversation it was
+   * shown in (null: none open); see chat-device-only-messages.ts.
+   */
+  deviceOnlyIn?: string | null;
+  /** The message a device-only one followed when it was created; places it on every refresh. */
+  deviceOnlyAfter?: string | null;
+  /**
+   * For a message in the outbox: "retrying" (resent automatically), "stopped" (automatic resends
+   * used up; the resend control still works), or "rejected" (the server refused it for good).
+   */
+  outboxState?: "retrying" | "stopped" | "rejected";
 }
 
 export interface ChatAttachment {

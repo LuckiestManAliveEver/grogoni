@@ -2,6 +2,7 @@ import { useState, type Dispatch, type SetStateAction } from "react";
 
 import type { CountryCode } from "libphonenumber-js";
 import type {
+  AccountShopSummary,
   ConversationInboxItem,
   ConversationMessageSummary,
   ConversationView
@@ -14,6 +15,7 @@ import { getJson, postJson, putJson } from "../api-helpers";
 import { getCountryDialCode } from "../country-dial-codes";
 import { normalizeOwnerPhoneInput } from "../phone-identity";
 import { createDefaultAgent, readStoredOwnerAuth } from "../owner-app-bootstrap";
+import { ownedShop } from "../stored-shop";
 import {
   activeAgentStorageKey,
   activeBusinessStorageKey,
@@ -151,33 +153,53 @@ export function useBusinessSetupState(deps: UseBusinessSetupStateDeps) {
         shopPhoneNumber,
         selectedPhoneCountry.countryCode
       );
-      const response = await postJson<BusinessResponse>("/businesses", {
-        name: businessName.trim(),
-        language,
-        phoneNumber: normalizedPhone,
-        phoneCountry: selectedPhoneCountry.countryCode
-      });
-      const nextBusiness = {
-        ...response.business,
-        role: response.membership.role
-      };
-      const nextAgent = createDefaultAgent(nextBusiness);
-      deps.setBusiness(nextBusiness);
-      deps.setAgentSettings(nextAgent);
-      setIsBusinessSetupOpen(false);
-      deps.setMode("seller");
-      navigateToOwnerRoute({ mode: "seller", view: "chat" }, { replace: true });
-      localStorage.setItem(activeBusinessStorageKey, JSON.stringify(nextBusiness));
-      localStorage.removeItem(legacyActiveBusinessStorageKey);
-      localStorage.setItem(activeAgentStorageKey, JSON.stringify(nextAgent));
-      localStorage.removeItem(setupDraftStorageKey);
-      await deps.refreshSession();
-      await createInitialOwnerControlsMessage(nextBusiness.id);
-      deps.setView("chat");
+      let response: BusinessResponse;
+      try {
+        response = await postJson<BusinessResponse>("/businesses", {
+          name: businessName.trim(),
+          language,
+          phoneNumber: normalizedPhone,
+          phoneCountry: selectedPhoneCountry.countryCode
+        });
+      } catch (error) {
+        if ((error as { code?: unknown } | null)?.code !== "store_already_registered") throw error;
+        // This account already owns a shop (made on another device, or the first create's reply
+        // was lost). Open that shop instead of leaving the person on an error.
+        const shops = await getJson<{ shops: AccountShopSummary[] }>("/v1/shops").catch(() => null);
+        if (shops === null) {
+          setIsBusinessSetupOpen(false);
+          deps.setStatusMessage(
+            "This account already has a shop, but it could not be opened just now. Check your connection, then tap Sell again."
+          );
+          return;
+        }
+        const existing = ownedShop(shops.shops);
+        if (existing === null) throw error;
+        await openCreatedBusiness(existing, false);
+        deps.setStatusMessage(`You already have a shop, ${existing.name}. Opened it.`);
+        return;
+      }
+      await openCreatedBusiness({ ...response.business, role: response.membership.role }, true);
       deps.setStatusMessage("Business ready. Seller controls are now active.");
     } catch (error) {
       deps.setStatusMessage(getErrorMessage(error));
     }
+  }
+
+  async function openCreatedBusiness(nextBusiness: ActiveBusiness, isNew: boolean) {
+    const nextAgent = createDefaultAgent(nextBusiness);
+    deps.setBusiness(nextBusiness);
+    deps.setAgentSettings(nextAgent);
+    setIsBusinessSetupOpen(false);
+    deps.setMode("seller");
+    navigateToOwnerRoute({ mode: "seller", view: "chat" }, { replace: true });
+    localStorage.setItem(activeBusinessStorageKey, JSON.stringify(nextBusiness));
+    localStorage.removeItem(legacyActiveBusinessStorageKey);
+    localStorage.setItem(activeAgentStorageKey, JSON.stringify(nextAgent));
+    localStorage.removeItem(setupDraftStorageKey);
+    await deps.refreshSession();
+    if (isNew) await createInitialOwnerControlsMessage(nextBusiness.id);
+    deps.setView("chat");
   }
 
   deps.registerReset("business-setup", () => {

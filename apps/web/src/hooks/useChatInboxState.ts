@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { currentOfflineScope, getOfflineState } from "../offline-runtime";
 import { handoffChatMessages } from "../runtime-handoff";
 
@@ -20,7 +20,14 @@ import {
   type ShellView,
   type GrogoniMode
 } from "../app-shell";
-import { navigateToOwnerRoute } from "../browser-navigation";
+import { navigateToOwnerRoute, readCurrentOwnerRoute } from "../browser-navigation";
+import {
+  forgetDeliveredDeviceOnlyMessages,
+  keepDeviceOnlyMessages,
+  outboxPlaceholders,
+  readDeviceOnlyMessages,
+  updateDeviceOnlyMessage
+} from "../chat-device-only-messages";
 import { chatMessagesEqual } from "../chat-messages-equal";
 import {
   agentProcessingFailureMessage,
@@ -38,7 +45,13 @@ import {
 } from "../chat-message-plumbing";
 import { decryptDirectMessage, encryptDirectMessage, type E2eeIdentity } from "../e2ee";
 import { isRetryableApiRequestError } from "../lib/api";
-import { readMessagingOutbox, removeMessagingOutboxEntry } from "../messaging/outbox";
+import {
+  outboxEntryDue,
+  type MessagingOutboxEntry,
+  readMessagingOutbox,
+  recordMessagingOutboxAttempt,
+  removeMessagingOutboxEntry
+} from "../messaging/outbox";
 import { replaceActorReaction, replaceMessageReactions } from "../optimistic-message-reactions";
 import type {
   ActiveBusiness,
@@ -56,19 +69,51 @@ interface UseChatInboxStateDeps {
   applySessionContextForConversation: (conversationId: string) => Promise<GrogoniMode | null>;
   requireMessagingSignIn: () => void;
   chatMessages: ChatMessage[];
+  chatDraft: string;
+  /**
+   * Whether this tab's own send is running. Its agent turn holds the account's write lock on the
+   * server, so a read marker sent meanwhile would wait for it and time out.
+   */
+  isSendInFlight?: () => boolean;
   setChatMessages: (messages: ChatMessage[] | ((current: ChatMessage[]) => ChatMessage[])) => void;
-  setChatDraft: (draft: string) => void;
+  setChatDraft: Dispatch<SetStateAction<string>>;
   setReplyToMessageId: (messageId: string | null) => void;
   registerReset: (domainKey: string, fn: () => void) => void;
 }
 
+/** Whether this account has messages from someone else it has not read, as the server counts it. */
+export function hasUnreadForMe(view: ConversationView, session: SessionResponse): boolean {
+  const me = view.participants.find(
+    (participant) => participant.role === "account" && participant.accountId === session.account.id
+  );
+  const lastRead = me?.lastReadAt == null ? Number.NEGATIVE_INFINITY : Date.parse(me.lastReadAt);
+  return view.messages.some(
+    (message) =>
+      message.authorId !== session.user.id &&
+      message.deletedAt == null &&
+      (!message.readAt || Date.parse(message.createdAt) > lastRead)
+  );
+}
+
+type OutboxPass = "automatic" | "reconnect" | "manual";
+
 export function useChatInboxState(deps: UseChatInboxStateDeps) {
+  const outboxRetryRunning = useRef(false);
   const [isMessagingInboxOpen, setIsMessagingInboxOpen] = useState(
     () => window.matchMedia("(min-width: 760px)").matches
   );
   const [conversationInbox, setConversationInbox] = useState<ConversationInboxItem[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [activeConversation, setActiveConversation] = useState<ConversationView | null>(null);
+  // Current values for work that outlives the render that started it (the outbox resend).
+  const activeConversationRef = useRef(activeConversation);
+  activeConversationRef.current = activeConversation;
+  const activeConversationIdRef = useRef(activeConversationId);
+  activeConversationIdRef.current = activeConversationId;
+  const chatMessagesRef = useRef(deps.chatMessages);
+  chatMessagesRef.current = deps.chatMessages;
+  const chatDraftRef = useRef(deps.chatDraft);
+  chatDraftRef.current = deps.chatDraft;
   const [isContactTyping, setIsContactTyping] = useState(false);
   const [recycleBin, setRecycleBin] = useState<RecycleBinStatusSummary | null>(null);
 
@@ -120,9 +165,22 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
         setActiveConversationId(selectedId);
         await loadConversationThread(selectedId);
       } else {
+        // The URL names a conversation this account cannot open (deleted, or someone else's):
+        // leave it, or the chat would show "Opening this chat…" with Send held forever.
+        const routed = readCurrentOwnerRoute();
+        if (
+          routed?.conversationId !== undefined &&
+          routed.conversationId === preferredConversationId
+        )
+          navigateToOwnerRoute({ mode: routed.mode, view: "chat" }, { replace: true });
         if (activeConversationId !== null) setActiveConversationId(null);
         if (activeConversation !== null) setActiveConversation(null);
-        if (chatMessages.length > 0) setChatMessages([]);
+        // No thread open: only device-only messages shown outside any thread remain.
+        const stored = readDeviceOnlyMessages(session.account.id);
+        setChatMessages((current) => {
+          const kept = keepDeviceOnlyMessages(current, [], null, stored);
+          return chatMessagesEqual(current, kept) ? current : kept;
+        });
       }
     } catch (error) {
       if (navigator.onLine) setStatusMessage(getErrorMessage(error));
@@ -168,11 +226,25 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
       mapped.length > 0
         ? mapped
         : createInitialChatMessages(conversationTitle(view, session.account.id));
-    setChatMessages((current) =>
-      chatMessagesEqual(current, nextMessages) ? current : nextMessages
-    );
+    const known = readDeviceOnlyMessages(session.account.id);
+    const stored = [
+      ...known,
+      ...outboxPlaceholders(readMessagingOutbox(session.account.id), conversationId, [
+        ...known,
+        ...chatMessagesRef.current
+      ])
+    ];
+    forgetDeliveredDeviceOnlyMessages(session.account.id, nextMessages);
+    setChatMessages((current) => {
+      const merged = keepDeviceOnlyMessages(current, nextMessages, conversationId, stored);
+      return chatMessagesEqual(current, merged) ? current : merged;
+    });
     if (document.visibilityState === "visible") {
-      await patchJson<ConversationView>(`/v1/conversations/${conversationId}`, { read: true });
+      // Only when this account has not read up to the newest message from someone else (the
+      // server's per-participant unread rule): this runs on every 4-second refresh, and a write
+      // each time contends with the conversation's real writes.
+      if (hasUnreadForMe(view, session) && !deps.isSendInFlight?.())
+        await patchJson<ConversationView>(`/v1/conversations/${conversationId}`, { read: true });
     } else {
       const newest = view.messages.at(-1);
       if (
@@ -543,50 +615,174 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
     recordMessageHandoff("platform_share_sheet", status, normalizedErrorCode);
   }
 
-  async function retryQueuedMessages() {
+  /**
+   * Resends the outbox, each conversation's messages in order. `automatic` (the foreground
+   * refresh) sends only messages due under their own backoff (outboxEntryDue: 15 s, 1 min, 4 min,
+   * then they stop), so a failing message is not rerun as a paid model turn forever; a message
+   * that stopped holds back only later messages in its own conversation. `reconnect` ignores the
+   * wait but still stops at the cap. A tap on the resend control sends everything at once. Never
+   * two passes at the same time, in this tab or across tabs (a Web Lock where the browser has
+   * one): a message would post twice.
+   */
+  async function retryQueuedMessages(options: { automatic?: boolean; reconnect?: boolean } = {}) {
+    const mode: OutboxPass = options.reconnect
+      ? "reconnect"
+      : options.automatic
+        ? "automatic"
+        : "manual";
     if (!navigator.onLine || session === null) return;
+    if (outboxRetryRunning.current) {
+      if (mode === "manual") setStatusMessage("Already sending your waiting messages.");
+      return;
+    }
     const accountId = session.account.id;
     const queued = readMessagingOutbox(accountId);
-    for (const entry of queued) {
+    if (queued.length === 0 || (mode !== "manual" && !queued.some((entry) => dueFor(entry, mode))))
+      return;
+    outboxRetryRunning.current = true;
+    try {
+      if (navigator.locks)
+        await navigator.locks.request(
+          `grogoni-outbox-resend:${accountId}`,
+          { ifAvailable: true },
+          async (lock) => {
+            if (lock) await resendQueuedMessages(accountId, mode);
+            else if (mode === "manual")
+              setStatusMessage("Your waiting messages are being sent from another tab.");
+          }
+        );
+      else await resendQueuedMessages(accountId, mode);
+    } finally {
+      outboxRetryRunning.current = false;
+    }
+  }
+
+  function dueFor(entry: MessagingOutboxEntry, mode: OutboxPass): boolean {
+    if (mode === "manual") return true;
+    return outboxEntryDue(entry, mode === "reconnect" ? Number.POSITIVE_INFINITY : Date.now());
+  }
+
+  function markQueuedMessage(
+    accountId: string,
+    clientMessageId: string,
+    patch: Partial<ChatMessage>
+  ) {
+    updateDeviceOnlyMessage(accountId, clientMessageId, patch);
+    setChatMessages((messages) =>
+      messages.map((message) =>
+        message.id === clientMessageId ? { ...message, ...patch } : message
+      )
+    );
+  }
+
+  async function resendQueuedMessages(accountId: string, mode: OutboxPass) {
+    // Conversations whose earlier message is still waiting: their later ones wait too.
+    const held = new Set<unknown>();
+    // Read under the lock: another tab may have sent some of these meanwhile.
+    for (const entry of readMessagingOutbox(accountId)) {
+      const conversationId = entry.payload.conversationId;
+      if (held.has(conversationId)) continue;
+      if (!dueFor(entry, mode)) {
+        held.add(conversationId);
+        continue;
+      }
       try {
         const sent = await postJson<ProcessedConversationMessageResponse>(
           "/v1/messages",
           entry.payload
         );
-        setChatMessages((messages) => {
-          const reconciled = messages.map((message) =>
-            (message.id === entry.clientMessageId || message.id === sent.id) &&
-            session !== null &&
-            activeConversation !== null
-              ? sent.content.type === "encrypted"
-                ? mergePersistedEncryptedMessage(message, sent)
-                : mapConversationMessage(sent, activeConversation.participants, session)
-              : message
-          );
-          if (
-            sent.agentMessage === undefined ||
-            session === null ||
-            activeConversation === null ||
-            reconciled.some((message) => message.id === sent.agentMessage?.id)
-          ) {
-            return reconciled;
-          }
-          return [
-            ...reconciled,
-            mapConversationMessage(sent.agentMessage, activeConversation.participants, session)
-          ];
-        });
+        reconcileResent(entry, sent);
         if (sent.processing?.status === "failed") {
           setStatusMessage(agentProcessingFailureMessage(sent.processing.errorCode));
-          break;
+          noteFailedResend(accountId, entry.clientMessageId);
+          held.add(conversationId);
+          continue;
         }
         removeMessagingOutboxEntry(accountId, entry.clientMessageId);
+        forgetDeliveredDeviceOnlyMessages(accountId, [
+          { id: sent.id, clientMessageId: entry.clientMessageId, author: "merchant", body: "" }
+        ]);
       } catch (error) {
-        if (isRetryableApiRequestError(error)) break;
+        if (isRetryableApiRequestError(error)) {
+          noteFailedResend(accountId, entry.clientMessageId);
+          // The server or the connection is struggling: the rest waits for the next pass.
+          break;
+        }
+        // Refused for good. Its text goes back to the composer when that is clean (this thread
+        // is open, nothing else is being typed, no attachments to lose); otherwise it stays in
+        // the thread marked "Not sent", where it can still be read and copied.
         removeMessagingOutboxEntry(accountId, entry.clientMessageId);
-        setStatusMessage(getErrorMessage(error));
+        const refused = chatMessagesRef.current.find(
+          (message) => message.id === entry.clientMessageId
+        );
+        if (
+          refused !== undefined &&
+          conversationId === activeConversationIdRef.current &&
+          (refused.attachments?.length ?? 0) === 0 &&
+          chatDraftRef.current.trim().length === 0
+        ) {
+          forgetDeliveredDeviceOnlyMessages(accountId, [
+            { id: entry.clientMessageId, author: "merchant", body: "" }
+          ]);
+          setChatMessages((messages) =>
+            messages.filter((message) => message.id !== entry.clientMessageId)
+          );
+          setChatDraft(refused.body);
+          setStatusMessage(
+            `Message not sent: ${getErrorMessage(error)} Its text is back in the message box.`
+          );
+        } else {
+          markQueuedMessage(accountId, entry.clientMessageId, { outboxState: "rejected" });
+          setStatusMessage(`Message not sent: ${getErrorMessage(error)}`);
+        }
       }
     }
+  }
+
+  /**
+   * Puts a resent message's server copy (and the agent's reply) on screen, only when its own
+   * conversation is the one open now. Read from refs: this runs from a 4-second interval created
+   * in an earlier render, whose closure still holds the conversation open back then.
+   */
+  function reconcileResent(
+    entry: MessagingOutboxEntry,
+    sent: ProcessedConversationMessageResponse
+  ) {
+    const open = activeConversationRef.current;
+    if (
+      session === null ||
+      open === null ||
+      entry.payload.conversationId !== activeConversationIdRef.current ||
+      entry.payload.conversationId !== open.conversation.id
+    )
+      return;
+    setChatMessages((messages) => {
+      const reconciled = messages.map((message) =>
+        message.id === entry.clientMessageId || message.id === sent.id
+          ? sent.content.type === "encrypted"
+            ? mergePersistedEncryptedMessage(message, sent)
+            : mapConversationMessage(sent, open.participants, session)
+          : message
+      );
+      if (
+        sent.agentMessage === undefined ||
+        reconciled.some((message) => message.id === sent.agentMessage?.id)
+      ) {
+        return reconciled;
+      }
+      // The reply goes right after the message it answers, not below later queued messages.
+      const reply = mapConversationMessage(sent.agentMessage, open.participants, session);
+      const answered = reconciled.findIndex((message) => message.id === sent.id);
+      return answered === -1
+        ? [...reconciled, reply]
+        : [...reconciled.slice(0, answered + 1), reply, ...reconciled.slice(answered + 1)];
+    });
+  }
+
+  function noteFailedResend(accountId: string, clientMessageId: string) {
+    const entry = recordMessagingOutboxAttempt(accountId, clientMessageId);
+    if (entry !== null && !outboxEntryDue(entry, Number.POSITIVE_INFINITY))
+      markQueuedMessage(accountId, clientMessageId, { outboxState: "stopped" });
   }
 
   async function submitAgentResponseFeedback(messageId: string, correct: boolean) {

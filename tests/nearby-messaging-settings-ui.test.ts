@@ -204,14 +204,19 @@ describe("Nearby device messaging (Settings)", () => {
         button("Send").click();
         await new Promise((resolve) => setTimeout(resolve, 30));
       });
-      expect(tx.writes.length).toBeGreaterThan(0);
-      expect(
-        (
-          document.querySelector(
-            'textarea[aria-label="Message the nearby device"]'
-          ) as HTMLTextAreaElement
-        ).value
-      ).toBe("");
+      // The write is asynchronous; a fixed sleep was too short under a loaded full-suite run.
+      await vi.waitFor(() => expect(tx.writes.length).toBeGreaterThan(0), { timeout: 5_000 });
+      await vi.waitFor(
+        () =>
+          expect(
+            (
+              document.querySelector(
+                'textarea[aria-label="Message the nearby device"]'
+              ) as HTMLTextAreaElement
+            ).value
+          ).toBe(""),
+        { timeout: 5_000 }
+      );
     } finally {
       await act(async () => {
         root.unmount();

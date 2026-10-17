@@ -324,6 +324,11 @@ export function PhoneFirstAuthentication({
   }
 
   const isCredentialEntry = stage === "entry" || stage === "password" || stage === "pin";
+  const credentialSubmitBlocked =
+    busy ||
+    !identifier.trim() ||
+    (stage === "password" && !password) ||
+    (stage === "pin" && pin.length !== 4);
   const stepNumber = stage === "entry" ? 1 : 2;
   const stepTotal = 2;
   const heading =
@@ -399,7 +404,18 @@ export function PhoneFirstAuthentication({
           ) : null}
 
           {isCredentialEntry ? (
-            <div className="auth-fields">
+            <form
+              className="auth-fields"
+              noValidate
+              onSubmit={(event) => {
+                // Enter in any field submits, the same as pressing the button.
+                event.preventDefault();
+                if (credentialSubmitBlocked) return;
+                void run(
+                  stage === "password" ? login : stage === "pin" ? submitPin : continueIdentifier
+                );
+              }}
+            >
               {usingRemembered ? (
                 <div className="auth-remembered-account">
                   <p>
@@ -480,23 +496,9 @@ export function PhoneFirstAuthentication({
               <div>
                 <button
                   className="auth-primary-button"
-                  type="button"
-                  disabled={
-                    busy ||
-                    !identifier.trim() ||
-                    (stage === "password" && !password) ||
-                    (stage === "pin" && pin.length !== 4)
-                  }
+                  type="submit"
+                  disabled={credentialSubmitBlocked}
                   aria-busy={busy}
-                  onClick={() =>
-                    void run(
-                      stage === "password"
-                        ? login
-                        : stage === "pin"
-                          ? submitPin
-                          : continueIdentifier
-                    )
-                  }
                 >
                   {busy
                     ? "Please wait…"
@@ -507,7 +509,7 @@ export function PhoneFirstAuthentication({
                         : "Continue to log in"}
                 </button>
               </div>
-            </div>
+            </form>
           ) : null}
 
           {stage === "methods" ? (
@@ -532,7 +534,7 @@ export function PhoneFirstAuthentication({
                   onClick={() => {
                     setPassword("");
                     setStage("password");
-                    setMessage("Enter the recovery password for this account.");
+                    setMessage("Enter the password for this account.");
                   }}
                 >
                   Use a password
