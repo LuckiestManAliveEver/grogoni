@@ -188,4 +188,33 @@ describe("session context refresh (retry) versus restore (sign-in)", () => {
     expect(spies.setGrogoniSessionContext).not.toHaveBeenCalled();
     expect(localStorage.getItem(activeBusinessStorageKey)).toContain("just-created-shop");
   });
+  it("a late initial restore refreshes data without moving a chat the user has started", async () => {
+    let answer: (context: unknown) => void = () => undefined;
+    mockedApiFetch.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        })
+    );
+    let userStartedChat = false;
+    let loading: Promise<boolean> = Promise.resolve(false);
+    await act(async () => {
+      loading = latestApi!.loadGrogoniSessionContext(
+        spies.setActiveConversationId,
+        () => true,
+        "restore",
+        () => !userStartedChat
+      );
+    });
+    userStartedChat = true;
+    await act(async () => {
+      answer(serverContext);
+      await loading;
+    });
+    expect(spies.setGrogoniSessionContext).toHaveBeenCalledWith(serverContext);
+    expect(spies.setMode).not.toHaveBeenCalled();
+    expect(spies.setView).not.toHaveBeenCalled();
+    expect(spies.setActiveConversationId).not.toHaveBeenCalled();
+    expect(window.location.pathname).toBe("/marketplace/conversations/user-picked-conversation");
+  });
 });

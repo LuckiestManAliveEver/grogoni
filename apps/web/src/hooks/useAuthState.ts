@@ -595,13 +595,14 @@ export function useAuthState(deps: UseAuthStateDeps) {
   async function loadGrogoniSessionContext(
     setActiveConversationId: (conversationId: string | null) => void,
     shouldApply: () => boolean = () => true,
-    apply: "restore" | "refresh" = "restore"
+    apply: "restore" | "refresh" = "restore",
+    shouldRestore: () => boolean = () => true
   ): Promise<boolean> {
     try {
       const shopAtStart = readStoredBusiness()?.id ?? null;
       const context = await apiFetch<GrogoniSessionContext>("/v1/session/context");
       if (!shouldApply()) return false;
-      if (apply === "refresh") {
+      if (apply === "refresh" || !shouldRestore()) {
         const currentShop = readStoredBusiness();
         // The user switched, created or restored a shop while this was in flight: the answer may
         // predate it (and would forget the new shop). Drop it; a later retry fetches fresh data.

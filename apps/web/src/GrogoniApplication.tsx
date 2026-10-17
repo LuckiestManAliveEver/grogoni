@@ -873,9 +873,21 @@ export function OwnerApp() {
       return;
     }
     // The retry decides restore (first load of the sign-in) versus refresh (data-only retry).
-    sessionContextRetry.track(session.account.id, (shouldApply, apply) =>
-      loadGrogoniSessionContext(setActiveConversationId, shouldApply, apply)
-    );
+    sessionContextRetry.track(session.account.id, (shouldApply, apply) => {
+      const started = navigationSessionSnapshotRef.current;
+      const path = window.location.pathname;
+      return loadGrogoniSessionContext(setActiveConversationId, shouldApply, apply, () => {
+        const current = navigationSessionSnapshotRef.current;
+        return (
+          !started.chatDraft.trim() &&
+          !started.chatMessages.some((message) => message.id !== "welcome") &&
+          current.chatDraft === started.chatDraft &&
+          current.chatMessages === started.chatMessages &&
+          current.activeConversationId === started.activeConversationId &&
+          window.location.pathname === path
+        );
+      });
+    });
 
     function retryWhenVisible() {
       if (document.visibilityState === "visible") sessionContextRetry.retry();
@@ -1009,16 +1021,19 @@ export function OwnerApp() {
   // stale chunk before the debounced navigation-session write above may have flushed - register a
   // synchronous flush so the active conversation and any unsent composer draft never lose the
   // latest keystroke to that reload.
-  useEffect(
-    () =>
-      registerPreReloadFlush(() => {
-        writeOwnerNavigationSession(
-          session?.account.id ?? null,
-          navigationSessionSnapshotRef.current
-        );
-      }),
-    [session?.account.id]
-  );
+  useEffect(() => {
+    const flush = () =>
+      writeOwnerNavigationSession(
+        session?.account.id ?? null,
+        navigationSessionSnapshotRef.current
+      );
+    const unregister = registerPreReloadFlush(flush);
+    window.addEventListener("pagehide", flush);
+    return () => {
+      unregister();
+      window.removeEventListener("pagehide", flush);
+    };
+  }, [session?.account.id]);
 
   useEffect(() => {
     if (routedProductId === null || products.length === 0) return;
@@ -1186,14 +1201,10 @@ export function OwnerApp() {
           storefrontUrl: defaultAgent.storefrontUrl
         };
       });
-      setChatMessages((messages) =>
-        messages[0]?.id === "welcome"
-          ? createInitialChatMessages(business.name)
-          : [
-              createInitialChatMessages(business.name)[0] as ChatMessage,
-              ...messages.filter((message) => message.id !== "welcome")
-            ]
-      );
+      setChatMessages((messages) => [
+        createInitialChatMessages(business.name)[0] as ChatMessage,
+        ...messages.filter((message) => message.id !== "welcome")
+      ]);
     }
   }, [business]);
 
@@ -1924,7 +1935,9 @@ export function OwnerApp() {
                       ? "Sign in for end-to-end encrypted messaging"
                       : isHumanDirectConversation(activeConversation, session)
                         ? "End-to-end encrypted"
-                        : "Messages are processed by the Grogoni agent"
+                        : mode === "seller"
+                          ? "Shop assistant"
+                          : "Marketplace assistant"
                 }
                 replyToMessageId={replyToMessageId}
                 networkGraph={networkGraph}

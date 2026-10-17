@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { currentOfflineScope, getOfflineState } from "../offline-runtime";
 import { handoffChatMessages } from "../runtime-handoff";
 
@@ -66,6 +66,12 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
   const [isMessagingInboxOpen, setIsMessagingInboxOpen] = useState(
     () => window.matchMedia("(min-width: 760px)").matches
   );
+  useEffect(() => {
+    const viewport = window.matchMedia("(min-width: 760px)");
+    const change = (event: MediaQueryListEvent) => setIsMessagingInboxOpen(event.matches);
+    viewport.addEventListener("change", change);
+    return () => viewport.removeEventListener("change", change);
+  }, []);
   const [conversationInbox, setConversationInbox] = useState<ConversationInboxItem[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [activeConversation, setActiveConversation] = useState<ConversationView | null>(null);
@@ -119,7 +125,13 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
       } else {
         if (activeConversationId !== null) setActiveConversationId(null);
         if (activeConversation !== null) setActiveConversation(null);
-        if (chatMessages.length > 0) setChatMessages([]);
+        // An unbound assistant thread is local until the user creates/selects a conversation.
+        // Inbox polling must not erase that thread or its background replies.
+        if (
+          (preferredConversationId !== null || activeConversationId !== null) &&
+          chatMessages.length > 0
+        )
+          setChatMessages([]);
       }
     } catch (error) {
       if (navigator.onLine) setStatusMessage(getErrorMessage(error));

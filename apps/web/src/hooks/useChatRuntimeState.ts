@@ -23,6 +23,19 @@ import {
   viewLabel
 } from "../agent-command-engine";
 import { parseChatModuleCommand } from "../chat-module-commands";
+import {
+  parseMarketplaceBuyIntent,
+  parseReminderIntent,
+  isDeliveryTrackingIntent
+} from "../chat-assistant-intents";
+import {
+  daemonChatScope,
+  submitChatDaemonTask,
+  readChatDaemonTasks,
+  forgetChatDaemonTask
+} from "../daemon-chat";
+import { useDaemonChatResults } from "./useDaemonChatResults";
+import type { DaemonUserTaskResult, UnifiedCheckoutSummary } from "@grogoni/shared-types";
 import { postJson } from "../api-helpers";
 import {
   type ChatAttachment,
@@ -200,22 +213,54 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
     loadMessagingInbox
   } = deps;
 
-  function parseMarketplaceBuyIntent(message: string): string | null {
-    const normalized = message.trim().replace(/\s+/gu, " ");
-    if (normalized.length === 0) return null;
-    if (
-      !/\b(?:buy|purchase|order|looking for|do you have|have you got|find me)\b/iu.test(normalized)
-    )
-      return null;
-    return normalized
-      .replace(/^i\s+(?:want|need|would like)\s+to\s+(?:buy|purchase|order|get)\s+/iu, "")
-      .replace(/^i\s*(?:am|'m)?\s*looking\s+for\s+/iu, "")
-      .replace(/^can\s+i\s+(?:buy|purchase|order|get)\s+/iu, "")
-      .replace(/^where\s+can\s+i\s+(?:buy|purchase|get)\s+/iu, "")
-      .replace(/^(?:do you have|have you got|find me)\s+/iu, "")
-      .replace(/[?]+$/u, "")
-      .trim();
-  }
+  const assistantScope = daemonChatScope(mode, business?.id ?? null, activeConversationId);
+  useDaemonChatResults(session?.account.id ?? null, assistantScope, async (entry, task) => {
+    if (task.status === "cancelled") return;
+    if (entry.conversationId && activeConversation?.conversation.id !== entry.conversationId)
+      throw new Error("Waiting for the originating conversation to load.");
+    const result = task.result as Partial<DaemonUserTaskResult> | null;
+    const body =
+      task.status === "completed" && typeof entry.reminderText === "string"
+        ? `Reminder: ${entry.reminderText}`
+        : task.status === "completed" && typeof result?.text === "string"
+          ? result.text
+          : "The background assistant could not finish this request. Please send it again.";
+    const id = `daemon:${task.id}:${task.executions}`;
+    let reply: ChatMessage = {
+      id,
+      author: "grogoniclaw",
+      body,
+      createdAt: task.updatedAt,
+      status: "delivered"
+    };
+    if (entry.conversationId && activeConversation && session) {
+      const persisted = await postJson<ConversationMessageSummary>("/v1/messages", {
+        conversationId: entry.conversationId,
+        clientMessageId: id,
+        author: "agent",
+        content: { type: "text", text: body },
+        clientTimestamp: task.updatedAt
+      });
+      reply = mapConversationMessage(persisted, activeConversation.participants, session);
+    }
+    setChatMessages((messages) => {
+      const delivered = messages.map((message) =>
+        message.id === entry.clientMessageId
+          ? { ...message, status: "delivered" as const }
+          : message
+      );
+      return delivered.some((message) => message.id === reply.id)
+        ? delivered
+        : [...delivered, reply];
+    });
+    setStatusMessage(
+      task.status === "completed"
+        ? entry.kind === "reminder"
+          ? "Reminder delivered."
+          : "Assistant replied."
+        : "Background request failed. Please try again."
+    );
+  });
 
   async function sendChatDraft(
     draftOverride?: string,
@@ -289,14 +334,177 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       return;
     }
 
+    const hasAccountRecipient = isHumanDirectConversation(activeConversation, activeSession);
+    const hasExternalRecipient = isExternalChannelConversation(activeConversation);
+    const hasHumanRecipient = hasAccountRecipient || hasExternalRecipient;
+    if (
+      !hasHumanRecipient &&
+      attachments.length > 0 &&
+      (!navigator.onLine || isExplicitOfflineMode())
+    ) {
+      setStatusMessage("Reading chat attachments needs a connection to Luna. Your draft is saved.");
+      return;
+    }
+    if (!hasHumanRecipient && attachments.length > 0) {
+      setStatusMessage("Luna is reading your attachments…");
+      try {
+        runtimeMessage = await appendExtractedDocumentContent(
+          runtimeMessage,
+          attachments,
+          business?.id ?? null
+        );
+      } catch (error) {
+        setChatDraft(message);
+        setStatusMessage(
+          `Couldn't read the attachment. ${getErrorMessage(error)} Your draft is saved.`
+        );
+        return;
+      }
+    }
+    const reminder =
+      !hasHumanRecipient && attachments.length === 0 ? parseReminderIntent(message) : null;
+    const buyerAssistant = mode !== "seller" || business === null;
+    const tracking =
+      buyerAssistant && attachments.length === 0 && isDeliveryTrackingIntent(message);
+    if (
+      !hasHumanRecipient &&
+      (attachments.length === 0 || buyerAssistant) &&
+      (reminder !== null ||
+        tracking ||
+        (buyerAssistant &&
+          helpCommand === undefined &&
+          (attachments.length > 0 || parseMarketplaceBuyIntent(message) === null)))
+    ) {
+      const clientMessageId = createClientMessageId("message");
+      const createdAt = new Date().toISOString();
+      setChatMessages((messages) => [
+        ...messages,
+        {
+          id: clientMessageId,
+          author: "merchant",
+          body: message,
+          ...(attachments.length ? { attachments } : {}),
+          createdAt,
+          status: "pending"
+        }
+      ]);
+      setChatDraft("");
+      setPendingAttachments([]);
+      setReplyToMessageId(null);
+      const reply = async (body: string) => {
+        const id = createClientMessageId("agent");
+        if (activeConversationId)
+          await postJson("/v1/messages", {
+            conversationId: activeConversationId,
+            clientMessageId: id,
+            author: "agent",
+            content: { type: "text", text: body },
+            clientTimestamp: new Date().toISOString()
+          });
+        setChatMessages((messages) => [
+          ...messages,
+          {
+            id,
+            author: "grogoniclaw",
+            body,
+            createdAt: new Date().toISOString(),
+            status: "delivered"
+          }
+        ]);
+      };
+      try {
+        if (activeConversationId)
+          await postJson("/v1/messages", {
+            conversationId: activeConversationId,
+            clientMessageId,
+            content: {
+              type: "text",
+              text: message,
+              ...(attachments.length
+                ? { attachments: chatAttachmentsToConversationAttachments(attachments) }
+                : {})
+            },
+            replyToMessageId,
+            clientTimestamp: createdAt
+          });
+        if (reminder?.kind === "clarify") {
+          await reply("When should I remind you? Try “Remind me in 2 minutes to check my stock.”");
+          setStatusMessage("Choose a reminder time.");
+        } else if (reminder?.kind === "cancel") {
+          const last = readChatDaemonTasks(activeSession.account.id)
+            .filter((task) => task.scope === assistantScope && task.kind === "reminder")
+            .at(-1);
+          if (last) {
+            await apiFetch(`/v1/daemon/tasks/${encodeURIComponent(last.taskId)}`, {
+              method: "DELETE"
+            });
+            forgetChatDaemonTask(activeSession.account.id, last.taskId);
+          }
+          await reply(
+            last
+              ? "Your latest reminder is cancelled."
+              : "There is no pending reminder in this chat."
+          );
+          setStatusMessage("Reminder request processed.");
+        } else if (tracking) {
+          const checkoutId = message.match(
+            /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/iu
+          )?.[0];
+          if (!checkoutId) {
+            await reply(
+              "Send your checkout ID with ‘Track my delivery’ so I can look up its current status. You can find it in your checkout confirmation."
+            );
+          } else {
+            const checkout = await apiFetch<UnifiedCheckoutSummary>(
+              `/buy/checkouts/${encodeURIComponent(checkoutId)}`
+            );
+            await reply(
+              checkout.handoffs.length
+                ? checkout.handoffs
+                    .map((handoff) => `Order ${handoff.orderId}: ${handoff.status}`)
+                    .join("\n")
+                : "This checkout has no delivery orders yet."
+            );
+          }
+          setStatusMessage(checkoutId ? "Checkout status loaded." : "A checkout ID is needed.");
+        } else {
+          await submitChatDaemonTask({
+            accountId: activeSession.account.id,
+            scope: assistantScope,
+            conversationId: activeConversationId,
+            clientMessageId,
+            message: runtimeMessage,
+            history: chatMessages,
+            ...(reminder?.kind === "schedule" ? { reminder } : {})
+          });
+          if (reminder?.kind === "schedule") {
+            await reply(
+              `Reminder scheduled for ${new Date(reminder.runAt).toLocaleString()}: ${reminder.message}. You can say “Cancel my latest reminder” here.`
+            );
+          }
+          setStatusMessage(
+            reminder?.kind === "schedule" ? "Reminder scheduled." : "Assistant is thinking…"
+          );
+        }
+        setChatMessages((messages) =>
+          messages.map((item) =>
+            item.id === clientMessageId ? { ...item, status: "delivered" } : item
+          )
+        );
+      } catch (error) {
+        setChatMessages((messages) => messages.filter((item) => item.id !== clientMessageId));
+        setChatDraft(message);
+        setPendingAttachments(attachments);
+        setStatusMessage(getErrorMessage(error));
+      }
+      return;
+    }
+
     const marketplaceSearch =
-      (mode !== "seller" || business === null) && attachments.length === 0
+      !hasHumanRecipient && (mode !== "seller" || business === null) && attachments.length === 0
         ? searchBuyFeed
         : undefined;
-    const buyQuery = marketplaceSearch
-      ? (parseMarketplaceBuyIntent(message) ??
-        (business === null && helpCommand === undefined ? message : null))
-      : null;
+    const buyQuery = marketplaceSearch ? parseMarketplaceBuyIntent(message) : null;
     if (buyQuery !== null && marketplaceSearch) {
       await marketplaceSearch(buyQuery);
       const createdAt = new Date().toISOString();
@@ -404,9 +612,6 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
     setPendingAttachments([]);
     setReplyToMessageId(null);
 
-    const hasAccountRecipient = isHumanDirectConversation(activeConversation, activeSession);
-    const hasExternalRecipient = isExternalChannelConversation(activeConversation);
-    const hasHumanRecipient = hasAccountRecipient || hasExternalRecipient;
     const localModuleCommand =
       mode === "seller" && !hasHumanRecipient && attachments.length === 0
         ? parseChatModuleCommand(message)
@@ -713,7 +918,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
                             runtimeSessionId: managedRuntimeSessionId
                           }
                         },
-                        { headers: turnHeaders }
+                        { headers: turnHeaders, timeoutMs: 90_000 }
                       )
                   )
               })
@@ -1143,6 +1348,11 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
         );
       }
       setRuntimeSessionId(result.session.id);
+      setChatMessages((messages) =>
+        messages.map((item) =>
+          item.id === clientMessageId ? { ...item, status: "delivered" as const } : item
+        )
+      );
       if (appendResponse) {
         const confirmationToken = result.turn.plan.confirmationToken;
         const deliveredAttachments =
@@ -1161,7 +1371,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       }
 
       if (result.turn.plan.toolName === "products.list" && business !== null) {
-        await loadProducts(business.id);
+        void loadProducts(business.id);
         navigateToView("products");
       }
 
@@ -1170,7 +1380,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
         result.turn.plan.executedAt !== null &&
         business !== null
       ) {
-        await loadProducts(business.id);
+        void loadProducts(business.id);
         await postProductManagementCard(
           business.id,
           productIdFromToolResult(result.turn.toolResult)
@@ -1182,7 +1392,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
         result.turn.plan.executedAt !== null &&
         business !== null
       ) {
-        await loadSuppliers(business.id);
+        void loadSuppliers(business.id);
         await postSupplierManagementCard(
           business.id,
           supplierIdFromToolResult(result.turn.toolResult)
@@ -1194,7 +1404,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
         result.turn.plan.executedAt !== null &&
         business !== null
       ) {
-        await loadCustomers(business.id);
+        void loadCustomers(business.id);
         await postCustomerManagementCard(
           business.id,
           customerIdFromToolResult(result.turn.toolResult)
@@ -1202,17 +1412,17 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       }
 
       if (result.turn.plan.toolName === "reports.summary" && business !== null) {
-        await loadReports(business.id);
+        void loadReports(business.id);
         navigateToView("reports");
       }
 
       if (result.turn.plan.toolName === "notifications.list" && business !== null) {
-        await loadNotifications(business.id);
+        void loadNotifications(business.id);
         navigateToView("notifications");
       }
 
       if (result.turn.plan.toolName === "invoices.list" && business !== null) {
-        await loadInvoices(business.id);
+        void loadInvoices(business.id);
         navigateToView("invoices");
       }
 
@@ -1239,7 +1449,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
           typeof importJobId === "string" ? importJobId : undefined
         );
         if (result.turn.plan.executedAt !== null) {
-          await loadDocumentImports(business.id);
+          void loadDocumentImports(business.id);
         }
       }
 
@@ -1256,7 +1466,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       }
 
       if (business !== null) {
-        await loadRuntimeSessions(business.id);
+        void loadRuntimeSessions(business.id);
       }
       const modelDiagnostic =
         result.turn.model?.status === "available" &&
@@ -1308,32 +1518,6 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
     }
 
     try {
-      runtimeMessage = await appendExtractedDocumentContent(
-        runtimeMessage,
-        attachments,
-        business.id,
-        {
-          // Shown in the chat as well as the status line (the turn's progress status replaces
-          // the status line moments later), but kept local: it is not the agent's reply and is
-          // not saved to the conversation.
-          onUnreadable: (files) => {
-            const notice = files
-              .map((file) => `Couldn't read the text in ${file.name}. ${file.reason}`)
-              .join(" ");
-            setStatusMessage(notice);
-            setChatMessages((messages) => [
-              ...messages,
-              {
-                id: createClientMessageId("agent"),
-                author: "grogoniclaw",
-                body: notice,
-                createdAt: new Date().toISOString(),
-                status: "delivered"
-              }
-            ]);
-          }
-        }
-      );
       const key = runtimeManagerKey(activeSession.account.id, business.id);
       const result = await withAgentTurnPreview({
         setChatMessages,
@@ -1346,14 +1530,19 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
               postJson<RuntimeTurnResult>(
                 `/businesses/${business.id}/runtime/turns`,
                 { runtimeSessionId: managedRuntimeSessionId, message: runtimeMessage },
-                { headers: turnHeaders }
+                { headers: turnHeaders, timeoutMs: 90_000 }
               )
           )
       });
       await applyRuntimeResult(result, true);
     } catch (error) {
+      if (payload === null)
+        setChatMessages((messages) => messages.filter((item) => item.id !== clientMessageId));
+      setChatDraft(message);
+      setPendingAttachments(attachments);
+      setReplyToMessageId(replyToMessageId);
       await appendAgentMessage(
-        "The authorized business runtime is unavailable, so I did not interpret or apply this request locally. Please retry when the connection recovers."
+        "The shop assistant is temporarily unavailable. Your draft is saved. Please try again."
       );
       setStatusMessage(getErrorMessage(error));
     }
@@ -1380,7 +1569,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
           postJson<RuntimeTurnResult>(
             `/businesses/${business.id}/runtime/turns`,
             { runtimeSessionId, message: "confirm", confirmationToken },
-            { headers: turnHeaders }
+            { headers: turnHeaders, timeoutMs: 90_000 }
           )
       });
       setRuntimeSessionId(result.session.id);

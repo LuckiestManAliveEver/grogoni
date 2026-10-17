@@ -116,6 +116,26 @@ describe("browser-native navigation", () => {
     expect(readOwnerNavigationSession("account-2")).toBeNull();
   });
 
+  it("a synchronous reload snapshot supersedes an older debounced write", () => {
+    vi.useFakeTimers();
+    try {
+      const value = (body: string) => ({
+        activeConversationId: null,
+        runtimeSessionId: null,
+        chatDraft: "",
+        chatMessages: [{ id: "reminder", author: "grogoniclaw" as const, body }]
+      });
+      scheduleOwnerNavigationSessionWrite("reload-reminder", value("pending"));
+      writeOwnerNavigationSession("reload-reminder", value("Reminder scheduled"));
+      vi.runAllTimers();
+      expect(readOwnerNavigationSession("reload-reminder")?.chatMessages[0]?.body).toBe(
+        "Reminder scheduled"
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("coalesces rapid draft persistence so typing does not serialize the conversation per key", () => {
     vi.useFakeTimers();
     const storage = {
