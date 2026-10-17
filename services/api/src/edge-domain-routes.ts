@@ -1,3 +1,4 @@
+import { registerChatImageRoutes } from "./cp2/chat-image-routes.js";
 import Fastify from "fastify";
 import websocket from "@fastify/websocket";
 import { registerMcpRoutes, createMcpRouteState } from "./mcp/routes.js";
@@ -91,6 +92,20 @@ export async function createEdgeDomainRoutes(database: EdgeDomainDatabase) {
     )
   }));
 
+  // A model call must not keep snapshot/account/business locks or a Neon connection open.
+  // The session lookup commits first; receipt drafts are persisted by a separate short request.
+  const imageReader = database.daemon ? Fastify({ logger: false, bodyLimit: 14_000_000 }) : null;
+  if (imageReader) {
+    registerChatImageRoutes(imageReader, null, undefined, async (request) => {
+      const user = await database.daemon!.findUser(
+        new Request("https://grogoni.com/v1/chat/images/read", {
+          headers: { cookie: request.headers.cookie ?? "" }
+        })
+      );
+      return user ? {} : null;
+    });
+    await imageReader.ready();
+  }
   const routes = async (request: Request, path: string): Promise<Response | null> => {
     const route = patterns.find(
       (candidate) => candidate.method === request.method && candidate.pattern.test(path)
@@ -108,9 +123,29 @@ export async function createEdgeDomainRoutes(database: EdgeDomainDatabase) {
         : Buffer.from(await request.arrayBuffer());
     if (payload && payload.length > 15_000_000)
       return Response.json({ code: "request_too_large" }, { status: 413 });
+    if (path === "/v1/chat/images/read" && imageReader) {
+      const result = await imageReader.inject({
+        method: "POST",
+        url: path,
+        headers: {
+          cookie: request.headers.get("cookie") ?? "",
+          "content-type": request.headers.get("content-type") ?? "application/json"
+        },
+        ...(payload ? { payload } : {})
+      });
+      return new Response(result.body, {
+        status: result.statusCode,
+        headers: {
+          "content-type": "application/json",
+          "cache-control": "no-store"
+        }
+      });
+    }
     return database.transaction(async (client) => {
       const scope = await createEdgeSnapshotScope(client, request, path, payload);
-      if (request.method !== "GET" && request.method !== "HEAD") {
+      // GET handlers also refresh sessions, mark messages read and initialize runtime defaults.
+      // Their snapshots must be loaded after the same tenant locks as explicit writes.
+      {
         await client.query("set local lock_timeout = '10s'");
         if (scope.accountId)
           await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [

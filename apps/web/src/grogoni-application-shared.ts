@@ -3,6 +3,8 @@ import { type PublicKeyCredentialCreationOptionsJSON } from "@simplewebauthn/bro
 import type { CountryCode } from "libphonenumber-js";
 
 import type {
+  ReceiptOCRJobSummary as SharedReceiptOCRJobSummary,
+  ReceiptStructuredExtractionSummary,
   NetworkConnectionSummary,
   AgentDefinitionId,
   AgentEvaluationPolicy,
@@ -720,185 +722,7 @@ export interface ReceiptOCRMatchCandidate {
   sourceProvider: string | null;
 }
 
-export interface ReceiptOCRJobSummary {
-  id: string;
-  businessId: string;
-  tenantId: string;
-  shopId: string;
-  uploadedBy: string;
-  status:
-    | "UPLOADED"
-    | "QUEUED"
-    | "VALIDATING"
-    | "PREPROCESSING"
-    | "OCR_RUNNING"
-    | "FIELDS_EXTRACTED"
-    | "CONTACT_MATCHING"
-    | "PARSING"
-    | "MATCHING"
-    | "REVIEW_REQUIRED"
-    | "CONFIRMED"
-    | "PURCHASE_RECORDED"
-    | "COMPLETED"
-    | "FAILED"
-    | "CANCELLED"
-    | "CLEANUP_PENDING"
-    | "IMAGE_DELETED"
-    | "pending"
-    | "matched"
-    | "needs_review"
-    | "failed"
-    | "confirmed";
-  sourceFileName: string;
-  contentType: string;
-  engine: "paddleocr" | "tesseract";
-  engineVersion: string;
-  modelVersion: string;
-  profile: "mobile" | "balanced" | "accurate";
-  fallbackUsed: boolean;
-  languageHints: string[];
-  blocks: Array<{
-    id: string;
-    page: number;
-    text: string;
-    confidence: number;
-    boundingBox: Array<{ x: number; y: number }> | null;
-  }>;
-  fullText: string;
-  averageConfidence: number;
-  warnings: string[];
-  fieldEvidence: Array<{
-    field: string;
-    value: string | number | null;
-    confidence: number;
-    sourceText: string | null;
-  }>;
-  structuredExtraction: {
-    supplier: {
-      supplierName: string | null;
-      tradingName: string | null;
-      legalName: string | null;
-      phoneNumber: string | null;
-      alternatePhoneNumber: string | null;
-      email: string | null;
-      physicalAddress: string | null;
-      taxPin: string | null;
-      registrationNumber: string | null;
-      branch: string | null;
-      accountNumber: string | null;
-    };
-    salesAgent: {
-      name: string | null;
-      phoneNumber: string | null;
-      email: string | null;
-      agentNumber: string | null;
-      supplierRepresented: string | null;
-      branch: string | null;
-      notes: string | null;
-    };
-    receipt: {
-      receiptNumber: string | null;
-      invoiceNumber: string | null;
-      orderNumber: string | null;
-      purchaseDate: string | null;
-      purchaseTime: string | null;
-      currency: string | null;
-      subtotal: number | null;
-      discount: number | null;
-      tax: number | null;
-      total: number | null;
-      amountPaid: number | null;
-      balance: number | null;
-      paymentMethod: string | null;
-      tillNumber: string | null;
-      paybillNumber: string | null;
-      transactionReference: string | null;
-    };
-    products: Array<{
-      itemName: string;
-      itemCode: string | null;
-      sku: string | null;
-      quantity: number;
-      unit: string | null;
-      unitPrice: number;
-      lineTotal: number;
-      batchNumber: string | null;
-      expiryDate: string | null;
-    }>;
-  };
-  contactMatchingResult: {
-    matched: boolean;
-    scriptId: "receipt_contact_matching";
-    intent: "RECEIPT_CONTACT_MATCH";
-    source: "context_script";
-    ocrJobId: string;
-    supplier: {
-      extractedName: string | null;
-      extractedPhone: string | null;
-      extractedEmail: string | null;
-      selectedRecordId: string | null;
-      selectedContactId: string | null;
-      confidence: number;
-      matchedBy: string[];
-      sources: string[];
-      requiresConfirmation: boolean;
-      candidates: ReceiptOCRMatchCandidate[];
-    };
-    salesAgent: {
-      extractedName: string | null;
-      extractedPhone: string | null;
-      extractedEmail: string | null;
-      selectedRecordId: string | null;
-      selectedContactId: string | null;
-      confidence: number;
-      matchedBy: string[];
-      sources: string[];
-      requiresConfirmation: boolean;
-      candidates: ReceiptOCRMatchCandidate[];
-    };
-    unmatchedFields: string[];
-    warnings: string[];
-    thresholds: {
-      autoSelect: number;
-      confirmationRequired: number;
-      rejectBelow: number;
-    };
-  };
-  supplierCandidates: ReceiptOCRMatchCandidate[];
-  salesAgentCandidates: ReceiptOCRMatchCandidate[];
-  supplierName: string | null;
-  salesAgentName: string | null;
-  phone: string | null;
-  receiptDate: string | null;
-  total: number | null;
-  items: Array<{
-    name: string;
-    quantity: number;
-    unit?: string | null;
-    itemCode?: string | null;
-    sku?: string | null;
-    unitPrice: number;
-    total: number;
-    batchNumber?: string | null;
-    expiryDate?: string | null;
-  }>;
-  matchedSupplierId: string | null;
-  matchedSalesAgentId: string | null;
-  errorMessage: string | null;
-  failureCode: string | null;
-  imageStorageKey: string | null;
-  imageHash: string | null;
-  imageRetained: boolean;
-  imageDeletedAt: string | null;
-  cleanupPending: boolean;
-  retryCount: number;
-  processingStartedAt: string | null;
-  completedAt: string | null;
-  temporaryImageExpiresAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-  confirmedAt: string | null;
-}
+export type ReceiptOCRJobSummary = SharedReceiptOCRJobSummary;
 
 export interface SupplierBusinessCardSummary extends SupplierSummary {
   salesAgents: SalesAgentSummary[];
@@ -1218,6 +1042,8 @@ export interface DocumentImportConfirmResult {
 }
 
 export interface DocumentExtractionResponse {
+  receiptFields?: ReceiptStructuredExtractionSummary;
+  receiptJob?: SharedReceiptOCRJobSummary;
   fileName: string;
   contentType: string;
   text: string;

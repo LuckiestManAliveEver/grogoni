@@ -2186,7 +2186,7 @@ export interface PurchaseReceiptSummary {
  * Generic OCR capability shared by receipt parsing, chat document extraction, and camera product
  * capture - not receipt-specific. See services/api/src/cp2/ocr-provider.ts.
  */
-export type OcrEngine = "paddleocr" | "tesseract";
+export type OcrEngine = "paddleocr" | "tesseract" | "gpt-6-luna";
 export type OcrProfile = "mobile" | "balanced" | "accurate";
 
 export type ReceiptOCRJobStatus =
@@ -2244,6 +2244,18 @@ export interface ReceiptMatchCandidateSummary {
 }
 
 export interface ReceiptStructuredExtractionSummary {
+  sourceDocument?: { sha256: string; fileName: string };
+  deliveryBinding?: {
+    purchaseReceiptId: string;
+    receivedAt: string;
+    products: Array<{
+      lineIndex: number;
+      receiptLineItemId: string;
+      productId: string;
+      movementId: string | null;
+    }>;
+  };
+
   supplier: {
     supplierName: string | null;
     tradingName: string | null;

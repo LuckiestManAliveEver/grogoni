@@ -1,4 +1,5 @@
 import type {
+  ReceiptOCRJobSummary,
   ConversationAttachment,
   ConversationMessageSummary,
   ConversationParticipantSummary,
@@ -340,6 +341,7 @@ export async function appendExtractedDocumentContent(
   businessId: string | null,
   options: {
     /** Tells the person which files could not be read and why; the agent is told separately. */
+    onReceiptDraft?: (job: ReceiptOCRJobSummary) => void;
     onUnreadable?: (files: { name: string; reason: string }[]) => void;
     dependencies?: AttachmentExtractionDependencies;
   } = {}
@@ -364,6 +366,10 @@ export async function appendExtractedDocumentContent(
     (result, index) => result.status === "rejected" && documents[index]?.category === "image"
   );
   if (failedImage?.status === "rejected") throw failedImage.reason;
+
+  for (const result of extractions)
+    if (result.status === "fulfilled" && result.value.receiptJob)
+      options.onReceiptDraft?.(result.value.receiptJob);
 
   const unreadable = extractions.flatMap((extraction, index) =>
     extraction.status === "rejected"
@@ -414,11 +420,25 @@ export async function extractChatAttachment(
   const contentBase64 = dataUrlPayload(attachment.dataUrl ?? "");
 
   if (attachment.category === "image") {
-    return (await dependencies.postJson("/v1/chat/images/read", {
+    const result = (await dependencies.postJson("/v1/chat/images/read", {
       fileName: attachment.name,
       contentType: attachment.type,
       contentBase64
     })) as DocumentExtractionResponse;
+    if (businessId && result.receiptFields) {
+      result.receiptJob = (await dependencies.postJson(
+        `/businesses/${businessId}/receipt-ocr/jobs`,
+        {
+          fileName: attachment.name,
+          contentType: attachment.type,
+          contentBase64,
+          extractedText: result.text,
+          structuredExtraction: result.receiptFields,
+          engine: "gpt-6-luna"
+        }
+      )) as ReceiptOCRJobSummary;
+    }
+    return result;
   }
 
   if (businessId === null)

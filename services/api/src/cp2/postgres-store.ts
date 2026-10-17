@@ -1,3 +1,8 @@
+import type {
+  ReceiptStructuredExtractionSummary,
+  ReceiptContactMatchingResultSummary
+} from "@grogoni/shared-types";
+import { restoreReceiptJobFields } from "./domains/suppliers/receipt-fields.js";
 import { randomUUID } from "node:crypto";
 import type { Metrics } from "@grogoni/observability";
 import {
@@ -2044,6 +2049,11 @@ async function loadRelationalCoreSnapshot(pool: Pool, snapshot: Cp2Snapshot): Pr
             `
         );
         snapshot.receiptOCRJobs = ocrJobsResult.rows.map((row) => ({
+          ...restoreReceiptJobFields(
+            row.structured_extraction as ReceiptStructuredExtractionSummary,
+            row.contact_matching_result as ReceiptContactMatchingResultSummary,
+            row.full_text
+          ),
           id: row.id,
           businessId: row.business_id,
           tenantId: row.tenant_id,
@@ -3252,6 +3262,7 @@ export async function saveCollectionRecords(
         on conflict (entity_id) do update set business_id=excluded.business_id, account_id=excluded.account_id,
           user_id=excluded.user_id,parent_id=excluded.parent_id,record=excluded.record,updated_at=now()
         where ${collection.tableName}.record = (select expected from input where input.entity_id = excluded.entity_id)
+           or ${collection.tableName}.record = excluded.record
         returning entity_id`,
         chunk.flatMap((row) => [...row, JSON.stringify(expectedById.get(String(row[0])) ?? null)])
       );

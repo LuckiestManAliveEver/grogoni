@@ -5,6 +5,7 @@ import { runtimeHandoffController, runtimeTransition } from "../runtime-handoff"
 import type { RuntimeToolName } from "@grogoni/tool-core";
 import { renderRuntimeModelOutputInstructions, runtimeToolRegistry } from "@grogoni/tool-core";
 import type {
+  ReceiptOCRJobSummary,
   AuthBootstrapState,
   ChannelProvider,
   ConversationAttachment,
@@ -345,13 +346,15 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       setStatusMessage("Reading chat attachments needs a connection to Luna. Your draft is saved.");
       return;
     }
+    const receiptDrafts: ReceiptOCRJobSummary[] = [];
     if (!hasHumanRecipient && attachments.length > 0) {
       setStatusMessage("Luna is reading your attachments…");
       try {
         runtimeMessage = await appendExtractedDocumentContent(
           runtimeMessage,
           attachments,
-          business?.id ?? null
+          (mode === "seller" ? business?.id : null) ?? null,
+          { onReceiptDraft: (job) => receiptDrafts.push(job) }
         );
       } catch (error) {
         setChatDraft(message);
@@ -360,6 +363,55 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
         );
         return;
       }
+    }
+    if (receiptDrafts.length && business && mode === "seller") {
+      const createdAt = new Date().toISOString();
+      const id = createClientMessageId("message");
+      const body = `Luna filled ${receiptDrafts.length === 1 ? "the receipt fields" : `${receiptDrafts.length} receipt drafts`}, including the wholesaler, sales agent and delivered products where readable. Review the fields, then confirm to receive the stock and link the document to those records.`;
+      try {
+        if (activeConversationId) {
+          await postJson("/v1/messages", {
+            conversationId: activeConversationId,
+            clientMessageId: id,
+            content: {
+              type: "text",
+              text: message,
+              attachments: chatAttachmentsToConversationAttachments(attachments)
+            },
+            clientTimestamp: createdAt
+          });
+          await postJson("/v1/messages", {
+            conversationId: activeConversationId,
+            clientMessageId: createClientMessageId("agent"),
+            author: "agent",
+            content: { type: "text", text: body },
+            clientTimestamp: createdAt
+          });
+        }
+        setChatMessages((current) => [
+          ...current,
+          { id, author: "merchant", body: message, attachments, createdAt, status: "delivered" },
+          {
+            id: createClientMessageId("agent"),
+            author: "grogoniclaw",
+            body,
+            createdAt,
+            status: "delivered"
+          }
+        ]);
+        setChatDraft("");
+        setPendingAttachments([]);
+        setReplyToMessageId(null);
+        navigateToView("suppliers");
+        setStatusMessage(
+          "Receipt fields are ready to review. Confirm the delivery to update stock."
+        );
+      } catch (error) {
+        setChatDraft(message);
+        setPendingAttachments(attachments);
+        setStatusMessage(getErrorMessage(error));
+      }
+      return;
     }
     const reminder =
       !hasHumanRecipient && attachments.length === 0 ? parseReminderIntent(message) : null;

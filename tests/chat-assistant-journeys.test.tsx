@@ -207,6 +207,25 @@ describe("buyer and seller assistant journeys", () => {
       expect(attachments).toEqual([]);
     }
   );
+  it("keeps a buyer receipt out of private shop records even when the account owns a shop", async () => {
+    const fetch = globalThis.fetch;
+    vi.stubGlobal("fetch", async (input: string, init?: RequestInit) =>
+      input.endsWith("/v1/chat/images/read")
+        ? new Response(
+            JSON.stringify({
+              fileName: "receipt.png",
+              text: "TOTAL 570",
+              receiptFields: { supplier: { supplierName: "Acacia" }, products: [] }
+            }),
+            { headers: { "content-type": "application/json" } }
+          )
+        : fetch(input, init)
+    );
+    await mount("marketplace", { id: "shop-1", name: "Shop" } as ActiveBusiness, null, [receipt]);
+    await act(async () => send("Read this receipt"));
+    expect(requests.some((request) => request.path.includes("receipt-ocr/jobs"))).toBe(false);
+    expect(requests.some((request) => request.path === "/v1/daemon/tasks")).toBe(true);
+  });
   it("includes Luna's reading in a saved seller conversation before server processing", async () => {
     const conversation = {
       conversation: { id: "receipt-chat" },
