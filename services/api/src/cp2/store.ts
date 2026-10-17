@@ -819,6 +819,12 @@ export interface Cp2Snapshot
 }
 
 export interface Cp2StoreOptions {
+  /**
+   * Storefront IDs taken by shops this store has not loaded (normalized lookup form). The Edge API
+   * loads only the requesting tenant's data, so without this a shop named like another account's
+   * got that account's ID and the insert failed on the unique index.
+   */
+  externalGrogoniIdTaken?: (normalizedGrogoniId: string) => boolean;
   businessTaskEvaluations?: BusinessTaskEvaluationReader;
   inventoryProcurement?: InventoryProcurementStore;
   runtimeApprovalStore?: RuntimeApprovalStore;
@@ -987,6 +993,7 @@ export class Cp2Store {
   /** The deployment's default runtime, with its engine resolved to one this deployment runs. */
   private readonly platformDefaultRuntime: PlatformDefaultRuntimePolicy;
   private readonly modelRuntimeAdapterResolver: Cp2StoreOptions["modelRuntimeAdapterResolver"];
+  private readonly externalGrogoniIdTaken: Cp2StoreOptions["externalGrogoniIdTaken"];
 
   constructor(private readonly options: Cp2StoreOptions = {}) {
     this.inferencePlatform = options.inferencePlatform ?? createInferencePlatform();
@@ -997,6 +1004,7 @@ export class Cp2Store {
       agentRuntimeAdapterId: connectedAgentRuntimeAdapterId(configuredDefault.agentRuntimeAdapterId)
     };
     this.defaultAgentRuntimeAdapters = createDefaultAgentRuntimeAdapterRegistry();
+    this.externalGrogoniIdTaken = options.externalGrogoniIdTaken;
     const explicitAdapterResolver = options.modelRuntimeAdapterResolver;
     const routedPlatform = options.inferencePlatform;
     this.modelRuntimeAdapterResolver =
@@ -12607,9 +12615,11 @@ export class Cp2Store {
     }
     // A retired grogoniId is unavailable for the duration of its cooldown (releasedAt === null) -
     // see renameGrogoniId/releaseExpiredGrogoniIds. Once released, it's free to be claimed again.
-    return [...this.grogoniIdHistory.values()].some(
-      (entry) =>
-        entry.releasedAt === null && normalizeStorefrontLookupId(entry.grogoniId) === normalized
+    return (
+      [...this.grogoniIdHistory.values()].some(
+        (entry) =>
+          entry.releasedAt === null && normalizeStorefrontLookupId(entry.grogoniId) === normalized
+      ) || this.externalGrogoniIdTaken?.(normalized) === true
     );
   }
 

@@ -19,6 +19,8 @@ export function useAsyncActions() {
   return {
     hasPending: pendingActions.length > 0,
     isPending: (key: string) => pendingActions.includes(key),
+    /** Whether an action is running right now; current even from an older render's closure. */
+    isRunning: (key: string) => activeActions.current.has(key),
     runAction
   };
 }

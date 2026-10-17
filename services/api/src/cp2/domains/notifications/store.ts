@@ -307,6 +307,16 @@ export class NotificationsDomain {
       if (existing.status === "archived") {
         return;
       }
+      // Re-evaluating a rule that still says the same thing changes nothing. These rules run on
+      // every request; re-stamping updatedAt each time made concurrent requests for the shop
+      // conflict on these rows (40001), and a send answered 503.
+      if (
+        existing.severity === input.severity &&
+        existing.title === input.title &&
+        existing.body === input.body
+      ) {
+        return;
+      }
 
       this.notifications.set(existing.id, {
         ...existing,

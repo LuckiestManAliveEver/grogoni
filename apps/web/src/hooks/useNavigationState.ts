@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { ChatMessage, ShellView, GrogoniMode } from "../app-shell";
 import {
@@ -61,12 +61,32 @@ interface UseNavigationStateDeps {
   // Same getter reasoning as Auth/BusinessSetup/Chat above: Auth (continueToGrogoni's owner) is
   // called after Navigation, so browseAsGuest can't take continueToGrogoni as a plain dep.
   getContinueToGrogoni: () => () => Promise<SessionResponse | null>;
+  /**
+   * Whether this sign-in's session context (the account's shops) has loaded, and a way to retry
+   * it. Until it loads, "no business" may only mean "not loaded yet", never "has no shop".
+   */
+  getSessionContextLoad: () => { loaded: boolean; retry: () => void };
+  /** The same "loaded" as a render value, so a Sell tap waiting on the load can finish. */
+  sessionContextLoaded: boolean;
   registerReset: (domainKey: string, fn: () => void) => void;
 }
+
+/** How long a Sell tap waits for the account's shops before it is dropped. */
+const sellTapLifetimeMs = 60_000;
 
 export function useNavigationState(deps: UseNavigationStateDeps) {
   const screenStateCacheRef = useRef(createScreenStateCache(deps.preservedScreenLimit));
   const activeViewRef = useRef(deps.view);
+  // A Sell tap that had to wait for the account's shops to load: whose, and when.
+  // What finishes it: "sell" goes to selling (the shop, or setup), "shop" opens the Shop Hub or,
+  // for an account with no shop, `onNoShop` (the shop browser).
+  const sellWhenShopLoadsRef = useRef<{
+    accountId: string;
+    at: number;
+    mode: GrogoniMode;
+    view: ShellView;
+    onNoShop: (() => void) | null;
+  } | null>(null);
   activeViewRef.current = deps.view;
   const [isMarketplaceShortcutOpen, setIsMarketplaceShortcutOpen] = useState(
     deps.initialMarketplaceShortcutOpen
@@ -182,10 +202,50 @@ export function useNavigationState(deps: UseNavigationStateDeps) {
     void deps.getContinueToGrogoni()();
   }
 
+  useEffect(() => {
+    const pending = sellWhenShopLoadsRef.current;
+    if (pending === null) return;
+    // A tap from another sign-in, from long enough ago, or after the user switched mode or went to
+    // another screen (the contact book, a module) is dropped: acting on it would move a user who
+    // moved on. (Not a route change alone: restoring the account's last place on a cold load
+    // changes the route without the user doing anything.)
+    if (
+      pending.accountId !== session?.account.id ||
+      Date.now() - pending.at > sellTapLifetimeMs ||
+      mode !== pending.mode ||
+      deps.view !== pending.view
+    ) {
+      sellWhenShopLoadsRef.current = null;
+      // "Loading your shop…" would otherwise promise something that is no longer coming.
+      setStatusMessage("");
+      return;
+    }
+    if (business === null && !deps.sessionContextLoaded) return;
+    sellWhenShopLoadsRef.current = null;
+    // The shop arrived (open it) or the load finished without one (setup, or the shop browser).
+    if (pending.onNoShop === null) switchMode("seller");
+    else if (business !== null) openShopHub();
+    else pending.onNoShop();
+    // Only these changes finish a pending tap.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [business, deps.sessionContextLoaded, session?.account.id, mode, deps.view]);
+
   function switchMode(nextMode: GrogoniMode) {
     const { setIsBusinessSetupOpen, setBusinessSetupStep } = deps.getBusinessSetupSetters();
 
     if (nextMode === "seller" && business === null) {
+      if (
+        session !== null &&
+        !deps.getSessionContextLoad().loaded &&
+        freshPending("sell") === null
+      ) {
+        // Opening setup here would offer an owner whose shops failed to load a second shop (the
+        // create then fails as a duplicate). Load the shops first, and finish the tap when the
+        // shop arrives. A second tap while they still have not loaded goes on to setup, so no
+        // one is stuck behind a failing load: a create there opens an existing shop (409).
+        waitForShops(null);
+        return;
+      }
       if (session === null) {
         // A shop needs an account, so the shop icon (or the menu's "Set up your shop") goes
         // straight to signup; the signup screen links to login. The home welcome has no auth
@@ -234,6 +294,53 @@ export function useNavigationState(deps: UseNavigationStateDeps) {
             : "Marketplace mode restored. Tell me what you want to find, or explore a storefront below."
       }
     ]);
+  }
+
+  /**
+   * A pending wait of this kind (a Sell tap, or a swipe to "the shop") that still counts: same
+   * account, not expired. A swipe's wait does not make a first Sell tap look like a second one.
+   */
+  function freshPending(kind: "sell" | "shop") {
+    const pending = sellWhenShopLoadsRef.current;
+    if (pending === null || (pending.onNoShop === null) !== (kind === "sell")) return null;
+    if (pending.accountId !== session?.account.id || Date.now() - pending.at > sellTapLifetimeMs)
+      return null;
+    return pending;
+  }
+
+  /** Loads the account's shops, then finishes the tap (see the effect above). */
+  function waitForShops(onNoShop: (() => void) | null) {
+    if (session === null) return;
+    sellWhenShopLoadsRef.current = {
+      accountId: session.account.id,
+      at: Date.now(),
+      mode,
+      view: deps.view,
+      onNoShop
+    };
+    deps.getSessionContextLoad().retry();
+    setStatusMessage("Loading your shop… If this takes long, check your connection.");
+  }
+
+  /**
+   * "The shop" from a swipe: the Shop Hub for an owner, `browse` (the marketplace of shops) for
+   * someone without a shop. While the account's shops have not loaded, which of the two is not
+   * known yet, so it waits for them instead of guessing.
+   */
+  function openShopOrBrowse(browse: () => void) {
+    if (business !== null) openShopHub();
+    // A second swipe while the shops still have not loaded goes to the shop browser, so a failing
+    // load never traps anyone (an owner can still reach the Shop Hub from the menu).
+    else if (
+      session !== null &&
+      !deps.getSessionContextLoad().loaded &&
+      freshPending("shop") === null
+    )
+      waitForShops(browse);
+    else {
+      sellWhenShopLoadsRef.current = null;
+      browse();
+    }
   }
 
   /** "Go to my shop": the Shop Hub at /sell/shop, over seller chat. Back closes it again. */
@@ -293,6 +400,7 @@ export function useNavigationState(deps: UseNavigationStateDeps) {
     browseAsGuest,
     switchMode,
     openShopHub,
+    openShopOrBrowse,
     closeShopHub,
     updateShopPresenceStatus
   };

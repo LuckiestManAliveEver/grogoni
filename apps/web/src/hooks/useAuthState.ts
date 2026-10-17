@@ -582,6 +582,15 @@ export function useAuthState(deps: UseAuthStateDeps) {
   // domain hook (Phase 16), and this function's only external call site is a still-inline OwnerApp
   // effect that can supply it directly - same pattern used for Sync (Phase 7), Invoices/Logistics
   // (Phase 9), and Runtime history/Network (Phase 16).
+  function adoptShop(shop: GrogoniSessionContext["shops"][number]) {
+    const nextBusiness: ActiveBusiness = { ...shop.business, role: shop.membership.role };
+    const nextAgent = createDefaultAgent(nextBusiness);
+    setBusiness(nextBusiness);
+    setAgentSettings(nextAgent);
+    localStorage.setItem(activeBusinessStorageKey, JSON.stringify(nextBusiness));
+    localStorage.setItem(activeAgentStorageKey, JSON.stringify(nextAgent));
+  }
+
   /**
    * Resolves true once the server's context was applied, false when it could not be loaded or a
    * newer load superseded it (shouldApply, from session-context-retry.ts) before it returned.
@@ -590,7 +599,8 @@ export function useAuthState(deps: UseAuthStateDeps) {
    * view, conversation and route. "refresh" (a retry after a failed restore) applies only the
    * data: by then the user may have moved on from the device cache, and moving them to the
    * server's last place would yank them away. It keeps the current shop when the account still
-   * belongs to it and otherwise forgets it, without picking another.
+   * belongs to it and otherwise forgets it, without picking another. A device with no shop at all
+   * adopts the account's shop (no navigation), so an owner is never treated as shopless.
    */
   async function loadGrogoniSessionContext(
     setActiveConversationId: (conversationId: string | null) => void,
@@ -607,7 +617,14 @@ export function useAuthState(deps: UseAuthStateDeps) {
         // predate it (and would forget the new shop). Drop it; a later retry fetches fresh data.
         if ((currentShop?.id ?? null) !== shopAtStart) return false;
         setGrogoniSessionContext(context);
-        if (
+        const accountShop =
+          context.shops.find((shop) => shop.business.id === context.activeShopId) ??
+          context.shops[0];
+        if (currentShop === null && accountShop !== undefined) {
+          // The restore failed, so this device never learned the account has a shop. Adopt it
+          // (data only, no navigation): otherwise Sell would offer an owner a second shop.
+          adoptShop(accountShop);
+        } else if (
           currentShop !== null &&
           !context.shops.some((shop) => shop.business.id === currentShop.id)
         ) {
@@ -624,15 +641,7 @@ export function useAuthState(deps: UseAuthStateDeps) {
       const restoredView = shellViewForSurface(context.activeSurface, restoredMode);
 
       if (activeShop !== undefined) {
-        const nextBusiness: ActiveBusiness = {
-          ...activeShop.business,
-          role: activeShop.membership.role
-        };
-        const nextAgent = createDefaultAgent(nextBusiness);
-        setBusiness(nextBusiness);
-        setAgentSettings(nextAgent);
-        localStorage.setItem(activeBusinessStorageKey, JSON.stringify(nextBusiness));
-        localStorage.setItem(activeAgentStorageKey, JSON.stringify(nextAgent));
+        adoptShop(activeShop);
       } else {
         // The account belongs to no shop now (for example removed as staff, or left): forget the
         // shop this device last opened instead of keeping a business it can no longer use.

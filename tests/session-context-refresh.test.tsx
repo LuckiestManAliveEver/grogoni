@@ -142,8 +142,25 @@ describe("session context refresh (retry) versus restore (sign-in)", () => {
     expect(localStorage.getItem(activeBusinessStorageKey)).not.toBeNull();
   });
 
-  it("refresh with no stored shop leaves the shop alone", async () => {
+  it("refresh with no stored shop adopts the account's shop without moving the user", async () => {
+    // The restore failed, so this device never learned the account owns a shop. Leaving business
+    // null made Sell offer the owner "Set up your business" and a second create then failed 409.
     // Reported as applied, so the retry stops instead of looping on every reconnect.
+    await expect(load("refresh")).resolves.toBe(true);
+    expect(spies.setBusiness).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "owned-shop", role: "owner" })
+    );
+    expect(JSON.parse(localStorage.getItem(activeBusinessStorageKey) ?? "null")).toMatchObject({
+      id: "owned-shop"
+    });
+    expect(spies.setMode).not.toHaveBeenCalled();
+    expect(spies.setView).not.toHaveBeenCalled();
+    expect(spies.setActiveConversationId).not.toHaveBeenCalled();
+    expect(window.location.pathname).toBe("/marketplace/conversations/user-picked-conversation");
+  });
+
+  it("refresh with no stored shop and an account without shops sets no shop", async () => {
+    mockedApiFetch.mockResolvedValue({ ...serverContext, activeShopId: null, shops: [] });
     await expect(load("refresh")).resolves.toBe(true);
     expect(spies.setBusiness).not.toHaveBeenCalled();
   });

@@ -1087,6 +1087,110 @@ bootstrap failure and surfaces the failure as a small, dismissable
 `app-action-notice` status line rather than a blocking screen; this
 phase relied on that existing behavior rather than changing it.
 
+## Chat gestures and guest chat (October 2026 journey fixes, implemented)
+
+Found by driving the live app in a phone-sized browser. Every item has a gate test.
+`pnpm eval:user-journey:local` / `:production` (`scripts/eval-user-journey.mjs`) scores them in a
+real phone-sized browser with touch: the local run covers everything except the login Enter key
+(gate test only); the production run covers what a guest can do without creating data.
+
+**Swipes.** On the bare chat (no panel, no workspace, no open inbox on a phone), a one-finger
+horizontal swipe navigates: **left opens the contact book** (`network`: phonebook contacts,
+social connections, the contact directory), **right opens the shop**: the Shop Hub
+(`/sell/shop`) for someone with a shop, the marketplace sheet of shops (the menu's "Browse")
+for someone without; while the account's shops have not loaded, which of the two is not known
+yet, so the swipe waits for them ("Loading your shop…") and then opens the right one, unless the
+user has moved to another screen meanwhile; a second swipe while they still have not loaded goes
+to the shop browser at once. A swipe's wait and a Sell tap's wait are separate, and a dropped wait clears its "Loading
+your shop…" status. What counts
+as a swipe is pure and tested (`apps/web/src/swipe-navigation.ts`):
+at least 72px, at least twice as horizontal as vertical, under 600ms, not starting within 40px
+of a screen edge (the OS back gesture), not starting in a text field, a horizontally
+scrolling row, a dialog or menu, or anything marked `data-swipe-ignore`, never with two
+fingers, and never while text is selected (a selection handle being dragged). Swipes are off while any sheet, menu or dialog is over the chat (`chatSwipeEnabled`). The
+listener (`hooks/useSwipeNavigation.ts`) is passive, so scrolling is never delayed.
+
+**Guest chat.** Someone without a shop has no assistant of their own, so the chat can only search
+the marketplace (`routeGuestMessage` in `marketplace-search-reply.ts`). Telling a product from
+anything else in free text is judgment, not a rule, so the design does not depend on getting it
+right: anything that is not unmistakably something else is searched, and an empty search answers
+in words that fit either way ("I couldn't find "…" on Grogoni. If it's something to buy, try its
+name, like "sugar""). A request or question about a product has its scaffolding removed first:
+"I need sugar", "Can I get sugar?", "Is there sugar?", "Is sugar available?", "Who has sugar?",
+"Give me 2kg sugar", "Sugar please", "Looking for rice", "Show me sugar", "Any eggs?", "cement
+price?", "How much for a bag of cement?", "Who sells eggs near me?", "Who has sugar in Nairobi?",
+"Do you have sugar available?", "Nataka kuagiza sukari" all search the product. Only
+unmistakable messages get their own answer: greetings, thanks and acknowledgements in English and
+Swahili ("Habari gani", "how are you?", "Thanks bro", "Thank you for your help", "OK thanks",
+"Poa sana"), help or contact requests ("Help me", "I need help", "Please call me"), questions about Grogoni itself ("Who are you", "what is this?"), order and
+delivery help, matched as phrases so "a delivery bag" and "Track pants" stay products ("Where is
+my order?", "Track order", "Delivery?", "kuna shida"), and wanting to sell, said by the person
+themselves ("How do I open a shop", "sell"; not "selling price of maize"). A greeting or thanks in
+front of a request does not hide it, and thanks is answered as thanks unless a later part of
+the message asks for something ("Thanks! I also need sugar" searches sugar). Emoji and other text
+with nothing to look for get the short explanation. A chat search made while another search is running runs on its own. A conversation with a person or a connected channel is never
+intercepted: the message goes to them. A model would classify better than these rules; that is a
+separate decision, since guests have no model today.
+
+**Device-only messages.** The search exchange, and a message waiting in the outbox, exist only on
+this device (`ChatMessage.deviceOnlyIn`, `chat-device-only-messages.ts`). They are kept per
+account and merged into every refresh of the conversation they belong to, so the 4-second
+refresh, a trip to another thread, or a reload does not lose them. A search exchange expires
+after a day; a queued message stays while the outbox holds it. Only text and attachment names
+are stored, never attachment data. An end-to-end encrypted message's text is never written to
+storage (the outbox holds only its ciphertext): it is kept in the page's memory, so a thread
+switch keeps it, and after a reload the thread shows "Encrypted message waiting to send" in its
+place, so the waiting count always matches something visible (a plain message whose copy was
+lost shows its text from the outbox). When storage is full, the oldest search exchanges go first;
+a message waiting in the outbox is never pushed out. Clearing the outbox on
+sign-out or reset clears all of these. Each message is placed right after the message it followed
+when it was created (`deviceOnlyAfter`, the last message the server has), never by comparing the
+phone's clock with the server's; a message waiting in the outbox shows at the end, in the order
+it was typed, because the server will place it there when it is sent.
+If the user switches thread while a search runs, the exchange waits for its own thread instead of
+flashing into the new one. A queued message is dropped once the server has it (matched by its
+client message id). Device-only messages offer no server actions (delivery attempts, edit,
+delete) and are never part of the history sent to a model (`inferenceHistory`).
+
+**Sending state.** The thread header's resend control appears only while the open conversation has
+messages in the outbox ("Send 2 waiting messages"); it used to say "Retry failed" on every
+thread. A message keeps the order it was typed in: while an earlier message in the same
+conversation is waiting, a new one is not sent past it but queued behind it ("Waiting to send"),
+so the conversation, and anything an agent does with it, runs in order. A send that fails with a
+retryable error stays in the thread, marked in the sell color with what will happen: "Not sent yet
+· retrying" while the outbox resends it on its own, and "Not sent · tap Send waiting at the top to
+retry" once those resends are used up (`message-delivery-label.ts`). The outbox resends each
+message on its own backoff of 15 seconds, 1 minute and 4 minutes, then stops (a message to an
+agent reruns a paid model turn each time); this includes a message that was saved but whose agent
+turn failed. A message that stopped holds back only later messages in its own conversation. A
+reconnect skips the wait but not the three-try cap. A tap on the resend control sends at once, or
+says why it cannot ("Already sending your waiting messages", or another tab is sending them). A Web Lock keeps two tabs from resending the same queue at once, where the browser has Web Locks; queueing and removing an entry are separate localStorage writes and are not locked across tabs. A message the server refuses for good leaves
+the queue: its text goes back into the message box when that is clean (its thread is open, the box
+is empty, nothing attached), and otherwise it stays in the thread marked "Not sent", where it can
+still be read. A resend that finishes after the user opened another thread changes nothing on
+screen; that thread's own refresh shows the result. Before, only the browser's `online` event
+resent a message, so an online user waited forever. A message sent within the composer's 120 ms
+draft sync now always leaves the box empty. Right after a load, while the conversation in
+the URL is still being opened, the composer says "Opening this chat…" and holds Send; a message
+sent at that moment opens that conversation and goes there, and if it cannot be opened the text
+goes back into the box instead of vanishing. A send's own success clears the box only if it still
+holds what was sent, so text typed while a send waited is kept. The read marker is skipped while this tab's own send
+is running: on the server its agent turn holds the account's write lock, which the marker would
+wait behind.
+
+**Shop setup.** A failed launch load used to leave an owner's device thinking it had no shop. The
+retry now adopts the account's shop when the device has none (data only, no navigation). A Sell
+tap made while the shops are loading finishes when the load does: it opens the shop, or setup if
+the account really has none. The waiting tap belongs to the account that made it, lapses after a
+minute, and is dropped if the user switches mode meanwhile, so a late load never moves a user who
+has moved on (restoring the account's last place on a cold load changes the route on its own and
+does not cancel it). A second tap while the shops still have not loaded goes on to
+setup, so a failing load never traps anyone, and if a create answers `409
+store_already_registered` the app opens the shop the account owns (or says so plainly when the
+shop list cannot load either).
+
+**Login.** The credential step is a form, so Enter in the phone, PIN, or password field submits.
+
 ## Target architecture
 
 ```text

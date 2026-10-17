@@ -8790,3 +8790,8 @@ body {
   min-height: 40px;
   padding: 6px 14px;
 }
+
+.message-meta .message-status-failed {
+  color: var(--grogoni-sell, #c2543f);
+  font-weight: 600;
+}

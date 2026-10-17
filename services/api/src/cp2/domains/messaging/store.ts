@@ -64,6 +64,7 @@
  *   reference `nativeSmsTransportReadiness`/`queueNativeSmsCommand`/`emailTransportReadiness`/
  *   `sendEmailTransport`, all of which live here now.
  */
+import { isDeepStrictEqual } from "node:util";
 import { randomBytes, randomUUID } from "node:crypto";
 import type { InventoryTaskController } from "../agent-runtime/inventory-task-controller.js";
 import type {
@@ -3567,6 +3568,18 @@ export class MessagingDomain {
     const participant = this.accountConversationParticipant(conversation.id, session.account.id);
     if (participant === null)
       throw new Cp2Error(404, "conversation_not_found", "Conversation was not found.");
+    const fromOthers = this.messagesForConversation(conversation.id).filter(
+      (message) => message.authorId !== session.user.id && message.deletedAt == null
+    );
+    // Messages still flagged unread (readAt is shared by every participant), and whether this
+    // participant has read up to the newest message from someone else: the same per-participant
+    // rule listConversations uses for unreadCount.
+    const unreadFromOthers = fromOthers.filter((message) => !message.readAt);
+    const lastRead =
+      participant.lastReadAt == null
+        ? Number.NEGATIVE_INFINITY
+        : Date.parse(participant.lastReadAt);
+    const behind = fromOthers.some((message) => Date.parse(message.createdAt) > lastRead);
     const nextParticipant: ConversationParticipantSummary = {
       ...participant,
       ...(input.archived !== undefined
@@ -3574,8 +3587,15 @@ export class MessagingDomain {
         : {}),
       ...(input.mutedUntil !== undefined ? { mutedUntil: input.mutedUntil } : {}),
       ...(input.pinned !== undefined ? { pinnedAt: input.pinned ? now.toISOString() : null } : {}),
-      ...(input.read ? { lastReadAt: now.toISOString() } : {})
+      // Marking read when nothing new arrived since the last time changes nothing. The web app
+      // asks on every 4-second refresh; rewriting this row (and recording a sync change) each
+      // time made concurrent requests on the conversation fail their save with 40001.
+      ...(input.read && (participant.lastReadAt == null || behind || unreadFromOthers.length > 0)
+        ? { lastReadAt: now.toISOString() }
+        : {})
     };
+    if (isDeepStrictEqual(nextParticipant, participant) && input.title === undefined)
+      return this.conversationView(conversation);
     this.conversationParticipants.set(participant.id, nextParticipant);
     if (input.title !== undefined) {
       this.conversations.set(conversation.id, {
@@ -3585,14 +3605,12 @@ export class MessagingDomain {
       });
     }
     if (input.read) {
-      for (const message of this.messagesForConversation(conversation.id)) {
-        if (message.authorId !== session.user.id && !message.readAt) {
-          this.conversationMessages.set(message.id, {
-            ...message,
-            status: "read",
-            readAt: now.toISOString()
-          });
-        }
+      for (const message of unreadFromOthers) {
+        this.conversationMessages.set(message.id, {
+          ...message,
+          status: "read",
+          readAt: now.toISOString()
+        });
       }
     }
     this.recordConversationSyncForParticipants(
@@ -5010,9 +5028,16 @@ export class MessagingDomain {
   }
 
   private messagesForConversation(conversationId: string): ConversationMessageSummary[] {
+    // An agent's reply is stamped with the same time as the message it answers. On a tie the
+    // message comes first: the map's insertion order follows how rows happened to load (on the
+    // Edge API, in no fixed order), which put replies above their questions.
     return [...this.conversationMessages.values()]
       .filter((message) => message.conversationId === conversationId)
-      .sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt));
+      .sort(
+        (left, right) =>
+          Date.parse(left.createdAt) - Date.parse(right.createdAt) ||
+          Number(left.author === "agent") - Number(right.author === "agent")
+      );
   }
 
   private requireConversationMessage(

@@ -123,4 +123,75 @@ describe("PhoneFirstAuthentication login methods", () => {
     expect(document.body.textContent).not.toContain("Log in with password");
     expect(onAuthenticated).not.toHaveBeenCalled();
   });
+
+  it("submits the password with Enter, the same as the Log in button", async () => {
+    const requests: { path: string; body: unknown }[] = [];
+    mockedApiFetch.mockImplementation(async (path, init) => {
+      const body = init?.body;
+      requests.push({
+        path: String(path),
+        body: typeof body === "string" ? JSON.parse(body) : body
+      });
+      if (path === "/auth/login/methods") {
+        return {
+          preferred: "pin",
+          passkeyAvailable: false,
+          passwordFallback: true,
+          recoveryAvailable: false,
+          smsLogin: false
+        };
+      }
+      if (path === "/auth/login/password") {
+        throw new ApiRequestError(401, "The account credentials are invalid.", {
+          code: "auth_credentials_invalid"
+        });
+      }
+      throw new Error(`Unexpected request to ${path}`);
+    });
+
+    renderLogin();
+    await change(inputByLabel("Phone number"), "0712345678");
+    // Enter in the phone field moves on, as the button does.
+    await act(async () => {
+      inputByLabel("Phone number").form!.requestSubmit();
+      for (let tick = 0; tick < 5; tick++) await Promise.resolve();
+    });
+    await click(buttonByText("Use a password"));
+    expect(document.body.textContent).toContain("Enter the password for this account.");
+    expect(document.body.textContent).not.toContain("recovery password");
+    const password = inputByLabel("Password");
+    await change(password, "correct horse battery");
+    expect(password.form).not.toBeNull();
+    await act(async () => {
+      password.form!.requestSubmit();
+      for (let tick = 0; tick < 5; tick++) await Promise.resolve();
+    });
+
+    const login = requests.find((request) => request.path === "/auth/login/password");
+    expect(login?.body).toMatchObject({ password: "correct horse battery" });
+  });
+
+  it("does not submit an empty password on Enter", async () => {
+    mockedApiFetch.mockImplementation(async (path) => {
+      if (path === "/auth/login/methods") {
+        return {
+          preferred: "pin",
+          passkeyAvailable: false,
+          passwordFallback: true,
+          recoveryAvailable: false,
+          smsLogin: false
+        };
+      }
+      throw new Error(`Unexpected request to ${path}`);
+    });
+    renderLogin();
+    await change(inputByLabel("Phone number"), "0712345678");
+    await click(buttonByText("Continue to log in"));
+    await click(buttonByText("Use a password"));
+    await act(async () => {
+      inputByLabel("Password").form!.requestSubmit();
+      await Promise.resolve();
+    });
+    expect(mockedApiFetch.mock.calls.map(([path]) => path)).not.toContain("/auth/login/password");
+  });
 });

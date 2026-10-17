@@ -17,6 +17,15 @@ export function decideStoredShop(
   return { action: "open", business: { ...stored, ...shop.business, role: shop.membership.role } };
 }
 
+/**
+ * The shop this account owns, for the "already registered a store" answer to a second shop
+ * create: the person meant to open their shop, not to see an error.
+ */
+export function ownedShop(shops: readonly AccountShopSummary[]): ActiveBusiness | null {
+  const shop = shops.find((entry) => entry.membership.role === "owner");
+  return shop === undefined ? null : { ...shop.business, role: shop.membership.role };
+}
+
 /** After leaving `businessId`: open another shop the account still has, or none. */
 export function shopAfterLeaving(
   shops: readonly AccountShopSummary[],

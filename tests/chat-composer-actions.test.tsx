@@ -135,4 +135,65 @@ describe("mobile chat composer actions", () => {
     expect(document.body.querySelector('[role="dialog"]')).toBeNull();
     await act(async () => root.unmount());
   });
+
+  it("holds Send and Enter while the chat is still opening", async () => {
+    const onSend = vi.fn();
+    function Harness() {
+      const composer = useChatComposerState({
+        activeConversationId: null,
+        channelEndpoints: [],
+        chatDraft: "Add 5 bags of sugar",
+        initialEmailSubject: "",
+        nearbyScope: null,
+        smsDefaultCountry: "KE",
+        onDraftChange: vi.fn(),
+        onPlatformHandoff: vi.fn(),
+        onSend
+      });
+      return (
+        <ChatComposer
+          activeAgentName="Shopkeeper"
+          agent={null}
+          business={null}
+          channelEndpoints={[]}
+          composer={composer}
+          invoices={[]}
+          isAuthenticated
+          isBrowserGenerating={false}
+          isSending={false}
+          isOpening
+          mode="seller"
+          pendingAttachments={[]}
+          replyToMessageId={null}
+          selectedConversationTitle=""
+          selectedEmailCustomerId={null}
+          onAgentChange={vi.fn()}
+          onAttachmentChange={vi.fn()}
+          onCancelGeneration={vi.fn()}
+          onCancelReply={vi.fn()}
+          onOpenAgentProfile={vi.fn()}
+          onRemoveAttachment={vi.fn()}
+          onRequireSignIn={vi.fn()}
+          onSellerPhotoCapture={vi.fn()}
+        />
+      );
+    }
+    const root = createRoot(host);
+    await act(async () => root.render(<Harness />));
+    const textarea = host.querySelector('textarea[aria-label="Message"]') as HTMLTextAreaElement;
+    expect(textarea.placeholder).toBe("Opening this chat…");
+    const send = host.querySelector("button.send-button") as HTMLButtonElement;
+    expect(send.disabled).toBe(true);
+    await act(async () => {
+      textarea.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    });
+    expect(onSend).not.toHaveBeenCalled();
+    // Enter does nothing while the chat is opening: no send, and no newline in the draft.
+    const enter = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+    await act(async () => {
+      textarea.dispatchEvent(enter);
+    });
+    expect(enter.defaultPrevented).toBe(true);
+    act(() => root.unmount());
+  });
 });

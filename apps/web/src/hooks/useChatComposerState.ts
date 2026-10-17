@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 
 import type { CountryCode } from "libphonenumber-js";
 import type { Scope } from "@grogoni/offline-runtime";
@@ -73,6 +74,10 @@ export function useChatComposerState(input: ChatComposerStateInput) {
 
   function sendLiveDraft() {
     clearDraftSyncTimer();
+    // A send within the 120 ms sync window would leave the parent's draft behind the composer.
+    // Commit it first, so the send's own setChatDraft("") is a change that clears the composer,
+    // and a send that keeps the draft ("Your draft is saved") keeps this text.
+    if (input.chatDraft !== liveDraft) flushSync(() => input.onDraftChange(liveDraft));
     if (bluetooth.selected) {
       bluetooth.send(liveDraft, () => {
         setLiveDraft("");

@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import { isLocalRuntimeHost } from "@grogoni/shared-types";
 import { createHash } from "node:crypto";
 
@@ -68,7 +69,7 @@ export class NativeRuntimeBindingStore {
     const agentId = this.defaultRuntimePolicy.agentId;
     const adapterId = this.defaultRuntimePolicy.agentRuntimeAdapterId;
     const existingAgent = this.agents.get(agentId);
-    this.agents.set(agentId, {
+    const desiredAgent = {
       id: agentId,
       businessId: null,
       accountId: null,
@@ -82,10 +83,23 @@ export class NativeRuntimeBindingStore {
         runtimeAdapterId: this.defaultRuntimePolicy.agentRuntimeAdapterId,
         requiredModelCapabilities: ["chat"]
       },
-      status: "active",
-      createdAt: existingAgent?.createdAt ?? timestamp,
-      updatedAt: timestamp
-    });
+      status: "active" as const
+    };
+    // Rewritten only when its content changes. Every request runs this after hydrating; stamping
+    // updatedAt each time made every signed-in request write this one shared row, so concurrent
+    // requests failed their optimistic save with 40001 and the Edge API answered 503.
+    if (
+      existingAgent === undefined ||
+      !isDeepStrictEqual(
+        { ...existingAgent, createdAt: undefined, updatedAt: undefined },
+        { ...desiredAgent, createdAt: undefined, updatedAt: undefined }
+      )
+    )
+      this.agents.set(agentId, {
+        ...desiredAgent,
+        createdAt: existingAgent?.createdAt ?? timestamp,
+        updatedAt: timestamp
+      });
     const existing = this.bindings.get(globalDefaultRuntimeBindingId);
     if (existing === undefined) {
       this.bindings.set(globalDefaultRuntimeBindingId, {

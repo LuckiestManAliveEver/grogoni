@@ -279,6 +279,105 @@ curl -s https://api.ipify.org
 If the first entry is not your address (for example a Vercel or Supabase address), every
 user would share a counter: set `EDGE_RATE_LIMIT_ENABLED=false` and report it.
 
+### Concurrent requests
+
+Each request loads a scoped snapshot inside one transaction and saves it with optimistic
+concurrency: a save whose rows changed underneath it throws `40001` ("Concurrent snapshot
+update"), which the handler answers as `503 service_unavailable`. Two rules keep that rare:
+
+- **Hydration writes nothing.** Restoring a snapshot must not change a row that is already
+  current. In October 2026 `ensureGlobalDefault()` (`services/api/src/cp2/domains/native-runtime/store.ts`)
+  re-stamped the shared `builtin:shopkeeper:v1` agent's `updatedAt` on every request, so every
+  signed-in request wrote the same `cp2_native_runtime_agents` row and concurrent ones lost the
+  race: up to 12 of 17 parallel requests answered 503. It now rewrites the agent only when its
+  content differs (`tests/native-runtime-default-idempotency.test.ts`).
+- **Only what is safe to repeat is retried** (`mayRetryRequest` in
+  `services/api/src/edge-domain-routes.ts`, at most two reruns with a short jittered wait). A
+  `GET`/`HEAD` that lost the race reruns only if it is on the `retryableReads` allowlist: the
+  app's polling and listing routes (shops, session context, conversations, a shop's records,
+  public storefronts, network), which touch nothing but this database. Everything else is left
+  alone on purpose: an OAuth or mailbox callback redeems a single-use code, a search may call a
+  connector, and a new route is not retried until someone has checked it cannot reach a third
+  party. A storefront ID claim (`POST /businesses`, `PUT`/`PATCH`/`POST
+/businesses/:id/grogoni-id`) that hit the unique index (`23505`) also reruns: it lost a race to
+  the same new ID and does nothing else. Nothing reruns once the attempt used an
+  independent transaction (`approvalTransaction`), because that work may have committed; this
+  counts reads made through it too, so such a request is not retried even when it only read. Other writes are
+  never replayed by the server; the web app's outbox resends a failed message at most three
+  times on its own, with backoff (see docs/frontend/frontend.md, "Sending state"). Each attempt counts against
+  the rate limit.
+
+- **Loading fills defaults; that is not a change.** Restoring a message fills fields an older
+  row may lack (`provider`, `direction`, channel ids). The request's change baseline uses the
+  messages as hydrated (`rebaseLoadNormalizedCollections`), while the optimistic check still
+  compares with the stored rows. Before, every send rewrote every earlier message in its
+  conversation, and a concurrent "mark read" on one of them failed the send with 40001.
+- **Re-evaluating a rule that still says the same thing writes nothing.** Shop notification rules
+  (beta and launch readiness and others) run on every request; re-stamping their `updatedAt` each
+  time made concurrent requests for a shop conflict on those rows. `upsertNotification` now writes
+  only when the severity, title or body changed. `tests/edge-runtime-checkpoint-scope.test.ts`
+  checks every normalized table: a send rewrites only its conversation, its agent task head and
+  the shop's offline watermark, so the next touch-on-every-request write fails the test.
+- **A reply sorts after the message it answers.** An agent's reply carries the same timestamp as
+  the message it answers; on a tie the message comes first (rows load in no fixed order on Edge).
+- **Marking read is a no-op when nothing is unread.** The web app marks the open conversation read
+  on every 4-second refresh. The server now leaves the participant row and the sync log alone when
+  this participant has read up to the newest message from someone else and no message is still
+  flagged unread, the same per-participant rule `unreadCount` uses (a message's `readAt` is shared
+  by every participant, so it alone cannot say whether this one has read it). The app only asks
+  when that rule says something is unread.
+
+Writes for one account run one at a time (`edge:account:` advisory lock, 10 s lock timeout). An
+agent turn holds that lock for as long as the turn runs, so another write for the same account
+waits behind it; one that waits longer than the timeout answers 503 (`55P03`). The web app keeps
+its own writes out of that queue where it can (no read marker during its own send).
+
+The failure log line (`edge_transaction_failed`) carries the conflicting `table`, so the next
+hot row is named in the logs rather than guessed.
+
+### Runtime checkpoints load with their conversation
+
+Runtime checkpoint rows (`cp2_runtime_handoffs`, `cp2_runtime_task_heads`,
+`cp2_runtime_task_instances`, `cp2_runtime_transfers`, `cp2_runtime_execution_events`) carry no
+account, business or user column: they belong to a task, and a task id is a conversation id. The
+scoped snapshot loads them only with the conversations the caller works in: their own, ones they
+take part in, and those of shops they are a member of (`edge_task_conversation_ids` in
+`services/api/src/cp2/edge-snapshot-scope.ts`). A storefront visitor or a guest search never loads
+any: these rows grow with every agent turn. A member still loads the checkpoints of every
+conversation in their shops on each request, and nothing prunes them yet; scoping them to the
+conversation a request touches is follow-up work. Before this, the second agent
+message in any conversation answered 503: its request saw no checkpoint, bootstrapped version 1
+again, and hit `cp2_runtime_handoffs_task_version_idx` (`23505`)
+(`tests/edge-runtime-checkpoint-scope.test.ts`). `cp2_runtime_operation_dedup` is keyed by a hash
+of the operation and idempotency key, not by task, and is still not scoped; an idempotent replay
+of a checkpoint operation on Edge is not recognized as one.
+
+### Offline change sequences across shops
+
+`cp2_offline_changes` sequence numbers are unique across every shop
+(`cp2_offline_changes_sequence`), but a request loads only its own shops' changes and markers. A
+request that creates offline changes gives them their final numbers just before saving
+(`allocateOfflineSequences`): it takes a transaction-scoped advisory lock that every such write
+takes, reads the highest number in use (`offlineSequenceHighWater`, one index lookup) and numbers
+its changes after it. The lock is held from there to commit, and only by writes that create
+offline changes. Before, a shop reused numbers another shop had already taken, and two shops
+writing at the same moment both took the next one; the later commit failed with `23505` (503)
+(`tests/edge-runtime-checkpoint-scope.test.ts` runs both shops at once). A sync cursor a client
+already holds can only be lower than the final numbers, so it re-reads those changes; it never
+skips one.
+
+### Storefront IDs across tenants
+
+The scoped snapshot only holds the caller's own businesses, so it cannot see a Grogoni ID that
+another tenant already owns. Requests that claim one (`POST /businesses`, writes to
+`/businesses/:id/grogoni-id`) first read every taken ID from `businesses` and the unreleased rows
+of `cp2_grogoni_id_history`, and the store skips those (`externalGrogoniIdTaken`). The public
+availability check (`GET /public/commerce-identities/availability`) reads only the one ID it is
+asked about, so an unauthenticated caller cannot make every call scan every business.
+Before this, a second "Mama Mboga" shop hit the unique index (`23505`) and answered 503; it now
+gets `grogoni.mama-mboga-2`. Two creates of the same new name in the same instant still meet at
+the index; the loser reruns (see above) and takes the next suffix.
+
 ### Routes outside `/api`
 
 `vercel.json` also rewrites the two MCP OAuth discovery documents to the paths the MCP

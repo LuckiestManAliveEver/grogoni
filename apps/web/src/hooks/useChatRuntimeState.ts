@@ -1,11 +1,13 @@
 import { useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { currentOfflineScope, isExplicitOfflineMode } from "../offline-runtime";
 import { runtimeHandoffController, runtimeTransition } from "../runtime-handoff";
+import { readCurrentOwnerRoute } from "../browser-navigation";
 
 import type { RuntimeToolName } from "@grogoni/tool-core";
 import { renderRuntimeModelOutputInstructions, runtimeToolRegistry } from "@grogoni/tool-core";
 import type {
   AuthBootstrapState,
+  BuyFeedSummary,
   ChannelProvider,
   ConversationAttachment,
   ConversationMessageContent,
@@ -23,6 +25,17 @@ import {
   viewLabel
 } from "../agent-command-engine";
 import { parseChatModuleCommand } from "../chat-module-commands";
+import {
+  deviceOnlyAnchor,
+  holdDeviceOnlyInMemory,
+  inferenceHistory,
+  saveDeviceOnlyMessages
+} from "../chat-device-only-messages";
+import {
+  describeMarketplaceSearch,
+  routeGuestMessage,
+  parseMarketplaceBuyIntent
+} from "../marketplace-search-reply";
 import { postJson } from "../api-helpers";
 import {
   type ChatAttachment,
@@ -65,7 +78,7 @@ import {
   readApiBaseUrl,
   readStableDeviceId
 } from "../lib/api";
-import { queueMessagingOutbox } from "../messaging/outbox";
+import { outboxBackoffMs, queueMessagingOutbox, readMessagingOutbox } from "../messaging/outbox";
 import {
   clientInferenceFeatureFlags,
   runtimeManager,
@@ -90,7 +103,7 @@ interface UseChatRuntimeStateDeps {
     options?: { replace?: boolean; mode?: GrogoniMode }
   ) => void;
   requireMessagingSignIn: () => void;
-  searchBuyFeed?: (query: string) => Promise<void>;
+  searchBuyFeed?: (query: string) => Promise<BuyFeedSummary | null>;
   loadProducts: (businessId: string) => Promise<void>;
   loadSuppliers: (businessId: string) => Promise<void>;
   loadCustomers: (businessId: string) => Promise<void>;
@@ -199,23 +212,22 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
     activeConversation,
     loadMessagingInbox
   } = deps;
-
-  function parseMarketplaceBuyIntent(message: string): string | null {
-    const normalized = message.trim().replace(/\s+/gu, " ");
-    if (normalized.length === 0) return null;
-    if (
-      !/\b(?:buy|purchase|order|looking for|do you have|have you got|find me)\b/iu.test(normalized)
-    )
-      return null;
-    return normalized
-      .replace(/^i\s+(?:want|need|would like)\s+to\s+(?:buy|purchase|order|get)\s+/iu, "")
-      .replace(/^i\s*(?:am|'m)?\s*looking\s+for\s+/iu, "")
-      .replace(/^can\s+i\s+(?:buy|purchase|order|get)\s+/iu, "")
-      .replace(/^where\s+can\s+i\s+(?:buy|purchase|get)\s+/iu, "")
-      .replace(/^(?:do you have|have you got|find me)\s+/iu, "")
-      .replace(/[?]+$/u, "")
-      .trim();
-  }
+  // The thread open now, read after an await (activeConversationId is this render's value).
+  const currentConversationRef = useRef(activeConversationId);
+  currentConversationRef.current = activeConversationId;
+  // The draft as of the latest render, for decisions made after an await.
+  const chatDraftRef = useRef(chatDraft);
+  chatDraftRef.current = chatDraft;
+  // A send made while the chat was still opening retries once, through the latest render's send.
+  const openingRetry = useRef(false);
+  const latestSend = useRef<
+    (
+      draftOverride?: string,
+      preferredProvider?: ChannelProvider,
+      emailSubject?: string,
+      emailInvoiceId?: string
+    ) => Promise<void>
+  >(async () => undefined);
 
   async function sendChatDraft(
     draftOverride?: string,
@@ -241,6 +253,8 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       );
     } else await send();
   }
+
+  latestSend.current = sendChatDraftOnRuntime;
 
   async function sendChatDraftOnRuntime(
     draftOverride?: string,
@@ -281,6 +295,23 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       (draftOverride ?? chatDraft).trim().length > 0
         ? (draftOverride ?? chatDraft).trim()
         : createAttachmentOnlyMessage(attachments);
+    // What the person typed (empty for an attachment-only send, whose `message` is generated):
+    // the text a failed send gives back to the box.
+    const typedText = (draftOverride ?? chatDraft).trim();
+    // Clear the box only if it still holds what was sent: a retried send (draftOverride) must not
+    // wipe something typed while it waited.
+    // Give a failed send's text back, unless something else was typed while it waited.
+    const restoreDraft = () => {
+      const current = chatDraftRef.current.trim();
+      if (current.length === 0 || current === typedText) setChatDraft(typedText);
+    };
+    const clearSentDraft = () => {
+      // The box as it is now (this function's chatDraft is from the render that started the send,
+      // which can be behind what the composer synced just before sending).
+      const current = chatDraftRef.current.trim();
+      if (draftOverride === undefined || current.length === 0 || current === typedText)
+        setChatDraft("");
+    };
     const helpCommand = extractAgentHelpCommand(message);
     const agentRequest = helpCommand === undefined || helpCommand === null ? message : helpCommand;
     let runtimeMessage = appendAttachmentSummary(agentRequest, attachments);
@@ -289,39 +320,57 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       return;
     }
 
+    // A person (or a connected channel) on the other end always gets the message itself.
+    const talkingToPerson =
+      isHumanDirectConversation(activeConversation, activeSession) ||
+      isExternalChannelConversation(activeConversation);
     const marketplaceSearch =
-      (mode !== "seller" || business === null) && attachments.length === 0
+      (mode !== "seller" || business === null) && attachments.length === 0 && !talkingToPerson
         ? searchBuyFeed
         : undefined;
+    // Someone without a shop has no assistant of their own: product-like text is searched, and
+    // anything else gets an honest answer (routeGuestMessage).
+    // A guest has no agent, so "help …" (an agent command for an owner) is routed like any other
+    // guest message instead of being sent to an agent that is not there.
+    const guestRoute = business === null ? routeGuestMessage(message) : null;
     const buyQuery = marketplaceSearch
-      ? (parseMarketplaceBuyIntent(message) ??
-        (business === null && helpCommand === undefined ? message : null))
+      ? guestRoute === null
+        ? parseMarketplaceBuyIntent(message)
+        : guestRoute.kind === "search"
+          ? guestRoute.query
+          : null
       : null;
-    if (buyQuery !== null && marketplaceSearch) {
-      await marketplaceSearch(buyQuery);
+    if (marketplaceSearch && (buyQuery !== null || guestRoute?.kind === "reply")) {
+      const searched =
+        guestRoute?.kind === "reply"
+          ? { reply: guestRoute.reply, status: guestRoute.status }
+          : describeMarketplaceSearch(buyQuery!, await marketplaceSearch(buyQuery!));
       const createdAt = new Date().toISOString();
-      setChatMessages((messages) => [
-        ...messages,
-        {
-          id: createClientMessageId("buyer"),
-          author: "merchant",
-          body: message,
-          createdAt,
-          status: "delivered"
-        },
-        {
-          id: createClientMessageId("agent"),
-          author: "grogoniclaw",
-          body: "I searched the marketplace for that. Open a result to review the shop and add items to your cart.",
-          createdAt,
-          status: "delivered"
-        }
-      ]);
-      setChatDraft("");
+      // Leaving buy mode navigates to the marketplace root, outside any thread.
+      const thread = mode === "marketplace" ? activeConversationId : null;
+      const deviceOnlyAfter = deviceOnlyAnchor(chatMessages);
+      const exchange = (
+        [
+          { id: createClientMessageId("buyer"), author: "merchant", body: message, createdAt },
+          {
+            id: createClientMessageId("agent"),
+            author: "grogoniclaw",
+            body: searched.reply,
+            createdAt
+          }
+        ] satisfies ChatMessage[]
+      ).map((item): ChatMessage => ({ ...item, deviceOnlyIn: thread, deviceOnlyAfter }));
+      saveDeviceOnlyMessages(activeSession.account.id, exchange);
+      // The search took a moment: if another thread is open now, the exchange waits in storage
+      // for its own thread instead of flashing into this one.
+      if (currentConversationRef.current === activeConversationId)
+        setChatMessages((messages) => [...messages, ...exchange]);
+      clearSentDraft();
       setPendingAttachments([]);
       setReplyToMessageId(null);
-      navigateToView("chat", { mode: "marketplace" });
-      setStatusMessage("Marketplace results updated.");
+      // Already buying: stay in this thread.
+      if (mode !== "marketplace") navigateToView("chat", { mode: "marketplace" });
+      setStatusMessage(searched.status);
       return;
     }
 
@@ -357,7 +406,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
           status: "pending"
         }
       ]);
-      setChatDraft("");
+      clearSentDraft();
       setStatusMessage("Thinking on this device…");
       try {
         const reply = await (
@@ -400,7 +449,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
     };
     setChatMessages((messages) => [...messages, merchantMessage]);
     setStatusMessage("Agent processing…");
-    setChatDraft("");
+    clearSentDraft();
     setPendingAttachments([]);
     setReplyToMessageId(null);
 
@@ -447,7 +496,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
     if (hasExternalRecipient) {
       if (business === null || activeConversationId === null || attachments.length > 0) {
         setChatMessages((messages) => messages.filter((item) => item.id !== clientMessageId));
-        setChatDraft(message);
+        restoreDraft();
         setPendingAttachments(attachments);
         setStatusMessage(
           attachments.length > 0
@@ -492,10 +541,12 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
             ? "SMS queued — waiting for the linked Android device to send it."
             : `Sent via ${sent.message.provider ?? preferredProvider ?? "connected channel"}.`
         );
-        await loadMessagingInbox(activeConversationId);
+        // The message went out; a failed refresh must not look like a failed send (resending
+        // would use a new idempotency key and send the SMS or email twice).
+        await loadMessagingInbox(activeConversationId).catch(() => undefined);
       } catch (error) {
         setChatMessages((messages) => messages.filter((item) => item.id !== clientMessageId));
-        setChatDraft(message);
+        restoreDraft();
         setPendingAttachments(attachments);
         setStatusMessage(getErrorMessage(error));
       }
@@ -508,7 +559,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
           resolvedInferenceRuntimeSessionId = await ensureRuntimeSession(setRuntimeSessionId);
         } catch (error) {
           setChatMessages((messages) => messages.filter((item) => item.id !== clientMessageId));
-          setChatDraft(message);
+          restoreDraft();
           setPendingAttachments(attachments);
           if (!rejectDefinitiveAuthenticationFailure(error)) {
             setStatusMessage(`The agent session could not be created. ${getErrorMessage(error)}`);
@@ -563,13 +614,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
             agentId: canonicalRuntimeAgentId ?? business.id,
             modelId: inferenceModelId,
             messages: [
-              ...chatMessages
-                .filter((item) => item.author === "merchant" || item.author === "grogoniclaw")
-                .slice(-12)
-                .map((item) => ({
-                  role: item.author === "merchant" ? ("user" as const) : ("assistant" as const),
-                  content: item.body
-                })),
+              ...inferenceHistory(chatMessages),
               { role: "user", content: runtimeMessage }
             ],
             systemPrompt: [
@@ -632,7 +677,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
         activeServerRuntimeSessionId = await ensureRuntimeSession(setRuntimeSessionId);
       } catch {
         setChatMessages((messages) => messages.filter((item) => item.id !== clientMessageId));
-        setChatDraft(message);
+        restoreDraft();
         setPendingAttachments(attachments);
         setStatusMessage("The AI runtime could not start. Try again.");
         return;
@@ -659,7 +704,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
         });
       } catch (error) {
         setChatMessages((messages) => messages.filter((item) => item.id !== clientMessageId));
-        setChatDraft(message);
+        restoreDraft();
         setPendingAttachments(attachments);
         setStatusMessage(getErrorMessage(error));
         return;
@@ -692,7 +737,79 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
     } | null = null;
     let agentProcessingFailed = false;
 
+    // Kept on this device (across refreshes, thread switches and reloads) until the outbox sends
+    // it; the outbox itself holds the payload (ciphertext for an encrypted message).
+    const keepInOutbox = (queuedPayload: Record<string, unknown>, status: "failed" | "queued") => {
+      queueMessagingOutbox({
+        accountId: activeSession.account.id,
+        clientMessageId,
+        payload: queuedPayload,
+        attempts: 0,
+        nextAttemptAt: Date.now() + outboxBackoffMs(0)
+      });
+      const queuedCopy: ChatMessage = {
+        ...merchantMessage,
+        status,
+        outboxState: "retrying",
+        deviceOnlyIn: activeConversationId,
+        deviceOnlyAfter: deviceOnlyAnchor(chatMessages)
+      };
+      // An end-to-end encrypted message's text never goes to plain storage: page memory only.
+      if (hasAccountRecipient) holdDeviceOnlyInMemory(activeSession.account.id, [queuedCopy]);
+      else saveDeviceOnlyMessages(activeSession.account.id, [queuedCopy]);
+      setChatMessages((messages) =>
+        messages.map((item) => (item.id === clientMessageId ? queuedCopy : item))
+      );
+    };
+
+    const routedConversation = readCurrentOwnerRoute()?.conversationId;
+    if (payload === null && shouldRequestServerInference && routedConversation !== undefined) {
+      // The URL names a conversation that is not selected yet (the chat is still opening after a
+      // load): open it and send this there. A local bubble with nowhere to go would vanish on the
+      // next refresh, so if it cannot be opened the text goes back to the box.
+      setChatMessages((messages) => messages.filter((item) => item.id !== clientMessageId));
+      setPendingAttachments(attachments);
+      const routed = routedConversation;
+      if (!openingRetry.current) {
+        setStatusMessage("Opening this chat…");
+        openingRetry.current = true;
+        try {
+          await loadMessagingInbox(routed);
+          // Wait for a render that has the conversation selected (it updates both refs), so the
+          // retry runs with it and with the restored attachments. At most three seconds.
+          for (let waited = 0; waited < 3_000 && currentConversationRef.current !== routed;) {
+            await new Promise((resolve) => setTimeout(resolve, 50));
+            waited += 50;
+          }
+          if (currentConversationRef.current === routed) {
+            await latestSend.current(message, preferredProvider, emailSubject, emailInvoiceId);
+            return;
+          }
+        } finally {
+          openingRetry.current = false;
+        }
+      }
+      restoreDraft();
+      setStatusMessage(
+        "This chat is still opening. Your message is back in the box; send it again in a moment."
+      );
+      return;
+    }
+
     if (payload !== null) {
+      // An earlier message in this conversation is still waiting: this one goes behind it, so the
+      // conversation (and anything an agent does with it) keeps the order the user typed.
+      if (
+        readMessagingOutbox(activeSession.account.id).some(
+          (entry) => entry.payload.conversationId === payload.conversationId
+        )
+      ) {
+        keepInOutbox(payload, "queued");
+        setStatusMessage(
+          "This message will send right after your earlier one, which is still waiting."
+        );
+        return;
+      }
       try {
         const persisted =
           !hasHumanRecipient && business !== null && shouldRequestServerInference
@@ -754,10 +871,13 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
           };
         }
         if (persisted.processing?.status === "failed") {
+          // The message is saved; the agent's turn failed. Retry the turn on the same backoff.
           queueMessagingOutbox({
             accountId: activeSession.account.id,
             clientMessageId,
-            payload
+            payload,
+            attempts: 0,
+            nextAttemptAt: Date.now() + outboxBackoffMs(0)
           });
           setStatusMessage(agentProcessingFailureMessage(persisted.processing.errorCode));
           agentProcessingFailed = true;
@@ -765,23 +885,14 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       } catch (error) {
         if (!isRetryableApiRequestError(error)) {
           setChatMessages((messages) => messages.filter((item) => item.id !== clientMessageId));
-          setChatDraft(message);
+          restoreDraft();
           setPendingAttachments(attachments);
           setStatusMessage(getErrorMessage(error));
           return;
         }
-        queueMessagingOutbox({
-          accountId: activeSession.account.id,
-          clientMessageId,
-          payload
-        });
-        setChatMessages((messages) =>
-          messages.map((item) =>
-            item.id === clientMessageId ? { ...item, status: "failed" } : item
-          )
-        );
+        keepInOutbox(payload, "failed");
         if (shouldRequestServerInference) {
-          setStatusMessage("Message queued. It will retry when the connection returns.");
+          setStatusMessage("Message not sent yet. Grogoni will keep trying.");
           return;
         }
       }

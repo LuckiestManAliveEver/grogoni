@@ -107,6 +107,13 @@ export interface ChatSurfaceProps {
   onAgentFeedback: (messageId: string, correct: boolean) => void;
   onForwardMessage: (messageId: string, conversationId: string) => void;
   onRetryMessages: () => void;
+  /** Messages waiting in the outbox; the retry control shows only when this is above zero. */
+  queuedMessageCount: number;
+  /**
+   * "The shop": the Shop Hub for an owner, the marketplace sheet of shops for someone without
+   * one, or a wait for the account's shops when that is not known yet.
+   */
+  onOpenShop: () => void;
   onNavigate: (view: ShellView) => void;
   onOpenWorkspace: () => void;
   onModeChange: (mode: GrogoniMode) => void;
