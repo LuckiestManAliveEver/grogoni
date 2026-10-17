@@ -740,6 +740,30 @@ for (const width of [390, 1366]) {
       localStorage.removeItem("grogoni.chatFirst.activeBusiness");
       localStorage.setItem("grogoni.chatFirst.mode", "marketplace");
     });
+    // The account's shops. The launch load fails (which is what leaves the Shop Hub up: a load
+    // that works restores the account's last place). Until a load works, "no shop" may only mean
+    // "not loaded yet", so Set up retries it and finishes once the server answers: no shops.
+    let contextLoads = 0;
+    await page.route("**/v1/session/context", (route) =>
+      contextLoads++ === 0
+        ? route.fulfill({ status: 503, json: { code: "unavailable" } })
+        : route.fulfill({
+            json: {
+              accountId: "responsive-account",
+              userId: "responsive-user",
+              sessionId: "responsive-session",
+              conversationId: "responsive-conversation",
+              activeShopId: null,
+              agentId: "responsive-agent",
+              activeModelId: "responsive-model",
+              mode: "marketplace",
+              activeSurface: "conversation",
+              permissions: [],
+              sessionVersion: 1,
+              shops: []
+            }
+          })
+    );
     await page.goto("/sell/shop");
     const setup = page.getByRole("button", { name: "Set up your shop", exact: true });
     await expect(setup).toBeVisible();
