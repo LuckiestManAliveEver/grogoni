@@ -1518,6 +1518,16 @@ function parseConversationMessageContent(value: unknown): ConversationMessageCon
   const content = parseRequestBody(value);
   const type = parseString(content.type, "content.type");
 
+  if (type === "supplier-management") {
+    return {
+      type,
+      businessId: parseString(content.businessId, "content.businessId"),
+      ...(content.supplierId === undefined
+        ? {}
+        : { supplierId: parseString(content.supplierId, "content.supplierId") })
+    };
+  }
+
   if (type === "text") {
     const attachments = content.attachments;
     if (attachments !== undefined && !Array.isArray(attachments)) {

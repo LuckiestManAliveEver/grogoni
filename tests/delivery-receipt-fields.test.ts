@@ -82,6 +82,43 @@ async function fixture() {
   return { app, store, businessId, cookie, call };
 }
 describe("delivery receipt field routing and document bindings", () => {
+  it("persists the supplier review card used by receipt uploads in a canonical chat", async () => {
+    const { app, businessId, cookie } = await fixture();
+    try {
+      const created = await app.inject({
+        method: "POST",
+        url: "/v1/conversations",
+        headers: { cookie },
+        payload: { kind: "personal", activeShopId: businessId, title: "Delivery review" }
+      });
+      expect(created.statusCode, created.body).toBe(200);
+      const conversationId = created.json().conversation.id;
+      const content = { type: "supplier-management", businessId };
+      const posted = await app.inject({
+        method: "POST",
+        url: "/v1/messages",
+        headers: { cookie },
+        payload: {
+          conversationId,
+          clientMessageId: "receipt-review-card",
+          author: "agent",
+          content
+        }
+      });
+      expect(posted.statusCode, posted.body).toBe(200);
+      expect(posted.json().content).toEqual(content);
+      const loaded = await app.inject({
+        method: "GET",
+        url: `/v1/conversations/${conversationId}`,
+        headers: { cookie }
+      });
+      expect(loaded.json().messages).toEqual(
+        expect.arrayContaining([expect.objectContaining({ content })])
+      );
+    } finally {
+      await app.close();
+    }
+  });
   it("prefills fields, receives stock once, and binds the document to the right wholesaler, agent and products", async () => {
     const { app, store, businessId, call } = await fixture();
     try {
