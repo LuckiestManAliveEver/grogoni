@@ -1,3 +1,4 @@
+import { useInboxRefresh } from "./hooks/useInboxRefresh";
 import { OfflineRuntimeNotice } from "./OfflineRuntimeNotice";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 
@@ -1103,53 +1104,15 @@ export function OwnerApp() {
     };
   }, [session?.account.id]);
 
-  useEffect(() => {
-    // Assistant conversations and inbox metadata do not need a device encryption key.
-    // Refresh again when the key arrives so encrypted messages can then be decrypted.
-    if (session === null) return;
-    let cancelled = false;
-    const refresh = async () => {
-      const notificationConversationId = new URLSearchParams(window.location.search).get(
-        "conversation"
-      );
-      const routeConversationId = readCurrentOwnerRoute()?.conversationId ?? null;
-      if (!cancelled) {
-        await loadMessagingInbox(
-          notificationConversationId ?? routeConversationId ?? activeConversationId
-        );
-      }
-      if (notificationConversationId) {
-        navigateToOwnerRoute(
-          {
-            mode,
-            view: "chat",
-            conversationId: notificationConversationId
-          },
-          { replace: true }
-        );
-      }
-    };
-    void refresh();
-    const interval = window.setInterval(() => void refresh(), 4_000);
-    const onOnline = () => {
-      void retryQueuedMessages();
-      void refresh();
-    };
-    const onServiceWorkerMessage = (event: MessageEvent<unknown>) => {
-      const data = event.data as { type?: string; conversationId?: string };
-      if (data.type === "message.notification.open" && data.conversationId) {
-        void selectConversation(data.conversationId);
-      }
-    };
-    window.addEventListener("online", onOnline);
-    navigator.serviceWorker?.addEventListener("message", onServiceWorkerMessage);
-    return () => {
-      cancelled = true;
-      window.clearInterval(interval);
-      window.removeEventListener("online", onOnline);
-      navigator.serviceWorker?.removeEventListener("message", onServiceWorkerMessage);
-    };
-  }, [session?.account.id, activeConversationId, e2eeIdentity?.deviceId, mode]);
+  useInboxRefresh({
+    accountId: session?.account.id ?? null,
+    encryptionDeviceId: e2eeIdentity?.deviceId ?? null,
+    mode,
+    activeConversationId,
+    loadMessagingInbox,
+    retryQueuedMessages,
+    selectConversation
+  });
 
   useEffect(() => {
     if (business !== null) {

@@ -35,7 +35,7 @@ import {
   readChatDaemonTasks,
   forgetChatDaemonTask
 } from "../daemon-chat";
-import { useDaemonChatResults } from "./useDaemonChatResults";
+import { useDaemonChatResults } from "../daemon-chat-results";
 import type { DaemonUserTaskResult, UnifiedCheckoutSummary } from "@grogoni/shared-types";
 import { postJson } from "../api-helpers";
 import {

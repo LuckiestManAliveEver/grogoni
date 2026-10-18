@@ -1,14 +1,14 @@
 import { useEffect, useRef } from "react";
 import type { PublicDaemonTask } from "@grogoni/shared-types";
-import { apiCloudFetch } from "../lib/api";
-import { isExplicitOfflineMode } from "../offline-runtime";
+import { apiCloudFetch } from "./lib/api";
+import { isExplicitOfflineMode } from "./offline-runtime";
 import {
   daemonChatUpdatedEvent,
   daemonTaskUpdatedEvent,
   forgetChatDaemonTask,
   readChatDaemonTasks,
   type ChatDaemonTask
-} from "../daemon-chat";
+} from "./daemon-chat";
 
 /** Poll only tasks this browser submitted, including results finished by the server while closed. */
 export function useDaemonChatResults(
