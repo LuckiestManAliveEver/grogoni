@@ -4,7 +4,7 @@ import SupplierOfferPanel from "./SupplierOfferPanel";
 import PurchaseOrderPanel from "./PurchaseOrderPanel";
 import { useAsyncActions } from "./hooks/useAsyncActions";
 import { useApiMutationRevision } from "./hooks/useApiMutationRevision";
-import { deleteJson, getJson, patchJson, postJson } from "./api-helpers";
+import { deleteJson, fetchFreshJson, patchJson, postJson } from "./api-helpers";
 import { getUserFacingErrorMessage } from "./user-facing-error";
 import type { SupplierBusinessCardSummary, SupplierSummary } from "./grogoni-application-shared";
 
@@ -43,7 +43,7 @@ export default function SupplierManagementCard(props: { businessId: string; supp
 
   useEffect(() => {
     let cancelled = false;
-    void getJson<SupplierBusinessCardSummary[]>(suppliersPath)
+    void fetchFreshJson<SupplierBusinessCardSummary[]>(suppliersPath)
       .then((loaded) => {
         if (cancelled) return;
         setSuppliers(loaded);

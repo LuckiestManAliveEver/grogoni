@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { CustomerSummary } from "@grogoni/shared-types";
 import { useAsyncActions } from "./hooks/useAsyncActions";
 import { useApiMutationRevision } from "./hooks/useApiMutationRevision";
-import { getJson, patchJson, postJson } from "./api-helpers";
+import { fetchFreshJson, patchJson, postJson } from "./api-helpers";
 import { getUserFacingErrorMessage } from "./user-facing-error";
 
 interface CustomerDraft {
@@ -38,7 +38,7 @@ export default function CustomerManagementCard(props: { businessId: string; cust
 
   useEffect(() => {
     let cancelled = false;
-    void getJson<CustomerSummary[]>(customersPath)
+    void fetchFreshJson<CustomerSummary[]>(customersPath)
       .then((loaded) => {
         if (cancelled) return;
         setCustomers(loaded);
