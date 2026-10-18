@@ -20,15 +20,15 @@ describe("reports + notifications chat navigation (Phase 4l)", () => {
     expect(runtimeProposals).toContain('toolName: "notifications.list"');
   });
 
-  it("navigates to reports/notifications and refreshes their data as soon as a turn executes the read tool", () => {
+  it("navigates to reports/notifications while refreshing their data without blocking chat", () => {
     expect(chatRuntime).toContain(
       'if (result.turn.plan.toolName === "reports.summary" && business !== null) {'
     );
     expect(chatRuntime).toContain(
       'if (result.turn.plan.toolName === "notifications.list" && business !== null) {'
     );
-    expect(chatRuntime).toContain("await loadReports(business.id);");
-    expect(chatRuntime).toContain("await loadNotifications(business.id);");
+    expect(chatRuntime).toContain("void loadReports(business.id);");
+    expect(chatRuntime).toContain("void loadNotifications(business.id);");
   });
 
   it("threads loadReports/loadNotifications from OwnerApp into the chat runtime hook", () => {
