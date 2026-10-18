@@ -1104,7 +1104,9 @@ export function OwnerApp() {
   }, [session?.account.id]);
 
   useEffect(() => {
-    if (session === null || e2eeIdentity === null) return;
+    // Assistant conversations and inbox metadata do not need a device encryption key.
+    // Refresh again when the key arrives so encrypted messages can then be decrypted.
+    if (session === null) return;
     let cancelled = false;
     const refresh = async () => {
       const notificationConversationId = new URLSearchParams(window.location.search).get(
