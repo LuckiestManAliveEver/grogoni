@@ -9,7 +9,7 @@ Results:
 - Contact identity proposal, confirmation, manual attachment, unlinking and rejection passed with disposable identities.
 - Buyer chat exposes all 66 tools plus POS, asks for a shop when none is selected, and executes authorized shop reads when a shop is selected. `#pos` opens the point-of-sale terminal.
 - Browser runs continued across multiple 20-turn sessions, including confirmations at the boundary.
-- 67 targeted automated tests passed; web/API type checks, builds, lint and architecture boundaries were checked.
+- 73 targeted automated tests passed; web/API type checks, builds, lint and architecture boundaries were checked.
 
 A clarification is expected behavior when required data is absent. The 13 computer tools need a configured worker and a real computer session; procurement's four tools need durable task/order context; checkout needs canonical cart items; messaging needs an authorized connected recipient/channel; network routing needs a reachable matching contact. These 20 tools were checked for # routing and prerequisite behavior, not successful external execution. The isolated harness does not establish production integration availability. No external messages or orders were sent.
 
@@ -19,6 +19,7 @@ A clarification is expected behavior when required data is absent. The 13 comput
 - Explicit reads and chat confirmations retain the chat surface; product and invoice controls render inline.
 - All seven generated management-card types parse and persist through the HTTP messaging API.
 - Read responses contain bounded returned data, with credentials and internal runtime/OCR metadata omitted.
+- Completed tool calls invalidate the affected shop cache and refresh inline controls, including calls through `/v1/messages`.
 - Exhausted sessions renew, including after confirmations and restoration; unrelated missing-resource errors do not trigger session retries.
 - Computer actions request the missing session before invoking a provider. The picker includes the upload file reference.
 - Inherited object names such as `#constructor` are rejected safely.
