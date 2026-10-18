@@ -1518,13 +1518,31 @@ function parseConversationMessageContent(value: unknown): ConversationMessageCon
   const content = parseRequestBody(value);
   const type = parseString(content.type, "content.type");
 
-  if (type === "supplier-management") {
+  if (
+    type === "product-management" ||
+    type === "supplier-management" ||
+    type === "customer-management" ||
+    type === "invoice-management" ||
+    type === "payment-management" ||
+    type === "import-management" ||
+    type === "logistics-management"
+  ) {
+    const optionalField =
+      type === "product-management"
+        ? "productId"
+        : type === "supplier-management"
+          ? "supplierId"
+          : type === "customer-management"
+            ? "customerId"
+            : type === "import-management"
+              ? "importJobId"
+              : "customerName";
     return {
       type,
       businessId: parseString(content.businessId, "content.businessId"),
-      ...(content.supplierId === undefined
+      ...(content[optionalField] === undefined
         ? {}
-        : { supplierId: parseString(content.supplierId, "content.supplierId") })
+        : { [optionalField]: parseString(content[optionalField], `content.${optionalField}`) })
     };
   }
 

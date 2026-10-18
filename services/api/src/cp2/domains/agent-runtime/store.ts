@@ -2322,7 +2322,11 @@ export class AgentRuntimeDomain {
       modelTemplateVersion: modelTemplate?.version ?? null
     });
 
-    if (runtimeSession.turnCount >= maxRuntimeTurnsPerSession) {
+    // A confirmation consumes the already planned action, not a new action budget slot.
+    if (
+      runtimeSession.turnCount >= maxRuntimeTurnsPerSession &&
+      input.confirmationToken === undefined
+    ) {
       const plan = createRuntimePlan({
         toolName: "unknown.clarify",
         input: {},

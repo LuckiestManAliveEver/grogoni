@@ -82,7 +82,15 @@ async function fixture() {
   return { app, store, businessId, cookie, call };
 }
 describe("delivery receipt field routing and document bindings", () => {
-  it("persists the supplier review card used by receipt uploads in a canonical chat", async () => {
+  it.each([
+    ["product-management", "productId"],
+    ["supplier-management", "supplierId"],
+    ["customer-management", "customerId"],
+    ["invoice-management", "customerName"],
+    ["payment-management", "customerName"],
+    ["import-management", "importJobId"],
+    ["logistics-management", "customerName"]
+  ])("persists and reloads the %s tool result card in canonical chat", async (type, field) => {
     const { app, businessId, cookie } = await fixture();
     try {
       const created = await app.inject({
@@ -93,7 +101,7 @@ describe("delivery receipt field routing and document bindings", () => {
       });
       expect(created.statusCode, created.body).toBe(200);
       const conversationId = created.json().conversation.id;
-      const content = { type: "supplier-management", businessId };
+      const content = { type, businessId, [field]: "review-target" };
       const posted = await app.inject({
         method: "POST",
         url: "/v1/messages",

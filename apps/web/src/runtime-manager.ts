@@ -1,9 +1,11 @@
+import { runtimeSessionTurnLimit } from "@grogoni/shared-types";
 import { recordRuntimeInitialization } from "./performance";
 
 export type RuntimeManagerState = "idle" | "initializing" | "ready" | "failed" | "stopped";
 
 export class RuntimeManager {
   private key: string | null = null;
+  private exhaustedSessionId: string | null = null;
   private runtimeSessionId: string | null = null;
   private initialization: Promise<string> | null = null;
   private state: RuntimeManagerState = "idle";
@@ -18,6 +20,7 @@ export class RuntimeManager {
 
   async ensureSession(key: string, createSession: () => Promise<string>): Promise<string> {
     if (this.key !== key) this.resetForKey(key);
+    if (this.runtimeSessionId === this.exhaustedSessionId) this.runtimeSessionId = null;
     if (this.runtimeSessionId !== null) {
       recordRuntimeInitialization("reused");
       return this.runtimeSessionId;
@@ -45,9 +48,12 @@ export class RuntimeManager {
     return this.initialization;
   }
 
-  adoptSession(key: string, runtimeSessionId: string): void {
+  adoptSession(key: string, runtimeSessionId: string, turnCount?: number): void {
     if (this.key !== key) this.resetForKey(key);
     this.runtimeSessionId = runtimeSessionId;
+    if (turnCount !== undefined && turnCount >= runtimeSessionTurnLimit) {
+      this.exhaustedSessionId = runtimeSessionId;
+    }
     this.state = "ready";
   }
 
@@ -58,7 +64,19 @@ export class RuntimeManager {
   ): Promise<TResult> {
     const runtimeSessionId = await this.ensureSession(key, createSession);
     try {
-      return await action(runtimeSessionId);
+      const result = await action(runtimeSessionId);
+      const runtime = runtimeResultRecord(result);
+      const session = runtime?.session as { id?: unknown; turnCount?: unknown } | undefined;
+      if (typeof session?.id === "string" && Number(session.turnCount) >= runtimeSessionTurnLimit) {
+        this.exhaustedSessionId = session.id;
+      }
+      if (!isRuntimeTurnLimitResult(result)) return result;
+      // The server rejected this turn before execution; only that exact rejection is safe
+      // to repeat in a fresh session. Never repeat a completed tool or another rate limit.
+      this.runtimeSessionId = null;
+      this.state = "idle";
+      const replacement = await this.ensureSession(key, createSession);
+      return action(replacement);
     } catch (error) {
       if (!isExpiredRuntimeSessionError(error)) throw error;
       this.runtimeSessionId = null;
@@ -89,6 +107,29 @@ export function isExpiredRuntimeSessionError(error: unknown): boolean {
       : null;
   const message = error instanceof Error ? error.message : String(error);
   return (
-    status === 404 || status === 410 || /runtime session.*(?:expired|not found)/i.test(message)
+    (status === null || status === 404 || status === 409 || status === 410) &&
+    /runtime session.*(?:expired|not found|closed)/i.test(message)
+  );
+}
+
+function runtimeResultRecord(value: unknown): Record<string, unknown> | null {
+  if (value === null || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  const runtime = record.runtime ?? record;
+  return runtime !== null && typeof runtime === "object"
+    ? (runtime as Record<string, unknown>)
+    : null;
+}
+
+function isRuntimeTurnLimitResult(value: unknown): boolean {
+  const turn = runtimeResultRecord(value)?.turn;
+  if (turn === null || typeof turn !== "object") return false;
+  const result = turn as Record<string, unknown>;
+  const plan = result.plan as { validationErrors?: unknown; executedAt?: unknown } | undefined;
+  return (
+    result.status === "rate_limited" &&
+    plan?.executedAt === null &&
+    Array.isArray(plan.validationErrors) &&
+    plan.validationErrors.includes("Runtime session turn limit reached.")
   );
 }

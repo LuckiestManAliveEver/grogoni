@@ -9,6 +9,13 @@ export function validateRuntimeToolInput(
   toolName: RuntimeToolName,
   input: Record<string, unknown>
 ): ValidationResult {
+  if (
+    toolName.startsWith("computer.") &&
+    toolName !== "computer.session.create" &&
+    (typeof input.sessionId !== "string" || input.sessionId.trim().length === 0)
+  ) {
+    return invalid("Choose a computer session first. Use #computer.session.create to open one.");
+  }
   switch (toolName) {
     case "procurement.submit": {
       const allowed = [
