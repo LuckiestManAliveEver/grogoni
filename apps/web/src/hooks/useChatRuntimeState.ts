@@ -384,7 +384,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
             conversationId: activeConversationId,
             clientMessageId: createClientMessageId("agent"),
             author: "agent",
-            content: { type: "text", text: body },
+            content: { type: "supplier-management", businessId: business.id },
             clientTimestamp: createdAt
           });
         }
@@ -395,6 +395,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
             id: createClientMessageId("agent"),
             author: "grogoniclaw",
             body,
+            content: { type: "supplier-management", businessId: business.id },
             createdAt,
             status: "delivered"
           }
@@ -402,7 +403,6 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
         setChatDraft("");
         setPendingAttachments([]);
         setReplyToMessageId(null);
-        navigateToView("suppliers");
         setStatusMessage(
           "Receipt fields are ready to review. Confirm the delivery to update stock."
         );

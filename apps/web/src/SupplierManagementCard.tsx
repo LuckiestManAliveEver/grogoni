@@ -1,3 +1,4 @@
+import { DeliveryReceiptReviewPanel } from "./DeliveryReceiptReviewPanel";
 import { useEffect, useState } from "react";
 import SupplierOfferPanel from "./SupplierOfferPanel";
 import PurchaseOrderPanel from "./PurchaseOrderPanel";
@@ -127,6 +128,10 @@ export default function SupplierManagementCard(props: { businessId: string; supp
         <p className="eyebrow">Suppliers</p>
         <h3>Manage suppliers from chat</h3>
       </div>
+      <DeliveryReceiptReviewPanel
+        key={`receipts:${props.businessId}`}
+        businessId={props.businessId}
+      />
       <SupplierOfferPanel
         key={props.businessId}
         businessId={props.businessId}
