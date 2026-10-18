@@ -84,7 +84,8 @@ export class NativeRuntimeBindingStore {
       },
       status: "active",
       createdAt: existingAgent?.createdAt ?? timestamp,
-      updatedAt: timestamp
+      // Restoring a request snapshot must not turn the shared bootstrap agent into a write.
+      updatedAt: existingAgent?.updatedAt ?? timestamp
     });
     const existing = this.bindings.get(globalDefaultRuntimeBindingId);
     if (existing === undefined) {

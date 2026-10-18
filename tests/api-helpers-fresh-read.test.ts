@@ -24,6 +24,6 @@ describe("fetchFreshJson", () => {
     apiFetch.mockResolvedValueOnce({ version: 2 });
     expect(await fetchFreshJson(path)).toEqual({ version: 2 });
     expect(apiFetch).toHaveBeenCalledTimes(2);
-    expect(apiFetch).toHaveBeenLastCalledWith(path);
+    expect(apiFetch).toHaveBeenLastCalledWith(path, { priority: true });
   });
 });
