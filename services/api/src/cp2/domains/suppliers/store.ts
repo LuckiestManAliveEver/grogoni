@@ -1,3 +1,4 @@
+import { parseReceiptFields, receiptFieldsToParsed } from "./receipt-fields.js";
 /**
  * Fourth slice of in-process domain modularization for the Cp2Store monolith (see
  * docs/architecture/domain-modularization-roadmap.md). Owns suppliers, sales agents, supplier
@@ -555,6 +556,7 @@ export class SupplierDomain {
     fileSizeBytes?: number | null;
     fileSignature?: string | null;
     sourceChecksum?: string;
+    structuredExtraction?: unknown;
     extraction?: Pick<
       ReceiptOCRJobSummary,
       | "engine"
@@ -588,7 +590,13 @@ export class SupplierDomain {
     }
 
     const extractedText = input.extraction?.fullText ?? input.extractedText;
-    const parsed = parseReceiptText(extractedText);
+    const suppliedFields =
+      input.structuredExtraction === undefined
+        ? undefined
+        : parseReceiptFields(input.structuredExtraction);
+    const parsed = suppliedFields
+      ? receiptFieldsToParsed(suppliedFields)
+      : parseReceiptText(extractedText);
     const matchedSupplier = this.matchSupplier(input.businessId, parsed.supplierName, parsed.phone);
     const matchedAgent =
       matchedSupplier === null
@@ -609,7 +617,8 @@ export class SupplierDomain {
     ];
     const sourceFileName = input.sourceFileName.trim() || "receipt-upload";
     const jobId = randomUUID();
-    const structuredExtraction = buildReceiptStructuredExtraction(parsed);
+    const structuredExtraction = suppliedFields ?? buildReceiptStructuredExtraction(parsed);
+
     const contactMatchingResult = this.createReceiptContactMatchingResult({
       businessId: input.businessId,
       ownerUserId: session.user.id,
@@ -624,6 +633,14 @@ export class SupplierDomain {
       createHash("sha256")
         .update(`${sourceFileName}:${contentType}:${extractedText}`)
         .digest("hex");
+    structuredExtraction.sourceDocument = { sha256: imageHash, fileName: sourceFileName };
+    const existing = [...this.receiptOCRJobs.values()].find(
+      (job) =>
+        job.businessId === input.businessId &&
+        job.status !== "CANCELLED" &&
+        (job.imageHash ?? job.structuredExtraction?.sourceDocument?.sha256) === imageHash
+    );
+    if (existing) return existing;
     const job: ReceiptOCRJobSummary = {
       id: jobId,
       businessId: input.businessId,
@@ -693,6 +710,7 @@ export class SupplierDomain {
     salesAgentId?: string | null;
     createSupplier?: boolean;
     createSalesAgent?: boolean;
+    receiveInventory?: boolean;
     now?: Date;
   }): PurchaseReceiptSummary {
     const now = input.now ?? new Date();
@@ -738,8 +756,8 @@ export class SupplierDomain {
         businessId: input.businessId,
         supplier: {
           name: job.supplierName,
-          phone: job.phone,
-          email: null,
+          phone: job.structuredExtraction.supplier.phoneNumber,
+          email: job.structuredExtraction.supplier.email,
           notes: "Created from purchase receipt"
         },
         now
@@ -769,13 +787,20 @@ export class SupplierDomain {
         supplierId: supplier.id,
         agent: {
           name: job.salesAgentName,
-          phone: job.phone,
-          email: null,
-          notes: "Created from purchase receipt"
+          phone: job.structuredExtraction.salesAgent.phoneNumber,
+          email: job.structuredExtraction.salesAgent.email,
+          notes: job.structuredExtraction.salesAgent.notes ?? "Created from purchase receipt"
         },
         now
       });
     }
+
+    if (salesAgent !== null && salesAgent.supplierId !== supplier.id)
+      throw new Cp2Error(
+        409,
+        "receipt_agent_supplier_mismatch",
+        "Choose a sales agent for this wholesaler."
+      );
 
     const receiptId = randomUUID();
     const lineItems = job.items.map((item): ReceiptLineItemSummary => ({
@@ -836,6 +861,7 @@ export class SupplierDomain {
     businessId: string;
     ocrJobId: string;
     extractedText: string;
+    structuredExtraction?: unknown;
     now?: Date;
   }): ReceiptOCRJobSummary {
     const now = input.now ?? new Date();
@@ -866,7 +892,13 @@ export class SupplierDomain {
       );
     }
 
-    const parsed = parseReceiptText(extractedText);
+    const suppliedFields =
+      input.structuredExtraction === undefined
+        ? undefined
+        : parseReceiptFields(input.structuredExtraction);
+    const parsed = suppliedFields
+      ? receiptFieldsToParsed(suppliedFields)
+      : parseReceiptText(extractedText);
     const matchedSupplier = this.matchSupplier(input.businessId, parsed.supplierName, parsed.phone);
     const matchedAgent =
       matchedSupplier === null
@@ -896,7 +928,12 @@ export class SupplierDomain {
       averageConfidence: averageReceiptBlockConfidence(blocks),
       warnings,
       fieldEvidence: buildReceiptFieldEvidence(parsed, extractedText),
-      structuredExtraction: buildReceiptStructuredExtraction(parsed),
+      structuredExtraction: {
+        ...(suppliedFields ?? buildReceiptStructuredExtraction(parsed)),
+        ...(job.structuredExtraction.sourceDocument
+          ? { sourceDocument: job.structuredExtraction.sourceDocument }
+          : {})
+      },
       contactMatchingResult,
       supplierCandidates: contactMatchingResult.supplier.candidates,
       salesAgentCandidates: contactMatchingResult.salesAgent.candidates,

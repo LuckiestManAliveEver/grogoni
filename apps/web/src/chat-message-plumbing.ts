@@ -1,4 +1,5 @@
 import type {
+  ReceiptOCRJobSummary,
   ConversationAttachment,
   ConversationMessageSummary,
   ConversationParticipantSummary,
@@ -328,26 +329,20 @@ export function appendAttachmentSummary(message: string, attachments: ChatAttach
 }
 
 export interface AttachmentExtractionDependencies {
-  /** On-device OCR (offline-ocr.ts). Images never leave the device for text extraction. */
-  runLocalOcr: (input: {
-    fileName: string;
-    contentType: string;
-    contentBase64: string;
-  }) => Promise<{ fullText: string; averageConfidence: number; warnings: string[] }>;
   postJson: (path: string, body: Record<string, unknown>) => Promise<unknown>;
 }
 
 const defaultExtractionDependencies: AttachmentExtractionDependencies = {
-  runLocalOcr: async (input) => (await import("./offline-ocr")).runLocalOcr(input),
-  postJson: (path, body) => postJson(path, body)
+  postJson: (path, body) => postJson(path, body, { timeoutMs: 120_000 })
 };
 
 export async function appendExtractedDocumentContent(
   message: string,
   attachments: ChatAttachment[],
-  businessId: string,
+  businessId: string | null,
   options: {
     /** Tells the person which files could not be read and why; the agent is told separately. */
+    onReceiptDraft?: (job: ReceiptOCRJobSummary) => void;
     onUnreadable?: (files: { name: string; reason: string }[]) => void;
     dependencies?: AttachmentExtractionDependencies;
   } = {}
@@ -361,11 +356,21 @@ export async function appendExtractedDocumentContent(
     return message;
   }
 
-  // One unreadable attachment must not sink the whole turn: the agent still gets the message and
-  // the attachment list, plus a note naming the file whose text could not be read and why.
+  // Extract independently so a document without a text layer can be identified in the prompt.
+  // Image-provider failures are handled below by preserving the whole upload for retry.
   const extractions = await Promise.allSettled(
     documents.map((attachment) => extractChatAttachment(attachment, businessId, dependencies))
   );
+
+  // A failed image read must leave the upload retryable instead of sending a blind turn.
+  const failedImage = extractions.find(
+    (result, index) => result.status === "rejected" && documents[index]?.category === "image"
+  );
+  if (failedImage?.status === "rejected") throw failedImage.reason;
+
+  for (const result of extractions)
+    if (result.status === "fulfilled" && result.value.receiptJob)
+      options.onReceiptDraft?.(result.value.receiptJob);
 
   const unreadable = extractions.flatMap((extraction, index) =>
     extraction.status === "rejected"
@@ -407,52 +412,44 @@ export function isExtractableChatAttachment(attachment: ChatAttachment): boolean
   );
 }
 
-/**
- * Images are read on this device (offline-ocr.ts); the server OCR route was retired with the
- * local-first move (fcd42a35), so there is no server fallback to call. Documents with a text layer
- * go to /documents/extract. A scanned PDF without one fails there and is reported as unreadable:
- * the on-device engine reads images, not PDFs.
- */
+/** Online chat images are read by Luna; documents with a text layer use the shop extractor. */
 export async function extractChatAttachment(
   attachment: ChatAttachment,
-  businessId: string,
+  businessId: string | null,
   dependencies: AttachmentExtractionDependencies = defaultExtractionDependencies
 ): Promise<DocumentExtractionResponse> {
   const contentBase64 = dataUrlPayload(attachment.dataUrl ?? "");
 
   if (attachment.category === "image") {
-    const ocr = await dependencies.runLocalOcr({
+    const result = (await dependencies.postJson("/v1/chat/images/read", {
       fileName: attachment.name,
       contentType: attachment.type,
       contentBase64
-    });
-    // A photo with no text (most product photos) is a normal result, not a failure: the agent
-    // is told there was no text, and the person is not warned about it.
-    const noText = ocr.fullText.trim().length === 0;
-    return {
-      fileName: attachment.name,
-      contentType: attachment.type,
-      text: noText ? "(no readable text in this photo)" : ocr.fullText,
-      format: "ocr",
-      warnings: noText ? [...ocr.warnings, "no_readable_text"] : ocr.warnings,
-      sizeBytes: attachment.size,
-      checksum: await sha256Hex(contentBase64),
-      engine: "tesseract",
-      averageConfidence: ocr.averageConfidence
-    };
+    })) as DocumentExtractionResponse;
+    if (businessId && result.receiptFields) {
+      result.receiptJob = (await dependencies.postJson(
+        `/businesses/${businessId}/receipt-ocr/jobs`,
+        {
+          fileName: attachment.name,
+          contentType: attachment.type,
+          contentBase64,
+          extractedText: result.text,
+          structuredExtraction: result.receiptFields,
+          engine: "gpt-6-luna"
+        }
+      )) as ReceiptOCRJobSummary;
+    }
+    return result;
   }
+
+  if (businessId === null)
+    throw new Error("Choose a shop to read this document, or upload a receipt image.");
 
   return (await dependencies.postJson(`/businesses/${businessId}/documents/extract`, {
     fileName: attachment.name,
     contentType: attachment.type,
     contentBase64
   })) as DocumentExtractionResponse;
-}
-
-async function sha256Hex(base64: string): Promise<string> {
-  const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 export function formatAttachmentForRuntime(attachment: ChatAttachment): string {

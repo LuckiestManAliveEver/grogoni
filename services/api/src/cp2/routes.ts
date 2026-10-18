@@ -1,4 +1,5 @@
 import { registerOfflineRuntimeRoutes } from "./offline-runtime-routes.js";
+import { registerChatImageRoutes } from "./chat-image-routes.js";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { BusinessPermission } from "@grogoni/business-core";
 import type {
@@ -289,6 +290,7 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
         : {})
     });
   const webPublicUrl = (options.webPublicUrl ?? "https://grogoni.com").replace(/\/+$/u, "");
+  registerChatImageRoutes(app, store);
   const telegramBotUsername = options.telegramBotUsername ?? "";
   const binaryUploadPipeline = options.binaryUploadPipeline;
   const runtimeRegistryAdapters: Partial<

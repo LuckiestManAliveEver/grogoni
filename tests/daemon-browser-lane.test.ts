@@ -569,4 +569,25 @@ describe("browser daemon lane: the loop", () => {
     await vi.advanceTimersByTimeAsync(600_000);
     expect(paths()).toEqual(["/v1/daemon/claims", "/v1/daemon/claims/t1/release"]);
   });
+  it("preserves a wake received while an idle claim request is in flight", async () => {
+    let answer: (value: unknown) => void = () => {};
+    let claims = 0;
+    const { request } = api({
+      "/claims": () => {
+        claims++;
+        return claims === 1
+          ? new Promise((resolve) => {
+              answer = resolve;
+            })
+          : { claim: null, nextDueInMs: null };
+      }
+    });
+    const lane = loopWith(request);
+    await vi.advanceTimersByTimeAsync(0);
+    lane.wake();
+    answer({ claim: null, nextDueInMs: null });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(claims).toBe(2);
+    await lane.stop();
+  });
 });

@@ -183,7 +183,7 @@ describe("fresh shop, first AI message: hosted-first with no client model state"
     function Harness() {
       const api = useChatRuntimeState({
         business: business(),
-        mode: "buyer",
+        mode: "seller",
         session: session(),
         authBootstrapState: "authenticated",
         ensureAuthenticatedSession: async () => session(),

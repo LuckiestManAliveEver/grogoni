@@ -1,3 +1,4 @@
+import { useInboxRefresh } from "./hooks/useInboxRefresh";
 import { OfflineRuntimeNotice } from "./OfflineRuntimeNotice";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 
@@ -869,9 +870,21 @@ export function OwnerApp() {
       return;
     }
     // The retry decides restore (first load of the sign-in) versus refresh (data-only retry).
-    sessionContextRetry.track(session.account.id, (shouldApply, apply) =>
-      loadGrogoniSessionContext(setActiveConversationId, shouldApply, apply)
-    );
+    sessionContextRetry.track(session.account.id, (shouldApply, apply) => {
+      const started = navigationSessionSnapshotRef.current;
+      const path = window.location.pathname;
+      return loadGrogoniSessionContext(setActiveConversationId, shouldApply, apply, () => {
+        const current = navigationSessionSnapshotRef.current;
+        return (
+          !started.chatDraft.trim() &&
+          !started.chatMessages.some((message) => message.id !== "welcome") &&
+          current.chatDraft === started.chatDraft &&
+          current.chatMessages === started.chatMessages &&
+          current.activeConversationId === started.activeConversationId &&
+          window.location.pathname === path
+        );
+      });
+    });
 
     function retryWhenVisible() {
       if (document.visibilityState === "visible") sessionContextRetry.retry();
@@ -1005,16 +1018,19 @@ export function OwnerApp() {
   // stale chunk before the debounced navigation-session write above may have flushed - register a
   // synchronous flush so the active conversation and any unsent composer draft never lose the
   // latest keystroke to that reload.
-  useEffect(
-    () =>
-      registerPreReloadFlush(() => {
-        writeOwnerNavigationSession(
-          session?.account.id ?? null,
-          navigationSessionSnapshotRef.current
-        );
-      }),
-    [session?.account.id]
-  );
+  useEffect(() => {
+    const flush = () =>
+      writeOwnerNavigationSession(
+        session?.account.id ?? null,
+        navigationSessionSnapshotRef.current
+      );
+    const unregister = registerPreReloadFlush(flush);
+    window.addEventListener("pagehide", flush);
+    return () => {
+      unregister();
+      window.removeEventListener("pagehide", flush);
+    };
+  }, [session?.account.id]);
 
   useEffect(() => {
     if (routedProductId === null || products.length === 0) return;
@@ -1088,51 +1104,15 @@ export function OwnerApp() {
     };
   }, [session?.account.id]);
 
-  useEffect(() => {
-    if (session === null || e2eeIdentity === null) return;
-    let cancelled = false;
-    const refresh = async () => {
-      const notificationConversationId = new URLSearchParams(window.location.search).get(
-        "conversation"
-      );
-      const routeConversationId = readCurrentOwnerRoute()?.conversationId ?? null;
-      if (!cancelled) {
-        await loadMessagingInbox(
-          notificationConversationId ?? routeConversationId ?? activeConversationId
-        );
-      }
-      if (notificationConversationId) {
-        navigateToOwnerRoute(
-          {
-            mode,
-            view: "chat",
-            conversationId: notificationConversationId
-          },
-          { replace: true }
-        );
-      }
-    };
-    void refresh();
-    const interval = window.setInterval(() => void refresh(), 4_000);
-    const onOnline = () => {
-      void retryQueuedMessages();
-      void refresh();
-    };
-    const onServiceWorkerMessage = (event: MessageEvent<unknown>) => {
-      const data = event.data as { type?: string; conversationId?: string };
-      if (data.type === "message.notification.open" && data.conversationId) {
-        void selectConversation(data.conversationId);
-      }
-    };
-    window.addEventListener("online", onOnline);
-    navigator.serviceWorker?.addEventListener("message", onServiceWorkerMessage);
-    return () => {
-      cancelled = true;
-      window.clearInterval(interval);
-      window.removeEventListener("online", onOnline);
-      navigator.serviceWorker?.removeEventListener("message", onServiceWorkerMessage);
-    };
-  }, [session?.account.id, activeConversationId, e2eeIdentity?.deviceId, mode]);
+  useInboxRefresh({
+    accountId: session?.account.id ?? null,
+    encryptionDeviceId: e2eeIdentity?.deviceId ?? null,
+    mode,
+    activeConversationId,
+    loadMessagingInbox,
+    retryQueuedMessages,
+    selectConversation
+  });
 
   useEffect(() => {
     if (business !== null) {
@@ -1182,14 +1162,10 @@ export function OwnerApp() {
           storefrontUrl: defaultAgent.storefrontUrl
         };
       });
-      setChatMessages((messages) =>
-        messages[0]?.id === "welcome"
-          ? createInitialChatMessages(business.name)
-          : [
-              createInitialChatMessages(business.name)[0] as ChatMessage,
-              ...messages.filter((message) => message.id !== "welcome")
-            ]
-      );
+      setChatMessages((messages) => [
+        createInitialChatMessages(business.name)[0] as ChatMessage,
+        ...messages.filter((message) => message.id !== "welcome")
+      ]);
     }
   }, [business]);
 
@@ -1920,7 +1896,9 @@ export function OwnerApp() {
                       ? "Sign in for end-to-end encrypted messaging"
                       : isHumanDirectConversation(activeConversation, session)
                         ? "End-to-end encrypted"
-                        : "Messages are processed by the Grogoni agent"
+                        : mode === "seller"
+                          ? "Shop assistant"
+                          : "Marketplace assistant"
                 }
                 replyToMessageId={replyToMessageId}
                 networkGraph={networkGraph}

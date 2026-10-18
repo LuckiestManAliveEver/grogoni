@@ -5970,7 +5970,112 @@ export class Cp2Store {
   confirmReceiptOCRJob(
     ...args: Parameters<SupplierDomain["confirmReceiptOCRJob"]>
   ): ReturnType<SupplierDomain["confirmReceiptOCRJob"]> {
-    return this.supplierDomain.confirmReceiptOCRJob(...args);
+    const [input] = args;
+    if (!input.receiveInventory) return this.supplierDomain.confirmReceiptOCRJob(input);
+    this.requireAuthorizedActor(input.sessionId, input.businessId, "import:write", input.now);
+    const job = this.supplierDomain.receiptOCRJobsMap.get(input.ocrJobId);
+    if (!job || job.businessId !== input.businessId)
+      throw new Cp2Error(404, "receipt_not_found", "Receipt draft not found.");
+    if (job.structuredExtraction.deliveryBinding)
+      return this.supplierDomain.confirmReceiptOCRJob(input);
+    const products = job.structuredExtraction.products;
+    if (
+      !products.length ||
+      products.some(
+        (p) =>
+          !p.itemName.trim() ||
+          !Number.isFinite(p.quantity) ||
+          p.quantity <= 0 ||
+          !Number.isFinite(p.unitPrice) ||
+          p.unitPrice < 0
+      )
+    )
+      throw new Cp2Error(
+        400,
+        "delivery_products_required",
+        "Review the delivered products and quantities first."
+      );
+    const existing = [...this.salesDomain.productsMap.values()].filter(
+      (p) => p.businessId === input.businessId
+    );
+    const plan = products.map((item) => {
+      const matches = existing.filter((p) =>
+        item.sku
+          ? p.sku?.toLowerCase() === item.sku.toLowerCase()
+          : p.name.toLowerCase() === item.itemName.toLowerCase()
+      );
+      if (matches.length > 1)
+        throw new Cp2Error(
+          409,
+          "delivery_product_ambiguous",
+          `More than one product matches ${item.itemName}. Add a unique SKU before confirming.`
+        );
+      this.requireAuthorizedActor(input.sessionId, input.businessId, "inventory:adjust", input.now);
+      if (!matches.length)
+        this.requireAuthorizedActor(input.sessionId, input.businessId, "product:write", input.now);
+      return { item, existing: matches[0] };
+    });
+    const before = this.snapshot();
+    try {
+      const receipt = this.supplierDomain.confirmReceiptOCRJob(input);
+      const bindings = plan.map(({ item, existing }, lineIndex) => {
+        // A repeated line may refer to a product created earlier in this same delivery.
+        const product =
+          existing ??
+          [...this.salesDomain.productsMap.values()].find(
+            (p) =>
+              p.businessId === input.businessId &&
+              (item.sku
+                ? p.sku?.toLowerCase() === item.sku.toLowerCase()
+                : p.name.toLowerCase() === item.itemName.toLowerCase())
+          ) ??
+          this.createProduct({
+            sessionId: input.sessionId,
+            businessId: input.businessId,
+            product: {
+              name: item.itemName,
+              sku: item.sku,
+              unit: item.unit,
+              quantity: 0,
+              buyingPrice: item.unitPrice
+            },
+            ...(input.now ? { now: input.now } : {})
+          });
+        const current = this.salesDomain.productsMap.get(product.id)!;
+        const result = this.adjustProductStock({
+          sessionId: input.sessionId,
+          businessId: input.businessId,
+          productId: product.id,
+          adjustment: {
+            quantityAfter: current.quantity + item.quantity,
+            reason: `Delivery receipt ${receipt.id}`
+          },
+          ...(input.now ? { now: input.now } : {})
+        });
+        return {
+          lineIndex,
+          receiptLineItemId: receipt.lineItems[lineIndex]!.id,
+          productId: product.id,
+          movementId: result.movement.id
+        };
+      });
+      const confirmed = this.supplierDomain.receiptOCRJobsMap.get(job.id)!;
+      this.supplierDomain.receiptOCRJobsMap.set(job.id, {
+        ...confirmed,
+        structuredExtraction: {
+          ...confirmed.structuredExtraction,
+          deliveryBinding: {
+            purchaseReceiptId: receipt.id,
+            receivedAt: (input.now ?? new Date()).toISOString(),
+            products: bindings
+          }
+        }
+      });
+      return receipt;
+    } catch (error) {
+      this.hydrateSnapshot(before);
+      throw error;
+    }
   }
 
   correctReceiptOCRJob(

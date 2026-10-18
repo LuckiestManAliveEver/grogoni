@@ -146,8 +146,9 @@ describe("frontend user guidance", () => {
       "utf8"
     );
     expect(composerAttachmentWorkbench).toContain("OCR ready for scans and images");
-    // Images are read on the device; the server OCR route was retired (fcd42a35).
-    expect(chatMessagePlumbing).toContain("runLocalOcr");
+    // Online chat images are read by Luna; the legacy OCR endpoint remains retired.
+    expect(chatMessagePlumbing).toContain("/v1/chat/images/read");
+    expect(chatMessagePlumbing).not.toContain("runLocalOcr");
     expect(chatMessagePlumbing).not.toContain("/documents/ocr");
     expect(composerAttachmentWorkbench).toContain("Extract all readable text");
   });

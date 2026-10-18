@@ -519,7 +519,7 @@ export function ChatSurface({
                     }`}
               </small>
             </div>
-            {!showBlankSessionState ? (
+            {!showBlankSessionState && messages.some((message) => message.status === "failed") ? (
               <button className="secondary" type="button" onClick={onRetryMessages}>
                 Retry failed
               </button>

@@ -14,7 +14,7 @@ export const lunaModel: AiModelSummary = {
   provider: "openrouter",
   description:
     "GPT-6 Luna served through OpenRouter. Platform-funded within deployment usage limits.",
-  capabilities: ["chat", "multilingual", "reasoning", "instruction-following"],
+  capabilities: ["chat", "multilingual", "reasoning", "instruction-following", "vision"],
   available: true,
   source: "hosted",
   format: "remote",
@@ -105,7 +105,7 @@ export function createOpenRouterModelAdapter(input: {
         };
       }
     },
-    async generate({ context, prompt }) {
+    async generate({ context, prompt, images }) {
       const status = availability(context.modelId);
       if (!status.available) throw new ModelRuntimeError(status.errorCode!, status.message!, false);
       const started = Date.now();
@@ -125,7 +125,18 @@ export function createOpenRouterModelAdapter(input: {
                 role: message.role === "assistant" ? "assistant" : "user",
                 content: message.content
               })),
-              { role: "user", content: prompt.message }
+              {
+                role: "user",
+                content: images?.length
+                  ? [
+                      { type: "text", text: prompt.message },
+                      ...images.map((image) => ({
+                        type: "image_url",
+                        image_url: { url: image.url, detail: "high" }
+                      }))
+                    ]
+                  : prompt.message
+              }
             ],
             max_tokens: input.maxOutputTokens ?? 2048,
             response_format: { type: "json_object" },
@@ -151,7 +162,9 @@ export function createOpenRouterModelAdapter(input: {
           false
         );
       const content = body.choices?.[0]?.message?.content;
-      const text = normalizeModelText(typeof content === "string" ? content : "");
+      // Image extraction validates its structured response before accepting a transcription.
+      const rawText = typeof content === "string" ? content : "";
+      const text = images?.length ? rawText.trim() : normalizeModelText(rawText);
       if (!text)
         throw new ModelRuntimeError(
           "INVALID_PROVIDER_RESPONSE",

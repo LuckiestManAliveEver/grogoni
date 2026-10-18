@@ -70,6 +70,8 @@ export interface ModelRuntimeAdapter {
   generate(input: {
     context: ModelRuntimeContext;
     prompt: RuntimeModelPrompt;
+    /** Private uploaded images, supplied by authenticated server routes. */
+    images?: { url: string }[];
   }): Promise<ModelRuntimeGenerationResult>;
 }
 

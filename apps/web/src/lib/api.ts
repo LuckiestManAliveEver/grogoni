@@ -1,3 +1,4 @@
+import { isSnapshotRequest, queueCloudRequest } from "./cloud-request-queue";
 import { isExplicitOfflineMode, routeOfflineRequest } from "../offline-runtime";
 import { getResponseErrorMessage } from "../user-facing-error";
 import { recordApiRequest } from "../performance";
@@ -192,6 +193,18 @@ export function isDefinitiveAuthenticationError(error: unknown): boolean {
 }
 
 async function performFetch(
+  url: string,
+  method: string,
+  headers: Record<string, string>,
+  options?: { body?: unknown; signal?: AbortSignal; timeoutMs?: number }
+): Promise<Response> {
+  const run = () => performNetworkFetch(url, method, headers, options);
+  return isSnapshotRequest(url)
+    ? queueCloudRequest(run, method !== "GET" && method !== "HEAD", options?.signal)
+    : run();
+}
+
+async function performNetworkFetch(
   url: string,
   method: string,
   headers: Record<string, string>,

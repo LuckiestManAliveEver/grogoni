@@ -7,7 +7,8 @@ import { createEdgeSnapshotScope } from "../services/api/src/cp2/edge-snapshot-s
 import { coordinateStoreRequest } from "../supabase/functions/api/store-coordination";
 import {
   loadTransactionalCp2Snapshot,
-  saveTransactionalCp2Snapshot
+  saveTransactionalCp2Snapshot,
+  saveCollectionRecords
 } from "../services/api/src/cp2/postgres-store";
 
 const databaseUrl = process.env.CP2_POSTGRES_TEST_DATABASE_URL;
@@ -15,6 +16,32 @@ const requireApi = createRequire(new URL("../services/api/package.json", import.
 const { Pool } = requireApi("pg") as { Pool: typeof PgPool };
 
 describe.skipIf(!databaseUrl)("Edge tenant scoping on PostgreSQL", () => {
+  it("accepts identical concurrent snapshot seeds while rejecting different replacements", async () => {
+    const pool = new Pool({ connectionString: databaseUrl, max: 1 });
+    const client = await pool.connect();
+    try {
+      await client.query("begin");
+      await client.query(
+        "create temporary table cp2_receipt_seed_test (entity_id text primary key, business_id text, account_id text, user_id text, parent_id text, record jsonb, updated_at timestamptz) on commit drop"
+      );
+      const collection = { key: "modelCatalog" as const, tableName: "cp2_receipt_seed_test" };
+      const desired = { id: "same-model", label: "Luna" };
+      await saveCollectionRecords(client, collection, [desired], [], []);
+      await expect(
+        saveCollectionRecords(client, collection, [desired], [], [])
+      ).resolves.toBeUndefined();
+      await expect(
+        saveCollectionRecords(client, collection, [{ ...desired, label: "different" }], [], [])
+      ).rejects.toMatchObject({ code: "40001" });
+      expect(
+        (await client.query("select record from cp2_receipt_seed_test")).rows[0].record
+      ).toEqual(desired);
+    } finally {
+      await client.query("rollback");
+      client.release();
+      await pool.end();
+    }
+  });
   it("allows concurrent requests but excludes full-snapshot jobs until they commit", async () => {
     const pool = new Pool({ connectionString: databaseUrl, max: 3 });
     const clients = await Promise.all([pool.connect(), pool.connect(), pool.connect()]);
