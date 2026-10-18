@@ -17,6 +17,24 @@ import {
 const timestamp = "2026-08-27T12:00:00.000Z";
 
 describe("native runtime binding resolver", () => {
+  it("keeps the shared default agent unchanged when later requests restore it", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(new Date(timestamp));
+      const store = new NativeRuntimeBindingStore();
+      const snapshot = {
+        nativeRuntimeAgents: structuredClone([...store.agentsMap.values()]),
+        nativeRuntimeBindings: structuredClone([...store.bindingsMap.values()])
+      };
+      vi.setSystemTime(new Date(Date.parse(timestamp) + 60_000));
+      store.restore(snapshot);
+      store.ensureGlobalDefault();
+      expect([...store.agentsMap.values()]).toEqual(snapshot.nativeRuntimeAgents);
+      expect([...store.bindingsMap.values()]).toEqual(snapshot.nativeRuntimeBindings);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it("resolves an explicit binding, installation, host, ordered fallbacks, and auxiliaries", () => {
     const graph = graphStore();
     const resolved = resolveGraph(graph.store, "conversation-1", graph.conversations);

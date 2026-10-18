@@ -64,6 +64,7 @@ describe("snapshot request coordination", () => {
       "/auth/bootstrap",
       "/health",
       "/v1/daemon/claims",
+      "/v1/chat/images/read",
       "/v1/ai/turn-stream/123"
     ])
       expect(isSnapshotRequest(`https://grogoni.com/api${path}`)).toBe(false);

@@ -62,5 +62,5 @@ export async function getJson<TResponse>(
  * stale values would save them back over a newer change. This always asks the server.
  */
 export async function fetchFreshJson<TResponse>(path: string): Promise<TResponse> {
-  return apiFetch<TResponse>(path);
+  return apiFetch<TResponse>(path, { priority: true });
 }
