@@ -84,3 +84,7 @@
   padding-block: 12px;
   border-bottom: 1px solid var(--grogoni-line, #323a48);
 }
+
+.supplier-offer-review .row-actions button {
+  color: #fff;
+}
