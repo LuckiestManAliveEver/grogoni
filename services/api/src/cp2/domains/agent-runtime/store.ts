@@ -1,4 +1,8 @@
 import { withRuntimeDeadline } from "../../runtime-deadline.js";
+import {
+  rejectRuntimeApproval,
+  type RuntimeApprovalRejection
+} from "./runtime-approval-rejection.js";
 /**
  * Ninth slice of in-process domain modularization for the Cp2Store monolith (see
  * docs/architecture/domain-modularization-roadmap.md). The largest slice by method count and by
@@ -82,7 +86,6 @@ import type {
   AgentModelBindingSummary,
   AgentOwnerCorrection,
   AgentRuntimeReadiness,
-  ContextRecipe,
   EffectiveRuntimeSummary,
   AgentRuntimeVersion,
   AiModelSummary,
@@ -92,7 +95,6 @@ import type {
   NativeRuntimeAgentSummary,
   PreferredExecutionMode,
   RuntimeContextSummary,
-  RuntimeParserIntent,
   RuntimeModelConversationMessage,
   RuntimeModelProvider,
   RuntimeModelTemplateRecipe,
@@ -154,6 +156,12 @@ import {
 } from "./runtime-context.js";
 import { createRuntimeModelRoute } from "./runtime-model-routing.js";
 import { buildRuntimeReportCard } from "./report-card.js";
+import { runtimeExecutedModelId, runtimeModelEvidence } from "./runtime-model-evidence.js";
+import {
+  retainCompletedTaskExperience,
+  retrieveBusinessTaskAdvice,
+  type TaskExperienceInput
+} from "./task-experience-access.js";
 import {
   purgeExpiredRuntimeExperiences as purgeExpiredRuntimeExperiencesModule,
   recordFallbackExperience as recordFallbackExperienceModule,
@@ -377,7 +385,7 @@ export class AgentRuntimeDomain {
 
     for (const experience of snapshot.runtimeExperiences ?? []) {
       this.runtimeExperiences.set(experience.id, {
-        ...experience,
+        ...structuredClone(experience),
         evidenceRefs: [...experience.evidenceRefs],
         toolSequence: [...experience.toolSequence]
       });
@@ -1698,32 +1706,35 @@ export class AgentRuntimeDomain {
     return updated;
   }
 
-  /** See experience.ts for the extraction logic itself - split out for store.ts's line budget. */
-  private recordFallbackExperience(input: {
-    businessId: string;
-    agentId: string;
-    turnId: string;
-    intent: RuntimeParserIntent;
-    recipe: ContextRecipe | undefined;
-    evidenceRefs: string[];
-    toolName: RuntimeToolName;
-    fallbackReason: string;
-    now: Date;
-    appendTelemetry: (
-      state: RuntimeTelemetryEvent["state"],
-      status: RuntimeTelemetryEvent["status"],
-      toolName: RuntimeToolName | null,
-      risk: RuntimePlannedAction["risk"] | null,
-      metadata?: RuntimeTelemetryEvent["metadata"]
-    ) => void;
-  }): void {
-    recordFallbackExperienceModule(this.runtimeExperiences, input);
-  }
-
   /** Recall-eligible experiences for a business: validated only, per the brief's "prevent one bad
    *  execution from poisoning memory" requirement - a "candidate" is never surfaced into a prompt. */
   validatedRuntimeExperiencesForBusiness(businessId: string): RuntimeExperience[] {
     return validatedRuntimeExperiencesForBusinessModule(this.runtimeExperiences, businessId);
+  }
+
+  /** Server composition hook. The caller must await the existing snapshot commit barrier. */
+  recordVerifiedBusinessTaskExperience(
+    input: TaskExperienceInput
+  ): Promise<RuntimeExperience | null> {
+    return retainCompletedTaskExperience(
+      {
+        experiences: this.runtimeExperiences,
+        deps: this.deps,
+        profile: (businessId, now) => this.currentAgentProfile(businessId, now)
+      },
+      input
+    );
+  }
+
+  businessTaskExperienceAdvice(input: TaskExperienceInput): Promise<RuntimeExperience[]> {
+    return retrieveBusinessTaskAdvice(
+      {
+        experiences: this.runtimeExperiences,
+        deps: this.deps,
+        profile: (businessId, now) => this.currentAgentProfile(businessId, now)
+      },
+      input
+    );
   }
 
   /**
@@ -1782,15 +1793,19 @@ export class AgentRuntimeDomain {
     });
   }
 
-  getAgentEvaluationSummary(input: {
+  async getAgentEvaluationSummary(input: {
     sessionId: string | null;
     businessId: string;
     now?: Date;
-  }): AgentEvaluationSummary {
+  }): Promise<AgentEvaluationSummary> {
     const now = input.now ?? new Date();
     this.deps.requireAuthorizedSession(input.sessionId, input.businessId, "business:read", now);
     const profile = this.currentAgentProfile(input.businessId, now);
-    const events = this.evaluationEventsForBusiness(input.businessId);
+    const environmentOutcomes = (await this.deps.businessTaskEvaluations?.list(input)) ?? [];
+    const events = [
+      ...this.evaluationEventsForBusiness(input.businessId),
+      ...environmentOutcomes.map((entry) => entry.event)
+    ].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
     const scores = events
       .map((event) => event.score)
       .filter((score): score is number => score !== null);
@@ -1815,7 +1830,8 @@ export class AgentRuntimeDomain {
           ? null
           : clarifyingTurnCounts.reduce((sum, turnCount) => sum + turnCount, 0) /
             clarifyingTurnCounts.length,
-      recentEvents: events.slice(0, 20).map((event) => ({ ...event }))
+      recentEvents: events.slice(0, 20).map((event) => ({ ...event })),
+      environmentOutcomes
     };
   }
 
@@ -1903,6 +1919,15 @@ export class AgentRuntimeDomain {
     });
 
     return runtimeSession;
+  }
+
+  rejectRuntimeAction(input: RuntimeApprovalRejection) {
+    return rejectRuntimeApproval(
+      this.deps,
+      this.runtimeSessions,
+      this.pendingRuntimeActions,
+      input
+    );
   }
 
   listRuntimeSessions(input: {
@@ -2723,7 +2748,7 @@ export class AgentRuntimeDomain {
     });
 
     if (modelRoute.trace?.fallbackUsed === true && status === "completed" && verification.ok) {
-      this.recordFallbackExperience({
+      recordFallbackExperienceModule(this.runtimeExperiences, {
         businessId: input.businessId,
         agentId: shopRuntime.agentId,
         turnId,
@@ -3646,6 +3671,7 @@ export class AgentRuntimeDomain {
       }
     });
     const profile = this.currentAgentProfile(input.turn.businessId, input.now);
+    const modelEvidence = runtimeModelEvidence(input.turn);
     if (
       profile.evaluationPolicy.enabled &&
       runtimeEvaluationSampled(input.turn.id, profile.evaluationPolicy.sampleRate)
@@ -3659,7 +3685,7 @@ export class AgentRuntimeDomain {
       this.recordAgentEvaluationEvent({
         businessId: input.turn.businessId,
         runtimeVersion: input.turn.runtimeVersion,
-        modelId: profile.modelId,
+        modelId: runtimeExecutedModelId(input.turn),
         eventType:
           input.turn.plan.executedAt !== null && profile.evaluationPolicy.recordToolOutcomes
             ? "tool_execution"
@@ -3688,21 +3714,18 @@ export class AgentRuntimeDomain {
         messageId: null,
         now: input.now
       });
-      if (
-        profile.evaluationPolicy.recordLatency &&
-        typeof input.turn.model?.durationMs === "number"
-      ) {
+      if (profile.evaluationPolicy.recordLatency && typeof modelEvidence?.durationMs === "number") {
         this.recordAgentEvaluationEvent({
           businessId: input.turn.businessId,
           runtimeVersion: input.turn.runtimeVersion,
-          modelId: profile.modelId,
+          modelId: runtimeExecutedModelId(input.turn),
           eventType: "response_latency",
-          outcome: input.turn.model?.status === "available" ? "success" : "partial",
+          outcome: modelEvidence?.status === "available" ? "success" : "partial",
           score: null,
           reason: "Provider-neutral model completion latency.",
           metadata: {
-            durationMs: input.turn.model?.durationMs ?? 0,
-            provider: input.turn.model?.provider ?? "none"
+            durationMs: modelEvidence?.durationMs ?? 0,
+            provider: modelEvidence?.provider ?? "none"
           },
           sessionId: input.turn.sessionId,
           messageId: null,

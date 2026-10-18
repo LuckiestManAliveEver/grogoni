@@ -3,6 +3,7 @@ import type { QueryResult, QueryResultRow } from "pg";
 import type { RuntimeParserIntent } from "@grogoni/shared-types";
 import type { PendingRuntimeAction } from "./shared.js";
 import { Cp2Error } from "../../cp2-error.js";
+import { deleteNativeRuntimeScope } from "./native-runtime-maintenance.js";
 
 const notFound = () =>
   new Cp2Error(
@@ -15,6 +16,7 @@ export interface RuntimeApprovalStore {
   deleteScope(actorIds: string[], businessIds: string[]): Promise<number>;
   purgeExpired(now: Date): Promise<number>;
   put(token: string, pending: PendingRuntimeAction): Promise<void>;
+  reject(input: Parameters<RuntimeApprovalStore["claim"]>[0]): Promise<void>;
   claim(input: {
     token: string;
     businessId: string;
@@ -32,14 +34,7 @@ export function createPostgresRuntimeApprovalStore(database: {
   const hash = (token: string) => createHash("sha256").update(token).digest("hex");
   return {
     async deleteScope(actorIds, businessIds) {
-      return (
-        (
-          await database.query(
-            "delete from business_runtime_approvals where actor_id=any($1::text[]) or business_id=any($2::text[])",
-            [actorIds, businessIds]
-          )
-        ).rowCount ?? 0
-      );
+      return deleteNativeRuntimeScope(database, actorIds, businessIds);
     },
     async purgeExpired(now) {
       if (!Number.isFinite(now.getTime())) throw new Error("Invalid retention time.");
@@ -69,6 +64,23 @@ export function createPostgresRuntimeApprovalStore(database: {
         ]
       );
     },
+    async reject(input) {
+      if (input.token.length > 200 || !Number.isFinite(input.now.getTime())) throw notFound();
+      const result = await database.query(
+        `update business_runtime_approvals set status='REJECTED',rejected_at=$6
+         where token_hash=$1 and business_id=$2 and actor_id=$3 and runtime_session_id=$4
+           and conversation_id is not distinct from $5 and status='PENDING' and expires_at>$6`,
+        [
+          hash(input.token),
+          input.businessId,
+          input.actorId,
+          input.runtimeSessionId,
+          input.conversationId,
+          input.now
+        ]
+      );
+      if (result.rowCount !== 1) throw notFound();
+    },
     async claim(input) {
       if (input.token.length > 200 || !Number.isFinite(input.now.getTime())) throw notFound();
       const result = await database.query<{
@@ -76,9 +88,17 @@ export function createPostgresRuntimeApprovalStore(database: {
         action: PendingRuntimeAction["action"];
         expires_at: Date;
       }>(
-        `update business_runtime_approvals set status='CLAIMED',claimed_at=$6
+        `with environment as materialized (
+           select instance,expires_at from business_environment_instances
+           where business_id=$2 and task_id=$5 and actor_id=$3 for update
+         )
+         update business_runtime_approvals set status='CLAIMED',claimed_at=$6
          where token_hash=$1 and business_id=$2 and actor_id=$3 and runtime_session_id=$4
            and conversation_id is not distinct from $5 and status='PENDING' and expires_at>$6
+           and (not exists (select 1 from environment) or exists (
+             select 1 from environment where instance->>'status' in ('RUNNING','AWAITING_APPROVAL')
+               and instance->>'runtimeSessionId'=$4 and expires_at>$6
+           ))
          returning intent,action,expires_at`,
         [
           hash(input.token),
@@ -116,5 +136,5 @@ export function createPostgresRuntimeApprovalMaintenance(
       "Runtime approvals are unavailable in this maintenance transaction."
     );
   };
-  return { ...store, put: unavailable, claim: unavailable };
+  return { ...store, put: unavailable, claim: unavailable, reject: unavailable };
 }

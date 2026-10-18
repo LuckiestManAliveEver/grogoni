@@ -42,8 +42,15 @@ function fixture() {
     businessId: "business",
     taskId: task.id,
     stepId: "observe",
+    expectedEnvironmentRevision: 2,
     manifest,
     tasks: { get: vi.fn(async () => task) },
+    environments: {
+      get: vi.fn(async () => ({
+        revision: 2,
+        instance: { status: "RUNNING", runtimeSessionId: "runtime-session" }
+      }))
+    },
     steps: {
       claim: vi.fn(async () => {
         events.push("claim");
@@ -62,6 +69,7 @@ function fixture() {
           turn: {
             id: "turn",
             status: "completed",
+            verification: { ok: true },
             createdAt: new Date().toISOString(),
             context: {},
             toolResult: { items: [] }
@@ -91,6 +99,7 @@ describe("business task canonical execution composition", () => {
     expect(mocks.runtime.createRuntimeTurn).toHaveBeenCalledWith(
       expect.objectContaining({
         conversationId: "conversation",
+        runtimeSessionId: "runtime-session",
         plannedStep: expect.objectContaining({ capability: "products.list" })
       })
     );
@@ -100,6 +109,36 @@ describe("business task canonical execution composition", () => {
     mocks.steps.claim.mockRejectedValueOnce(new Error("already started"));
     await expect(executeBusinessTaskRootStep(input)).rejects.toThrow("already started");
     expect(mocks.runtime.createRuntimeTurn).not.toHaveBeenCalled();
+  });
+  it("does not claim when the pinned lifecycle revision has changed", async () => {
+    const { input, mocks } = fixture();
+    const environment = await mocks.environments.get();
+    mocks.environments.get.mockResolvedValueOnce({ ...environment, revision: 3 });
+    await expect(executeBusinessTaskRootStep(input)).rejects.toMatchObject({
+      code: "business_environment_not_running"
+    });
+    expect(mocks.steps.claim).not.toHaveBeenCalled();
+    expect(mocks.runtime.createRuntimeTurn).not.toHaveBeenCalled();
+  });
+  it("keeps a failed write inconclusive because persistence acknowledgement can fail after commit", async () => {
+    const { input, mocks } = fixture();
+    const task = await mocks.tasks.get();
+    task.executionMode = "LIVE";
+    task.plan[0]!.capability = "procurement.prepare";
+    task.plan[0]!.input = { taskId: task.id };
+    input.manifest = { ...manifest, executionMode: "LIVE", capabilities: ["procurement.prepare"] };
+    mocks.runtime.createRuntimeTurn.mockResolvedValueOnce({
+      turn: {
+        id: "turn",
+        status: "blocked",
+        verification: { ok: true },
+        createdAt: new Date().toISOString(),
+        context: {},
+        toolResult: { items: [] }
+      }
+    });
+    expect(await executeBusinessTaskRootStep(input)).toMatchObject({ status: "INCONCLUSIVE" });
+    expect(mocks.runtime.createRuntimeTurn).toHaveBeenCalledTimes(1);
   });
   it.each(["runtime", "commit"])(
     "retains uncertainty after a %s failure without replay",

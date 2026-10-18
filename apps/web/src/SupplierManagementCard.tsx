@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import SupplierOfferPanel from "./SupplierOfferPanel";
+import PurchaseOrderPanel from "./PurchaseOrderPanel";
 import { useAsyncActions } from "./hooks/useAsyncActions";
 import { useApiMutationRevision } from "./hooks/useApiMutationRevision";
 import { deleteJson, getJson, patchJson, postJson } from "./api-helpers";
@@ -125,6 +127,16 @@ export default function SupplierManagementCard(props: { businessId: string; supp
         <p className="eyebrow">Suppliers</p>
         <h3>Manage suppliers from chat</h3>
       </div>
+      <SupplierOfferPanel
+        key={props.businessId}
+        businessId={props.businessId}
+        suppliers={suppliers}
+      />
+      <PurchaseOrderPanel
+        key={`orders:${props.businessId}`}
+        businessId={props.businessId}
+        suppliers={suppliers}
+      />
       {message.length > 0 ? <p className="shell-note">{message}</p> : null}
       <div className="row-actions">
         <button type="button" onClick={() => setIsAdding((open) => !open)}>

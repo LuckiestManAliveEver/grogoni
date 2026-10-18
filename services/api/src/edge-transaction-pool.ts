@@ -15,6 +15,10 @@ export function transactionPool(client: PoolClient): Pool {
       return {
         async query(sql: string, values?: unknown[]) {
           const command = sql.trim().toLowerCase();
+          if (command === "begin isolation level repeatable read") {
+            await client.query("set transaction isolation level repeatable read");
+            return client.query(`savepoint ${name}`);
+          }
           if (command === "begin") return client.query(`savepoint ${name}`);
           if (command === "commit") return client.query(`release savepoint ${name}`);
           if (command === "rollback") return client.query(`rollback to savepoint ${name}`);

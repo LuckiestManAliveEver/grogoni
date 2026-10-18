@@ -19,6 +19,7 @@ import { executeNetworkCapability } from "./network-capabilities.js";
 import { executeCoreReadCapability } from "./core-read-capabilities.js";
 import { executeCommerceCapability } from "./commerce-capabilities.js";
 import { executeCommercialRecordsCapability } from "./commercial-records-capabilities.js";
+import { executeProcurementCapability } from "./procurement-capabilities.js";
 import {
   findRuntimeCustomerByName,
   findRuntimeProductByName,
@@ -70,6 +71,11 @@ export async function executeRuntimeCapability(
     );
   }
   switch (input.action.toolName) {
+    case "procurement.quote.record":
+    case "procurement.prepare":
+    case "procurement.submit":
+    case "procurement.respond":
+      return executeProcurementCapability(deps, input);
     case "contacts.search":
     case "supplier.contact.attach":
     case "purchase.record":

@@ -52,31 +52,63 @@ export function createPostgresBusinessTaskStore(pool: Pool, authorize: Authorize
           error instanceof Error ? error.message : "Invalid business task."
         );
       }
-      const result = await pool.query<{ task: BusinessTask }>(
-        `insert into business_environment_tasks
+      const client = await pool.connect();
+      try {
+        await client.query("begin");
+        await client.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [
+          `business-environments:${actor.businessId}`
+        ]);
+        const existing = await client.query(
+          "select 1 from business_environment_tasks where business_id=$1 and task_id=$2",
+          [task.businessId, task.id]
+        );
+        if (!existing.rows[0]) {
+          const usage = (
+            await client.query<{ business_recent: number; actor_recent: number }>(
+              `select count(*)::int as business_recent,count(*) filter(where actor_id=$2)::int as actor_recent
+           from business_environment_tasks where business_id=$1 and created_at>now()-interval '1 hour'`,
+              [task.businessId, task.actorId]
+            )
+          ).rows[0]!;
+          if (usage.business_recent >= 100 || usage.actor_recent >= 20)
+            throw new Cp2Error(
+              429,
+              "business_task_rate_limit",
+              "The business task limit has been reached. Try again later."
+            );
+        }
+        const result = await client.query<{ task: BusinessTask }>(
+          `insert into business_environment_tasks
            (business_id,task_id,actor_id,environment_id,environment_version,task)
          values ($1,$2,$3,$4,$5,$6::jsonb)
          on conflict (business_id,task_id) do update set task=business_environment_tasks.task
          where business_environment_tasks.actor_id=excluded.actor_id
            and business_environment_tasks.task-'createdAt'=excluded.task-'createdAt'
          returning task`,
-        [
-          task.businessId,
-          task.id,
-          task.actorId,
-          task.environmentId,
-          task.environmentVersion,
-          JSON.stringify(task)
-        ]
-      );
-      if (!result.rows[0]) {
-        throw new Cp2Error(
-          409,
-          "business_task_conflict",
-          "This task identifier already has a different specification."
+          [
+            task.businessId,
+            task.id,
+            task.actorId,
+            task.environmentId,
+            task.environmentVersion,
+            JSON.stringify(task)
+          ]
         );
+        if (!result.rows[0]) {
+          throw new Cp2Error(
+            409,
+            "business_task_conflict",
+            "This task identifier already has a different specification."
+          );
+        }
+        await client.query("commit");
+        return result.rows[0].task;
+      } catch (error) {
+        await client.query("rollback").catch(() => undefined);
+        throw error;
+      } finally {
+        client.release();
       }
-      return result.rows[0].task;
     },
     async get(actor: TaskActor, taskId: string): Promise<BusinessTask | null> {
       const { userId } = authorize({ ...actor, permission: "business:read" });

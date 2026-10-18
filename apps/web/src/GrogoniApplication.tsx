@@ -601,15 +601,8 @@ export function OwnerApp() {
     registerReset: domainResetRegistry.registerReset,
     registerRefresh
   });
-  // Chat/messaging was originally one useChatState hook (Phase 16); later split into five smaller
-  // hooks (Thread/Inbox/Attachments/BuyCart/Runtime) once it was the only remaining hook mixing
-  // several loosely-related sub-concerns. Thread is the state hub (chatMessages/chatDraft/
-  // pendingAttachments/replyToMessageId/runtimeSessionId) and is called first so every sibling can
-  // take its setters as plain deps - same "core-context values never relocate" shape as
-  // OwnerCoreContext, just scoped to chat. Called before useBusinessSetupState because BusinessSetup's
-  // own deps object references setConversationInbox/setActiveConversationId/loadConversationThread,
-  // all three returned by useChatInboxState - same TDZ-avoidance reasoning as every other domain
-  // hook ordering decision in this effort.
+  // Thread owns shared chat state. Inbox must follow it, and BusinessSetup must follow Inbox
+  // because its dependencies reference the inbox setters and loadConversationThread.
   const {
     chatDraft,
     setChatDraft,
@@ -741,56 +734,59 @@ export function OwnerApp() {
     setBuyFeed,
     setChatMessages
   });
-  const { isBrowserGenerating, sendChatDraft, confirmRuntimeAction, cancelGeneration } =
-    useChatRuntimeState({
-      business,
-      mode,
-      session,
-      authBootstrapState,
-      ensureAuthenticatedSession,
-      rejectDefinitiveAuthenticationFailure,
-      agentSettings,
-      setStatusMessage,
-      navigateToView,
-      requireMessagingSignIn,
-      searchBuyFeed: handleSearchBuyFeed,
-      loadProducts,
-      loadSuppliers,
-      loadCustomers,
-      loadInvoices,
-      loadReports,
-      loadNotifications,
-      loadRuntimeSessions,
-      createManagedRuntimeSession,
-      ensureRuntimeSession,
-      loadDocumentImports,
-      chatMessages,
-      setChatMessages,
-      chatDraft,
-      setChatDraft,
-      pendingAttachments,
-      setPendingAttachments,
-      runtimeSessionId,
-      setRuntimeSessionId,
-      replyToMessageId,
-      setReplyToMessageId,
-      activeConversationId,
-      activeConversation,
-      loadMessagingInbox,
-      registerReset: domainResetRegistry.registerReset
-    });
+  const {
+    isBrowserGenerating,
+    sendChatDraft,
+    confirmRuntimeAction,
+    rejectRuntimeAction,
+    cancelGeneration
+  } = useChatRuntimeState({
+    business,
+    mode,
+    session,
+    authBootstrapState,
+    ensureAuthenticatedSession,
+    rejectDefinitiveAuthenticationFailure,
+    agentSettings,
+    setStatusMessage,
+    navigateToView,
+    requireMessagingSignIn,
+    searchBuyFeed: handleSearchBuyFeed,
+    loadProducts,
+    loadSuppliers,
+    loadCustomers,
+    loadInvoices,
+    loadReports,
+    loadNotifications,
+    loadRuntimeSessions,
+    createManagedRuntimeSession,
+    ensureRuntimeSession,
+    loadDocumentImports,
+    chatMessages,
+    setChatMessages,
+    chatDraft,
+    setChatDraft,
+    pendingAttachments,
+    setPendingAttachments,
+    runtimeSessionId,
+    setRuntimeSessionId,
+    replyToMessageId,
+    setReplyToMessageId,
+    activeConversationId,
+    activeConversation,
+    loadMessagingInbox,
+    registerReset: domainResetRegistry.registerReset
+  });
   // useAuthState is called after useNetworkState/the chat hook group (whose setNetworkGraph escape
   // hatch and requireMessagingSignIn/setConversationInbox/setActiveConversationId/
   // loadConversationThread it depends on) and before useBusinessSetupState (whose deps object
   // references refreshSession by name at hook-call time) - same TDZ-avoidance reasoning as every
   // other domain hook ordering decision in this effort.
   const authBootstrapPending = isAuthBootstrapPending(authBootstrapState);
-  // A device-only session (progressive-identity.md) is a real, cookie-backed session, but it is
-  // not yet the identity someone deliberately asking to log in or sign up wants - show the auth
-  // screen for it the same as no session at all. completePhoneFirstAuthentication's new session
-  // response simply replaces this temporary one, exactly like a fresh signup/login would.
+  // Device-only identities are cookie-backed but still need explicit signup/login.
+  // Auth completion upgrades this temporary session, as it does a fresh session.
   const isSignedOut = session === null || session.account.identityLevel === "device";
-  useDaemonLane(session?.account.id ?? null);
+  useDaemonLane(isSignedOut ? null : (session?.account.id ?? null));
   const shouldShowAuth = !authBootstrapPending && isAuthOpen && isSignedOut;
   // Log in / Sign up entry points (menu drawer, seller header). A device account can already own a
   // shop; offering it a login that replaces that account would strand the shop, so a shop owner's
@@ -1972,6 +1968,9 @@ export function OwnerApp() {
                 onBackToChat={returnToChat}
                 onConfirm={(token) =>
                   void runAction("runtime-confirm", () => confirmRuntimeAction(token))
+                }
+                onReject={(token) =>
+                  void runAction("runtime-confirm", () => rejectRuntimeAction(token))
                 }
                 onDraftChange={(draft) => void signalTyping(draft)}
                 onSelectConversation={(conversationId) => void selectConversation(conversationId)}

@@ -28,6 +28,8 @@ export interface BusinessTask {
   actorId: string;
   environmentId: string;
   environmentVersion: string;
+  /** Absent only on legacy tasks; new tasks pin the server-owned evaluation policy. */
+  evaluationPolicyId?: string;
   objective: string;
   constraints: { budgetMinor: number | null; currency: string | null; horizonDays: number | null };
   allowedCapabilities: RuntimeToolName[];
@@ -151,6 +153,7 @@ export function compileBusinessTask(input: {
     actorId: input.actorId,
     environmentId: input.manifest.id,
     environmentVersion: input.manifest.version,
+    evaluationPolicyId: input.manifest.evaluationPolicyId,
     objective: input.objective.trim(),
     constraints: structuredClone(constraints),
     allowedCapabilities: [...new Set(plan.map((step) => step.capability))],

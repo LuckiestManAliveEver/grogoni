@@ -1,4 +1,4 @@
-import { createDefaultAgentRuntimeAdapterRegistry } from "../agent-harness/default-agent-runtime-adapters.js";
+import type { createDefaultAgentRuntimeAdapterRegistry } from "../agent-harness/default-agent-runtime-adapters.js";
 import { createOpenRouterRuntime } from "../inference/openrouter-runtime.js";
 import {
   ModelRuntimeError,
@@ -7,7 +7,6 @@ import {
   type ModelRuntimeAdapter
 } from "../inference/model-runtime.js";
 import { hostedJsonRequest, hostedEndpoint } from "../inference/hosted-http.js";
-import { edgeJobDefinitions } from "../edge-job-runner.js";
 import { DaemonTaskError, type DaemonExecutor } from "./worker.js";
 import type { DaemonPayload } from "./task-store.js";
 import { defaultGrogoniMaxPromptBytes } from "../agent-harness/grogoni-agent-runtime-adapter.js";
@@ -90,10 +89,11 @@ export function createDaemonExecutor(
   } = {}
 ): DaemonExecutor {
   const models = createOpenRouterRuntime(environment);
-  const agents = createDefaultAgentRuntimeAdapterRegistry();
+  let agents: Promise<ReturnType<typeof createDefaultAgentRuntimeAdapterRegistry>> | undefined;
   const execute: DaemonExecutor = async (task, signal) => {
     const payload = task.payload;
     if (payload.kind === "maintenance") {
+      const { edgeJobDefinitions } = await import("../edge-job-runner.js");
       if (!Object.hasOwn(edgeJobDefinitions, payload.job))
         throw new DaemonTaskError("UNKNOWN_JOB", false);
       if (options.runMaintenance) return await options.runMaintenance(payload.job, signal);
@@ -132,7 +132,10 @@ export function createDaemonExecutor(
       }
     }
     const adapter = models.resolve({ modelId: payload.modelId, executionTarget: "backend" });
-    const agentAdapter = agents.resolve(payload.agentAdapterId);
+    agents ??= import("../agent-harness/default-agent-runtime-adapters.js").then(
+      ({ createDefaultAgentRuntimeAdapterRegistry }) => createDefaultAgentRuntimeAdapterRegistry()
+    );
+    const agentAdapter = (await agents).resolve(payload.agentAdapterId);
     if (!adapter || !agentAdapter) throw new DaemonTaskError("RUNTIME_NOT_CONFIGURED", false);
     // runtimeProviderFromAdapter flattens a model failure into a completion code and drops the
     // runtime's own retryable verdict; capture it here so transient failures are retried.

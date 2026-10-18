@@ -2,6 +2,7 @@ export type RuntimeName = "api" | "sync" | "ai-runtime" | "web";
 
 export * from "./commerce-address.js";
 export * from "./daemon-lanes.js";
+export * from "./purchase-orders.js";
 export * from "./computer-runtime.js";
 export * from "./fulfillment.js";
 export * from "./grams.js";
@@ -546,7 +547,12 @@ export interface EncryptedMessageEnvelope {
 }
 
 export type ConversationMessageContent =
-  | { type: "text"; text: string; attachments?: ConversationAttachment[] }
+  | {
+      type: "text";
+      text: string;
+      attachments?: ConversationAttachment[];
+      businessTask?: { businessId: string; taskId: string };
+    }
   | { type: "product-card"; product: CatalogueProductSummary }
   | {
       type: "encrypted";
@@ -557,7 +563,16 @@ export type ConversationMessageContent =
     }
   | { type: "storefront"; shopId: string }
   | { type: "owner-controls"; shopId: string }
-  | { type: "confirmation"; confirmationToken: string; prompt: string }
+  | {
+      type: "confirmation";
+      confirmationToken: string;
+      prompt: string;
+      approvalScope?: {
+        businessId: string;
+        runtimeSessionId: string;
+        conversationId: string | null;
+      };
+    }
   | { type: "product-capture-progress"; captureJobId: string }
   | { type: "status-broadcast"; statusBroadcastId: string }
   | { type: "unified-checkout"; unifiedCheckoutId: string }
@@ -568,6 +583,61 @@ export type ConversationMessageContent =
   | { type: "payment-management"; businessId: string; customerName?: string }
   | { type: "import-management"; businessId: string; importJobId?: string }
   | { type: "logistics-management"; businessId: string; customerName?: string };
+
+export interface SupplierOfferReview {
+  id: string;
+  productId: string;
+  productName: string;
+  supplierId: string;
+  supplierName: string;
+  currency: string;
+  unit: string;
+  unitPriceMinor: number;
+  priceIncludesCharges: true;
+  minQuantityMilli: number;
+  incrementMilli: number;
+  availableQuantityMilli: number;
+  leadTimeDays: number;
+  expiresAt: string;
+}
+
+export interface BusinessExecutionTaskView {
+  taskId: string;
+  businessId: string;
+  environmentName: string;
+  objective: string;
+  status:
+    | "CREATED"
+    | "READY"
+    | "RUNNING"
+    | "AWAITING_APPROVAL"
+    | "VERIFYING"
+    | "COMPLETED"
+    | "FAILED"
+    | "SUSPENDED"
+    | "CANCELLED"
+    | "EXPIRED"
+    | "INCOMPLETE";
+  revision: number;
+  verificationStatus: "PASSED" | "FAILED" | "INCONCLUSIVE" | "NOT_VERIFIED";
+  budgetMinor: number | null;
+  currency: string | null;
+  horizonDays: number | null;
+  reason: string | null;
+  issues: { productName: string | null; message: string }[];
+  steps: { id: string; label: string; status: string }[];
+  orders: {
+    id: string;
+    supplierName: string;
+    totalMinor: number;
+    currency: string;
+    submissionStatus: "NOT_SUBMITTED";
+    requiresSubmissionApproval: true;
+    items: { productName: string; quantityMilli: number; unit: string; totalMinor: number }[];
+  }[];
+  evaluation: EnvironmentEvaluation | null;
+  experienceRetained: boolean | null;
+}
 
 export interface AccountShopSummary {
   business: BusinessSummary;
@@ -826,6 +896,8 @@ export interface ProviderUpdateReceiptSummary {
 }
 
 export interface ConversationSummary {
+  /** Internal task thread linked to its ordinary owner chat. */
+  taskParentConversationId?: string;
   id: string;
   accountId: string;
   kind: ConversationKind;
@@ -3764,6 +3836,10 @@ export type RuntimeToolName =
   | "purchase.record"
   | "purchase.price.change"
   | "purchase.history"
+  | "procurement.quote.record"
+  | "procurement.prepare"
+  | "procurement.submit"
+  | "procurement.respond"
   | "sale.record"
   | "sales.history"
   | "route.record"
@@ -4659,17 +4735,28 @@ export interface RuntimeExperience {
   outcome: RuntimeExperienceOutcome;
   lesson: string;
   validationState: RuntimeExperienceValidationState;
-  /** Independent turns that produced this exact `lessonKey`. Promotion threshold in
-   *  `docs/architecture/experience-memory.md`. */
+  /** Corroborations under the trigger's evidence policy. Business-task lessons additionally
+   *  require disjoint authoritative source episodes, not just distinct turns. */
   corroborationCount: number;
+  /** Bounded durable replay ledger. Older records may only identify sourceTurnId. */
+  corroboratingTurnIds?: string[];
   /** The turn extraction last ran from - diagnostic only, never used to resume execution. */
   sourceTurnId: string;
   createdAt: string;
   updatedAt: string;
   deprecatedAt: string | null;
+  environmentScope?: {
+    environmentId: string;
+    environmentVersion: string;
+    contextKey: string;
+    sourceMask: string;
+    sourceFingerprints: string[];
+    taskIds: string[];
+  };
 }
 
 export type AgentEvaluationEventType =
+  | "business_task_verification"
   | "intent_classification"
   | "context_retrieval"
   | "tool_selection"
@@ -4731,6 +4818,35 @@ export interface AgentEvaluationSummary {
    */
   averageSessionTurnCountAtClarify: number | null;
   recentEvents: AgentEvaluationEvent[];
+  environmentOutcomes?: EnvironmentEvaluation[];
+}
+
+export interface EnvironmentEvaluation {
+  verificationId: string;
+  taskId: string;
+  stepId: string;
+  environmentId: string;
+  environmentVersion: string;
+  evaluationPolicyId: string | null;
+  executionSuccess: boolean | null;
+  constraintViolations: number | null;
+  executionAccuracy: number | null;
+  toolCalls: number | null;
+  toolEfficiency: number | null;
+  latencyMs: number | null;
+  modelLatencyMs: number | null;
+  promptTokens: number | null;
+  completionTokens: number | null;
+  humanInterventions: number | null;
+  reward: number | null;
+  outcomeStatus: "VERIFIED" | "PENDING" | "INCONCLUSIVE" | "FAILED";
+  inventory: {
+    budgetCompliance: number | null;
+    orderAccuracy: number | null;
+    forecastAccuracy: number | null;
+    stockoutReduction: number | null;
+  } | null;
+  event: AgentEvaluationEvent;
 }
 
 /**

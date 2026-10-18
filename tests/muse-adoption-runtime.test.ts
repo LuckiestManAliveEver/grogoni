@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type {
   AgentContextSource,
   RuntimeExperience,
@@ -15,6 +15,7 @@ import {
 import { buildRuntimeReportCard } from "../services/api/src/cp2/domains/agent-runtime/report-card";
 import { nextRuntimeExperienceState } from "../services/api/src/cp2/domains/agent-runtime/shared";
 import { createCp2Store } from "../services/api/src/cp2/store";
+import { Cp2Error } from "../services/api/src/cp2/cp2-error";
 
 function source(overrides: {
   id: string;
@@ -232,7 +233,7 @@ describe("nextRuntimeExperienceState", () => {
     ]);
   });
 
-  it("stays a candidate below the corroboration threshold, and never surfaces a fabricated recipe/evidence change", () => {
+  it("promotes after a distinct corroborating turn without fabricating recipe/evidence changes", () => {
     const candidate: RuntimeExperience = nextRuntimeExperienceState(null, baseInput).experience;
     const result = nextRuntimeExperienceState(candidate, {
       ...baseInput,
@@ -254,6 +255,51 @@ describe("nextRuntimeExperienceState", () => {
     expect(third.experience.validationState).toBe("validated");
     expect(third.experience.corroborationCount).toBe(3);
     expect(third.telemetryEvents.map((event) => event.state)).toEqual(["recall.deduplicated"]);
+  });
+
+  it("does not count replayed turns, including nonconsecutive replays after rehydration", () => {
+    const first = nextRuntimeExperienceState(null, baseInput).experience;
+    const replay = nextRuntimeExperienceState(first, { ...baseInput, now: new Date("2026-09-02") });
+    expect(replay.experience).toEqual(first);
+    expect(replay.experience.validationState).toBe("candidate");
+    const second = nextRuntimeExperienceState(first, { ...baseInput, turnId: "turn-2" }).experience;
+    const restored = JSON.parse(JSON.stringify(second)) as RuntimeExperience;
+    expect(nextRuntimeExperienceState(restored, baseInput).experience).toEqual(second);
+  });
+
+  it("does not invent a legacy record's untracked corroborating identities", () => {
+    const legacy = nextRuntimeExperienceState(null, baseInput).experience;
+    delete legacy.corroboratingTurnIds;
+    legacy.corroborationCount = 30;
+    const result = nextRuntimeExperienceState(legacy, baseInput).experience;
+    expect(result.corroborationCount).toBe(1);
+    expect(result.validationState).toBe("candidate");
+  });
+
+  it("rejects cross-business, agent, recipe, tool and deprecated corroborations", () => {
+    const first = nextRuntimeExperienceState(null, baseInput).experience;
+    for (const changed of [
+      { ...first, shopId: "other" },
+      { ...first, agentId: "other" },
+      { ...first, recipeVersion: 2 },
+      { ...first, toolSequence: ["customer.create" as const] },
+      { ...first, validationState: "deprecated" as const }
+    ]) {
+      expect(() => nextRuntimeExperienceState(changed, baseInput)).toThrow("scope");
+    }
+  });
+
+  it("bounds replay history without evicting older identifiers or refreshing retention on replay", () => {
+    let experience = nextRuntimeExperienceState(null, baseInput).experience;
+    for (let index = 2; index <= 70; index++) {
+      experience = nextRuntimeExperienceState(experience, {
+        ...baseInput,
+        turnId: `turn-${index}`
+      }).experience;
+    }
+    expect(experience.corroborationCount).toBe(64);
+    expect(experience.corroboratingTurnIds).toHaveLength(64);
+    expect(nextRuntimeExperienceState(experience, baseInput).experience).toEqual(experience);
   });
 });
 
@@ -380,9 +426,89 @@ describe("buildRuntimeReportCard", () => {
     expect(v2Card.key).toEqual({ runtimeVersion: 2, modelId: "model-b", recipeId: null });
     expect(v2Card.groundedAcceptRate).toBeNull();
   });
+
+  it("does not credit deterministic business tasks to a configured model or its usage", () => {
+    const planned = turn({ id: "planned" });
+    planned.telemetry = [
+      {
+        id: "route",
+        sessionId: planned.sessionId,
+        turnId: planned.id,
+        state: "intent.routed",
+        occurredAt: planned.createdAt,
+        toolName: null,
+        risk: null,
+        status: "completed",
+        metadata: { source: "business_task" }
+      }
+    ];
+    planned.model = { ...planned.model!, promptTokens: 30, completionTokens: 20 };
+    const cards = buildRuntimeReportCard([planned, turn({ id: "model-invoked" })]);
+    expect(cards).toHaveLength(2);
+    const deterministic = cards.find((card) => card.key.modelId === null)!;
+    expect(deterministic.sampleSize).toBe(1);
+    expect(deterministic.averageLatencyMs).toBeNull();
+    expect(deterministic.averagePromptTokens).toBeNull();
+    expect(deterministic.averageCompletionTokens).toBeNull();
+    expect(cards.find((card) => card.key.modelId === "model-a")?.sampleSize).toBe(1);
+  });
 });
 
 describe("recall tenant isolation and grounding gate at the real HTTP seam", () => {
+  it("authorizes native outcome reads and returns asynchronous persistence errors through the existing API", async () => {
+    const list = vi.fn(async () => []);
+    const store = createCp2Store({ businessTaskEvaluations: { list } });
+    const app = buildApi({ cp2: { store } });
+    try {
+      const owner = await createOwnerBusiness(app, "+254700009005", "Evaluation Shop");
+      const path = `/businesses/${owner.businessId}/agent-runtime/evaluations`;
+      const response = await app.inject({
+        method: "GET",
+        url: path,
+        headers: { cookie: owner.cookie }
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json().environmentOutcomes).toEqual([]);
+      expect(list).toHaveBeenCalledTimes(1);
+      expect((await app.inject({ method: "GET", url: path })).statusCode).toBe(401);
+      expect(list).toHaveBeenCalledTimes(1);
+      list.mockRejectedValueOnce(
+        new Cp2Error(503, "evaluation_unavailable", "Evaluation read unavailable.")
+      );
+      const failed = await app.inject({
+        method: "GET",
+        url: path,
+        headers: { cookie: owner.cookie }
+      });
+      expect(failed.statusCode).toBe(503);
+      expect(failed.json().code).toBe("evaluation_unavailable");
+    } finally {
+      await app.close();
+    }
+  });
+  it("records no model attribution or latency for a parser-only runtime action", async () => {
+    const store = createCp2Store({});
+    const app = buildApi({ cp2: { store } });
+    try {
+      const owner = await createOwnerBusiness(app, "+254700009004", "Parser Shop");
+      const result = await postJson<{ turn: RuntimeTurnSummary }>(
+        app,
+        `/businesses/${owner.businessId}/runtime/turns`,
+        { message: "show products" },
+        owner.cookie
+      );
+      expect(result.turn.model).toBeNull();
+      const events = store
+        .snapshot()
+        .agentEvaluationEvents!.filter((event) => event.shopId === owner.businessId);
+      expect(events.length).toBeGreaterThan(0);
+      expect(events.every((event) => event.modelId === null)).toBe(true);
+      expect(events.some((event) => event.eventType === "response_latency")).toBe(false);
+    } finally {
+      await app.close();
+    }
+  });
+
   it("never lets Business B see a validated experience recorded for Business A", async () => {
     const store = createCp2Store({});
     const app = buildApi({ cp2: { store } });

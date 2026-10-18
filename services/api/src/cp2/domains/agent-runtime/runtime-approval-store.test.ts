@@ -46,20 +46,62 @@ describe.skipIf(!url)("durable exact-action runtime approvals", () => {
   };
   beforeAll(async () => {
     await admin.query(`create schema ${schema}`);
-    await pool.query(
-      await readFile(
-        new URL("../../../../../../infra/db/migrations/115_runtime_approvals.sql", import.meta.url),
-        "utf8"
-      )
-    );
+    for (const name of [
+      "113_business_tasks.sql",
+      "114_business_task_steps.sql",
+      "115_runtime_approvals.sql",
+      "117_business_task_verifications.sql",
+      "118_task_verification_sequence.sql",
+      "119_business_environment_instances.sql",
+      "120_inventory_procurement.sql",
+      "121_runtime_approval_rejection.sql"
+    ]) {
+      await pool.query(
+        await readFile(
+          new URL(`../../../../../../infra/db/migrations/${name}`, import.meta.url),
+          "utf8"
+        )
+      );
+    }
   });
   beforeEach(async () => {
-    await pool.query("truncate business_runtime_approvals");
+    await pool.query(
+      "truncate business_purchase_drafts,business_supplier_quotes,business_runtime_approvals,business_environment_instances,business_environment_task_verifications,business_environment_task_steps,business_environment_tasks"
+    );
   });
   afterAll(async () => {
     await pool.end();
     await admin.query(`drop schema ${schema} cascade`);
     await admin.end();
+  });
+  it("durably rejects exact-scoped approvals across recreation", async () => {
+    await approvals.put(claim.token, pending());
+    await expect(approvals.reject({ ...claim, actorId: "other" })).rejects.toMatchObject({
+      statusCode: 404
+    });
+    await approvals.reject(claim);
+    const fresh = createPostgresRuntimeApprovalStore(pool);
+    await expect(fresh.claim(claim)).rejects.toMatchObject({ statusCode: 404 });
+    await expect(fresh.reject(claim)).rejects.toMatchObject({ statusCode: 404 });
+    const row = (
+      await pool.query("select status,rejected_at,claimed_at from business_runtime_approvals")
+    ).rows[0];
+    expect(row.status).toBe("REJECTED");
+    expect(row.rejected_at).toBeInstanceOf(Date);
+    expect(row.claimed_at).toBeNull();
+  });
+  it("allows only one winner in a confirmation/rejection race", async () => {
+    await approvals.put(claim.token, pending());
+    const results = await Promise.allSettled([approvals.claim(claim), approvals.reject(claim)]);
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
+  });
+  it("cannot reject through snapshot maintenance", async () => {
+    await approvals.put(claim.token, pending());
+    await expect(
+      createPostgresRuntimeApprovalMaintenance(pool).reject(claim)
+    ).rejects.toMatchObject({ statusCode: 503 });
+    await expect(approvals.claim(claim)).resolves.toBeDefined();
   });
   it("stores only a token digest and preserves the exact proposed action across recreation", async () => {
     const proposal = pending();
@@ -136,6 +178,105 @@ describe.skipIf(!url)("durable exact-action runtime approvals", () => {
       code: "runtime_approval_maintenance_only"
     });
     await expect(approvals.claim(claim)).resolves.toMatchObject({ actorId: "actor" });
+  });
+  async function nativeTask(businessId: string, actorId: string) {
+    const taskId = `native-task-${actorId}`;
+    const task = {
+      id: taskId,
+      businessId,
+      actorId,
+      environmentId: "inventory",
+      environmentVersion: "1.0.0"
+    };
+    await pool.query(
+      `insert into business_environment_tasks (business_id,task_id,actor_id,environment_id,environment_version,task)
+      values ($1,$4,$2,'inventory','1.0.0',$3::jsonb)`,
+      [businessId, actorId, JSON.stringify(task), taskId]
+    );
+    await pool.query(
+      `insert into business_environment_task_steps (business_id,task_id,step_id,actor_id,claim_id,status,runtime_turn_id)
+      values ($1,$4,'observe',$2,$3,'VERIFYING','turn')`,
+      [businessId, actorId, randomUUID(), taskId]
+    );
+    await pool.query(
+      `insert into business_environment_task_verifications (id,business_id,task_id,step_id,actor_id,runtime_turn_id,state_version,status,report)
+      values ($1,$2,$4,'observe',$3,'turn','state','PASSED','{}')`,
+      [randomUUID(), businessId, actorId, taskId]
+    );
+    await pool.query(
+      `insert into business_environment_instances (business_id,task_id,actor_id,instance,expires_at)
+      values ($1,$5,$2,$3::jsonb,$4)`,
+      [
+        businessId,
+        actorId,
+        JSON.stringify({ businessId, taskId, status: "VERIFYING" }),
+        new Date(now.getTime() + 60_000),
+        taskId
+      ]
+    );
+    await approvals.put(`native-${actorId}`, { ...pending(), businessId, actorId });
+  }
+  it("atomically deletes the complete native task graph within actor or business scope", async () => {
+    await nativeTask("business", "actor");
+    await nativeTask("business", "other");
+    expect(await approvals.deleteScope([], [])).toBe(0);
+    expect(await approvals.deleteScope(["actor"], [])).toBe(5);
+    expect((await pool.query("select actor_id from business_environment_tasks")).rows).toEqual([
+      { actor_id: "other" }
+    ]);
+    expect(await approvals.deleteScope([], ["business"])).toBe(5);
+    expect(await approvals.deleteScope(["actor"], ["business"])).toBe(0);
+  });
+  it("rolls back approvals and the task graph together when any native deletion fails", async () => {
+    await nativeTask("business", "actor");
+    await pool.query(
+      "create table delete_blocker_fixture (business_id text,task_id text,foreign key (business_id,task_id) references business_environment_tasks (business_id,task_id))"
+    );
+    await pool.query("insert into delete_blocker_fixture values ('business','native-task-actor')");
+    try {
+      await expect(approvals.deleteScope(["actor"], [])).rejects.toThrow();
+      for (const table of [
+        "business_runtime_approvals",
+        "business_environment_tasks",
+        "business_environment_task_steps",
+        "business_environment_task_verifications",
+        "business_environment_instances"
+      ]) {
+        expect((await pool.query(`select count(*)::int as n from ${table}`)).rows[0].n).toBe(1);
+      }
+    } finally {
+      await pool.query("drop table delete_blocker_fixture");
+    }
+    expect(await approvals.deleteScope(["actor"], [])).toBe(5);
+  });
+  it("fences canonical confirmations while the task environment is stopped or rebound", async () => {
+    await pool.query(`insert into business_environment_tasks (business_id,task_id,actor_id,environment_id,environment_version,task)
+      values ('business','conversation','actor','inventory','1.0.0','{"id":"conversation","businessId":"business","actorId":"actor","environmentId":"inventory","environmentVersion":"1.0.0"}')`);
+    await pool.query(
+      `insert into business_environment_instances (business_id,task_id,actor_id,instance,expires_at)
+      values ('business','conversation','actor','{"businessId":"business","taskId":"conversation","status":"SUSPENDED","runtimeSessionId":"runtime-session"}',$1)`,
+      [new Date(now.getTime() + 60_000)]
+    );
+    await approvals.put(claim.token, pending());
+    for (const status of ["SUSPENDED", "CANCELLED", "FAILED", "COMPLETED", "VERIFYING"]) {
+      await pool.query(
+        "update business_environment_instances set instance=jsonb_set(instance,'{status}',to_jsonb($1::text))",
+        [status]
+      );
+      await expect(approvals.claim(claim)).rejects.toMatchObject({
+        code: "runtime_confirmation_not_found"
+      });
+    }
+    await pool.query(
+      "update business_environment_instances set instance=jsonb_set(jsonb_set(instance,'{status}','\"AWAITING_APPROVAL\"'),'{runtimeSessionId}','\"different\"')"
+    );
+    await expect(approvals.claim(claim)).rejects.toMatchObject({
+      code: "runtime_confirmation_not_found"
+    });
+    await pool.query(
+      "update business_environment_instances set instance=jsonb_set(instance,'{runtimeSessionId}','\"runtime-session\"')"
+    );
+    await expect(approvals.claim(claim)).resolves.toMatchObject({ businessId: "business" });
   });
   it("confirms through a fresh canonical runtime using no in-memory pending action", async () => {
     const store = createCp2Store({
@@ -230,6 +371,42 @@ describe.skipIf(!url)("durable exact-action runtime approvals", () => {
       expect(confirmed.json().turn.status).toBe("completed");
       expect(confirmed.json().turn.plan.input).toEqual({ productName: "Sugar", sellingPrice: 175 });
       expect(confirmed.json().turn.toolResult).toMatchObject({ name: "Sugar" });
+      const second = await app.inject({
+        method: "POST",
+        url: `/businesses/${businessId}/runtime/turns`,
+        headers: { cookie },
+        payload: {
+          runtimeSessionId: proposed.json().session.id,
+          message: "Please process another item"
+        }
+      });
+      expect(second.statusCode, second.body).toBe(200);
+      const rejection = {
+        runtimeSessionId: second.json().session.id,
+        confirmationToken: second.json().turn.plan.confirmationToken
+      };
+      expect(rejection.confirmationToken).toBeTypeOf("string");
+      const anonymous = await freshApp.inject({
+        method: "POST",
+        url: `/businesses/${businessId}/runtime/approvals/reject`,
+        payload: rejection
+      });
+      expect(anonymous.statusCode).toBe(401);
+      const rejected = await freshApp.inject({
+        method: "POST",
+        url: `/businesses/${businessId}/runtime/approvals/reject`,
+        headers: { cookie },
+        payload: rejection
+      });
+      expect(rejected.statusCode, rejected.body).toBe(200);
+      expect(rejected.json()).toEqual({ status: "REJECTED" });
+      const blocked = await freshApp.inject({
+        method: "POST",
+        url: `/businesses/${businessId}/runtime/turns`,
+        headers: { cookie },
+        payload: { ...rejection, message: "confirm" }
+      });
+      expect(blocked.statusCode).toBe(404);
     } finally {
       await app.close();
       await freshApp?.close();

@@ -11,6 +11,7 @@ import {
 } from "../../route-helpers.js";
 import type { createPostgresBusinessTaskStore } from "./business-task-store.js";
 import { businessEnvironmentRegistry } from "./business-environment-registry.js";
+import type { InventoryTaskController } from "./inventory-task-controller.js";
 
 export type BusinessTaskStore = ReturnType<typeof createPostgresBusinessTaskStore>;
 
@@ -18,7 +19,8 @@ export function registerBusinessTaskRoutes(
   app: FastifyInstance,
   store: Cp2Store,
   tasks?: BusinessTaskStore,
-  registry = businessEnvironmentRegistry
+  registry = businessEnvironmentRegistry,
+  controller?: InventoryTaskController
 ): void {
   function actor(request: FastifyRequest<{ Params: BusinessParams }>) {
     const value = {
@@ -37,6 +39,94 @@ export function registerBusinessTaskRoutes(
       );
     return tasks;
   }
+  app.get(
+    "/businesses/:businessId/runtime/procurement/orders",
+    async (request: FastifyRequest<{ Params: BusinessParams }>, reply) => {
+      try {
+        const principal = actor(request);
+        if (!controller)
+          throw new Cp2Error(
+            503,
+            "procurement_storage_unavailable",
+            "Durable purchase orders are unavailable."
+          );
+        return await controller.purchaseOrders(principal);
+      } catch (error) {
+        return sendCp2Error(reply, error);
+      }
+    }
+  );
+  app.get(
+    "/businesses/:businessId/runtime/procurement/offers",
+    async (request: FastifyRequest<{ Params: BusinessParams }>, reply) => {
+      try {
+        const principal = actor(request);
+        if (!controller)
+          throw new Cp2Error(
+            503,
+            "procurement_storage_unavailable",
+            "Durable supplier offers are unavailable."
+          );
+        return await controller.supplierOffers(principal);
+      } catch (error) {
+        return sendCp2Error(reply, error);
+      }
+    }
+  );
+  app.get(
+    "/businesses/:businessId/runtime/tasks/:taskId/view",
+    async (request: FastifyRequest<{ Params: BusinessParams & { taskId: string } }>, reply) => {
+      try {
+        const principal = actor(request);
+        if (!controller)
+          throw new Cp2Error(
+            503,
+            "business_task_execution_unavailable",
+            "Durable business task execution is unavailable."
+          );
+        return await controller.inspect(principal, request.params.taskId);
+      } catch (error) {
+        return sendCp2Error(reply, error);
+      }
+    }
+  );
+  app.post(
+    "/businesses/:businessId/runtime/tasks/:taskId/control",
+    async (
+      request: FastifyRequest<{ Params: BusinessParams & { taskId: string }; Body: unknown }>,
+      reply
+    ) => {
+      try {
+        const principal = actor(request);
+        if (!controller)
+          throw new Cp2Error(
+            503,
+            "business_task_execution_unavailable",
+            "Durable business task execution is unavailable."
+          );
+        const body = parseRequestBody(request.body);
+        if (
+          !Number.isSafeInteger(body.revision) ||
+          (body.revision as number) < 0 ||
+          typeof body.command !== "string" ||
+          !["SUSPEND", "RESUME", "CANCEL"].includes(body.command)
+        )
+          throw new Cp2Error(
+            400,
+            "business_task_control_invalid",
+            "Current revision and a valid control command are required."
+          );
+        return await controller.control(
+          principal,
+          request.params.taskId,
+          body.revision as number,
+          body.command as "SUSPEND" | "RESUME" | "CANCEL"
+        );
+      } catch (error) {
+        return sendCp2Error(reply, error);
+      }
+    }
+  );
   app.get(
     "/businesses/:businessId/runtime/tasks",
     async (request: FastifyRequest<{ Params: BusinessParams }>, reply) => {

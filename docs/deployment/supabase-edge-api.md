@@ -238,15 +238,17 @@ Supabase Cron triggers the jobs. The schedule is generated from the job definiti
 
 ```bash
 pnpm jobs:schedule:supabase           # print the SQL, change nothing
-pnpm jobs:schedule:supabase --apply   # rotate the job token, apply the schedule
+pnpm jobs:schedule:supabase --apply   # reuse the Vault token, apply the schedule
+pnpm jobs:schedule:supabase --apply --rotate-token # explicit token rotation
 ```
 
-`--apply` (needs `SUPABASE_ACCESS_TOKEN`) generates a fresh `BACKGROUND_JOB_TOKEN`, sets it as
+`--apply` (needs `SUPABASE_ACCESS_TOKEN`) reuses the existing Vault token or generates one on
+first setup, sets it as `BACKGROUND_JOB_TOKEN`,
 a function secret, stores the same value in Supabase Vault, creates one `grogoni-job-*` pg_cron
 entry per job and removes entries for jobs that no longer exist. The token is read from Vault
-at call time and never appears in `cron.job`. Every `--apply` rotates the token: function
-isolates that are already warm keep the old secret and answer 401 to job calls until they
-recycle (minutes), so re-run it only to change the schedule or rotate the token, not routinely.
+at call time and never appears in `cron.job`. Only first setup or explicit `--rotate-token`
+changes it: warm function isolates can answer 401 until they recycle (minutes). Ordinary
+schedule updates preserve the token to avoid that authentication gap.
 Check runs with `select * from cron.job_run_details order by start_time desc` and `GET
 /internal/jobs/<job>/status`.
 

@@ -12,3 +12,4 @@ export * from "./domains/document-imports.js";
 export * from "./domains/contact-records.js";
 export * from "./domains/suppliers.js";
 export * from "./domains/sales.js";
+export * from "./domains/inventory-replenishment.js";

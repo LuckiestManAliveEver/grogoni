@@ -110,8 +110,10 @@ import {
 } from "./runtime-registry/import-store.js";
 import type { RuntimeRegistryAdapter } from "./runtime-registry/types.js";
 import { HttpComputerWorkerClient } from "../computer-runtime/client.js";
+import type { InventoryTaskController } from "./domains/agent-runtime/inventory-task-controller.js";
 
 export interface Cp2RouteOptions {
+  inventoryTaskController?: InventoryTaskController;
   businessTaskStore?: BusinessTaskStore;
   binaryUploadPipeline?: BinaryUploadPipeline;
   emailProvider?: EmailProvider;
@@ -1546,7 +1548,13 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
   );
 
   registerAgentRuntimeRoutes(app, store);
-  registerBusinessTaskRoutes(app, store, options.businessTaskStore);
+  registerBusinessTaskRoutes(
+    app,
+    store,
+    options.businessTaskStore,
+    undefined,
+    options.inventoryTaskController
+  );
   registerRuntimeHandoffRoutes(app, store);
   registerComputerRuntimeRoutes(app, store);
   registerModelTemplateRoutes(app, store);

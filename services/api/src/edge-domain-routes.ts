@@ -9,7 +9,10 @@ import type { PoolClient, QueryResultRow } from "pg";
 import { registerCp2Routes } from "./cp2/routes.js";
 import { createPostgresBusinessTaskStore } from "./cp2/domains/agent-runtime/business-task-store.js";
 import { createPostgresRuntimeApprovalStore } from "./cp2/domains/agent-runtime/runtime-approval-store.js";
-import { createCp2Store, readSessionCookie } from "./cp2/store.js";
+import { createCp2Store, readSessionCookie, type Cp2Store } from "./cp2/store.js";
+import { createInventoryProcurementStore } from "./cp2/domains/agent-runtime/inventory-procurement-store.js";
+import { createBusinessTaskEvaluationReader } from "./cp2/domains/agent-runtime/business-task-evaluation-reader.js";
+import { createInventoryTaskController } from "./cp2/domains/agent-runtime/inventory-task-controller.js";
 import {
   createPostgresAccountAiAssetStore,
   createPostgresAttachmentBlobStore,
@@ -156,26 +159,61 @@ export async function createEdgeDomainRoutes(database: EdgeDomainDatabase) {
         );
       }
       const pool = transactionPool(client);
-      const store = createCp2Store({
+      const nativeRecords =
+        database.approvalTransaction === undefined
+          ? pool
+          : {
+              query: <R extends QueryResultRow>(sql: string, values: unknown[]) =>
+                database.approvalTransaction!((recordClient) => recordClient.query<R>(sql, values))
+            };
+      const store: Cp2Store = createCp2Store({
         ...storeDependencies,
+        businessTaskEvaluations: createBusinessTaskEvaluationReader(nativeRecords, (input) =>
+          store.authorizeBusinessPermission(input)
+        ),
         // Independent transaction: rolling back this request must not reopen an executed approval.
         ...(database.approvalTransaction === undefined
           ? {}
           : {
-              runtimeApprovalStore: createPostgresRuntimeApprovalStore({
-                query: <R extends QueryResultRow>(sql: string, values: unknown[]) =>
-                  database.approvalTransaction!((approvalClient) =>
-                    approvalClient.query<R>(sql, values)
-                  )
-              })
+              inventoryProcurement: createInventoryProcurementStore(
+                database.approvalTransaction,
+                (input) => store.authorizeBusinessPermission(input),
+                {
+                  check: (actor, input) => store.purchaseOrderDelivery().check(actor, input),
+                  send: (actor, input, order) =>
+                    store.purchaseOrderDelivery().send(actor, input, order)
+                }
+              ),
+              runtimeApprovalStore: createPostgresRuntimeApprovalStore(nativeRecords)
             }),
         workspaceRoot: "/tmp/grogoni-workspace",
         conversationAttachmentBlobStore: createPostgresAttachmentBlobStore(pool),
         accountAiAssetStore: createPostgresAccountAiAssetStore(pool)
       });
       const snapshot = await loadTransactionalCp2Snapshot(client, scope);
-      const baseline = snapshot;
+      let baseline = snapshot;
+      let independentlyCommitted = false;
       store.hydrateSnapshot(prepareEdgeHydration(snapshot));
+      const inventoryTaskController =
+        database.approvalTransaction === undefined
+          ? undefined
+          : createInventoryTaskController(
+              store,
+              (work) =>
+                database.approvalTransaction!(async (recordClient) => {
+                  await recordClient.query("set local statement_timeout = '15s'");
+                  return work(transactionPool(recordClient));
+                }),
+              async () => {
+                const next = prepareEdgePersistence(store.snapshot(), baseline);
+                await database.approvalTransaction!((recordClient) =>
+                  saveTransactionalCp2Snapshot(recordClient, next, baseline)
+                );
+                baseline = next;
+                independentlyCommitted = true;
+              }
+            );
+      if (inventoryTaskController) store.setInventoryTaskController(inventoryTaskController);
       if (request.method === "GET" && path.startsWith("/v1/ai/turn-stream/")) {
         const turnId = path.slice("/v1/ai/turn-stream/".length);
         if (!isValidTurnId(turnId))
@@ -275,6 +313,7 @@ export async function createEdgeDomainRoutes(database: EdgeDomainDatabase) {
         });
         registerCp2Routes(app, {
           store,
+          ...(inventoryTaskController === undefined ? {} : { inventoryTaskController }),
           businessTaskStore: createPostgresBusinessTaskStore(pool, (input) =>
             store.authorizeBusinessPermission(input)
           ),
@@ -344,11 +383,18 @@ export async function createEdgeDomainRoutes(database: EdgeDomainDatabase) {
           : await inject();
         const afterRoutes = prepareEdgePersistence(store.snapshot(), baseline);
         // OAuth start/callback and session maintenance can mutate state on GET as well.
-        await saveTransactionalCp2Snapshot(client, afterRoutes, baseline);
+        // A repeatable-read outer snapshot cannot CAS rows committed by the task's own
+        // independent transaction. Keep its final chat acknowledgement on that same path.
+        const saveRequestSnapshot = (next: typeof snapshot, previous: typeof snapshot) =>
+          independentlyCommitted
+            ? database.approvalTransaction!((recordClient) =>
+                saveTransactionalCp2Snapshot(recordClient, next, previous)
+              )
+            : saveTransactionalCp2Snapshot(client, next, previous);
+        await saveRequestSnapshot(afterRoutes, baseline);
         for (const action of pendingActions) await action();
         if (pendingActions.length)
-          await saveTransactionalCp2Snapshot(
-            client,
+          await saveRequestSnapshot(
             prepareEdgePersistence(store.snapshot(), afterRoutes),
             afterRoutes
           );

@@ -15,6 +15,9 @@ import { Pool, type PoolClient, type QueryResultRow } from "pg";
 import { positiveIntegerFromEnv } from "@grogoni/resource-control";
 import { buildPgPoolConfig } from "../db-pool-config.js";
 import { createPostgresRuntimeApprovalStore } from "./domains/agent-runtime/runtime-approval-store.js";
+import { guardPgPoolErrors } from "../pg-pool-errors.js";
+import { createPostgresInventoryProcurementStore } from "./domains/agent-runtime/inventory-procurement-store.js";
+import { createBusinessTaskEvaluationReader } from "./domains/agent-runtime/business-task-evaluation-reader.js";
 import {
   createCp2Store,
   type Cp2Snapshot,
@@ -306,6 +309,7 @@ const mutatingMethodNames = new Set([
   "createReceiptOCRJob",
   "createRuntimeSession",
   "createRuntimeTurn",
+  "recordVerifiedBusinessTaskExperience",
   "createSalesAgent",
   "createSalesAgentFromPhoneContact",
   "createSupplier",
@@ -563,19 +567,19 @@ export async function createPostgresCp2Store(
   const poolConfig = buildPgPoolConfig(options.databaseUrl);
   const pool = new Pool(poolConfig);
   options.metrics?.instrumentPgPool(pool, { poolName: "cp2_primary" });
-  pool.on("error", (error) => {
+  guardPgPoolErrors(pool, (error) => {
     console.error("Unexpected PostgreSQL pool error.", error);
   });
   const realtimePool = new Pool(buildPgPoolConfig(options.databaseUrl, { max: 1 }));
   options.metrics?.instrumentPgPool(realtimePool, { poolName: "cp2_realtime" });
-  realtimePool.on("error", (error) => {
+  guardPgPoolErrors(realtimePool, (error) => {
     console.error("Unexpected PostgreSQL realtime pool error.", error);
   });
   // Boot reads run on their own short-lived pool, warmed up front and closed right after the
   // snapshot loads, so concurrent loading never leaves extra idle connections behind on the
   // long-lived pool (several stores booting together would otherwise exhaust max_connections).
   const bootPool = new Pool(poolConfig);
-  bootPool.on("error", (error) => {
+  guardPgPoolErrors(bootPool, (error) => {
     console.error("Unexpected PostgreSQL boot pool error.", error);
   });
   warmPool(bootPool, poolConfig.max ?? 1);
@@ -598,6 +602,21 @@ export async function createPostgresCp2Store(
     void _metrics;
     store = createCp2Store({
       ...storeOptions,
+      businessTaskEvaluations:
+        options.businessTaskEvaluations ??
+        createBusinessTaskEvaluationReader(pool, (input) =>
+          store.authorizeBusinessPermission(input)
+        ),
+      inventoryProcurement:
+        options.inventoryProcurement ??
+        createPostgresInventoryProcurementStore(
+          pool,
+          (input) => store.authorizeBusinessPermission(input),
+          {
+            check: (actor, input) => store.purchaseOrderDelivery().check(actor, input),
+            send: (actor, input, order) => store.purchaseOrderDelivery().send(actor, input, order)
+          }
+        ),
       runtimeApprovalStore:
         options.runtimeApprovalStore ?? createPostgresRuntimeApprovalStore(pool),
       conversationAttachmentBlobStore:

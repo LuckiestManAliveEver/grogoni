@@ -2,6 +2,15 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 describe("Postgres persistence boundary", () => {
+  it("queues verified task experience extraction as a snapshot mutation", () => {
+    const source = readFileSync("services/api/src/cp2/postgres-store.ts", "utf8");
+    const methods = source.slice(
+      source.indexOf("const mutatingMethodNames"),
+      source.indexOf("const targetedPasskeyCeremonyMethodNames")
+    );
+    expect(methods).toContain('"recordVerifiedBusinessTaskExperience"');
+    expect(methods).not.toContain('"businessTaskExperienceAdvice"');
+  });
   it("persists every route-level mutation and read that materializes durable defaults", () => {
     const source = readFileSync("services/api/src/cp2/postgres-store.ts", "utf8");
     const requiredMethods = [

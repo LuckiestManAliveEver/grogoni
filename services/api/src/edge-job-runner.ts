@@ -1,17 +1,6 @@
 import type { PoolClient } from "pg";
-import {
-  createPostgresAccountAiAssetStore,
-  createPostgresAttachmentBlobStore,
-  loadTransactionalCp2Snapshot,
-  saveTransactionalCp2Snapshot
-} from "./cp2/postgres-store.js";
-import { createCp2Store, type Cp2Store, type Cp2StoreOptions } from "./cp2/store.js";
-import { createPostgresRuntimeApprovalMaintenance } from "./cp2/domains/agent-runtime/runtime-approval-store.js";
+import type { Cp2Store, Cp2StoreOptions } from "./cp2/store.js";
 import type { FulfillmentService } from "./cp2/domains/fulfillment/service.js";
-import {
-  createEdgeFulfillmentService,
-  readFulfillmentRetentionHours
-} from "./edge-store-dependencies.js";
 import { transactionPool } from "./edge-transaction-pool.js";
 import type { EdgeDaemon } from "./daemon/edge-lane.js";
 
@@ -267,6 +256,17 @@ export async function runEdgeJob(
       ...(definition.idle === undefined ? {} : { idle: definition.idle })
     },
     async (client) => {
+      const {
+        createPostgresAccountAiAssetStore,
+        createPostgresAttachmentBlobStore,
+        loadTransactionalCp2Snapshot,
+        saveTransactionalCp2Snapshot
+      } = await import("./cp2/postgres-store.js");
+      const { createCp2Store } = await import("./cp2/store.js");
+      const { createPostgresRuntimeApprovalMaintenance } =
+        await import("./cp2/domains/agent-runtime/runtime-approval-store.js");
+      const { createEdgeFulfillmentService, readFulfillmentRetentionHours } =
+        await import("./edge-store-dependencies.js");
       const now = options.now?.() ?? new Date();
       const pool = transactionPool(client);
       const store = createCp2Store({

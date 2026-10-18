@@ -430,6 +430,9 @@ import {
 import { parseRuntimeModelOutput, parseMerchantCommand } from "@grogoni/tool-core";
 import type { ConversationAttachmentRecord } from "./workspace-file-delivery.js";
 import type { RuntimeApprovalStore } from "./domains/agent-runtime/runtime-approval-store.js";
+import type { InventoryProcurementStore } from "./domains/agent-runtime/inventory-procurement-store.js";
+import type { BusinessTaskEvaluationReader } from "./domains/agent-runtime/business-task-evaluation-reader.js";
+import type { InventoryTaskController } from "./domains/agent-runtime/inventory-task-controller.js";
 import {
   createMemoryConversationAttachmentBlobStore,
   type ConversationAttachmentBlobStore
@@ -816,6 +819,8 @@ export interface Cp2Snapshot
 }
 
 export interface Cp2StoreOptions {
+  businessTaskEvaluations?: BusinessTaskEvaluationReader;
+  inventoryProcurement?: InventoryProcurementStore;
   runtimeApprovalStore?: RuntimeApprovalStore;
   computerWorkerClient?: ComputerWorkerClient;
   passkeyAuthenticationVerifier?: typeof verifyAuthenticationResponse;
@@ -1368,6 +1373,12 @@ export class Cp2Store {
     });
     this.vocabularyDomain.initializeApprovedCache();
     this.agentRuntimeDomain = new AgentRuntimeDomain({
+      ...(options.businessTaskEvaluations === undefined
+        ? {}
+        : { businessTaskEvaluations: options.businessTaskEvaluations }),
+      ...(options.inventoryProcurement === undefined
+        ? {}
+        : { inventoryProcurement: options.inventoryProcurement }),
       ...(options.runtimeApprovalStore === undefined
         ? {}
         : { runtimeApprovalStore: options.runtimeApprovalStore }),
@@ -3861,6 +3872,9 @@ export class Cp2Store {
   ): ReturnType<MessagingDomain["sendChannelMessage"]> {
     return this.messagingDomain.sendChannelMessage(...args);
   }
+  purchaseOrderDelivery(): ReturnType<MessagingDomain["purchaseOrderDelivery"]> {
+    return this.messagingDomain.purchaseOrderDelivery();
+  }
   deliverFulfillmentNotification(
     ...args: Parameters<MessagingDomain["deliverFulfillmentNotification"]>
   ): ReturnType<MessagingDomain["deliverFulfillmentNotification"]> {
@@ -4521,6 +4535,22 @@ export class Cp2Store {
     ...args: Parameters<AgentRuntimeDomain["getAgentEvaluationSummary"]>
   ): ReturnType<AgentRuntimeDomain["getAgentEvaluationSummary"]> {
     return this.agentRuntimeDomain.getAgentEvaluationSummary(...args);
+  }
+
+  recordVerifiedBusinessTaskExperience(
+    ...args: Parameters<AgentRuntimeDomain["recordVerifiedBusinessTaskExperience"]>
+  ): ReturnType<AgentRuntimeDomain["recordVerifiedBusinessTaskExperience"]> {
+    return this.agentRuntimeDomain.recordVerifiedBusinessTaskExperience(...args);
+  }
+
+  businessTaskExperienceAdvice(
+    ...args: Parameters<AgentRuntimeDomain["businessTaskExperienceAdvice"]>
+  ): ReturnType<AgentRuntimeDomain["businessTaskExperienceAdvice"]> {
+    return this.agentRuntimeDomain.businessTaskExperienceAdvice(...args);
+  }
+
+  setInventoryTaskController(controller: InventoryTaskController): void {
+    this.messagingDomain.setInventoryTaskController(controller);
   }
   listConversations(
     ...args: Parameters<MessagingDomain["listConversations"]>
@@ -7804,6 +7834,9 @@ export class Cp2Store {
   ): ReturnType<AgentRuntimeDomain["listRuntimeTurns"]> {
     return this.agentRuntimeDomain.listRuntimeTurns(...args);
   }
+  rejectRuntimeAction(...args: Parameters<AgentRuntimeDomain["rejectRuntimeAction"]>) {
+    return this.agentRuntimeDomain.rejectRuntimeAction(...args);
+  }
   createRuntimeTurn(
     ...args: Parameters<AgentRuntimeDomain["createRuntimeTurn"]>
   ): ReturnType<AgentRuntimeDomain["createRuntimeTurn"]> {
@@ -8160,7 +8193,7 @@ export class Cp2Store {
       ),
       runtimeExperiences: [...this.agentRuntimeDomain.runtimeExperiencesMap.values()].map(
         (experience) => ({
-          ...experience,
+          ...structuredClone(experience),
           evidenceRefs: [...experience.evidenceRefs],
           toolSequence: [...experience.toolSequence]
         })
@@ -12114,11 +12147,11 @@ export class Cp2Store {
       ...subjects.map((subject) => subject.subject)
     ]);
     // A native deletion failure must stop the job before anonymization is reported complete.
-    const deletedRuntimeApprovals = await this.options.runtimeApprovalStore?.deleteScope(
+    const deletedNativeRuntimeRecords = await this.options.runtimeApprovalStore?.deleteScope(
       [...userIds],
       [...exclusivelyOwnedBusinessIds]
     );
-    let deletedRecordCount = deletedRuntimeApprovals ?? 0;
+    let deletedRecordCount = deletedNativeRuntimeRecords ?? 0;
     let previousScopeSize = -1;
 
     deletedRecordCount += this.messagingDomain.deleteConversationAttachmentsForAccount(

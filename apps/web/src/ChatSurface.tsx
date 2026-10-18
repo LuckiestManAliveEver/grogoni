@@ -14,6 +14,7 @@ import { detectCapabilitySettings } from "./capability-profile";
 import { recordReadiness } from "./performance";
 
 import { AuthenticationActionMessage } from "./AuthenticationActionMessage";
+import { RuntimeConfirmationButtons } from "./RuntimeConfirmationButtons";
 import { useOwnerCore } from "./hooks/OwnerCoreContext";
 import { useChatComposerState } from "./hooks/useChatComposerState";
 import { useCompactViewport } from "./hooks/useCompactViewport";
@@ -175,6 +176,7 @@ export function ChatSurface({
   onRemoveAttachment,
   onStatusChange,
   onConfirm,
+  onReject,
   onSend,
   onCancelGeneration,
   onSmsHandoff,
@@ -832,14 +834,12 @@ export function ChatSurface({
                   </div>
                 ) : null}
                 {message.confirmationToken !== undefined ? (
-                  <button
-                    type="button"
-                    onClick={() => onConfirm(message.confirmationToken ?? "")}
-                    disabled={isConfirming}
-                    aria-busy={isConfirming}
-                  >
-                    {isConfirming ? "Confirming…" : "Confirm"}
-                  </button>
+                  <RuntimeConfirmationButtons
+                    token={message.confirmationToken}
+                    pending={isConfirming}
+                    onConfirm={onConfirm}
+                    onReject={onReject}
+                  />
                 ) : null}
               </article>
             </Fragment>

@@ -1,0 +1,122 @@
+.inventory-task-card {
+  border: 1px solid var(--grogoni-line, #323a48);
+  border-radius: 8px;
+  padding: 16px;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  background: var(--grogoni-paper-dim, #1b202b);
+  color: var(--grogoni-ink, #f4f2ee);
+  overflow-wrap: anywhere;
+}
+.inventory-task-card header,
+.inventory-task-card footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.inventory-task-card header {
+  justify-content: space-between;
+}
+.inventory-task-card h3 {
+  flex: 1 1 140px;
+  min-width: 0;
+  font-size: 16px;
+  line-height: 1.4;
+  margin: 0;
+}
+.inventory-task-card h4 {
+  font-size: 14px;
+  margin: 0 0 8px;
+}
+.inventory-task-card p {
+  font-size: 14px;
+  line-height: 1.5;
+}
+.inventory-task-card button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 40px;
+  border-radius: 6px;
+}
+.inventory-task-card .inventory-task-icon {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  flex: 0 0 40px;
+}
+.inventory-task-state {
+  font-weight: 600;
+}
+.inventory-task-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 90px), 1fr));
+  gap: 12px;
+  font-size: 13px;
+  padding: 12px 0;
+  border-block: 1px solid var(--grogoni-line, #323a48);
+}
+.inventory-task-facts dt {
+  color: var(--grogoni-ink-soft, #c7cbd4);
+}
+.inventory-task-facts dd {
+  margin: 4px 0 0;
+  font-weight: 600;
+}
+.inventory-task-orders details {
+  border-top: 1px solid var(--grogoni-line, #323a48);
+  padding: 12px 0;
+}
+.inventory-task-orders summary {
+  cursor: pointer;
+  font-size: 14px;
+}
+.inventory-task-orders summary strong {
+  display: block;
+  margin-top: 4px;
+}
+.inventory-task-orders ul {
+  padding: 0;
+  margin: 8px 0 0;
+  list-style: none;
+}
+.inventory-task-orders li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 8px 0;
+  font-size: 13px;
+}
+.inventory-task-orders small {
+  display: block;
+  margin-top: 4px;
+  color: var(--grogoni-ink-soft, #c7cbd4);
+}
+.inventory-task-issues {
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.inventory-task-outcome {
+  color: var(--grogoni-ink-soft, #c7cbd4);
+}
+.inventory-task-steps {
+  font-size: 13px;
+  line-height: 1.5;
+  margin-block: 12px;
+}
+.inventory-task-steps summary {
+  cursor: pointer;
+}
+.inventory-task-steps ol {
+  padding-left: 20px;
+}
+.inventory-task-steps li {
+  padding-block: 4px;
+}
+.inventory-task-steps strong {
+  display: block;
+}

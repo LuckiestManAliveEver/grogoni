@@ -6,3 +6,4 @@ export * from "./environments/contracts.js";
 export * from "./environments/lifecycle.js";
 export * from "./environments/registry.js";
 export * from "./environments/tasks.js";
+export * from "./environments/inventory-objective.js";

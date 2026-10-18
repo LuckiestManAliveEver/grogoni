@@ -1,6 +1,12 @@
-import { Suspense, type ReactNode } from "react";
+import { lazy, Suspense, type ReactNode } from "react";
 
 import type { ConversationMessageContent } from "@grogoni/shared-types";
+import { loadLazyModuleWithRecovery, ownerModuleKeys } from "./lazy-module-recovery";
+import { LazyModuleErrorBoundary } from "./LazyModuleErrorBoundary";
+
+const InventoryTaskCard = lazy(() =>
+  loadLazyModuleWithRecovery(ownerModuleKeys.inventoryTaskCard, () => import("./InventoryTaskCard"))
+);
 
 import {
   CustomerManagementCard,
@@ -39,6 +45,25 @@ type GeneratedSurfaceRenderer = (
 const generatedSurfaceRegistry: Partial<
   Record<ConversationMessageContent["type"], GeneratedSurfaceRenderer>
 > = {
+  text: (content, context) => {
+    if (
+      content.type !== "text" ||
+      !content.businessTask ||
+      content.businessTask.businessId !== context.businessId
+    )
+      return null;
+    return (
+      <LazyModuleErrorBoundary moduleKey={ownerModuleKeys.inventoryTaskCard} label="Inventory task">
+        <Suspense fallback={<div role="status">Loading inventory task...</div>}>
+          <InventoryTaskCard
+            key={content.businessTask.taskId}
+            businessId={content.businessTask.businessId}
+            taskId={content.businessTask.taskId}
+          />
+        </Suspense>
+      </LazyModuleErrorBoundary>
+    );
+  },
   "product-capture-progress": (content, context) => {
     if (content.type !== "product-capture-progress" || context.businessId === null) return null;
     return (

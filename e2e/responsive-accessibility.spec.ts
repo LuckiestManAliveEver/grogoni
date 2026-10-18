@@ -36,6 +36,421 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
+for (const width of [320, 1440]) {
+  test(`purchase order approval and supplier inbox remain readable at ${width}px`, async ({
+    page
+  }) => {
+    test.setTimeout(60000);
+    await page.setViewportSize({ width, height: 900 });
+    const businessId = "responsive-certification-shop";
+    const snapshot = {
+      id: "purchase-draft",
+      businessId,
+      supplierId: "supplier",
+      currency: "KES",
+      totalMinor: 125000,
+      items: [
+        {
+          productId: "Long grain rice family pack",
+          quantityMilli: 2500,
+          unit: "kg",
+          totalMinor: 125000
+        }
+      ]
+    };
+    let committed = false;
+    let approvedInput: Record<string, unknown> = {};
+    await page.route(`**/businesses/${businessId}/suppliers`, (route) =>
+      route.fulfill({
+        json: [
+          {
+            id: "supplier",
+            businessId,
+            name: "Jane Wholesale",
+            email: "supplier@example.test",
+            phone: "+254700000001",
+            notes: null,
+            salesAgents: [],
+            purchaseReceipts: []
+          }
+        ]
+      })
+    );
+    await page.route("**/v1/conversations/responsive-conversation", (route) =>
+      route.fulfill({
+        json: {
+          ...mockConversationView,
+          conversation: { ...mockConversationInbox, activeShopId: businessId },
+          messages: [{ ...mockMessage, content: { type: "supplier-management", businessId } }]
+        }
+      })
+    );
+    await page.route("**/runtime/procurement/orders", (route) =>
+      route.fulfill({
+        json: {
+          drafts: [{ ...snapshot, digest: "a".repeat(64) }],
+          recipients: [
+            { supplierId: "supplier", businessId: "supplier-business", name: "Jane Wholesale" }
+          ],
+          whatsappAvailable: false,
+          incoming: [
+            {
+              order_id: "incoming-order",
+              business_id: "buyer-business",
+              channel: "grogoni",
+              status: "SUBMITTED_IN_APP",
+              revision: 0,
+              snapshot
+            }
+          ],
+          outgoing: committed
+            ? [
+                {
+                  order_id: "outgoing-order",
+                  business_id: businessId,
+                  draft_id: snapshot.id,
+                  channel: "grogoni",
+                  recipient: "supplier-business",
+                  status: "SUBMITTED_IN_APP",
+                  revision: 0,
+                  snapshot
+                }
+              ]
+            : []
+        }
+      })
+    );
+    await page.route(`**/businesses/${businessId}/runtime/turns`, async (route) => {
+      const body = route.request().postDataJSON();
+      if (body.confirmationToken) {
+        expect(body).toEqual({
+          runtimeSessionId: "order-runtime",
+          confirmationToken: "order-token",
+          message: "confirm"
+        });
+        committed = true;
+        return route.fulfill({ json: { turn: { status: "completed" } } });
+      }
+      approvedInput = JSON.parse(String(body.message).slice("#procurement.submit ".length));
+      return route.fulfill({
+        json: {
+          session: { id: "order-runtime", businessId },
+          turn: {
+            status: "needs_confirmation",
+            plan: {
+              toolName: "procurement.submit",
+              input: approvedInput,
+              confirmationToken: "order-token"
+            }
+          }
+        }
+      });
+    });
+    await page.goto("/sell/conversations/responsive-conversation");
+    const panel = page.getByRole("region", { name: "Purchase orders", exact: true });
+    await panel
+      .getByLabel("Prepared draft", { exact: true })
+      .selectOption(snapshot.id, { timeout: 30000 });
+    await panel
+      .getByLabel("Linked supplier business ID", { exact: true })
+      .selectOption("supplier-business");
+    await panel.getByRole("button", { name: "Review submission", exact: true }).click();
+    const approval = panel.getByLabel("Review purchase order approval", { exact: true });
+    await expect(approval).toBeVisible();
+    expect(committed).toBe(false);
+    expect(approvedInput).toEqual({
+      draftId: snapshot.id,
+      draftDigest: "a".repeat(64),
+      channel: "grogoni",
+      recipient: "supplier-business"
+    });
+    await expect
+      .poll(() => panel.evaluate((element) => element.scrollWidth <= element.clientWidth))
+      .toBe(true);
+    expect(
+      (await new AxeBuilder({ page }).include(".purchase-order-panel").analyze()).violations
+    ).toEqual([]);
+    await panel.screenshot({ path: `/tmp/grogoni-purchase-order-${width}.png` });
+    await approval.getByRole("button", { name: "Approve", exact: true }).click();
+    await expect(panel.getByText("Submitted to supplier inbox", { exact: true })).toHaveCount(2);
+    expect(committed).toBe(true);
+  });
+}
+
+for (const width of [320, 1440]) {
+  test(`inventory task review stays readable and revision fenced at ${width}px`, async ({
+    page
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    const businessId = "responsive-certification-shop";
+    const task = {
+      taskId: "inventory-review",
+      businessId,
+      environmentName: "Inventory",
+      objective: "Prepare purchase drafts within KES 15,000 for the next three days.",
+      status: "INCOMPLETE",
+      revision: 4,
+      verificationStatus: "INCONCLUSIVE",
+      budgetMinor: 1500000,
+      currency: "KES",
+      horizonDays: 3,
+      reason: "Some supplier offers are unavailable.",
+      issues: [],
+      steps: [{ id: "prepare", label: "Prepare purchase drafts", status: "VERIFYING" }],
+      evaluation: null,
+      experienceRetained: null,
+      orders: [
+        {
+          id: "draft",
+          supplierName: "Jane's Neighborhood Wholesale and Distribution",
+          totalMinor: 125000,
+          currency: "KES",
+          submissionStatus: "NOT_SUBMITTED",
+          requiresSubmissionApproval: true,
+          items: [
+            {
+              productName: "Long grain rice family pack",
+              quantityMilli: 2500,
+              unit: "kg",
+              totalMinor: 125000
+            }
+          ]
+        }
+      ]
+    };
+    await page.route("**/v1/conversations/responsive-conversation", (route) =>
+      route.fulfill({
+        json: {
+          ...mockConversationView,
+          conversation: { ...mockConversationInbox, activeShopId: businessId },
+          messages: [
+            {
+              ...mockMessage,
+              content: {
+                type: "text",
+                text: "Purchase drafts prepared; review the remaining supplier issues.",
+                businessTask: { businessId, taskId: task.taskId }
+              }
+            }
+          ]
+        }
+      })
+    );
+    await page.route("**/runtime/tasks/inventory-review/view", (route) =>
+      route.fulfill({ json: task })
+    );
+    await page.route("**/runtime/tasks/inventory-review/control", async (route) => {
+      expect(route.request().postDataJSON()).toEqual({ command: "RESUME", revision: 4 });
+      await route.fulfill({
+        json: {
+          ...task,
+          status: "COMPLETED",
+          revision: 6,
+          verificationStatus: "PASSED",
+          reason: null
+        }
+      });
+    });
+    await page.goto("/sell/conversations/responsive-conversation");
+    const card = page.getByRole("region", { name: "Inventory replenishment task" });
+    await expect(card.getByText("Incomplete", { exact: true })).toBeVisible({ timeout: 15000 });
+    await expect(card.getByText("2.5 kg", { exact: true })).toBeVisible();
+    await card.getByText("Execution steps", { exact: true }).click();
+    await expect(card.getByText("Execution recorded", { exact: true })).toBeVisible();
+    await expect
+      .poll(() => card.evaluate((element) => element.scrollWidth <= element.clientWidth))
+      .toBe(true);
+    const violations = await new AxeBuilder({ page }).include(".inventory-task-card").analyze();
+    expect(violations.violations).toEqual([]);
+    await card.screenshot({ path: `/tmp/grogoni-inventory-task-${width}.png` });
+    await card.getByRole("button", { name: "Resume", exact: true }).click();
+    await expect(card.getByText("Drafts verified", { exact: true })).toBeVisible();
+    await expect(card.getByRole("button", { name: "Cancel task" })).toHaveCount(0);
+  });
+}
+
+for (const width of [320, 1440]) {
+  test(`supplier offer review confirms exact values at ${width}px`, async ({ page }) => {
+    test.setTimeout(60000);
+    await page.setViewportSize({ width, height: 900 });
+    const businessId = "responsive-certification-shop";
+    let quote: Record<string, unknown> | null = null;
+    let committed = false;
+    await page.route("**/v1/conversations/responsive-conversation", (route) =>
+      route.fulfill({
+        json: {
+          ...mockConversationView,
+          conversation: { ...mockConversationInbox, activeShopId: businessId },
+          messages: [{ ...mockMessage, content: { type: "supplier-management", businessId } }]
+        }
+      })
+    );
+    await page.route(`**/businesses/${businessId}/products`, (route) =>
+      route.fulfill({
+        json: [
+          {
+            id: "rice",
+            businessId,
+            name: "Long grain rice family pack",
+            unit: "kg",
+            quantity: 5,
+            buyingPrice: 100,
+            sellingPrice: 150,
+            sku: null
+          }
+        ]
+      })
+    );
+    await page.route(`**/businesses/${businessId}/suppliers`, (route) =>
+      route.fulfill({
+        json: [
+          {
+            id: "supplier",
+            businessId,
+            name: "Jane's Wholesale and Distribution",
+            phone: null,
+            email: null,
+            notes: null,
+            salesAgents: [],
+            purchaseReceipts: []
+          }
+        ]
+      })
+    );
+    await page.route("**/runtime/procurement/offers", (route) =>
+      route.fulfill({
+        json: {
+          offers: committed
+            ? [
+                {
+                  ...quote,
+                  productName: "Long grain rice family pack",
+                  supplierName: "Jane's Wholesale and Distribution"
+                }
+              ]
+            : [],
+          truncated: false
+        }
+      })
+    );
+    await page.route(`**/businesses/${businessId}/runtime/turns`, async (route) => {
+      const body = route.request().postDataJSON();
+      if (body.confirmationToken) {
+        expect(body).toEqual({
+          runtimeSessionId: "quote-runtime",
+          confirmationToken: "quote-token",
+          message: "confirm"
+        });
+        committed = true;
+        await route.fulfill({
+          json: {
+            session: { id: "quote-runtime", businessId },
+            turn: { status: "completed", toolResult: quote }
+          }
+        });
+      } else {
+        expect(body.message).toMatch(/^#procurement\.quote\.record /);
+        quote = JSON.parse(body.message.slice("#procurement.quote.record ".length));
+        expect(quote).toMatchObject({
+          productId: "rice",
+          supplierId: "supplier",
+          unit: "kg",
+          unitPriceMinor: 12050,
+          availableQuantityMilli: 25125,
+          priceIncludesCharges: true
+        });
+        await route.fulfill({
+          json: {
+            session: { id: "quote-runtime", businessId },
+            turn: {
+              status: "needs_confirmation",
+              plan: {
+                toolName: "procurement.quote.record",
+                input: quote,
+                confirmationToken: "quote-token"
+              }
+            }
+          }
+        });
+      }
+    });
+    await page.goto("/sell/conversations/responsive-conversation");
+    const panel = page.getByRole("region", { name: "Supplier offers", exact: true });
+    await panel
+      .getByRole("combobox", { name: "Product", exact: true })
+      .selectOption("rice", { timeout: 30000 });
+    await panel.getByRole("combobox", { name: "Supplier", exact: true }).selectOption("supplier");
+    await panel.getByLabel("Unit price (KES per kg)", { exact: true }).fill("120.50");
+    await panel.getByLabel("Available quantity", { exact: true }).fill("25.125");
+    await panel.getByLabel("Lead time (days)", { exact: true }).fill("1");
+    await panel.getByLabel("Offer expires", { exact: true }).fill("2099-10-15T12:00");
+    await panel.getByLabel("Price includes tax, delivery and all other charges").check();
+    await panel.getByRole("button", { name: "Review offer", exact: true }).click();
+    await expect(panel.getByRole("heading", { name: "Confirm supplier offer" })).toBeVisible();
+    expect(committed).toBe(false);
+    await expect(panel.getByRole("combobox", { name: "Product", exact: true })).toBeDisabled();
+    await expect(panel.getByRole("combobox", { name: "Supplier", exact: true })).toBeDisabled();
+    await expect
+      .poll(() => panel.evaluate((element) => element.scrollWidth <= element.clientWidth))
+      .toBe(true);
+    expect(
+      (await new AxeBuilder({ page }).include(".supplier-offer-panel").analyze()).violations
+    ).toEqual([]);
+    await panel
+      .locator(".supplier-offer-review")
+      .screenshot({ path: `/tmp/grogoni-supplier-offer-${width}.png` });
+    await panel.getByRole("button", { name: "Confirm offer", exact: true }).click();
+    await expect(
+      panel.getByText("Supplier offer recorded. No purchase order was submitted.")
+    ).toBeVisible();
+    expect(committed).toBe(true);
+  });
+}
+
+test("chat rejection sends the persisted approval scope and waits for acknowledgement", async ({
+  page
+}) => {
+  const businessId = "responsive-certification-shop";
+  await page.route("**/v1/conversations/responsive-conversation", (route) =>
+    route.fulfill({
+      json: {
+        ...mockConversationView,
+        conversation: { ...mockConversationInbox, activeShopId: businessId },
+        messages: [
+          {
+            ...mockMessage,
+            content: {
+              type: "confirmation",
+              confirmationToken: "fixture-approval",
+              prompt: "Record the supplier offer?",
+              approvalScope: {
+                businessId,
+                runtimeSessionId: "original-approval-session",
+                conversationId: "responsive-conversation"
+              }
+            }
+          }
+        ]
+      }
+    })
+  );
+  let rejected = false;
+  await page.route("**/runtime/approvals/reject", async (route) => {
+    expect(route.request().postDataJSON()).toEqual({
+      runtimeSessionId: "original-approval-session",
+      confirmationToken: "fixture-approval",
+      conversationId: "responsive-conversation"
+    });
+    rejected = true;
+    await route.fulfill({ json: { status: "REJECTED" } });
+  });
+  await page.goto("/sell/conversations/responsive-conversation");
+  await page.getByRole("button", { name: "Reject", exact: true }).click({ timeout: 15000 });
+  await expect.poll(() => rejected).toBe(true);
+  await expect(page.getByRole("button", { name: "Confirm", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Reject", exact: true })).toHaveCount(0);
+});
+
 for (const width of [360, 1280]) {
   test(`runtime handoff is visible before Edit at ${width}px and explains an unavailable host`, async ({
     page
@@ -1179,6 +1594,12 @@ async function installApiMocks(page: Page): Promise<void> {
   await page.route("http://127.0.0.1:4000/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
     const method = route.request().method();
+    if (path.endsWith("/runtime/procurement/orders"))
+      return route.fulfill({
+        json: { drafts: [], recipients: [], outgoing: [], incoming: [], whatsappAvailable: false }
+      });
+    if (path.endsWith("/mailboxes") && method === "GET")
+      return route.fulfill({ json: { mailboxes: [] } });
     const failingActivationModelId =
       route.request().headers()["x-grogoni-test-failing-activation-model"] ?? null;
     const seedActiveModelId = route.request().headers()["x-grogoni-test-seed-active-model"];

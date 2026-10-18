@@ -7,6 +7,7 @@ import type {
   E2eeDeviceSummary
 } from "@grogoni/shared-types";
 import { type ChatAttachment, type ChatMessage } from "./app-shell";
+import { parseInventoryTaskObjective } from "@grogoni/tool-core";
 
 import { type DecryptedMessage } from "./e2ee";
 
@@ -558,6 +559,7 @@ export function dataUrlPayload(dataUrl: string): string {
 // parameters and to gate the owner-node inference route away from tool-requiring requests.
 export function requestRequiresServerTool(message: string): boolean {
   return (
+    parseInventoryTaskObjective(message).kind !== "OTHER" ||
     /^\s*#/.test(message) ||
     /\b(create|add|delete|remove|update|change|refund|pay|send|invite|sync|order|receipt)\b/i.test(
       message

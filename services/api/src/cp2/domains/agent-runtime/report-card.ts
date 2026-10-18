@@ -3,6 +3,7 @@ import type {
   RuntimeReportCardKey,
   RuntimeTurnSummary
 } from "@grogoni/shared-types";
+import { runtimeExecutedModelId, runtimeModelEvidence } from "./runtime-model-evidence.js";
 
 /**
  * MUSE-adoption brief §16/§17: groups already-recorded runtime turns by the actual
@@ -16,7 +17,7 @@ import type {
 export function buildRuntimeReportCard(turns: RuntimeTurnSummary[]): RuntimeReportCard[] {
   const groups = new Map<string, { key: RuntimeReportCardKey; turns: RuntimeTurnSummary[] }>();
   for (const turn of turns) {
-    const modelId = turn.model?.modelId ?? turn.model?.providerModelId ?? null;
+    const modelId = runtimeExecutedModelId(turn);
     const recipeId = recipeIdForTurn(turn);
     const key: RuntimeReportCardKey = { runtimeVersion: turn.runtimeVersion, modelId, recipeId };
     const groupKey = `${key.runtimeVersion}:${key.modelId ?? "none"}:${key.recipeId ?? "none"}`;
@@ -72,13 +73,13 @@ function reportCardForGroup(
   ).length;
 
   const latencies = turns
-    .map((turn) => turn.model?.durationMs)
+    .map((turn) => runtimeModelEvidence(turn)?.durationMs)
     .filter((value): value is number => typeof value === "number");
   const promptTokens = turns
-    .map((turn) => turn.model?.promptTokens)
+    .map((turn) => runtimeModelEvidence(turn)?.promptTokens)
     .filter((value): value is number => typeof value === "number");
   const completionTokens = turns
-    .map((turn) => turn.model?.completionTokens)
+    .map((turn) => runtimeModelEvidence(turn)?.completionTokens)
     .filter((value): value is number => typeof value === "number");
   const contextTokens = turns
     .flatMap((turn) => turn.telemetry.filter((event) => event.state === "context.plan.completed"))

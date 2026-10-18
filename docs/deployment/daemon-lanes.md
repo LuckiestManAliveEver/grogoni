@@ -168,8 +168,9 @@ Run from the repository root with the production environment files present: `.en
    ```
 
 5. **Schedule.** Creates the wake hint, the wake function and its cron entry, and the hourly
-   `daemon_worker` entry. It also **rotates the job token**: job calls answer 401 for a few
-   minutes until warm isolates recycle. So re-run it only to change the schedule, not routinely.
+   `daemon_worker` entry. Ordinary applies reuse the existing Vault token. First setup creates
+   one; `--rotate-token` explicitly replaces it and may cause temporary 401 responses until
+   warm isolates recycle.
 
    ```sh
    pnpm jobs:schedule:supabase --apply

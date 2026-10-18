@@ -49,7 +49,7 @@ function deviceRunner(): DaemonDeviceRunner | null {
 /**
  * Runs the signed-in user's due background tasks while the app is open and visible
  * (docs/deployment/daemon-lanes.md). One tab at a time works the lane; the others stand by.
- * `accountId` is any session's account, device-level ones included: they can own tasks too.
+ * `accountId` is null for signed-out and device-only identities: only an explicit sign-in runs it.
  */
 export function useDaemonLane(accountId: string | null): void {
   useEffect(() => {

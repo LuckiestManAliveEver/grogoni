@@ -37,9 +37,13 @@ import type { AgentRuntimeAdapter } from "../../../agent-harness/agent-runtime-a
 import type { SessionRecord } from "../../store.js";
 import type { AgentRuntimeCommerceDeps } from "./domain-deps-commerce.js";
 import type { RuntimeApprovalStore } from "./runtime-approval-store.js";
+import type { InventoryProcurementStore } from "./inventory-procurement-store.js";
+import type { BusinessTaskEvaluationReader } from "./business-task-evaluation-reader.js";
 
 export interface AgentRuntimeDomainDeps extends AgentRuntimeCommerceDeps {
   runtimeApprovalStore?: RuntimeApprovalStore;
+  inventoryProcurement?: InventoryProcurementStore;
+  businessTaskEvaluations?: BusinessTaskEvaluationReader;
   executeComputerCapability?: (input: {
     sessionId: string | null;
     businessId: string;

@@ -13,15 +13,16 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@mlc-ai/web-llm": "0.2.85",
-    "@mlc-ai/web-xgrammar": "0.1.27",
-    "@simplewebauthn/browser": "^13.0.0",
     "@grogoni/offline-runtime": "workspace:*",
     "@grogoni/shared-types": "workspace:*",
     "@grogoni/sync-core": "workspace:*",
     "@grogoni/tool-core": "workspace:*",
     "@grogoni/ui": "workspace:*",
+    "@mlc-ai/web-llm": "0.2.85",
+    "@mlc-ai/web-xgrammar": "0.1.27",
+    "@simplewebauthn/browser": "^13.0.0",
     "libphonenumber-js": "^1.13.9",
+    "lucide-react": "^1.56.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tesseract.js": "7.0.0"

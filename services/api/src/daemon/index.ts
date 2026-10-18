@@ -1,9 +1,9 @@
 import { Pool } from "pg";
+import type { buildDaemonGateway } from "./gateway.js";
 import { repositoryDefaultRuntimePolicy } from "@grogoni/shared-types";
 import { buildPgPoolConfig } from "../db-pool-config.js";
 import { connectedAgentRuntimeAdapterId } from "../agent-harness/retired-agent-runtimes.js";
 import { createPostgresDaemonTaskStore, defaultUserTakeoverMs } from "./task-store.js";
-import { buildDaemonGateway } from "./gateway.js";
 import { createDaemonExecutor, readDaemonCapabilities } from "./executor.js";
 import { DEFAULT_DATABASE_STARTUP_RETRY, retryDatabaseStartup } from "../db-startup-retry.js";
 import { pause, runDaemonWorker, type DaemonEvent } from "./worker.js";
@@ -47,14 +47,10 @@ const store = createPostgresDaemonTaskStore(pool, {
   )
 });
 const controller = new AbortController();
-const app = buildDaemonGateway({
-  store,
-  token: process.env.DAEMON_SERVICE_TOKEN ?? "",
-  ready: () => !controller.signal.aborted,
-  defaults: { modelId: defaultModelId, agentAdapterId: defaultAgentAdapterId },
-  refusal: capabilities.refusal,
-  report: (event) => report(event)
-});
+const serviceToken = process.env.DAEMON_SERVICE_TOKEN ?? "";
+if (serviceToken.length < 32 || /\s/u.test(serviceToken))
+  throw new Error("DAEMON_SERVICE_TOKEN must be at least 32 characters with no whitespace.");
+let app: ReturnType<typeof buildDaemonGateway> | undefined;
 function report(event: DaemonEvent) {
   console.log(JSON.stringify(event));
 }
@@ -96,6 +92,16 @@ try {
     }
   );
   if (!booted) throw new BootAborted();
+  const { buildDaemonGateway } = await import("./gateway.js");
+  if (controller.signal.aborted) throw new BootAborted();
+  app = buildDaemonGateway({
+    store,
+    token: serviceToken,
+    ready: () => !controller.signal.aborted,
+    defaults: { modelId: defaultModelId, agentAdapterId: defaultAgentAdapterId },
+    refusal: capabilities.refusal,
+    report: (event) => report(event)
+  });
   await app.listen({ host, port });
   console.log(
     JSON.stringify({
@@ -117,7 +123,7 @@ try {
   if (!(error instanceof BootAborted)) throw error;
 } finally {
   controller.abort();
-  await app.close();
+  await app?.close();
   await pool.end();
   process.removeListener("SIGTERM", shutdown);
   process.removeListener("SIGINT", shutdown);
