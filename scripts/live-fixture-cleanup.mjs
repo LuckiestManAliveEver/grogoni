@@ -28,6 +28,24 @@ export async function deleteLiveFixtureAccounts(client, { accountIds, businessId
     "insert into grogoni_edge_smoke_ids select 'account', unnest($1::text[]) union all select 'business', unnest($2::text[]) union all select 'user', unnest($3::text[])",
     [ids, businesses, users]
   );
+  // Task state uses conversation IDs rather than tenant columns. Collect it before
+  // deleting the disposable conversations so checkpoint chains cannot be orphaned.
+  await client.query(
+    "insert into grogoni_edge_smoke_ids select 'task', entity_id from cp2_conversations where account_id = any($1::text[]) or business_id = any($2::text[])",
+    [ids, businesses]
+  );
+  for (const table of [
+    "cp2_runtime_execution_events",
+    "cp2_runtime_transfers",
+    "cp2_runtime_task_instances",
+    "cp2_runtime_task_heads",
+    "cp2_runtime_handoffs"
+  ]) {
+    if (tables.includes(table))
+      await client.query(
+        `delete from ${table} where record->>'taskId' in (select id from grogoni_edge_smoke_ids where kind = 'task')`
+      );
+  }
   const deletions = [];
   // Remove descendants before their runtime-binding and business parents.
   const priority = [
@@ -64,7 +82,7 @@ export async function deleteLiveFixtureAccounts(client, { accountIds, businessId
     deletions.push(`delete from ${table} where (${conditions.join(" or ")});`);
   }
   await client.query(deletions.join("\n"));
-  for (const table of ["products", "business_memberships"])
+  for (const table of ["products", "customers", "business_memberships"])
     await client.query(`delete from ${table} where business_id = any($1::uuid[])`, [businesses]);
   await client.query("delete from businesses where id = any($1::uuid[])", [businesses]);
   for (const table of [

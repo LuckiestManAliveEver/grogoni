@@ -1668,22 +1668,22 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       ]);
 
       if (result.turn.plan.toolName === "product.create") {
-        await loadProducts(business.id);
+        void loadProducts(business.id);
       }
 
       if (result.turn.plan.toolName === "customer.create") {
-        await loadCustomers(business.id);
+        void loadCustomers(business.id);
       }
 
       if (result.turn.plan.toolName === "document_import.confirm") {
-        await Promise.all([
+        void Promise.allSettled([
           loadDocumentImports(business.id),
           loadProducts(business.id),
           loadSuppliers(business.id)
         ]);
       }
 
-      await loadRuntimeSessions(business.id);
+      void loadRuntimeSessions(business.id);
       setStatusMessage(`Runtime ${result.turn.status.replace("_", " ")}`);
     } catch (error) {
       setStatusMessage(getErrorMessage(error));

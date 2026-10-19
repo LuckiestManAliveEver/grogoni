@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { describe, expect, it } from "vitest";
 import type { Pool as PgPool } from "pg";
+import { deleteLiveFixtureAccounts } from "../scripts/live-fixture-cleanup.mjs";
 import { createCp2Store } from "../services/api/src/cp2/store";
 import { createEdgeSnapshotScope } from "../services/api/src/cp2/edge-snapshot-scope";
 import { coordinateStoreRequest } from "../supabase/functions/api/store-coordination";
@@ -101,6 +102,25 @@ describe.skipIf(!databaseUrl)("Edge tenant scoping on PostgreSQL", () => {
       expect(reloaded.runtimeTaskHeads?.[0]?.nextCheckpointVersion).toBe(
         first.checkpointVersion! + 2
       );
+      await client.query("select pg_advisory_xact_lock(hashtext('grogoni.cp2.normalized_store'))");
+      await deleteLiveFixtureAccounts(client, {
+        accountIds: [actor.account.id],
+        businessIds: [shop.id]
+      });
+      expect(
+        (
+          await client.query("select entity_id from cp2_runtime_handoffs where task_id = $1", [
+            conversation.id
+          ])
+        ).rowCount
+      ).toBe(0);
+      expect(
+        (
+          await client.query("select entity_id from cp2_runtime_handoffs where task_id = $1", [
+            unrelated.id
+          ])
+        ).rowCount
+      ).toBe(1);
     } finally {
       await client.query("rollback");
       client.release();
