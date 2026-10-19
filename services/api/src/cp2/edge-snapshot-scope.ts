@@ -16,6 +16,13 @@ const conversationChildren = new Set<keyof Cp2Snapshot>([
   "messageDeliveryAttempts",
   "messageNotificationDeliveries"
 ]);
+const runtimeTaskCollections = new Set<keyof Cp2Snapshot>([
+  "runtimeHandoffs",
+  "runtimeTaskHeads",
+  "runtimeTaskInstances",
+  "runtimeTransfers",
+  "runtimeExecutionEvents"
+]);
 
 /** CTEs shadow only loader reads. Persistence always targets the real tables by explicit IDs. */
 export async function createEdgeSnapshotScope(
@@ -246,6 +253,10 @@ export async function createEdgeSnapshotScope(
     withClause: `with ${ctes.map(([name, sql]) => `${name} as (${sql})`).join(",\n")}`,
     predicate(key: keyof Cp2Snapshot) {
       if (globalCollections.has(key)) return "true";
+      // Runtime task records carry taskId rather than tenant columns. Omitting their
+      // head resets checkpoint allocation to version 1 on the next Edge request.
+      if (runtimeTaskCollections.has(key))
+        return "record->>'taskId' in (select id from edge_conversation_ids)";
       if (key === "nativeRuntimeBindingModels")
         return "record->>'runtimeBindingId' in (select id from edge_runtime_binding_ids)";
       if (key === "nativeRuntimeModels")
