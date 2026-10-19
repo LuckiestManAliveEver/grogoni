@@ -1,3 +1,4 @@
+import { runtimeSessionTurnLimit } from "@grogoni/shared-types";
 import { useRef, useState } from "react";
 import { reportBackgroundLoadError } from "../background-load-error";
 
@@ -149,9 +150,14 @@ export function useRuntimeHistoryState(deps: UseRuntimeHistoryStateDeps) {
         `/businesses/${businessId}/runtime/sessions`
       );
       setRuntimeSessions(sessions);
-      const existing = [...sessions].reverse().find((candidate) => candidate.status === "active");
+      const existing = [...sessions]
+        .reverse()
+        .find(
+          (candidate) =>
+            candidate.status === "active" && candidate.turnCount < runtimeSessionTurnLimit
+        );
       if (existing !== undefined) {
-        runtimeManager.adoptSession(key, existing.id);
+        runtimeManager.adoptSession(key, existing.id, existing.turnCount);
         setRuntimeSessionId(existing.id);
         setSelectedRuntimeHistorySessionId(existing.id);
         return existing.id;

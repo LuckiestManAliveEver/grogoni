@@ -774,6 +774,44 @@ describe("CP10 Grogoniclaw runtime", () => {
     await app.close();
   });
 
+  it("confirms an already authorized action at the session turn limit", async () => {
+    const app = buildApi({ cp2: { store: createCp2Store() } });
+    try {
+      const { businessId, sessionCookie } = await createOwnerBusiness(app);
+      let runtimeSessionId: string | undefined;
+      for (let i = 0; i < 19; i += 1) {
+        const result = await postJson<RuntimeTurnResponse>(
+          app,
+          `/businesses/${businessId}/runtime/turns`,
+          { runtimeSessionId, message: "#reports.summary" },
+          sessionCookie
+        );
+        runtimeSessionId = result.session.id;
+      }
+      const planned = await postJson<RuntimeTurnResponse>(
+        app,
+        `/businesses/${businessId}/runtime/turns`,
+        { runtimeSessionId, message: '#customer.create {"name":"Boundary customer"}' },
+        sessionCookie
+      );
+      expect(planned.turn.status).toBe("needs_confirmation");
+      const confirmed = await postJson<RuntimeTurnResponse>(
+        app,
+        `/businesses/${businessId}/runtime/turns`,
+        {
+          runtimeSessionId,
+          message: "confirm",
+          confirmationToken: planned.turn.plan.confirmationToken
+        },
+        sessionCookie
+      );
+      expect(confirmed.turn.status).toBe("completed");
+      expect(confirmed.turn.toolResult).toMatchObject({ name: "Boundary customer" });
+    } finally {
+      await app.close();
+    }
+  });
+
   it("lists runtime sessions and turns and rate-limits long-running sessions", async () => {
     const store = createCp2Store();
     const app = buildApi({ cp2: { store } });

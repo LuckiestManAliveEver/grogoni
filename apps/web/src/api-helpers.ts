@@ -14,6 +14,10 @@ export async function postJson<TResponse>(
 ): Promise<TResponse> {
   const response = await apiFetch<TResponse>(path, { method: "POST", body, ...options });
   await invalidateApiCacheForMutation(path);
+  const businessId = executedRuntimeBusinessId(response);
+  if (businessId !== null) {
+    await invalidateApiCacheForMutation(`/businesses/${encodeURIComponent(businessId)}`);
+  }
   return response;
 }
 
@@ -63,4 +67,27 @@ export async function getJson<TResponse>(
  */
 export async function fetchFreshJson<TResponse>(path: string): Promise<TResponse> {
   return apiFetch<TResponse>(path, { priority: true });
+}
+
+/** Runtime endpoints can change several resources even when called through /v1/messages. */
+function executedRuntimeBusinessId(response: unknown): string | null {
+  if (response === null || typeof response !== "object") return null;
+  const record = response as Record<string, unknown>;
+  const runtime = record.runtime ?? record;
+  if (runtime === null || typeof runtime !== "object") return null;
+  const { session, turn } = runtime as Record<string, unknown>;
+  if (session === null || typeof session !== "object" || turn === null || typeof turn !== "object")
+    return null;
+  const businessId = (session as Record<string, unknown>).businessId;
+  const result = turn as Record<string, unknown>;
+  const plan = result.plan;
+  if (plan === null || typeof plan !== "object") return null;
+  const action = plan as Record<string, unknown>;
+  return result.status === "completed" &&
+    typeof action.executedAt === "string" &&
+    action.toolName !== "unknown.clarify" &&
+    typeof businessId === "string" &&
+    businessId.length > 0
+    ? businessId
+    : null;
 }

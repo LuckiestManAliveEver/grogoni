@@ -95,7 +95,7 @@ export function ChatComposer({
   const [messageActionsOpen, setMessageActionsOpen] = useState(false);
   const [channelPickerOpen, setChannelPickerOpen] = useState(false);
   const messageInputRef = useRef<HTMLTextAreaElement | null>(null);
-  const hashtagQuery = mode === "seller" ? runtimeHashtagQuery(liveDraft) : null;
+  const hashtagQuery = runtimeHashtagQuery(liveDraft);
   const sellerHashtagCapabilities = [...chatModuleCommands, ...runtimeHashtagCapabilities];
   const matchingHashtagCapabilities =
     hashtagQuery === null

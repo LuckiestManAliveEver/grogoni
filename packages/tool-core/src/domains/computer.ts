@@ -24,6 +24,7 @@ const computerInputSchema = {
     url: { type: "string", description: "Destination URL for navigation." },
     selector: { type: "string", description: "Provider-neutral element selector or handle." },
     text: { type: "string", description: "Text to type, search for, or use as a target label." },
+    fileRef: { type: "string", description: "Trusted file reference for an upload." },
     semanticIntent: {
       type: "string",
       description: "Human-readable intent used by policy and approvals."
@@ -45,7 +46,16 @@ function computerTool(
     requiresConfirmation: options.requiresConfirmation,
     readOnly: options.readOnly,
     requiredPermission: "business:write",
-    inputSchema: computerInputSchema,
+    inputSchema: {
+      ...computerInputSchema,
+      properties: {
+        ...computerInputSchema.properties,
+        sessionId: {
+          ...computerInputSchema.properties.sessionId,
+          required: name !== "computer.session.create"
+        }
+      }
+    },
     mcpExposable: false
   };
 }

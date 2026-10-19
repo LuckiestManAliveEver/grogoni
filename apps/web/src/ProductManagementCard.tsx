@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { ProductPurchasePriceSummary, ProductSummary } from "@grogoni/shared-types";
 import { useAsyncActions } from "./hooks/useAsyncActions";
 import { useApiMutationRevision } from "./hooks/useApiMutationRevision";
-import { deleteJson, getJson, patchJson, postJson } from "./api-helpers";
+import { deleteJson, fetchFreshJson, patchJson, postJson } from "./api-helpers";
 import { getUserFacingErrorMessage } from "./user-facing-error";
 import type { StockAdjustmentResponse } from "./grogoni-application-shared";
 import CatalogueBrowsePanel from "./CatalogueBrowsePanel";
@@ -60,7 +60,7 @@ export default function ProductManagementCard(props: { businessId: string; produ
 
   useEffect(() => {
     let cancelled = false;
-    void getJson<ProductSummary[]>(productsPath)
+    void fetchFreshJson<ProductSummary[]>(productsPath)
       .then((loaded) => {
         if (cancelled) return;
         setProducts(loaded);
@@ -122,7 +122,7 @@ export default function ProductManagementCard(props: { businessId: string; produ
       setOpenHistoryId(null);
       return;
     }
-    const history = await getJson<ProductPurchasePriceSummary[]>(
+    const history = await fetchFreshJson<ProductPurchasePriceSummary[]>(
       `/businesses/${props.businessId}/products/${product.id}/purchase-prices`
     );
     setPriceHistory((current) => ({ ...current, [product.id]: history }));

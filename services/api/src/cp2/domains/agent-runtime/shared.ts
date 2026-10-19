@@ -203,7 +203,7 @@ export type NormalizedBusinessAgentProfile = Omit<
   publicIntroduction: string;
 };
 
-export const maxRuntimeTurnsPerSession = 20;
+export { runtimeSessionTurnLimit as maxRuntimeTurnsPerSession } from "@grogoni/shared-types";
 
 export function buildRuntimeModelPrompt(
   message: string,
@@ -421,11 +421,80 @@ export function createRuntimeResponse(input: {
     }
   }
 
+  if (
+    input.toolResult !== null &&
+    input.proposalReason.startsWith("Explicit chat capability #") &&
+    runtimeToolRegistry[input.plan.toolName].readOnly &&
+    !input.plan.toolName.startsWith("computer.")
+  ) {
+    return formatCapabilityReadResult(input.plan.toolName, input.toolResult);
+  }
+
   if (input.toolResult !== null) {
     return `${input.proposalReason} Done.`;
   }
 
   return input.proposalReason;
+}
+
+/** Keep explicit read results in chat without a second model call or a page transition. */
+function formatCapabilityReadResult(toolName: RuntimeToolName, value: unknown): string {
+  const lines: string[] = [];
+  const label = (key: string) => {
+    const words = key.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/[_-]/g, " ");
+    return words.charAt(0).toUpperCase() + words.slice(1);
+  };
+  const hiddenFields = new Set([
+    "businessId",
+    "tenantId",
+    "shopId",
+    "userId",
+    "accountId",
+    "uploadedBy",
+    "engine",
+    "engineVersion",
+    "modelVersion",
+    "profile",
+    "languageHints",
+    "blocks",
+    "fieldEvidence",
+    "fullText",
+    "extractedText",
+    "structuredExtraction",
+    "provenance",
+    "telemetry",
+    "runtimeVersion",
+    "execution",
+    "capabilityResolution"
+  ]);
+  const visit = (item: unknown, path: string, depth: number) => {
+    if (lines.length >= 40 || depth > 4 || item === null || item === undefined) return;
+    if (Array.isArray(item)) {
+      if (item.length === 0) lines.push(`${path || "Results"}: none.`);
+      else
+        item
+          .slice(0, 10)
+          .forEach((entry, index) => visit(entry, `${path} ${index + 1}`.trim(), depth + 1));
+      if (item.length > 10) lines.push(`${item.length - 10} more results.`);
+    } else if (typeof item === "object") {
+      for (const [key, entry] of Object.entries(item)) {
+        if (
+          hiddenFields.has(key) ||
+          /token|secret|password|credential|cookie|authorization/i.test(key)
+        )
+          continue;
+        visit(entry, path ? `${path} · ${label(key)}` : label(key), depth + 1);
+      }
+    } else {
+      lines.push(`${path || "Result"}: ${String(item).slice(0, 500)}`);
+    }
+  };
+  visit(value, "", 0);
+  return [
+    `#${toolName}`,
+    ...lines,
+    ...(lines.length >= 40 ? ["Results shortened. Refine the command to see more."] : [])
+  ].join("\n");
 }
 
 function isWorkspaceDeliverResult(value: unknown): value is {

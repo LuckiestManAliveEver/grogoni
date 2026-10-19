@@ -4241,6 +4241,8 @@ export interface RuntimeTelemetryEvent {
   metadata: Record<string, string | number | boolean | null>;
 }
 
+export const runtimeSessionTurnLimit = 20;
+
 export interface RuntimeSessionSummary {
   id: string;
   businessId: string;

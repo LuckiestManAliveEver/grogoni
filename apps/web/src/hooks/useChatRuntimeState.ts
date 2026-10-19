@@ -415,7 +415,9 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
     }
     const reminder =
       !hasHumanRecipient && attachments.length === 0 ? parseReminderIntent(message) : null;
-    const buyerAssistant = mode !== "seller" || business === null;
+    // Explicit capabilities must reach the authorized runtime, including from buyer mode.
+    const explicitCapability = message.startsWith("#");
+    const buyerAssistant = !explicitCapability && (mode !== "seller" || business === null);
     const tracking =
       buyerAssistant && attachments.length === 0 && isDeliveryTrackingIntent(message);
     if (
@@ -665,9 +667,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
     setReplyToMessageId(null);
 
     const localModuleCommand =
-      mode === "seller" && !hasHumanRecipient && attachments.length === 0
-        ? parseChatModuleCommand(message)
-        : null;
+      !hasHumanRecipient && attachments.length === 0 ? parseChatModuleCommand(message) : null;
     if (localModuleCommand !== null) {
       if (business === null) {
         setChatMessages((messages) => [
@@ -1396,7 +1396,8 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       if (business !== null && session !== null) {
         runtimeManager.adoptSession(
           runtimeManagerKey(session.account.id, business.id),
-          result.session.id
+          result.session.id,
+          result.session.turnCount
         );
       }
       setRuntimeSessionId(result.session.id);
@@ -1424,7 +1425,8 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
 
       if (result.turn.plan.toolName === "products.list" && business !== null) {
         void loadProducts(business.id);
-        navigateToView("products");
+        if (explicitCapability) await postProductManagementCard(business.id, undefined);
+        else navigateToView("products");
       }
 
       if (
@@ -1465,17 +1467,18 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
 
       if (result.turn.plan.toolName === "reports.summary" && business !== null) {
         void loadReports(business.id);
-        navigateToView("reports");
+        if (!explicitCapability) navigateToView("reports");
       }
 
       if (result.turn.plan.toolName === "notifications.list" && business !== null) {
         void loadNotifications(business.id);
-        navigateToView("notifications");
+        if (!explicitCapability) navigateToView("notifications");
       }
 
       if (result.turn.plan.toolName === "invoices.list" && business !== null) {
         void loadInvoices(business.id);
-        navigateToView("invoices");
+        if (explicitCapability) await postInvoiceManagementCard(business.id, undefined);
+        else navigateToView("invoices");
       }
 
       if (result.turn.plan.toolName === "invoice.draft" && business !== null) {
@@ -1514,7 +1517,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       }
 
       if (result.turn.plan.toolName === "network.route" && result.turn.plan.executedAt !== null) {
-        navigateToView("network");
+        if (!explicitCapability) navigateToView("network");
       }
 
       if (business !== null) {
@@ -1647,6 +1650,13 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
           )
       });
       setRuntimeSessionId(result.session.id);
+      if (session !== null) {
+        runtimeManager.adoptSession(
+          runtimeManagerKey(session.account.id, business.id),
+          result.session.id,
+          result.session.turnCount
+        );
+      }
       clearApproval(confirmationToken);
       setChatMessages((messages) => [
         ...messages,
@@ -1659,12 +1669,10 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
 
       if (result.turn.plan.toolName === "product.create") {
         await loadProducts(business.id);
-        navigateToView("products");
       }
 
       if (result.turn.plan.toolName === "customer.create") {
         await loadCustomers(business.id);
-        navigateToView("customers");
       }
 
       if (result.turn.plan.toolName === "document_import.confirm") {
@@ -1673,7 +1681,6 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
           loadProducts(business.id),
           loadSuppliers(business.id)
         ]);
-        navigateToView("imports");
       }
 
       await loadRuntimeSessions(business.id);

@@ -12,7 +12,9 @@ export function useApiMutationRevision(...resourcePrefixes: string[]): number {
       if (
         prefixes.some(
           (prefix) =>
-            path === prefix || path.startsWith(prefix.endsWith("/") ? prefix : `${prefix}/`)
+            path === prefix ||
+            path.startsWith(prefix.endsWith("/") ? prefix : `${prefix}/`) ||
+            prefix.startsWith(path.endsWith("/") ? path : `${path}/`)
         )
       ) {
         setRevision((current) => current + 1);

@@ -861,22 +861,15 @@ test("the Business workspace dashboard reflows on a small screen and stays keybo
   // Small-screen reflow of the dashboard's own content - the real "small-screen layout" contract
   // for this new markup, independent of the header chrome that's hidden below 760px (mobile
   // reaches this dashboard through the inline owner-controls card instead, not this launcher).
-  // Below 760px the conversation inbox also becomes its own StackedModule alongside this one
-  // (ChatSurface.tsx's isCompactViewport branch), so this also exercises the fix for
-  // stacked-module-stack.ts: two simultaneously-open modules used to each install their own
-  // document-level Tab/Escape handler, and Tab from this dialog's last control jumped into the
-  // Messages module instead of wrapping (see tests/stacked-module-focus-stack.test.tsx for the
-  // isolated regression coverage of that fix).
+  // Resizing must preserve the closed inbox rather than opening a drawer over the dashboard.
   await page.setViewportSize({ width: 320, height: 700 });
   await expect(dialog.getByText("No orders yet.")).toBeVisible();
   await expectNoViewportOverflow(page);
   await expectInteractiveControlsInsideViewport(page, dialog);
   const messagesDialog = page.locator('[data-module-id="messenger-inbox"] [role="dialog"]');
-  await expect(messagesDialog).toBeVisible();
+  await expect(messagesDialog).toBeHidden();
 
-  // Tab-trap wraps around the dashboard's own controls (close, Back, then the two "See all"
-  // buttons - empty state renders no other focusable rows), not the Messages module's, even
-  // though it's also open right now.
+  // Tab-trap wraps around the dashboard's own controls after its content changes.
   const lastSeeAll = dialog.getByRole("button", { name: "See all" }).nth(1);
   await lastSeeAll.focus();
   await page.keyboard.press("Tab");
