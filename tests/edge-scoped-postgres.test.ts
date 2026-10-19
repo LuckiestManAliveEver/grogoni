@@ -16,6 +16,97 @@ const requireApi = createRequire(new URL("../services/api/package.json", import.
 const { Pool } = requireApi("pg") as { Pool: typeof PgPool };
 
 describe.skipIf(!databaseUrl)("Edge tenant scoping on PostgreSQL", () => {
+  it("restores conversation checkpoints and advances their version across scoped requests", async () => {
+    const pool = new Pool({ connectionString: databaseUrl, max: 1 });
+    const client = await pool.connect();
+    try {
+      await client.query("begin");
+      const store = createCp2Store();
+      const baseline = store.snapshot();
+      const actor = store.continueWithChannelPin({
+        channel: "email",
+        destination: `checkpoint-${randomUUID()}@example.invalid`,
+        pin: "1234"
+      });
+      const other = store.continueWithChannelPin({
+        channel: "email",
+        destination: `other-${randomUUID()}@example.invalid`,
+        pin: "4321"
+      });
+      const shop = store.createBusiness({
+        sessionId: actor.session.id,
+        name: "Checkpoint shop",
+        language: "en",
+        phoneNumber: "+442079460983",
+        phoneCountry: "GB"
+      }).business;
+      const otherShop = store.createBusiness({
+        sessionId: other.session.id,
+        name: "Other checkpoint shop",
+        language: "en",
+        phoneNumber: "+442079460984",
+        phoneCountry: "GB"
+      }).business;
+      const conversation = store.createConversation({
+        sessionId: actor.session.id,
+        activeShopId: shop.id,
+        kind: "personal"
+      }).conversation;
+      const unrelated = store.createConversation({
+        sessionId: other.session.id,
+        activeShopId: otherShop.id,
+        kind: "personal"
+      }).conversation;
+      store.activateGlobalDefaultModel({
+        model: { ...store.snapshot().modelCatalog[0]!, available: true },
+        executionTarget: "backend",
+        checkedAt: new Date().toISOString(),
+        updatedBy: "test"
+      });
+      // The migrated test database can already contain a global primary model.
+      // Replace only its role inside this rollback-only fixture transaction.
+      await client.query(
+        "delete from cp2_native_runtime_binding_models where record->>'runtimeBindingId' = $1",
+        [
+          store
+            .snapshot()
+            .nativeRuntimeBindings!.find(
+              (b) => b.isDefault && b.accountId === null && b.businessId === null
+            )!.id
+        ]
+      );
+      const first = store.resolveRuntimeHandoff(actor.session.id, conversation.id).activeHandoff;
+      store.resolveRuntimeHandoff(other.session.id, unrelated.id);
+      await saveTransactionalCp2Snapshot(client, store.snapshot(), baseline);
+      const scope = await createEdgeSnapshotScope(
+        client,
+        new Request("https://grogoni.com/api/v1/messages", {
+          headers: { cookie: `grogoni_session=${actor.session.id}` }
+        }),
+        "/v1/messages"
+      );
+      const loaded = await loadTransactionalCp2Snapshot(client, scope);
+      expect(loaded.runtimeHandoffs?.map((h) => h.id)).toEqual([first.id]);
+      expect(loaded.runtimeTaskHeads?.map((h) => h.taskId)).toEqual([conversation.id]);
+      const restored = createCp2Store();
+      restored.hydrateSnapshot(loaded);
+      const next = restored.createRuntimeCheckpoint(actor.session.id, {
+        taskId: conversation.id,
+        expectedHandoffId: first.id,
+        promote: true
+      });
+      expect(next.handoff.checkpointVersion).toBe(first.checkpointVersion! + 1);
+      await saveTransactionalCp2Snapshot(client, restored.snapshot(), loaded);
+      const reloaded = await loadTransactionalCp2Snapshot(client, scope);
+      expect(reloaded.runtimeTaskHeads?.[0]?.nextCheckpointVersion).toBe(
+        first.checkpointVersion! + 2
+      );
+    } finally {
+      await client.query("rollback");
+      client.release();
+      await pool.end();
+    }
+  });
   it("accepts identical concurrent snapshot seeds while rejecting different replacements", async () => {
     const pool = new Pool({ connectionString: databaseUrl, max: 1 });
     const client = await pool.connect();
