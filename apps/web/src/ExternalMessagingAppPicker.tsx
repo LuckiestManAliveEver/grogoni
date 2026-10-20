@@ -1,4 +1,6 @@
 import { lazy, Suspense, useState } from "react";
+import { LazyModuleErrorBoundary } from "./LazyModuleErrorBoundary";
+import { loadLazyModuleWithRecovery } from "./lazy-module-recovery";
 import { StackedModule } from "./StackedModule";
 import {
   externalMessagingApps,
@@ -6,7 +8,9 @@ import {
   type ExternalMessagingApp
 } from "./messaging/external-app-handoff";
 
-const MessagingConnectionsPanel = lazy(() => import("./MessagingConnectionsPanel"));
+const MessagingConnectionsPanel = lazy(() =>
+  loadLazyModuleWithRecovery("messaging-connections", () => import("./MessagingConnectionsPanel"))
+);
 
 export function ExternalMessagingAppPicker(props: {
   open: boolean;
@@ -54,9 +58,11 @@ export function ExternalMessagingAppPicker(props: {
         </button>
       ) : null}
       {connectionsOpen && props.businessId ? (
-        <Suspense fallback={<p>Opening connections…</p>}>
-          <MessagingConnectionsPanel key={props.businessId} businessId={props.businessId} />
-        </Suspense>
+        <LazyModuleErrorBoundary label="Messaging connections" moduleKey="messaging-connections">
+          <Suspense fallback={<p>Opening connections…</p>}>
+            <MessagingConnectionsPanel key={props.businessId} businessId={props.businessId} />
+          </Suspense>
+        </LazyModuleErrorBoundary>
       ) : null}
     </StackedModule>
   );

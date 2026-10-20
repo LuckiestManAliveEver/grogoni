@@ -49,6 +49,7 @@ export default function MessagingConnectionsPanel({ businessId }: { businessId: 
       item.authorized &&
       !["grogoni", "email", "native_sms", "tiktok"].includes(item.provider)
   );
+  const canLinkCustomer = !!customerId && linkable.some((item) => item.provider === provider);
   async function linkCustomer() {
     if (!customerId || !linkable.some((item) => item.provider === provider)) return;
     setBusy(true);
@@ -157,7 +158,7 @@ export default function MessagingConnectionsPanel({ businessId }: { businessId: 
           </label>
           <button
             type="button"
-            disabled={busy || !customerId || !linkable.some((item) => item.provider === provider)}
+            disabled={busy || !canLinkCustomer}
             onClick={() => void linkCustomer()}
           >
             Create customer verification link
