@@ -747,7 +747,9 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
         setStatusMessage(
           sent.message.provider === "native_sms" && sent.message.status === "queued"
             ? "SMS queued — waiting for the linked Android device to send it."
-            : `Sent via ${sent.message.provider ?? preferredProvider ?? "connected channel"}.`
+            : sent.message.status === "queued"
+              ? `Message queued with ${sent.message.provider ?? preferredProvider ?? "connected channel"}. Delivery is not confirmed yet.`
+              : `Sent via ${sent.message.provider ?? preferredProvider ?? "connected channel"}.`
         );
         await loadMessagingInbox(activeConversationId);
       } catch (error) {

@@ -36,6 +36,7 @@ export function useChatComposerState(input: ChatComposerStateInput) {
   const [emailInvoiceId, setEmailInvoiceId] = useState("");
   const [selectedProvider, setSelectedProviderState] = useState<ChannelProvider | null>(null);
   const bluetooth = useBluetoothSendState(input.nearbyScope);
+  const resetBluetooth = bluetooth.reset;
 
   const setSelectedProvider = useCallback(
     (provider: ChannelProvider | null) => {
@@ -82,7 +83,7 @@ export function useChatComposerState(input: ChatComposerStateInput) {
     }
     input.onSend(
       liveDraft,
-      selectedProvider ?? undefined,
+      selectedProvider ?? "grogoni",
       selectedProvider === "email" ? emailSubject : undefined,
       selectedProvider === "email" && emailInvoiceId !== "" ? emailInvoiceId : undefined
     );
@@ -110,17 +111,12 @@ export function useChatComposerState(input: ChatComposerStateInput) {
     setEmailInvoiceId("");
   }, [input.activeConversationId, input.initialEmailSubject]);
 
+  // Routing is an explicit choice. Endpoint refreshes must never switch a normal
+  // message to an external provider (or undo a Bluetooth selection).
   useEffect(() => {
-    const available = input.channelEndpoints.find(
-      (endpoint) =>
-        endpoint.status === "available" &&
-        endpoint.configured &&
-        endpoint.authorized &&
-        (endpoint.capabilities.includes("CAN_REPLY") ||
-          endpoint.capabilities.includes("CAN_INITIATE"))
-    );
-    setSelectedProvider(available?.provider ?? null);
-  }, [input.activeConversationId, input.channelEndpoints, setSelectedProvider]);
+    resetBluetooth();
+    setSelectedProviderState(null);
+  }, [input.activeConversationId, resetBluetooth]);
 
   useEffect(() => () => clearDraftSyncTimer(), []);
 

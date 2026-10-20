@@ -1136,29 +1136,71 @@ export function registerMessagingRoutes(
     }
   );
 
-  app.post(
+  app.get(
     "/v1/webhooks/channels/:provider",
-    async (request: FastifyRequest<{ Params: ChannelWebhookParams; Body: unknown }>, reply) => {
+    async (
+      request: FastifyRequest<{
+        Params: ChannelWebhookParams;
+        Querystring: Record<string, unknown>;
+      }>,
+      reply
+    ) => {
       try {
-        const result = store.ingestChannelWebhook({
-          provider: parseChannelProvider(request.params.provider),
-          headers: request.headers,
-          payload: request.body
-        });
-        request.log.info(
-          {
-            provider: request.params.provider,
-            receiptId: result.receipt.id,
-            duplicate: result.message === null
-          },
-          "Channel webhook processed."
-        );
-        return result;
+        const provider = parseChannelProvider(request.params.provider);
+        const challenge = store.channelWebhookChallenge(provider, request.query);
+        if (challenge === null) return reply.code(401).send({ code: "CHANNEL_WEBHOOK_INVALID" });
+        return reply.type(provider === "x" ? "application/json" : "text/plain").send(challenge);
       } catch (error) {
         return sendCp2Error(reply, error);
       }
     }
   );
+
+  // Signature checks use the exact provider bytes, including whitespace and Unicode.
+  void app.register(async (webhook) => {
+    webhook.removeContentTypeParser("application/json");
+    if (webhook.hasContentTypeParser("application/x-www-form-urlencoded"))
+      webhook.removeContentTypeParser("application/x-www-form-urlencoded");
+    webhook.addContentTypeParser(
+      "application/json",
+      { parseAs: "buffer" },
+      (_request, body, done) => done(null, body)
+    );
+    webhook.addContentTypeParser(
+      "application/x-www-form-urlencoded",
+      { parseAs: "buffer" },
+      (_request, body, done) => done(null, body)
+    );
+    webhook.post(
+      "/v1/webhooks/channels/:provider",
+      async (request: FastifyRequest<{ Params: ChannelWebhookParams; Body: Buffer }>, reply) => {
+        try {
+          const provider = parseChannelProvider(request.params.provider);
+          const rawBody = request.body;
+          let payload: unknown;
+          try {
+            payload = request.headers["content-type"]?.includes("application/x-www-form-urlencoded")
+              ? Object.fromEntries(new URLSearchParams(rawBody.toString("utf8")))
+              : JSON.parse(rawBody.toString("utf8"));
+          } catch {
+            return reply.code(400).send({ code: "webhook_payload_invalid" });
+          }
+          const results = store.ingestChannelWebhookBatch({
+            provider,
+            headers: request.headers,
+            payload,
+            rawBody
+          });
+          request.log.info({ provider, count: results.length }, "Channel webhook processed.");
+          if (provider === "sms") return reply.type("text/xml").send("<Response/>");
+          // Preserve the existing single-message response contract for Telegram clients.
+          return results.length === 1 ? results[0] : { results };
+        } catch (error) {
+          return sendCp2Error(reply, error);
+        }
+      }
+    );
+  });
 
   app.post(
     "/v1/message-handoffs",

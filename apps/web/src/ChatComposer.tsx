@@ -14,6 +14,7 @@ import { chatModuleCommands } from "./chat-module-commands";
 import { startVoiceInput } from "./chat-message-plumbing";
 import { formatChannelProvider } from "./formatters";
 import type { ChatComposerState } from "./hooks/useChatComposerState";
+import { ExternalMessagingAppPicker } from "./ExternalMessagingAppPicker";
 import { ChatChannelPicker } from "./ChatChannelPicker";
 import { ChatComposerActions } from "./ChatComposerActions";
 import { ChatHashtagCapabilityPicker } from "./ChatHashtagCapabilityPicker";
@@ -94,6 +95,7 @@ export function ChatComposer({
   } = composer;
   const [messageActionsOpen, setMessageActionsOpen] = useState(false);
   const [channelPickerOpen, setChannelPickerOpen] = useState(false);
+  const [externalAppsOpen, setExternalAppsOpen] = useState(false);
   const messageInputRef = useRef<HTMLTextAreaElement | null>(null);
   const hashtagQuery = runtimeHashtagQuery(liveDraft);
   const sellerHashtagCapabilities = [...chatModuleCommands, ...runtimeHashtagCapabilities];
@@ -326,10 +328,18 @@ export function ChatComposer({
             )
           }
           onSendVia={() => runMessageAction(() => setChannelPickerOpen(true))}
-          onShareApps={() =>
-            runMessageAction(() => void openPlatformHandoff(selectedConversationTitle))
-          }
+          onShareApps={() => runMessageAction(() => setExternalAppsOpen(true))}
           onTakePhoto={() => runMessageAction(() => sellerPhotoInputRef.current?.click())}
+        />
+        <ExternalMessagingAppPicker
+          open={externalAppsOpen}
+          {...(business ? { businessId: business.id } : {})}
+          text={liveDraft}
+          onClose={() => setExternalAppsOpen(false)}
+          onSystemShare={() => {
+            setExternalAppsOpen(false);
+            void openPlatformHandoff(selectedConversationTitle);
+          }}
         />
         <ChatChannelPicker
           bluetoothAvailable={bluetoothAvailable}
