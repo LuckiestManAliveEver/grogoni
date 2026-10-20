@@ -137,6 +137,7 @@ import type {
 import type { BusinessPermission } from "@grogoni/business-core";
 import {
   ChannelGatewayError,
+  type CanonicalInboundChannelMessage,
   createEmailChannelAdapter,
   createNativeSmsChannelAdapter,
   providerToMessageChannel,
@@ -2010,7 +2011,7 @@ export class MessagingDomain {
       }
     }
     const token = randomBytes(32).toString("base64url");
-    const linkUrl = this.deps.channelGateway.createLinkUrl(input.provider, token);
+    const linkUrl = this.deps.channelGateway.createLinkUrl(input.provider, token, input.businessId);
     if (linkUrl === null) {
       throw new Cp2Error(
         409,
@@ -2057,6 +2058,7 @@ export class MessagingDomain {
     provider: ChannelProvider;
     headers: Record<string, string | string[] | undefined>;
     payload: unknown;
+    rawBody?: Buffer;
     now?: Date;
   }): {
     receipt: ProviderUpdateReceiptSummary;
@@ -2069,16 +2071,53 @@ export class MessagingDomain {
       inbound = this.deps.channelGateway.normalizeInbound({
         provider: input.provider,
         headers: input.headers,
-        payload: input.payload
+        payload: input.payload,
+        ...(input.rawBody ? { rawBody: input.rawBody } : {})
       });
     } catch (error) {
       throw this.channelError(error);
     }
 
+    return this.ingestNormalizedChannelMessage(input.provider, inbound, now);
+  }
+
+  channelWebhookChallenge(
+    provider: ChannelProvider,
+    query: Record<string, unknown>
+  ): string | null {
+    return this.deps.channelGateway.webhookChallenge(provider, query);
+  }
+
+  ingestChannelWebhookBatch(input: {
+    provider: ChannelProvider;
+    headers: Record<string, string | string[] | undefined>;
+    payload: unknown;
+    rawBody: Buffer;
+    now?: Date;
+  }) {
+    let messages;
+    try {
+      messages = this.deps.channelGateway.normalizeInboundBatch(input);
+    } catch (error) {
+      throw this.channelError(error);
+    }
+    return messages.map((inbound) =>
+      this.ingestNormalizedChannelMessage(input.provider, inbound, input.now ?? new Date())
+    );
+  }
+
+  private ingestNormalizedChannelMessage(
+    provider: ChannelProvider,
+    inbound: CanonicalInboundChannelMessage,
+    now: Date
+  ): {
+    receipt: ProviderUpdateReceiptSummary;
+    message: ConversationMessageSummary | null;
+    orderIntentOutcome: OfflineOrderIntentOutcome | null;
+  } {
     const existingReceipt = [...this.providerUpdateReceipts.values()].find(
       (candidate) =>
-        candidate.provider === input.provider &&
-        candidate.externalUpdateId === inbound.externalUpdateId
+        candidate.provider === provider && candidate.externalUpdateId === inbound.externalUpdateId
     );
     if (existingReceipt) {
       return {
@@ -2093,14 +2132,18 @@ export class MessagingDomain {
 
     const matchingChannels = [...this.conversationChannels.values()].filter(
       (candidate) =>
-        candidate.provider === input.provider &&
-        candidate.externalConversationId === inbound.externalConversationId
+        candidate.provider === provider &&
+        candidate.externalConversationId === inbound.externalConversationId &&
+        (inbound.businessId === undefined || candidate.businessId === inbound.businessId)
     );
     let channel = matchingChannels.length === 1 ? matchingChannels[0] : undefined;
     if (inbound.linkToken !== null) {
       const tokenHash = hashCustomerCapability(inbound.linkToken);
       const grant = [...this.channelIdentityLinkGrants.values()].find(
-        (candidate) => candidate.provider === input.provider && candidate.tokenHash === tokenHash
+        (candidate) =>
+          candidate.provider === provider &&
+          candidate.tokenHash === tokenHash &&
+          (inbound.businessId === undefined || candidate.businessId === inbound.businessId)
       );
       if (
         grant === undefined ||
@@ -2118,7 +2161,7 @@ export class MessagingDomain {
       }
       const linked = this.upsertProviderConversation({
         businessId: grant.businessId,
-        provider: input.provider,
+        provider: provider,
         customerId: grant.customerId,
         externalUserId: inbound.externalUserId,
         externalConversationId: inbound.externalConversationId,
@@ -2127,6 +2170,14 @@ export class MessagingDomain {
         ownerAccountId: owner.accountId,
         ownerUserId: owner.id,
         now
+      });
+      this.platformIdentities.set(linked.identity.id, {
+        ...linked.identity,
+        verifiedAt: now.toISOString(),
+        optInStatus: "granted",
+        optInSource: "provider_link_grant",
+        optInAt: now.toISOString(),
+        optOutAt: null
       });
       channel = linked.channel;
       this.channelIdentityLinkGrants.set(grant.id, { ...grant, consumedAt: now.toISOString() });
@@ -2139,31 +2190,68 @@ export class MessagingDomain {
       );
     }
     const ingested = this.ingestProviderMessage({
-      provider: input.provider,
+      provider: provider,
       businessId: channel.businessId,
       externalConversationId: inbound.externalConversationId,
       externalUpdateId: inbound.externalUpdateId,
-      body: inbound.linkToken === null ? inbound.text : `[${input.provider} identity linked]`,
+      body: inbound.linkToken === null ? inbound.text : `[${provider} identity linked]`,
       providerMessageId: inbound.externalMessageId,
       now
     });
+    const currentChannel = this.conversationChannels.get(channel.id);
+    const providerTime = Date.parse(inbound.receivedAt);
+    const previousTime = Date.parse(channel.lastInboundAt ?? "");
+    if (currentChannel && Number.isFinite(providerTime)) {
+      this.conversationChannels.set(channel.id, {
+        ...currentChannel,
+        lastInboundAt: new Date(
+          Math.max(providerTime, Number.isFinite(previousTime) ? previousTime : 0)
+        ).toISOString()
+      });
+    }
     const identity = [...this.platformIdentities.values()].find(
       (candidate) =>
         candidate.businessId === channel.businessId &&
-        candidate.provider === input.provider &&
+        candidate.provider === provider &&
         candidate.externalUserId === inbound.externalUserId
     );
+    if (
+      identity &&
+      (provider === "sms" || provider === "whatsapp") &&
+      /^(?:stop|unsubscribe)$/i.test(inbound.text.trim())
+    ) {
+      this.platformIdentities.set(identity.id, {
+        ...identity,
+        optInStatus: "revoked",
+        optOutAt: now.toISOString(),
+        updatedAt: now.toISOString()
+      });
+    }
+    if (
+      identity &&
+      (provider === "sms" || provider === "whatsapp") &&
+      /^start$/i.test(inbound.text.trim())
+    ) {
+      this.platformIdentities.set(identity.id, {
+        ...identity,
+        optInStatus: "granted",
+        optInSource: "provider_start_message",
+        optInAt: now.toISOString(),
+        optOutAt: null,
+        updatedAt: now.toISOString()
+      });
+    }
     const ownerMembership = [...this.deps.memberships.values()].find(
       (membership) => membership.businessId === channel.businessId && membership.role === "owner"
     );
     const orderIntentOutcome =
       inbound.linkToken !== null ||
-      input.provider !== "telegram" ||
+      provider !== "telegram" ||
       identity?.customerId == null ||
       ownerMembership === undefined
         ? null
         : this.reconcileInboundChannelOrder({
-            provider: input.provider,
+            provider: provider,
             businessId: channel.businessId,
             customerId: identity.customerId,
             actorId: ownerMembership.userId,
@@ -2322,6 +2410,13 @@ export class MessagingDomain {
       selection.endpoint.provider === "email"
         ? normalizeEmailSubject(input.subject ?? replyTo?.subject ?? "")
         : null;
+    if (selection.endpoint.provider !== "email" && (input.attachments?.length ?? 0) > 0) {
+      throw new Cp2Error(
+        400,
+        "channel_attachment_unsupported",
+        "Send document attachments through a connected mailbox."
+      );
+    }
     const resolvedAttachments =
       selection.endpoint.provider === "email"
         ? this.resolveTrustedEmailAttachments(

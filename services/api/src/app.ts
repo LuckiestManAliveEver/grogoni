@@ -86,14 +86,16 @@ export function buildApi(options: BuildApiOptions = {}) {
     max: (request) => (request.url.startsWith("/auth/") ? authRateLimitMax : defaultRateLimitMax),
     timeWindow: rateLimitWindowMs,
     hook: "onRequest",
-    keyGenerator: (request) => request.ip,
+    keyGenerator: (request) =>
+      `${request.url.startsWith("/auth/") ? "auth" : "general"}:${request.ip}`,
     allowList: (request) => request.url.startsWith("/health") || request.url === "/metrics",
     skipOnError: true,
     ...(options.rateLimitRedisClient === undefined ? {} : { redis: options.rateLimitRedisClient }),
-    errorResponseBuilder: (_request, context) => ({
-      code: "rate_limited",
-      message: `Too many requests. Please retry after ${context.after}.`
-    })
+    errorResponseBuilder: (_request, context) =>
+      Object.assign(new Error(`Too many requests. Please retry after ${context.after}.`), {
+        statusCode: context.statusCode,
+        code: "rate_limited"
+      })
   });
 
   // Per-turn context (services/api/src/inference/turn-stream.ts): a client that watches a turn's

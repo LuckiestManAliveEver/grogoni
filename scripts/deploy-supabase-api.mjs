@@ -62,6 +62,49 @@ if (process.argv.includes("--deploy")) {
       }
     ])
   });
+  // Forward only explicitly supplied messaging settings. An unset local value
+  // must not erase provider authorization already installed in the Edge runtime.
+  const messagingNames = [
+    "EXTERNAL_MESSAGING_SHOP_ID",
+    "EXTERNAL_MESSAGING_CONNECTIONS_JSON",
+    "META_GRAPH_VERSION",
+    "TELEGRAM_BOT_TOKEN",
+    "TELEGRAM_WEBHOOK_SECRET",
+    "TELEGRAM_BOT_USERNAME",
+    "MAILBOX_GOOGLE_CLIENT_ID",
+    "MAILBOX_GOOGLE_CLIENT_SECRET",
+    "MAILBOX_MICROSOFT_CLIENT_ID",
+    "MAILBOX_MICROSOFT_CLIENT_SECRET"
+  ];
+  const credentialKeys = [
+    "ACCESS_TOKEN",
+    "PHONE_NUMBER_ID",
+    "PHONE_NUMBER",
+    "APP_SECRET",
+    "VERIFY_TOKEN",
+    "PAGE_ID",
+    "ACCOUNT_ID",
+    "USERNAME",
+    "USER_ACCESS_TOKEN",
+    "USER_ID",
+    "CONSUMER_SECRET",
+    "ACCOUNT_SID",
+    "AUTH_TOKEN",
+    "FROM_NUMBER",
+    "WEBHOOK_URL"
+  ];
+  for (const prefix of ["WHATSAPP", "MESSENGER", "INSTAGRAM", "X", "TWILIO"])
+    messagingNames.push(...credentialKeys.map((key) => `${prefix}_${key}`));
+  const messagingSecrets = messagingNames.flatMap((name) => {
+    const value = process.env[name]?.trim();
+    return value ? [{ name, value }] : [];
+  });
+  if (messagingSecrets.length)
+    await management("/secrets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(messagingSecrets)
+    });
   const form = new globalThis.FormData();
   form.append(
     "metadata",

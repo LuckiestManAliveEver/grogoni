@@ -3862,6 +3862,12 @@ export class Cp2Store {
   ): ReturnType<MessagingDomain["createChannelIdentityLinkGrant"]> {
     return this.messagingDomain.createChannelIdentityLinkGrant(...args);
   }
+  channelWebhookChallenge(...args: Parameters<MessagingDomain["channelWebhookChallenge"]>) {
+    return this.messagingDomain.channelWebhookChallenge(...args);
+  }
+  ingestChannelWebhookBatch(...args: Parameters<MessagingDomain["ingestChannelWebhookBatch"]>) {
+    return this.messagingDomain.ingestChannelWebhookBatch(...args);
+  }
   ingestChannelWebhook(
     ...args: Parameters<MessagingDomain["ingestChannelWebhook"]>
   ): ReturnType<MessagingDomain["ingestChannelWebhook"]> {

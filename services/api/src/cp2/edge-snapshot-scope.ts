@@ -1,6 +1,10 @@
 import { createHash } from "node:crypto";
 import { escapeLiteral, type PoolClient } from "pg";
 import type { Cp2Snapshot } from "./store.js";
+import {
+  createChannelGatewayFromEnvironment,
+  type CanonicalInboundChannelMessage
+} from "../messaging/channel-gateway.js";
 
 const globalCollections = new Set<keyof Cp2Snapshot>([
   "modelCatalog",
@@ -50,6 +54,42 @@ export async function createEdgeSnapshotScope(
     input = Object.fromEntries(new URLSearchParams(payload.toString()));
   }
   if (!input || typeof input !== "object" || Array.isArray(input)) input = {};
+  // A provider callback has no browser session. Resolve only authenticated sender
+  // accounts, linked threads, or one-time customer grants into its tenant scope.
+  const webhookProvider =
+    request.method === "POST"
+      ? path.match(
+          /^\/v1\/webhooks\/channels\/(telegram|whatsapp|messenger|instagram|tiktok|x|sms)$/
+        )?.[1]
+      : undefined;
+  let inbound: CanonicalInboundChannelMessage[] = [];
+  if (webhookProvider && payload) {
+    try {
+      inbound = createChannelGatewayFromEnvironment().normalizeInboundBatch({
+        provider: webhookProvider as CanonicalInboundChannelMessage["provider"],
+        headers: Object.fromEntries(request.headers),
+        payload: input,
+        rawBody: payload
+      });
+    } catch {
+      /* The route returns the provider's authentication/validation error. */
+    }
+  }
+  const webhookBusinesses = inbound.flatMap((message) =>
+    message.businessId ? [message.businessId] : []
+  );
+  const webhookThreads = inbound.map((message) => message.externalConversationId);
+  const webhookGrants = inbound.flatMap((message) =>
+    message.linkToken ? [createHash("sha256").update(message.linkToken).digest("hex")] : []
+  );
+  const sqlList = (values: string[]) =>
+    values.length ? values.map(escapeLiteral).join(",") : "null";
+  const webhookScope = inbound.length
+    ? `
+      union select business_id from public.conversation_channels where record->>'provider' = ${escapeLiteral(webhookProvider!)} and record->>'externalConversationId' in (${sqlList(webhookThreads)})
+      union select business_id from public.channel_identity_link_grants where record->>'provider' = ${escapeLiteral(webhookProvider!)} and record->>'tokenHash' in (${sqlList(webhookGrants)}) and (record->>'expiresAt')::timestamptz > now()
+      union select id::text from public.businesses where id::text in (${sqlList(webhookBusinesses)})`
+    : "";
   const publicAgent = path.match(/^\/public\/storefronts\/([^/]+)/)?.[1];
   const recipient = typeof input.recipient === "string" ? input.recipient : "";
   const credential =
@@ -126,6 +166,7 @@ export async function createEdgeSnapshotScope(
       union select id::text from public.businesses where id = nullif(${requestedBusiness}, '')::uuid
       union select business_id from public.cp2_staff_invitations where record->>'destination' = ${destination} and ${actorAccount} <> ''
       union select id::text from public.businesses where grogoni_id = ${storefront}
+      ${webhookScope}
       ${checkoutShops.length ? `union select id::text from public.businesses where grogoni_id in (${checkoutShops.join(",")}) or id::text in (${checkoutShops.join(",")})` : ""}
       ${path === "/buy/search" ? `union select id from (select b.id::text as id from public.businesses b where position(lower(${search}) in lower(b.name)) > 0 or position(lower(${search}) in lower(b.grogoni_id)) > 0 or exists (select 1 from public.products p where p.business_id = b.id and position(lower(${search}) in lower(p.name)) > 0) order by b.name, b.id limit 50) searched_businesses` : ""}`
     ],
