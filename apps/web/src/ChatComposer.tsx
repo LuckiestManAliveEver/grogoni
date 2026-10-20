@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type ChangeEvent } from "react";
 
 import type { ChannelEndpointSummary } from "@grogoni/shared-types";
 import { runtimeHashtagCapabilities, runtimeHashtagQuery } from "@grogoni/tool-core";
@@ -14,7 +14,14 @@ import { chatModuleCommands } from "./chat-module-commands";
 import { startVoiceInput } from "./chat-message-plumbing";
 import { formatChannelProvider } from "./formatters";
 import type { ChatComposerState } from "./hooks/useChatComposerState";
-import { ExternalMessagingAppPicker } from "./ExternalMessagingAppPicker";
+import { LazyModuleErrorBoundary } from "./LazyModuleErrorBoundary";
+import { loadLazyModuleWithRecovery } from "./lazy-module-recovery";
+const ExternalMessagingAppPicker = lazy(() =>
+  loadLazyModuleWithRecovery(
+    "external-messaging-apps",
+    () => import("./ExternalMessagingAppPicker")
+  ).then((module) => ({ default: module.ExternalMessagingAppPicker }))
+);
 import { ChatChannelPicker } from "./ChatChannelPicker";
 import { ChatComposerActions } from "./ChatComposerActions";
 import { ChatHashtagCapabilityPicker } from "./ChatHashtagCapabilityPicker";
@@ -331,16 +338,22 @@ export function ChatComposer({
           onShareApps={() => runMessageAction(() => setExternalAppsOpen(true))}
           onTakePhoto={() => runMessageAction(() => sellerPhotoInputRef.current?.click())}
         />
-        <ExternalMessagingAppPicker
-          open={externalAppsOpen}
-          {...(business ? { businessId: business.id } : {})}
-          text={liveDraft}
-          onClose={() => setExternalAppsOpen(false)}
-          onSystemShare={() => {
-            setExternalAppsOpen(false);
-            void openPlatformHandoff(selectedConversationTitle);
-          }}
-        />
+        {externalAppsOpen ? (
+          <LazyModuleErrorBoundary label="Share to apps" moduleKey="external-messaging-apps">
+            <Suspense fallback={<p>Opening messaging options…</p>}>
+              <ExternalMessagingAppPicker
+                open={externalAppsOpen}
+                {...(business ? { businessId: business.id } : {})}
+                text={liveDraft}
+                onClose={() => setExternalAppsOpen(false)}
+                onSystemShare={() => {
+                  setExternalAppsOpen(false);
+                  void openPlatformHandoff(selectedConversationTitle);
+                }}
+              />
+            </Suspense>
+          </LazyModuleErrorBoundary>
+        ) : null}
         <ChatChannelPicker
           bluetoothAvailable={bluetoothAvailable}
           bluetoothBusy={bluetoothBusy}
