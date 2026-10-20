@@ -3,7 +3,11 @@ import { createRequire } from "node:module";
 import type { Pool as PgPool } from "pg";
 import { describe, expect, it, vi } from "vitest";
 import { createCp2Store } from "../services/api/src/cp2/store";
-import { createEdgeSnapshotScope } from "../services/api/src/cp2/edge-snapshot-scope";
+import {
+  createEdgeSnapshotScope,
+  prepareEdgeHydration,
+  prepareEdgePersistence
+} from "../services/api/src/cp2/edge-snapshot-scope";
 import {
   loadTransactionalCp2Snapshot,
   saveTransactionalCp2Snapshot
@@ -21,9 +25,11 @@ describe.skipIf(!databaseUrl)("external webhook Edge persistence", () => {
     const client = await pool.connect();
     try {
       await client.query("begin");
+      await client.query("select pg_advisory_xact_lock(hashtext('grogoni.cp2.normalized_store'))");
       const gateway = createChannelGatewayFromEnvironment({});
       const store = createCp2Store({ channelGateway: gateway });
-      const baseline = store.snapshot();
+      const baseline = await loadTransactionalCp2Snapshot(client);
+      store.hydrateSnapshot(prepareEdgeHydration(baseline));
       const actor = store.continueWithChannelPin({
         channel: "email",
         destination: `external-${randomUUID()}@example.invalid`,
@@ -85,7 +91,7 @@ describe.skipIf(!databaseUrl)("external webhook Edge persistence", () => {
       expect(loaded.businesses.some((b) => b.id === other.id)).toBe(false);
       expect(loaded.channelIdentityLinkGrants?.map((g) => g.id)).toContain(grant.grantId);
       const restored = createCp2Store({ channelGateway: gateway });
-      restored.hydrateSnapshot(loaded);
+      restored.hydrateSnapshot(prepareEdgeHydration(loaded));
       const events = restored.ingestChannelWebhookBatch({
         provider: "whatsapp",
         headers,
@@ -98,7 +104,11 @@ describe.skipIf(!databaseUrl)("external webhook Edge persistence", () => {
         text: "[whatsapp identity linked]"
       });
       expect(JSON.stringify(restored.snapshot())).not.toContain(grant.token);
-      await saveTransactionalCp2Snapshot(client, restored.snapshot(), loaded);
+      await saveTransactionalCp2Snapshot(
+        client,
+        prepareEdgePersistence(restored.snapshot(), loaded),
+        loaded
+      );
       const saved = await loadTransactionalCp2Snapshot(client, scope);
       expect(saved.platformIdentities?.find((i) => i.customerId === customer.id)).toMatchObject({
         optInStatus: "granted",

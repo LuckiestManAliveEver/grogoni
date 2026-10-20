@@ -1,5 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState, type ChangeEvent } from "react";
-
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import type { ChannelEndpointSummary } from "@grogoni/shared-types";
 import { runtimeHashtagCapabilities, runtimeHashtagQuery } from "@grogoni/tool-core";
 
@@ -14,18 +13,16 @@ import { chatModuleCommands } from "./chat-module-commands";
 import { startVoiceInput } from "./chat-message-plumbing";
 import { formatChannelProvider } from "./formatters";
 import type { ChatComposerState } from "./hooks/useChatComposerState";
-import { LazyModuleErrorBoundary } from "./LazyModuleErrorBoundary";
-import { loadLazyModuleWithRecovery } from "./lazy-module-recovery";
-const ExternalMessagingAppPicker = lazy(() =>
-  loadLazyModuleWithRecovery(
-    "external-messaging-apps",
-    () => import("./ExternalMessagingAppPicker")
-  ).then((module) => ({ default: module.ExternalMessagingAppPicker }))
-);
+import {
+  ChatComposerLazyPanel,
+  ChatHashtagCapabilityPicker,
+  ComposerAttachmentWorkbench,
+  ExternalMessagingAppPicker
+} from "./chat-composer-lazy-panels";
+
 import { ChatChannelPicker } from "./ChatChannelPicker";
 import { ChatComposerActions } from "./ChatComposerActions";
-import { ChatHashtagCapabilityPicker } from "./ChatHashtagCapabilityPicker";
-import { ComposerAttachmentWorkbench } from "./ComposerAttachmentWorkbench";
+
 import { ComposerModelSwitcher } from "./ComposerModelSwitcher";
 
 interface ChatComposerProps {
@@ -155,11 +152,13 @@ export function ChatComposer({
           </div>
         ) : null}
         {hashtagQuery !== null ? (
-          <ChatHashtagCapabilityPicker
-            capabilities={matchingHashtagCapabilities}
-            query={hashtagQuery}
-            onSelect={updateLiveDraft}
-          />
+          <ChatComposerLazyPanel label="Shop capabilities" moduleKey="composer-capabilities">
+            <ChatHashtagCapabilityPicker
+              capabilities={matchingHashtagCapabilities}
+              query={hashtagQuery}
+              onSelect={updateLiveDraft}
+            />
+          </ChatComposerLazyPanel>
         ) : null}
         <small className="composer-agent-indicator">{activeAgentName} will answer</small>
         <input
@@ -185,11 +184,15 @@ export function ChatComposer({
             }}
           />
         ) : null}
-        <ComposerAttachmentWorkbench
-          pendingAttachments={pendingAttachments}
-          onRemoveAttachment={onRemoveAttachment}
-          onCommitDraft={commitDraft}
-        />
+        {pendingAttachments.length > 0 ? (
+          <ChatComposerLazyPanel label="Selected attachments" moduleKey="composer-attachments">
+            <ComposerAttachmentWorkbench
+              pendingAttachments={pendingAttachments}
+              onRemoveAttachment={onRemoveAttachment}
+              onCommitDraft={commitDraft}
+            />
+          </ChatComposerLazyPanel>
+        ) : null}
         {selectedProvider === "email" ? (
           <>
             <label className="composer-input">
@@ -339,20 +342,18 @@ export function ChatComposer({
           onTakePhoto={() => runMessageAction(() => sellerPhotoInputRef.current?.click())}
         />
         {externalAppsOpen ? (
-          <LazyModuleErrorBoundary label="Share to apps" moduleKey="external-messaging-apps">
-            <Suspense fallback={<p>Opening messaging options…</p>}>
-              <ExternalMessagingAppPicker
-                open={externalAppsOpen}
-                {...(business ? { businessId: business.id } : {})}
-                text={liveDraft}
-                onClose={() => setExternalAppsOpen(false)}
-                onSystemShare={() => {
-                  setExternalAppsOpen(false);
-                  void openPlatformHandoff(selectedConversationTitle);
-                }}
-              />
-            </Suspense>
-          </LazyModuleErrorBoundary>
+          <ChatComposerLazyPanel label="Share to apps" moduleKey="external-messaging-apps">
+            <ExternalMessagingAppPicker
+              open={externalAppsOpen}
+              {...(business ? { businessId: business.id } : {})}
+              text={liveDraft}
+              onClose={() => setExternalAppsOpen(false)}
+              onSystemShare={() => {
+                setExternalAppsOpen(false);
+                void openPlatformHandoff(selectedConversationTitle);
+              }}
+            />
+          </ChatComposerLazyPanel>
         ) : null}
         <ChatChannelPicker
           bluetoothAvailable={bluetoothAvailable}
