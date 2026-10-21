@@ -114,6 +114,7 @@ describe("CP26 Android release identity", () => {
       "verify-android-release-identity.mjs"
     );
     expect(rootPackage.scripts["android:identity:gate"]).toContain("--require-approved");
+    expect(rootPackage.scripts["android:release:apk"]).toContain("assembleRelease");
   });
 });
 
