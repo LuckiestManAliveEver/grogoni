@@ -2063,11 +2063,19 @@ export interface StatusOrderSummary {
   updatedAt: string;
 }
 
+export interface UnifiedCheckoutReceiptItemSummary {
+  title: string;
+  quantity: number;
+  unitPrice: number | null;
+}
+
 export interface UnifiedCheckoutHandoffSummary {
   kind: "catalogue" | "contact";
   sourceLabel: string;
   orderId: string;
   status: HandoffOrderStatus;
+  /** Snapshot of the ordered items; optional for older persisted checkouts. */
+  items?: UnifiedCheckoutReceiptItemSummary[];
 }
 
 /** An item that could not be ordered at checkout - surfaced to the buyer, never silently dropped. */

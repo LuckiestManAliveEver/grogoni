@@ -1151,7 +1151,12 @@ export class CommerceDomain {
         kind: "catalogue",
         sourceLabel: business.name,
         orderId: order.id,
-        status: order.status
+        status: order.status,
+        items: order.items.map((item) => ({
+          title: item.productName,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice
+        }))
       });
     }
 
@@ -1215,7 +1220,12 @@ export class CommerceDomain {
         kind: "contact",
         sourceLabel: this.contactLabelForStatus(status, session.user.id),
         orderId: order.id,
-        status: order.status
+        status: order.status,
+        items: order.items.map((item) => ({
+          title: item.title,
+          quantity: item.quantity,
+          unitPrice: item.price
+        }))
       });
     }
 
@@ -1257,10 +1267,34 @@ export class CommerceDomain {
     const handoffs = checkout.handoffs.map((handoff) => {
       if (handoff.kind === "catalogue") {
         const order = this.buyOrders.get(handoff.orderId);
-        return order === undefined ? handoff : { ...handoff, status: order.status };
+        return order === undefined
+          ? handoff
+          : {
+              ...handoff,
+              status: order.status,
+              items:
+                handoff.items ??
+                order.items.map((item) => ({
+                  title: item.productName,
+                  quantity: item.quantity,
+                  unitPrice: item.unitPrice
+                }))
+            };
       }
       const order = this.statusOrders.get(handoff.orderId);
-      return order === undefined ? handoff : { ...handoff, status: order.status };
+      return order === undefined
+        ? handoff
+        : {
+            ...handoff,
+            status: order.status,
+            items:
+              handoff.items ??
+              order.items.map((item) => ({
+                title: item.title,
+                quantity: item.quantity,
+                unitPrice: item.price
+              }))
+          };
     });
     return { ...checkout, handoffs };
   }
