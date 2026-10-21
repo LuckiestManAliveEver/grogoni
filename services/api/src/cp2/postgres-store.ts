@@ -137,6 +137,7 @@ export const normalizedCollections: NormalizedCollection[] = [
   { key: "buyOrders", tableName: "buy_orders" },
   { key: "statusOrders", tableName: "status_orders" },
   { key: "unifiedCheckouts", tableName: "unified_checkouts" },
+  { key: "buyerShoppingSessions", tableName: "buyer_shopping_sessions" },
   { key: "customers", tableName: "cp2_customers" },
   { key: "suppliers", tableName: "cp2_suppliers" },
   { key: "salesAgents", tableName: "cp2_sales_agents" },
@@ -218,6 +219,8 @@ export const normalizedCollections: NormalizedCollection[] = [
 // persistence round trip - and blocking the response on it via app.ts's runtime GET flush wait -
 // on every capability/status poll is not worth it.
 const mutatingMethodNames = new Set([
+  "createBuyerShoppingTurn",
+  "createUnifiedCheckout",
   "heartbeatRuntimeHost",
   "beginRuntimeTransfer",
   "completeRuntimeTransfer",
@@ -5138,6 +5141,7 @@ function emptySnapshot(): Cp2Snapshot {
     buyOrders: [],
     statusOrders: [],
     unifiedCheckouts: [],
+    buyerShoppingSessions: [],
     customers: [],
     suppliers: [],
     salesAgents: [],

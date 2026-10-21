@@ -1,3 +1,4 @@
+import { computerWorkerFromEnvironment } from "./computer-runtime/client.js";
 import { positiveIntegerFromEnv } from "@grogoni/resource-control";
 import { repositoryDefaultRuntimePolicy } from "@grogoni/shared-types";
 import { createOpenRouterRuntime } from "./inference/openrouter-runtime.js";
@@ -36,12 +37,15 @@ export function createEdgeStoreDependencies(
   | "messageWebBaseUrl"
   | "modelRuntimeAdapterResolver"
   | "platformDefaultRuntime"
+  | "computerWorkerClient"
 > {
+  const computerWorkerClient = computerWorkerFromEnvironment(environment);
   const webPush = readWebPushConfiguration();
   const emailProvider = createEmailProviderFromEnvironment(environment);
   const networkInviteSender = createNetworkInviteSenderFromEnvironment(environment);
   const accountDeletionProcessors = readAccountDeletionProcessors(environment);
   return {
+    ...(computerWorkerClient ? { computerWorkerClient } : {}),
     modelRuntimeAdapterResolver: createOpenRouterRuntime(environment).resolve,
     platformDefaultRuntime: repositoryDefaultRuntimePolicy,
     ...(webPush === null ? {} : { pushNotificationSender: createWebPushSender(webPush) }),

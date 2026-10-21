@@ -134,3 +134,11 @@ export const unavailableComputerWorkerClient: ComputerWorkerClient = {
   suspend: unavailable,
   close: unavailable
 };
+
+export function computerWorkerFromEnvironment(
+  environment: NodeJS.ProcessEnv = process.env
+): ComputerWorkerClient | undefined {
+  const url = environment.COMPUTER_RUNTIME_URL?.trim();
+  const token = environment.COMPUTER_RUNTIME_SERVICE_TOKEN?.trim();
+  return url && token ? new HttpComputerWorkerClient(url, token) : undefined;
+}

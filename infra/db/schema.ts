@@ -624,6 +624,7 @@ export const statusBroadcasts = platformCommerceRecordTable("status_broadcasts")
 export const buyOrders = platformCommerceRecordTable("buy_orders");
 export const statusOrders = platformCommerceRecordTable("status_orders");
 export const unifiedCheckouts = platformCommerceRecordTable("unified_checkouts");
+export const buyerShoppingSessions = platformCommerceRecordTable("buyer_shopping_sessions");
 export const canonicalContacts = platformCommerceRecordTable("cp2_contacts");
 export const supplierContactRelationships = platformCommerceRecordTable(
   "cp2_supplier_contact_relationships"

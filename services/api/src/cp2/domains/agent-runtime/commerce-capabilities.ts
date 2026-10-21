@@ -44,6 +44,7 @@ function checkoutItems(value: unknown): BuyCheckoutItemInput[] {
     const record = item as Record<string, unknown>;
     return [
       {
+        ...(typeof record.websiteUrl === "string" ? { websiteUrl: record.websiteUrl } : {}),
         sourceKind: String(record.sourceKind) as BuyResultSourceKind,
         sourceId: String(record.sourceId ?? ""),
         sourceLabel: String(record.sourceLabel ?? ""),

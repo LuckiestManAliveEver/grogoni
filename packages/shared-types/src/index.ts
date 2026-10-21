@@ -2080,6 +2080,7 @@ export interface UnifiedCheckoutHandoffSummary {
 
 /** An item that could not be ordered at checkout - surfaced to the buyer, never silently dropped. */
 export interface UnifiedCheckoutFailureSummary {
+  checkoutItemIndex?: number;
   sourceLabel: string;
   title: string;
   reason: string;
@@ -2094,6 +2095,13 @@ export interface UnifiedCheckoutSummary {
   buyerAccountId: string;
   handoffs: UnifiedCheckoutHandoffSummary[];
   failures: UnifiedCheckoutFailureSummary[];
+  /** External retailer links awaiting completion; these are not placed orders. */
+  externalRequests?: Array<{
+    websiteUrl: string;
+    sourceLabel: string;
+    title: string;
+    quantity: number;
+  }>;
   createdAt: string;
   /** Durable idempotency key (durable-execution-plane.md "Idempotency"), scoped to `buyerAccountId`
    *  by `CommerceDomain.createUnifiedCheckout`. Null for a checkout created without one (e.g. the
@@ -2104,7 +2112,27 @@ export interface UnifiedCheckoutSummary {
   idempotencyKey?: string | null;
 }
 
+export interface BuyerShoppingTurnResult {
+  shoppingSessionId: string;
+  reply: string;
+  pendingCheckout: boolean;
+  checkoutId?: string;
+}
+
+export interface BuyerShoppingSession {
+  id: string;
+  accountId: string;
+  browserSessionIds: string[];
+  observedUrls: string[];
+  history: RuntimeModelConversationMessage[];
+  pendingCheckout: { id: string; items: BuyCheckoutItemInput[]; quote: string } | null;
+  turns: Array<{ requestId: string; result: BuyerShoppingTurnResult }>;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface BuyCheckoutItemInput {
+  websiteUrl?: string;
   sourceKind: BuyResultSourceKind;
   sourceId: string;
   sourceLabel: string;
@@ -3830,6 +3858,7 @@ export type RuntimeToolName =
   | "network.identity.reject"
   | "network.identity.unlink"
   | "network.identity.add"
+  | "commerce.website.open"
   | "commerce.search"
   | "commerce.checkout"
   | "product.create"

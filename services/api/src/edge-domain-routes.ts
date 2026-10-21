@@ -1,3 +1,4 @@
+import { registerCommerceRoutes } from "./cp2/domains/commerce/routes.js";
 import { registerChatImageRoutes } from "./cp2/chat-image-routes.js";
 import Fastify from "fastify";
 import websocket from "@fastify/websocket";
@@ -143,6 +144,96 @@ export async function createEdgeDomainRoutes(database: EdgeDomainDatabase) {
           "cache-control": "no-store"
         }
       });
+    }
+    // Buyer browsing is read-only outside our own checkout review. Model/browser calls must
+    // not hold a database connection or account lock; only load and CAS-persist in short phases.
+    let shoppingMessage = "";
+    if (path === "/buy/assistant" && payload) {
+      try {
+        shoppingMessage = String(JSON.parse(payload.toString()).message ?? "")
+          .trim()
+          .toLowerCase()
+          .replace(/[.!]+$/u, "");
+      } catch {
+        /* Route validates JSON. */
+      }
+    }
+    if (
+      path === "/buy/assistant" &&
+      !["confirm checkout", "cancel checkout"].includes(shoppingMessage)
+    ) {
+      const loaded = await database.transaction(async (client) => {
+        const scope = await createEdgeSnapshotScope(client, request, path, payload);
+        return { scope, snapshot: await loadTransactionalCp2Snapshot(client, scope) };
+      });
+      const store = createCp2Store({
+        ...storeDependencies,
+        buyerShoppingSearch: async ({ sessionId, query }) => {
+          const searchRequest = new Request(
+            `https://grogoni.com/buy/search?query=${encodeURIComponent(query.slice(0, 120))}`,
+            { headers: request.headers }
+          );
+          const found = await database.transaction(async (client) => {
+            const scope = await createEdgeSnapshotScope(client, searchRequest, "/buy/search");
+            return loadTransactionalCp2Snapshot(client, scope);
+          });
+          const catalogue = createCp2Store(storeDependencies);
+          catalogue.hydrateSnapshot(prepareEdgeHydration(found));
+          return {
+            feed: catalogue.searchBuyFeed({ sessionId, query }),
+            businesses: found.businesses,
+            products: found.products
+          };
+        }
+      });
+      store.hydrateSnapshot(prepareEdgeHydration(loaded.snapshot));
+      const shoppingApp = Fastify({ logger: false, bodyLimit: 64000 });
+      registerCommerceRoutes(shoppingApp, store, undefined);
+      try {
+        const headers = Object.fromEntries(request.headers);
+        delete headers["content-length"];
+        const result = await shoppingApp.inject({
+          method: "POST",
+          url: path,
+          headers,
+          ...(payload ? { payload } : {})
+        });
+        if (result.statusCode >= 400)
+          return new Response(result.body, {
+            status: result.statusCode,
+            headers: { "content-type": "application/json", "cache-control": "no-store" }
+          });
+        const next = prepareEdgePersistence(store.snapshot(), loaded.snapshot);
+        await database.transaction(async (client) => {
+          const current = await createEdgeSnapshotScope(client, request, path, payload);
+          if (!current.accountId || current.accountId !== loaded.scope.accountId) {
+            throw new Cp2Error(401, "session_expired", "Sign in again to continue shopping.");
+          }
+          await saveTransactionalCp2Snapshot(client, next, loaded.snapshot);
+        });
+        return new Response(result.body, {
+          status: result.statusCode,
+          headers: { "content-type": "application/json", "cache-control": "no-store" }
+        });
+      } catch (error) {
+        if (error instanceof Cp2Error)
+          return Response.json(
+            { code: error.code, message: error.message },
+            { status: error.statusCode }
+          );
+        if ((error as { code?: string }).code === "40001") {
+          return Response.json(
+            {
+              code: "buyer_shopping_concurrent_update",
+              message: "This shopping chat changed in another tab. Please send your request again."
+            },
+            { status: 409 }
+          );
+        }
+        throw error;
+      } finally {
+        await shoppingApp.close();
+      }
     }
     return database.transaction(async (client) => {
       const scope = await createEdgeSnapshotScope(client, request, path, payload);

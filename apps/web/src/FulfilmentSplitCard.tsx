@@ -50,19 +50,34 @@ export default function FulfilmentSplitCard(props: { unifiedCheckoutId: string }
     );
   }
 
+  const receiptItems = checkout.handoffs.flatMap((handoff) => handoff.items ?? []);
+  const total = receiptItems.reduce((sum, item) => sum + (item.unitPrice ?? 0) * item.quantity, 0);
+  const hasUnknownPrices =
+    (checkout.externalRequests?.length ?? 0) > 0 ||
+    receiptItems.some((item) => item.unitPrice === null) ||
+    checkout.handoffs.some((handoff) => handoff.items === undefined);
+
   const contactCount = checkout.handoffs.filter((h) => h.kind === "contact").length;
   const catalogueCount = checkout.handoffs.filter((h) => h.kind === "catalogue").length;
 
   return (
     <section className="record-form fulfilment-split-card" aria-label="Unified receipt">
       <div className="section-heading">
-        <p className="eyebrow">{checkout.handoffs.length ? "Order receipt" : "No orders placed"}</p>
+        <p className="eyebrow">{checkout.handoffs.length ? "Order receipt" : "Checkout summary"}</p>
         <h3>
           {contactCount} contact pickup{contactCount === 1 ? "" : "s"} + {catalogueCount} shop order
           {catalogueCount === 1 ? "" : "s"}
         </h3>
       </div>
       <p>Checkout ID: {checkout.id}</p>
+      <p>
+        <strong>
+          {hasUnknownPrices ? "Known total" : "Order total"}: {formatMoney(total)}
+        </strong>
+      </p>
+      {hasUnknownPrices && (
+        <p>The total excludes items whose prices are still awaiting confirmation.</p>
+      )}
       <p>Payment has not been collected by this checkout. Arrange payment with each seller.</p>
       <button type="button" onClick={() => setRevision((value) => value + 1)}>
         Refresh order status
@@ -106,6 +121,23 @@ export default function FulfilmentSplitCard(props: { unifiedCheckoutId: string }
           )}
         </div>
       ))}
+      {(checkout.externalRequests?.length ?? 0) > 0 && (
+        <div aria-label="External retailer checkout links">
+          <h4>External retailers — checkout pending</h4>
+          <p>
+            These items have not been ordered. Prices, delivery and availability must be confirmed
+            on each retailer’s website.
+          </p>
+          {checkout.externalRequests!.map((item, index) => (
+            <p key={index}>
+              {item.title} × {item.quantity} — {item.sourceLabel}{" "}
+              <a href={item.websiteUrl} target="_blank" rel="noopener noreferrer">
+                Continue on retailer website
+              </a>
+            </p>
+          ))}
+        </div>
+      )}
       {checkout.failures.length > 0 ? (
         <div className="fulfilment-failures" aria-label="Items that could not be ordered">
           <p className="shell-note">These items could not be ordered:</p>

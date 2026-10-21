@@ -243,6 +243,16 @@ export function validateRuntimeToolInput(
       return errors.length === 0 ? valid() : invalid(...errors);
     }
 
+    case "commerce.website.open": {
+      try {
+        const url = new URL(String(input.url ?? ""));
+        return url.protocol === "https:" && !url.username && !url.password
+          ? valid()
+          : invalid("Provide an HTTPS retailer URL without credentials.");
+      } catch {
+        return invalid("Provide an HTTPS retailer URL.");
+      }
+    }
     case "commerce.checkout": {
       const items = Array.isArray(input.items) ? input.items : [];
       const errors: string[] = [];

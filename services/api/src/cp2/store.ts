@@ -1,3 +1,9 @@
+import { runBuyerAssistant } from "./domains/commerce/buyer-assistant.js";
+import type {
+  BuyFeedSummary,
+  BuyerShoppingSession,
+  BuyerShoppingTurnResult
+} from "@grogoni/shared-types";
 import { withRuntimeDeadline } from "./runtime-deadline.js";
 import { isLocalRuntimeHost, isModelExecutionTarget } from "@grogoni/shared-types";
 import {
@@ -349,7 +355,10 @@ import {
   ComputerRuntimeDomain,
   type ComputerRuntimeSnapshot
 } from "./domains/computer-runtime/store.js";
-import { type ModelRuntimeAdapter } from "../inference/model-runtime.js";
+import {
+  runtimeProviderFromAdapter,
+  type ModelRuntimeAdapter
+} from "../inference/model-runtime.js";
 import {
   createInferencePlatform,
   type InferencePlatform
@@ -739,6 +748,7 @@ export interface Cp2Snapshot
   buyOrders?: BuyOrderSummary[];
   statusOrders?: StatusOrderSummary[];
   unifiedCheckouts?: UnifiedCheckoutSummary[];
+  buyerShoppingSessions?: BuyerShoppingSession[];
   customers: CustomerSummary[];
   suppliers: SupplierSummary[];
   salesAgents: SalesAgentSummary[];
@@ -819,6 +829,12 @@ export interface Cp2Snapshot
 }
 
 export interface Cp2StoreOptions {
+  /** Edge loads each model-selected catalogue query in a short independent transaction. */
+  buyerShoppingSearch?: (input: { sessionId: string | null; query: string }) => Promise<{
+    feed: BuyFeedSummary;
+    businesses: BusinessSummary[];
+    products: ProductSummary[];
+  }>;
   businessTaskEvaluations?: BusinessTaskEvaluationReader;
   inventoryProcurement?: InventoryProcurementStore;
   runtimeApprovalStore?: RuntimeApprovalStore;
@@ -1936,6 +1952,8 @@ export class Cp2Store {
   // `commerce` (services/api/src/cp2/domains/commerce/store.ts) - accessed via its map getters for
   // the generic snapshot/restore/Postgres-persistence/account-deletion sweeps below.
   private readonly commerce: CommerceDomain;
+  private readonly buyerShoppingSessions = new Map<string, BuyerShoppingSession>();
+  private readonly buyerShoppingTurnsInFlight = new Set<string>();
   private readonly supplierDomain: SupplierDomain;
   private readonly logisticsDomain: LogisticsDomain;
   private readonly commercialRecordsDomain: CommercialRecordsDomain;
@@ -5785,6 +5803,157 @@ export class Cp2Store {
     return this.commerce.createUnifiedCheckout(...args);
   }
 
+  async createBuyerShoppingTurn(input: {
+    sessionId: string | null;
+    shoppingSessionId: string;
+    requestId: string;
+    message: string;
+    signal?: AbortSignal;
+  }): Promise<BuyerShoppingTurnResult> {
+    const actor = this.requirePinVerifiedSession(input.sessionId, new Date());
+    let shopping = this.buyerShoppingSessions.get(input.shoppingSessionId);
+    if (shopping && shopping.accountId !== actor.account.id) {
+      throw new Cp2Error(404, "buyer_shopping_session_not_found", "Shopping chat was not found.");
+    }
+    const modelId = this.platformDefaultRuntime.modelId;
+    const agentId = `buyer-assistant:${actor.account.id}`;
+    const adapter = this.modelRuntimeAdapterResolver?.({
+      modelId,
+      executionTarget: this.platformDefaultRuntime.executionTarget,
+      agentId,
+      shopId: ""
+    });
+    const provider =
+      this.options.runtimeModelProviderResolver?.(modelId) ??
+      this.options.runtimeModelProvider ??
+      (adapter
+        ? runtimeProviderFromAdapter({
+            adapter,
+            context: {
+              agentId,
+              modelId,
+              shopId: "",
+              accountId: actor.account.id,
+              conversationId: input.shoppingSessionId,
+              ...(input.signal ? { signal: input.signal } : {})
+            }
+          })
+        : undefined);
+    if (!provider)
+      throw new Cp2Error(
+        503,
+        "buyer_assistant_unavailable",
+        "The shopping assistant is not configured."
+      );
+    if (!shopping) {
+      const timestamp = new Date().toISOString();
+      shopping = {
+        id: input.shoppingSessionId,
+        accountId: actor.account.id,
+        browserSessionIds: [],
+        observedUrls: [],
+        history: [],
+        pendingCheckout: null,
+        turns: [],
+        createdAt: timestamp,
+        updatedAt: timestamp
+      };
+      this.buyerShoppingSessions.set(shopping.id, shopping);
+    }
+    if (this.buyerShoppingTurnsInFlight.has(shopping.id)) {
+      throw new Cp2Error(
+        409,
+        "buyer_shopping_turn_in_progress",
+        "Wait for the current shopping request to finish."
+      );
+    }
+    this.buyerShoppingTurnsInFlight.add(shopping.id);
+    try {
+      return await runBuyerAssistant(shopping, input, {
+        provider,
+        quote: (items) => this.commerce.quoteBuyerCheckout({ sessionId: input.sessionId, items }),
+        checkout: (items, idempotencyKey) =>
+          this.commerce.createUnifiedCheckout({
+            sessionId: input.sessionId,
+            items,
+            idempotencyKey
+          }).id,
+        execute: async (tool, values, current) => {
+          // Recheck authentication before every operation, including after a slow model call.
+          this.requirePinVerifiedSession(input.sessionId, new Date());
+          if (tool === "commerce.search") {
+            const query = String(values.query ?? "");
+            if (this.options.buyerShoppingSearch) {
+              const found = await this.options.buyerShoppingSearch({
+                sessionId: input.sessionId,
+                query
+              });
+              for (const business of found.businesses)
+                if (!this.businesses.has(business.id)) this.businesses.set(business.id, business);
+              for (const product of found.products)
+                if (!this.salesDomain.productsMap.has(product.id))
+                  this.salesDomain.productsMap.set(product.id, product);
+              return found.feed;
+            }
+            return this.commerce.searchBuyFeed({ sessionId: input.sessionId, query });
+          }
+          let browserSessionId = values.sessionId;
+          if (tool === "commerce.website.open" && !browserSessionId) {
+            const url = new URL(String(values.url));
+            const created = await this.requireComputerRuntime().createSession(input.sessionId, {
+              businessId: null,
+              conversationId: null,
+              taskId: null,
+              profileId: null,
+              agentId,
+              modelId,
+              executionHostId: "browser-computer",
+              runtimeInstanceId: current.id,
+              externalSurface: { id: url.origin, type: "web", provider: url.hostname }
+            });
+            browserSessionId = created.id;
+            current.browserSessionIds.push(created.id);
+          }
+          if (
+            typeof browserSessionId !== "string" ||
+            !current.browserSessionIds.includes(browserSessionId)
+          ) {
+            throw new Cp2Error(
+              404,
+              "buyer_browser_session_not_found",
+              "This browser session does not belong to this shopping chat."
+            );
+          }
+          const kind =
+            tool === "commerce.website.open" || tool === "computer.navigate"
+              ? "navigate"
+              : tool === "computer.scroll"
+                ? "scroll"
+                : "observe";
+          const observation = await this.requireComputerRuntime().perform(input.sessionId, {
+            id: randomUUID(),
+            sessionId: browserSessionId,
+            kind,
+            target: {
+              ...(typeof values.url === "string" ? { url: values.url } : {}),
+              ...(typeof values.text === "string" ? { text: values.text } : {})
+            },
+            risk: "READ",
+            semanticIntent: "Read retailer products without placing orders or processing payments."
+          });
+          const result = observation as { url?: string; observation?: { url?: string } };
+          const observedUrl = result.url ?? result.observation?.url;
+          if (observedUrl && !current.observedUrls.includes(observedUrl))
+            current.observedUrls.push(observedUrl);
+          current.observedUrls = current.observedUrls.slice(-100);
+          return { sessionId: browserSessionId, observation };
+        }
+      });
+    } finally {
+      this.buyerShoppingTurnsInFlight.delete(shopping.id);
+    }
+  }
+
   syncShopSystemCatalogue(input: { accessToken: string; products: unknown[]; now?: Date }): {
     products: ProductSummary[];
   } {
@@ -8335,6 +8504,7 @@ export class Cp2Store {
       buyOrders: [...this.commerce.buyOrdersMap.values()],
       statusOrders: [...this.commerce.statusOrdersMap.values()],
       unifiedCheckouts: [...this.commerce.unifiedCheckoutsMap.values()],
+      buyerShoppingSessions: [...this.buyerShoppingSessions.values()],
       customers: [...this.salesDomain.customersMap.values()],
       suppliers: [...this.supplierDomain.suppliersMap.values()],
       salesAgents: [...this.supplierDomain.salesAgentsMap.values()],
@@ -8437,6 +8607,7 @@ export class Cp2Store {
     this.nativeRuntimeBindings.clear();
     this.runtimeHandoffDomain.clear();
     this.computerRuntimeDomain.clear();
+    this.buyerShoppingSessions.clear();
     this.modelCatalog.clear();
     this.agentCatalog.clear();
     this.platformOperators.clear();
@@ -8570,6 +8741,9 @@ export class Cp2Store {
     for (const order of snapshot.buyOrders ?? []) this.commerce.buyOrdersMap.set(order.id, order);
     for (const order of snapshot.statusOrders ?? []) {
       this.commerce.statusOrdersMap.set(order.id, order);
+    }
+    for (const shopping of snapshot.buyerShoppingSessions ?? []) {
+      this.buyerShoppingSessions.set(shopping.id, shopping);
     }
     for (const checkout of snapshot.unifiedCheckouts ?? []) {
       this.commerce.unifiedCheckoutsMap.set(checkout.id, checkout);
@@ -12423,6 +12597,7 @@ export class Cp2Store {
         scope
       );
       deletedRecordCount += this.computerRuntimeDomain.deleteAccount(request.accountId);
+      deletedRecordCount += deleteScopedMapRecords(this.buyerShoppingSessions, scope);
       deletedRecordCount += deleteScopedMapRecords(this.salesDomain.productFieldSchemasMap, scope);
       deletedRecordCount += deleteScopedMapRecords(this.salesDomain.productsMap, scope);
       deletedRecordCount += deleteScopedMapRecords(this.salesDomain.productMediaMap, scope);
