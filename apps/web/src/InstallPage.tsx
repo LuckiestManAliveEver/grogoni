@@ -87,7 +87,11 @@ export default function InstallPage() {
                 Open Grogoni in browser
               </a>
             ) : (
-              <a className="install-primary-action" href="/marketplace" aria-label="Open the Grogoni marketplace">
+              <a
+                className="install-primary-action"
+                href="/marketplace"
+                aria-label="Open the Grogoni marketplace"
+              >
                 View marketplace
               </a>
             )}
@@ -113,8 +117,9 @@ export default function InstallPage() {
           <section className="install-panel" aria-labelledby="install-apk-header">
             <h2 id="install-apk-header">Signed APK</h2>
             <p>
-              For direct Android distribution, use the release APK signed with the production Android
-              signing key, verified by the app installer and Google Play Protect before launch.
+              For direct Android distribution, use the release APK signed with the production
+              Android signing key, verified by the app installer and Google Play Protect before
+              launch.
             </p>
             <a className="install-link" href="/" aria-label="Open the HTTPS download page">
               Download Android APK
@@ -134,8 +139,9 @@ export default function InstallPage() {
             ))}
           </ol>
           <p>
-            If your browser does not show an install prompt, open the menu, choose <strong>Add to
-            Home screen</strong> or <strong>Install app</strong>, then confirm the installation.
+            If your browser does not show an install prompt, open the menu, choose{" "}
+            <strong>Add to Home screen</strong> or <strong>Install app</strong>, then confirm the
+            installation.
           </p>
           <p>
             Android will ask for permission to install from the current source before the app can be
@@ -147,9 +153,15 @@ export default function InstallPage() {
           <h2 id="install-security-header">Security and trust</h2>
           <ul>
             <li>Use the HTTPS-only production website.</li>
-            <li>Keep the app signing certificate tied to the package name already registered for the release.</li>
+            <li>
+              Keep the app signing certificate tied to the package name already registered for the
+              release.
+            </li>
             <li>Do not bypass Play Protect, Android package verification, or user consent.</li>
-            <li>Complete authentication inside the same secure Grogoni session and do not expose app secrets.</li>
+            <li>
+              Complete authentication inside the same secure Grogoni session and do not expose app
+              secrets.
+            </li>
           </ul>
         </section>
       </section>

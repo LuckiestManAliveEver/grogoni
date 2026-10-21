@@ -142,8 +142,8 @@ export function SmsHandoffDialog({
         {result === null ? (
           <>
             <p>
-              Grogoni will prepare this message in your phone&apos;s selected SMS app. Review it
-              there and press Send yourself.
+              Open your device&apos;s SMS app or connected phone to send this message. Review it
+              there and press Send yourself. If the text is not filled in, copy it from here.
             </p>
             <label>
               Recipient name
@@ -190,8 +190,8 @@ export function SmsHandoffDialog({
             <div className="sms-handoff-warning">
               <strong>Your mobile carrier may charge for this SMS.</strong>
               <span>
-                No internet is needed. Your SIM&apos;s SMS bundle or airtime is used. Sending
-                continues in your phone&apos;s SMS app.
+                Sending an SMS uses cellular service and your SMS bundle or airtime. No agents are
+                involved. A connected-phone service may also need internet.
               </span>
             </div>
             {isLongSmsBody(body) ? (
@@ -234,15 +234,23 @@ export function SmsHandoffDialog({
                   : "SMS app handoff requested"
                 : result.status === "no_sms_app"
                   ? "No compatible SMS application was found"
-                  : "Open Grogoni on a mobile phone to send an SMS"}
+                  : "SMS handoff is unavailable on this device"}
             </strong>
             <p>
               {result.status === "composer_opened"
                 ? "Grogoni cannot tell whether you send, deliver, or read the message. Your draft remains in Grogoni."
                 : result.status === "no_sms_app"
-                  ? "Install or enable a compatible SMS application, then try again."
-                  : "Desktop browsers do not provide a compatible carrier SMS handler."}
+                  ? "Enable an SMS app or connected-phone handler, or use the details below in your phone's messaging app."
+                  : "Use the details below in your phone's messaging app."}
             </p>
+            <label>
+              Telephone number to copy
+              <input readOnly value={normalizedRecipient ?? recipient} />
+            </label>
+            <label>
+              Message to copy
+              <textarea readOnly rows={5} value={body} />
+            </label>
             <button type="button" onClick={onClose}>
               Done
             </button>

@@ -13,6 +13,7 @@ import java.util.concurrent.TimeUnit
 
 object NativeSmsWork {
     fun schedule(context: Context) {
+        if (!GrogoniSessionStore(context).syncEnabled) return
         val constraints = connectedConstraints()
         val request = OneTimeWorkRequestBuilder<NativeSmsSyncWorker>()
             .setConstraints(constraints)
@@ -21,7 +22,8 @@ object NativeSmsWork {
         val workManager = WorkManager.getInstance(context)
         workManager.enqueueUniqueWork(
             "native-sms-sync",
-            ExistingWorkPolicy.KEEP,
+            // Preserve events arriving while a sync is already running. KEEP would drop them.
+            ExistingWorkPolicy.APPEND_OR_REPLACE,
             request,
         )
         workManager.enqueueUniquePeriodicWork(

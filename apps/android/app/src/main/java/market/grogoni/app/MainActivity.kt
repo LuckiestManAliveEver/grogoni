@@ -3,6 +3,10 @@ package market.grogoni.app
 import android.Manifest
 import android.app.role.RoleManager
 import android.content.Intent
+import android.database.ContentObserver
+import android.os.Handler
+import android.os.Looper
+import android.app.AlertDialog
 import android.os.Build
 import android.os.Bundle
 import android.provider.Telephony
@@ -12,6 +16,7 @@ import android.text.InputType
 import android.view.View
 import android.widget.ArrayAdapter
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -27,7 +32,12 @@ import market.grogoni.app.sms.NativeSmsCommand
 import market.grogoni.app.sms.NativeSmsStore
 import market.grogoni.app.sms.NativeSmsWork
 import market.grogoni.app.sms.GrogoniSessionStore
+import market.grogoni.app.sms.LocalSmsInbox
+import market.grogoni.app.sms.LocalSmsMessage
+import java.text.DateFormat
+import java.util.Date
 import java.util.UUID
+import java.util.concurrent.Executors
 
 class MainActivity : ComponentActivity() {
     private lateinit var status: TextView
@@ -41,6 +51,14 @@ class MainActivity : ComponentActivity() {
     private lateinit var recipient: EditText
     private lateinit var body: EditText
     private lateinit var send: Button
+    private lateinit var localMessages: LinearLayout
+    private lateinit var localOnly: CheckBox
+    private val inboxExecutor = Executors.newSingleThreadExecutor()
+    private var inboxGeneration = 0
+    private var observingInbox = false
+    private val inboxObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
+        override fun onChange(selfChange: Boolean) { refreshLocalInbox() }
+    }
     private var businesses: List<Pair<String, String>> = emptyList()
 
     private val roleRequest = registerForActivityResult(
@@ -66,6 +84,26 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         renderCapability()
+        refreshLocalInbox()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        runCatching {
+            contentResolver.registerContentObserver(Telephony.Sms.CONTENT_URI, true, inboxObserver)
+            observingInbox = true
+        }
+    }
+
+    override fun onStop() {
+        if (observingInbox) contentResolver.unregisterContentObserver(inboxObserver)
+        observingInbox = false
+        super.onStop()
+    }
+
+    override fun onDestroy() {
+        inboxExecutor.shutdownNow()
+        super.onDestroy()
     }
 
     private fun buildScreen(): View {
@@ -78,13 +116,23 @@ class MainActivity : ComponentActivity() {
             textSize = 28f
         })
         content.addView(TextView(this).apply {
-            text = "Use this Android phone and its selected SIM to synchronize new business SMS with Grogoni. Your carrier may charge for every segment."
+            text = "Read and send SMS using this phone's SIM, even without internet or a Grogoni account. Your carrier may charge for every segment."
             textSize = 16f
         })
         status = TextView(this).also {
             it.setPadding(0, 28, 0, 20)
             content.addView(it)
         }
+        localOnly = CheckBox(this).apply {
+            text = "SMS only — pause Grogoni sync and agent processing"
+            isChecked = !GrogoniSessionStore(this@MainActivity).syncEnabled
+            setOnCheckedChangeListener { _, checked ->
+                GrogoniSessionStore(this@MainActivity).syncEnabled = !checked
+                if (checked) NativeSmsWork.cancel(this@MainActivity)
+                else NativeSmsWork.schedule(this@MainActivity)
+                renderCapability()
+            }
+        }.also(content::addView)
         phone = field("Grogoni phone number (+country code)").also(content::addView)
         pin = field("Grogoni PIN").also {
             it.inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
@@ -121,6 +169,14 @@ class MainActivity : ComponentActivity() {
         send = Button(this).apply {
             text = "Send via SIM"
             setOnClickListener { sendUserConfirmedSms() }
+        }.also(content::addView)
+        content.addView(TextView(this).apply {
+            text = "Recent SMS on this phone (up to 100)"
+            textSize = 20f
+            setPadding(0, 28, 0, 8)
+        })
+        localMessages = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
         }.also(content::addView)
         return ScrollView(this).apply { addView(content) }
     }
@@ -212,18 +268,19 @@ class MainActivity : ComponentActivity() {
             renderCapability()
             return
         }
-        permissionRequest.launch(
-            arrayOf(
-                Manifest.permission.SEND_SMS,
-                Manifest.permission.RECEIVE_SMS,
-                Manifest.permission.READ_SMS,
-                Manifest.permission.WRITE_SMS,
-            ),
+
+        val smsPermissions = arrayOf(
+            Manifest.permission.SEND_SMS,
+            Manifest.permission.RECEIVE_SMS,
+            Manifest.permission.READ_SMS,
+            Manifest.permission.WRITE_SMS,
         )
+        permissionRequest.launch(smsPermissions)
     }
 
     private fun refreshAndRegister() {
         renderCapability()
+        refreshLocalInbox()
         if (GrogoniSessionStore(this).cookieHeader != null) {
             Thread {
                 runCatching { NativeSmsApiClient(this).businesses() }.onSuccess { loaded ->
@@ -245,12 +302,66 @@ class MainActivity : ComponentActivity() {
             !state.sendPermissionGranted || !state.receivePermissionGranted ->
                 "Setup required: grant SMS permissions after granting the SMS role."
             !state.simReady -> "Setup required: select an Android default SMS SIM."
+            !GrogoniSessionStore(this).syncEnabled -> "SMS only. Read and reply through your SIM without internet or agents."
             GrogoniSessionStore(this).cookieHeader == null -> "SMS ready locally. Sign in to synchronize with Grogoni."
             GrogoniSessionStore(this).businessId == null -> "SMS ready. Select a Grogoni business for inbound messages."
             else -> "Native SMS ready · SIM active · synchronization enabled"
         }
         enableSms.text = if (state.ready) "Review SMS setup" else "Continue SMS setup"
         send.isEnabled = state.ready
+    }
+
+    private fun refreshLocalInbox() {
+        if (!::localMessages.isInitialized || isDestroyed || inboxExecutor.isShutdown) return
+        val generation = ++inboxGeneration
+        inboxExecutor.execute {
+            val result = runCatching { LocalSmsInbox(this).recent() }
+            runOnUiThread {
+                if (isDestroyed || generation != inboxGeneration) return@runOnUiThread
+                localMessages.removeAllViews()
+                result.onSuccess { messages ->
+                    if (messages.isEmpty()) localMessages.addView(TextView(this).apply {
+                        text = "No SMS messages on this phone yet."
+                    })
+                    messages.forEach { message ->
+                        localMessages.addView(Button(this).apply {
+                            isAllCaps = false
+                            gravity = android.view.Gravity.START
+                            text = "${message.address} · ${localSmsStatus(message)}\n" +
+                                "${DateFormat.getDateTimeInstance().format(Date(message.date))}\n${message.body}"
+                            maxLines = 5
+                            setOnClickListener { openLocalMessage(message) }
+                        })
+                    }
+                }.onFailure { error ->
+                    localMessages.addView(TextView(this).apply {
+                        text = error.message ?: "Unable to read local SMS."
+                    })
+                }
+            }
+        }
+    }
+
+    private fun localSmsStatus(message: LocalSmsMessage): String = when (message.type) {
+        Telephony.Sms.MESSAGE_TYPE_INBOX -> if (message.read) "Received" else "Unread"
+        Telephony.Sms.MESSAGE_TYPE_SENT -> "Sent"
+        Telephony.Sms.MESSAGE_TYPE_FAILED -> "Failed"
+        Telephony.Sms.MESSAGE_TYPE_DRAFT -> "Draft"
+        else -> "Pending"
+    }
+
+    private fun openLocalMessage(message: LocalSmsMessage) {
+        inboxExecutor.execute { runCatching { LocalSmsInbox(this).markRead(message) } }
+        AlertDialog.Builder(this)
+            .setTitle(message.address)
+            .setMessage(message.body)
+            .setPositiveButton("Reply") { _, _ ->
+                recipient.setText(message.address)
+                body.requestFocus()
+                ((localMessages.parent as? View)?.parent as? ScrollView)?.smoothScrollTo(0, 0)
+            }
+            .setNegativeButton("Close", null)
+            .show()
     }
 
     private fun sendUserConfirmedSms() {
@@ -267,21 +378,22 @@ class MainActivity : ComponentActivity() {
             return
         }
         val commandId = "local:${UUID.randomUUID()}"
-        val store = NativeSmsStore(this)
         runCatching {
-            check(store.claimCommand(commandId))
-            store.markCommandExecutionStarted(commandId)
-            AndroidSmsSender(this).send(
-                NativeSmsCommand(
-                    commandId,
-                    normalized,
-                    text,
-                    SubscriptionManager.getDefaultSmsSubscriptionId().takeIf {
-                        it != SubscriptionManager.INVALID_SUBSCRIPTION_ID
-                    },
-                    reportToGrogoni = false,
-                ),
-            )
+            NativeSmsStore(this).use { store ->
+                check(store.claimCommand(commandId))
+                store.markCommandExecutionStarted(commandId)
+                AndroidSmsSender(this).send(
+                    NativeSmsCommand(
+                        commandId,
+                        normalized,
+                        text,
+                        SubscriptionManager.getDefaultSmsSubscriptionId().takeIf {
+                            it != SubscriptionManager.INVALID_SUBSCRIPTION_ID
+                        },
+                        reportToGrogoni = false,
+                    ),
+                )
+            }
         }.onSuccess {
             status.text = "SMS submitted to Android telephony. Delivery reporting depends on the carrier."
             body.text.clear()

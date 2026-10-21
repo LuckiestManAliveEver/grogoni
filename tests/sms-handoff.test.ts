@@ -84,18 +84,42 @@ describe("external SMS composer handoff", () => {
     });
   });
 
-  it("explains unsupported desktop use without navigating", async () => {
+  it.each([
+    "Mozilla/5.0 (X11; Linux x86_64)",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    "KaiOS/3.0",
+    ""
+  ])("allows the operating system to resolve an SMS handler for %s", async (userAgent) => {
     const navigate = vi.fn();
     const result = await openSmsComposer("+254712345678", "Hello", {
       navigate,
-      userAgent: "Mozilla/5.0 (X11; Linux x86_64)"
+      userAgent
     });
 
-    expect(navigate).not.toHaveBeenCalled();
+    expect(navigate).toHaveBeenCalledWith("sms:+254712345678?body=Hello");
     expect(result).toMatchObject({
-      status: "unsupported",
-      errorCode: "mobile_sms_handler_required"
+      status: "composer_opened",
+      errorCode: null
     });
+  });
+
+  it.each(["iPhone", "iPad", "Macintosh"])(
+    "uses recipient-only Apple SMS links on %s",
+    async (userAgent) => {
+      const navigate = vi.fn();
+      await openSmsComposer("+254712345678", "Copy this text", { navigate, userAgent });
+      expect(navigate).toHaveBeenCalledWith("sms:+254712345678");
+    }
+  );
+
+  it("preserves a controlled failure when URI dispatch throws", async () => {
+    const result = await openSmsComposer("+254712345678", "Hello", {
+      navigate: () => {
+        throw new Error("No handler");
+      },
+      userAgent: "Unknown device"
+    });
+    expect(result.status).toBe("no_sms_app");
   });
 
   it("keeps Grogoni as default and selects SMS only after an explicit request", () => {

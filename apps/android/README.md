@@ -1,5 +1,25 @@
 # Grogoni Android native SMS node
 
+## SMS without internet or agents
+
+The native Android screen reads recent messages directly from Android's SMS provider and sends
+manual replies through the selected SIM. It does not require a Grogoni login, business selection,
+internet connection, or agent. Make Grogoni the default SMS app and grant SMS permissions first.
+Camera, contacts, location, and other unrelated permission grants do not gate SMS sending.
+
+The recent-message list shows up to 100 incoming and outgoing SMS with local send states. Open a
+message to read it and choose Reply to fill the recipient. New SMS produces a generic notification
+when Android notification permission is granted. Message text is not included in notifications.
+
+Enable **SMS only — pause Grogoni sync and agent processing** for a local-only mode that persists
+across app restarts. New SMS received in this mode stays in Android's provider and is not queued for
+backend processing, even after sync is re-enabled. Existing queued sync work is retained and paused;
+re-enabling sync resumes it. Requests already accepted by the backend cannot be recalled by this
+switch. Manual sends do not enter the backend agent path in either mode.
+
+SMS still requires cellular service and sufficient carrier credit. MMS and a full paginated
+conversation browser are outside this basic SMS implementation.
+
 This is the minimal Android execution node for the `native_sms` Channel Gateway provider. It is
 not a WebView bridge and the PWA never receives Android telephony privileges.
 

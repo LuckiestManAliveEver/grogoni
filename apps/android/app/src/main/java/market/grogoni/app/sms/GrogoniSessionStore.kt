@@ -19,6 +19,10 @@ class GrogoniSessionStore(context: Context) {
         get() = preferences.getString("business_id", null)
         set(value) = preferences.edit().putString("business_id", value).apply()
 
+    var syncEnabled: Boolean
+        get() = preferences.getBoolean("sync_enabled", true)
+        set(value) = preferences.edit().putBoolean("sync_enabled", value).apply()
+
     var networkCountryIso: String?
         get() = preferences.getString("network_country", null)
         set(value) = preferences.edit().putString("network_country", value).apply()

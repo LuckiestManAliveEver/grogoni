@@ -1,0 +1,42 @@
+name: GrogoniSMS
+options:
+  bundleIdPrefix: market.grogoni
+  deploymentTarget:
+    iOS: "26.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    TARGETED_DEVICE_FAMILY: "1"
+    SUPPORTS_MACCATALYST: NO
+    SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+targets:
+  GrogoniSMS:
+    type: application
+    platform: iOS
+    sources: [Sources]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: market.grogoni.sms
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Grogoni SMS
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        CODE_SIGN_ENTITLEMENTS: GrogoniSMS.entitlements
+    dependencies:
+      - sdk: TelephonyMessagingKit.framework
+  GrogoniSMSTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [Tests]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - target: GrogoniSMS
+schemes:
+  GrogoniSMS:
+    build:
+      targets:
+        GrogoniSMS: all
+    test:
+      targets: [GrogoniSMSTests]

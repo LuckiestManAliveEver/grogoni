@@ -22,6 +22,7 @@ data class PendingSmsResult(
     val status: String,
     val resultCode: String,
     val carrierReference: String?,
+    val revision: String = java.util.UUID.randomUUID().toString(),
 )
 
 data class SmsCapabilityState(
@@ -68,8 +69,12 @@ object NativeSmsResultMapper {
 
 enum class CommandReplayDecision { EXECUTE, REPORT_DELIVERY_UNKNOWN, SKIP }
 
-fun commandReplayDecision(claimed: Boolean, priorState: String?): CommandReplayDecision = when {
-    claimed -> CommandReplayDecision.EXECUTE
-    priorState == "execution_started" -> CommandReplayDecision.REPORT_DELIVERY_UNKNOWN
+fun commandReplayDecision(
+    claimed: Boolean,
+    priorState: String?,
+    executionTimedOut: Boolean = true,
+): CommandReplayDecision = when {
+    claimed || priorState == "claimed" -> CommandReplayDecision.EXECUTE
+    priorState == "execution_started" && executionTimedOut -> CommandReplayDecision.REPORT_DELIVERY_UNKNOWN
     else -> CommandReplayDecision.SKIP
 }
