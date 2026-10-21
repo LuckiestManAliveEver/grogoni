@@ -132,6 +132,15 @@ describe("unified buy feed and checkout", () => {
     expect(catalogueHandoff.status).toBe("requested");
     expect(contactHandoff.sourceLabel).toBe("Farm Fresh Guy");
     expect(contactHandoff.status).toBe("requested");
+    expect(catalogueHandoff.items).toEqual([{ title: "Mangoes", quantity: 2, unitPrice: 200 }]);
+    expect(contactHandoff.items).toEqual([{ title: "Bananas", quantity: 3, unitPrice: 100 }]);
+
+    const forbidden = await app.inject({
+      method: "GET",
+      url: `/buy/checkouts/${checkout.id}`,
+      headers: { cookie: seller.cookie }
+    });
+    expect(forbidden.statusCode).toBe(404);
 
     const readBack = await getJson<UnifiedCheckoutSummary>(
       app,

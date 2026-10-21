@@ -81,7 +81,7 @@ export function useBuyCartState(deps: UseBuyCartStateDeps) {
             id: `unified-checkout-${checkout.id}`,
             author: "merchant",
             body: "Checked out",
-            unifiedCheckoutId: checkout.id,
+            content: { type: "unified-checkout", unifiedCheckoutId: checkout.id },
             createdAt: new Date().toISOString()
           }
         ]);
