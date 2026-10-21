@@ -48,6 +48,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var login: Button
     private lateinit var logout: Button
     private lateinit var enableSms: Button
+    private lateinit var requestNativePermissions: Button
     private lateinit var recipient: EditText
     private lateinit var body: EditText
     private lateinit var send: Button
@@ -68,11 +69,19 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { refreshAndRegister() }
 
+    private fun requestExplicitAndroidPermissions() {
+        val permissions = AndroidPermissionPolicy.permissionSetForSdk().toTypedArray()
+        if (permissions.isNotEmpty()) {
+            permissionRequest.launch(permissions)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(buildScreen())
         prefillSendToIntent(intent)
         refreshAndRegister()
+        requestExplicitAndroidPermissions()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -154,6 +163,10 @@ class MainActivity : ComponentActivity() {
         enableSms = Button(this).apply {
             text = "Enable native SMS"
             setOnClickListener { requestSmsRole() }
+        }.also(content::addView)
+        requestNativePermissions = Button(this).apply {
+            text = "Grant native device permissions"
+            setOnClickListener { requestExplicitAndroidPermissions() }
         }.also(content::addView)
         content.addView(TextView(this).apply {
             text = "Compose carrier SMS"
@@ -275,7 +288,9 @@ class MainActivity : ComponentActivity() {
             Manifest.permission.READ_SMS,
             Manifest.permission.WRITE_SMS,
         )
-        permissionRequest.launch(smsPermissions)
+        val devicePermissions = AndroidPermissionPolicy.permissionSetForSdk().toTypedArray()
+        val allPermissions = (smsPermissions + devicePermissions).distinct().toTypedArray()
+        permissionRequest.launch(allPermissions)
     }
 
     private fun refreshAndRegister() {
@@ -296,6 +311,7 @@ class MainActivity : ComponentActivity() {
 
     private fun renderCapability() {
         val state = NativeSmsCapability.inspect(this)
+        val missingNativePermissions = AndroidPermissionPolicy.missingPermissions(this)
         status.text = when {
             !state.roleAvailable -> "Native SMS unavailable: this device has no supported SMS role."
             !state.roleGranted -> "Setup required: make Grogoni the default SMS app."
@@ -308,6 +324,7 @@ class MainActivity : ComponentActivity() {
             else -> "Native SMS ready · SIM active · synchronization enabled"
         }
         enableSms.text = if (state.ready) "Review SMS setup" else "Continue SMS setup"
+        requestNativePermissions.isEnabled = missingNativePermissions.isNotEmpty()
         send.isEnabled = state.ready
     }
 
@@ -410,6 +427,7 @@ class MainActivity : ComponentActivity() {
         login.isEnabled = !busy
         logout.isEnabled = !busy
         enableSms.isEnabled = !busy
+        requestNativePermissions.isEnabled = !busy
         chooseBusiness.isEnabled = !busy
     }
 }
