@@ -278,12 +278,15 @@ button:disabled {
 }
 
 .header-auth-button {
+  align-items: center;
   background: #117a4f;
   border: 1px solid #117a4f;
   border-radius: 999px;
   color: #ebebeb;
+  display: inline-flex;
   font-size: 12px;
   font-weight: 800;
+  gap: 6px;
   min-height: 38px;
   padding: 7px 13px;
   white-space: nowrap;
@@ -292,6 +295,68 @@ button:disabled {
 .header-auth-button.secondary {
   background: #242424;
   color: #85eec3;
+}
+
+.header-auth-icon {
+  display: inline-block;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.header-auth-icon-login {
+  height: 12px;
+  width: 12px;
+}
+
+.header-auth-icon-login::before {
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  content: "";
+  height: 5px;
+  left: 3px;
+  position: absolute;
+  top: 0;
+  width: 5px;
+}
+
+.header-auth-icon-login::after {
+  border: 1.5px solid currentColor;
+  border-bottom: 0;
+  border-radius: 6px 6px 0 0;
+  bottom: 0;
+  content: "";
+  height: 6px;
+  left: 0;
+  position: absolute;
+  width: 12px;
+}
+
+.header-auth-icon-signup {
+  height: 12px;
+  width: 14px;
+}
+
+.header-auth-icon-signup::before {
+  background:
+    linear-gradient(currentColor, currentColor) 9px 0 / 1.5px 5px no-repeat,
+    linear-gradient(currentColor, currentColor) 7px 2px / 6px 1.5px no-repeat;
+  content: "";
+  height: 12px;
+  left: 0;
+  position: absolute;
+  top: 0;
+  width: 14px;
+}
+
+.header-auth-icon-signup::after {
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  content: "";
+  height: 5px;
+  left: 2px;
+  position: absolute;
+  top: 1px;
+  width: 5px;
 }
 
 .auth-top-bar {
