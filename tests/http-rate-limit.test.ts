@@ -22,4 +22,22 @@ describe("HTTP request throttling", () => {
       await app.close();
     }
   });
+
+  it("rejects concurrent overloads before they hit the expensive route layer", async () => {
+    const app = buildApi({ webRoot: false, maxConcurrentRequests: 1 });
+    app.get("/slow", async () => {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      return { ok: true };
+    });
+    app.log.level = "silent";
+    try {
+      const first = app.inject({ method: "GET", url: "/slow" });
+      const second = app.inject({ method: "GET", url: "/slow" });
+      const [firstResponse, secondResponse] = await Promise.all([first, second]);
+      const statuses = [firstResponse.statusCode, secondResponse.statusCode].sort((a, b) => a - b);
+      expect(statuses).toEqual([200, 503]);
+    } finally {
+      await app.close();
+    }
+  });
 });
