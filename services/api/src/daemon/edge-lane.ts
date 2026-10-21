@@ -665,7 +665,7 @@ function userResultFromAgent(task: DaemonTask, result: unknown): UserTaskResult 
   }
   return {
     text,
-    modelId: task.payload.kind === "agent" ? task.payload.modelId : "",
+    modelId: task.payload.kind === "agent" ? ("modelId" in task.payload ? task.payload.modelId : "") : "",
     executedBy: "server"
   };
 }

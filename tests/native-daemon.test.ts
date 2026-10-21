@@ -35,6 +35,34 @@ describe("native daemon executor", () => {
     expect(body.model).toBe("openai/gpt-6-luna");
     expect(body.tools).toBeUndefined();
   });
+  it("uses the platform default runtime fallback when a task omits an explicit adapter", async () => {
+    const request = vi.fn<typeof fetch>(async () =>
+      Response.json({
+        model: "openai/gpt-6-luna",
+        choices: [{ message: { content: '{"type":"response","message":"hello"}' } }],
+        usage: { prompt_tokens: 12, completion_tokens: 8 }
+      })
+    );
+    vi.stubGlobal("fetch", request);
+    const execute = createDaemonExecutor({ OPENROUTER_API_KEY: "private-test" });
+    const result = await execute(
+      {
+        ...task,
+        payload: {
+          kind: "agent",
+          message: "hello",
+          modelId: "gpt-6-luna"
+        } as unknown as typeof task.payload
+      },
+      new AbortController().signal
+    );
+    expect(result).toMatchObject({
+      completion: {
+        status: "available",
+        metadata: { agentAdapterId: "grogoni" }
+      }
+    });
+  });
   it("blocks unmapped models and preserves retryable provider errors", async () => {
     const execute = createDaemonExecutor({ OPENROUTER_API_KEY: "private-test" });
     await expect(
