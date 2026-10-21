@@ -1,6 +1,9 @@
 # Full Grogoni default SMS client
 
-Status: future design only; not implemented or enabled.
+Status: basic local SMS reading, manual sending/replying, notifications, and optional business
+synchronization are implemented in `apps/android`. See `apps/android/README.md` for the current
+contract. The full client requirements below, including MMS and full conversation management,
+remain future work.
 
 ## Product and policy gate
 

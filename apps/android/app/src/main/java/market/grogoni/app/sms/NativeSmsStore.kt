@@ -5,7 +5,7 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 
-class NativeSmsStore(context: Context) : SQLiteOpenHelper(context, "grogoni-native-sms.db", null, 3) {
+class NativeSmsStore(context: Context) : SQLiteOpenHelper(context, "grogoni-native-sms.db", null, 4) {
     private val secretBox = AndroidSecretBox()
 
     override fun onConfigure(db: SQLiteDatabase) {
@@ -44,7 +44,8 @@ class NativeSmsStore(context: Context) : SQLiteOpenHelper(context, "grogoni-nati
               command_id text primary key,
               status text not null,
               result_code text not null,
-              carrier_reference text
+              carrier_reference text,
+              revision text not null
             )
             """.trimIndent(),
         )
@@ -65,6 +66,7 @@ class NativeSmsStore(context: Context) : SQLiteOpenHelper(context, "grogoni-nati
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 2) encryptLegacySmsFields(db)
         if (oldVersion < 3) db.execSQL("alter table executed_commands add column local_message_uri text")
+        if (oldVersion < 4) db.execSQL("alter table pending_results add column revision text not null default 'legacy'")
     }
 
     fun enqueueInbound(event: LocalInboundSms): Boolean {
@@ -119,8 +121,8 @@ class NativeSmsStore(context: Context) : SQLiteOpenHelper(context, "grogoni-nati
     }
 
     /**
-     * Claims a command before SmsManager is invoked. A process death after this transaction is an
-     * uncertain carrier state, so replay reports DELIVERY_UNKNOWN instead of charging twice.
+     * A claim is safe to resume until execution_started is persisted. Only that later state
+     * can represent an uncertain carrier send. Sync workers serialize execution in this process.
      */
     fun claimCommand(commandId: String): Boolean {
         val values = ContentValues().apply {
@@ -155,6 +157,14 @@ class NativeSmsStore(context: Context) : SQLiteOpenHelper(context, "grogoni-nati
             arrayOf(commandId),
         )
     }
+
+    fun executionTimedOut(commandId: String, now: Long = System.currentTimeMillis()): Boolean =
+        readableDatabase.query(
+            "executed_commands", arrayOf("updated_at"), "command_id = ?", arrayOf(commandId),
+            null, null, null, "1",
+        ).use { cursor ->
+            cursor.moveToFirst() && now - cursor.getLong(0) >= 120_000L
+        }
 
     fun saveProviderMessageUri(commandId: String, uri: String) {
         writableDatabase.update(
@@ -223,6 +233,7 @@ class NativeSmsStore(context: Context) : SQLiteOpenHelper(context, "grogoni-nati
                 put("command_id", result.commandId)
                 put("status", result.status)
                 put("result_code", result.resultCode)
+                put("revision", result.revision)
                 put(
                     "carrier_reference",
                     result.carrierReference?.let(secretBox::encrypt),
@@ -244,14 +255,19 @@ class NativeSmsStore(context: Context) : SQLiteOpenHelper(context, "grogoni-nati
                     cursor.getString(cursor.getColumnIndexOrThrow("result_code")),
                     cursor.getString(cursor.getColumnIndexOrThrow("carrier_reference"))
                         ?.let(secretBox::decrypt),
+                    cursor.getString(cursor.getColumnIndexOrThrow("revision")),
                 )
             }
         }
         return results
     }
 
-    fun deletePendingResult(commandId: String) {
-        writableDatabase.delete("pending_results", "command_id = ?", arrayOf(commandId))
+    fun deletePendingResult(result: PendingSmsResult) {
+        // A carrier callback may replace 'sent' with 'delivered' during the HTTP request.
+        writableDatabase.delete(
+            "pending_results", "command_id = ? and revision = ?",
+            arrayOf(result.commandId, result.revision),
+        )
     }
 
     private fun encryptLegacySmsFields(db: SQLiteDatabase) {

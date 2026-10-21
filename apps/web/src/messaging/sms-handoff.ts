@@ -15,7 +15,7 @@ export interface OpenSmsComposerResult {
   nativeBridgeUsed: boolean;
 }
 
-export interface AndroidSmsComposerBridge {
+export interface SmsComposerBridge {
   openSmsComposer(
     recipient: string,
     body: string
@@ -25,8 +25,10 @@ export interface AndroidSmsComposerBridge {
   }>;
 }
 
+export type AndroidSmsComposerBridge = SmsComposerBridge;
+
 export interface SmsComposerEnvironment {
-  nativeBridge?: AndroidSmsComposerBridge;
+  nativeBridge?: SmsComposerBridge;
   navigate: (uri: string) => void;
   userAgent: string;
 }
@@ -96,25 +98,23 @@ export function buildSmsHandoffRequest(
   };
 }
 
-export function buildExternalSmsUri(recipient: string, body: string): string {
+export function buildExternalSmsUri(recipient: string, body: string, userAgent = ""): string {
   if (!/^\+[1-9]\d{6,14}$/.test(recipient)) {
     throw new SmsRecipientError("Normalize the telephone number before opening the SMS app.");
   }
+  // Apple's documented sms: scheme accepts a recipient only. Keep the text available to copy.
+  if (/iPhone|iPad|iPod|Macintosh|Mac OS X/i.test(userAgent)) return `sms:${recipient}`;
   return `sms:${recipient}?body=${encodeURIComponent(body)}`;
 }
 
-export function supportsBrowserSmsHandoff(userAgent: string): boolean {
-  return /Android|iPhone|iPad|iPod|Mobile/i.test(userAgent);
-}
-
 export function browserSmsComposerEnvironment(): SmsComposerEnvironment {
-  const bridge = (
-    window as Window & {
-      GrogoniAndroid?: AndroidSmsComposerBridge;
-    }
-  ).GrogoniAndroid;
+  const bridge = window as Window & {
+    GrogoniAndroid?: AndroidSmsComposerBridge;
+    GrogoniDevice?: SmsComposerBridge;
+  };
+  const nativeBridge = bridge.GrogoniDevice ?? bridge.GrogoniAndroid;
   return {
-    ...(bridge === undefined ? {} : { nativeBridge: bridge }),
+    ...(nativeBridge === undefined ? {} : { nativeBridge }),
     navigate: (uri) => window.location.assign(uri),
     userAgent: navigator.userAgent
   };
@@ -152,17 +152,9 @@ export async function openSmsComposer(
     }
   }
 
-  if (!supportsBrowserSmsHandoff(environment.userAgent)) {
-    return {
-      channel: "sms_external_app",
-      status: "unsupported",
-      errorCode: "mobile_sms_handler_required",
-      nativeBridgeUsed: false
-    };
-  }
-
   try {
-    environment.navigate(buildExternalSmsUri(recipient, body));
+    // Browser names cannot establish whether an SMS handler (including a linked phone) exists.
+    environment.navigate(buildExternalSmsUri(recipient, body, environment.userAgent));
     return {
       channel: "sms_external_app",
       status: "composer_opened",

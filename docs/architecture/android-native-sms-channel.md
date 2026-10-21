@@ -81,9 +81,20 @@ selection. Historical inbox import and OS Contacts creation are intentionally ab
 
 Inbound events remain encrypted and unsynced locally until WorkManager has connectivity. Outbound
 commands remain durable on the backend and are fetched after reconnect. WorkManager uses a unique
-immediate job, bounded retries, and one connected 15-minute periodic recovery job; there is no
-permanent foreground poll loop. A process death after the local command is marked
-`execution_started` yields `SMS_DELIVERY_UNKNOWN`, never an automatic second carrier send.
+immediate work chain, retries with bounded exponential backoff, and one connected 15-minute
+periodic recovery job; there is no permanent foreground poll loop. A local command left in
+`execution_started` waits two minutes for carrier callbacks, then yields `SMS_DELIVERY_UNKNOWN`
+on recovery, never an automatic second carrier send.
+
+Immediate sync requests append behind running work so inbound events and carrier callbacks cannot
+lose their wakeup. Periodic and immediate workers serialize command execution. A command interrupted
+before `execution_started` can resume after its acknowledgement reconnects; it has not reached the
+modem. Inbound and result backlogs continue across batches without waiting for the periodic job.
+Result uploads delete only the revision acknowledged by the backend, preserving callbacks that
+arrive during an upload. The pending-results database migrates to version 4 without clearing queues.
+
+The phone still needs internet to reach the backend. These recovery paths preserve queued work
+during an outage; they do not run backend order processing or AI inference over cellular SMS alone.
 
 Delivery receipts are best-effort because carrier support varies. No server SMS gateway, PWA
 telephony API, bulk inbox import, MMS transport, arbitrary SIM-slot fallback, or iOS equivalent is

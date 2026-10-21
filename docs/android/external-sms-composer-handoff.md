@@ -1,5 +1,8 @@
 # External SMS composer handoff
 
+For the current cross-device contract, see `docs/messaging/cross-device-sms.md`. The repository
+diagnosis below describes the original implementation before the Android native node was added.
+
 ## Repository diagnosis
 
 Grogoni is currently a React 19/Vite progressive web application in `apps/web`. It is not a native
@@ -61,7 +64,8 @@ Empty/invalid input and values containing letters or the `grogoni:` prefix are r
 ## Android and PWA behavior
 
 The PWA fallback builds a user-initiated, safely encoded
-`sms:+254…?body=<encoded text>` navigation. Android delegates that URI to a compatible handler and
+`sms:+254…?body=<encoded text>` navigation. Apple browser links use the recipient-only
+`sms:+254…` format and retain the text for copying. The operating system delegates the URI to a compatible handler and
 the selected SMS app or Android system owns dual-SIM choice. No SMS app package is hard-coded.
 
 A typed `window.GrogoniAndroid.openSmsComposer(recipient, body)` contract is preferred when a future
@@ -70,7 +74,7 @@ Android wrapper supplies it. That wrapper must implement Mode A with `Intent.ACT
 export an intent receiver or accept arbitrary inbound intent data.
 
 Browser navigation does not expose whether an SMS handler actually opened or whether the user sent
-the message. Desktop use is rejected with an explanation. Mobile browser URI handling varies by
+the message. The browser attempts dispatch on every device; it does not infer SMS capability from the user agent. Mobile browser URI handling varies by
 browser and installed SMS apps. A production Android wrapper therefore still needs a separate
 native implementation and device tests.
 

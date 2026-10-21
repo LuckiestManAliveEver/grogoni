@@ -71,6 +71,8 @@ class NativeSmsContractTest {
             commandReplayDecision(false, "execution_started"),
         )
         assertEquals(CommandReplayDecision.SKIP, commandReplayDecision(false, "sent"))
-        assertEquals(CommandReplayDecision.SKIP, commandReplayDecision(false, "claimed"))
+        assertEquals(CommandReplayDecision.SKIP, commandReplayDecision(false, "execution_started", false))
+        // A disconnected acknowledgement has not invoked the modem and is safe to resume.
+        assertEquals(CommandReplayDecision.EXECUTE, commandReplayDecision(false, "claimed"))
     }
 }
