@@ -122,6 +122,11 @@ export async function createEdgeSnapshotScope(
          cross join lateral jsonb_array_elements(coalesce(p.record->'authorizationCodes', '[]'::jsonb)) code_grant
          join sessions s on s.id = (code_grant->1->>'sessionId')::uuid
          where p.entity_id = 'mcp' and code_grant->>0 = $4
+       union all select t.account_id::uuid, u.id from cp2_auth_transactions t join users u on u.account_id = t.account_id::uuid
+         where t.entity_id = $5::text and t.record->>'purpose' in ('login_mfa', 'recovery')
+           and t.record->>'consumedAt' is null and (t.record->>'expiresAt')::timestamptz > now() and (t.record->>'attempts')::int < 5
+       union all select i.account_id, u.id from account_identities i join users u on u.account_id = i.account_id
+         where i.type = 'email' and i.normalized_value = $6 and i.verified_at is not null
      ) select a.id as account_id, u.id as user_id, a.primary_auth_destination
        from candidates c join accounts a on a.id = c.account_id
        join users u on u.id = c.user_id and u.account_id = a.id
@@ -130,7 +135,19 @@ export async function createEdgeSnapshotScope(
         sessionId && uuid.test(sessionId) ? sessionId : null,
         createHash("sha256").update(bearer).digest("hex"),
         credential,
-        path === "/oauth/token" ? codeHash : ""
+        path === "/oauth/token" ? codeHash : "",
+        /^\/auth\/(?:mfa\/(?:email\/challenge|verify)|recovery\/(?:verify|reset-password))$/.test(
+          path
+        ) &&
+        typeof input.transactionId === "string" &&
+        uuid.test(input.transactionId)
+          ? input.transactionId
+          : null,
+        path === "/auth/recovery/start" &&
+        input.type === "email" &&
+        typeof input.identifier === "string"
+          ? input.identifier.trim().toLowerCase()
+          : ""
       ]
     )
   ).rows[0];
@@ -287,7 +304,10 @@ export async function createEdgeSnapshotScope(
   const challenge = escapeLiteral(typeof input.challengeId === "string" ? input.challengeId : "");
   ctes.push([
     "otp_challenges",
-    `select * from public.otp_challenges where id::text = ${challenge}`
+    `select * from public.otp_challenges where id::text = ${challenge}
+      or id::text in (select record->>'providerChallengeId' from public.cp2_auth_transactions
+        where entity_id = ${escapeLiteral(typeof input.transactionId === "string" ? input.transactionId : "")}
+        and account_id = nullif(${actorAccount}, '') and record->>'consumedAt' is null and (record->>'expiresAt')::timestamptz > now())`
   ]);
   return {
     accountId: actor?.account_id as string | undefined,
@@ -309,6 +329,7 @@ export async function createEdgeSnapshotScope(
             and role.record->>'executionHostId' = cp2_native_model_installations.record->>'executionHostId')`;
       if (key === "offlineMetadata")
         return "entity_id = 'server-sequence' or entity_id in (select 'business:' || id from edge_business_ids)";
+      if (key === "otpChallenges") return "entity_id in (select id::text from otp_challenges)";
       if (key === "oauthSessions") return "entity_id in (select id::text from oauth_sessions)";
       if (key === "accounts") return "entity_id in (select id from edge_account_ids)";
       if (key === "users") return "entity_id in (select id from edge_user_ids)";

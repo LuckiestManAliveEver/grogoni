@@ -68,6 +68,12 @@ async function requestOtpForBody(
   parseOtpDeliveryChannel(body.deliveryChannel, channel);
   const purpose = parseOtpPurpose(body.purpose);
 
+  if (purpose === "signup")
+    throw new Cp2Error(
+      403,
+      "phone_login_required",
+      "Use your mobile phone number to sign up or log in."
+    );
   const otp = store.requestOtp({ channel, destination, purpose });
 
   if (channel === "email") {
@@ -92,24 +98,17 @@ async function requestOtpForBody(
   return otp;
 }
 
-async function verifyOtpForBody(store: Cp2Store, body: OtpVerifyBody) {
-  if (body.method !== undefined && parseAuthChannel(body.method) === "phone") {
-    throw new Cp2Error(403, "phone_pin_only", "Phone accounts use PIN-only signup and login.");
-  }
-  const challenge =
-    body.challengeId === undefined
-      ? store.getOtpChallengeDeliveryByContact({
-          channel: parseAuthChannel(body.method),
-          destination: parseString(body.contact, "contact")
-        })
-      : store.getOtpChallengeDelivery(parseString(body.challengeId, "challengeId"));
-
-  if (challenge.channel === "phone") {
-    throw new Cp2Error(403, "phone_pin_only", "Phone accounts use PIN-only signup and login.");
-  }
-
-  const code = parseString(body.otp ?? body.code, "otp");
-  return store.verifyOtp({ challengeId: challenge.challengeId, code });
+async function verifyOtpForBody(
+  _store: Cp2Store,
+  _body: OtpVerifyBody
+): Promise<ReturnType<Cp2Store["verifyOtp"]>> {
+  void _store;
+  void _body;
+  throw new Cp2Error(
+    403,
+    "phone_login_required",
+    "Use your mobile phone number to log in. Verify backup email in account security."
+  );
 }
 
 export function registerOtpRoutes(

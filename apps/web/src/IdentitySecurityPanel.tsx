@@ -414,7 +414,9 @@ export function IdentitySecurityPanel({
     setEmailChallengeId("");
     setEmailVerificationCode("");
     setEmailMergeRequired(false);
-    setProfileMessage("Email verified. Your existing Grogoni account is now recoverable by email.");
+    setProfileMessage(
+      "Backup email verified. You can now use it for recovery and multi-factor authentication."
+    );
   }
 
   async function registerPasskey() {
@@ -817,8 +819,11 @@ export function IdentitySecurityPanel({
       <div className="record-form">
         <div className="section-heading">
           <p className="eyebrow">Recovery identity</p>
-          <h4>Email address</h4>
-          <p>Add and verify email without changing this account or any of its data.</p>
+          <h4>Backup email</h4>
+          <p>
+            Verify an email for account recovery and multi-factor authentication. Log in with your
+            mobile phone number.
+          </p>
           {emailMergeRequired ? (
             <p className="shell-note">
               Verification will join this device account’s chats, shops, and records to the existing
@@ -1175,7 +1180,7 @@ export function IdentitySecurityPanel({
         <h4>Mailboxes for customer conversations</h4>
         <p>
           These are authorized business mailboxes used to send and receive customer email. They are
-          separate from the email used to sign in to or recover your Grogoni account.
+          separate from the backup email used for account recovery and multi-factor authentication.
         </p>
       </div>
       <div className="connected-social-list" role="list" aria-label="Connected mailboxes">
@@ -1183,7 +1188,9 @@ export function IdentitySecurityPanel({
           <div>
             <span>Grogoni account email</span>
             <strong>{registeredEmail ?? "No account email registered"}</strong>
-            <p>Identity and recovery only. This address is not an email channel.</p>
+            <p>
+              Backup recovery and multi-factor authentication. This address is not an email channel.
+            </p>
           </div>
         </article>
         {connectedMailboxes.map((mailbox) => (

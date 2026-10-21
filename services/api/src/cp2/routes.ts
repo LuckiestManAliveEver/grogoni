@@ -167,10 +167,6 @@ interface PinLoginBody extends PinBody {
   method?: string;
 }
 
-interface StoreLoginBody extends PinBody {
-  grogoniId?: string;
-}
-
 interface IdentifierBody {
   type?: string;
   identifier?: string;
@@ -320,6 +316,15 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
     if (!enabled) throw new Cp2Error(503, code, message);
   }
 
+  function requirePhoneLogin(channel: AuthChannel): void {
+    if (channel !== "phone")
+      throw new Cp2Error(
+        400,
+        "phone_login_required",
+        "Use your mobile phone number to sign up or log in. Email is reserved for backup recovery and MFA."
+      );
+  }
+
   function readIdentifier(body: IdentifierBody): { channel: AuthChannel; value: string } {
     const channel = parseAuthChannel(body.type);
     const identifier = parseString(body.identifier, "identifier");
@@ -363,7 +368,7 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
       try {
         // Validate and normalize the identifier, but deliberately return the same capabilities
         // for known and unknown accounts to avoid an account-enumeration oracle.
-        readIdentifier(request.body);
+        requirePhoneLogin(readIdentifier(request.body).channel);
         return {
           preferred: "pin",
           passkeyAvailable: authRuntime.passkeysEnabled,
@@ -382,6 +387,7 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
     async (request: FastifyRequest<{ Body: IdentifierBody }>, reply) => {
       try {
         enforceAuthIpRate(authAttemptsByIp, request, "signup_start", 10);
+        requirePhoneLogin(parseAuthChannel(request.body.type ?? "phone"));
         const identifier = readIdentifier({ ...request.body, type: "phone" });
         if (
           store.identifyAccount({ channel: "phone", identifier: identifier.value }).next === "login"
@@ -574,6 +580,7 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
         );
         enforceAuthIpRate(authAttemptsByIp, request, "password_login", 30);
         const identifier = readIdentifier(request.body);
+        requirePhoneLogin(identifier.channel);
         const result = store.loginWithPassword({
           channel: identifier.channel,
           identifier: identifier.value,
@@ -648,12 +655,58 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
     ) => {
       try {
         const factor = parseString(request.body.factor, "factor");
-        if (factor !== "totp" && factor !== "recovery_code")
+        if (factor !== "totp" && factor !== "recovery_code" && factor !== "email")
           throw new Cp2Error(400, "mfa_factor_invalid", "MFA factor is invalid.");
         const result = store.verifyMfa({
           transactionId: parseString(request.body.transactionId, "transactionId"),
           factor,
           code: parseString(request.body.code, "code")
+        });
+        setAuthSessionCookies(reply, request, store, result.session.id);
+        return result;
+      } catch (error) {
+        return sendCp2Error(reply, error);
+      }
+    }
+  );
+
+  app.post(
+    "/auth/mfa/email/challenge",
+    async (request: FastifyRequest<{ Body: { transactionId?: string } }>, reply) => {
+      try {
+        enforceAuthIpRate(authAttemptsByIp, request, "email_mfa", 10);
+        const otp = store.beginEmailMfa({
+          transactionId: parseString(request.body.transactionId, "transactionId")
+        });
+        await emailProvider.sendOtp({
+          challengeId: otp.challengeId,
+          code: otp.devOtp,
+          expiresAt: otp.expiresAt,
+          to: otp.destination
+        });
+        return {
+          expiresAt: otp.expiresAt,
+          ...(emailProvider.exposesDevOtp ? { developmentCode: otp.devOtp } : {})
+        };
+      } catch (error) {
+        return sendCp2Error(reply, error);
+      }
+    }
+  );
+
+  app.post(
+    "/auth/password/recover/passkey",
+    async (
+      request: FastifyRequest<{ Body: { password?: string; passwordConfirmation?: string } }>,
+      reply
+    ) => {
+      try {
+        const password = parseString(request.body.password, "password");
+        if (password !== request.body.passwordConfirmation)
+          throw new Cp2Error(400, "password_confirmation_invalid", "Passwords do not match.");
+        const result = store.recoverPasswordWithPasskey({
+          sessionId: readSessionCookie(request.headers.cookie),
+          password
         });
         setAuthSessionCookies(reply, request, store, result.session.id);
         return result;
@@ -954,6 +1007,7 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
     try {
       enforceAuthIpRate(authAttemptsByIp, request, "pin_continue", 10);
       const channel = parseAuthChannel(request.body.method ?? request.body.channel ?? "phone");
+      requirePhoneLogin(channel);
       const rawDestination = parseString(
         request.body.contact ?? request.body.destination,
         "contact"
@@ -972,6 +1026,8 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
         destination,
         pin: parseString(request.body.pin, "pin")
       });
+      const mfa = store.challengePinLoginMfa(result);
+      if (mfa) return reply.code(202).send(mfa);
       setAuthSessionCookies(reply, request, store, result.session.id);
       return result;
     } catch (error) {
@@ -979,24 +1035,10 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
     }
   });
 
-  // Lets a store owner sign in with their Grogoni Storefront ID instead of their own
-  // phone/email - resolves the ID to the owning account and runs the same PIN check as any
-  // other PIN login. Login only: a Grogoni ID cannot be used to create a new account.
-  app.post(
-    "/auth/pin/store-login",
-    async (request: FastifyRequest<{ Body: StoreLoginBody }>, reply) => {
-      try {
-        enforceAuthIpRate(authAttemptsByIp, request, "store_login", 10);
-        const result = store.loginWithGrogoniIdPin({
-          grogoniId: parseString(request.body.grogoniId, "grogoniId"),
-          pin: parseString(request.body.pin, "pin")
-        });
-        setAuthSessionCookies(reply, request, store, result.session.id);
-        return result;
-      } catch (error) {
-        return sendCp2Error(reply, error);
-      }
-    }
+  app.post("/auth/pin/store-login", async (_request, reply) =>
+    reply
+      .code(410)
+      .send({ code: "phone_login_required", message: "Log in with your mobile phone number." })
   );
 
   app.get("/auth/pin/status", async (request, reply) => {
@@ -1035,6 +1077,7 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
     try {
       enforceAuthIpRate(authAttemptsByIp, request, "pin_login", 30);
       const channel = parseAuthChannel(request.body.method ?? request.body.channel);
+      requirePhoneLogin(channel);
       const rawDestination = parseString(
         request.body.contact ?? request.body.destination,
         "contact"
@@ -1053,6 +1096,8 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
         destination,
         pin: parseString(request.body.pin, "pin")
       });
+      const mfa = store.challengePinLoginMfa(result);
+      if (mfa) return reply.code(202).send(mfa);
       request.log.info(
         {
           event: "auth.pin_verified",

@@ -214,7 +214,12 @@ export function createAuthRoutes({
     if (type !== "phone" && type !== "email")
       throw new AuthError(400, "channel_invalid", "Use phone or email.");
     const raw = text(login ? (data.contact ?? data.destination) : data.identifier, "identifier");
-    if (type === "email") return { type, value: email(raw), phone: null };
+    if (type === "email")
+      throw new AuthError(
+        400,
+        "phone_login_required",
+        "Use your mobile phone number to sign up or log in."
+      );
     try {
       const phone = normalizePhone(
         raw,
@@ -292,7 +297,25 @@ export function createAuthRoutes({
       metadata: {},
       createdAt: now
     });
-    return { transactionId: id, factors: ["totp", "recovery_code"], expiresAt };
+    const hasEmail =
+      (
+        await client.query(
+          "select id from account_identities where account_id = $1 and type = 'email' and verified_at is not null limit 1",
+          [account.account_id]
+        )
+      ).rows.length > 0;
+    const hasTotp =
+      (
+        await client.query(
+          "select id from mfa_factors where account_id = $1 and verified_at is not null and disabled_at is null",
+          [account.account_id]
+        )
+      ).rows.length > 0;
+    return {
+      transactionId: id,
+      factors: [...(hasTotp ? ["totp", "recovery_code"] : []), ...(hasEmail ? ["email"] : [])],
+      expiresAt
+    };
   }
   async function verifySecondFactor(
     client: SqlClient,
@@ -353,7 +376,10 @@ export function createAuthRoutes({
       await client.query(
         `select * from auth_transactions where id = $1
       and purpose = 'login_mfa' and account_id is not null and consumed_at is null
-      and expires_at > now() and attempts < 5 for update`,
+      and expires_at > now() and attempts < 5
+      and exists (select 1 from cp2_auth_transactions state where state.entity_id = auth_transactions.id::text
+        and state.record->>'consumedAt' is null and (state.record->>'attempts')::int < 5 for update)
+      for update`,
         [transactionId]
       )
     ).rows[0];
@@ -386,7 +412,7 @@ export function createAuthRoutes({
       [transactionId, consumedAt]
     );
     await client.query(
-      `update cp2_auth_transactions set record = record || $2::jsonb, updated_at = now()
+      `update cp2_auth_transactions set record = record || $2::jsonb || jsonb_build_object('attempts', coalesce((record->>'attempts')::int, 0) + 1), updated_at = now()
       where entity_id = $1`,
       [transactionId, JSON.stringify({ attempts: Number(challenge.attempts) + 1, consumedAt })]
     );
@@ -661,7 +687,10 @@ export function createAuthRoutes({
       return null;
     try {
       if (path === "/auth/continue") {
-        const data = await body(request);
+        if (path === "/auth/pin/store-login")
+          return error(410, "phone_login_required", "Log in with your mobile phone number.");
+        const data = await body(path === "/auth/mfa/verify" ? request.clone() : request);
+        if (path === "/auth/mfa/verify" && data.factor === "email") return null;
         return await transaction(async (client) => {
           const existing = await activeSession(client, request);
           if (existing) {
@@ -831,7 +860,10 @@ export function createAuthRoutes({
             ...(path === "/auth/pin/status" ? {} : { hasPassword: result.has_password })
           });
         });
-      const data = await body(request);
+      if (path === "/auth/pin/store-login")
+        return error(410, "phone_login_required", "Log in with your mobile phone number.");
+      const data = await body(path === "/auth/mfa/verify" ? request.clone() : request);
+      if (path === "/auth/mfa/verify" && data.factor === "email") return null;
       if (path === "/auth/mfa/challenge" || path === "/auth/mfa/verify")
         return await transaction((client) =>
           verifyMfa(client, request, data, path === "/auth/mfa/challenge")
@@ -848,7 +880,7 @@ export function createAuthRoutes({
           preferred: "pin",
           passkeyAvailable: passkeysEnabled(),
           passwordFallback: passwordEnabled,
-          recoveryAvailable: false,
+          recoveryAvailable: true,
           smsLogin: false
         });
       }
@@ -1008,6 +1040,8 @@ export function createAuthRoutes({
           return sessionResponse(account, session.row, session.refresh);
         });
       }
+      if (path === "/auth/signup/start" && data.type !== undefined && data.type !== "phone")
+        return error(400, "phone_login_required", "Signup requires a mobile phone number.");
       const signup = path === "/auth/signup/start" || path === "/auth/pin/signup";
       const continuing = path === "/auth/pin/continue";
       const passwordLogin = path === "/auth/login/password";
@@ -1150,8 +1184,15 @@ export function createAuthRoutes({
           await audit(client, "auth.edge.login_failure", key);
           return invalidLogin();
         }
+        const backupEmail =
+          (
+            await client.query(
+              "select id from account_identities where account_id = $1 and type = 'email' and verified_at is not null limit 1",
+              [account.account_id]
+            )
+          ).rows.length > 0;
         if (
-          passwordLogin &&
+          backupEmail ||
           (
             await client.query(
               "select id from mfa_factors where account_id = $1 and verified_at is not null and disabled_at is null",
@@ -1160,7 +1201,10 @@ export function createAuthRoutes({
           ).rows.length
         ) {
           await audit(client, "auth.edge.login_success", key, account);
-          return Response.json({ mfaRequired: true, ...(await mfaChallenge(client, account)) });
+          return Response.json(
+            { mfaRequired: true, ...(await mfaChallenge(client, account)) },
+            { status: 202 }
+          );
         }
         if (valid === "legacy") await setPin(client, String(account.account_id), value);
         await audit(client, "auth.edge.login_success", key, account);
