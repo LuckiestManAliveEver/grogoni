@@ -459,6 +459,16 @@ export function PhoneFirstAuthentication({
                         ? "Log in"
                         : "Continue to log in"}
                 </button>
+                {!busy && (
+                  <button
+                    className="auth-text-button"
+                    type="button"
+                    disabled={!identifier.trim()}
+                    onClick={() => void run(startRecovery)}
+                  >
+                    Trouble logging in?
+                  </button>
+                )}
               </div>
             </div>
           ) : null}
