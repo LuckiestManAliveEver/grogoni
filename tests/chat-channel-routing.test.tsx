@@ -12,6 +12,57 @@ import { ExternalMessagingAppPicker } from "../apps/web/src/ExternalMessagingApp
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 describe("explicit messaging routes", () => {
+  it.each([
+    { online: false, human: true, provider: null, sms: true },
+    { online: true, human: true, provider: null, sms: false },
+    { online: false, human: false, provider: null, sms: false },
+    { online: false, human: true, provider: "email" as const, sms: false },
+    { online: false, human: true, provider: "native_sms" as const, sms: true }
+  ])(
+    "reviews offline SMS without clearing the draft: %j",
+    async ({ online, human, provider, sms }) => {
+      const onlineSpy = vi.spyOn(navigator, "onLine", "get").mockReturnValue(online);
+      const send = vi.fn();
+      const draftChange = vi.fn();
+      let hook: ReturnType<typeof useChatComposerState>;
+      function Harness() {
+        hook = useChatComposerState({
+          activeConversationId: "human-chat",
+          channelEndpoints: [],
+          chatDraft: "Keep my draft",
+          initialEmailSubject: "Subject",
+          nearbyScope: null,
+          smsDefaultCountry: "KE",
+          ...(human ? { smsFallbackRecipient: { recipient: "+254712345678", label: "Jane" } } : {}),
+          onDraftChange: draftChange,
+          onPlatformHandoff: vi.fn(),
+          onSend: send
+        });
+        return null;
+      }
+      const root = createRoot(document.createElement("div"));
+      try {
+        await act(async () => root.render(createElement(Harness)));
+        await act(async () => hook!.setSelectedProvider(provider));
+        await act(async () => hook!.sendLiveDraft());
+        expect(hook!.smsHandoffRequest).toEqual(
+          sms
+            ? {
+                recipient: "+254712345678",
+                label: "Jane",
+                body: "Keep my draft"
+              }
+            : null
+        );
+        expect(send).toHaveBeenCalledTimes(sms ? 0 : 1);
+        expect(hook!.liveDraft).toBe("Keep my draft");
+        expect(draftChange).not.toHaveBeenCalled();
+      } finally {
+        await act(async () => root.unmount());
+        onlineSpy.mockRestore();
+      }
+    }
+  );
   it("keeps normal and explicit external choices across endpoint refreshes and never falls back silently", async () => {
     const send = vi.fn();
     let hook: ReturnType<typeof useChatComposerState>;

@@ -20,6 +20,7 @@ interface ChatComposerStateInput {
   initialEmailSubject: string;
   nearbyScope: Scope | null;
   smsDefaultCountry: CountryCode;
+  smsFallbackRecipient?: { recipient: string; label: string };
   onDraftChange: (draft: string) => void;
   onPlatformHandoff: (status: MessageHandoffStatus, normalizedErrorCode: string | null) => void;
   onSend: (draft: string, provider?: ChannelProvider, subject?: string, invoiceId?: string) => void;
@@ -81,6 +82,19 @@ export function useChatComposerState(input: ChatComposerStateInput) {
       });
       return;
     }
+    if (
+      navigator.onLine === false &&
+      input.smsFallbackRecipient !== undefined &&
+      (selectedProvider === null ||
+        selectedProvider === "grogoni" ||
+        selectedProvider === "native_sms") &&
+      liveDraft.trim().length > 0
+    ) {
+      // Review the carrier route before opening the phone's SMS app. Keep the
+      // draft intact: opening a composer does not confirm that an SMS was sent.
+      openSmsHandoff(input.smsFallbackRecipient.recipient, input.smsFallbackRecipient.label);
+      return;
+    }
     input.onSend(
       liveDraft,
       selectedProvider ?? "grogoni",
@@ -111,8 +125,8 @@ export function useChatComposerState(input: ChatComposerStateInput) {
     setEmailInvoiceId("");
   }, [input.activeConversationId, input.initialEmailSubject]);
 
-  // Routing is an explicit choice. Endpoint refreshes must never switch a normal
-  // message to an external provider (or undo a Bluetooth selection).
+  // Endpoint refreshes must never change the selected route. Offline SMS is
+  // reviewed separately when Send is pressed.
   useEffect(() => {
     resetBluetooth();
     setSelectedProviderState(null);

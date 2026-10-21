@@ -299,6 +299,14 @@ export function ChatSurface({
     initialEmailSubject,
     nearbyScope,
     smsDefaultCountry,
+    ...(selectedConversation?.hasHumanRecipient
+      ? {
+          smsFallbackRecipient: {
+            recipient: selectedConversation.title ?? "",
+            label: selectedConversation.title ?? "SMS recipient"
+          }
+        }
+      : {}),
     onDraftChange,
     onPlatformHandoff,
     onSend

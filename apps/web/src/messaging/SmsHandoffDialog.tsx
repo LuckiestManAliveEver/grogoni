@@ -189,7 +189,10 @@ export function SmsHandoffDialog({
             </label>
             <div className="sms-handoff-warning">
               <strong>Your mobile carrier may charge for this SMS.</strong>
-              <span>Sending continues in your phone&apos;s SMS app.</span>
+              <span>
+                No internet is needed. Your SIM&apos;s SMS bundle or airtime is used. Sending
+                continues in your phone&apos;s SMS app.
+              </span>
             </div>
             {isLongSmsBody(body) ? (
               <div className="sms-handoff-warning" role="note">
