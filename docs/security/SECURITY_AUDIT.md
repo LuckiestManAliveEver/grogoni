@@ -167,12 +167,14 @@ The main risk is not the absence of all protections. The main risk is that these
 ## Repository inventory against the requested security hardening checklist
 
 ### API entry points
+
 - `services/api/src/index.ts`
 - `services/api/src/app.ts`
 - `services/api/src/cp2/routes.ts`
 - `services/api/src/mcp/routes.ts`
 
 ### Authentication middleware and authorization boundaries
+
 - `services/api/src/cp2/store.ts`
   - `requireAnySession`
   - `requirePinVerifiedSession`
@@ -185,55 +187,66 @@ The main risk is not the absence of all protections. The main risk is that these
   - `services/api/src/cp2/routes.ts`
 
 ### Tenant isolation
+
 - `services/api/src/cp2/store.ts`
 - `services/api/src/cp2/domains/native-runtime/store.ts`
 - `services/api/src/cp2/domains/runtime-handoff/store.ts`
 
 ### Existing rate limiting
+
 - `services/api/src/app.ts` — HTTP gateway rate limiting
 - `services/api/src/inference/providers/usage-policy.ts` — request limiter and cost policy guard
 - `services/api/src/cp2/route-helpers.ts` — auth throttling helper
 
 ### Existing queues
+
 - `services/api/src/daemon/task-store.ts`
 - `services/api/src/daemon/worker.ts`
 - `services/api/src/edge-job-runner.ts`
 
 ### Background workers
+
 - `services/api/src/daemon/worker.ts`
 - `services/api/src/daemon/edge-lane.ts`
 - `services/api/src/edge-job-runner.ts`
 
 ### Agent execution lifecycle
+
 - `services/api/src/cp2/store.ts`
 - `services/api/src/cp2/domains/agent-runtime/store.ts`
 - `services/api/src/cp2/domains/runtime-handoff/store.ts`
 
 ### RuntimeHandoff implementation
+
 - `services/api/src/cp2/domains/runtime-handoff/store.ts`
 - `docs/adr/ADR-durable-agent-execution.md`
 - `docs/architecture/runtime-handoff-protocol.md`
 
 ### Checkpoint persistence
+
 - `services/api/src/cp2/postgres-store.ts`
 - `services/api/src/cp2/store.ts`
 
 ### Model provider adapters
+
 - `services/api/src/inference/model-runtime.ts`
 - `services/api/src/inference/providers/`
 - `services/api/src/inference/providers/inference-router.ts`
 - `services/api/src/inference/providers/routed-model-adapter.ts`
 
 ### Computer Runtime isolation
+
 - `services/computer-runtime/src/playwright-runtime.ts`
 - `services/computer-runtime/src/network-policy.ts`
 
 ### Database access patterns
+
 - `services/api/src/cp2/postgres-store.ts`
 - `services/api/src/daemon/task-store.ts`
 - `services/api/src/daemon/worker.ts`
 
 ### Deployment configuration
+
 - `render.yaml`
 - `docker-compose.yml`
 - `docker-compose.daemon-test.yml`
@@ -241,6 +254,7 @@ The main risk is not the absence of all protections. The main risk is that these
 - `docs/deployment/`
 
 ### Existing security tests
+
 - `tests/http-rate-limit.test.ts`
 - `tests/phone-pin-continue.test.ts`
 - `tests/security-hardening.test.ts`

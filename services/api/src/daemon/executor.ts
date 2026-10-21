@@ -74,7 +74,9 @@ export function readDaemonCapabilities(
       // rather than accepted and dead-lettered as CONTEXT_TOO_LARGE on its first run.
       const promptBytes = Buffer.byteLength(JSON.stringify(daemonAgentPrompt(payload.message)));
       const agentAdapterId =
-        "agentAdapterId" in payload ? payload.agentAdapterId : repositoryDefaultRuntimePolicy.agentRuntimeAdapterId;
+        "agentAdapterId" in payload
+          ? payload.agentAdapterId
+          : repositoryDefaultRuntimePolicy.agentRuntimeAdapterId;
       return agentAdapterId === "grogoni" && promptBytes > defaultGrogoniMaxPromptBytes
         ? "MESSAGE_TOO_LARGE"
         : null;

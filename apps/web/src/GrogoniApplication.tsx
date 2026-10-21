@@ -1775,7 +1775,10 @@ export function OwnerApp() {
                       data-testid="header-signup-button"
                       onClick={() => openAuth("signup")}
                     >
-                      <span className="header-auth-icon header-auth-icon-signup" aria-hidden="true" />
+                      <span
+                        className="header-auth-icon header-auth-icon-signup"
+                        aria-hidden="true"
+                      />
                       <span>Sign up</span>
                     </button>
                     <button
@@ -1784,7 +1787,10 @@ export function OwnerApp() {
                       data-testid="header-login-button"
                       onClick={() => openAuth("login")}
                     >
-                      <span className="header-auth-icon header-auth-icon-login" aria-hidden="true" />
+                      <span
+                        className="header-auth-icon header-auth-icon-login"
+                        aria-hidden="true"
+                      />
                       <span>Log in</span>
                     </button>
                   </>
