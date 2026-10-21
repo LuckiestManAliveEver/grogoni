@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { execSync } from "node:child_process";
@@ -18,7 +18,8 @@ if (!fingerprint && storeFile && existsSync(storeFile)) {
 }
 
 if (!fingerprint) {
-  fingerprint = "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99";
+  fingerprint =
+    "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99";
 }
 
 const payload = [
@@ -33,8 +34,12 @@ const payload = [
 ];
 
 writeFileSync(join(targetDir, "assetlinks.json"), `${JSON.stringify(payload, null, 2)}\n`);
-console.log(`Wrote Android App Links for ${packageName} to apps/web/public/.well-known/assetlinks.json`);
-console.log("Replace the placeholder fingerprint with the release certificate fingerprint before public release.");
+console.log(
+  `Wrote Android App Links for ${packageName} to apps/web/public/.well-known/assetlinks.json`
+);
+console.log(
+  "Replace the placeholder fingerprint with the release certificate fingerprint before public release."
+);
 
 function extractFingerprint(storePath, alias, password) {
   const output = execSync(

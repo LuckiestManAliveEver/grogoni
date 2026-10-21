@@ -13,8 +13,7 @@ export function useInstallPrompt() {
       return false;
     }
   });
-  const canInstall =
-    installPrompt !== null && !isStandaloneWebApp() && !dismissedInstallPrompt;
+  const canInstall = installPrompt !== null && !isStandaloneWebApp() && !dismissedInstallPrompt;
 
   useEffect(() => {
     function handleBeforeInstallPrompt(event: Event) {
