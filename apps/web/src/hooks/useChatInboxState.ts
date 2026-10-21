@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { currentOfflineScope, getOfflineState } from "../offline-runtime";
 import { handoffChatMessages } from "../runtime-handoff";
 
@@ -72,6 +72,7 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
     viewport.addEventListener("change", change);
     return () => viewport.removeEventListener("change", change);
   }, []);
+  const helpInitializedForAccount = useRef<string | null>(null);
   const [conversationInbox, setConversationInbox] = useState<ConversationInboxItem[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [activeConversation, setActiveConversation] = useState<ConversationView | null>(null);
@@ -109,6 +110,14 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
       return;
     }
     try {
+      if (helpInitializedForAccount.current !== session.account.id) {
+        try {
+          await postJson("/v1/help", {});
+          helpInitializedForAccount.current = session.account.id;
+        } catch {
+          setStatusMessage("Help is temporarily unavailable.");
+        }
+      }
       const response = await getJson<{ conversations: ConversationInboxItem[] }>(
         "/v1/conversations",
         (refreshed) =>

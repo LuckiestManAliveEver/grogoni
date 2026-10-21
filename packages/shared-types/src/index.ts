@@ -896,6 +896,9 @@ export interface ProviderUpdateReceiptSummary {
 }
 
 export interface ConversationSummary {
+  /** Server-owned permanent assistance thread; home is its parent. */
+  helpTopic?: string;
+  helpParentConversationId?: string;
   /** Internal task thread linked to its ordinary owner chat. */
   taskParentConversationId?: string;
   id: string;

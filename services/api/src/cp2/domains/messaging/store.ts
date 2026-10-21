@@ -64,6 +64,7 @@
  *   reference `nativeSmsTransportReadiness`/`queueNativeSmsCommand`/`emailTransportReadiness`/
  *   `sendEmailTransport`, all of which live here now.
  */
+import { helpConversationId, helpGuides, helpGuideText } from "./help-guides.js";
 import { randomBytes, randomUUID } from "node:crypto";
 import type { InventoryTaskController } from "../agent-runtime/inventory-task-controller.js";
 import type {
@@ -670,6 +671,55 @@ export class MessagingDomain {
       this.pushSubscriptions.set(subscription.id, subscription);
       this.pushSubscriptionIdByEndpoint.set(subscription.endpoint, subscription.id);
     }
+  }
+
+  ensureHelpConversations(input: { sessionId: string | null; now?: Date }): {
+    conversationId: string;
+  } {
+    const now = input.now ?? new Date();
+    const session = this.deps.requirePinVerifiedSession(input.sessionId, now);
+    const rootId = helpConversationId(session.account.id, "home");
+    for (const guide of helpGuides) {
+      const id = helpConversationId(session.account.id, guide.key);
+      const existing = this.conversations.get(id);
+      if (existing) {
+        if (existing.accountId !== session.account.id || existing.helpTopic !== guide.key)
+          throw new Cp2Error(
+            409,
+            "help_conversation_conflict",
+            "Help conversation ownership changed."
+          );
+      } else
+        this.createAccountConversation({
+          accountId: session.account.id,
+          userId: session.user.id,
+          kind: "personal",
+          activeShopId: null,
+          title: guide.title,
+          taskConversationId: id,
+          helpTopic: guide.key,
+          ...(guide.key === "home" ? {} : { helpParentConversationId: rootId }),
+          now
+        });
+      const chunks: string[] = [];
+      for (const line of helpGuideText(guide.key).split("\n")) {
+        const last = chunks.length - 1;
+        if (last >= 0 && chunks[last]!.length + line.length + 1 <= 3500)
+          chunks[last] += `\n${line}`;
+        else chunks.push(line);
+      }
+      chunks.forEach((text, index) =>
+        this.createConversationMessage({
+          sessionId: input.sessionId,
+          conversationId: id,
+          clientMessageId: `help-guide-v1:${guide.key}:${index}`,
+          author: "agent",
+          content: { type: "text", text },
+          now
+        })
+      );
+    }
+    return { conversationId: rootId };
   }
 
   createConversation(input: {
@@ -2682,6 +2732,14 @@ export class MessagingDomain {
       })
       .filter((conversation): conversation is ConversationInboxItem => conversation !== null)
       .sort((left, right) => {
+        if (left.helpTopic || right.helpTopic) {
+          if (!left.helpTopic) return 1;
+          if (!right.helpTopic) return -1;
+          return (
+            helpGuides.findIndex((guide) => guide.key === left.helpTopic) -
+            helpGuides.findIndex((guide) => guide.key === right.helpTopic)
+          );
+        }
         const pinned =
           Number(Boolean(right.participant.pinnedAt)) - Number(Boolean(left.participant.pinnedAt));
         return pinned || Date.parse(right.updatedAt) - Date.parse(left.updatedAt);
@@ -3659,6 +3717,15 @@ export class MessagingDomain {
     const now = input.now ?? new Date();
     const session = this.deps.requirePinVerifiedSession(input.sessionId, now);
     const conversation = this.requireAccountConversation(input.conversationId, session.account.id);
+    if (
+      conversation.helpTopic &&
+      (input.archived === true || input.title !== undefined || input.pinned === false)
+    )
+      throw new Cp2Error(
+        400,
+        "help_conversation_permanent",
+        "Help chats keep their names and remain available."
+      );
     const participant = this.accountConversationParticipant(conversation.id, session.account.id);
     if (participant === null)
       throw new Cp2Error(404, "conversation_not_found", "Conversation was not found.");
@@ -3716,6 +3783,12 @@ export class MessagingDomain {
     const now = input.now ?? new Date();
     const session = this.deps.requirePinVerifiedSession(input.sessionId, now);
     const conversation = this.requireAccountConversation(input.conversationId, session.account.id);
+    if (conversation.helpTopic)
+      throw new Cp2Error(
+        400,
+        "help_conversation_permanent",
+        "Help chats remain available and cannot be deleted."
+      );
     this.requireConversationAdmin(conversation, session);
 
     const { scope, scopeId } = this.recycleBinScopeKey(conversation);
@@ -4602,12 +4675,18 @@ export class MessagingDomain {
     recipientAccountId?: string | null;
     title?: string | null;
     runtimeBindingId?: string | null;
+    helpTopic?: string;
+    helpParentConversationId?: string;
     taskConversationId?: string;
     taskParentConversationId?: string;
     now: Date;
   }): ConversationSummary {
     const conversation: ConversationSummary = {
       id: input.taskConversationId ?? randomUUID(),
+      ...(input.helpTopic ? { helpTopic: input.helpTopic } : {}),
+      ...(input.helpParentConversationId
+        ? { helpParentConversationId: input.helpParentConversationId }
+        : {}),
       ...(input.taskParentConversationId === undefined
         ? {}
         : { taskParentConversationId: input.taskParentConversationId }),
@@ -4709,6 +4788,7 @@ export class MessagingDomain {
       (conversation) =>
         conversation.accountId === input.accountId &&
         conversation.kind === "personal" &&
+        !conversation.helpTopic &&
         conversation.activeShopId === null &&
         conversation.deletedAt == null &&
         this.accountConversationParticipant(conversation.id, input.accountId) !== null

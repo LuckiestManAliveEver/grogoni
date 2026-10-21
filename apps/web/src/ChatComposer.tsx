@@ -20,8 +20,8 @@ import {
   ExternalMessagingAppPicker
 } from "./chat-composer-lazy-panels";
 
-import { ChatChannelPicker } from "./ChatChannelPicker";
-import { ChatComposerActions } from "./ChatComposerActions";
+import { DeferredChatChannelPicker as ChatChannelPicker } from "./chat-composer-lazy-panels";
+import { DeferredChatComposerActions as ChatComposerActions } from "./chat-composer-lazy-panels";
 
 import { ComposerModelSwitcher } from "./ComposerModelSwitcher";
 

@@ -1,3 +1,4 @@
+import { loadLazyModuleWithRecovery } from "../lazy-module-recovery";
 import { useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { currentOfflineScope, isExplicitOfflineMode } from "../offline-runtime";
 import { runtimeHandoffController, runtimeTransition } from "../runtime-handoff";
@@ -271,7 +272,13 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
   ) {
     const send = () =>
       sendChatDraftOnRuntime(draftOverride, preferredProvider, emailSubject, emailInvoiceId);
-    if (session && business && navigator.locks && !isExplicitOfflineMode()) {
+    if (
+      session &&
+      business &&
+      !activeConversation?.conversation.helpTopic &&
+      navigator.locks &&
+      !isExplicitOfflineMode()
+    ) {
       await navigator.locks.request(
         "grogoni-runtime-handoff",
         { ifAvailable: true },
@@ -303,8 +310,22 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       }
       activeSession = bootstrappedSession;
     }
+    let currentConversation =
+      activeConversation?.conversation.id === activeConversationId ? activeConversation : null;
+    if (activeConversationId && !currentConversation) {
+      try {
+        currentConversation = await apiFetch<NonNullable<typeof activeConversation>>(
+          `/v1/conversations/${activeConversationId}`,
+          { priority: true }
+        );
+      } catch (error) {
+        setStatusMessage(getErrorMessage(error));
+        return;
+      }
+    }
     if (
       business &&
+      !currentConversation?.conversation.helpTopic &&
       runtimeTransition({
         accountId: activeSession.account.id,
         storeId: business.id,
@@ -335,8 +356,32 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       return;
     }
 
-    const hasAccountRecipient = isHumanDirectConversation(activeConversation, activeSession);
-    const hasExternalRecipient = isExternalChannelConversation(activeConversation);
+    if (currentConversation?.conversation.helpTopic) {
+      try {
+        const { runHelpQuestion } = await loadLazyModuleWithRecovery(
+          "help-agent-chat",
+          () => import("../help-chat")
+        );
+        await runHelpQuestion({
+          accountId: activeSession.account.id,
+          scope: assistantScope,
+          conversation: currentConversation,
+          message,
+          clientMessageId: createClientMessageId("help"),
+          history: chatMessages,
+          hasAttachments: attachments.length > 0,
+          setMessages: setChatMessages,
+          setDraft: setChatDraft,
+          setStatus: setStatusMessage
+        });
+      } catch (error) {
+        setStatusMessage(getErrorMessage(error));
+      }
+      return;
+    }
+
+    const hasAccountRecipient = isHumanDirectConversation(currentConversation, activeSession);
+    const hasExternalRecipient = isExternalChannelConversation(currentConversation);
     const hasHumanRecipient = hasAccountRecipient || hasExternalRecipient;
     if (
       !hasHumanRecipient &&
@@ -596,8 +641,8 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       if (
         !activeConversationId ||
         business?.id !== offlineScope.storeId ||
-        isHumanDirectConversation(activeConversation, activeSession) ||
-        isExternalChannelConversation(activeConversation) ||
+        isHumanDirectConversation(currentConversation, activeSession) ||
+        isExternalChannelConversation(currentConversation) ||
         attachments.length
       ) {
         setStatusMessage("This message needs an online connection. Your draft is saved.");
@@ -738,7 +783,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
             item.id === clientMessageId
               ? mapConversationMessage(
                   sent.message,
-                  activeConversation!.participants,
+                  currentConversation!.participants,
                   activeSession
                 )
               : item
@@ -977,7 +1022,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
                   )
               })
             : await postJson<ProcessedConversationMessageResponse>("/v1/messages", payload);
-        if (activeConversation !== null) {
+        if (currentConversation !== null) {
           setChatMessages((messages) => {
             const reconciled = messages.map((item) =>
               item.id === clientMessageId
@@ -985,7 +1030,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
                   ? mergePersistedEncryptedMessage(item, persisted)
                   : mapConversationMessage(
                       persisted,
-                      activeConversation.participants,
+                      currentConversation.participants,
                       activeSession
                     )
                 : item
@@ -1000,7 +1045,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
               ...reconciled,
               mapConversationMessage(
                 persisted.agentMessage,
-                activeConversation.participants,
+                currentConversation.participants,
                 activeSession
               )
             ];
@@ -1090,8 +1135,8 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
                 : { type: "confirmation", confirmationToken, prompt: body },
             clientTimestamp: new Date().toISOString()
           });
-          if (activeConversation !== null) {
-            next = mapConversationMessage(persisted, activeConversation.participants, session);
+          if (currentConversation !== null) {
+            next = mapConversationMessage(persisted, currentConversation.participants, session);
           }
         } catch {
           // The reply remains visible locally and the next refresh can reconcile the thread.
@@ -1118,10 +1163,10 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
           content,
           clientTimestamp: new Date().toISOString()
         });
-        if (activeConversation !== null) {
+        if (currentConversation !== null) {
           setChatMessages((messages) => [
             ...messages,
-            mapConversationMessage(persisted, activeConversation.participants, session)
+            mapConversationMessage(persisted, currentConversation.participants, session)
           ]);
         }
       } catch {
@@ -1147,10 +1192,10 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
           content,
           clientTimestamp: new Date().toISOString()
         });
-        if (activeConversation !== null) {
+        if (currentConversation !== null) {
           setChatMessages((messages) => [
             ...messages,
-            mapConversationMessage(persisted, activeConversation.participants, session)
+            mapConversationMessage(persisted, currentConversation.participants, session)
           ]);
         }
       } catch {
@@ -1176,10 +1221,10 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
           content,
           clientTimestamp: new Date().toISOString()
         });
-        if (activeConversation !== null) {
+        if (currentConversation !== null) {
           setChatMessages((messages) => [
             ...messages,
-            mapConversationMessage(persisted, activeConversation.participants, session)
+            mapConversationMessage(persisted, currentConversation.participants, session)
           ]);
         }
       } catch {
@@ -1205,10 +1250,10 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
           content,
           clientTimestamp: new Date().toISOString()
         });
-        if (activeConversation !== null) {
+        if (currentConversation !== null) {
           setChatMessages((messages) => [
             ...messages,
-            mapConversationMessage(persisted, activeConversation.participants, session)
+            mapConversationMessage(persisted, currentConversation.participants, session)
           ]);
         }
       } catch {
@@ -1234,10 +1279,10 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
           content,
           clientTimestamp: new Date().toISOString()
         });
-        if (activeConversation !== null) {
+        if (currentConversation !== null) {
           setChatMessages((messages) => [
             ...messages,
-            mapConversationMessage(persisted, activeConversation.participants, session)
+            mapConversationMessage(persisted, currentConversation.participants, session)
           ]);
         }
       } catch {
@@ -1267,10 +1312,10 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
           content,
           clientTimestamp: new Date().toISOString()
         });
-        if (activeConversation !== null) {
+        if (currentConversation !== null) {
           setChatMessages((messages) => [
             ...messages,
-            mapConversationMessage(persisted, activeConversation.participants, session)
+            mapConversationMessage(persisted, currentConversation.participants, session)
           ]);
         }
       } catch {
@@ -1301,10 +1346,10 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
           content,
           clientTimestamp: new Date().toISOString()
         });
-        if (activeConversation !== null) {
+        if (currentConversation !== null) {
           setChatMessages((messages) => [
             ...messages,
-            mapConversationMessage(persisted, activeConversation.participants, session)
+            mapConversationMessage(persisted, currentConversation.participants, session)
           ]);
         }
       } catch {
