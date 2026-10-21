@@ -71,7 +71,10 @@ export interface BuildApiOptions {
 export function buildApi(options: BuildApiOptions = {}) {
   const maxConcurrentRequests = Math.max(1, options.maxConcurrentRequests ?? 256);
   const requestTimeoutMs = Math.max(5_000, options.requestTimeoutMs ?? 30_000);
-  const bodyLimitBytes = Math.max(1_000, options.bodyLimit ?? options.maxRequestBytes ?? 15_000_000);
+  const bodyLimitBytes = Math.max(
+    1_000,
+    options.bodyLimit ?? options.maxRequestBytes ?? 15_000_000
+  );
   const app = Fastify({
     logger: true,
     bodyLimit: bodyLimitBytes,
@@ -168,7 +171,11 @@ export function buildApi(options: BuildApiOptions = {}) {
     global: true,
     max: (request) => {
       if (request.url.startsWith("/auth/")) return authRateLimitMax;
-      if (request.url.startsWith("/v1/runtime/") || request.url.includes("/agents/") || request.url.includes("/models/"))
+      if (
+        request.url.startsWith("/v1/runtime/") ||
+        request.url.includes("/agents/") ||
+        request.url.includes("/models/")
+      )
         return 120;
       return defaultRateLimitMax;
     },
@@ -224,11 +231,18 @@ export function buildApi(options: BuildApiOptions = {}) {
       enforceBudget(userKey, userBudgetHits, authUserBudgetMax, authUserBudgetMs, request);
     }
     const tenantHeader = request.headers["x-grogoni-business-id"];
-    const tenantId = typeof tenantHeader === "string" && tenantHeader.trim().length > 0
-      ? tenantHeader.trim()
-      : undefined;
+    const tenantId =
+      typeof tenantHeader === "string" && tenantHeader.trim().length > 0
+        ? tenantHeader.trim()
+        : undefined;
     if (tenantId) {
-      enforceBudget(`tenant:${tenantId}`, tenantBudgetHits, authTenantBudgetMax, authTenantBudgetMs, request);
+      enforceBudget(
+        `tenant:${tenantId}`,
+        tenantBudgetHits,
+        authTenantBudgetMax,
+        authTenantBudgetMs,
+        request
+      );
     }
   });
 

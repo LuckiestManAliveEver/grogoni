@@ -1,3 +1,4 @@
+import { submitBuyerShoppingChat } from "../buyer-shopping-chat";
 import { loadLazyModuleWithRecovery } from "../lazy-module-recovery";
 import { useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { currentOfflineScope, isExplicitOfflineMode } from "../offline-runtime";
@@ -215,6 +216,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
     loadMessagingInbox
   } = deps;
 
+  const buyerShoppingSessionIds = useRef(new Map<string, string>());
   const assistantScope = daemonChatScope(mode, business?.id ?? null, activeConversationId);
   useDaemonChatResults(session?.account.id ?? null, assistantScope, async (entry, task) => {
     if (task.status === "cancelled") return;
@@ -468,11 +470,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
     if (
       !hasHumanRecipient &&
       (attachments.length === 0 || buyerAssistant) &&
-      (reminder !== null ||
-        tracking ||
-        (buyerAssistant &&
-          helpCommand === undefined &&
-          (attachments.length > 0 || parseMarketplaceBuyIntent(message) === null)))
+      (reminder !== null || tracking || (buyerAssistant && helpCommand === undefined))
     ) {
       const clientMessageId = createClientMessageId("message");
       const createdAt = new Date().toISOString();
@@ -566,6 +564,17 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
             );
           }
           setStatusMessage(checkoutId ? "Checkout status loaded." : "A checkout ID is needed.");
+        } else if (buyerAssistant && reminder === null) {
+          await submitBuyerShoppingChat({
+            accountId: activeSession.account.id,
+            scope: assistantScope,
+            message: runtimeMessage,
+            conversationId: activeConversationId,
+            rememberedSessionIds: buyerShoppingSessionIds.current,
+            reply,
+            setChatMessages,
+            setStatusMessage
+          });
         } else {
           await submitChatDaemonTask({
             accountId: activeSession.account.id,

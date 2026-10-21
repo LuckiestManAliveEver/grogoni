@@ -1003,6 +1003,91 @@ export class CommerceDomain {
    * sources. No payment is captured anywhere here - every created order starts in the same
    * "requested"/draft-invoice state the existing guest storefront checkout already uses.
    */
+  quoteBuyerCheckout(input: { sessionId: string | null; items: BuyCheckoutItemInput[] }): {
+    items: BuyCheckoutItemInput[];
+    summary: string;
+  } {
+    const session = this.deps.requirePinVerifiedSession(input.sessionId, new Date());
+    let total = 0;
+    let incomplete = false;
+    const quantities = new Map<string, number>();
+    const lines: string[] = [];
+    const items = input.items.map((item) => {
+      if (item.sourceKind === "marketplace_connector") {
+        const url = new URL(item.websiteUrl!);
+        if (url.protocol !== "https:" || url.username || url.password) {
+          throw new Cp2Error(
+            400,
+            "external_website_url_invalid",
+            "Use a valid HTTPS retailer URL."
+          );
+        }
+        incomplete = true;
+        lines.push(
+          `• ${item.title} × ${item.quantity} — ${url.hostname}: price unconfirmed, website checkout pending\n${url.href}`
+        );
+        return { ...item, sourceLabel: url.hostname, websiteUrl: url.href };
+      }
+      let title: string;
+      let sourceLabel: string;
+      let price: number | null;
+      if (item.sourceKind === "catalogue") {
+        const business = this.deps.businesses.get(this.businessIdForAgentId(item.sourceId) ?? "");
+        const product = this.deps.products.get(item.productId ?? "");
+        const quantity = item.quantity + (quantities.get(item.productId ?? "") ?? 0);
+        if (
+          !business ||
+          !product ||
+          product.businessId !== business.id ||
+          quantity > product.quantity ||
+          product.sellingPrice === null
+        ) {
+          throw new Cp2Error(
+            409,
+            "buyer_checkout_item_unavailable",
+            "An item is unavailable. Search for it again."
+          );
+        }
+        quantities.set(product.id, quantity);
+        title = product.name;
+        sourceLabel = business.name;
+        price = product.sellingPrice;
+      } else {
+        const status = this.statusBroadcasts.get(item.sourceId);
+        const source = status?.items.find(
+          (candidate) => candidate.productCaptureItemId === item.productCaptureItemId
+        );
+        if (
+          !status ||
+          status.state !== "active" ||
+          !source ||
+          !this.recipientForViewer(status, session.user.id)
+        ) {
+          throw new Cp2Error(
+            409,
+            "buyer_checkout_item_unavailable",
+            "A contact item is unavailable."
+          );
+        }
+        title = source.title;
+        sourceLabel = this.contactLabelForStatus(status, session.user.id);
+        price = source.visiblePrice;
+      }
+      if (price === null) incomplete = true;
+      else total += price * item.quantity;
+      lines.push(
+        `• ${title} × ${item.quantity} — ${sourceLabel}: ${price === null ? "price on request" : `KSh ${(price * item.quantity).toFixed(2)}`}`
+      );
+      return { ...item, title, sourceLabel };
+    });
+    return {
+      items,
+      summary: [...lines, `${incomplete ? "Known total" : "Total"}: KSh ${total.toFixed(2)}`].join(
+        "\n"
+      )
+    };
+  }
+
   createUnifiedCheckout(input: {
     sessionId: string | null;
     items: BuyCheckoutItemInput[];
@@ -1025,7 +1110,13 @@ export class CommerceDomain {
           checkout.buyerAccountId === session.account.id &&
           checkout.idempotencyKey === input.idempotencyKey
       );
-      if (existing !== undefined) return existing;
+      if (existing !== undefined) {
+        return this.getUnifiedCheckout({
+          sessionId: input.sessionId,
+          unifiedCheckoutId: existing.id,
+          now
+        });
+      }
     }
     if (input.items.length === 0 || input.items.length > 100) {
       throw new Cp2Error(
@@ -1037,6 +1128,7 @@ export class CommerceDomain {
 
     const handoffs: UnifiedCheckoutHandoffSummary[] = [];
     const failures: UnifiedCheckoutFailureSummary[] = [];
+    const externalRequests: NonNullable<UnifiedCheckoutSummary["externalRequests"]> = [];
 
     const catalogueGroups = new Map<string, BuyCheckoutItemInput[]>();
     const contactGroups = new Map<string, BuyCheckoutItemInput[]>();
@@ -1049,8 +1141,38 @@ export class CommerceDomain {
         const group = contactGroups.get(item.sourceId) ?? [];
         group.push(item);
         contactGroups.set(item.sourceId, group);
+      } else if (
+        item.sourceKind === "marketplace_connector" &&
+        item.websiteUrl &&
+        Number.isInteger(item.quantity) &&
+        item.quantity > 0
+      ) {
+        let url: URL;
+        try {
+          url = new URL(item.websiteUrl);
+        } catch {
+          throw new Cp2Error(
+            400,
+            "external_website_url_invalid",
+            "Use a valid HTTPS retailer URL."
+          );
+        }
+        if (url.protocol !== "https:" || url.username || url.password) {
+          throw new Cp2Error(
+            400,
+            "external_website_url_invalid",
+            "Use a valid HTTPS retailer URL without credentials."
+          );
+        }
+        externalRequests.push({
+          websiteUrl: url.href,
+          sourceLabel: url.hostname,
+          title: item.title,
+          quantity: item.quantity
+        });
       } else {
         failures.push({
+          checkoutItemIndex: input.items.indexOf(item),
           sourceLabel: item.sourceLabel,
           title: item.title,
           reason: "No marketplace connector is available for this item."
@@ -1063,6 +1185,7 @@ export class CommerceDomain {
       if (business === undefined) {
         for (const item of items) {
           failures.push({
+            checkoutItemIndex: input.items.indexOf(item),
             sourceLabel: item.sourceLabel,
             title: item.title,
             reason: "Shop unavailable."
@@ -1071,11 +1194,13 @@ export class CommerceDomain {
         continue;
       }
       const resolved: Array<{ item: BuyCheckoutItemInput; product: ProductSummary }> = [];
+      const requestedQuantities = new Map<string, number>();
       for (const item of items) {
         const product =
           item.productId === null ? undefined : this.deps.products.get(item.productId);
         if (product === undefined || product.businessId !== business.id || product.quantity <= 0) {
           failures.push({
+            checkoutItemIndex: input.items.indexOf(item),
             sourceLabel: item.sourceLabel,
             title: item.title,
             reason: "No longer available."
@@ -1085,9 +1210,10 @@ export class CommerceDomain {
         if (
           !Number.isInteger(item.quantity) ||
           item.quantity < 1 ||
-          item.quantity > product.quantity
+          item.quantity + (requestedQuantities.get(product.id) ?? 0) > product.quantity
         ) {
           failures.push({
+            checkoutItemIndex: input.items.indexOf(item),
             sourceLabel: item.sourceLabel,
             title: item.title,
             reason: "Not enough stock."
@@ -1096,12 +1222,17 @@ export class CommerceDomain {
         }
         if (product.sellingPrice === null) {
           failures.push({
+            checkoutItemIndex: input.items.indexOf(item),
             sourceLabel: item.sourceLabel,
             title: item.title,
             reason: "Price unavailable."
           });
           continue;
         }
+        requestedQuantities.set(
+          product.id,
+          (requestedQuantities.get(product.id) ?? 0) + item.quantity
+        );
         resolved.push({ item, product });
       }
       if (resolved.length === 0) continue;
@@ -1162,9 +1293,14 @@ export class CommerceDomain {
 
     for (const [statusBroadcastId, items] of contactGroups) {
       const status = this.statusBroadcasts.get(statusBroadcastId);
-      if (status === undefined || status.state !== "active") {
+      if (
+        status === undefined ||
+        status.state !== "active" ||
+        this.recipientForViewer(status, session.user.id) === undefined
+      ) {
         for (const item of items) {
           failures.push({
+            checkoutItemIndex: input.items.indexOf(item),
             sourceLabel: item.sourceLabel,
             title: item.title,
             reason: "This status is no longer active."
@@ -1179,6 +1315,7 @@ export class CommerceDomain {
         );
         if (sourceItem === undefined) {
           failures.push({
+            checkoutItemIndex: input.items.indexOf(item),
             sourceLabel: item.sourceLabel,
             title: item.title,
             reason: "This item is no longer part of the status."
@@ -1187,6 +1324,7 @@ export class CommerceDomain {
         }
         if (!Number.isInteger(item.quantity) || item.quantity < 1) {
           failures.push({
+            checkoutItemIndex: input.items.indexOf(item),
             sourceLabel: item.sourceLabel,
             title: item.title,
             reason: "Invalid quantity."
@@ -1234,6 +1372,7 @@ export class CommerceDomain {
       buyerAccountId: session.account.id,
       handoffs,
       failures,
+      externalRequests,
       createdAt: now.toISOString(),
       idempotencyKey: input.idempotencyKey ?? null
     };

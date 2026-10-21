@@ -184,8 +184,9 @@ export async function createEdgeSnapshotScope(
       union select business_id from public.cp2_staff_invitations where record->>'destination' = ${destination} and ${actorAccount} <> ''
       union select id::text from public.businesses where grogoni_id = ${storefront}
       ${webhookScope}
+      ${path === "/buy/assistant" && typeof input.shoppingSessionId === "string" && uuid.test(input.shoppingSessionId) ? `union select b.id::text from public.businesses b join public.buyer_shopping_sessions shopping on shopping.account_id = ${actorAccount} and shopping.entity_id = ${escapeLiteral(input.shoppingSessionId)} cross join lateral jsonb_array_elements(coalesce(shopping.record->'pendingCheckout'->'items', '[]'::jsonb)) item where b.grogoni_id = item->>'sourceId' or b.id::text = item->>'sourceId'` : ""}
       ${checkoutShops.length ? `union select id::text from public.businesses where grogoni_id in (${checkoutShops.join(",")}) or id::text in (${checkoutShops.join(",")})` : ""}
-      ${path === "/buy/search" ? `union select id from (select b.id::text as id from public.businesses b where position(lower(${search}) in lower(b.name)) > 0 or position(lower(${search}) in lower(b.grogoni_id)) > 0 or exists (select 1 from public.products p where p.business_id = b.id and position(lower(${search}) in lower(p.name)) > 0) order by b.name, b.id limit 50) searched_businesses` : ""}`
+      ${path === "/buy/search" || path === "/buy/assistant" ? `union select id from (select b.id::text as id from public.businesses b where position(lower(${search}) in lower(b.name)) > 0 or position(lower(${search}) in lower(b.grogoni_id)) > 0 or exists (select 1 from public.products p where p.business_id = b.id and position(lower(${search}) in lower(p.name)) > 0) order by b.name, b.id limit 50) searched_businesses` : ""}`
     ],
     [
       "edge_user_ids",
