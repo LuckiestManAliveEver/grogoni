@@ -6,6 +6,7 @@ import {
   runtimeProviderFromAdapter,
   type ModelRuntimeAdapter
 } from "../inference/model-runtime.js";
+import { repositoryDefaultRuntimePolicy } from "@grogoni/shared-types";
 import { hostedJsonRequest, hostedEndpoint } from "../inference/hosted-http.js";
 import { DaemonTaskError, type DaemonExecutor } from "./worker.js";
 import type { DaemonPayload } from "./task-store.js";
@@ -67,11 +68,14 @@ export function readDaemonCapabilities(
     refusal(payload) {
       if (payload.kind === "maintenance") return maintenance ? null : "JOB_API_NOT_CONFIGURED";
       if (!agents) return "AGENT_RUNTIME_NOT_CONFIGURED";
-      if (!modelMapped(payload.modelId)) return "MODEL_NOT_CONFIGURED";
+      const modelId = "modelId" in payload ? payload.modelId : defaultModelId;
+      if (!modelMapped(modelId)) return "MODEL_NOT_CONFIGURED";
       // Same measure as the Grogoni engine, so oversized (often multibyte) text is refused now
       // rather than accepted and dead-lettered as CONTEXT_TOO_LARGE on its first run.
       const promptBytes = Buffer.byteLength(JSON.stringify(daemonAgentPrompt(payload.message)));
-      return payload.agentAdapterId === "grogoni" && promptBytes > defaultGrogoniMaxPromptBytes
+      const agentAdapterId =
+        "agentAdapterId" in payload ? payload.agentAdapterId : repositoryDefaultRuntimePolicy.agentRuntimeAdapterId;
+      return agentAdapterId === "grogoni" && promptBytes > defaultGrogoniMaxPromptBytes
         ? "MESSAGE_TOO_LARGE"
         : null;
     }
@@ -131,11 +135,16 @@ export function createDaemonExecutor(
         throw error;
       }
     }
-    const adapter = models.resolve({ modelId: payload.modelId, executionTarget: "backend" });
+    const modelId = "modelId" in payload ? payload.modelId : repositoryDefaultRuntimePolicy.modelId;
+    const agentAdapterId =
+      "agentAdapterId" in payload
+        ? payload.agentAdapterId
+        : repositoryDefaultRuntimePolicy.agentRuntimeAdapterId;
+    const adapter = models.resolve({ modelId, executionTarget: "backend" });
     agents ??= import("../agent-harness/default-agent-runtime-adapters.js").then(
       ({ createDefaultAgentRuntimeAdapterRegistry }) => createDefaultAgentRuntimeAdapterRegistry()
     );
-    const agentAdapter = (await agents).resolve(payload.agentAdapterId);
+    const agentAdapter = (await agents).resolve(agentAdapterId);
     if (!adapter || !agentAdapter) throw new DaemonTaskError("RUNTIME_NOT_CONFIGURED", false);
     // runtimeProviderFromAdapter flattens a model failure into a completion code and drops the
     // runtime's own retryable verdict; capture it here so transient failures are retried.
@@ -154,8 +163,8 @@ export function createDaemonExecutor(
       }
     );
     const context = {
-      modelId: payload.modelId,
-      agentId: `daemon:${payload.agentAdapterId}`,
+      modelId,
+      agentId: `daemon:${agentAdapterId}`,
       shopId: "daemon-operator",
       signal
     };
@@ -166,19 +175,19 @@ export function createDaemonExecutor(
         businessId: null,
         accountId: null,
         name: "Grogoni daemon",
-        provider: payload.agentAdapterId,
+        provider: agentAdapterId,
         packageRef: null,
         version: "1",
         runtimeContractVersion: "1",
         capabilities: ["chat"],
-        configuration: { runtimeAdapterId: payload.agentAdapterId },
+        configuration: { runtimeAdapterId: agentAdapterId },
         status: "active",
         createdAt: now,
         updatedAt: now
       },
       bindingId: `daemon:${task.id}`,
       executionHostId: null,
-      modelId: payload.modelId,
+      modelId,
       conversationId: task.id,
       shopId: context.shopId,
       userMessage: payload.message,
