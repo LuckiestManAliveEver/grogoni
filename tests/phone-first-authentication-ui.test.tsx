@@ -90,6 +90,13 @@ afterEach(() => {
 });
 
 describe("PhoneFirstAuthentication login methods", () => {
+  it("offers a direct recovery action from the main login screen", async () => {
+    renderLogin();
+    await change(inputByLabel("Phone number"), "0712345678");
+
+    expect(buttonByText("Trouble logging in?")).toBeInstanceOf(HTMLButtonElement);
+  });
+
   it("keeps a failed PIN attempt on the PIN screen even when password login is available", async () => {
     mockedApiFetch.mockImplementation(async (path) => {
       if (path === "/auth/login/methods") {
