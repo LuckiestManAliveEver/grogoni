@@ -7,7 +7,6 @@ import { ApiRequestError, apiFetch } from "./lib/api";
 import { AppIcon } from "./AppIcon";
 import { PhoneNumberField, authenticationPhoneCountries } from "./PhoneNumberField";
 import { getUserFacingErrorMessage } from "./user-facing-error";
-import { isGrogoniId, normalizeGrogoniId } from "./grogoniid-and-storefront";
 
 type Stage =
   | "entry"
@@ -18,7 +17,6 @@ type Stage =
   | "recovery-reset"
   | "create-pin"
   | "recover-pin";
-type IdentifierType = "phone" | "email" | "store";
 
 interface LoginMethods {
   preferred: "pin";
@@ -51,9 +49,9 @@ export function PhoneFirstAuthentication({
 }: Props) {
   // A returning visit does not need the identifier again, but still goes through the backend's
   // enumeration-safe method discovery instead of assuming which credential the account uses.
-  const startsWithRemembered = remembered !== null;
+  const startsWithRemembered = remembered?.type === "phone";
   const [usingRemembered, setUsingRemembered] = useState(startsWithRemembered);
-  const [identifierType, setIdentifierType] = useState<IdentifierType>(remembered?.type ?? "phone");
+  const identifierType = "phone" as const;
   const [country, setCountry] = useState<CountryCode>("KE");
   const [identifier, setIdentifier] = useState(
     startsWithRemembered ? (remembered?.identifier ?? "") : ""
@@ -66,7 +64,11 @@ export function PhoneFirstAuthentication({
   const [password, setPassword] = useState("");
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
   const [recoveryMfaCode, setRecoveryMfaCode] = useState("");
-  const [mfaFactor, setMfaFactor] = useState<"totp" | "recovery_code">("totp");
+  const [recoveryEmail, setRecoveryEmail] = useState("");
+  const [recoveryMethod, setRecoveryMethod] = useState<"passkey" | "email">("passkey");
+  const [recoveryCredential, setRecoveryCredential] = useState<"pin" | "password">("pin");
+  const [availableMfaFactors, setAvailableMfaFactors] = useState<string[]>([]);
+  const [mfaFactor, setMfaFactor] = useState<"totp" | "recovery_code" | "email">("totp");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState(
     startsWithRemembered ? "Choose a secure way to return to this account." : ""
@@ -83,19 +85,6 @@ export function PhoneFirstAuthentication({
   }
 
   const identifierBody = () => {
-    if (identifierType === "email") {
-      const trimmed = identifier.trim().toLowerCase();
-      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/u.test(trimmed)) {
-        throw new Error("Enter a valid email address.");
-      }
-      return { type: identifierType, identifier: trimmed };
-    }
-    if (identifierType === "store") {
-      if (!isGrogoniId(identifier)) {
-        throw new Error("Enter a valid Grogoni ID, e.g. grogoni.janes-shop.");
-      }
-      return { type: identifierType, identifier: normalizeGrogoniId(identifier) };
-    }
     const normalized = normalizePhoneInput({
       rawInput: identifier,
       selectedCountry: country,
@@ -107,7 +96,7 @@ export function PhoneFirstAuthentication({
 
   function currentIdentifierBody() {
     return usingRemembered
-      ? { type: remembered!.type, identifier: remembered!.identifier }
+      ? { type: "phone" as const, identifier: remembered!.identifier }
       : identifierBody();
   }
 
@@ -124,13 +113,6 @@ export function PhoneFirstAuthentication({
   }
 
   async function continueIdentifier() {
-    if (identifierType === "store") {
-      identifierBody();
-      setPin("");
-      setStage("pin");
-      setMessage("Enter the store owner's PIN to continue.");
-      return;
-    }
     const methods = await apiFetch<LoginMethods>("/auth/login/methods", {
       method: "POST",
       body: currentIdentifierBody(),
@@ -147,22 +129,24 @@ export function PhoneFirstAuthentication({
     // phone parsing, which needs a country hint this screen no longer collects.
     const normalized = currentIdentifierBody();
     try {
-      const result = await apiFetch<AuthSessionView>(
-        identifierType === "store" ? "/auth/pin/store-login" : "/auth/pin/login",
-        {
-          method: "POST",
-          body:
-            identifierType === "store"
-              ? { grogoniId: normalized.identifier, pin }
-              : {
-                  method: identifierType,
-                  contact: normalized.identifier,
-                  ...(identifierType === "phone" && !usingRemembered ? { country } : {}),
-                  pin
-                }
+      const result = await apiFetch<
+        AuthSessionView | { mfaRequired: true; transactionId: string; factors: string[] }
+      >("/auth/pin/login", {
+        method: "POST",
+        body: {
+          method: "phone",
+          contact: normalized.identifier,
+          ...(!usingRemembered ? { country } : {}),
+          pin
         }
-      );
-      onAuthenticated(result);
+      });
+      if ("mfaRequired" in result) {
+        setTransactionId(result.transactionId);
+        setAvailableMfaFactors(result.factors);
+        setMfaFactor(result.factors.includes("email") ? "email" : "totp");
+        setStage("mfa");
+        setMessage("Enter your second factor.");
+      } else onAuthenticated(result);
     } catch (error) {
       if (error instanceof ApiRequestError && error.code === "auth_credentials_invalid") {
         setMessage(
@@ -175,15 +159,16 @@ export function PhoneFirstAuthentication({
   }
 
   async function login() {
-    const result = await apiFetch<AuthSessionView | { mfaRequired: true; transactionId: string }>(
-      "/auth/login/password",
-      {
-        method: "POST",
-        body: { ...currentIdentifierBody(), password }
-      }
-    );
+    const result = await apiFetch<
+      AuthSessionView | { mfaRequired: true; transactionId: string; factors: string[] }
+    >("/auth/login/password", {
+      method: "POST",
+      body: { ...currentIdentifierBody(), password }
+    });
     if ("mfaRequired" in result && result.mfaRequired) {
       setTransactionId(result.transactionId);
+      setAvailableMfaFactors(result.factors);
+      setMfaFactor(result.factors.includes("email") ? "email" : "totp");
       setStage("mfa");
       setCode("");
       setMessage("Enter your second factor.");
@@ -200,12 +185,9 @@ export function PhoneFirstAuthentication({
     onAuthenticated(session);
   }
 
-  // Step 1 of recovery: prove identity. Phone accounts have no SMS channel, so identity is
-  // proven with a passkey right here, before anything about a new credential is asked - the same
-  // "authenticate first" order a phone's biometric unlock uses. Email/store accounts prove
-  // identity with an emailed code instead, entered together with the new password in step 2.
+  // Prove ownership using an enrolled passkey or a verified backup email.
   async function startRecovery() {
-    if (identifierType === "phone") {
+    if (recoveryMethod === "passkey") {
       if (!browserSupportsWebAuthn()) {
         setMessage(
           "Passkey recovery isn't available in this browser. Try Chrome, Safari, or Edge, or contact support."
@@ -220,10 +202,13 @@ export function PhoneFirstAuthentication({
         body: { purpose: "pin_recovery" }
       });
       const response = await startAuthentication({ optionsJSON: challenge.options });
-      await apiFetch<AuthSessionView>("/auth/passkeys/login/verify", {
+      const recoveredSession = await apiFetch<AuthSessionView>("/auth/passkeys/login/verify", {
         method: "POST",
         body: { ceremonyId: challenge.ceremonyId, response }
       });
+      if (recoveredSession.account.primaryAuthDestination !== currentIdentifierBody().identifier) {
+        throw new Error("Choose a passkey registered to this mobile phone account.");
+      }
       // The passkey response established a fresh, server-authoritative recovery session. Ask the
       // server which credential mutation is valid instead of guessing from client state. Do not
       // auto-refresh this status request: rotating the just-created session between proof and
@@ -234,11 +219,17 @@ export function PhoneFirstAuthentication({
       );
       setPassword("");
       setPasswordConfirmation("");
-      setStage(passkeyPinRecoveryStage(credentials.hasPin));
+      setStage(
+        recoveryCredential === "password"
+          ? "recovery-reset"
+          : passkeyPinRecoveryStage(credentials.hasPin)
+      );
       setMessage(
-        credentials.hasPin
-          ? "Identity verified. Choose a new PIN."
-          : "Identity verified. Create a 4-digit PIN."
+        recoveryCredential === "password"
+          ? "Identity verified. Choose a new password."
+          : credentials.hasPin
+            ? "Identity verified. Choose a new PIN."
+            : "Identity verified. Create a 4-digit PIN."
       );
       return;
     }
@@ -248,7 +239,7 @@ export function PhoneFirstAuthentication({
       message: string;
     }>("/auth/recovery/start", {
       method: "POST",
-      body: currentIdentifierBody()
+      body: { type: "email", identifier: recoveryEmail }
     });
     setTransactionId(result.transactionId);
     setCode(result.developmentCode ?? "");
@@ -259,9 +250,17 @@ export function PhoneFirstAuthentication({
     setMessage(result.message);
   }
 
-  // Step 2 of recovery for email/store accounts: verify the emailed code and set the new
-  // password in one action, instead of two separate screens.
+  // Passkey proof and email verification both precede password mutation.
   async function verifyAndResetPassword() {
+    if (recoveryMethod === "passkey") {
+      const session = await apiFetch<AuthSessionView>("/auth/password/recover/passkey", {
+        method: "POST",
+        body: { password, passwordConfirmation },
+        skipAuthRefresh: true
+      });
+      onAuthenticated(session);
+      return;
+    }
     await apiFetch("/auth/recovery/verify", { method: "POST", body: { transactionId, code } });
     const session = await apiFetch<AuthSessionView>("/auth/recovery/reset-password", {
       method: "POST",
@@ -289,7 +288,8 @@ export function PhoneFirstAuthentication({
     try {
       const session = await apiFetch<AuthSessionView>(endpoint, {
         method: "POST",
-        body: { pin: password, pinConfirmation: passwordConfirmation }
+        body: { pin: password, pinConfirmation: passwordConfirmation },
+        skipAuthRefresh: true
       });
       setPassword("");
       setPasswordConfirmation("");
@@ -316,7 +316,7 @@ export function PhoneFirstAuthentication({
       setStage("password");
       return;
     }
-    if (stage === "methods" || identifierType === "store") {
+    if (stage === "methods") {
       setStage("entry");
       return;
     }
@@ -371,32 +371,10 @@ export function PhoneFirstAuthentication({
             <h1 id="auth-onboarding-title">{heading}</h1>
             <p>
               {stage === "entry"
-                ? "Use your phone number, email, or Grogoni ID to get back to your conversations."
+                ? "Use your mobile phone number to get back to your conversations."
                 : message}
             </p>
           </div>
-
-          {stage === "entry" && !usingRemembered ? (
-            <div className="auth-method-tabs" role="tablist" aria-label="Login method">
-              {(["phone", "email", "store"] as const).map((method) => (
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={identifierType === method}
-                  className={identifierType === method ? "active" : ""}
-                  key={method}
-                  onClick={() => {
-                    setIdentifierType(method);
-                    setIdentifier("");
-                    setLoginMethods(null);
-                    setMessage("");
-                  }}
-                >
-                  {method === "phone" ? "Phone" : method === "email" ? "Email" : "Grogoni ID"}
-                </button>
-              ))}
-            </div>
-          ) : null}
 
           {isCredentialEntry ? (
             <div className="auth-fields">
@@ -409,7 +387,7 @@ export function PhoneFirstAuthentication({
                     Not you? Use a different account
                   </button>
                 </div>
-              ) : identifierType === "phone" ? (
+              ) : (
                 <PhoneNumberField
                   country={country}
                   value={identifier}
@@ -418,31 +396,6 @@ export function PhoneFirstAuthentication({
                   onValueChange={setIdentifier}
                   autoFocus={stage === "entry"}
                 />
-              ) : identifierType === "email" ? (
-                <label>
-                  Email address
-                  <input
-                    autoFocus
-                    type="email"
-                    autoComplete="email"
-                    placeholder="you@example.com"
-                    value={identifier}
-                    onChange={(event) => setIdentifier(event.target.value)}
-                  />
-                </label>
-              ) : (
-                <label>
-                  Grogoni ID
-                  <input
-                    autoFocus
-                    type="text"
-                    autoComplete="off"
-                    autoCapitalize="characters"
-                    placeholder="grogoni.janes-shop"
-                    value={identifier}
-                    onChange={(event) => setIdentifier(event.target.value)}
-                  />
-                </label>
               )}
               {stage === "password" ? (
                 <label>
@@ -539,29 +492,76 @@ export function PhoneFirstAuthentication({
                 </button>
               ) : null}
               {loginMethods?.recoveryAvailable ? (
-                <button
-                  className="auth-text-button"
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void run(startRecovery)}
-                >
-                  Trouble logging in?
-                </button>
+                <>
+                  <label>
+                    Recover with
+                    <select
+                      value={recoveryMethod}
+                      onChange={(event) =>
+                        setRecoveryMethod(event.target.value as "passkey" | "email")
+                      }
+                    >
+                      <option value="passkey">Passkey or device security</option>
+                      <option value="email">Verified backup email</option>
+                    </select>
+                  </label>
+                  {recoveryMethod === "email" ? (
+                    <label>
+                      Backup email
+                      <input
+                        type="email"
+                        autoComplete="email"
+                        value={recoveryEmail}
+                        onChange={(event) => setRecoveryEmail(event.target.value)}
+                      />
+                    </label>
+                  ) : (
+                    <>
+                      <p>
+                        Use an enrolled passkey with fingerprint, Face ID, or your device PIN or
+                        password.
+                      </p>
+                      <label>
+                        Reset
+                        <select
+                          value={recoveryCredential}
+                          onChange={(event) =>
+                            setRecoveryCredential(event.target.value as "pin" | "password")
+                          }
+                        >
+                          <option value="pin">Account PIN</option>
+                          <option value="password">Account password</option>
+                        </select>
+                      </label>
+                    </>
+                  )}
+
+                  <button
+                    className="auth-text-button"
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void run(startRecovery)}
+                  >
+                    Trouble logging in?
+                  </button>
+                </>
               ) : null}
             </div>
           ) : null}
 
           {stage === "recovery-reset" ? (
             <div className="auth-fields">
-              <label>
-                Verification code
-                <input
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  value={code}
-                  onChange={(event) => setCode(event.target.value)}
-                />
-              </label>
+              {recoveryMethod === "email" ? (
+                <label>
+                  Verification code
+                  <input
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    value={code}
+                    onChange={(event) => setCode(event.target.value)}
+                  />
+                </label>
+              ) : null}
               <PasswordFields
                 password={password}
                 confirmation={passwordConfirmation}
@@ -580,7 +580,10 @@ export function PhoneFirstAuthentication({
                 className="auth-primary-button"
                 type="button"
                 disabled={
-                  busy || !code.trim() || password.length < 10 || password !== passwordConfirmation
+                  busy ||
+                  (recoveryMethod === "email" && !code.trim()) ||
+                  password.length < 10 ||
+                  password !== passwordConfirmation
                 }
                 aria-busy={busy}
                 onClick={() => void run(verifyAndResetPassword)}
@@ -634,10 +637,35 @@ export function PhoneFirstAuthentication({
                   value={mfaFactor}
                   onChange={(event) => setMfaFactor(event.target.value as typeof mfaFactor)}
                 >
-                  <option value="totp">Authenticator app</option>
-                  <option value="recovery_code">Recovery code</option>
+                  {availableMfaFactors.includes("email") ? (
+                    <option value="email">Backup email</option>
+                  ) : null}
+                  {availableMfaFactors.includes("totp") ? (
+                    <option value="totp">Authenticator app</option>
+                  ) : null}
+                  {availableMfaFactors.includes("recovery_code") ? (
+                    <option value="recovery_code">Recovery code</option>
+                  ) : null}
                 </select>
               </label>
+              {mfaFactor === "email" ? (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() =>
+                    void run(async () => {
+                      const result = await apiFetch<{ developmentCode?: string }>(
+                        "/auth/mfa/email/challenge",
+                        { method: "POST", body: { transactionId } }
+                      );
+                      setCode(result.developmentCode ?? "");
+                      setMessage("A verification code was sent to your verified backup email.");
+                    })
+                  }
+                >
+                  Send email code
+                </button>
+              ) : null}
               <label>
                 Code
                 <input

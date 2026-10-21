@@ -247,7 +247,7 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
                 />
               </label>
               <label>
-                Email address <span className="auth-optional-label">Optional</span>
+                Backup email <span className="auth-optional-label">Optional</span>
                 <input
                   type="email"
                   autoComplete="email"
@@ -256,6 +256,9 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
                   disabled={busy}
                   onChange={(event) => setEmail(event.target.value)}
                 />
+                <small>
+                  Verify this email in account security to use it for backup recovery and MFA.
+                </small>
               </label>
 
               <label>
@@ -331,8 +334,8 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
               <div className="auth-security-summary">
                 <strong>Optional: add a passkey as a backup</strong>
                 <p>
-                  Your password already gets you back in. A passkey uses your device unlock and can
-                  serve as a backup way in if you ever lose access to your password.
+                  Recover your PIN or password using an enrolled passkey with fingerprint, Face ID,
+                  or your device PIN or password.
                 </p>
               </div>
               <button

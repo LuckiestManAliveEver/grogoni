@@ -21,7 +21,6 @@ import {
   maxPendingPasskeyCeremonies,
   normalizePasskeyLabel,
   passkeyCeremonyTtlMs,
-  passkeyPinRecoveryGrantTtlMs,
   passkeyView,
   type PasskeyCeremonyRecord,
   type PasskeyCredentialRecord
@@ -60,13 +59,15 @@ export interface PasskeyDomainDeps {
     reason: string,
     now: Date
   ) => void;
+  createRecoveryGrant: (sessionId: string, accountId: string, now: Date) => void;
+  recoveryGrantExpiry: (sessionId: string) => string | undefined;
+  consumeRecoveryGrant: (sessionId: string) => void;
   passkeyAuthenticationVerifier?: typeof verifyAuthenticationResponse;
 }
 
 export class PasskeyDomain {
   private readonly passkeys = new Map<string, PasskeyCredentialRecord>();
   private readonly passkeyCeremonies = new Map<string, PasskeyCeremonyRecord>();
-  private readonly passkeyPinRecoveryGrants = new Map<string, string>();
 
   constructor(private readonly deps: PasskeyDomainDeps) {}
 
@@ -81,11 +82,21 @@ export class PasskeyDomain {
   clear(): void {
     this.passkeys.clear();
     this.passkeyCeremonies.clear();
-    this.passkeyPinRecoveryGrants.clear();
+  }
+
+  requireCredentialRecoveryGrant(sessionId: string, now: Date): void {
+    const expiry = this.deps.recoveryGrantExpiry(sessionId);
+    if (expiry === undefined || Date.parse(expiry) <= now.getTime()) {
+      throw new Cp2Error(
+        401,
+        "passkey_pin_recovery_required",
+        "Verify your passkey again before resetting credentials."
+      );
+    }
   }
 
   consumePinRecoveryGrant(sessionId: string): void {
-    this.passkeyPinRecoveryGrants.delete(sessionId);
+    this.deps.consumeRecoveryGrant(sessionId);
   }
 
   restore(snapshot: Cp2Snapshot): void {
@@ -105,8 +116,7 @@ export class PasskeyDomain {
     const now = input.now ?? new Date();
     const pin = this.deps.normalizePin(input.pin);
     const session = this.deps.requireAnySession(input.sessionId, now);
-    this.prunePasskeyPinRecoveryGrants(now);
-    const grantExpiresAt = this.passkeyPinRecoveryGrants.get(session.session.id);
+    const grantExpiresAt = this.deps.recoveryGrantExpiry(session.session.id);
 
     if (grantExpiresAt === undefined || Date.parse(grantExpiresAt) <= now.getTime()) {
       throw new Cp2Error(
@@ -133,7 +143,7 @@ export class PasskeyDomain {
     // after it succeeds is atomic with respect to another request and never burns a grant on a
     // credential-write exception.
     this.deps.resetAccountPinHash(session.account.id, pin);
-    this.passkeyPinRecoveryGrants.delete(session.session.id);
+    this.deps.consumeRecoveryGrant(session.session.id);
     this.deps.revokeOtherSessionsForAccount(
       session.account.id,
       session.session.id,
@@ -304,7 +314,6 @@ export class PasskeyDomain {
   }> {
     const now = input.now ?? new Date();
     this.prunePasskeyCeremonies(now);
-    this.prunePasskeyPinRecoveryGrants(now);
     const options = await generateAuthenticationOptions({
       rpID: input.rpId,
       userVerification: "required"
@@ -384,10 +393,7 @@ export class PasskeyDomain {
     const createdSession = this.deps.createSession(account, user, now);
     this.deps.markSessionPinVerified(createdSession.id, now);
     if (ceremony.purpose === "pin_recovery") {
-      this.passkeyPinRecoveryGrants.set(
-        createdSession.id,
-        new Date(now.getTime() + passkeyPinRecoveryGrantTtlMs).toISOString()
-      );
+      this.deps.createRecoveryGrant(createdSession.id, account.id, now);
     }
     this.deps.recordAuditEvent({
       type: "auth.passkey_login",
@@ -470,14 +476,6 @@ export class PasskeyDomain {
       .slice(0, this.passkeyCeremonies.size - maxPendingPasskeyCeremonies + 1);
     for (const ceremony of overflow) {
       this.passkeyCeremonies.delete(ceremony.id);
-    }
-  }
-
-  private prunePasskeyPinRecoveryGrants(now: Date): void {
-    for (const [sessionId, expiresAt] of this.passkeyPinRecoveryGrants) {
-      if (Date.parse(expiresAt) <= now.getTime() || this.deps.getSession(sessionId, now) === null) {
-        this.passkeyPinRecoveryGrants.delete(sessionId);
-      }
     }
   }
 

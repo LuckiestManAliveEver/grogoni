@@ -1181,6 +1181,28 @@ export class Cp2Store {
       recordAuditEvent: (input) => this.recordAuditEvent(input)
     });
     this.passkeyDomain = new PasskeyDomain({
+      createRecoveryGrant: (sessionId, accountId, now) => {
+        this.createAuthTransaction("recovery", accountId, now, {
+          expiresAt: new Date(now.getTime() + 5 * 60 * 1000).toISOString(),
+          metadata: { passkeyRecoverySessionId: sessionId }
+        });
+      },
+      recoveryGrantExpiry: (sessionId) =>
+        [...this.authTransactions.values()].find(
+          (record) =>
+            record.purpose === "recovery" &&
+            record.metadata.passkeyRecoverySessionId === sessionId &&
+            record.consumedAt === null
+        )?.expiresAt,
+      consumeRecoveryGrant: (sessionId) => {
+        for (const [id, record] of this.authTransactions) {
+          if (
+            record.purpose === "recovery" &&
+            record.metadata.passkeyRecoverySessionId === sessionId
+          )
+            this.authTransactions.delete(id);
+        }
+      },
       requireAnySession: (sessionId, now) => this.requireAnySession(sessionId, now),
       requireRecentlyAuthenticatedSession: (sessionId, now) =>
         this.requireRecentlyAuthenticatedSession(sessionId, now),
@@ -2908,13 +2930,16 @@ export class Cp2Store {
     const account = this.requireAccount(accountId);
     this.requireAccountAuthenticationAllowed(account);
     const factors = this.activeMfaFactors(accountId);
-    if (factors.length > 0) {
+    if (factors.length > 0 || this.verifiedBackupEmail(accountId)) {
       const transaction = this.createAuthTransaction("login_mfa", accountId, now);
       this.recordSecurityEvent("auth.mfa_requested", accountId, "success", now, {});
       return {
         mfaRequired: true,
         transactionId: transaction.id,
-        factors: ["totp", "recovery_code"],
+        factors: [
+          ...(factors.length > 0 ? ["totp", "recovery_code"] : []),
+          ...(this.verifiedBackupEmail(accountId) ? ["email"] : [])
+        ],
         expiresAt: transaction.expiresAt
       };
     }
@@ -2982,7 +3007,7 @@ export class Cp2Store {
 
   verifyMfa(input: {
     transactionId: string;
-    factor: "totp" | "recovery_code";
+    factor: "totp" | "recovery_code" | "email";
     code: string;
     now?: Date;
   }): AuthSessionView {
@@ -2990,7 +3015,24 @@ export class Cp2Store {
     const transaction = this.requireAuthTransaction(input.transactionId, "login_mfa", now);
     const accountId = transaction.accountId!;
     let verified = false;
-    if (input.factor === "totp") {
+    if (input.factor === "email") {
+      const challenge =
+        transaction.providerChallengeId === null
+          ? undefined
+          : this.otpDomain.otpChallengesMap.get(transaction.providerChallengeId);
+      if (
+        challenge &&
+        challenge.destination === this.verifiedBackupEmail(accountId) &&
+        challenge.purpose === "recovery" &&
+        challenge.verifiedAt === null &&
+        Date.parse(challenge.expiresAt) > now.getTime() &&
+        challenge.attempts < challenge.maxAttempts
+      ) {
+        challenge.attempts += 1;
+        verified = safeHashEqual(challenge.codeHash, hashOtp(challenge.id, input.code));
+        if (verified) challenge.verifiedAt = now.toISOString();
+      }
+    } else if (input.factor === "totp") {
       const factor = this.activeMfaFactors(accountId)[0];
       if (factor !== undefined) {
         const step = verifyTotp(
@@ -9497,6 +9539,79 @@ export class Cp2Store {
     this.markSessionPinVerified(sessionRecord.id, now);
     this.recordSecurityEvent("auth.password_reset", account.id, "success", now, {});
     return this.requireAnySession(sessionRecord.id, now);
+  }
+
+  recoverPasswordWithPasskey(input: {
+    sessionId: string | null;
+    password: string;
+    now?: Date;
+  }): AuthSessionView {
+    const now = input.now ?? new Date();
+    const session = this.requireAnySession(input.sessionId, now);
+    this.passkeyDomain.requireCredentialRecoveryGrant(session.session.id, now);
+    validatePassword(input.password);
+    this.passwordCredentials.set(
+      session.account.id,
+      createPasswordCredential(session.account.id, input.password, now)
+    );
+    this.passkeyDomain.consumePinRecoveryGrant(session.session.id);
+    for (const candidate of this.sessions.values()) {
+      if (
+        candidate.accountId === session.account.id &&
+        candidate.id !== session.session.id &&
+        candidate.revokedAt === null
+      ) {
+        candidate.revokedAt = now.toISOString();
+        candidate.revocationReason = "password_reset";
+      }
+    }
+    this.recordSecurityEvent("auth.password_reset", session.account.id, "success", now, {
+      method: "passkey"
+    });
+    return this.requireAnySession(session.session.id, now);
+  }
+
+  private verifiedBackupEmail(accountId: string): string | undefined {
+    return [...this.accountIdentities.values()].find(
+      (identity) =>
+        identity.accountId === accountId &&
+        identity.type === "email" &&
+        identity.verifiedAt !== null
+    )?.normalizedValue;
+  }
+
+  challengePinLoginMfa(
+    session: AuthSessionView,
+    now = new Date()
+  ): { mfaRequired: true; transactionId: string; factors: string[] } | null {
+    if (
+      !this.verifiedBackupEmail(session.account.id) &&
+      this.activeMfaFactors(session.account.id).length === 0
+    )
+      return null;
+    const record = this.sessions.get(session.session.id)!;
+    record.revokedAt = now.toISOString();
+    record.revocationReason = "mfa_pending";
+    const transaction = this.createAuthTransaction("login_mfa", session.account.id, now);
+    return {
+      mfaRequired: true,
+      transactionId: transaction.id,
+      factors: [
+        ...(this.activeMfaFactors(session.account.id).length > 0 ? ["totp", "recovery_code"] : []),
+        ...(this.verifiedBackupEmail(session.account.id) ? ["email"] : [])
+      ]
+    };
+  }
+
+  beginEmailMfa(input: { transactionId: string; now?: Date }) {
+    const now = input.now ?? new Date();
+    const transaction = this.requireAuthTransaction(input.transactionId, "login_mfa", now);
+    const destination = this.verifiedBackupEmail(transaction.accountId!);
+    if (!destination)
+      throw new Cp2Error(400, "email_mfa_unavailable", "No verified backup email is available.");
+    const otp = this.requestOtp({ channel: "email", destination, purpose: "recovery", now });
+    transaction.providerChallengeId = otp.challengeId;
+    return otp;
   }
 
   changePassword(input: {

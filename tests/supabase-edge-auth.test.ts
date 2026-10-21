@@ -153,24 +153,43 @@ describe("Edge credential compatibility", () => {
 });
 
 describe("native Edge authentication routes", () => {
-  it("does not enumerate accounts or advertise unfinished passkeys/recovery", async () => {
+  it("does not enumerate mobile accounts during method discovery", async () => {
     const query = vi.fn();
     const { routes, transaction } = setup(query);
-    for (const identifier of ["known@example.com", "unknown@example.com"]) {
+    for (const identifier of ["+254712345678", "+254712345678"]) {
       const r = await routes(
-        request("/auth/login/methods", { type: "email", identifier }),
+        request("/auth/login/methods", { type: "phone", identifier }),
         "/auth/login/methods"
       );
       expect(await r!.json()).toEqual({
         preferred: "pin",
         passkeyAvailable: false,
         passwordFallback: true,
-        recoveryAvailable: false,
+        recoveryAvailable: true,
         smsLogin: false
       });
     }
     expect(transaction).not.toHaveBeenCalled();
   });
+  it("rejects email and storefront entry points before any database lookup", async () => {
+    const query = vi.fn();
+    const { routes } = setup(query);
+    for (const [path, payload] of [
+      [
+        "/auth/login/password",
+        { type: "email", identifier: "backup@example.com", password: "password-long-enough" }
+      ],
+      ["/auth/pin/login", { method: "email", contact: "backup@example.com", pin: "2468" }],
+      ["/auth/signup/start", { type: "email", identifier: "backup@example.com" }],
+      ["/auth/pin/store-login", { grogoniId: "grogoni.store", pin: "2468" }]
+    ] as const) {
+      const response = await routes(request(path, payload), path);
+      expect(response!.status).toBeGreaterThanOrEqual(400);
+      expect(response!.headers.getSetCookie()).toHaveLength(0);
+    }
+    expect(query).not.toHaveBeenCalled();
+  });
+
   it("validates phone input and four-digit PINs before querying", async () => {
     const { routes, transaction } = setup(vi.fn());
     for (const data of [
@@ -269,7 +288,7 @@ describe("native Edge authentication routes", () => {
       }),
       "/auth/login/password"
     );
-    expect(r!.status).toBe(200);
+    expect(r!.status).toBe(202);
     const result = await r!.json();
     expect(result.mfaRequired).toBe(true);
     expect(result.factors).toEqual(["totp", "recovery_code"]);
