@@ -18,6 +18,70 @@ with HTML or 405. Override the API origin for a development backend with:
 The configured origin must use HTTPS for a device build. Emulator-only cleartext networking is not
 enabled by the manifest.
 
+## Release build for Google Play
+
+Create a keystore and configure the required environment variables before generating a release bundle:
+
+```bash
+cd apps/android
+keytool -genkeypair -v \
+  -keystore release.keystore \
+  -alias grogoni \
+  -keyalg RSA \
+  -keysize 2048 \
+  -validity 10000
+```
+
+Then set the signing values in your shell before building:
+
+```bash
+export GROGONI_RELEASE_STORE_FILE="$PWD/release.keystore"
+export GROGONI_RELEASE_STORE_PASSWORD="your-keystore-password"
+export GROGONI_RELEASE_KEY_ALIAS="grogoni"
+export GROGONI_RELEASE_KEY_PASSWORD="your-key-password"
+```
+
+A Play bundle can then be generated with:
+
+```bash
+./gradlew :app:bundleRelease
+```
+
+The generated `.aab` file is located under `app/build/outputs/bundle/release/` and is the artifact to
+upload in the Google Play Console.
+
+## Direct APK distribution from grogoni.com
+
+While Play Console registration is in progress, the Android SMS routing handler can still be shipped
+onto real phones by hosting a release APK directly from the production site. Build the APK with:
+
+```bash
+cd apps/android
+./gradlew :app:assembleRelease
+# or from the repo root:
+pnpm android:release:apk
+```
+
+The signed release APK lands under `app/build/outputs/apk/release/` and can be uploaded to a public
+`https://grogoni.com/android/` download path or another production-hosted artifact endpoint. Keep the
+download URL in the release notes or onboarding flow so testers can install the app before Play
+registration is complete.
+
+This is an interim distribution path only. The Play Console listing remains the long-term distribution
+channel once the app identity and policy review are approved.
+
+You can also keep a local `keystore.properties` file next to the project root when developing locally,
+with the same keys used by Gradle:
+
+```properties
+storeFile=release.keystore
+storePassword=your-keystore-password
+keyAlias=grogoni
+keyPassword=your-key-password
+```
+
+This file is intentionally ignored by Git and should never be committed.
+
 ## Setup contract
 
 1. Sign in with a Grogoni phone number and PIN, then select a business.
