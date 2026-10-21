@@ -222,6 +222,44 @@ describe("native runtime binding resolver", () => {
     expect(store.bindingsMap.get(bindingB.id)?.status).toBe("inactive");
   });
 
+  it("prefers the active shop binding over a stale global-default assignment for the same conversation", () => {
+    const store = new NativeRuntimeBindingStore();
+    const businessBinding = store.activateVerifiedModel({
+      accountId: "account-1",
+      businessId: "business-1",
+      agentId: "agent-1",
+      agentName: "Agent",
+      model: localCatalogModel("shop-model"),
+      executionTarget: "backend",
+      fallbackModel: null,
+      updatedBy: "user-1",
+      checkedAt: timestamp
+    });
+    const conversation = {
+      id: "conversation-default-shared",
+      accountId: "account-1",
+      activeShopId: "business-1",
+      runtimeBindingId: globalDefaultRuntimeBindingId,
+      createdAt: timestamp,
+      updatedAt: timestamp
+    } satisfies ConversationSummary;
+
+    const resolved = store.resolveRuntimeBinding(
+      {
+        businessId: "business-1",
+        accountId: "account-1",
+        agentId: "agent-1",
+        conversationId: conversation.id
+      },
+      new Map([[conversation.id, conversation]])
+    );
+
+    expect(resolved.binding.id).toBe(businessBinding.id);
+    expect(resolved.source).toBe("explicit-account");
+    expect(resolved.usedGlobalDefault).toBe(false);
+    expect(resolved.selected.model.id).toBe("shop-model");
+  });
+
   it("rejects assigning the global default a model missing a required capability", () => {
     const store = new NativeRuntimeBindingStore();
     expect(() =>
