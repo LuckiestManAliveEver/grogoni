@@ -141,6 +141,156 @@ button:disabled {
   color: #85eec3;
 }
 
+.install-page-shell {
+  background: linear-gradient(180deg, #eef6f0 0%, #f5f8f5 100%);
+  color: #163526;
+  min-height: 100vh;
+  overflow-y: auto;
+  padding: 24px 16px 48px;
+}
+
+.install-card {
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(17, 122, 79, 0.15);
+  border-radius: 22px;
+  box-shadow: 0 20px 42px rgba(15, 39, 27, 0.12);
+  margin: 0 auto;
+  max-width: 860px;
+  padding: 22px 18px 20px;
+}
+
+.install-brand {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+}
+
+.install-brand-icon {
+  width: 54px;
+  height: 54px;
+}
+
+.install-kicker {
+  color: #117a4f;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  margin: 0 0 4px;
+  text-transform: uppercase;
+}
+
+.install-card h1,
+.install-card h2,
+.install-card p,
+.install-card li,
+.install-card a,
+.install-card button {
+  font-family: inherit;
+}
+
+.install-card h1 {
+  font-size: clamp(2rem, 6vw, 3rem);
+  margin: 0;
+}
+
+.install-card h2 {
+  margin: 0 0 8px;
+}
+
+.install-intro {
+  font-size: 1.025rem;
+  line-height: 1.6;
+  margin: 18px 0 0;
+}
+
+.install-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.install-pill,
+.install-browser-pill {
+  background: #ebf9f0;
+  border: 1px solid rgba(17, 122, 79, 0.2);
+  border-radius: 999px;
+  color: #0f5a3a;
+  display: inline-flex;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 7px 10px;
+}
+
+.install-pill.is-installed {
+  background: #e0f8e2;
+}
+
+.install-primary-action,
+.install-link {
+  align-items: center;
+  background: linear-gradient(180deg, #117a4f 0%, #0c5d3c 100%);
+  border-radius: 12px;
+  color: #f2fff7;
+  display: inline-flex;
+  font-weight: 800;
+  justify-content: center;
+  min-height: 48px;
+  padding: 0 18px;
+  text-decoration: none;
+}
+
+.install-secondary-stack {
+  margin-top: 18px;
+}
+
+.install-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  margin-top: 22px;
+}
+
+.install-panel,
+.install-steps {
+  background: #f7faf7;
+  border: 1px solid rgba(17, 122, 79, 0.1);
+  border-radius: 18px;
+  padding: 16px;
+}
+
+.install-panel p,
+.install-steps p,
+.install-steps li,
+.install-panel li {
+  color: #2c4539;
+  line-height: 1.5;
+}
+
+.install-note {
+  margin-top: 12px;
+}
+
+.install-steps {
+  margin-top: 18px;
+}
+
+.install-steps ol,
+.install-steps ul {
+  margin: 12px 0 0;
+  padding-left: 22px;
+}
+
+.install-steps li + li {
+  margin-top: 8px;
+}
+
+@media (min-width: 720px) {
+  .install-card {
+    padding: 30px 28px 28px;
+  }
+}
+
 .app-frame {
   display: grid;
   gap: 0;

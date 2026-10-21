@@ -11,6 +11,7 @@ function routeId(value: string): string {
 export const routes = {
   home: "/",
   chat: "/chat",
+  install: "/install",
   marketplace: "/marketplace",
   sell: "/sell",
   // The owner's Shop Hub. Deliberately under /sell: /shop/:id is a public storefront alias
