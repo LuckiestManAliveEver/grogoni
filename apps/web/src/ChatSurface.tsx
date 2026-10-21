@@ -323,7 +323,7 @@ export function ChatSurface({
         )
         .filter((conversation) => {
           const query = inboxSearch.trim().toLowerCase();
-          if (!query) return true;
+          if (!query || conversation.helpTopic) return true;
           return (
             (conversation.title ?? "Grogoni agent").toLowerCase().includes(query) ||
             (conversation.lastMessage === null
@@ -504,19 +504,23 @@ export function ChatSurface({
                 <button
                   type="button"
                   className="thread-topic-button"
-                  disabled={selectedConversation === undefined}
-                  aria-label="Edit conversation topic"
+                  disabled={selectedConversation === undefined || !!selectedConversation.helpTopic}
+                  aria-label={
+                    selectedConversation?.helpTopic ? "Help topic" : "Edit conversation topic"
+                  }
                   onClick={() => setEditingTopic(selectedConversation?.title ?? agent.name)}
                 >
                   <strong>{selectedConversation?.title ?? agent.name}</strong>
                 </button>
               )}
               <small>
-                {showBlankSessionState
-                  ? "Not started yet"
-                  : `${mode === "seller" ? "Sell session" : "Buy session"} · ${
-                      isContactTyping ? "typing…" : securityLabel
-                    }`}
+                {selectedConversation?.helpTopic
+                  ? "Help · Ask your agent"
+                  : showBlankSessionState
+                    ? "Not started yet"
+                    : `${mode === "seller" ? "Sell session" : "Buy session"} · ${
+                        isContactTyping ? "typing…" : securityLabel
+                      }`}
               </small>
             </div>
             {!showBlankSessionState && messages.some((message) => message.status === "failed") ? (

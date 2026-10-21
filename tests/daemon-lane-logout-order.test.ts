@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import ts from "typescript";
+import { runInNewContext } from "node:vm";
 import { describe, expect, it } from "vitest";
 
 /**
@@ -8,7 +9,7 @@ import { describe, expect, it } from "vitest";
  * shell is too large to render in a test, so this pins the order in its source.
  */
 describe("logout and the daemon lane", () => {
-  it("does not start the lane for signed-out or device-only identities", () => {
+  it("requires a session and permits device-only identities only in Help", () => {
     const file = "apps/web/src/GrogoniApplication.tsx";
     const source = ts.createSourceFile(
       file,
@@ -26,8 +27,21 @@ describe("logout and the daemon lane", () => {
     expect(argument && ts.isConditionalExpression(argument)).toBe(true);
     if (!argument || !ts.isConditionalExpression(argument))
       throw new Error("Missing session guard.");
-    expect(argument.condition.getText()).toBe("isSignedOut");
-    expect(argument.whenTrue.kind).toBe(ts.SyntaxKind.NullKeyword);
+    const expression = argument.getText();
+    for (const [session, isSignedOut, helpTopic, expected] of [
+      [null, true, undefined, null],
+      [{ account: { id: "owner" } }, false, undefined, "owner"],
+      [{ account: { id: "visitor" } }, true, undefined, null],
+      [{ account: { id: "visitor" } }, true, "tools", "visitor"]
+    ] as const) {
+      expect(
+        runInNewContext(expression, {
+          session,
+          isSignedOut,
+          activeConversation: { conversation: { helpTopic } }
+        })
+      ).toBe(expected);
+    }
   });
 
   it("awaits stopDaemonLane before calling the logout endpoint", () => {

@@ -1,3 +1,4 @@
+import { HelpConversations } from "./HelpConversations";
 import type { Dispatch, SetStateAction } from "react";
 
 import type { ConversationInboxItem } from "@grogoni/shared-types";
@@ -198,109 +199,129 @@ export function ConversationListPanel({
         </form>
       ) : null}
       <div className="conversation-list">
-        {visibleConversations.map((conversation) => (
-          <article
-            className={`conversation-item ${conversation.id === activeConversationId ? "active" : ""}`}
-            key={conversation.id}
-          >
-            <button
-              className="conversation-select"
-              type="button"
-              onClick={() => {
-                onSelectConversation(conversation.id);
+        {visibleConversations
+          .filter((conversation) => conversation.helpTopic === "home")
+          .map((root) => (
+            <HelpConversations
+              key={root.id}
+              root={root}
+              topics={visibleConversations.filter(
+                (topic) => topic.helpParentConversationId === root.id
+              )}
+              activeId={activeConversationId}
+              onSelect={(id) => {
+                onSelectConversation(id);
                 onInboxOpenChange(false);
               }}
+            />
+          ))}
+        {visibleConversations
+          .filter((conversation) => !conversation.helpTopic)
+          .map((conversation) => (
+            <article
+              className={`conversation-item ${conversation.id === activeConversationId ? "active" : ""}`}
+              key={conversation.id}
             >
-              <span
-                className={`conversation-avatar ${
-                  conversation.kind === "personal"
-                    ? conversation.activeShopId === null
-                      ? "buy"
-                      : "sell"
-                    : "chat"
-                }`}
-                aria-hidden="true"
-              >
-                {(conversation.title ?? "Grogoni").trim().slice(0, 1).toUpperCase()}
-              </span>
-              <span className="conversation-copy">
-                <span className="conversation-title-line">
-                  <strong>{conversation.title ?? "Grogoni agent"}</strong>
-                  <time dateTime={conversation.updatedAt}>
-                    {formatMessageTime(conversation.updatedAt)}
-                  </time>
-                </span>
-                <small>
-                  {conversation.lastMessage === null
-                    ? "No messages yet"
-                    : conversationMessageText(conversation.lastMessage)}
-                </small>
-              </span>
-              <span
-                className={`session-badge ${
-                  conversation.kind === "personal"
-                    ? conversation.activeShopId === null
-                      ? "buy"
-                      : "sell"
-                    : "chat"
-                }`}
-              >
-                {conversation.kind === "personal"
-                  ? conversation.activeShopId === null
-                    ? "Buy"
-                    : "Sell"
-                  : "Chat"}
-              </span>
-              {conversation.unreadCount > 0 ? (
-                <b aria-label={`${conversation.unreadCount} unread`}>{conversation.unreadCount}</b>
-              ) : null}
-            </button>
-            <div className="conversation-actions" aria-label="Conversation actions">
               <button
+                className="conversation-select"
                 type="button"
-                onClick={() => onConversationPreference(conversation.id, "pin")}
+                onClick={() => {
+                  onSelectConversation(conversation.id);
+                  onInboxOpenChange(false);
+                }}
               >
-                {conversation.participant.pinnedAt ? "Unpin" : "Pin"}
-              </button>
-              <button
-                type="button"
-                onClick={() => onConversationPreference(conversation.id, "mute")}
-              >
-                {conversation.participant.mutedUntil ? "Unmute" : "Mute"}
-              </button>
-              <button
-                type="button"
-                onClick={() => onConversationPreference(conversation.id, "archive")}
-              >
-                Archive
-              </button>
-              <button type="button" onClick={() => setDeletingConversationId(conversation.id)}>
-                Delete
-              </button>
-            </div>
-            {deletingConversationId === conversation.id ? (
-              <div className="message-inline-action" role="alertdialog" aria-label="Delete chat?">
-                <span>
-                  Move this chat to the recycle bin? Deleting requires admin privileges and keeps it
-                  recoverable for 14 days.
-                </span>
-                <button
-                  className="danger"
-                  type="button"
-                  onClick={() => {
-                    onDeleteConversation(conversation.id);
-                    setDeletingConversationId(null);
-                  }}
+                <span
+                  className={`conversation-avatar ${
+                    conversation.kind === "personal"
+                      ? conversation.activeShopId === null
+                        ? "buy"
+                        : "sell"
+                      : "chat"
+                  }`}
+                  aria-hidden="true"
                 >
-                  Delete chat
+                  {(conversation.title ?? "Grogoni").trim().slice(0, 1).toUpperCase()}
+                </span>
+                <span className="conversation-copy">
+                  <span className="conversation-title-line">
+                    <strong>{conversation.title ?? "Grogoni agent"}</strong>
+                    <time dateTime={conversation.updatedAt}>
+                      {formatMessageTime(conversation.updatedAt)}
+                    </time>
+                  </span>
+                  <small>
+                    {conversation.lastMessage === null
+                      ? "No messages yet"
+                      : conversationMessageText(conversation.lastMessage)}
+                  </small>
+                </span>
+                <span
+                  className={`session-badge ${
+                    conversation.kind === "personal"
+                      ? conversation.activeShopId === null
+                        ? "buy"
+                        : "sell"
+                      : "chat"
+                  }`}
+                >
+                  {conversation.kind === "personal"
+                    ? conversation.activeShopId === null
+                      ? "Buy"
+                      : "Sell"
+                    : "Chat"}
+                </span>
+                {conversation.unreadCount > 0 ? (
+                  <b aria-label={`${conversation.unreadCount} unread`}>
+                    {conversation.unreadCount}
+                  </b>
+                ) : null}
+              </button>
+              <div className="conversation-actions" aria-label="Conversation actions">
+                <button
+                  type="button"
+                  onClick={() => onConversationPreference(conversation.id, "pin")}
+                >
+                  {conversation.participant.pinnedAt ? "Unpin" : "Pin"}
                 </button>
-                <button type="button" onClick={() => setDeletingConversationId(null)}>
-                  Cancel
+                <button
+                  type="button"
+                  onClick={() => onConversationPreference(conversation.id, "mute")}
+                >
+                  {conversation.participant.mutedUntil ? "Unmute" : "Mute"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onConversationPreference(conversation.id, "archive")}
+                >
+                  Archive
+                </button>
+                <button type="button" onClick={() => setDeletingConversationId(conversation.id)}>
+                  Delete
                 </button>
               </div>
-            ) : null}
-          </article>
-        ))}
+              {deletingConversationId === conversation.id ? (
+                <div className="message-inline-action" role="alertdialog" aria-label="Delete chat?">
+                  <span>
+                    Move this chat to the recycle bin? Deleting requires admin privileges and keeps
+                    it recoverable for 14 days.
+                  </span>
+                  <button
+                    className="danger"
+                    type="button"
+                    onClick={() => {
+                      onDeleteConversation(conversation.id);
+                      setDeletingConversationId(null);
+                    }}
+                  >
+                    Delete chat
+                  </button>
+                  <button type="button" onClick={() => setDeletingConversationId(null)}>
+                    Cancel
+                  </button>
+                </div>
+              ) : null}
+            </article>
+          ))}
         {visibleConversations.length === 0 ? (
           <p>
             {isSessionListView

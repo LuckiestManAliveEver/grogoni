@@ -4558,6 +4558,10 @@ export class Cp2Store {
   setInventoryTaskController(controller: InventoryTaskController): void {
     this.messagingDomain.setInventoryTaskController(controller);
   }
+  ensureHelpConversations(...args: Parameters<MessagingDomain["ensureHelpConversations"]>) {
+    return this.messagingDomain.ensureHelpConversations(...args);
+  }
+
   listConversations(
     ...args: Parameters<MessagingDomain["listConversations"]>
   ): ReturnType<MessagingDomain["listConversations"]> {

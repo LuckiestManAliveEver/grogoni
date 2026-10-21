@@ -224,6 +224,15 @@ export function registerMessagingRoutes(
   oauthAllowedRedirectOrigins: ReadonlySet<string>,
   vapidPublicKey: string | undefined
 ): void {
+  app.post("/v1/help", async (request, reply) => {
+    try {
+      return store.ensureHelpConversations({
+        sessionId: readSessionCookie(request.headers.cookie)
+      });
+    } catch (error) {
+      return sendCp2Error(reply, error);
+    }
+  });
   app.get(
     "/v1/conversations",
     async (request: FastifyRequest<{ Querystring: { includeArchived?: string } }>, reply) => {

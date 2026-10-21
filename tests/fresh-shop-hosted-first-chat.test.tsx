@@ -4,6 +4,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { ConversationView } from "@grogoni/shared-types";
 import { useChatRuntimeState } from "../apps/web/src/hooks/useChatRuntimeState";
 import type {
   ActiveBusiness,
@@ -159,108 +160,116 @@ describe("fresh shop, first AI message: hosted-first with no client model state"
     }
   );
 
-  it("sends the first message straight to the plain server runtime turn, with no device/model fetch", async () => {
-    const fetchedPaths: string[] = [];
-    const fetchMock = vi.fn(async (input: string | URL | Request) => {
-      const url = typeof input === "string" ? input : input.toString();
-      const path = new URL(url, "http://localhost").pathname;
-      fetchedPaths.push(path);
-      if (path === "/v1/messages") {
-        return jsonResponse({
-          id: "merchant-message-1",
-          agentMessage: { id: "agent-message-1" },
-          runtime: null
-        });
-      }
-      throw new Error(
-        `Unexpected fetch to ${path} - a fresh shop's first message should only ` +
-          "call POST /v1/messages, never an owner-node/device endpoint."
-      );
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    let sendChatDraft: ((draft?: string) => Promise<void>) | null = null;
-    function Harness() {
-      const api = useChatRuntimeState({
-        business: business(),
-        mode: "seller",
-        session: session(),
-        authBootstrapState: "authenticated",
-        ensureAuthenticatedSession: async () => session(),
-        rejectDefinitiveAuthenticationFailure: () => false,
-        agentSettings: agentSettings(),
-        setStatusMessage: () => undefined,
-        navigateToView: () => undefined,
-        requireMessagingSignIn: () => undefined,
-        loadProducts: async () => undefined,
-        loadSuppliers: async () => undefined,
-        loadCustomers: async () => undefined,
-        loadInvoices: async () => undefined,
-        loadReports: async () => undefined,
-        loadNotifications: async () => undefined,
-        loadRuntimeSessions: async () => undefined,
-        createManagedRuntimeSession: async () => "runtime-session-1",
-        ensureRuntimeSession: async (setRuntimeSessionId) => {
-          setRuntimeSessionId("runtime-session-1");
-          return "runtime-session-1";
-        },
-        loadDocumentImports: async () => undefined,
-        chatMessages: [],
-        setChatMessages: () => undefined,
-        chatDraft: "",
-        setChatDraft: () => undefined,
-        pendingAttachments: [],
-        setPendingAttachments: () => undefined,
-        runtimeSessionId: null,
-        setRuntimeSessionId: () => undefined,
-        replyToMessageId: null,
-        setReplyToMessageId: () => undefined,
-        activeConversationId: "conversation-1",
-        activeConversation: null,
-        loadMessagingInbox: async () => undefined,
-        registerReset: () => undefined
+  it.each([true, false])(
+    "sends the first message without device/model fetch (conversation loaded: %s)",
+    async (loaded) => {
+      const conversation = {
+        conversation: { id: "conversation-1", kind: "personal", activeShopId: "fresh-shop-1" },
+        participants: [],
+        messages: []
+      } as unknown as ConversationView;
+      const fetchedPaths: string[] = [];
+      const fetchMock = vi.fn(async (input: string | URL | Request) => {
+        const url = typeof input === "string" ? input : input.toString();
+        const path = new URL(url, "http://localhost").pathname;
+        fetchedPaths.push(path);
+        if (path === "/v1/conversations/conversation-1") return jsonResponse(conversation);
+        if (path === "/v1/messages") {
+          return jsonResponse({
+            id: "merchant-message-1",
+            agentMessage: { id: "agent-message-1" },
+            runtime: null
+          });
+        }
+        throw new Error(
+          `Unexpected fetch to ${path} - a fresh shop's first message should only ` +
+            "call POST /v1/messages, never an owner-node/device endpoint."
+        );
       });
-      sendChatDraft = api.sendChatDraft;
-      return null;
+      vi.stubGlobal("fetch", fetchMock);
+
+      let sendChatDraft: ((draft?: string) => Promise<void>) | null = null;
+      function Harness() {
+        const api = useChatRuntimeState({
+          business: business(),
+          mode: "seller",
+          session: session(),
+          authBootstrapState: "authenticated",
+          ensureAuthenticatedSession: async () => session(),
+          rejectDefinitiveAuthenticationFailure: () => false,
+          agentSettings: agentSettings(),
+          setStatusMessage: () => undefined,
+          navigateToView: () => undefined,
+          requireMessagingSignIn: () => undefined,
+          loadProducts: async () => undefined,
+          loadSuppliers: async () => undefined,
+          loadCustomers: async () => undefined,
+          loadInvoices: async () => undefined,
+          loadReports: async () => undefined,
+          loadNotifications: async () => undefined,
+          loadRuntimeSessions: async () => undefined,
+          createManagedRuntimeSession: async () => "runtime-session-1",
+          ensureRuntimeSession: async (setRuntimeSessionId) => {
+            setRuntimeSessionId("runtime-session-1");
+            return "runtime-session-1";
+          },
+          loadDocumentImports: async () => undefined,
+          chatMessages: [],
+          setChatMessages: () => undefined,
+          chatDraft: "",
+          setChatDraft: () => undefined,
+          pendingAttachments: [],
+          setPendingAttachments: () => undefined,
+          runtimeSessionId: null,
+          setRuntimeSessionId: () => undefined,
+          replyToMessageId: null,
+          setReplyToMessageId: () => undefined,
+          activeConversationId: "conversation-1",
+          activeConversation: loaded ? conversation : null,
+          loadMessagingInbox: async () => undefined,
+          registerReset: () => undefined
+        });
+        sendChatDraft = api.sendChatDraft;
+        return null;
+      }
+
+      await act(async () => {
+        root = createRoot(host);
+        root.render(<Harness />);
+      });
+
+      expect(sendChatDraft).not.toBeNull();
+      expect(localStorage.length).toBe(0);
+
+      await act(async () => {
+        await sendChatDraft!("Hello, what can you help me with today?");
+      });
+
+      // Resolve an unloaded selected thread before routing; no device/model fetch is needed.
+      expect(fetchedPaths.filter((path) => !path.startsWith("/v1/ai/turn-stream/"))).toEqual(
+        loaded ? ["/v1/messages"] : ["/v1/conversations/conversation-1", "/v1/messages"]
+      );
+      expect(fetchedPaths.some((path) => path.includes("owner-node"))).toBe(false);
+      expect(fetchedPaths.some((path) => path.includes("device"))).toBe(false);
+
+      const messagesCall = fetchMock.mock.calls.find(([input]) =>
+        String(input).includes("/v1/messages")
+      ) as unknown as [unknown, RequestInit | undefined];
+      const [, requestInit] = messagesCall;
+      const body = JSON.parse(String(requestInit?.body)) as {
+        agent?: { businessId: string; message: string };
+      };
+      expect(body.agent).toMatchObject({ businessId: "fresh-shop-1" });
+
+      // No on-device model assignment, browser-inference session, or model-scoped device id was
+      // read or written - only lib/api.ts's generic request-tracing device id (unrelated to model
+      // execution) may exist. The retired keys (agent-model-assignment.ts's
+      // "grogoni.agent-model-assignment.v1", browser-inference-*'s IndexedDB/localStorage state) must
+      // never reappear.
+      const storedKeys = Object.keys(localStorage);
+      expect(storedKeys).not.toContain("grogoni.agent-model-assignment.v1");
+      expect(storedKeys.some((key) => key.includes("model-scope"))).toBe(false);
+      expect(storedKeys.some((key) => key.includes("browser-inference"))).toBe(false);
     }
-
-    await act(async () => {
-      root = createRoot(host);
-      root.render(<Harness />);
-    });
-
-    expect(sendChatDraft).not.toBeNull();
-    expect(localStorage.length).toBe(0);
-
-    await act(async () => {
-      await sendChatDraft!("Hello, what can you help me with today?");
-    });
-
-    // The only other request is the optional live-preview stream for this turn - never a
-    // device, model, or owner-node fetch (no on-device model is installed here).
-    expect(fetchedPaths.filter((path) => !path.startsWith("/v1/ai/turn-stream/"))).toEqual([
-      "/v1/messages"
-    ]);
-    expect(fetchedPaths.some((path) => path.includes("owner-node"))).toBe(false);
-    expect(fetchedPaths.some((path) => path.includes("device"))).toBe(false);
-
-    const messagesCall = fetchMock.mock.calls.find(([input]) =>
-      String(input).includes("/v1/messages")
-    ) as unknown as [unknown, RequestInit | undefined];
-    const [, requestInit] = messagesCall;
-    const body = JSON.parse(String(requestInit?.body)) as {
-      agent?: { businessId: string; message: string };
-    };
-    expect(body.agent).toMatchObject({ businessId: "fresh-shop-1" });
-
-    // No on-device model assignment, browser-inference session, or model-scoped device id was
-    // read or written - only lib/api.ts's generic request-tracing device id (unrelated to model
-    // execution) may exist. The retired keys (agent-model-assignment.ts's
-    // "grogoni.agent-model-assignment.v1", browser-inference-*'s IndexedDB/localStorage state) must
-    // never reappear.
-    const storedKeys = Object.keys(localStorage);
-    expect(storedKeys).not.toContain("grogoni.agent-model-assignment.v1");
-    expect(storedKeys.some((key) => key.includes("model-scope"))).toBe(false);
-    expect(storedKeys.some((key) => key.includes("browser-inference"))).toBe(false);
-  });
+  );
 });

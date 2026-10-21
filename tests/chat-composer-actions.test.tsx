@@ -92,6 +92,9 @@ describe("mobile chat composer actions", () => {
 
     const more = host.querySelector<HTMLButtonElement>('[aria-label="Open message actions"]')!;
     await act(async () => more.click());
+    await act(async () => {
+      await import("../apps/web/src/ChatComposerActions");
+    });
 
     const dialog = document.body.querySelector('[role="dialog"]');
     expect(dialog?.getAttribute("aria-labelledby")).toBe("composer-message-actions-title");
@@ -120,6 +123,9 @@ describe("mobile chat composer actions", () => {
       vi.useRealTimers();
     }
 
+    await act(async () => {
+      await import("../apps/web/src/ChatChannelPicker");
+    });
     const channelDialog = document.body.querySelector(
       '[aria-labelledby="composer-channel-picker-title"]'
     );
