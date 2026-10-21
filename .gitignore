@@ -22,3 +22,5 @@ mongodb/*.env
 supabase/.temp/
 supabase/functions/api/domain-bundle.mjs
 supabase/functions/api/pdf-worker.mjs
+apps/android/*.keystore
+apps/android/keystore.properties

@@ -30,6 +30,7 @@
     "android:identity:verify": "node scripts/verify-android-release-identity.mjs",
     "android:legal:gate": "node scripts/verify-play-legal-readiness.mjs --require-approved",
     "android:legal:verify": "node scripts/verify-play-legal-readiness.mjs",
+    "android:release:apk": "cd apps/android && ./gradlew :app:assembleRelease",
     "build": "pnpm -r --if-present build",
     "build:production": "pnpm check:esm-relative-imports && pnpm build:production:workspace && pnpm check:production-imports && pnpm check:retired-runtime-references && pnpm check:retired-device-model-references && pnpm check:render-inference-boundaries",
     "build:production:workspace": "pnpm -r --filter \"./packages/**\" --if-present build && pnpm --filter @grogoni/web build && pnpm --filter @grogoni/api build",
