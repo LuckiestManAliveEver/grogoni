@@ -133,7 +133,7 @@ test("signs up with a profile and later logs in from the menu", async ({ page })
   await expect.poll(() => signupStartCount).toBe(1);
   await expect(page.getByRole("heading", { name: "Finish your profile" })).toBeVisible();
   await page.getByLabel("Display name").fill("Jane Trader");
-  await page.getByLabel(/Email address/u).fill("jane@example.com");
+  await page.getByPlaceholder("you@example.com").fill("jane@example.com");
   await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByLabel("Confirm password").fill(password);
   await page.getByLabel(/I agree to the Terms of Service/u).check();
