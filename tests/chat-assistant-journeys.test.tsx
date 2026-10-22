@@ -66,6 +66,12 @@ describe("buyer and seller assistant journeys", () => {
         if (path === "/v1/daemon/tasks" && method === "POST")
           response = { task: { ...task(), runAt: body.runAt ?? task().runAt } };
         else if (path === "/v1/daemon/tasks/task-1") response = { task: task() };
+        else if (path === "/buy/assistant")
+          response = {
+            reply: "3 baskets cost 1,350 shillings.",
+            pendingCheckout: null,
+            checkoutId: null
+          };
         else if (path === "/v1/chat/images/read")
           response = {
             fileName: "receipt.png",
@@ -197,7 +203,7 @@ describe("buyer and seller assistant journeys", () => {
       await act(async () => send("Read this receipt"));
       expect(requests[0]?.path).toBe("/v1/chat/images/read");
       const turn = requests.find((request) =>
-        request.path.endsWith(mode === "seller" ? "/runtime/turns" : "/daemon/tasks")
+        request.path.endsWith(mode === "seller" ? "/runtime/turns" : "/buy/assistant")
       );
       expect(turn?.body.message).toContain("RECEIPT ZXQ-4827");
       expect(turn?.body.message).toContain("TOTAL KES 570");
@@ -224,7 +230,7 @@ describe("buyer and seller assistant journeys", () => {
     await mount("marketplace", { id: "shop-1", name: "Shop" } as ActiveBusiness, null, [receipt]);
     await act(async () => send("Read this receipt"));
     expect(requests.some((request) => request.path.includes("receipt-ocr/jobs"))).toBe(false);
-    expect(requests.some((request) => request.path === "/v1/daemon/tasks")).toBe(true);
+    expect(requests.some((request) => request.path === "/buy/assistant")).toBe(true);
   });
   it("includes Luna's reading in a saved seller conversation before server processing", async () => {
     const conversation = {
@@ -269,21 +275,17 @@ describe("buyer and seller assistant journeys", () => {
     await act(async () => send("Here is your receipt"));
     expect(requests.some((request) => request.path === "/v1/chat/images/read")).toBe(false);
   });
-  it("answers buyer arithmetic through a real queued task and delivers its result once", async () => {
+  it("answers buyer arithmetic through the buyer assistant without duplicate delivery", async () => {
     await mount();
     await act(async () => send("A basket costs 450 shillings. What do 3 baskets cost?"));
     expect(search).not.toHaveBeenCalled();
-    expect(requests.find((request) => request.method === "POST")?.body.message).toContain(
+    expect(requests.find((request) => request.path === "/buy/assistant")?.body.message).toContain(
       "A basket costs 450 shillings"
     );
-    expect(readChatDaemonTasks(session.account.id)).toHaveLength(1);
-    completed = true;
-    await act(async () => window.dispatchEvent(new Event(daemonTaskUpdatedEvent)));
-    expect(messages.at(-1)?.body).toContain("1,350");
     expect(readChatDaemonTasks(session.account.id)).toHaveLength(0);
     await act(async () => window.dispatchEvent(new Event(daemonTaskUpdatedEvent)));
     expect(messages.filter((message) => message.body.includes("1,350"))).toHaveLength(1);
-    expect(status).toBe("Assistant replied.");
+    expect(status).toBe("Shopping assistant replied.");
   });
   it.each(["marketplace", "seller"] as const)(
     "schedules and cancels a %s reminder",
@@ -323,19 +325,24 @@ describe("buyer and seller assistant journeys", () => {
   it("keeps explicit shopping requests on marketplace search", async () => {
     await mount();
     await act(async () => send("Find me 50kg maize nearby"));
-    expect(search).toHaveBeenCalledWith("50kg maize nearby");
-    expect(requests).toHaveLength(0);
+    expect(search).not.toHaveBeenCalled();
+    expect(requests).toEqual([
+      expect.objectContaining({
+        path: "/buy/assistant",
+        body: expect.objectContaining({ message: "Find me 50kg maize nearby" })
+      })
+    ]);
   });
   it("recovers queued replies after reload only in their originating buyer or seller scope", async () => {
     await mount();
-    await act(async () => send("What is 450 times 3?"));
+    await act(async () => send("Remind me in 2 minutes to check stock."));
     await mount("seller", { id: "another-shop", name: "Other Shop" } as ActiveBusiness);
     completed = true;
-    await act(async () => window.dispatchEvent(new Event(daemonTaskUpdatedEvent)));
+    await act(async () => vi.advanceTimersByTimeAsync(120_000));
     expect(messages).toHaveLength(0);
     expect(readChatDaemonTasks(session.account.id)).toHaveLength(1);
     await mount();
-    expect(messages.at(-1)?.body).toContain("1,350");
+    expect(messages.at(-1)?.body).toContain("Reminder: check stock");
     expect(readChatDaemonTasks(session.account.id)).toHaveLength(0);
   });
   it("releases seller chat after the reply while runtime history is still refreshing", async () => {

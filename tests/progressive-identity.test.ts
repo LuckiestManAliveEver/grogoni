@@ -1,3 +1,4 @@
+import { signupWithBackupEmail } from "./fixtures/account-auth";
 import { generateKeyPairSync, sign } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { buildApi } from "../services/api/src/app";
@@ -270,14 +271,8 @@ describe("one-tap signup and progressive identity", () => {
   it("joins a device account to an existing email account after OTP proof", async () => {
     const store = createCp2Store();
     const app = buildApi({ cp2: { store } });
-    const existing = await app.inject({
-      method: "POST",
-      url: "/auth/pin/continue",
-      headers: jsonHeaders(),
-      payload: JSON.stringify({ method: "email", contact: "owner@example.com", pin: "2468" })
-    });
-    expect(existing.statusCode).toBe(200);
-    const existingAccountId = existing.json<ContinueResponse>().account.id;
+    const existing = await signupWithBackupEmail(app, "owner@example.com");
+    const existingAccountId = existing.response.json<ContinueResponse>().account.id;
     const device = await continueToGrogoni(app, "progressive-email-merge-key-0000000001");
 
     const start = await app.inject({

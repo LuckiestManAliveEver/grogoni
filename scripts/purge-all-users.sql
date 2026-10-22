@@ -55,6 +55,7 @@ CREATE TEMP TABLE purge_table_plan (
 -- conversation, or user-created agent. These tables have no global registry definitions.
 INSERT INTO purge_table_plan (table_name, classification, delete_order, reason) VALUES
   ('cp2_store_snapshots', 'DELETE', 10, 'Compatibility snapshot contains the complete user graph'),
+  ('buyer_shopping_sessions', 'DELETE', 10, 'Account-owned shopping history and checkout reviews'),
   ('cp2_accounts', 'DELETE', 11, 'Normalized account compatibility records'),
   ('cp2_users', 'DELETE', 11, 'Normalized user compatibility records'),
   ('cp2_device_account_bootstraps', 'DELETE', 11, 'Short-lived device account bootstrap records'),

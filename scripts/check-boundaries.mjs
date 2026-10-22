@@ -214,10 +214,15 @@ const lineBudgets = new Map([
   ["packages/tool-core/src/registry/index.ts", 50],
   ["apps/web/src/GrogoniApplication.tsx", 2150],
   ["apps/web/src/OwnerWorkspace.tsx", 800],
-  ["apps/web/src/ChatSurface.tsx", 1125],
+  // Bumped for the offline human-chat SMS fallback: passing the selected human recipient's
+  // smsFallbackRecipient into useChatComposerState is cohesive with the surrounding composer
+  // wiring (see docs/messaging/cross-device-sms.md), not worth splitting out on its own.
+  ["apps/web/src/ChatSurface.tsx", 1140],
   ["apps/web/src/ChatComposer.tsx", 375],
   ["apps/web/src/StackedModule.tsx", 180],
-  ["apps/web/src/hooks/useChatComposerState.ts", 160],
+  // Bumped for the reviewed offline SMS fallback branch in sendLiveDraft (openSmsHandoff).
+  // The send-route decision belongs beside the other provider branches, not a helper hook.
+  ["apps/web/src/hooks/useChatComposerState.ts", 170],
   ["apps/web/src/hooks/useChatRuntimeState.ts", 1800],
   // Bumped for setAgentModelBillingMode (BYO Hugging Face credential billing mode) - cohesive with
   // the rest of the agent-model-binding activation logic already in this file, not worth splitting

@@ -19,7 +19,11 @@ describe("API persistence acknowledgement barrier", () => {
       method: "POST",
       url: "/auth/otp/request",
       headers: { "content-type": "application/json" },
-      payload: JSON.stringify({ channel: "email", destination: "persistence-one@example.test" })
+      payload: JSON.stringify({
+        channel: "email",
+        destination: "persistence-one@example.test",
+        purpose: "recovery"
+      })
     });
 
     expect(response.statusCode).toBe(200);
@@ -37,7 +41,11 @@ describe("API persistence acknowledgement barrier", () => {
       method: "POST",
       url: "/auth/otp/request",
       headers: { "content-type": "application/json" },
-      payload: JSON.stringify({ channel: "email", destination: "persistence-two@example.test" })
+      payload: JSON.stringify({
+        channel: "email",
+        destination: "persistence-two@example.test",
+        purpose: "recovery"
+      })
     });
 
     expect(response.statusCode).toBe(500);
@@ -69,7 +77,11 @@ describe("API persistence acknowledgement barrier", () => {
       method: "POST",
       url: "/auth/otp/request",
       headers: { "content-type": "application/json" },
-      payload: JSON.stringify({ channel: "email", destination: "sync-failure@example.test" })
+      payload: JSON.stringify({
+        channel: "email",
+        destination: "sync-failure@example.test",
+        purpose: "recovery"
+      })
     });
 
     expect(response.statusCode).toBe(503);

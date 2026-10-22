@@ -1,3 +1,4 @@
+import type { ChatMessage } from "../apps/web/src/app-shell";
 // @vitest-environment jsdom
 
 import { act } from "react";
@@ -81,16 +82,22 @@ describe("fresh shop, first AI message: hosted-first with no client model state"
     ["marketplace", "Do you have maize flour 2kg?", "maize flour 2kg"],
     ["seller", "Do you have maize flour 2kg?", "maize flour 2kg"]
   ] as const)(
-    "routes %s buyer question %s to search without requiring a shop",
+    "routes %s buyer question %s to the buyer assistant without requiring a shop",
     async (mode, message, query) => {
-      const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
         const url = typeof input === "string" ? input : input.toString();
-        throw new Error(`Unexpected runtime fetch for buyer intent: ${url}`);
+        expect(new URL(url, "http://localhost").pathname).toBe("/buy/assistant");
+        expect(JSON.parse(String(init?.body)).message).toContain(query);
+        return jsonResponse({
+          reply: "Here are the available shopping options.",
+          pendingCheckout: null,
+          checkoutId: null
+        });
       });
       vi.stubGlobal("fetch", fetchMock);
       const searchBuyFeed = vi.fn(async () => undefined);
       const statusMessages: string[] = [];
-      const renderedMessages: Array<{ author: string; body: string }> = [];
+      const renderedMessages: ChatMessage[] = [];
 
       let sendChatDraft: ((draft?: string) => Promise<void>) | null = null;
       function Harness() {
@@ -121,7 +128,7 @@ describe("fresh shop, first AI message: hosted-first with no client model state"
           loadDocumentImports: async () => undefined,
           chatMessages: [],
           setChatMessages: (next) => {
-            const resolved = typeof next === "function" ? next([]) : next;
+            const resolved = typeof next === "function" ? next([...renderedMessages]) : next;
             renderedMessages.splice(0, renderedMessages.length, ...resolved);
           },
           chatDraft: "",
@@ -150,13 +157,13 @@ describe("fresh shop, first AI message: hosted-first with no client model state"
         await sendChatDraft!(message);
       });
 
-      expect(searchBuyFeed).toHaveBeenCalledWith(query);
-      expect(fetchMock).not.toHaveBeenCalled();
+      expect(searchBuyFeed).not.toHaveBeenCalled();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(renderedMessages.map((message) => message.body)).toEqual([
         message,
-        "I searched the marketplace for that. Open a result to review the shop and add items to your cart."
+        "Here are the available shopping options."
       ]);
-      expect(statusMessages).toContain("Marketplace results updated.");
+      expect(statusMessages).toContain("Shopping assistant replied.");
     }
   );
 

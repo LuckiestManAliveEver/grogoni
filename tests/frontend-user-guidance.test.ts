@@ -475,7 +475,7 @@ describe("frontend user guidance", () => {
       "Account deactivated and deletion scheduled. You have been returned to startup."
     );
     expect(application).toContain("<PhoneFirstAuthentication");
-    expect(phoneFirst).toContain('role="tablist"');
+    expect(phoneFirst).toContain('const identifierType = "phone" as const');
     expect(phoneFirst).toContain("Use account PIN");
     expect(phoneFirst).not.toContain("legacy");
   });

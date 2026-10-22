@@ -501,20 +501,106 @@ describePostgres("CP2 Postgres store", () => {
     await restoredApp.close();
   }, 30_000);
 
+  it("rejects email signup OTP and keeps email available only as a recovery channel", async () => {
+    // Retired contract: /auth/otp/request used to mint an email signup challenge. Login is
+    // phone-first now, so email OTP may only be requested with an explicit recovery purpose.
+    expect(databaseUrl).toBeDefined();
+    const connectionString = databaseUrl ?? "";
+    const unique = Date.now().toString();
+    const uniqueEmail = `otp-signup-${unique}@example.test`;
+
+    const store = await createPostgresCp2Store({ databaseUrl: connectionString });
+    const app = buildApi({ cp2: { store }, mutationPersistenceFlush: () => store.flush() });
+
+    const signupAttempt = await app.inject({
+      method: "POST",
+      url: "/auth/otp/request",
+      headers: jsonHeaders(),
+      payload: JSON.stringify({ channel: "email", destination: uniqueEmail, purpose: "signup" })
+    });
+    expect(signupAttempt.statusCode).toBe(403);
+    expect(signupAttempt.json()).toMatchObject({ code: "phone_login_required" });
+
+    // An omitted purpose defaults to signup and is rejected the same way.
+    const implicitSignupAttempt = await app.inject({
+      method: "POST",
+      url: "/auth/otp/request",
+      headers: jsonHeaders(),
+      payload: JSON.stringify({ channel: "email", destination: uniqueEmail })
+    });
+    expect(implicitSignupAttempt.statusCode).toBe(403);
+    expect(implicitSignupAttempt.json()).toMatchObject({ code: "phone_login_required" });
+
+    await app.close();
+    await store.close();
+  }, 20_000);
+
   it("persists an unverified OTP challenge across store restarts and completes it afterward", async () => {
     expect(databaseUrl).toBeDefined();
     const connectionString = databaseUrl ?? "";
     const unique = Date.now().toString();
+    const uniquePhone = `+2547${unique.slice(-8)}`;
     const uniqueEmail = `otp-user-${unique}@example.test`;
 
     const store = await createPostgresCp2Store({ databaseUrl: connectionString });
     const app = buildApi({ cp2: { store }, mutationPersistenceFlush: () => store.flush() });
 
+    // Login is phone-first, so the recovery email is attached and verified on a real phone
+    // account first; a recovery challenge for an unknown email is rejected with 404.
+    const started = await app.inject({
+      method: "POST",
+      url: "/auth/signup/start",
+      headers: jsonHeaders(),
+      payload: JSON.stringify({ type: "phone", identifier: uniquePhone })
+    });
+    expect(started.statusCode).toBe(200);
+    const transactionId = started.json<{ transactionId: string }>().transactionId;
+    const completed = await app.inject({
+      method: "POST",
+      url: "/auth/signup/complete",
+      headers: jsonHeaders(),
+      payload: JSON.stringify({
+        transactionId,
+        displayName: "OTP Recovery Owner",
+        email: uniqueEmail,
+        password: "otp recovery account password",
+        passwordConfirmation: "otp recovery account password",
+        termsAccepted: true,
+        privacyAccepted: true
+      })
+    });
+    expect(completed.statusCode).toBe(200);
+    const ownerCookie = extractSessionCookie(completed.headers["set-cookie"]);
+    const verification = await app.inject({
+      method: "POST",
+      url: "/auth/email/verification/start",
+      headers: { cookie: ownerCookie }
+    });
+    expect(verification.statusCode).toBe(200);
+    const verificationData = verification.json<{
+      challengeId: string;
+      developmentCode: string;
+    }>();
+    const verified = await app.inject({
+      method: "POST",
+      url: "/auth/email/verification/verify",
+      headers: { ...jsonHeaders(), cookie: ownerCookie },
+      payload: JSON.stringify({
+        challengeId: verificationData.challengeId,
+        code: verificationData.developmentCode
+      })
+    });
+    expect(verified.statusCode).toBe(200);
+
     const otpResponse = await postJson<{
       challengeId: string;
       destination: string;
       devOtp: string;
-    }>(app, "/auth/otp/request", { channel: "email", destination: uniqueEmail });
+    }>(app, "/auth/otp/request", {
+      channel: "email",
+      destination: uniqueEmail,
+      purpose: "recovery"
+    });
 
     await store.flush();
     await app.close();
@@ -525,24 +611,33 @@ describePostgres("CP2 Postgres store", () => {
       mutationPersistenceFlush: () => restoredStore.flush()
     });
 
-    const verifyResponse = await postJson<{
-      account: { id: string };
-      session: { id: string };
-    }>(restoredApp, "/auth/otp/verify", {
-      challengeId: otpResponse.challengeId,
-      code: otpResponse.devOtp
+    // Email OTP verification is retired (phone-first): /auth/otp/verify always rejects with
+    // phone_login_required. What still matters is that the unverified challenge itself survives
+    // the restart, so it is visible in the restored store rather than silently dropped.
+    const verifyResponse = await restoredApp.inject({
+      method: "POST",
+      url: "/auth/otp/verify",
+      headers: jsonHeaders(),
+      payload: JSON.stringify({
+        challengeId: otpResponse.challengeId,
+        code: otpResponse.devOtp
+      })
     });
-    expect(verifyResponse.account.id).toBeDefined();
+    expect(verifyResponse.statusCode).toBe(403);
+    expect(verifyResponse.json()).toMatchObject({ code: "phone_login_required" });
 
-    const sessionCookie = `${sessionCookieName}=${verifyResponse.session.id}`;
-    const sessionCheck = await getJson<{ account: { id: string } }>(
-      restoredApp,
-      "/auth/session",
-      sessionCookie
-    );
-    expect(sessionCheck.account.id).toBe(verifyResponse.account.id);
+    const restoredChallenge = restoredStore
+      .snapshot()
+      .otpChallenges.find((challenge) => challenge.id === otpResponse.challengeId);
+    expect(restoredChallenge).toMatchObject({
+      id: otpResponse.challengeId,
+      destination: otpResponse.destination,
+      purpose: "recovery",
+      verifiedAt: null
+    });
 
     await restoredApp.close();
+    await restoredStore.close();
   }, 30_000);
 
   it("does not expose retired phone verification routes", async () => {
@@ -1131,17 +1226,32 @@ describePostgres("CP2 Postgres store", () => {
       cp2: { store: restoredStore },
       mutationPersistenceFlush: () => restoredStore.flush()
     });
-    const login = await restoredApp.inject({
+    // Login is phone-first: the verified email is a backup recovery channel, and password
+    // fallback authenticates the phone identity (email identifiers are rejected with 400
+    // phone_login_required by the route's requirePhoneLogin guard).
+    const emailLogin = await restoredApp.inject({
       method: "POST",
       url: "/auth/login/password",
       headers: jsonHeaders(),
       payload: JSON.stringify({ type: "email", identifier: email, password })
     });
+    expect(emailLogin.statusCode).toBe(400);
+    expect(emailLogin.json()).toMatchObject({ code: "phone_login_required" });
 
-    expect(login.statusCode).toBe(200);
+    const login = await restoredApp.inject({
+      method: "POST",
+      url: "/auth/login/password",
+      headers: jsonHeaders(),
+      payload: JSON.stringify({ type: "phone", identifier: phone, password })
+    });
+
+    // A verified backup email forces step-up MFA on password login (202 + transactionId),
+    // rather than issuing a session immediately.
+    expect(login.statusCode).toBe(202);
     expect(login.json()).toMatchObject({
-      account: { primaryAuthDestination: phone },
-      session: { id: expect.any(String) }
+      mfaRequired: true,
+      transactionId: expect.any(String),
+      factors: expect.arrayContaining(["email"])
     });
     expect(restoredStore.snapshot().accountIdentities).toEqual(
       expect.arrayContaining([

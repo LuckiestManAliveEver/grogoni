@@ -1369,7 +1369,16 @@ export class Cp2Store {
       sessions: this.sessions,
       customers: this.salesDomain.customersMap,
       quarantinedBusinessIds: this.quarantinedBusinessIds,
-      accountByDestination: this.accountByDestination,
+      resolveContactAccount: (channel, destination) =>
+        this.resolveIdentityAccount(channel, destination),
+      verifiedNotificationEmail: (accountId) => {
+        const verified = this.verifiedBackupEmail(accountId);
+        const account = this.accounts.get(accountId);
+        return (
+          verified ??
+          (account?.primaryAuthChannel === "email" ? account.primaryAuthDestination : undefined)
+        );
+      },
       conversationAttachmentBlobStore: this.conversationAttachmentBlobStore,
       ...(this.options.workspaceRoot === undefined
         ? {}

@@ -1,3 +1,4 @@
+import { signupWithBackupEmail } from "./fixtures/account-auth";
 import { describe, expect, it, vi } from "vitest";
 import { buildApi } from "../services/api/src/app";
 import {
@@ -812,11 +813,7 @@ describe("invites", () => {
 });
 
 async function signUpByEmail(app: App, email: string) {
-  const otp = await postJson<{ challengeId: string; devOtp: string }>(app, "/auth/otp/request", {
-    channel: "email",
-    destination: email
-  });
-  await postJson(app, "/auth/otp/verify", { challengeId: otp.challengeId, code: otp.devOtp });
+  await signupWithBackupEmail(app, email);
 }
 
 async function signUp(

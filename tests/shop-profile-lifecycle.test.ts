@@ -85,7 +85,7 @@ describe("Shop profile lifecycle", () => {
       })
     });
     expect(rejectedVerification.statusCode).toBe(403);
-    expect(rejectedVerification.json()).toMatchObject({ code: "phone_pin_only" });
+    expect(rejectedVerification.json()).toMatchObject({ code: "phone_login_required" });
 
     const owner = await app.inject({
       method: "POST",

@@ -169,7 +169,6 @@ import {
   normalizeInternationalOwnerPhoneNumber
 } from "../../phone-identity.js";
 import {
-  destinationAccountKey,
   normalizeOptionalBoundedText,
   normalizeRequiredBoundedText
 } from "../../text-normalization.js";
@@ -345,7 +344,8 @@ export interface MessagingDomainDeps {
   sessions: Map<string, SessionRecord>;
   customers: Map<string, CustomerSummary>;
   quarantinedBusinessIds: Set<string>;
-  accountByDestination: Map<string, string>;
+  resolveContactAccount: (channel: AuthChannel, destination: string) => string | undefined;
+  verifiedNotificationEmail: (accountId: string) => string | undefined;
   workspaceRoot?: string;
   workspaceDeliveryMaxFileBytes?: number;
   conversationAttachmentBlobStore: ConversationAttachmentBlobStore;
@@ -750,8 +750,7 @@ export class MessagingDomain {
     if (input.recipient?.trim()) {
       const channel: AuthChannel = input.recipient.includes("@") ? "email" : "phone";
       const destination = normalizeDestination(channel, input.recipient);
-      recipientAccountId =
-        this.deps.accountByDestination.get(destinationAccountKey(channel, destination)) ?? null;
+      recipientAccountId = this.deps.resolveContactAccount(channel, destination) ?? null;
       if (recipientAccountId === null) {
         throw new Cp2Error(404, "recipient_not_found", "No Grogoni account matches that contact.");
       }
@@ -5070,14 +5069,14 @@ export class MessagingDomain {
     }
     if (this.deps.messageEmailNotificationSender !== undefined) {
       for (const accountId of recipientIds) {
-        const account = this.deps.accounts.get(accountId);
-        if (account?.primaryAuthChannel !== "email") continue;
+        const destination = this.deps.verifiedNotificationEmail(accountId);
+        if (destination === undefined) continue;
         this.addMessageNotificationDelivery({
           message,
           accountId,
           channel: "email",
           targetId: `email:${accountId}`,
-          destination: account.primaryAuthDestination,
+          destination,
           now
         });
       }
