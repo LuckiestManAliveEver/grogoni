@@ -40,4 +40,38 @@ describe("HTTP request throttling", () => {
       await app.close();
     }
   });
+
+  it("does not release another request's slot when rejecting an overload", async () => {
+    const app = buildApi({ webRoot: false, maxConcurrentRequests: 1 });
+    app.log.level = "silent";
+    let started!: () => void;
+    let release!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    app.get("/held", async () => {
+      started();
+      await gate;
+      return { ok: true };
+    });
+    app.get("/probe", async () => ({ ok: true }));
+    const first = app
+      .inject({ method: "GET", url: "/held", headers: { upgrade: "websocket" } })
+      .then((response) => response);
+    try {
+      await entered;
+      expect((await app.inject({ method: "GET", url: "/probe" })).statusCode).toBe(503);
+      expect((await app.inject({ method: "GET", url: "/probe" })).statusCode).toBe(503);
+      release();
+      expect((await first).statusCode).toBe(200);
+      expect((await app.inject({ method: "GET", url: "/held" })).statusCode).toBe(200);
+    } finally {
+      release();
+      await first;
+      await app.close();
+    }
+  });
 });

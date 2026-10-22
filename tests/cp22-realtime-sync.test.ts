@@ -16,6 +16,25 @@ afterEach(async () => {
 });
 
 describe("CP22 realtime sync", () => {
+  it("releases HTTP admission after an authenticated WebSocket upgrade", async () => {
+    const app = buildApi({ cp2: { store: createCp2Store() }, maxConcurrentRequests: 1 });
+    apps.push(app);
+    await app.ready();
+    const owner = await createSession(app, "254700000225");
+    const first = await connectRealtime(app, owner.cookie);
+    await first.ready;
+    try {
+      const second = await connectRealtime(app, owner.cookie);
+      await second.ready;
+      second.socket.close();
+      expect(
+        (await app.inject({ method: "GET", url: "/session", headers: { cookie: owner.cookie } }))
+          .statusCode
+      ).toBe(200);
+    } finally {
+      first.socket.close();
+    }
+  });
   it("rejects unauthenticated and untrusted-origin upgrades", async () => {
     const app = trackedApi();
     await app.ready();

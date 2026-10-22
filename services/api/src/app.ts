@@ -87,6 +87,10 @@ export function buildApi(options: BuildApiOptions = {}) {
   const oauthAllowedRedirectOrigins = readOAuthAllowedRedirectOrigins([...allowedCorsOrigins]);
   const persistenceBarrierRequests = new WeakSet<object>();
   let outstandingRequests = 0;
+  const admittedRequests = new WeakSet<FastifyRequest>();
+  const releaseAdmission = (request: FastifyRequest) => {
+    if (admittedRequests.delete(request)) outstandingRequests -= 1;
+  };
   const authUserBudgetMs = options.perUserRateLimitWindowMs ?? 60_000;
   const authUserBudgetMax = options.perUserRateLimitMax ?? 120;
   const authTenantBudgetMs = options.perTenantRateLimitWindowMs ?? 60_000;
@@ -208,13 +212,19 @@ export function buildApi(options: BuildApiOptions = {}) {
       });
     }
     outstandingRequests += 1;
-    request.raw.once("close", () => {
-      outstandingRequests = Math.max(0, outstandingRequests - 1);
-    });
+    admittedRequests.add(request);
+    // WebSocket upgrade injection supplies a request-shaped object without EventEmitter methods.
+    // Count each admitted request once, and release once on response or client disconnect.
+    if (typeof request.raw.once === "function") {
+      request.raw.once("aborted", () => releaseAdmission(request));
+    }
+    if (typeof reply.raw.once === "function") {
+      reply.raw.once("close", () => releaseAdmission(request));
+    }
     const contentLength = Number(request.headers["content-length"] ?? 0);
     const maxRequestBytes = Math.max(0, options.maxRequestBytes ?? bodyLimitBytes);
     if (contentLength > maxRequestBytes) {
-      outstandingRequests = Math.max(0, outstandingRequests - 1);
+      releaseAdmission(request);
       return reply.code(413).send({
         code: "request_too_large",
         message: "Request body is too large for this endpoint."
@@ -247,12 +257,13 @@ export function buildApi(options: BuildApiOptions = {}) {
   });
 
   app.addHook("onResponse", async (request) => {
-    if (request.url.startsWith("/health") || request.url === "/metrics") return;
-    outstandingRequests = Math.max(0, outstandingRequests - 1);
-    const perRequestObject = request as typeof request & { raw: { closed?: boolean } };
-    if (perRequestObject.raw.closed) {
-      outstandingRequests = Math.max(0, outstandingRequests - 1);
-    }
+    releaseAdmission(request);
+  });
+
+  app.addHook("preHandler", async (request) => {
+    // Once an upgrade reaches its handler, the WebSocket transport owns the connection.
+    // A long-lived socket is not an outstanding HTTP request.
+    if (request.ws) releaseAdmission(request);
   });
 
   // Per-turn context (services/api/src/inference/turn-stream.ts): a client that watches a turn's
