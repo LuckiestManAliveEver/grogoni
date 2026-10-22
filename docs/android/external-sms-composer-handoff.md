@@ -5,12 +5,18 @@ diagnosis below describes the original implementation before the Android native 
 
 ## Repository diagnosis
 
-Grogoni is currently a React 19/Vite progressive web application in `apps/web`. It is not a native
-Android app, Capacitor app, React Native app, Flutter app, or Trusted Web Activity. There is no
-Gradle project, Android manifest, Kotlin source, or native bridge implementation in this
-repository. Android release identity is only proposed and verified by
-`config/android-release-identity.json`; `documentation/CP26_ANDROID_RELEASE_IDENTITY.md` proposes a
-future TWA.
+The owner-facing product remains a React 19/Vite progressive web application in `apps/web`. It is
+not a Capacitor, React Native, Flutter, or Trusted Web Activity shell for the web app.
+
+A native Android SMS node now lives in `apps/android` (Gradle project, `AndroidManifest.xml`, and
+Kotlin sources). It is deliberately narrow: it reads Android's SMS provider, sends manual replies
+through the selected SIM, and implements the `native_sms` Channel Gateway provider. It does not
+host the Grogoni web UI and the PWA never receives Android telephony privileges. See
+`apps/android/README.md` and `docs/messaging/cross-device-sms.md` for the current contract.
+
+Android release identity is proposed and verified by `config/android-release-identity.json` and
+`documentation/CP26_ANDROID_RELEASE_IDENTITY.md`; Play Console ownership, signing, and policy
+approvals remain pending, so interim distribution is described in `apps/android/README.md`.
 
 The authenticated chat send flow is:
 
@@ -86,5 +92,12 @@ error code. The phone number, contact label, and message body are not sent to th
 
 ## Permissions
 
-This implementation adds no Android manifest and requests no SMS permissions. In particular it
-does not request `READ_SMS`, `RECEIVE_SMS`, `SEND_SMS`, or `WRITE_SMS`.
+The **web** SMS handoff path (Mode A/browser fallback) adds no Android manifest entries and
+requests no SMS permissions: it only navigates an `sms:` URI.
+
+The native Android node in `apps/android` does request the restricted SMS permissions
+(`READ_SMS`, `RECEIVE_SMS`, `SEND_SMS`, `WRITE_SMS`) because it implements the default SMS-handler
+role, along with the other device permissions it declares in
+`apps/android/app/src/main/AndroidManifest.xml`. Those permissions are gated behind the SMS role and
+are subject to Google Play default-SMS-handler policy review; they are granted at runtime only after
+the user enables native SMS, as described in `apps/android/README.md`.
