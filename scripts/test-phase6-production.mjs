@@ -692,7 +692,7 @@ try {
     try {
       const ctx = await chrome.newContext({ permissions: ["notifications"] });
       const page = await ctx.newPage();
-      await page.goto("https://grogoni.com/manifest.webmanifest", {
+      await page.goto("https://grogoni.com/", {
         waitUntil: "domcontentloaded"
       });
       const config = ok(await call(bob.cookie, "/v1/push/config"));

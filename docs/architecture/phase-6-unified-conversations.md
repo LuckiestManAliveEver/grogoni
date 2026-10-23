@@ -27,8 +27,8 @@ claims. Existing help and task threads retain their identities and relationships
 - New pair/business/daemon identities use deterministic server UUIDs; legacy IDs are reused.
   Reopening an occupied deterministic identity cannot overwrite a recycled conversation.
   Lookup and insertion are synchronous in the memory store. Existing Edge account/business locks
-  and scoped persistence continue to coordinate database writes; multi-instance database race
-  acceptance has not been run in this environment.
+  and scoped persistence coordinate database writes. Production concurrent creation from both
+  account directions reused one pair.
 - Storefront creation reuses the customer's existing native business conversation. Business
   members can discover and reply in the shared inbox. Membership is checked on every access;
   previously materialized participant preferences cannot grant access after membership removal.
@@ -69,14 +69,21 @@ have no allowed business tools. OpenCode and configured provider integrations we
 - Candidate cloud acceptance verified encrypted two-account exchange, pair reuse under concurrent
   requests, contact resolution, tenant isolation, business inbox replies, server-side result
   projection, owned task retry and real inference with both configured models in one daemon thread.
-- The first candidate run exposed a business runtime account-binding rejection. The follow-up uses
-  the authorized member's shop runtime and must pass live acceptance before promotion.
+- Production business-agent execution passed using the authorized member's shop runtime. Repeated
+  model selection passed after fixing hydration of shared models registered by other accounts.
+- Owner, customer and manager fixtures verified membership revocation in production: removed staff
+  lost inbox visibility and read/write access.
 - Production evidence from October 22 is retained in
   [the original report](../testing/phase-6-production-2026-10-22.md). It describes the old deployment,
   not the corrected candidate. New production/browser evidence is recorded separately.
 
-## Acceptance still in progress
+## Production acceptance
 
-Candidate retesting, production promotion, browser reload controls, real push receipt, and production
-membership revocation must be verified before calling the complete Phase 6 gate passed. Model
-unavailability is tested with isolated adapters; live global provider failure is not induced.
+The implementation is deployed. The October 23 production pass verified 26 checks, including browser
+reload, membership revocation, server projection, owned retry and two real model responses in the
+same thread. See [the current report](../testing/phase-6-production-2026-10-23.md).
+
+Actual push receipt remains unverified because both test browsers refused push registration. Cloud
+push keys are configured, but the full acceptance gate must remain open until a real device receives
+its notification. Model unavailability is tested with isolated adapters; no global provider outage
+was induced.
