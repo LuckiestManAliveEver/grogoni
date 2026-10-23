@@ -16,6 +16,7 @@ export function DaemonExecutionStatus({ execution }: { execution: ConversationEx
         body: {}
       });
       window.dispatchEvent(new Event(daemonTaskUpdatedEvent));
+      window.dispatchEvent(new Event("grogoni:conversation-updated"));
       window.dispatchEvent(new Event(daemonLaneWakeEvent));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Retry failed.");
@@ -118,6 +119,8 @@ export function BusinessAgentControls({
   businessId: string;
   enabled: boolean;
 }) {
+  const [agentEnabled, setAgentEnabled] = useState(enabled);
+  useEffect(() => setAgentEnabled(enabled), [enabled]);
   const [question, setQuestion] = useState(""),
     [busy, setBusy] = useState(false),
     [status, setStatus] = useState("");
@@ -126,10 +129,12 @@ export function BusinessAgentControls({
     try {
       await apiCloudFetch(`/v1/conversations/${conversationId}`, {
         method: "PATCH",
-        body: { agentEnabled: !enabled }
+        body: { agentEnabled: !agentEnabled }
       });
-      setStatus(enabled ? "Business agent disabled." : "Business agent enabled.");
+      setAgentEnabled(!agentEnabled);
+      setStatus(agentEnabled ? "Business agent disabled." : "Business agent enabled.");
       window.dispatchEvent(new Event(daemonTaskUpdatedEvent));
+      window.dispatchEvent(new Event("grogoni:conversation-updated"));
     } catch (e) {
       setStatus(e instanceof Error ? e.message : "Configuration failed.");
     } finally {
@@ -152,6 +157,7 @@ export function BusinessAgentControls({
       setQuestion("");
       setStatus("Business agent replied.");
       window.dispatchEvent(new Event(daemonTaskUpdatedEvent));
+      window.dispatchEvent(new Event("grogoni:conversation-updated"));
     } catch (e) {
       setStatus(e instanceof Error ? e.message : "Business agent failed.");
     } finally {
@@ -161,9 +167,9 @@ export function BusinessAgentControls({
   return (
     <div className="business-agent-controls">
       <button type="button" onClick={() => void configure()} disabled={busy}>
-        {enabled ? "Disable business agent" : "Enable business agent"}
+        {agentEnabled ? "Disable business agent" : "Enable business agent"}
       </button>
-      {enabled ? (
+      {agentEnabled ? (
         <form
           onSubmit={(event) => {
             event.preventDefault();

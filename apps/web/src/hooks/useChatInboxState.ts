@@ -95,6 +95,14 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
     setReplyToMessageId
   } = deps;
 
+  useEffect(() => {
+    const refresh = () => {
+      void loadMessagingInbox(activeConversationId);
+    };
+    window.addEventListener("grogoni:conversation-updated", refresh);
+    return () => window.removeEventListener("grogoni:conversation-updated", refresh);
+  });
+
   // The server owns daemon identity; open that durable thread on initial launch.
   async function loadMessagingInbox(preferredConversationId: string | null = activeConversationId) {
     if (session === null) return;

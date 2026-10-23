@@ -94,9 +94,12 @@ export async function createEdgeSnapshotScope(
     : "";
   const publicAgent = path.match(/^\/public\/storefronts\/([^/]+)/)?.[1];
   let recipient = typeof input.recipient === "string" ? input.recipient.trim() : "";
-  if(recipient && !recipient.startsWith("network-node:")) {
-    try {recipient = normalizeDestination(recipient.includes("@")?"email":"phone",recipient);}
-    catch { /* The route returns the authoritative recipient validation error. */ }
+  if (recipient && !recipient.startsWith("network-node:")) {
+    try {
+      recipient = normalizeDestination(recipient.includes("@") ? "email" : "phone", recipient);
+    } catch {
+      /* The route returns the authoritative recipient validation error. */
+    }
   }
   const credential =
     input.response && typeof input.response === "object" && "id" in input.response
@@ -356,6 +359,13 @@ export async function createEdgeSnapshotScope(
         and account_id = nullif(${actorAccount}, '') and record->>'consumedAt' is null and (record->>'expiresAt')::timestamptz > now())`
   ]);
   const withClause = `with ${ctes.map(([name, sql]) => `${name} as (${sql})`).join(",\n")}`;
+  const selectedModel =
+    request.method === "PUT" &&
+    /^\/v1\/conversations\/[^/]+\/model$/.test(path) &&
+    typeof input.modelId === "string"
+      ? input.modelId
+      : "";
+  const modelSelectionLock = selectedModel ? `edge:catalog-model:${selectedModel}` : undefined;
   let directPairLock: string | undefined;
   if (actor?.account_id && path === "/v1/conversations" && request.method === "POST" && recipient) {
     const peers = await client.query(
@@ -366,6 +376,7 @@ export async function createEdgeSnapshotScope(
   }
   return {
     directPairLock,
+    modelSelectionLock,
     accountId: actor?.account_id as string | undefined,
     withClause,
     predicate(key: keyof Cp2Snapshot) {
@@ -377,7 +388,7 @@ export async function createEdgeSnapshotScope(
       if (key === "nativeRuntimeBindingModels")
         return "record->>'runtimeBindingId' in (select id from edge_runtime_binding_ids)";
       if (key === "nativeRuntimeModels")
-        return "entity_id in (select record->>'modelId' from edge_runtime_roles)";
+        return `entity_id in (select record->>'modelId' from edge_runtime_roles) or entity_id = ${escapeLiteral(selectedModel)}`;
       if (key === "nativeModelInstallations")
         return `record->>'executionHostId' in (select id from edge_runtime_host_ids)
           and exists (select 1 from edge_runtime_roles role

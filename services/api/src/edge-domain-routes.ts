@@ -122,10 +122,11 @@ export async function createEdgeDomainRoutes(database: EdgeDomainDatabase) {
         { status: 426 }
       );
     const url = new URL(request.url);
-    const payload =
+    const requestBody =
       request.method === "GET" || request.method === "HEAD"
         ? undefined
         : Buffer.from(await request.arrayBuffer());
+    const payload = requestBody?.length ? requestBody : undefined;
     if (payload && payload.length > 15_000_000)
       return Response.json({ code: "request_too_large" }, { status: 413 });
     if (path === "/v1/chat/images/read" && imageReader) {
@@ -242,6 +243,10 @@ export async function createEdgeDomainRoutes(database: EdgeDomainDatabase) {
       // Their snapshots must be loaded after the same tenant locks as explicit writes.
       {
         await client.query("set local lock_timeout = '10s'");
+        if (scope.modelSelectionLock)
+          await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [
+            scope.modelSelectionLock
+          ]);
         if (scope.directPairLock)
           await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [
             scope.directPairLock
@@ -468,6 +473,7 @@ export async function createEdgeDomainRoutes(database: EdgeDomainDatabase) {
         });
         const headers = Object.fromEntries(request.headers);
         delete headers["content-length"];
+        if (payload === undefined) delete headers["content-type"];
         const inject = () =>
           app.inject({
             method: request.method as

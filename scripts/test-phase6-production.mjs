@@ -673,7 +673,12 @@ try {
   );
   await step("real browser push subscription receives a private message notification", async () => {
     const { chromium } = await import("@playwright/test");
-    const chrome = await chromium.launch({ channel: "chrome", headless: true });
+    const chrome = await chromium.launch({
+      channel: "chrome",
+      headless: true,
+      ignoreDefaultArgs: ["--disable-background-networking"],
+      args: ["--enable-features=PushMessaging"]
+    });
     try {
       const ctx = await chrome.newContext({ permissions: ["notifications"] });
       const page = await ctx.newPage();
@@ -683,15 +688,18 @@ try {
       const config = ok(await call(bob.cookie, "/v1/push/config"));
       assert.equal(config.enabled, true, "Cloud push configuration unavailable");
       const subscription = await page.evaluate(async (publicKey) => {
-        await navigator.serviceWorker.register("/sw.js");
-        const registration = await navigator.serviceWorker.ready;
+        await globalThis.navigator.serviceWorker.register("/sw.js");
+        const registration = await globalThis.navigator.serviceWorker.ready;
         const normalized = publicKey.replace(/-/g, "+").replace(/_/g, "/");
         const key = Uint8Array.from(
-          atob(normalized + "=".repeat((4 - (normalized.length % 4)) % 4)),
+          globalThis.atob(normalized + "=".repeat((4 - (normalized.length % 4)) % 4)),
           (c) => c.charCodeAt(0)
         );
         const timeout = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error("Browser push subscription timed out")), 45000)
+          globalThis.setTimeout(
+            () => reject(new Error("Browser push subscription timed out")),
+            45000
+          )
         );
         return JSON.parse(
           JSON.stringify(
@@ -719,14 +727,14 @@ try {
       );
       await page.waitForFunction(
         async (id) => {
-          const reg = await navigator.serviceWorker.ready;
+          const reg = await globalThis.navigator.serviceWorker.ready;
           return (await reg.getNotifications({ tag: `grogoni-message-${id}` })).length > 0;
         },
         sent.id,
         { timeout: 45000 }
       );
       const notifications = await page.evaluate(async () =>
-        (await (await navigator.serviceWorker.ready).getNotifications()).map((n) => ({
+        (await (await globalThis.navigator.serviceWorker.ready).getNotifications()).map((n) => ({
           tag: n.tag,
           body: n.body
         }))

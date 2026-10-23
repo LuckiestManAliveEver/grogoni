@@ -103,6 +103,46 @@ describe.skipIf(!url)("Phase 6 Edge hydration on real PostgreSQL", () => {
         expect(loaded.conversations.some((c) => c.id === unrelated.conversation.id)).toBe(false);
         expect(loaded.conversations.some((c) => c.id === thread.conversation.id)).toBe(true);
       }
+      // A model registered by a different account is shared catalog data. It must be
+      // in the baseline before selection, or scoped persistence attempts a duplicate INSERT.
+      const modelId = `existing-model-${randomUUID()}`;
+      const model = {
+        id: modelId,
+        name: "Existing model",
+        provider: "fixture",
+        providerModelId: "fixture",
+        runtimeContractVersion: "1",
+        capabilities: [],
+        configuration: {},
+        status: "active",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      await client.query(
+        "insert into cp2_native_runtime_models(entity_id,record) values($1,$2::jsonb)",
+        [modelId, JSON.stringify(model)]
+      );
+      const modelPath = `/v1/conversations/${direct.conversation.id}/model`;
+      const modelBody = Buffer.from(JSON.stringify({ modelId }));
+      const modelScope = await createEdgeSnapshotScope(
+        client,
+        new Request(`https://grogoni.com${modelPath}`, {
+          method: "PUT",
+          headers: {
+            cookie: `grogoni_session=${a.session.id}`,
+            "content-type": "application/json"
+          },
+          body: modelBody
+        }),
+        modelPath,
+        modelBody
+      );
+      expect(
+        (await loadTransactionalCp2Snapshot(client, modelScope)).nativeRuntimeModels.some(
+          (m) => m.id === modelId
+        )
+      ).toBe(true);
+      expect(modelScope.modelSelectionLock).toBe(`edge:catalog-model:${modelId}`);
       const req = new Request("https://grogoni.com/v1/conversations", {
         method: "POST",
         headers: { cookie: `grogoni_session=${a.session.id}`, "content-type": "application/json" },
