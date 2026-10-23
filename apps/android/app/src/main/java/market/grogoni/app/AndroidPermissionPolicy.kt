@@ -14,9 +14,9 @@ object AndroidPermissionPolicy {
         permissions += Manifest.permission.RECORD_AUDIO
         permissions += Manifest.permission.ACCESS_COARSE_LOCATION
         permissions += Manifest.permission.ACCESS_FINE_LOCATION
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            permissions += Manifest.permission.ACCESS_BACKGROUND_LOCATION
-        }
+        // Native SMS does not need background location. Android 11+ rejects a
+        // combined foreground/background location request; any future background
+        // feature must request that access separately after foreground approval.
         permissions += Manifest.permission.FOREGROUND_SERVICE
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             permissions += Manifest.permission.POST_NOTIFICATIONS

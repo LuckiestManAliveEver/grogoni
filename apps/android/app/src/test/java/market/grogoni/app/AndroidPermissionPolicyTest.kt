@@ -2,6 +2,7 @@ package market.grogoni.app
 
 import android.Manifest
 import android.os.Build
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -20,9 +21,7 @@ class AndroidPermissionPolicyTest {
         assertTrue(permissions.contains(Manifest.permission.CALL_PHONE))
         assertTrue(permissions.contains(Manifest.permission.SEND_SMS))
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            assertTrue(permissions.contains(Manifest.permission.ACCESS_BACKGROUND_LOCATION))
-        }
+        assertFalse(permissions.contains(Manifest.permission.ACCESS_BACKGROUND_LOCATION))
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             assertTrue(permissions.contains(Manifest.permission.POST_NOTIFICATIONS))

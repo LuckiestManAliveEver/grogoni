@@ -145,6 +145,9 @@ describe("registered phone and email end-to-end messaging", () => {
       conversation: emailToPhoneConversation,
       message: emailToPhoneText
     });
+    // The email sender and the phone number are the same pair, so `createConversation` reuses the
+    // chat opened from the phone instead of starting a second one; this reads the recipient's own
+    // copy of that chat. Messages come back oldest first, so the reply is the last one.
     const receivedByPhone = await getJson<ConversationView>(
       app,
       `/v1/conversations/${emailToPhoneConversation.conversation.id}`,
@@ -153,7 +156,7 @@ describe("registered phone and email end-to-end messaging", () => {
     await expect(
       decryptDirectMessage({
         conversationId: emailToPhoneConversation.conversation.id,
-        content: encryptedContent(receivedByPhone.messages[0]),
+        content: encryptedContent(receivedByPhone.messages.at(-1)),
         identity: phoneIdentity
       })
     ).resolves.toEqual({ text: emailToPhoneText, attachments: [] });

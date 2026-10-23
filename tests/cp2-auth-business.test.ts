@@ -682,17 +682,33 @@ describe("CP2 auth and business creation", () => {
       }
     });
 
-    // Seed the proof held by migrated snapshots; the retired HTTP OTP login stays disabled.
-    const recoveryOtp = store.requestOtp({
-      channel: "email",
-      destination: "pin-owner@example.test",
-      purpose: "recovery"
+    const unauthenticatedRecovery = await app.inject({
+      method: "POST",
+      url: "/auth/pin/recover",
+      headers: jsonHeaders(),
+      payload: JSON.stringify({ pin: "7777" })
     });
-    const recovery = store.verifyOtp({
-      challengeId: recoveryOtp.challengeId,
-      code: recoveryOtp.devOtp
+    expect(unauthenticatedRecovery.statusCode).toBe(401);
+    expect(unauthenticatedRecovery.headers["set-cookie"]).toBeUndefined();
+
+    // Recover from a session obtained through the supported phone login and email MFA APIs.
+    const recoveryLogin = await app.inject({
+      method: "POST",
+      url: "/auth/pin/login",
+      headers: jsonHeaders(),
+      payload: JSON.stringify({
+        method: "phone",
+        contact: "+254712345678",
+        pin: "1234"
+      })
     });
-    const recoveryCookie = `grogoni_session=${recovery.session.id}`;
+    expect(recoveryLogin.statusCode).toBe(202);
+    expect(recoveryLogin.headers["set-cookie"]).toBeUndefined();
+    const recovery = await completeEmailMfa(
+      app,
+      recoveryLogin.json<{ transactionId: string }>().transactionId
+    );
+    const recoveryCookie = extractSessionCookie(recovery.headers["set-cookie"]);
 
     await postJson<VerifyOtpResponse>(
       app,
