@@ -275,11 +275,8 @@ export function ConversationListPanel({
                       : "chat"
                   }`}
                 >
-                  {conversation.kind === "personal"
-                    ? conversation.activeShopId === null
-                      ? "Buy"
-                      : "Sell"
-                    : "Chat"}
+                  {conversation.conversationType ??
+                    (conversation.kind === "personal" ? "DAEMON" : "BUSINESS")}
                 </span>
                 {conversation.unreadCount > 0 ? (
                   <b aria-label={`${conversation.unreadCount} unread`}>

@@ -462,7 +462,8 @@ try {
         await call(
           bob.cookie,
           `/businesses/${shopId}/staff/members/${joined.membership.id}`,
-          "DELETE"
+          "DELETE",
+          {}
         )
       );
       assert.equal((await call(stranger.cookie, `/v1/conversations/${businessId}`)).status, 404);
@@ -672,13 +673,22 @@ try {
     }
   );
   await step("real browser push subscription receives a private message notification", async () => {
-    const { chromium } = await import("@playwright/test");
-    const chrome = await chromium.launch({
-      channel: "chrome",
-      headless: true,
-      ignoreDefaultArgs: ["--disable-background-networking"],
-      args: ["--enable-features=PushMessaging"]
-    });
+    const { chromium, firefox } = await import("@playwright/test");
+    const chrome =
+      process.env.PHASE6_PUSH_BROWSER === "firefox"
+        ? await firefox.launch({
+            headless: true,
+            firefoxUserPrefs: {
+              "dom.push.enabled": true,
+              "permissions.default.desktop-notification": 1
+            }
+          })
+        : await chromium.launch({
+            channel: "chrome",
+            headless: true,
+            ignoreDefaultArgs: ["--disable-background-networking"],
+            args: ["--enable-features=PushMessaging"]
+          });
     try {
       const ctx = await chrome.newContext({ permissions: ["notifications"] });
       const page = await ctx.newPage();
