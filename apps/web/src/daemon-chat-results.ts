@@ -24,15 +24,10 @@ export function useDaemonChatResults(
     let running = false;
     let pending = false;
     const delivered = new Set<string>();
-    // Tasks this device has already seen from the server. The full list is read once per mount and
-    // after that each poll re-reads only these ids, so a quiet account with no background work
-    // never calls the daemon task endpoints at all.
+    // Discover background work on a wake, then poll only known task IDs. Mounting an idle
+    // account must not issue a task-list request that races its first message.
     const recoveredIds = new Set<string>();
     let recoveredOnce = false;
-    // Whether this poll was asked for by the account (a send, a wake, a return to the tab) rather
-    // than being the mount-time safety poll. Recovery is for background work this app did not just
-    // start, so it waits for the first user-initiated poll; otherwise a freshly opened account
-    // spends an unsolicited daemon request that races its very first message.
     let userInitiatedWake = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     async function poll() {
@@ -51,18 +46,14 @@ export function useDaemonChatResults(
           readChatDaemonTasks(accountId!).map((entry) => [entry.taskId, entry])
         );
         const recovered = new Map<string, PublicDaemonTask>();
-        // Recovery exists for tasks whose local metadata is gone (cleared storage, another device,
-        // a reinstall), so it reads the whole list once and after that only the ids already known
-        // here. Re-reading the whole list on every tick made an idle account issue a daemon request
-        // it had no work behind, which then raced its first chat message; the mount poll has none
-        // at all, so that first message stays the only request the account makes on its own.
+        // Server-side projection preserves conversation history even before this client wakes.
         try {
           const tasks = recoveredOnce
             ? await reReadRecoveredTasks(recoveredIds, entries)
             : userInitiatedWake
-              ? []
-              : (await apiCloudFetch<{ tasks: PublicDaemonTask[] }>("/v1/daemon/tasks")).tasks;
-          recoveredOnce = true;
+              ? (await apiCloudFetch<{ tasks: PublicDaemonTask[] }>("/v1/daemon/tasks")).tasks
+              : [];
+          if (userInitiatedWake) recoveredOnce = true;
           for (const task of tasks) {
             recoveredIds.add(task.id);
             const origin = task.payload.kind === "agent" ? task.payload.conversation : undefined;

@@ -69,6 +69,10 @@ it("recovers completed tasks after local storage loss and delivers only to their
     completed("other", daemonChatScope("seller", "other-business", "daemon-b"))
   ];
   await act(async () => root.render(<Harness />));
+  expect(deliver).not.toHaveBeenCalled();
+  await act(async () => {
+    window.dispatchEvent(new Event(daemonTaskUpdatedEvent));
+  });
   expect(deliver).toHaveBeenCalledTimes(1);
   expect(deliver.mock.calls[0]).toEqual([
     expect.objectContaining({ conversationId: "daemon-a", clientMessageId: "client-message-a" }),
@@ -83,6 +87,9 @@ it("retains a result when message persistence fails and retries delivery on wake
   state.tasks = [completed("one")];
   deliver.mockRejectedValueOnce(new Error("temporary persistence outage"));
   await act(async () => root.render(<Harness />));
+  await act(async () => {
+    window.dispatchEvent(new Event(daemonTaskUpdatedEvent));
+  });
   await act(async () => {
     window.dispatchEvent(new Event(daemonTaskUpdatedEvent));
   });

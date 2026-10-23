@@ -1,3 +1,4 @@
+import { HomeSuggestionChips } from "./HomeSuggestionChips";
 import { Fragment, Suspense, lazy, useEffect, useRef, useState } from "react";
 
 import type { CountryCode } from "libphonenumber-js";
@@ -27,8 +28,7 @@ import { renderGeneratedSurface } from "./generated-surface-registry";
 
 import {
   DaemonExecutionStatus,
-  DaemonModelSelector,
-  BusinessAgentControls
+  ConversationExecutionControls
 } from "./ConversationExecutionControls";
 
 import { getJson } from "./api-helpers";
@@ -85,8 +85,6 @@ function capabilityTraceLabel(content: ConversationMessageContent | undefined): 
   if (content === undefined) return null;
   return capabilityTraceLabels[content.type] ?? null;
 }
-
-const homeSuggestionPrompts = ["Find me 50kg maize nearby", "Track my delivery", "Talk to a shop"];
 
 export function ChatSurface({
   activeConversationId,
@@ -544,23 +542,10 @@ export function ChatSurface({
                 Retry failed
               </button>
             ) : null}
-            {selectedConversation?.conversationType === "DAEMON" && activeConversationId ? (
-              <DaemonModelSelector
-                key={activeConversationId}
-                conversationId={activeConversationId}
-              />
-            ) : null}
-            {selectedConversation?.conversationType === "BUSINESS" &&
-            selectedConversation.activeShopId === businessId &&
-            hasBusiness &&
-            activeConversationId &&
-            businessId ? (
-              <BusinessAgentControls
-                conversationId={activeConversationId}
-                businessId={businessId}
-                enabled={selectedConversation.businessAgentEnabled === true}
-              />
-            ) : null}
+            <ConversationExecutionControls
+              conversation={selectedConversation}
+              businessId={hasBusiness ? businessId : null}
+            />
           </header>
         ) : null}
         <div
@@ -1110,13 +1095,7 @@ export function ChatSurface({
         {mode === "marketplace" &&
         activeModuleView === null &&
         visibleMessages.filter((message) => message.id !== "welcome").length === 0 ? (
-          <div className="home-suggestion-chips" role="group" aria-label="Suggested requests">
-            {homeSuggestionPrompts.map((prompt) => (
-              <button key={prompt} type="button" onClick={() => commitDraft(prompt)}>
-                {prompt}
-              </button>
-            ))}
-          </div>
+          <HomeSuggestionChips onSelect={commitDraft} />
         ) : null}
         <ChatComposer
           activeAgentName={agent.name}

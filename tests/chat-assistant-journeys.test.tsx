@@ -34,6 +34,12 @@ describe("buyer and seller assistant journeys", () => {
   } as SessionResponse;
   const task = () => ({
     id: "task-1",
+    payload: {
+      kind: "agent",
+      message: "fixture",
+      modelId: "gpt-6-luna",
+      agentAdapterId: "grogoni"
+    },
     status: completed ? "completed" : "queued",
     executions: completed ? 1 : 0,
     runAt: new Date().toISOString(),
@@ -65,6 +71,7 @@ describe("buyer and seller assistant journeys", () => {
         let response: unknown;
         if (path === "/v1/daemon/tasks" && method === "POST")
           response = { task: { ...task(), runAt: body.runAt ?? task().runAt } };
+        else if (path === "/v1/daemon/tasks" && method === "GET") response = { tasks: [] };
         else if (path === "/v1/daemon/tasks/task-1") response = { task: task() };
         else if (path === "/buy/assistant")
           response = {
@@ -203,7 +210,7 @@ describe("buyer and seller assistant journeys", () => {
       await act(async () => send("Read this receipt"));
       expect(requests[0]?.path).toBe("/v1/chat/images/read");
       const turn = requests.find((request) =>
-        request.path.endsWith(mode === "seller" ? "/runtime/turns" : "/buy/assistant")
+        request.path.endsWith(mode === "seller" ? "/runtime/turns" : "/v1/daemon/tasks")
       );
       expect(turn?.body.message).toContain("RECEIPT ZXQ-4827");
       expect(turn?.body.message).toContain("TOTAL KES 570");
@@ -230,11 +237,13 @@ describe("buyer and seller assistant journeys", () => {
     await mount("marketplace", { id: "shop-1", name: "Shop" } as ActiveBusiness, null, [receipt]);
     await act(async () => send("Read this receipt"));
     expect(requests.some((request) => request.path.includes("receipt-ocr/jobs"))).toBe(false);
-    expect(requests.some((request) => request.path === "/buy/assistant")).toBe(true);
+    expect(
+      requests.some((request) => request.path === "/v1/daemon/tasks" && request.method === "POST")
+    ).toBe(true);
   });
   it("includes Luna's reading in a saved seller conversation before server processing", async () => {
     const conversation = {
-      conversation: { id: "receipt-chat" },
+      conversation: { id: "receipt-chat", kind: "personal", activeShopId: "shop-1" },
       participants: [],
       messages: []
     } as unknown as ConversationView;
@@ -267,7 +276,7 @@ describe("buyer and seller assistant journeys", () => {
   });
   it("does not send a human-directed receipt to Luna", async () => {
     const conversation = {
-      conversation: { id: "human-chat" },
+      conversation: { id: "human-chat", kind: "personal", activeShopId: null },
       participants: [{ role: "account", accountId: "another-person" }],
       messages: []
     } as unknown as ConversationView;
@@ -275,17 +284,19 @@ describe("buyer and seller assistant journeys", () => {
     await act(async () => send("Here is your receipt"));
     expect(requests.some((request) => request.path === "/v1/chat/images/read")).toBe(false);
   });
-  it("answers buyer arithmetic through the buyer assistant without duplicate delivery", async () => {
+  it("answers buyer arithmetic through the queued daemon without duplicate delivery", async () => {
     await mount();
     await act(async () => send("A basket costs 450 shillings. What do 3 baskets cost?"));
     expect(search).not.toHaveBeenCalled();
-    expect(requests.find((request) => request.path === "/buy/assistant")?.body.message).toContain(
-      "A basket costs 450 shillings"
-    );
-    expect(readChatDaemonTasks(session.account.id)).toHaveLength(0);
+    expect(
+      requests.find((request) => request.path === "/v1/daemon/tasks" && request.method === "POST")
+        ?.body.message
+    ).toContain("A basket costs 450 shillings");
+    expect(readChatDaemonTasks(session.account.id)).toHaveLength(1);
+    completed = true;
     await act(async () => window.dispatchEvent(new Event(daemonTaskUpdatedEvent)));
     expect(messages.filter((message) => message.body.includes("1,350"))).toHaveLength(1);
-    expect(status).toBe("Shopping assistant replied.");
+    expect(readChatDaemonTasks(session.account.id)).toHaveLength(0);
   });
   it.each(["marketplace", "seller"] as const)(
     "schedules and cancels a %s reminder",
@@ -357,7 +368,7 @@ describe("buyer and seller assistant journeys", () => {
   });
   it("does not send human-directed shopping or reminder messages to marketplace search or the model", async () => {
     const conversation = {
-      conversation: { id: "human-chat" },
+      conversation: { id: "human-chat", kind: "personal", activeShopId: null },
       participants: [{ role: "account", accountId: "another-person" }],
       messages: []
     } as unknown as ConversationView;
