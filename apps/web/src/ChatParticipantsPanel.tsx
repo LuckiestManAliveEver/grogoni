@@ -69,6 +69,7 @@ export function ChatParticipantsPanel({
       setBusy(false);
     }
   }
+  const hasAgent = view?.participants.some((participant) => participant.role === "agent") ?? false;
   return (
     <StackedModule
       moduleId="chat-participants"
@@ -132,13 +133,7 @@ export function ChatParticipantsPanel({
               Add contact and alert
             </button>
           </form>
-          <button
-            type="button"
-            disabled={
-              busy || !view || view.participants.some((participant) => participant.role === "agent")
-            }
-            onClick={() => void add(true)}
-          >
+          <button type="button" disabled={busy || !view || hasAgent} onClick={() => void add(true)}>
             Add my agent
           </button>
           <p>
