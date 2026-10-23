@@ -301,6 +301,13 @@ describe("connected email channel", () => {
       subject: "Re: Order #104"
     });
 
+    const enabled = await app.inject({
+      method: "PATCH",
+      url: `/v1/conversations/${emailConversation.conversation.id}`,
+      headers: { "content-type": "application/json", cookie: owner.cookie },
+      payload: JSON.stringify({ agentEnabled: true })
+    });
+    expect(enabled.statusCode, enabled.body).toBe(200);
     await postJson(
       app,
       "/v1/messages",

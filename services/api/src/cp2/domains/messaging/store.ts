@@ -3226,7 +3226,9 @@ export class MessagingDomain {
     const actor = this.deps.requirePinVerifiedSession(input.sessionId, input.now ?? new Date());
     const conversation = this.requireAccountConversation(input.conversationId, actor.account.id);
     if (input.author === "agent") {
-      if (this.conversationType(conversation) === "DIRECT")
+      // Explicit MCP secure endpoints remain participant-authorized encrypted transport.
+      // A direct conversation still cannot receive plaintext agent output.
+      if (this.conversationType(conversation) === "DIRECT" && input.content.type !== "encrypted")
         throw new Cp2Error(
           403,
           "agent_message_forbidden",
