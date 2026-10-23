@@ -1,3 +1,6 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { HomeSuggestionChips } from "../apps/web/src/HomeSuggestionChips";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
@@ -282,10 +285,11 @@ describe("Grogoni Home: hamburger menu drawer", () => {
 
 describe("Grogoni Home: suggested requests and capability trace", () => {
   it("shows persistent suggestion chips on an empty marketplace thread", () => {
-    expect(chatSurface).toContain("home-suggestion-chips");
-    expect(chatSurface).toContain(
-      'const homeSuggestionPrompts = ["Find me 50kg maize nearby", "Track my delivery", "Talk to a shop"];'
-    );
+    expect(chatSurface).toContain("<HomeSuggestionChips onSelect={commitDraft}");
+    const html = renderToStaticMarkup(createElement(HomeSuggestionChips, { onSelect: () => {} }));
+    expect(html).toContain('class="home-suggestion-chips"');
+    for (const prompt of ["Find me 50kg maize nearby", "Track my delivery", "Talk to a shop"])
+      expect(html).toContain(prompt);
   });
 
   it("names the real capability behind a generated card instead of fabricating one", () => {
