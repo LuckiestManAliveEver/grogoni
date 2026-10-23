@@ -1,3 +1,4 @@
+import { parseMarketplaceBuyIntent } from "./chat-assistant-intents";
 import type { Dispatch, SetStateAction } from "react";
 import type { BuyerShoppingTurnResult } from "@grogoni/shared-types";
 import type { ChatMessage } from "./app-shell";
@@ -64,5 +65,13 @@ export async function submitBuyerShoppingChat(input: {
   }
   setStatusMessage(
     result.pendingCheckout ? "Review the checkout in this chat." : "Shopping assistant replied."
+  );
+}
+
+export function isBuyerShoppingRequest(message: string, hasSession: boolean): boolean {
+  return (
+    parseMarketplaceBuyIntent(message) !== null ||
+    hasSession ||
+    /^(confirm checkout|cancel checkout)$/iu.test(message.trim())
   );
 }

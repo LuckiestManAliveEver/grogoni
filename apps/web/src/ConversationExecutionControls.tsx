@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { ConversationExecutionSummary } from "@grogoni/shared-types";
+import type { ConversationExecutionSummary, ConversationSummary } from "@grogoni/shared-types";
 import { apiCloudFetch } from "./lib/api";
 import { daemonTaskUpdatedEvent } from "./daemon-chat";
 import { daemonLaneWakeEvent } from "./hooks/useDaemonLane";
@@ -192,4 +192,29 @@ export function BusinessAgentControls({
       {status ? <small role="status">{status}</small> : null}
     </div>
   );
+}
+
+export function ConversationExecutionControls({
+  conversation,
+  businessId
+}: {
+  conversation: ConversationSummary | undefined;
+  businessId: string | null;
+}) {
+  if (conversation?.conversationType === "DAEMON")
+    return <DaemonModelSelector key={conversation.id} conversationId={conversation.id} />;
+  if (
+    conversation?.conversationType === "BUSINESS" &&
+    businessId &&
+    conversation.activeShopId === businessId
+  )
+    return (
+      <BusinessAgentControls
+        key={conversation.id}
+        conversationId={conversation.id}
+        businessId={businessId}
+        enabled={conversation.businessAgentEnabled === true}
+      />
+    );
+  return null;
 }

@@ -1,4 +1,5 @@
-import { submitBuyerShoppingChat } from "../buyer-shopping-chat";
+import { daemonChatReply } from "../daemon-chat-text";
+import { submitBuyerShoppingChat, isBuyerShoppingRequest } from "../buyer-shopping-chat";
 import { loadLazyModuleWithRecovery } from "../lazy-module-recovery";
 import { useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { currentOfflineScope, isExplicitOfflineMode } from "../offline-runtime";
@@ -38,7 +39,7 @@ import {
   forgetChatDaemonTask
 } from "../daemon-chat";
 import { useDaemonChatResults } from "../daemon-chat-results";
-import type { DaemonUserTaskResult, UnifiedCheckoutSummary } from "@grogoni/shared-types";
+import type { UnifiedCheckoutSummary } from "@grogoni/shared-types";
 import { postJson } from "../api-helpers";
 import {
   type ChatAttachment,
@@ -231,27 +232,13 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
     if (task.status === "cancelled") return;
     if (entry.conversationId && activeConversation?.conversation.id !== entry.conversationId)
       throw new Error("Waiting for the originating conversation to load.");
-    const result = task.result as Partial<DaemonUserTaskResult> | null;
-    const body =
-      task.status === "completed" && typeof entry.reminderText === "string"
-        ? `Reminder: ${entry.reminderText}`
-        : task.status === "completed" && typeof result?.text === "string"
-          ? result.text
-          : "The background assistant could not finish this request. Please send it again.";
-    const id = `daemon:${task.id}:${task.executions}`;
-    let reply: ChatMessage = {
-      id,
-      author: "grogoniclaw",
-      body,
-      createdAt: task.updatedAt,
-      status: "delivered"
-    };
+    let reply = daemonChatReply(task, entry.reminderText);
     if (entry.conversationId && activeConversation && session) {
       const persisted = await postJson<ConversationMessageSummary>("/v1/messages", {
         conversationId: entry.conversationId,
-        clientMessageId: id,
+        clientMessageId: reply.id,
         author: "agent",
-        content: { type: "text", text: body },
+        content: { type: "text", text: reply.body },
         clientTimestamp: task.updatedAt
       });
       reply = mapConversationMessage(persisted, activeConversation.participants, session);
@@ -579,11 +566,12 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
         } else if (
           buyerAssistant &&
           reminder === null &&
-          (parseMarketplaceBuyIntent(message) !== null ||
+          isBuyerShoppingRequest(
+            message,
             buyerShoppingSessionIds.current.has(
               `grogoni:buyer-shopping:${activeSession.account.id}:${assistantScope}`
-            ) ||
-            /^(confirm checkout|cancel checkout)$/iu.test(message.trim()))
+            )
+          )
         ) {
           await submitBuyerShoppingChat({
             accountId: activeSession.account.id,
