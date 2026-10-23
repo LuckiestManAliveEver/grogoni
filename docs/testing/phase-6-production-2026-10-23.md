@@ -29,3 +29,10 @@ The [machine-readable report](phase-6-production-2026-10-23.json) retains every 
 ## Local checks
 
 74 focused regression tests and 50 PostgreSQL queue/scope tests passed. Further checks passed 12 messaging/model/delivery tests, the shared-model PostgreSQL regression, and 10 recovery/contact UI tests. API/web/shared-type checks, scoped lint, route coverage and production web build passed. Existing large bundle warnings remain.
+
+## Additional browser control check
+
+A separate production browser run opened the daemon conversation, displayed its saved message,
+selected `gpt-oss-20b-openrouter` through the real model dropdown, verified the server selection,
+reloaded, and restored the same thread and message. The disposable account was removed and its
+removal verified. See the [daemon controls screenshot](phase-6-daemon-controls-2026-10-23.png).
