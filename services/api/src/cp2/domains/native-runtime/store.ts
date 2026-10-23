@@ -154,6 +154,61 @@ export class NativeRuntimeBindingStore {
     return { ...nextBinding };
   }
 
+  selectConversationModel(input: {
+    accountId: string;
+    businessId: string | null;
+    conversationId: string;
+    model: AiModelSummary;
+    executionTarget: ModelExecutionTarget;
+    checkedAt: string;
+    updatedBy: string;
+  }): NativeRuntimeBindingSummary {
+    const agentId = `account-${input.accountId}-agent`;
+    const original = this.agents.get(this.defaultRuntimePolicy.agentId)!;
+    const agent = this.upsertAgent({
+      ...original,
+      id: agentId,
+      accountId: input.accountId,
+      businessId: input.businessId,
+      name: "Your daemon",
+      createdAt: input.checkedAt,
+      updatedAt: input.checkedAt
+    });
+    const model =
+      this.models.get(input.model.id) ??
+      this.upsertCatalogModel(input.model, input.executionTarget, input.checkedAt);
+    this.validateCompatibility(agent, model);
+    const host = this.upsertVerifiedHost({
+      accountId: input.accountId,
+      businessId: input.businessId,
+      executionTarget: input.executionTarget,
+      checkedAt: input.checkedAt
+    });
+    this.upsertInstallation(model.id, host.id, input.checkedAt);
+    const id = stableUuid(`conversation-runtime:${input.accountId}:${input.conversationId}`);
+    const existing = this.bindings.get(id);
+    const binding: NativeRuntimeBindingSummary = {
+      id,
+      accountId: input.accountId,
+      businessId: input.businessId,
+      agentId,
+      name: "Conversation runtime",
+      status: "active",
+      isDefault: false,
+      configuration: { source: "conversation-selection" },
+      runtimeContractVersion: nativeRuntimeContractVersion,
+      createdAt: existing?.createdAt ?? input.checkedAt,
+      updatedAt: input.checkedAt,
+      updatedBy: input.updatedBy
+    };
+    for (const [key, role] of this.bindingModels)
+      if (role.runtimeBindingId === id) this.bindingModels.delete(key);
+    const role = roleRecord(id, model.id, "primary", 0, host.id, input.checkedAt);
+    this.bindings.set(id, binding);
+    this.bindingModels.set(role.id, role);
+    return binding;
+  }
+
   activateVerifiedModel(input: NativeRuntimeActivationInput): NativeRuntimeBindingSummary {
     const timestamp = input.checkedAt;
     // Precedence: an explicit request always wins (this is how a caller synced to a business's

@@ -38,12 +38,14 @@ export function PhoneContactsCard({
   onSync,
   onDisconnect,
   onConnectionAction,
-  onInvite
+  onInvite,
+  onMessageContact
 }: {
   graph: NetworkGraphSummary | null;
   connected: boolean;
   deviceContacts: DevicePhonebookContact[];
   invites: NetworkInviteSummary[];
+  onMessageContact?: (nodeId: string, name: string) => void;
   onBack: () => void;
   onSync: (contacts: ContactPickerContact[]) => Promise<NetworkGraphSummary | null>;
   onDisconnect: () => void;
@@ -277,6 +279,11 @@ export function PhoneContactsCard({
                     busy={busyKey === entry.key}
                     entry={entry}
                     onAction={(action) => void runAction(entry.key, action)}
+                    onMessage={
+                      onMessageContact && entry.nodeId
+                        ? () => onMessageContact(entry.nodeId!, entry.name)
+                        : undefined
+                    }
                   />
                 ))
             )}
@@ -400,8 +407,10 @@ function RequestRow({
 function OnGrogoniRow({
   entry,
   busy,
-  onAction
+  onAction,
+  onMessage
 }: {
+  onMessage?: (() => void) | undefined;
   entry: OnGrogoniEntry;
   busy: boolean;
   onAction: (action: NetworkConnectionAction) => void;
@@ -425,6 +434,11 @@ function OnGrogoniRow({
         </small>
       </span>
       <div className="phonebook-row-actions">
+        {onMessage ? (
+          <button type="button" disabled={busy} onClick={onMessage}>
+            Message
+          </button>
+        ) : null}
         {entry.state === "connect" && entry.nodeId !== null ? (
           <button
             type="button"

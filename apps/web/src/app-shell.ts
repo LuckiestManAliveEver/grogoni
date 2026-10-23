@@ -1,5 +1,6 @@
 import type {
   ConversationAttachmentKind,
+  ConversationExecutionSummary,
   ConversationMessageContent,
   ConversationMessageDeliveryStatus
 } from "@grogoni/shared-types";
@@ -41,6 +42,7 @@ export interface EmptyState {
 }
 
 export interface ChatMessage {
+  execution?: ConversationExecutionSummary;
   id: string;
   author: "merchant" | "grogoniclaw" | "contact";
   authorLabel?: string;

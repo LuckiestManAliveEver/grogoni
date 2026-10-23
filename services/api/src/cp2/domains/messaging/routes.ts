@@ -177,6 +177,7 @@ interface NativeSmsDeviceParams {
 }
 
 interface UpdateConversationBody {
+  agentEnabled?: boolean;
   archived?: boolean;
   mutedUntil?: string | null;
   pinned?: boolean;
@@ -261,6 +262,34 @@ export function registerMessagingRoutes(
           title: parseNullableString(request.body.title),
           runtimeBindingId: parseNullableString(request.body.runtimeBindingId)
         });
+      } catch (error) {
+        return sendCp2Error(reply, error);
+      }
+    }
+  );
+
+  app.get<{ Params: ConversationParams }>(
+    "/v1/conversations/:conversationId/model",
+    async (request, reply) => {
+      try {
+        return store.getConversationModelSelection(
+          readSessionCookie(request.headers.cookie),
+          parseString(request.params.conversationId, "conversationId")
+        );
+      } catch (error) {
+        return sendCp2Error(reply, error);
+      }
+    }
+  );
+  app.put<{ Params: ConversationParams; Body: { modelId?: string } }>(
+    "/v1/conversations/:conversationId/model",
+    async (request, reply) => {
+      try {
+        return await store.selectConversationModel(
+          readSessionCookie(request.headers.cookie),
+          parseString(request.params.conversationId, "conversationId"),
+          parseString(request.body.modelId, "modelId")
+        );
       } catch (error) {
         return sendCp2Error(reply, error);
       }
@@ -1259,6 +1288,9 @@ export function registerMessagingRoutes(
               ? null
               : parseIsoTimestamp(request.body.mutedUntil, "mutedUntil");
         return store.updateConversationSettings({
+          ...(request.body.agentEnabled === undefined
+            ? {}
+            : { agentEnabled: request.body.agentEnabled }),
           sessionId: readSessionCookie(request.headers.cookie),
           conversationId: parseString(request.params.conversationId, "conversationId"),
           ...(request.body.archived !== undefined ? { archived: request.body.archived } : {}),

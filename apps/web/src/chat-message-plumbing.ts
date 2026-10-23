@@ -93,6 +93,7 @@ export function mapConversationMessage(
     (participant) => participant.role === "account" && participant.accountId !== session.account.id
   );
   return {
+    ...(message.execution ? { execution: message.execution } : {}),
     id: message.id,
     author:
       message.authorId === session.user.id
@@ -195,6 +196,7 @@ export function isHumanDirectConversation(
 ): boolean {
   return Boolean(
     conversation &&
+    conversation.conversation.kind === "personal" &&
     session &&
     conversation.participants.some(
       (participant) =>

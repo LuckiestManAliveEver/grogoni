@@ -840,6 +840,7 @@ export interface Cp2StoreOptions {
   runtimeApprovalStore?: RuntimeApprovalStore;
   computerWorkerClient?: ComputerWorkerClient;
   passkeyAuthenticationVerifier?: typeof verifyAuthenticationResponse;
+  configuredModels?: AiModelSummary[];
   runtimeModelProvider?: RuntimeModelProvider;
   runtimeModelProviderResolver?: (modelId: string) => RuntimeModelProvider | undefined;
   modelRuntimeAdapterResolver?: (input: {
@@ -1371,6 +1372,12 @@ export class Cp2Store {
       quarantinedBusinessIds: this.quarantinedBusinessIds,
       resolveContactAccount: (channel, destination) =>
         this.resolveIdentityAccount(channel, destination),
+      resolvePhonebookAccount: (ownerUserId, nodeId) => {
+        const node = this.networkDomain.requirePhonebookNode(ownerUserId, nodeId);
+        return node.grogoniUserId === null
+          ? null
+          : (this.users.get(node.grogoniUserId)?.accountId ?? null);
+      },
       verifiedNotificationEmail: (accountId) => {
         const verified = this.verifiedBackupEmail(accountId);
         const account = this.accounts.get(accountId);
@@ -4333,6 +4340,86 @@ export class Cp2Store {
     return this.agentRuntimeDomain.activateAiModel(...args);
   }
 
+  getConversationModelSelection(sessionId: string | null, conversationId: string) {
+    const actor = this.requirePinVerifiedSession(sessionId, new Date());
+    const view = this.messagingDomain.getConversation({ sessionId, conversationId });
+    if (
+      view.conversation.accountId !== actor.account.id ||
+      view.conversation.conversationType !== "DAEMON"
+    )
+      throw new Cp2Error(404, "conversation_not_found", "Conversation was not found.");
+    const models = this.listAiModels()
+      .filter((m) => m.available && m.runtimeAvailability?.backend === "configured")
+      .map((m) => ({ id: m.id, label: m.label }));
+    try {
+      const runtime = this.resolveRuntimeBinding(conversationId);
+      return {
+        selectedModelId: runtime.selected.model.id,
+        models,
+        available: true,
+        errorCode: null
+      };
+    } catch (error) {
+      return {
+        selectedModelId: null,
+        models,
+        available: false,
+        errorCode: error instanceof Cp2Error ? error.code : "MODEL_UNAVAILABLE"
+      };
+    }
+  }
+
+  async selectConversationModel(sessionId: string | null, conversationId: string, modelId: string) {
+    this.getConversationModelSelection(sessionId, conversationId);
+    const actor = this.requirePinVerifiedSession(sessionId, new Date());
+    const conversation = this.messagingDomain.requireAccountConversation(
+      conversationId,
+      actor.account.id
+    );
+    if (conversation.activeShopId) this.requireMembership(conversation.activeShopId, actor.user.id);
+    const model = this.listAiModels().find(
+      (m) => m.id === modelId && m.available && m.runtimeAvailability?.backend === "configured"
+    );
+    if (!model || !model.hostedExecutionTarget)
+      throw new Cp2Error(400, "model_unavailable", "Choose a configured model.");
+    const adapter = this.modelRuntimeAdapterResolver?.({
+      modelId,
+      executionTarget: model.hostedExecutionTarget,
+      agentId: `account-${actor.account.id}-agent`,
+      shopId: conversation.activeShopId ?? ""
+    });
+    if (!adapter)
+      throw new Cp2Error(503, "model_unavailable", "The model provider is unavailable.");
+    const health = await adapter.healthCheck({
+      modelId,
+      agentId: `account-${actor.account.id}-agent`,
+      shopId: conversation.activeShopId ?? "",
+      accountId: actor.account.id,
+      conversationId,
+      signal: AbortSignal.timeout(20000)
+    });
+    if (!health.available)
+      throw new Cp2Error(
+        503,
+        health.errorCode ?? "model_unavailable",
+        "The selected model is unavailable."
+      );
+    const binding = this.nativeRuntimeBindings.selectConversationModel({
+      accountId: actor.account.id,
+      businessId: conversation.activeShopId,
+      conversationId,
+      model,
+      executionTarget: model.hostedExecutionTarget,
+      checkedAt: new Date().toISOString(),
+      updatedBy: actor.user.id
+    });
+    this.messagingDomain.conversationsMap.set(conversationId, {
+      ...conversation,
+      runtimeBindingId: binding.id
+    });
+    return this.getConversationModelSelection(sessionId, conversationId);
+  }
+
   /** In-process, state-only resolver. It never performs a network probe. */
   resolveRuntimeBinding(conversationId: string): ResolvedNativeRuntimeBinding {
     const conversation = this.messagingDomain.conversationsMap.get(conversationId);
@@ -4681,6 +4768,10 @@ export class Cp2Store {
   ): ReturnType<MessagingDomain["recordMessageHandoff"]> {
     return this.messagingDomain.recordMessageHandoff(...args);
   }
+  deliverDaemonTask(...args: Parameters<MessagingDomain["deliverDaemonTask"]>): void {
+    this.messagingDomain.deliverDaemonTask(...args);
+  }
+
   createConversationMessage(
     ...args: Parameters<MessagingDomain["createConversationMessage"]>
   ): ReturnType<MessagingDomain["createConversationMessage"]> {
@@ -9036,6 +9127,9 @@ export class Cp2Store {
         this.modelCatalog.set(model.id, cloneModelCatalogEntry(model));
       }
     }
+    for (const model of this.options.configuredModels ?? [])
+      if (!this.modelCatalog.has(model.id))
+        this.modelCatalog.set(model.id, cloneModelCatalogEntry(model));
     // Existing snapshots predate the hosted default; add it without changing selected bindings.
     const hostedDefault = inferenceRouterSeedModels.find((model) => model.id === "gpt-6-luna");
     if (hostedDefault && !this.modelCatalog.has(hostedDefault.id)) {

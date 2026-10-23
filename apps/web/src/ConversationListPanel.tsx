@@ -5,6 +5,8 @@ import type { ConversationInboxItem } from "@grogoni/shared-types";
 
 import { conversationMessageText } from "./chat-message-plumbing";
 import { formatMessageTime } from "./formatters";
+import { contactLabelForConversation } from "./network-contact-conversations";
+import type { DevicePhonebookContact } from "./phonebook-device-cache";
 
 export interface ConversationListPanelProps {
   // False inside the compact-viewport StackedModule drawer, which already renders the
@@ -26,6 +28,11 @@ export interface ConversationListPanelProps {
   setNewSessionTitle: Dispatch<SetStateAction<string>>;
   liveDraft: string;
   visibleConversations: ConversationInboxItem[];
+  /**
+   * The owner's saved phonebook contact list. A chat started from Phone Contacts is shown under the
+   * name saved on this device ("Mama Njeri"), not only the one the counterpart advertises.
+   */
+  devicePhonebook?: readonly DevicePhonebookContact[];
   activeConversationId: string | null;
   onCreateConversation: (recipient: string, title: string) => void;
   onCreateAgentSession: (title?: string) => void;
@@ -63,6 +70,7 @@ export function ConversationListPanel({
   setNewSessionTitle,
   liveDraft,
   visibleConversations,
+  devicePhonebook = [],
   activeConversationId,
   onCreateConversation,
   onCreateAgentSession,
@@ -240,11 +248,14 @@ export function ConversationListPanel({
                   }`}
                   aria-hidden="true"
                 >
-                  {(conversation.title ?? "Grogoni").trim().slice(0, 1).toUpperCase()}
+                  {conversationDisplayTitle(conversation, devicePhonebook ?? [])
+                    .trim()
+                    .slice(0, 1)
+                    .toUpperCase()}
                 </span>
                 <span className="conversation-copy">
                   <span className="conversation-title-line">
-                    <strong>{conversation.title ?? "Grogoni agent"}</strong>
+                    <strong>{conversationDisplayTitle(conversation, devicePhonebook ?? [])}</strong>
                     <time dateTime={conversation.updatedAt}>
                       {formatMessageTime(conversation.updatedAt)}
                     </time>
@@ -354,5 +365,24 @@ export function ConversationListPanel({
         {isSessionListView ? "New chat" : "New message"}
       </button>
     </>
+  );
+}
+
+/**
+ * How a conversation is named in the inbox. A chat started from Phone Contacts takes the name the
+ * owner saved for that person ("Mama Njeri") ahead of the one the counterpart advertises; every
+ * other conversation keeps its own title, or the agent default.
+ */
+function conversationDisplayTitle(
+  conversation: ConversationInboxItem,
+  devicePhonebook: readonly DevicePhonebookContact[]
+): string {
+  const savedName = conversation.hasHumanRecipient
+    ? contactLabelForConversation(conversation, devicePhonebook)
+    : null;
+  return (
+    savedName ??
+    conversation.title ??
+    (conversation.hasHumanRecipient ? "Contact" : "Grogoni agent")
   );
 }

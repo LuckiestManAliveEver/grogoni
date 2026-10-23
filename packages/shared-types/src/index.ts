@@ -14,6 +14,7 @@ export * from "./staff.js";
 export * from "./store-links.js";
 export * from "./workload.js";
 
+import type { ConversationExecutionSummary } from "./daemon-lanes.js";
 import type { OrderSource, WeightStatus, WeightUnresolvedReason } from "./fulfillment.js";
 import type { GramsString } from "./grams.js";
 import type { PortableAgentManifest } from "./portable-agent.js";
@@ -371,6 +372,8 @@ export type GrogoniMode = "marketplace" | "seller";
 export type GrogoniChatSurface =
   "conversation" | "storefront" | "catalogue" | "product" | "order" | "receipt" | "owner-controls";
 
+export type ConversationType = "DIRECT" | "DAEMON" | "BUSINESS";
+
 export type ConversationKind = "personal" | "storefront" | "order";
 
 export type ConversationParticipantRole = "account" | "shop" | "agent" | "external";
@@ -652,6 +655,14 @@ export interface ConversationParticipantSummary {
   businessId: string | null;
   agentId: string | null;
   externalIdentityId?: string | null;
+  /**
+   * For a person-to-person conversation opened from a phonebook node: that node's id, mirrored on
+   * both sides' participants. Phone Contacts shows people by the owner's saved name ("Mama
+   * Njeri"), so this is how the contact list and the conversation inbox agree on who they mean
+   * without sending raw numbers or guessing from a display name. See
+   * apps/web/src/network-contact-conversations.ts.
+   */
+  networkNodeId?: string | null;
   displayName?: string | null;
   lastReadAt?: string | null;
   archivedAt?: string | null;
@@ -896,6 +907,12 @@ export interface ProviderUpdateReceiptSummary {
 }
 
 export interface ConversationSummary {
+  /** Derived by the server from durable identity and participants; legacy kind is preserved. */
+  conversationType?: ConversationType;
+  /** The account’s permanent daemon thread, independent of model selection. */
+  isPermanentDaemon?: boolean;
+  /** Owner-configured opt-in for explicit business agent requests. */
+  businessAgentEnabled?: boolean;
   /** Server-owned permanent assistance thread; home is its parent. */
   helpTopic?: string;
   helpParentConversationId?: string;
@@ -943,6 +960,7 @@ export interface RecycleBinStatusSummary {
 }
 
 export interface ConversationMessageSummary {
+  execution?: ConversationExecutionSummary;
   id: string;
   conversationId: string;
   clientMessageId: string;

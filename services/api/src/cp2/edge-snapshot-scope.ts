@@ -1,3 +1,4 @@
+import { normalizeDestination } from "./phone-identity.js";
 import { createHash } from "node:crypto";
 import { escapeLiteral, type PoolClient } from "pg";
 import type { Cp2Snapshot } from "./store.js";
@@ -33,7 +34,8 @@ export async function createEdgeSnapshotScope(
   client: PoolClient,
   request: Request,
   path: string,
-  payload?: Buffer
+  payload?: Buffer,
+  trustedActor?: { daemonOwnerUserId: string }
 ) {
   const sessionId =
     (request.headers.get("cookie") ?? "").match(
@@ -91,7 +93,11 @@ export async function createEdgeSnapshotScope(
       union select id::text from public.businesses where id::text in (${sqlList(webhookBusinesses)})`
     : "";
   const publicAgent = path.match(/^\/public\/storefronts\/([^/]+)/)?.[1];
-  const recipient = typeof input.recipient === "string" ? input.recipient : "";
+  let recipient = typeof input.recipient === "string" ? input.recipient.trim() : "";
+  if(recipient && !recipient.startsWith("network-node:")) {
+    try {recipient = normalizeDestination(recipient.includes("@")?"email":"phone",recipient);}
+    catch { /* The route returns the authoritative recipient validation error. */ }
+  }
   const credential =
     input.response && typeof input.response === "object" && "id" in input.response
       ? String(input.response.id)
@@ -109,10 +115,24 @@ export async function createEdgeSnapshotScope(
   );
   const businessId =
     path.match(/^\/businesses\/([^/]+)/)?.[1] ??
-    (typeof input.businessId === "string" ? input.businessId : null);
-  const actor = (
-    await client.query(
-      `with candidates as (
+    (typeof input.businessId === "string"
+      ? input.businessId
+      : typeof input.activeShopId === "string"
+        ? input.activeShopId
+        : null);
+  const trusted = trustedActor
+    ? (
+        await client.query(
+          "select a.id as account_id,u.id as user_id,a.primary_auth_destination from users u join accounts a on a.id=u.account_id where u.id::text=$1 and a.status='active' and a.deleted_at is null",
+          [trustedActor.daemonOwnerUserId]
+        )
+      ).rows[0]
+    : undefined;
+  const actor = trustedActor
+    ? trusted
+    : (
+        await client.query(
+          `with candidates as (
        select account_id, user_id from sessions where id = $1::uuid and revoked_at is null
          and expires_at > now() and absolute_expires_at > now() and inactivity_expires_at > now()
        union all select account_id, user_id from mcp_access_tokens where token_hash = $2
@@ -131,26 +151,26 @@ export async function createEdgeSnapshotScope(
        from candidates c join accounts a on a.id = c.account_id
        join users u on u.id = c.user_id and u.account_id = a.id
        where a.status = 'active' and a.deleted_at is null limit 1`,
-      [
-        sessionId && uuid.test(sessionId) ? sessionId : null,
-        createHash("sha256").update(bearer).digest("hex"),
-        credential,
-        path === "/oauth/token" ? codeHash : "",
-        /^\/auth\/(?:mfa\/(?:email\/challenge|verify)|recovery\/(?:verify|reset-password))$/.test(
-          path
-        ) &&
-        typeof input.transactionId === "string" &&
-        uuid.test(input.transactionId)
-          ? input.transactionId
-          : null,
-        path === "/auth/recovery/start" &&
-        input.type === "email" &&
-        typeof input.identifier === "string"
-          ? input.identifier.trim().toLowerCase()
-          : ""
-      ]
-    )
-  ).rows[0];
+          [
+            sessionId && uuid.test(sessionId) ? sessionId : null,
+            createHash("sha256").update(bearer).digest("hex"),
+            credential,
+            path === "/oauth/token" ? codeHash : "",
+            /^\/auth\/(?:mfa\/(?:email\/challenge|verify)|recovery\/(?:verify|reset-password))$/.test(
+              path
+            ) &&
+            typeof input.transactionId === "string" &&
+            uuid.test(input.transactionId)
+              ? input.transactionId
+              : null,
+            path === "/auth/recovery/start" &&
+            input.type === "email" &&
+            typeof input.identifier === "string"
+              ? input.identifier.trim().toLowerCase()
+              : ""
+          ]
+        )
+      ).rows[0];
   const actorAccount = escapeLiteral(actor?.account_id ?? "");
   const actorUser = escapeLiteral(actor?.user_id ?? "");
   const destination = escapeLiteral(actor?.primary_auth_destination ?? "");
@@ -189,20 +209,42 @@ export async function createEdgeSnapshotScope(
       ${path === "/buy/search" || path === "/buy/assistant" ? `union select id from (select b.id::text as id from public.businesses b where position(lower(${search}) in lower(b.name)) > 0 or position(lower(${search}) in lower(b.grogoni_id)) > 0 or exists (select 1 from public.products p where p.business_id = b.id and position(lower(${search}) in lower(p.name)) > 0) order by b.name, b.id limit 50) searched_businesses` : ""}`
     ],
     [
+      "edge_conversation_ids",
+      `select c.entity_id as id from public.cp2_conversations c where c.account_id = ${actorAccount}
+       or (c.record->>'kind' <> 'personal' and coalesce(c.business_id,c.record->>'activeShopId') in (
+         select business_id::text from public.business_memberships where user_id = nullif(${actorUser}, '')::uuid))
+       or exists (select 1 from public.cp2_conversation_participants p
+         where p.record->>'conversationId' = c.entity_id and p.account_id = ${actorAccount}
+         and (c.record->>'kind' = 'personal' or c.account_id = ${actorAccount}
+           or coalesce(c.business_id,c.record->>'activeShopId') in (select business_id::text from public.business_memberships where user_id = nullif(${actorUser}, '')::uuid)))`
+    ],
+    [
+      "edge_peer_account_ids",
+      `select distinct p.account_id as id from public.cp2_conversation_participants p
+       where p.record->>'conversationId' in (select id from edge_conversation_ids)
+         and p.record->>'role' = 'account' and p.account_id is not null`
+    ],
+    [
+      "edge_contact_user_ids",
+      `select u.id::text as id from public.users u join public.accounts a on a.id = u.account_id
+         where a.primary_auth_destination = ${escapeLiteral(recipient)} and ${escapeLiteral(recipient)} <> ''
+       union select u.id::text from public.users u join public.cp2_network_nodes n on n.record->>'grogoniUserId' = u.id::text
+         where n.user_id = nullif(${actorUser}, '') and n.record->>'sourceType' = 'phone_contact'
+         and n.entity_id = ${escapeLiteral(recipient.startsWith("network-node:") ? recipient.slice("network-node:".length).trim() : "")}`
+    ],
+    [
       "edge_user_ids",
       `select id::text as id from public.users where account_id = nullif(${actorAccount}, '')::uuid
-      union select user_id::text from public.business_memberships where business_id in (select id::uuid from edge_business_ids)
-      union select u.id::text from public.users u join public.accounts a on a.id = u.account_id where a.primary_auth_destination = ${escapeLiteral(recipient)} and ${escapeLiteral(recipient)} <> ''`
+       union select user_id::text from public.business_memberships where business_id in (select id::uuid from edge_business_ids)`
+    ],
+    [
+      "edge_identity_user_ids",
+      `select id from edge_user_ids union select id from edge_contact_user_ids
+       union select id::text from public.users where account_id::text in (select id from edge_peer_account_ids)`
     ],
     [
       "edge_account_ids",
-      `select account_id::text as id from public.users where id in (select id::uuid from edge_user_ids)`
-    ],
-    [
-      "edge_conversation_ids",
-      `select entity_id as id from public.cp2_conversations where account_id = ${actorAccount}
-      or business_id in (select id from edge_business_ids)
-      union select record->>'conversationId' from public.cp2_conversation_participants where account_id = ${actorAccount} or user_id = ${actorUser}`
+      `select account_id::text as id from public.users where id in (select id::uuid from edge_identity_user_ids)`
     ],
     [
       "edge_parent_ids",
@@ -264,7 +306,10 @@ export async function createEdgeSnapshotScope(
       "accounts",
       "select * from public.accounts where id in (select id::uuid from edge_account_ids)"
     ],
-    ["users", "select * from public.users where id in (select id::uuid from edge_user_ids)"],
+    [
+      "users",
+      "select * from public.users where id in (select id::uuid from edge_identity_user_ids)"
+    ],
     [
       "businesses",
       "select * from public.businesses where id in (select id::uuid from edge_business_ids)"
@@ -310,9 +355,19 @@ export async function createEdgeSnapshotScope(
         where entity_id = ${escapeLiteral(typeof input.transactionId === "string" ? input.transactionId : "")}
         and account_id = nullif(${actorAccount}, '') and record->>'consumedAt' is null and (record->>'expiresAt')::timestamptz > now())`
   ]);
+  const withClause = `with ${ctes.map(([name, sql]) => `${name} as (${sql})`).join(",\n")}`;
+  let directPairLock: string | undefined;
+  if (actor?.account_id && path === "/v1/conversations" && request.method === "POST" && recipient) {
+    const peers = await client.query(
+      `${withClause} select u.account_id::text as id from public.users u where u.id::text in (select id from edge_contact_user_ids)`
+    );
+    if (peers.rows.length === 1)
+      directPairLock = `edge:direct:${[actor.account_id, peers.rows[0].id].sort().join(":")}`;
+  }
   return {
+    directPairLock,
     accountId: actor?.account_id as string | undefined,
-    withClause: `with ${ctes.map(([name, sql]) => `${name} as (${sql})`).join(",\n")}`,
+    withClause,
     predicate(key: keyof Cp2Snapshot) {
       if (globalCollections.has(key)) return "true";
       // Runtime task records carry taskId rather than tenant columns. Omitting their
@@ -333,7 +388,13 @@ export async function createEdgeSnapshotScope(
       if (key === "otpChallenges") return "entity_id in (select id::text from otp_challenges)";
       if (key === "oauthSessions") return "entity_id in (select id::text from oauth_sessions)";
       if (key === "accounts") return "entity_id in (select id from edge_account_ids)";
-      if (key === "users") return "entity_id in (select id from edge_user_ids)";
+      if (key === "users") return "entity_id in (select id from edge_identity_user_ids)";
+      if (key === "conversations") return "entity_id in (select id from edge_conversation_ids)";
+      if (key === "sessions") return `account_id = ${actorAccount}`;
+      if (key === "pushSubscriptions")
+        return `account_id = ${actorAccount} or account_id in (select id from edge_peer_account_ids) or account_id in (select u.account_id::text from public.users u where u.id::text in (select id from edge_user_ids))`;
+      if (key === "e2eeDevices")
+        return `account_id = ${actorAccount} or account_id in (select id from edge_peer_account_ids)`;
       if (key === "businesses" || key === "shopPresences")
         return "entity_id in (select id from edge_business_ids)";
       if (key === "networkNodes")

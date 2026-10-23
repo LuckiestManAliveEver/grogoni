@@ -84,6 +84,17 @@ export async function submitChatDaemonTask(input: {
     body: {
       key: `chat:${input.clientMessageId}`,
       message,
+      ...(input.conversationId
+        ? {
+            conversation: {
+              id: input.conversationId,
+              clientMessageId: input.clientMessageId,
+              scope: input.scope,
+              kind: input.reminder ? "reminder" : "reply",
+              ...(input.reminder ? { reminderText: input.reminder.message } : {})
+            }
+          }
+        : {}),
       ...(input.reminder ? { runAt: input.reminder.runAt } : {})
     }
   });

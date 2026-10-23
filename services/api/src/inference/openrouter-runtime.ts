@@ -1,4 +1,4 @@
-import { createOpenRouterModelAdapter } from "./openrouter-model-runtime.js";
+import { createOpenRouterModelAdapter, lunaModel } from "./openrouter-model-runtime.js";
 import type { ModelRuntimeAdapter } from "./model-runtime.js";
 
 /** A server-held key serves only operator-configured model IDs, never arbitrary request URLs. */
@@ -18,6 +18,20 @@ export function createOpenRouterRuntime(environment: NodeJS.ProcessEnv = process
     throw new Error("OPENROUTER_MAX_OUTPUT_TOKENS must be between 128 and 16384.");
   const adapters = new Map<string, ModelRuntimeAdapter>();
   return {
+    catalog() {
+      return Object.entries(models).map(([id, providerModelId]) => ({
+        ...lunaModel,
+        id,
+        label: id === lunaModel.id ? lunaModel.label : providerModelId,
+        description:
+          "Operator-configured hosted model served through the existing OpenRouter provider.",
+        canonicalModelId: providerModelId,
+        modelCardUrl: `https://openrouter.ai/${providerModelId}`,
+        recommended: id === lunaModel.id,
+        contextWindow: null,
+        available: Boolean(environment.OPENROUTER_API_KEY?.trim())
+      }));
+    },
     resolve(input: { modelId: string; executionTarget: string }) {
       if (input.executionTarget !== "backend" || !Object.hasOwn(models, input.modelId))
         return undefined;

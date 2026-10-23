@@ -219,6 +219,15 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
   const buyerShoppingSessionIds = useRef(new Map<string, string>());
   const assistantScope = daemonChatScope(mode, business?.id ?? null, activeConversationId);
   useDaemonChatResults(session?.account.id ?? null, assistantScope, async (entry, task) => {
+    if (task.payload.kind === "agent" && task.payload.conversation) {
+      await loadMessagingInbox(entry.conversationId);
+      setStatusMessage(
+        task.status === "failed"
+          ? "Daemon task failed. You can retry it here."
+          : "Daemon task updated."
+      );
+      return;
+    }
     if (task.status === "cancelled") return;
     if (entry.conversationId && activeConversation?.conversation.id !== entry.conversationId)
       throw new Error("Waiting for the originating conversation to load.");
@@ -384,7 +393,10 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
 
     const hasAccountRecipient = isHumanDirectConversation(currentConversation, activeSession);
     const hasExternalRecipient = isExternalChannelConversation(currentConversation);
-    const hasHumanRecipient = hasAccountRecipient || hasExternalRecipient;
+    const isBusinessConversation =
+      currentConversation !== null && currentConversation.conversation.kind !== "personal";
+    // Business inbox messages go to people. Agent execution requires a separate authorized request.
+    const hasHumanRecipient = hasAccountRecipient || hasExternalRecipient || isBusinessConversation;
     if (
       !hasHumanRecipient &&
       attachments.length > 0 &&
@@ -564,7 +576,15 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
             );
           }
           setStatusMessage(checkoutId ? "Checkout status loaded." : "A checkout ID is needed.");
-        } else if (buyerAssistant && reminder === null) {
+        } else if (
+          buyerAssistant &&
+          reminder === null &&
+          (parseMarketplaceBuyIntent(message) !== null ||
+            buyerShoppingSessionIds.current.has(
+              `grogoni:buyer-shopping:${activeSession.account.id}:${assistantScope}`
+            ) ||
+            /^(confirm checkout|cancel checkout)$/iu.test(message.trim()))
+        ) {
           await submitBuyerShoppingChat({
             accountId: activeSession.account.id,
             scope: assistantScope,

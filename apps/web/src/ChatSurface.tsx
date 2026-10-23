@@ -25,6 +25,12 @@ import { ConversationListPanel } from "./ConversationListPanel";
 import { SmsHandoffDialog } from "./grogoni-application-shared";
 import { renderGeneratedSurface } from "./generated-surface-registry";
 
+import {
+  DaemonExecutionStatus,
+  DaemonModelSelector,
+  BusinessAgentControls
+} from "./ConversationExecutionControls";
+
 import { getJson } from "./api-helpers";
 import { formatFileSize, formatMessageTime } from "./formatters";
 
@@ -401,6 +407,8 @@ export function ChatSurface({
   const conversationListPanelProps = {
     isSessionListView,
     isAuthenticated,
+    // Lets the inbox name a chat started from Phone Contacts by the owner's saved contact name.
+    devicePhonebook: networkDevicePhonebook,
     inboxSearch,
     setInboxSearch,
     isNewConversationOpen,
@@ -536,6 +544,23 @@ export function ChatSurface({
                 Retry failed
               </button>
             ) : null}
+            {selectedConversation?.conversationType === "DAEMON" && activeConversationId ? (
+              <DaemonModelSelector
+                key={activeConversationId}
+                conversationId={activeConversationId}
+              />
+            ) : null}
+            {selectedConversation?.conversationType === "BUSINESS" &&
+            selectedConversation.activeShopId === businessId &&
+            hasBusiness &&
+            activeConversationId &&
+            businessId ? (
+              <BusinessAgentControls
+                conversationId={activeConversationId}
+                businessId={businessId}
+                enabled={selectedConversation.businessAgentEnabled === true}
+              />
+            ) : null}
           </header>
         ) : null}
         <div
@@ -621,6 +646,7 @@ export function ChatSurface({
                     message.body
                   )}
                 </p>
+                {message.execution ? <DaemonExecutionStatus execution={message.execution} /> : null}
                 {message.author === "grogoniclaw" &&
                 capabilityTraceLabel(message.content) !== null ? (
                   <span className="capability-trace" aria-hidden="true">
@@ -961,6 +987,10 @@ export function ChatSurface({
             />
           ) : workspaceCardView === "networkSync" ? (
             <NetworkSyncNestedCard
+              onMessageContact={(nodeId, name) => {
+                onCreateConversation(`network-node:${nodeId}`, name);
+                onCloseWorkspace();
+              }}
               graph={networkGraph}
               devicePhonebook={networkDevicePhonebook}
               networkInvites={networkInvites}

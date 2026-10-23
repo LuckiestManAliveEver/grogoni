@@ -109,7 +109,16 @@ async function runClaim(
   try {
     if (signal?.aborted) return await release();
     const device = claim.message === null ? null : deviceFor();
-    if (device === null || claim.message === null) return await executeOnServer();
+    const selectedModel =
+      claim.task.payload.kind === "agent" && claim.task.payload.conversation
+        ? claim.task.payload.modelId
+        : null;
+    if (
+      device === null ||
+      claim.message === null ||
+      (selectedModel !== null && device.modelId !== selectedModel)
+    )
+      return await executeOnServer();
     const outcome = await generateUnderLease(
       request,
       claim,

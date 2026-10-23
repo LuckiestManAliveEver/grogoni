@@ -35,6 +35,7 @@ export function createEdgeStoreDependencies(
   | "emailMailboxProviderClient"
   | "accountDeletionProcessors"
   | "messageWebBaseUrl"
+  | "configuredModels"
   | "modelRuntimeAdapterResolver"
   | "platformDefaultRuntime"
   | "computerWorkerClient"
@@ -46,6 +47,7 @@ export function createEdgeStoreDependencies(
   const accountDeletionProcessors = readAccountDeletionProcessors(environment);
   return {
     ...(computerWorkerClient ? { computerWorkerClient } : {}),
+    configuredModels: createOpenRouterRuntime(environment).catalog(),
     modelRuntimeAdapterResolver: createOpenRouterRuntime(environment).resolve,
     platformDefaultRuntime: repositoryDefaultRuntimePolicy,
     ...(webPush === null ? {} : { pushNotificationSender: createWebPushSender(webPush) }),

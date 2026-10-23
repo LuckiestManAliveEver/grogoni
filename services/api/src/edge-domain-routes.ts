@@ -1,3 +1,4 @@
+import { readWebPushConfiguration } from "./cp2/push.js";
 import { registerCommerceRoutes } from "./cp2/domains/commerce/routes.js";
 import { registerChatImageRoutes } from "./cp2/chat-image-routes.js";
 import Fastify from "fastify";
@@ -40,7 +41,7 @@ import {
   type EdgeDaemon
 } from "./daemon/edge-lane.js";
 import { createPostgresWakeHint } from "./daemon/wake-hint.js";
-import type { DaemonPool, DaemonQueryable } from "./daemon/task-store.js";
+import { toPublicDaemonTask, type DaemonPool, type DaemonQueryable } from "./daemon/task-store.js";
 
 export interface EdgeDomainDatabase {
   transaction: <T>(action: (client: PoolClient) => Promise<T>) => Promise<T>;
@@ -241,6 +242,10 @@ export async function createEdgeDomainRoutes(database: EdgeDomainDatabase) {
       // Their snapshots must be loaded after the same tenant locks as explicit writes.
       {
         await client.query("set local lock_timeout = '10s'");
+        if (scope.directPairLock)
+          await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [
+            scope.directPairLock
+          ]);
         if (scope.accountId)
           await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [
             `edge:account:${scope.accountId}`
@@ -404,6 +409,9 @@ export async function createEdgeDomainRoutes(database: EdgeDomainDatabase) {
         });
         registerCp2Routes(app, {
           store,
+          ...(readWebPushConfiguration()
+            ? { vapidPublicKey: readWebPushConfiguration()!.publicKey }
+            : {}),
           ...(inventoryTaskController === undefined ? {} : { inventoryTaskController }),
           businessTaskStore: createPostgresBusinessTaskStore(pool, (input) =>
             store.authorizeBusinessPermission(input)
@@ -548,6 +556,79 @@ export async function createEdgeDomainRoutes(database: EdgeDomainDatabase) {
           if (user === null)
             throw new DaemonHttpError(401, "auth_required", "Authentication is required.");
           return user;
+        },
+        deliverConversationTask: async (task) => {
+          if (!task.owner_user_id || task.payload.kind !== "agent" || !task.payload.conversation)
+            return;
+          const origin = task.payload.conversation;
+          const internal = new Request(`https://grogoni.com/v1/conversations/${origin.id}`);
+          await database.transaction(async (client) => {
+            const scope = await createEdgeSnapshotScope(
+              client,
+              internal,
+              `/v1/conversations/${origin.id}`,
+              undefined,
+              { daemonOwnerUserId: task.owner_user_id! }
+            );
+            if (!scope.accountId) return; // Deleted account: no further delivery authority.
+            await client.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [
+              `edge:account:${scope.accountId}`
+            ]);
+            const previous = await loadTransactionalCp2Snapshot(client, scope);
+            const store = createCp2Store(storeDependencies);
+            store.hydrateSnapshot(prepareEdgeHydration(previous));
+            try {
+              store.deliverDaemonTask(toPublicDaemonTask(task), task.owner_user_id!);
+            } catch (error) {
+              if (error instanceof Cp2Error && error.statusCode === 404) return;
+              throw error;
+            }
+            await store.deliverPendingMessageNotifications();
+            await saveTransactionalCp2Snapshot(
+              client,
+              prepareEdgePersistence(store.snapshot(), previous),
+              previous
+            );
+          });
+        },
+        authorizeConversation: async (request, conversationId) => {
+          const path = `/v1/conversations/${conversationId}`;
+          return database.transaction(async (client) => {
+            const scope = await createEdgeSnapshotScope(client, request, path);
+            const snapshot = await loadTransactionalCp2Snapshot(client, scope);
+            const store = createCp2Store(storeDependencies);
+            store.hydrateSnapshot(prepareEdgeHydration(snapshot));
+            const sessionId =
+              (request.headers.get("cookie") ?? "").match(
+                /(?:^|;\s*)grogoni_session=([^;]+)/u
+              )?.[1] ?? null;
+            let view;
+            try {
+              view = store.getConversation({ sessionId, conversationId });
+            } catch {
+              throw new DaemonHttpError(
+                404,
+                "conversation_not_found",
+                "Conversation was not found."
+              );
+            }
+            if (view.conversation.conversationType !== "DAEMON")
+              throw new DaemonHttpError(
+                403,
+                "task_conversation_invalid",
+                "Background assistant tasks require your daemon conversation."
+              );
+            try {
+              const runtime = store.resolveRuntimeBinding(conversationId);
+              return { modelId: runtime.selected.model.id };
+            } catch {
+              throw new DaemonHttpError(
+                503,
+                "conversation_model_unavailable",
+                "The selected conversation model is unavailable."
+              );
+            }
+          });
         },
         environment: process.env,
         // A queued maintenance task runs the same job in-process, under its own job lock.

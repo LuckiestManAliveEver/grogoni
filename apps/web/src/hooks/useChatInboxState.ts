@@ -14,6 +14,7 @@ import type {
 } from "@grogoni/shared-types";
 
 import { deleteJson, getJson, patchJson, postJson } from "../api-helpers";
+import { conversationForNode, readNodeIdFromRecipient } from "../network-contact-conversations";
 import {
   createInitialChatMessages,
   type ChatMessage,
@@ -94,10 +95,7 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
     setReplyToMessageId
   } = deps;
 
-  // Deliberately never auto-selects or auto-creates a conversation when no valid preferred id is
-  // given: the startup chat window stays blank (like a fresh ChatGPT tab) until the account picks
-  // an existing chat from the sidebar or starts a new one via onCreateAgentSession/
-  // onCreateConversation. See docs/frontend/frontend.md Phase 3 "New chat" affordance.
+  // The server owns daemon identity; open that durable thread on initial launch.
   async function loadMessagingInbox(preferredConversationId: string | null = activeConversationId) {
     if (session === null) return;
     const offlineScope = currentOfflineScope();
@@ -130,7 +128,13 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
         preferredConversationId !== null &&
         response.conversations.some((conversation) => conversation.id === preferredConversationId)
           ? preferredConversationId
-          : null;
+          : (response.conversations.find(
+              (conversation) =>
+                conversation.isPermanentDaemon &&
+                !conversation.helpTopic &&
+                !conversation.taskParentConversationId &&
+                conversation.activeShopId === null
+            )?.id ?? null);
       if (selectedId !== null) {
         setActiveConversationId(selectedId);
         await loadConversationThread(selectedId);
@@ -255,6 +259,35 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
     if (session === null) {
       requireMessagingSignIn();
       return;
+    }
+    // Phone Contacts opens a chat by phonebook node id. The server already reuses the one
+    // conversation between the two accounts, and so does this: the same guard against a second
+    // chat for the same two people that a number or email recipient gets. A chat archived on this
+    // side is still the right one to reopen, so the inbox is read with archived included.
+    const nodeId = readNodeIdFromRecipient(recipient);
+    if (nodeId !== null) {
+      try {
+        const existing = conversationForNode(
+          (
+            await getJson<{ conversations: ConversationInboxItem[] }>(
+              "/v1/conversations?includeArchived=true"
+            )
+          ).conversations,
+          nodeId
+        );
+        if (existing !== null) {
+          await loadMessagingInbox(existing.id);
+          navigateToOwnerRoute({
+            mode,
+            view: "chat",
+            conversationId: existing.id
+          });
+          return;
+        }
+      } catch {
+        // Fall through to creating: the server's own pair reuse is the authority, and a failed
+        // lookup must not block starting a chat.
+      }
     }
     let created: ConversationView;
     if (business !== null && /^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(recipient.trim())) {
