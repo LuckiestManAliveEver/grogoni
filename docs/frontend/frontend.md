@@ -1111,26 +1111,42 @@ fingers, and never while text is selected (a selection handle being dragged). Sw
 listener (`hooks/useSwipeNavigation.ts`) is passive, so scrolling is never delayed.
 
 **Guest chat.** Someone without a shop has no assistant of their own, so the chat can only search
-the marketplace (`routeGuestMessage` in `marketplace-search-reply.ts`). Telling a product from
-anything else in free text is judgment, not a rule, so the design does not depend on getting it
-right: anything that is not unmistakably something else is searched, and an empty search answers
-in words that fit either way ("I couldn't find "…" on Grogoni. If it's something to buy, try its
-name, like "sugar""). A request or question about a product has its scaffolding removed first:
-"I need sugar", "Can I get sugar?", "Is there sugar?", "Is sugar available?", "Who has sugar?",
-"Give me 2kg sugar", "Sugar please", "Looking for rice", "Show me sugar", "Any eggs?", "cement
-price?", "How much for a bag of cement?", "Who sells eggs near me?", "Who has sugar in Nairobi?",
-"Do you have sugar available?", "Nataka kuagiza sukari" all search the product. Only
-unmistakable messages get their own answer: greetings, thanks and acknowledgements in English and
-Swahili ("Habari gani", "how are you?", "Thanks bro", "Thank you for your help", "OK thanks",
-"Poa sana"), help or contact requests ("Help me", "I need help", "Please call me"), questions about Grogoni itself ("Who are you", "what is this?"), order and
-delivery help, matched as phrases so "a delivery bag" and "Track pants" stay products ("Where is
-my order?", "Track order", "Delivery?", "kuna shida"), and wanting to sell, said by the person
-themselves ("How do I open a shop", "sell"; not "selling price of maize"). A greeting or thanks in
-front of a request does not hide it, and thanks is answered as thanks unless a later part of
-the message asks for something ("Thanks! I also need sugar" searches sugar). Emoji and other text
-with nothing to look for get the short explanation. A chat search made while another search is running runs on its own. A conversation with a person or a connected channel is never
-intercepted: the message goes to them. A model would classify better than these rules; that is a
-separate decision, since guests have no model today.
+the marketplace. What kind of message it is (a product to search, a greeting, thanks, a help or
+contact request, a question about Grogoni, order or delivery help, or wanting to sell) is judgment,
+so a model decides it: `classifyGuestMessage` in `guest-intent-client.ts` posts the message to
+`POST /v1/guest/intent` (services/api/src/guest-intent/README.md), which answers with one of those
+intents and, for a search, the product words from the guest's own message ("Hi, do you have
+suger?" searches "sugar"). The model never writes a reply: every reply is app copy in
+`marketplace-search-reply.ts` (`guestRouteForIntent`), and a search query whose words are not the
+guest's is refused. The guest never waits more than 3 seconds (`guestIntentBudgetMs`) and never
+sees a classifier error: offline, a timeout, a network error, any non-2xx answer, or an answer
+that fails validation falls back to the rules (`routeGuestMessage`), as does text with no letters
+or digits and anything over 500 characters. Recent answers are cached in memory, so a repeated
+"hi" or "sugar" does not ask again.
+
+The rules stay as that fallback. Anything that is not unmistakably something else is searched, and
+an empty search answers in words that fit either way ("I couldn't find "…" on Grogoni. If it's
+something to buy, try its name, like "sugar""). A request or question about a product has its
+scaffolding removed first: "I need sugar", "Can I get sugar?", "Is there sugar?", "Is sugar
+available?", "Who has sugar?", "Give me 2kg sugar", "Sugar please", "Looking for rice", "Show me
+sugar", "Any eggs?", "cement price?", "How much for a bag of cement?", "Who sells eggs near me?",
+"Who has sugar in Nairobi?", "Do you have sugar available?", "Nataka kuagiza sukari" all search the
+product. Only unmistakable messages get their own answer: greetings, thanks and acknowledgements in
+English and Swahili ("Habari gani", "how are you?", "Thanks bro", "Thank you for your help", "OK
+thanks", "Poa sana"), help or contact requests ("Help me", "I need help", "Please call me"),
+questions about Grogoni itself ("Who are you", "what is this?"), order and delivery help, matched
+as phrases so "a delivery bag" and "Track pants" stay products ("Where is my order?", "Track
+order", "Delivery?", "kuna shida"), and wanting to sell, said by the person themselves ("How do I
+open a shop", "sell"; not "selling price of maize"). A greeting or thanks in front of a request
+does not hide it, and thanks is answered as thanks unless a later part of the message asks for
+something ("Thanks! I also need sugar" searches sugar). Emoji and other text with nothing to look
+for get the short explanation. The rules misread typos, most Swahili beyond the common phrases, and
+long mixed messages; on the eval's labeled set they reach 0.87 intent accuracy and search 14
+messages that are not products, which is why the model decides when it can.
+
+A chat search made while another search is running runs on its own. A conversation with a person
+or a connected channel is never intercepted, and its messages never reach the classifier: the
+message goes to them.
 
 **Device-only messages.** The search exchange, and a message waiting in the outbox, exist only on
 this device (`ChatMessage.deviceOnlyIn`, `chat-device-only-messages.ts`). They are kept per

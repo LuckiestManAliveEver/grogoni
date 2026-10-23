@@ -2419,10 +2419,13 @@ export async function checkApiRouteCoverage() {
     publicRoutes: edgeFile("public-routes.ts")
   });
   const { daemonLaneRoutes } = await import("../services/api/src/daemon/edge-lane.ts");
+  const { guestIntentRoutes } = await import("../services/api/src/guest-intent/service.ts");
   const inventory = [
     ...domain.inventory.filter((route) => route.method !== "HEAD"),
     // Served by the daemon lane outside the domain layer (index.ts routes /v1/daemon/* to it).
-    ...daemonLaneRoutes.map((route) => ({ ...route, websocket: false }))
+    ...daemonLaneRoutes.map((route) => ({ ...route, websocket: false })),
+    // Served outside the snapshot domain too (index.ts routes /v1/guest/intent to it).
+    ...guestIntentRoutes.map((route) => ({ ...route, websocket: false }))
   ];
   const inventoryPaths = new Set(inventory.map((route) => route.path));
   // A path the method-aware inventory also has keeps the inventory's methods (domain routes are

@@ -47,6 +47,12 @@ import {
 } from "./daemon/edge-lane.js";
 import { createPostgresWakeHint } from "./daemon/wake-hint.js";
 import type { DaemonPool, DaemonQueryable } from "./daemon/task-store.js";
+import {
+  createEdgeGuestIntentRoutes,
+  createGuestIntentService,
+  readGuestIntentConfiguration
+} from "./guest-intent/service.js";
+import { createPostgresGuestIntentLimiter } from "./guest-intent/rate-limit.js";
 
 export interface EdgeDomainDatabase {
   transaction: <T>(action: (client: PoolClient) => Promise<T>) => Promise<T>;
@@ -62,6 +68,16 @@ export interface EdgeDomainDatabase {
     hint: DaemonQueryable | null;
     /** The signed-in user, or null. Must not hold any lock after it returns. */
     findUser: (request: Request) => Promise<{ userId: string } | null>;
+  };
+  /**
+   * The guest intent classifier (services/api/src/guest-intent/README.md); absent means
+   * /v1/guest/intent is not served and guests are routed by rules.
+   */
+  guestIntent?: {
+    /** The signed-in session, or null. Must commit and release its connection before returning. */
+    findSession: (request: Request) => Promise<{ sessionId: string } | null>;
+    /** Autocommit queries for the per-session counter; no store lock. */
+    counter: DaemonQueryable;
   };
 }
 
@@ -597,9 +613,13 @@ export async function createEdgeDomainRoutes(edgeDatabase: EdgeDomainDatabase) {
     }
   };
   const daemon = startDaemon();
+  const guestIntentRoutes = startGuestIntent(edgeDatabase.guestIntent);
   return {
     routes,
     inventory,
+    /** POST /v1/guest/intent, outside any snapshot transaction; null for every other path. */
+    guestIntentRoutes: async (request: Request, path: string) =>
+      guestIntentRoutes === null ? null : guestIntentRoutes(request, path),
     daemonRoutes: async (request: Request, path: string) =>
       daemon !== null
         ? daemon.routes(request, path)
@@ -614,4 +634,31 @@ export async function createEdgeDomainRoutes(edgeDatabase: EdgeDomainDatabase) {
           : null,
     runJob
   };
+}
+
+/** A bad GUEST_INTENT_* setting disables the classifier (guests use the rules), never the API. */
+function startGuestIntent(database: EdgeDomainDatabase["guestIntent"]) {
+  if (database === undefined) return null;
+  try {
+    const configuration = readGuestIntentConfiguration(process.env);
+    if (configuration.disabledReason !== null)
+      console.log(
+        JSON.stringify({ event: "guest_intent_disabled", reason: configuration.disabledReason })
+      );
+    return createEdgeGuestIntentRoutes({
+      service: createGuestIntentService({
+        classifier: configuration.classifier,
+        limiter: createPostgresGuestIntentLimiter(database.counter, configuration.ratePolicy)
+      }),
+      findSession: database.findSession
+    });
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        event: "guest_intent_config_invalid",
+        message: error instanceof Error ? error.message : "Guest intent configuration failed."
+      })
+    );
+    return null;
+  }
 }

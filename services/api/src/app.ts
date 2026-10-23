@@ -11,6 +11,8 @@ import { registerCp2Routes, type Cp2RouteOptions } from "./cp2/routes.js";
 import { registerMcpRoutes } from "./mcp/routes.js";
 import { registerRenderDeployWebhook } from "./render-deploy-webhook.js";
 import type { Cp2Store } from "./cp2/store.js";
+import { registerGuestIntentRoute } from "./guest-intent/node-route.js";
+import type { GuestIntentService } from "./guest-intent/service.js";
 
 const defaultAllowedCorsOrigins = ["http://127.0.0.1:5173", "http://localhost:5173"];
 
@@ -58,6 +60,8 @@ export interface BuildApiOptions {
    * unauthenticated - acceptable for local dev, not for production.
    */
   metricsAuthToken?: string;
+  /** POST /v1/guest/intent (guest-intent/README.md). Omitted, the route answers 503. */
+  guestIntent?: GuestIntentService;
 }
 
 export function buildApi(options: BuildApiOptions = {}) {
@@ -492,6 +496,10 @@ export function buildApi(options: BuildApiOptions = {}) {
       realtimeAllowedOrigins: [...allowedCorsOrigins]
     });
     cp2Store = store;
+    registerGuestIntentRoute(routes, {
+      store,
+      ...(options.guestIntent === undefined ? {} : { service: options.guestIntent })
+    });
     registerMcpRoutes(routes, {
       store,
       ...(options.cp2?.fulfillmentService === undefined

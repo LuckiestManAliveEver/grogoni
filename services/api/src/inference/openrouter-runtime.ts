@@ -1,4 +1,8 @@
 import { createOpenRouterModelAdapter } from "./openrouter-model-runtime.js";
+import {
+  createOpenRouterJsonCompletion,
+  type JsonCompletion
+} from "./openrouter-json-completion.js";
 import type { ModelRuntimeAdapter } from "./model-runtime.js";
 
 /** A server-held key serves only operator-configured model IDs, never arbitrary request URLs. */
@@ -32,6 +36,18 @@ export function createOpenRouterRuntime(environment: NodeJS.ProcessEnv = process
         adapters.set(input.modelId, adapter);
       }
       return adapter;
+    },
+    /**
+     * A plain structured call (openrouter-json-completion.ts) to one configured catalog model, with
+     * the same server-held key. Undefined when the model is not mapped in OPENROUTER_MODELS.
+     */
+    jsonCompletion(modelId: string): JsonCompletion | undefined {
+      if (!Object.hasOwn(models, modelId)) return undefined;
+      return createOpenRouterJsonCompletion({
+        modelId,
+        providerModelId: models[modelId]!,
+        apiKey: environment.OPENROUTER_API_KEY?.trim() ?? ""
+      });
     }
   };
 }

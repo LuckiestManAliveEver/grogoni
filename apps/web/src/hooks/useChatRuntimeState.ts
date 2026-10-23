@@ -31,11 +31,8 @@ import {
   inferenceHistory,
   saveDeviceOnlyMessages
 } from "../chat-device-only-messages";
-import {
-  describeMarketplaceSearch,
-  routeGuestMessage,
-  parseMarketplaceBuyIntent
-} from "../marketplace-search-reply";
+import { describeMarketplaceSearch, parseMarketplaceBuyIntent } from "../marketplace-search-reply";
+import { classifyGuestMessage } from "../guest-intent-client";
 import { postJson } from "../api-helpers";
 import {
   type ChatAttachment,
@@ -329,10 +326,13 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
         ? searchBuyFeed
         : undefined;
     // Someone without a shop has no assistant of their own: product-like text is searched, and
-    // anything else gets an honest answer (routeGuestMessage).
+    // anything else gets an honest answer. The model-based classifier decides which, within a 3s
+    // budget, and the rules (routeGuestMessage) answer whenever it cannot (guest-intent-client.ts).
     // A guest has no agent, so "help …" (an agent command for an owner) is routed like any other
-    // guest message instead of being sent to an agent that is not there.
-    const guestRoute = business === null ? routeGuestMessage(message) : null;
+    // guest message instead of being sent to an agent that is not there. A message to a person
+    // never reaches the classifier: marketplaceSearch is undefined then.
+    const guestRoute =
+      business === null && marketplaceSearch ? (await classifyGuestMessage(message)).route : null;
     const buyQuery = marketplaceSearch
       ? guestRoute === null
         ? parseMarketplaceBuyIntent(message)

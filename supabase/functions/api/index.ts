@@ -175,6 +175,7 @@ const publicRoutes = createPublicRoutes(transaction);
 let domain: {
   routes: (request: Request, path: string) => Promise<Response | null>;
   daemonRoutes: (request: Request, path: string) => Promise<Response | null>;
+  guestIntentRoutes: (request: Request, path: string) => Promise<Response | null>;
   runJob: (jobName: string) => Promise<EdgeJobOutcome>;
 } | null = null;
 let domainStartupError: string | null = null;
@@ -193,6 +194,12 @@ function getDomain() {
           hint: hintPool,
           // A short transaction (rate limit + session lookup) that commits before any model call.
           findUser: (request) => transaction((client) => findSessionUser(client, request))
+        },
+        guestIntent: {
+          // Same short transaction as findUser; it commits before the classifier's model call.
+          findSession: (request) => transaction((client) => findSessionUser(client, request)),
+          // The per-session counter: one autocommit statement on the shared pool, no store lock.
+          counter: pool
         }
       });
       domainStartupError = null;
@@ -225,15 +232,18 @@ async function routeRequest(request: Request, path: string): Promise<Response | 
     (await publicRoutes(request, path)) ??
     (path === "/realtime" || path.startsWith("/v1/realtime/") || path.startsWith("/internal/jobs/")
       ? application(request, path)
-      : path.startsWith("/v1/daemon/") || path.startsWith("/internal/daemon/")
-        ? ((await (await getDomain())?.daemonRoutes(request, path)) ??
-          (domain === null
-            ? Response.json({ code: "service_unavailable" }, { status: 503 })
-            : null))
-        : ((await (await getDomain())?.routes(request, path)) ??
-          (domain === null
-            ? Response.json({ code: "service_unavailable" }, { status: 503 })
-            : null)))
+      : path === "/v1/guest/intent"
+        ? ((await (await getDomain())?.guestIntentRoutes(request, path)) ??
+          Response.json({ code: "guest_intent_unavailable" }, { status: 503 }))
+        : path.startsWith("/v1/daemon/") || path.startsWith("/internal/daemon/")
+          ? ((await (await getDomain())?.daemonRoutes(request, path)) ??
+            (domain === null
+              ? Response.json({ code: "service_unavailable" }, { status: 503 })
+              : null))
+          : ((await (await getDomain())?.routes(request, path)) ??
+            (domain === null
+              ? Response.json({ code: "service_unavailable" }, { status: 503 })
+              : null)))
   );
 }
 const handler = createHandler({

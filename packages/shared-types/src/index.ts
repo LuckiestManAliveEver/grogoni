@@ -6,6 +6,7 @@ export * from "./purchase-orders.js";
 export * from "./computer-runtime.js";
 export * from "./fulfillment.js";
 export * from "./grams.js";
+export * from "./guest-intent.js";
 export * from "./phone-number.js";
 export * from "./portable-agent.js";
 export * from "./runtime-handoff.js";

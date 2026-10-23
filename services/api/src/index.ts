@@ -54,6 +54,7 @@ import { createPostgresCp2Store } from "./cp2/postgres-store.js";
 import { RETIRED_EXECUTION_FABRIC_TABLES } from "./cp2/retired-execution-fabric-tables.js";
 import { RETIRED_LEGACY_BINDING_TABLES } from "./cp2/retired-legacy-binding-tables.js";
 import { readBuildManifest } from "./build-manifest.js";
+import { createNodeGuestIntentService } from "./guest-intent/node-route.js";
 import { createCp2Store } from "./cp2/store.js";
 import { createWebPushSender, readWebPushConfiguration } from "./cp2/push.js";
 import { createEmailProviderFromEnvironment } from "./cp2/email-provider.js";
@@ -353,6 +354,7 @@ const apiOptions = {
   ),
   inferenceRequired: config.inferenceRequired,
   metrics,
+  guestIntent: createNodeGuestIntentService(process.env),
   ...(config.metricsAuthToken === "" ? {} : { metricsAuthToken: config.metricsAuthToken }),
   cp2: {
     store: cp2Store,
