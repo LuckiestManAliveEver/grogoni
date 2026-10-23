@@ -1896,6 +1896,8 @@ export function OwnerApp() {
                 messages={chatMessages}
                 conversations={conversationInbox}
                 activeConversationId={activeConversationId}
+                participants={activeConversation?.participants ?? []}
+                onParticipantsUpdated={(conversationId) => void loadMessagingInbox(conversationId)}
                 isInboxOpen={isMessagingInboxOpen}
                 isContactTyping={isContactTyping}
                 isConfirming={isPending("runtime-confirm")}
@@ -2057,6 +2059,7 @@ export function OwnerApp() {
                 onCompleteMarketplaceIntro={() => void completeMarketplaceIntro()}
                 marketplaceIntroComplete={isMarketplaceIntroComplete}
                 marketplaceShortcutOpen={isMarketplaceShortcutOpen}
+                onOpenMarketplace={() => setIsMarketplaceShortcutOpen(true)}
                 onCloseMarketplace={() => setIsMarketplaceShortcutOpen(false)}
                 onSend={(draft, provider, subject, invoiceId) =>
                   void runAction("chat-send", () =>

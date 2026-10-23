@@ -1,18 +1,11 @@
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
-import type { ChannelEndpointSummary } from "@grogoni/shared-types";
+import { useEffect, useRef, useState } from "react";
 import { runtimeHashtagCapabilities, runtimeHashtagQuery } from "@grogoni/tool-core";
 
-import type { ChatAttachment, GrogoniMode } from "./app-shell";
-import {
-  type ActiveBusiness,
-  type AgentSettings,
-  type InvoiceSummary,
-  chatAttachmentAccept
-} from "./grogoni-application-shared";
+import { chatAttachmentAccept } from "./grogoni-application-shared";
 import { chatModuleCommands } from "./chat-module-commands";
 import { startVoiceInput } from "./chat-message-plumbing";
 import { formatChannelProvider } from "./formatters";
-import type { ChatComposerState } from "./hooks/useChatComposerState";
+import type { ChatComposerProps } from "./chat-composer-contracts";
 import {
   ChatComposerLazyPanel,
   ChatHashtagCapabilityPicker,
@@ -25,31 +18,6 @@ import { DeferredChatComposerActions as ChatComposerActions } from "./chat-compo
 
 import { ComposerModelSwitcher } from "./ComposerModelSwitcher";
 
-interface ChatComposerProps {
-  agent: AgentSettings | null;
-  business: ActiveBusiness | null;
-  channelEndpoints: ChannelEndpointSummary[];
-  composer: ChatComposerState;
-  invoices: InvoiceSummary[];
-  isAuthenticated: boolean;
-  isBrowserGenerating: boolean;
-  isSending: boolean;
-  mode: GrogoniMode;
-  activeAgentName: string;
-  pendingAttachments: ChatAttachment[];
-  replyToMessageId: string | null;
-  selectedConversationTitle: string;
-  selectedEmailCustomerId: string | null | undefined;
-  onAgentChange: (agent: AgentSettings) => void;
-  onAttachmentChange: (event: ChangeEvent<HTMLInputElement>) => void;
-  onCancelGeneration: () => void;
-  onCancelReply: () => void;
-  onOpenAgentProfile: () => void;
-  onRemoveAttachment: (attachmentId: string) => void;
-  onRequireSignIn: () => void;
-  onSellerPhotoCapture: (file: File) => void;
-}
-
 export function ChatComposer({
   agent,
   business,
@@ -61,6 +29,7 @@ export function ChatComposer({
   isSending,
   mode,
   activeAgentName,
+  audienceLabel,
   pendingAttachments,
   replyToMessageId,
   selectedConversationTitle,
@@ -70,6 +39,7 @@ export function ChatComposer({
   onCancelGeneration,
   onCancelReply,
   onOpenAgentProfile,
+  onAddParticipants,
   onRemoveAttachment,
   onRequireSignIn,
   onSellerPhotoCapture
@@ -160,7 +130,9 @@ export function ChatComposer({
             />
           </ChatComposerLazyPanel>
         ) : null}
-        <small className="composer-agent-indicator">{activeAgentName} will answer</small>
+        <small className="composer-agent-indicator">
+          {audienceLabel ?? `${activeAgentName} will answer`}
+        </small>
         <input
           ref={fileInputRef}
           className="chat-file-input"
@@ -322,6 +294,9 @@ export function ChatComposer({
           </small>
         ) : null}
         <ChatComposerActions
+          {...(onAddParticipants
+            ? { onAddParticipants: () => runMessageAction(onAddParticipants) }
+            : {})}
           draftHasText={liveDraft.trim().length > 0}
           mode={mode}
           open={messageActionsOpen}

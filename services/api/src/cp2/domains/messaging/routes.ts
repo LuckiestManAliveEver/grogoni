@@ -268,6 +268,30 @@ export function registerMessagingRoutes(
     }
   );
 
+  app.post<{ Params: ConversationParams; Body: { recipient?: string; agent?: boolean } }>(
+    "/v1/conversations/:conversationId/participants",
+    async (request, reply) => {
+      try {
+        const body = parseRequestBody(request.body);
+        const view = store.addConversationParticipant({
+          sessionId: readSessionCookie(request.headers.cookie),
+          conversationId: request.params.conversationId,
+          ...(body.recipient === undefined
+            ? {}
+            : { recipient: parseString(body.recipient, "recipient") }),
+          agent: body.agent === undefined ? false : parseBoolean(body.agent, "agent")
+        });
+        const latestMessage = view.messages.at(-1);
+        if (latestMessage) {
+          await store.deliverPendingMessageNotifications({ messageId: latestMessage.id });
+        }
+        return view;
+      } catch (error) {
+        return sendCp2Error(reply, error);
+      }
+    }
+  );
+
   app.get<{ Params: ConversationParams }>(
     "/v1/conversations/:conversationId/model",
     async (request, reply) => {

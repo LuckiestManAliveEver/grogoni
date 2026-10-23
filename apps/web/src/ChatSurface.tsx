@@ -1,3 +1,6 @@
+import { DiscussionMembersButton } from "./DiscussionMembersButton";
+import { ChatRecycleBinPanel } from "./ChatRecycleBinPanel";
+import { useMobileChatNavigation } from "./hooks/useMobileChatNavigation";
 import { HomeSuggestionChips } from "./HomeSuggestionChips";
 import { Fragment, Suspense, lazy, useEffect, useRef, useState } from "react";
 
@@ -19,6 +22,7 @@ import { RuntimeConfirmationButtons } from "./RuntimeConfirmationButtons";
 import { useOwnerCore } from "./hooks/OwnerCoreContext";
 import { useChatComposerState } from "./hooks/useChatComposerState";
 import { useCompactViewport } from "./hooks/useCompactViewport";
+import { ChatParticipantsPanel } from "./ChatParticipantsPanel";
 import { ChatComposer } from "./ChatComposer";
 import { ConversationAttachmentCard } from "./ConversationAttachmentCard";
 import { ConversationListPanel } from "./ConversationListPanel";
@@ -32,7 +36,7 @@ import {
 } from "./ConversationExecutionControls";
 
 import { getJson } from "./api-helpers";
-import { formatFileSize, formatMessageTime } from "./formatters";
+import { formatMessageTime } from "./formatters";
 
 import { viewLabel } from "./agent-command-engine";
 import {
@@ -88,6 +92,7 @@ function capabilityTraceLabel(content: ConversationMessageContent | undefined): 
 
 export function ChatSurface({
   activeConversationId,
+  participants = [],
   chatDraft,
   initialEmailSubject,
   channelEndpoints,
@@ -132,11 +137,13 @@ export function ChatSurface({
   onRefreshInvoices,
   onBackToChat,
   onCloseMarketplace,
+  onOpenMarketplace,
   onCloseWorkspace,
   onDraftChange,
   onSelectConversation,
   onCreateConversation,
   onCreateAgentSession,
+  onParticipantsUpdated,
   onRequireSignIn,
   onSignUp,
   onLogIn,
@@ -208,9 +215,22 @@ export function ChatSurface({
       : null;
 
   const isCompactViewport = useCompactViewport();
+  const { surfaceRef, ...mobileNavigation } = useMobileChatNavigation({
+    isCompactViewport,
+    workspaceOpen,
+    marketplaceShortcutOpen,
+    isInboxOpen,
+    mode,
+    onCloseWorkspace,
+    onCloseMarketplace,
+    onInboxOpenChange,
+    onOpenWorkspace,
+    onOpenMarketplace
+  });
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const defaultMessageWindow = useRef(detectCapabilitySettings().messageWindowSize).current;
   const [messageWindowSize, setMessageWindowSize] = useState(defaultMessageWindow);
+  const [participantsOpen, setParticipantsOpen] = useState(false);
   const [inboxSearch, setInboxSearch] = useState("");
   const [editingTopic, setEditingTopic] = useState<string | null>(null);
   const [isNewConversationOpen, setIsNewConversationOpen] = useState(false);
@@ -286,9 +306,6 @@ export function ChatSurface({
   const showMessageThread = true;
   const activeModuleView = activeView === "chat" || activeView === "home" ? null : activeView;
   const isSessionListView = activeView === "home";
-  // The session list starts blank (no chat auto-selected/auto-created - see
-  // useChatInboxState.loadMessagingInbox) until the account opens an existing chat or starts a
-  // new one, matching a fresh ChatGPT tab rather than always dropping back into old history.
   const showBlankSessionState = isSessionListView && activeConversationId === null;
   const selectedConversation = conversations.find(
     (conversation) => conversation.id === activeConversationId
@@ -325,9 +342,7 @@ export function ChatSurface({
   } = composer;
   const visibleConversations = showMessageThread
     ? conversations
-        // Home is the account's own agent-session list (Phase 3), not the general messaging
-        // inbox - a DM or storefront/order conversation never appears there. Selecting "chat"
-        // keeps today's full inbox unchanged.
+        // Home lists the account's agent sessions; chat keeps the full messaging inbox.
         .filter((conversation) =>
           isSessionListView
             ? conversation.kind === "personal" && !conversation.hasHumanRecipient
@@ -403,6 +418,10 @@ export function ChatSurface({
   }, [activeConversationId, messages.length, showMessageThread, workspaceCardView]);
 
   const conversationListPanelProps = {
+    agentName: agent.name,
+    pinnedAgent: conversations.find(
+      (conversation) => conversation.hasHumanRecipient === false && !conversation.helpTopic
+    ),
     isSessionListView,
     isAuthenticated,
     // Lets the inbox name a chat started from Phone Contacts by the owner's saved contact name.
@@ -449,14 +468,19 @@ export function ChatSurface({
   );
 
   return (
-    <div className={`chat-surface ${showMessageThread && isInboxOpen ? "inbox-open" : ""}`}>
+    <div
+      ref={surfaceRef}
+      className={`chat-surface ${showMessageThread && isInboxOpen ? "inbox-open" : ""}`}
+      {...mobileNavigation}
+    >
       {showMessageThread ? (
         isCompactViewport ? (
           <StackedModule
+            embedded
             moduleId="messenger-inbox"
             className={`messenger-inbox-module ${isSessionListView ? "sessions-view" : ""}`}
             open={isInboxOpen}
-            title={isSessionListView ? "Chats" : "Messages"}
+            title="Contacts"
             onClose={() => onInboxOpenChange(false)}
           >
             <ConversationListPanel showHeading={false} {...conversationListPanelProps} />
@@ -527,6 +551,10 @@ export function ChatSurface({
                   <strong>{selectedConversation?.title ?? agent.name}</strong>
                 </button>
               )}
+              <DiscussionMembersButton
+                participants={participants}
+                onOpen={() => setParticipantsOpen(true)}
+              />
               <small>
                 {selectedConversation?.helpTopic
                   ? "Help · Ask your agent"
@@ -878,6 +906,7 @@ export function ChatSurface({
           {children}
         </StackedModule>
         <StackedModule
+          embedded={isCompactViewport}
           moduleId="marketplace"
           className="buy-module"
           open={activeModuleView === null && mode === "marketplace" && marketplaceShortcutOpen}
@@ -925,6 +954,7 @@ export function ChatSurface({
           )}
         </StackedModule>
         <StackedModule
+          embedded={isCompactViewport}
           moduleId="workspace"
           className={workspaceModuleClassName(workspaceCardView, mode)}
           open={workspaceOpen}
@@ -1037,67 +1067,37 @@ export function ChatSurface({
             />
           )}
         </StackedModule>
-        <StackedModule
-          moduleId="recycle-bin"
-          className={mode === "seller" ? "sell-module" : "buy-module"}
-          open={isRecycleBinOpen}
-          title="Recycle bin"
-          onClose={() => setIsRecycleBinOpen(false)}
-        >
-          <p>
-            Deleted chats stay here for 14 days before they're permanently removed. Restoring or
-            emptying the bin requires admin privileges.
-          </p>
-          {recycleBin !== null ? (
-            <>
-              <p>
-                {formatFileSize(recycleBin.usedBytes)} of {formatFileSize(recycleBin.capacityBytes)}{" "}
-                used
-                {recycleBin.isFull ? " — full. Ask an admin to empty it." : ""}
-              </p>
-              {recycleBin.items.length === 0 ? (
-                <p>The recycle bin is empty.</p>
-              ) : (
-                <>
-                  <div className="conversation-list">
-                    {recycleBin.items.map((item) => (
-                      <article className="conversation-item" key={item.conversation.id}>
-                        <span className="conversation-copy">
-                          <span className="conversation-title-line">
-                            <strong>{item.title ?? "Grogoni agent"}</strong>
-                          </span>
-                          <small>
-                            Deleted {formatMessageTime(item.deletedAt)} · Permanently deleted{" "}
-                            {formatMessageTime(item.purgeAt)} · {formatFileSize(item.sizeBytes)}
-                          </small>
-                        </span>
-                        <div className="conversation-actions" aria-label="Recycle bin item actions">
-                          <button
-                            type="button"
-                            onClick={() => onRestoreConversation(item.conversation.id)}
-                          >
-                            Restore
-                          </button>
-                        </div>
-                      </article>
-                    ))}
-                  </div>
-                  <button className="danger" type="button" onClick={() => onEmptyRecycleBin()}>
-                    Empty recycle bin
-                  </button>
-                </>
-              )}
-            </>
-          ) : (
-            <p>Loading…</p>
-          )}
-        </StackedModule>
+        <ChatRecycleBinPanel
+          mode={mode}
+          isRecycleBinOpen={isRecycleBinOpen}
+          setIsRecycleBinOpen={setIsRecycleBinOpen}
+          recycleBin={recycleBin}
+          onRestoreConversation={onRestoreConversation}
+          onEmptyRecycleBin={onEmptyRecycleBin}
+        />
         {mode === "marketplace" &&
         activeModuleView === null &&
         visibleMessages.filter((message) => message.id !== "welcome").length === 0 ? (
           <HomeSuggestionChips onSelect={commitDraft} />
         ) : null}
+        {participantsOpen ? (
+          <ChatParticipantsPanel
+            key={activeConversationId}
+            conversationId={activeConversationId}
+            contacts={networkDevicePhonebook}
+            onClose={() => setParticipantsOpen(false)}
+            onUpdated={onParticipantsUpdated ?? onSelectConversation}
+          />
+        ) : null}
         <ChatComposer
+          onAddParticipants={() =>
+            isAuthenticated ? setParticipantsOpen(true) : onRequireSignIn()
+          }
+          audienceLabel={
+            selectedConversation?.hasHumanRecipient
+              ? "Discussion · messages go to participants"
+              : undefined
+          }
           activeAgentName={agent.name}
           agent={agentSettings}
           business={business}

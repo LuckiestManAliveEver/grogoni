@@ -1,10 +1,9 @@
-import { useEffect, useRef, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useStackedModuleSwipe } from "./hooks/useStackedModuleSwipe";
+import { MobileChatPanel } from "./MobileChatPanel";
+import { useEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
-import {
-  nextFocusTargetForTab,
-  shouldCloseStackedModuleFromSwipe
-} from "./stacked-module-behavior";
+import { nextFocusTargetForTab } from "./stacked-module-behavior";
 import {
   isFocusInsideAnotherStackedModule,
   isTopmostStackedModule,
@@ -18,6 +17,7 @@ const focusableSelector =
 
 export interface StackedModuleProps {
   children: ReactNode;
+  embedded?: boolean;
   className?: string;
   moduleId: string;
   open: boolean;
@@ -27,6 +27,7 @@ export interface StackedModuleProps {
 
 export function StackedModule({
   children,
+  embedded = false,
   className = "",
   moduleId,
   open,
@@ -36,12 +37,12 @@ export function StackedModule({
   const panelRef = useRef<HTMLElement | null>(null);
   const backdropRef = useRef<HTMLDivElement | null>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
-  const swipeStartYRef = useRef<number | null>(null);
+  const { startSwipe, finishSwipe, cancelSwipe } = useStackedModuleSwipe(onClose);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || embedded) return;
     const appRoot = document.getElementById("root");
     const rootWasInert = appRoot?.hasAttribute("inert") ?? false;
     const previousAriaHidden = appRoot?.getAttribute("aria-hidden") ?? null;
@@ -112,32 +113,16 @@ export function StackedModule({
       else appRoot?.setAttribute("aria-hidden", previousAriaHidden);
       returnFocusRef.current?.focus();
     };
-  }, [open, moduleId]);
+  }, [open, moduleId, embedded]);
 
   if (!open) return null;
 
-  function startSwipe(event: ReactPointerEvent<HTMLDivElement>) {
-    if (!event.isPrimary) return;
-    if (
-      event.target instanceof Element &&
-      event.target.closest("button, a[href], input, select, textarea") !== null
-    ) {
-      return;
-    }
-    swipeStartYRef.current = event.clientY;
-    event.currentTarget.setPointerCapture(event.pointerId);
-  }
-
-  function finishSwipe(event: ReactPointerEvent<HTMLDivElement>) {
-    const startY = swipeStartYRef.current;
-    swipeStartYRef.current = null;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-    if (startY !== null && shouldCloseStackedModuleFromSwipe(startY, event.clientY)) {
-      onClose();
-    }
-  }
+  if (embedded)
+    return (
+      <MobileChatPanel moduleId={moduleId} className={className} title={title} onClose={onClose}>
+        {children}
+      </MobileChatPanel>
+    );
 
   return createPortal(
     <div
@@ -160,9 +145,7 @@ export function StackedModule({
           className="stacked-module-heading"
           onPointerDown={startSwipe}
           onPointerUp={finishSwipe}
-          onPointerCancel={() => {
-            swipeStartYRef.current = null;
-          }}
+          onPointerCancel={cancelSwipe}
         >
           <span className="stacked-module-drag-handle" aria-hidden="true" />
           <h2 id={`${moduleId}-title`}>{title}</h2>

@@ -807,7 +807,8 @@ for (const locale of ["en-US", "sw-KE"] as const) {
       await page.goto("/sell");
       await page.getByRole("button", { name: "Open menu" }).click();
       await page.getByRole("button", { name: "Go to my shop" }).click();
-      const dialog = page.getByRole("dialog", { name: sw ? "Duka lako" : "Your shop" });
+      const dialog = page.locator('.mobile-chat-panel[data-module-id="workspace"]');
+      await expect(dialog).toHaveAccessibleName(sw ? "Duka lako" : "Your shop");
       await expect(dialog).toBeVisible();
       await expect(page).toHaveURL(/\/sell\/shop$/u);
       await expect(dialog.locator(".shop-hub-tile").first()).toBeVisible();
@@ -844,9 +845,10 @@ test("the Business workspace dashboard reflows on a small screen and stays keybo
   // aria-labelledby text) changes from "Your shop" to "Business workspace" once the dashboard
   // opens, a name-filtered locator would stop matching after that transition, and a bare
   // role="dialog" locator collides with the separate Messages module mounted alongside it.
-  const dialog = page.locator('[data-module-id="workspace"] [role="dialog"]');
+  const dialog = page.locator(
+    '[data-module-id="workspace"] [role="dialog"], .mobile-chat-panel[data-module-id="workspace"]'
+  );
   await expect(dialog).toBeVisible();
-  const closeButton = dialog.locator(".stacked-module-heading button");
 
   await dialog.locator('.shop-hub-tile[data-module-id="orders"]').click();
   await page
@@ -869,13 +871,12 @@ test("the Business workspace dashboard reflows on a small screen and stays keybo
   const messagesDialog = page.locator('[data-module-id="messenger-inbox"] [role="dialog"]');
   await expect(messagesDialog).toBeHidden();
 
-  // Tab-trap wraps around the dashboard's own controls after its content changes.
-  const lastSeeAll = dialog.getByRole("button", { name: "See all" }).nth(1);
-  await lastSeeAll.focus();
-  await page.keyboard.press("Tab");
-  await expect(closeButton).toBeFocused();
-  await page.keyboard.press("Shift+Tab");
-  await expect(lastSeeAll).toBeFocused();
+  // The embedded mobile panel allows keyboard focus to reach the persistent composer.
+  const composer = page.getByRole("textbox", { name: "Message", exact: true });
+  await composer.focus();
+  await expect(composer).toBeFocused();
+  await composer.fill("Keep the composer available with the dashboard open.");
+  await expect(composer).toHaveValue("Keep the composer available with the dashboard open.");
 
   // Back is reachable and operable by keyboard alone, returning to the Shop Hub without closing
   // the dialog. Also proves the pointer-blocking half of the same fix: before it, the Messages
@@ -892,6 +893,7 @@ test("the Business workspace dashboard reflows on a small screen and stays keybo
     .click();
   await expect(dialog.getByText("No orders yet.")).toBeVisible();
 
+  await dialog.locator(".stacked-module-heading button").focus();
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
 });
@@ -1107,7 +1109,9 @@ test("messaging inbox and thread adapt across phone and desktop screens", async 
       await page.getByRole("button", { name: "Open menu" }).click();
       await page.getByRole("button", { name: "Message history" }).click();
     }
-    await expect(page.getByRole("heading", { name: "Messages" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: viewport.width < 760 ? "Contacts" : "Messages" })
+    ).toBeVisible();
     await page.getByRole("button", { name: /Delivery coordination/ }).click();
     await expect(
       page.locator(".messenger-thread").getByText("The order is ready.", { exact: true })

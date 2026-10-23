@@ -18,7 +18,7 @@ import type { ConversationExecutionSummary, PublicDaemonTask } from "@grogoni/sh
  *
  * **Load-bearing invariant - read before touching `createConversationMessage` or
  * `updateConversationMessage`:** `validateConversationEncryption` (below) enforces that once a
- * conversation has two or more distinct human `role: "account"` participants, every message must
+ * conversation has two or more distinct human `role: "account"` participants, every user message must
  * be `content.type === "encrypted"`, every participant must have a live registered
  * `e2eeDevices` entry, and the encrypted envelope's recipient device set must exactly match the
  * live device set. Dropping or reordering this check re-opens a real confidentiality regression:
@@ -729,6 +729,136 @@ export class MessagingDomain {
       );
     }
     return { conversationId: rootId };
+  }
+
+  addConversationParticipant(input: {
+    sessionId: string | null;
+    conversationId: string;
+    recipient?: string;
+    agent?: boolean;
+    now?: Date;
+  }): ConversationView {
+    const now = input.now ?? new Date();
+    const session = this.deps.requirePinVerifiedSession(input.sessionId, now);
+    const conversation = this.requireAccountConversation(input.conversationId, session.account.id);
+    if (conversation.accountId !== session.account.id) {
+      throw new Cp2Error(
+        403,
+        "conversation_owner_required",
+        "Only the chat owner can add participants."
+      );
+    }
+    if (
+      conversation.kind !== "personal" ||
+      conversation.helpTopic ||
+      conversation.isPermanentDaemon ||
+      conversation.taskParentConversationId
+    ) {
+      throw new Cp2Error(
+        400,
+        "conversation_group_unavailable",
+        "Start a new personal chat to create a discussion."
+      );
+    }
+    if (Boolean(input.agent) === Boolean(input.recipient?.trim())) {
+      throw new Cp2Error(400, "participant_invalid", "Choose an agent or a contact.");
+    }
+    let accountId: string | null = null;
+    if (!input.agent) {
+      const recipient = input.recipient!.trim();
+      if (recipient.startsWith("network-node:")) {
+        accountId = this.deps.resolvePhonebookAccount(session.user.id, recipient.slice(13).trim());
+      } else {
+        const channel: AuthChannel = recipient.includes("@") ? "email" : "phone";
+        accountId =
+          this.deps.resolveContactAccount(channel, normalizeDestination(channel, recipient)) ??
+          null;
+      }
+      if (!accountId)
+        throw new Cp2Error(404, "recipient_not_found", "No Grogoni account matches that contact.");
+    }
+    const agentId = input.agent ? `account-${session.account.id}-agent` : null;
+    const existing = [...this.conversationParticipants.values()].some(
+      (participant) =>
+        participant.conversationId === conversation.id &&
+        (input.agent
+          ? participant.agentId === agentId
+          : participant.role === "account" && participant.accountId === accountId)
+    );
+    if (existing) return this.conversationView(conversation);
+    const userId = accountId ? this.deps.userByAccount.get(accountId) : undefined;
+    const displayName = input.agent
+      ? "Grogoni agent"
+      : ((userId ? this.deps.users.get(userId)?.displayName : null) ?? "Contact");
+    const participant: ConversationParticipantSummary = {
+      id: randomUUID(),
+      conversationId: conversation.id,
+      role: input.agent ? "agent" : "account",
+      accountId,
+      agentId,
+      businessId: null,
+      displayName,
+      lastReadAt: null,
+      archivedAt: null,
+      mutedUntil: null,
+      pinnedAt: null,
+      createdAt: now.toISOString()
+    };
+    this.conversationParticipants.set(participant.id, participant);
+    this.deps.recordAuditEvent({
+      type: "conversation.participant_added",
+      aggregateType: "conversation",
+      aggregateId: conversation.id,
+      actorId: session.user.id,
+      occurredAt: now.toISOString(),
+      payload: { participantId: participant.id, role: participant.role }
+    });
+    const updated = { ...conversation, updatedAt: now.toISOString() };
+    this.conversations.set(conversation.id, updated);
+    // Membership metadata is server-authored. User message content still always passes
+    // validateConversationEncryption; an invitation never exposes message text to push.
+    const eventId = randomUUID();
+    const message: ConversationMessageSummary = {
+      id: eventId,
+      conversationId: conversation.id,
+      clientMessageId: eventId,
+      idempotencyKey: `membership:${participant.id}`,
+      author: "system",
+      authorId: session.user.id,
+      content: { type: "text", text: `${displayName} was added to the discussion.` },
+      status: "delivered",
+      selectedChannel: "grogoni",
+      actualChannel: "grogoni",
+      sentAt: now.toISOString(),
+      deliveredAt: now.toISOString(),
+      readAt: null,
+      clientTimestamp: null,
+      createdAt: now.toISOString()
+    };
+    this.conversationMessages.set(message.id, message);
+    this.recordConversationSyncForParticipants(
+      conversation.id,
+      "conversations",
+      conversation.id,
+      updated,
+      now
+    );
+    this.recordConversationSyncForParticipants(
+      conversation.id,
+      "conversation_participants",
+      participant.id,
+      participant,
+      now
+    );
+    this.recordConversationSyncForParticipants(
+      conversation.id,
+      "conversation_messages",
+      message.id,
+      message,
+      now
+    );
+    this.enqueueConversationNotifications(updated, message, session.account.id, now);
+    return this.conversationView(updated);
   }
 
   createConversation(input: {
@@ -5455,7 +5585,11 @@ export class MessagingDomain {
             conversationId: delivery.conversationId,
             messageId: delivery.messageId,
             title: conversation?.title?.trim() || "New Grogoni message",
-            body: "Open Grogoni to read your message."
+            body: this.conversationMessages
+              .get(delivery.messageId)
+              ?.idempotencyKey.startsWith("membership:")
+              ? "A participant was added to your discussion. Open Grogoni to view it."
+              : "Open Grogoni to read your message."
           });
           if (outcome === "expired") {
             this.pushSubscriptions.delete(subscription.id);

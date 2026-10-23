@@ -10,16 +10,17 @@ const application = readFileSync("apps/web/src/GrogoniApplication.tsx", "utf8");
 const chatSurface = readFileSync("apps/web/src/ChatSurface.tsx", "utf8");
 const navigationState = readFileSync("apps/web/src/hooks/useNavigationState.ts", "utf8");
 const modulePrimitive = readFileSync("apps/web/src/StackedModule.tsx", "utf8");
+const moduleSwipe = readFileSync("apps/web/src/hooks/useStackedModuleSwipe.ts", "utf8");
 
 describe("stacked secondary modules", () => {
   it("closes from its control, scrim, Escape, and downward swipe threshold", () => {
     expect(modulePrimitive).toContain("if (event.target === event.currentTarget) onClose();");
     expect(modulePrimitive).toContain('if (event.key === "Escape")');
     expect(modulePrimitive).toContain("onClick={onClose}");
-    expect(modulePrimitive).toContain(
+    expect(moduleSwipe).toContain(
       'event.target.closest("button, a[href], input, select, textarea")'
     );
-    expect(modulePrimitive).toContain("shouldCloseStackedModuleFromSwipe(startY, event.clientY)");
+    expect(moduleSwipe).toContain("shouldCloseStackedModuleFromSwipe(startY, event.clientY)");
     expect(shouldCloseStackedModuleFromSwipe(20, 91)).toBe(false);
     expect(shouldCloseStackedModuleFromSwipe(20, 92)).toBe(true);
   });
@@ -66,8 +67,8 @@ describe("stacked secondary modules", () => {
     expect(chatSurface).toContain(
       "<ConversationListPanel showHeading={true} {...conversationListPanelProps} />"
     );
-    // The desktop sidebar still opens/closes without becoming a modal - only the compact
-    // StackedModule branch traps focus and makes the conversation thread behind it inert.
+    // Compact navigation is embedded so the thread composer remains interactive.
+    expect(chatSurface).toContain("embedded={isCompactViewport}");
     expect(chatSurface.indexOf("isCompactViewport ? (")).toBeLessThan(
       chatSurface.indexOf('aria-label="Conversations"')
     );
