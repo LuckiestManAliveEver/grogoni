@@ -420,7 +420,7 @@ export function ChatSurface({
   const conversationListPanelProps = {
     agentName: agent.name,
     pinnedAgent: conversations.find(
-      (conversation) => !conversation.hasHumanRecipient && !conversation.helpTopic
+      (conversation) => conversation.hasHumanRecipient === false && !conversation.helpTopic
     ),
     isSessionListView,
     isAuthenticated,

@@ -119,7 +119,7 @@ export function StackedModule({
 
   if (embedded)
     return (
-      <MobileChatPanel className={className} title={title} onClose={onClose}>
+      <MobileChatPanel moduleId={moduleId} className={className} title={title} onClose={onClose}>
         {children}
       </MobileChatPanel>
     );
