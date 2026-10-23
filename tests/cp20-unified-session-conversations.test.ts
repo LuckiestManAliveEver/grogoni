@@ -616,6 +616,111 @@ describe("CP20 unified account, conversation, and session foundation", () => {
     await hydratedApp.close();
   });
 
+  it("adds discussion participants, alerts the receiver, persists membership and keeps message encryption", async () => {
+    const deliveries: string[] = [];
+    const store = createCp2Store({
+      pushNotificationSender: async (_subscription, payload) => {
+        deliveries.push(JSON.stringify(payload));
+        return "sent";
+      }
+    });
+    const app = buildApi({ cp2: { store, vapidPublicKey: "test-vapid-public-key" } });
+    const owner = await createAccountSession(app, "254700000071");
+    const contact = await createAccountSession(app, "254700000072");
+    const third = await createAccountSession(app, "254700000073");
+    await postJson(
+      app,
+      "/v1/push/subscriptions",
+      {
+        endpoint: "https://push.example.test/group-contact",
+        expirationTime: null,
+        keys: {
+          auth: "AAAAAAAAAAAAAAAAAAAAAA",
+          p256dh: "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+        }
+      },
+      contact
+    );
+    const created = await postJson<ConversationView>(
+      app,
+      "/v1/conversations",
+      {
+        kind: "personal",
+        activeShopId: null,
+        recipient: "+254700000072",
+        title: "Group discussion"
+      },
+      owner
+    );
+    const path = `/v1/conversations/${created.conversation.id}/participants`;
+    const unauthorized = await postResponse(app, path, { recipient: "+254700000073" }, contact);
+    expect(unauthorized.statusCode).toBe(403);
+    const outsider = await postResponse(app, path, { agent: true }, third);
+    expect(outsider.statusCode).toBe(404);
+    const missing = await postResponse(app, path, { recipient: "+254700000099" }, owner);
+    expect(missing.statusCode).toBe(404);
+    const withAgent = await postJson<ConversationView>(app, path, { agent: true }, owner);
+    expect(withAgent.participants.filter((p) => p.role === "agent")).toHaveLength(1);
+    const added = await postJson<ConversationView>(
+      app,
+      path,
+      { recipient: "+254700000073" },
+      owner
+    );
+    expect(added.participants.filter((p) => p.role === "account")).toHaveLength(3);
+    expect(added.messages.at(-1)).toMatchObject({ author: "system", content: { type: "text" } });
+    const retry = await postJson<ConversationView>(
+      app,
+      path,
+      { recipient: "+254700000073" },
+      owner
+    );
+    expect(retry.participants).toHaveLength(added.participants.length);
+    expect(retry.messages).toHaveLength(added.messages.length);
+    await getJson(app, `/v1/conversations/${created.conversation.id}`, third);
+    const plaintext = await postResponse(
+      app,
+      "/v1/messages",
+      {
+        conversationId: created.conversation.id,
+        clientMessageId: "group-plaintext-test",
+        content: { type: "text", text: "private" }
+      },
+      owner
+    );
+    expect(plaintext.statusCode).toBe(400);
+    expect(plaintext.json().code).toBe("e2ee_required");
+    await registerEncryptionDevice(app, owner, "group-owner-device");
+    await registerEncryptionDevice(app, contact, "group-contact-device");
+    await registerEncryptionDevice(app, third, "group-third-device");
+    await postJson(
+      app,
+      "/v1/messages",
+      {
+        conversationId: created.conversation.id,
+        clientMessageId: "group-encrypted-test",
+        content: encryptedFixture(
+          ["group-owner-device", "group-contact-device", "group-third-device"],
+          "group ciphertext"
+        )
+      },
+      owner
+    );
+    await store.deliverPendingMessageNotifications({});
+    expect(deliveries.some((payload) => payload.includes("added to your discussion"))).toBe(true);
+    const hydrated = createCp2Store();
+    hydrated.hydrateSnapshot(store.snapshot());
+    const hydratedApp = buildApi({ cp2: { store: hydrated } });
+    const restored = await getJson<ConversationView>(
+      hydratedApp,
+      `/v1/conversations/${created.conversation.id}`,
+      third
+    );
+    expect(restored.participants).toHaveLength(4);
+    await app.close();
+    await hydratedApp.close();
+  });
+
   it("supports full direct-message lifecycle across two accounts", async () => {
     const deliveries: Array<{ endpoint: string; body: string }> = [];
     const store = createCp2Store({

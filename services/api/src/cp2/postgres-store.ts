@@ -278,6 +278,7 @@ const mutatingMethodNames = new Set([
   "createBetaSupportTicket",
   "createBusiness",
   "createConversation",
+  "addConversationParticipant",
   "createAgentConversationMessage",
   "createConversationMessage",
   "deleteConversation",

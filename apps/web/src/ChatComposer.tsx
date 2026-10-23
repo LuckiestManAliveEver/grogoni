@@ -36,6 +36,7 @@ interface ChatComposerProps {
   isSending: boolean;
   mode: GrogoniMode;
   activeAgentName: string;
+  audienceLabel?: string | undefined;
   pendingAttachments: ChatAttachment[];
   replyToMessageId: string | null;
   selectedConversationTitle: string;
@@ -45,6 +46,7 @@ interface ChatComposerProps {
   onCancelGeneration: () => void;
   onCancelReply: () => void;
   onOpenAgentProfile: () => void;
+  onAddParticipants?: () => void;
   onRemoveAttachment: (attachmentId: string) => void;
   onRequireSignIn: () => void;
   onSellerPhotoCapture: (file: File) => void;
@@ -61,6 +63,7 @@ export function ChatComposer({
   isSending,
   mode,
   activeAgentName,
+  audienceLabel,
   pendingAttachments,
   replyToMessageId,
   selectedConversationTitle,
@@ -70,6 +73,7 @@ export function ChatComposer({
   onCancelGeneration,
   onCancelReply,
   onOpenAgentProfile,
+  onAddParticipants,
   onRemoveAttachment,
   onRequireSignIn,
   onSellerPhotoCapture
@@ -160,7 +164,9 @@ export function ChatComposer({
             />
           </ChatComposerLazyPanel>
         ) : null}
-        <small className="composer-agent-indicator">{activeAgentName} will answer</small>
+        <small className="composer-agent-indicator">
+          {audienceLabel ?? `${activeAgentName} will answer`}
+        </small>
         <input
           ref={fileInputRef}
           className="chat-file-input"
@@ -322,6 +328,9 @@ export function ChatComposer({
           </small>
         ) : null}
         <ChatComposerActions
+          {...(onAddParticipants
+            ? { onAddParticipants: () => runMessageAction(onAddParticipants) }
+            : {})}
           draftHasText={liveDraft.trim().length > 0}
           mode={mode}
           open={messageActionsOpen}

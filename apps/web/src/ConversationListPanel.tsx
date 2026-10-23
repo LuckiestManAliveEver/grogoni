@@ -12,6 +12,8 @@ export interface ConversationListPanelProps {
   // False inside the compact-viewport StackedModule drawer, which already renders the
   // "Chats"/"Messages" title in its own heading bar (see ChatSurface).
   showHeading: boolean;
+  pinnedAgent?: ConversationInboxItem | undefined;
+  agentName?: string;
   isSessionListView: boolean;
   isAuthenticated: boolean;
   inboxSearch: string;
@@ -54,6 +56,8 @@ export interface ConversationListPanelProps {
 
 export function ConversationListPanel({
   showHeading,
+  pinnedAgent,
+  agentName = "Grogoni agent",
   isSessionListView,
   isAuthenticated,
   inboxSearch,
@@ -207,6 +211,31 @@ export function ConversationListPanel({
         </form>
       ) : null}
       <div className="conversation-list">
+        <article
+          className={`conversation-item pinned-agent ${pinnedAgent?.id === activeConversationId ? "active" : ""}`}
+        >
+          <button
+            type="button"
+            className="conversation-select"
+            onClick={() => {
+              if (!isAuthenticated) {
+                onRequireSignIn();
+                return;
+              }
+              if (pinnedAgent) onSelectConversation(pinnedAgent.id);
+              else onCreateAgentSession();
+              onInboxOpenChange(false);
+            }}
+          >
+            <span className="conversation-avatar chat" aria-hidden="true">
+              {agentName.slice(0, 1)}
+            </span>
+            <span className="conversation-copy">
+              <strong>{agentName}</strong>
+              <small>Pinned agent</small>
+            </span>
+          </button>
+        </article>
         {visibleConversations
           .filter((conversation) => conversation.helpTopic === "home")
           .map((root) => (
@@ -224,7 +253,7 @@ export function ConversationListPanel({
             />
           ))}
         {visibleConversations
-          .filter((conversation) => !conversation.helpTopic)
+          .filter((conversation) => !conversation.helpTopic && conversation.id !== pinnedAgent?.id)
           .map((conversation) => (
             <article
               className={`conversation-item ${conversation.id === activeConversationId ? "active" : ""}`}
@@ -330,6 +359,37 @@ export function ConversationListPanel({
               ) : null}
             </article>
           ))}
+        {!isSessionListView && devicePhonebook.length > 0 ? (
+          <div className="phonebook-chat-contacts" aria-label="Saved contacts">
+            <h3>Contacts</h3>
+            {devicePhonebook
+              .filter((contact) =>
+                contact.name.toLowerCase().includes(inboxSearch.trim().toLowerCase())
+              )
+              .map((contact, index) => {
+                const recipient = contact.nodeId
+                  ? `network-node:${contact.nodeId}`
+                  : (contact.phone ?? contact.email);
+                return recipient ? (
+                  <button
+                    key={index}
+                    type="button"
+                    className="conversation-select"
+                    onClick={() => {
+                      if (!isAuthenticated) {
+                        onRequireSignIn();
+                        return;
+                      }
+                      onCreateConversation(recipient, contact.name);
+                      onInboxOpenChange(false);
+                    }}
+                  >
+                    {contact.name}
+                  </button>
+                ) : null;
+              })}
+          </div>
+        ) : null}
         {visibleConversations.length === 0 ? (
           <p>
             {isSessionListView

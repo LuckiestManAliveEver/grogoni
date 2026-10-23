@@ -6,6 +6,7 @@ import type {
   ChannelEndpointSummary,
   ChannelProvider,
   ConversationInboxItem,
+  ConversationParticipantSummary,
   MessageHandoffStatus,
   NetworkInviteSummary,
   ProductFieldDefinition,
@@ -32,6 +33,7 @@ import type {
 
 export interface ChatSurfaceProps {
   activeConversationId: string | null;
+  participants?: ConversationParticipantSummary[];
   chatDraft: string;
   initialEmailSubject: string;
   channelEndpoints: ChannelEndpointSummary[];
@@ -76,11 +78,13 @@ export interface ChatSurfaceProps {
   onRefreshInvoices: () => void;
   onBackToChat: () => void;
   onCloseMarketplace: () => void;
+  onOpenMarketplace?: () => void;
   onCloseWorkspace: () => void;
   onDraftChange: (draft: string) => void;
   onSelectConversation: (conversationId: string) => void;
   onCreateConversation: (recipient: string, title: string) => void;
   onCreateAgentSession: (title?: string) => void;
+  onParticipantsUpdated?: (conversationId: string) => void;
   onRequireSignIn: () => void;
   onBrowseAsGuest: () => void;
   onSignUp: () => void;

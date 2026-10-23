@@ -18,6 +18,7 @@ const focusableSelector =
 
 export interface StackedModuleProps {
   children: ReactNode;
+  embedded?: boolean;
   className?: string;
   moduleId: string;
   open: boolean;
@@ -27,6 +28,7 @@ export interface StackedModuleProps {
 
 export function StackedModule({
   children,
+  embedded = false,
   className = "",
   moduleId,
   open,
@@ -41,7 +43,7 @@ export function StackedModule({
   onCloseRef.current = onClose;
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || embedded) return;
     const appRoot = document.getElementById("root");
     const rootWasInert = appRoot?.hasAttribute("inert") ?? false;
     const previousAriaHidden = appRoot?.getAttribute("aria-hidden") ?? null;
@@ -112,7 +114,7 @@ export function StackedModule({
       else appRoot?.setAttribute("aria-hidden", previousAriaHidden);
       returnFocusRef.current?.focus();
     };
-  }, [open, moduleId]);
+  }, [open, moduleId, embedded]);
 
   if (!open) return null;
 
@@ -137,6 +139,20 @@ export function StackedModule({
     if (startY !== null && shouldCloseStackedModuleFromSwipe(startY, event.clientY)) {
       onClose();
     }
+  }
+
+  if (embedded) {
+    return (
+      <section className={`mobile-chat-panel ${className}`} aria-label={title}>
+        <div className="stacked-module-heading">
+          <h2>{title}</h2>
+          <button type="button" onClick={onClose} aria-label={`Close ${title}`}>
+            ×
+          </button>
+        </div>
+        <div className="stacked-module-content">{children}</div>
+      </section>
+    );
   }
 
   return createPortal(

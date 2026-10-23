@@ -3828,6 +3828,12 @@ export class Cp2Store {
     return this.grogoniSessionContextView(session, next, now);
   }
 
+  addConversationParticipant(
+    ...args: Parameters<MessagingDomain["addConversationParticipant"]>
+  ): ReturnType<MessagingDomain["addConversationParticipant"]> {
+    return this.messagingDomain.addConversationParticipant(...args);
+  }
+
   createConversation(
     ...args: Parameters<MessagingDomain["createConversation"]>
   ): ReturnType<MessagingDomain["createConversation"]> {

@@ -7,6 +7,7 @@ interface ChatComposerActionsProps {
   open: boolean;
   sendViaLabel: string;
   onAttachFiles: () => void;
+  onAddParticipants?: () => void;
   onClose: () => void;
   onOpenCommand: () => void;
   onSendSms: () => void;
@@ -21,6 +22,7 @@ export function ChatComposerActions({
   open,
   sendViaLabel,
   onAttachFiles,
+  onAddParticipants,
   onClose,
   onOpenCommand,
   onSendSms,
@@ -37,6 +39,12 @@ export function ChatComposerActions({
       onClose={onClose}
     >
       <div className="composer-action-grid">
+        {onAddParticipants ? (
+          <button type="button" aria-label="Add agent or contact" onClick={onAddParticipants}>
+            <span aria-hidden="true">＋</span>
+            <span>Add agent or contact</span>
+          </button>
+        ) : null}
         <button type="button" aria-label="Send via" onClick={onSendVia}>
           <span className="phonebook-icon" aria-hidden="true" />
           <span>{sendViaLabel}</span>
