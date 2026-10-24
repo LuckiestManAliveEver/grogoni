@@ -1,18 +1,11 @@
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
-import type { ChannelEndpointSummary } from "@grogoni/shared-types";
+import { useEffect, useRef, useState } from "react";
 import { runtimeHashtagCapabilities, runtimeHashtagQuery } from "@grogoni/tool-core";
 
-import type { ChatAttachment, GrogoniMode } from "./app-shell";
-import {
-  type ActiveBusiness,
-  type AgentSettings,
-  type InvoiceSummary,
-  chatAttachmentAccept
-} from "./grogoni-application-shared";
+import { chatAttachmentAccept } from "./grogoni-application-shared";
 import { chatModuleCommands } from "./chat-module-commands";
 import { startVoiceInput } from "./chat-message-plumbing";
 import { formatChannelProvider } from "./formatters";
-import type { ChatComposerState } from "./hooks/useChatComposerState";
+import type { ChatComposerProps } from "./chat-composer-contracts";
 import {
   ChatComposerLazyPanel,
   ChatHashtagCapabilityPicker,
@@ -24,34 +17,6 @@ import { DeferredChatChannelPicker as ChatChannelPicker } from "./chat-composer-
 import { DeferredChatComposerActions as ChatComposerActions } from "./chat-composer-lazy-panels";
 
 import { ComposerModelSwitcher } from "./ComposerModelSwitcher";
-
-interface ChatComposerProps {
-  agent: AgentSettings | null;
-  business: ActiveBusiness | null;
-  channelEndpoints: ChannelEndpointSummary[];
-  composer: ChatComposerState;
-  invoices: InvoiceSummary[];
-  isAuthenticated: boolean;
-  isBrowserGenerating: boolean;
-  isSending: boolean;
-  mode: GrogoniMode;
-  activeAgentName: string;
-  audienceLabel?: string | undefined;
-  agentControlsAvailable?: boolean;
-  pendingAttachments: ChatAttachment[];
-  replyToMessageId: string | null;
-  selectedConversationTitle: string;
-  selectedEmailCustomerId: string | null | undefined;
-  onAgentChange: (agent: AgentSettings) => void;
-  onAttachmentChange: (event: ChangeEvent<HTMLInputElement>) => void;
-  onCancelGeneration: () => void;
-  onCancelReply: () => void;
-  onOpenAgentProfile: () => void;
-  onAddParticipants?: () => void;
-  onRemoveAttachment: (attachmentId: string) => void;
-  onRequireSignIn: () => void;
-  onSellerPhotoCapture: (file: File) => void;
-}
 
 export function ChatComposer({
   agent,

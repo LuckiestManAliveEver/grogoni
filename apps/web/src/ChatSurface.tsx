@@ -1,3 +1,7 @@
+import { DiscussionMembersButton } from "./DiscussionMembersButton";
+import { ChatRecycleBinPanel } from "./ChatRecycleBinPanel";
+import { useMobileChatNavigation } from "./hooks/useMobileChatNavigation";
+import { HomeSuggestionChips } from "./HomeSuggestionChips";
 import { Fragment, Suspense, lazy, useEffect, useRef, useState } from "react";
 
 import type { CountryCode } from "libphonenumber-js";
@@ -28,12 +32,11 @@ import { renderGeneratedSurface } from "./generated-surface-registry";
 
 import {
   DaemonExecutionStatus,
-  DaemonModelSelector,
-  BusinessAgentControls
+  ConversationExecutionControls
 } from "./ConversationExecutionControls";
 
 import { getJson } from "./api-helpers";
-import { formatFileSize, formatMessageTime } from "./formatters";
+import { formatMessageTime } from "./formatters";
 
 import { viewLabel } from "./agent-command-engine";
 import {
@@ -86,8 +89,6 @@ function capabilityTraceLabel(content: ConversationMessageContent | undefined): 
   if (content === undefined) return null;
   return capabilityTraceLabels[content.type] ?? null;
 }
-
-const homeSuggestionPrompts = ["Find me 50kg maize nearby", "Track my delivery", "Talk to a shop"];
 
 export function ChatSurface({
   activeConversationId,
@@ -214,21 +215,18 @@ export function ChatSurface({
       : null;
 
   const isCompactViewport = useCompactViewport();
-  const surfaceRef = useRef<HTMLDivElement | null>(null);
-  const swipeStart = useRef<{ x: number; y: number } | null>(null);
-  useEffect(() => {
-    const surface = surfaceRef.current;
-    const composerElement = surface?.querySelector<HTMLElement>(".composer");
-    if (!surface || !composerElement || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() => {
-      surface.style.setProperty(
-        "--mobile-composer-height",
-        `${composerElement.getBoundingClientRect().height}px`
-      );
-    });
-    observer.observe(composerElement);
-    return () => observer.disconnect();
-  }, []);
+  const { surfaceRef, ...mobileNavigation } = useMobileChatNavigation({
+    isCompactViewport,
+    workspaceOpen,
+    marketplaceShortcutOpen,
+    isInboxOpen,
+    mode,
+    onCloseWorkspace,
+    onCloseMarketplace,
+    onInboxOpenChange,
+    onOpenWorkspace,
+    onOpenMarketplace
+  });
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const defaultMessageWindow = useRef(detectCapabilitySettings().messageWindowSize).current;
   const [messageWindowSize, setMessageWindowSize] = useState(defaultMessageWindow);
@@ -308,9 +306,6 @@ export function ChatSurface({
   const showMessageThread = true;
   const activeModuleView = activeView === "chat" || activeView === "home" ? null : activeView;
   const isSessionListView = activeView === "home";
-  // The session list starts blank (no chat auto-selected/auto-created - see
-  // useChatInboxState.loadMessagingInbox) until the account opens an existing chat or starts a
-  // new one, matching a fresh ChatGPT tab rather than always dropping back into old history.
   const showBlankSessionState = isSessionListView && activeConversationId === null;
   const selectedConversation = conversations.find(
     (conversation) => conversation.id === activeConversationId
@@ -477,41 +472,7 @@ export function ChatSurface({
     <div
       ref={surfaceRef}
       className={`chat-surface ${showMessageThread && isInboxOpen ? "inbox-open" : ""}`}
-      onTouchStart={(event) => {
-        swipeStart.current = null;
-        if (
-          !isCompactViewport ||
-          event.touches.length !== 1 ||
-          (event.target instanceof Element &&
-            event.target.closest(
-              "input, textarea, select, button, a, [role='dialog'], .composer, [data-no-swipe]"
-            ))
-        )
-          return;
-        swipeStart.current = { x: event.touches[0]!.clientX, y: event.touches[0]!.clientY };
-      }}
-      onTouchCancel={() => {
-        swipeStart.current = null;
-      }}
-      onTouchEnd={(event) => {
-        const start = swipeStart.current;
-        swipeStart.current = null;
-        const end = event.changedTouches[0];
-        if (!start || !end || event.touches.length > 0) return;
-        const dx = end.clientX - start.x;
-        if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(end.clientY - start.y) * 1.5) return;
-        if (dx > 0) {
-          if (workspaceOpen) onCloseWorkspace();
-          else if (marketplaceShortcutOpen) onCloseMarketplace();
-          else {
-            onInboxOpenChange(true);
-          }
-        } else {
-          if (isInboxOpen) onInboxOpenChange(false);
-          else if (mode === "seller") onOpenWorkspace();
-          else onOpenMarketplace?.();
-        }
-      }}
+      {...mobileNavigation}
     >
       {showMessageThread ? (
         isCompactViewport ? (
@@ -591,18 +552,10 @@ export function ChatSurface({
                   <strong>{selectedConversation?.title ?? agent.name}</strong>
                 </button>
               )}
-              {participants.filter((participant) => participant.role === "account").length > 1 ? (
-                <button
-                  className="discussion-members"
-                  type="button"
-                  onClick={() => setParticipantsOpen(true)}
-                >
-                  {participants
-                    .filter((participant) => participant.role !== "shop")
-                    .map((participant) => participant.displayName ?? participant.role)
-                    .join(", ")}
-                </button>
-              ) : null}
+              <DiscussionMembersButton
+                participants={participants}
+                onOpen={() => setParticipantsOpen(true)}
+              />
               <small>
                 {selectedConversation?.helpTopic
                   ? "Help · Ask your agent"
@@ -618,23 +571,10 @@ export function ChatSurface({
                 Retry failed
               </button>
             ) : null}
-            {selectedConversation?.conversationType === "DAEMON" && activeConversationId ? (
-              <DaemonModelSelector
-                key={activeConversationId}
-                conversationId={activeConversationId}
-              />
-            ) : null}
-            {selectedConversation?.conversationType === "BUSINESS" &&
-            selectedConversation.activeShopId === businessId &&
-            hasBusiness &&
-            activeConversationId &&
-            businessId ? (
-              <BusinessAgentControls
-                conversationId={activeConversationId}
-                businessId={businessId}
-                enabled={selectedConversation.businessAgentEnabled === true}
-              />
-            ) : null}
+            <ConversationExecutionControls
+              conversation={selectedConversation}
+              businessId={hasBusiness ? businessId : null}
+            />
           </header>
         ) : null}
         <div
@@ -1128,71 +1068,18 @@ export function ChatSurface({
             />
           )}
         </StackedModule>
-        <StackedModule
-          moduleId="recycle-bin"
-          className={mode === "seller" ? "sell-module" : "buy-module"}
-          open={isRecycleBinOpen}
-          title="Recycle bin"
-          onClose={() => setIsRecycleBinOpen(false)}
-        >
-          <p>
-            Deleted chats stay here for 14 days before they're permanently removed. Restoring or
-            emptying the bin requires admin privileges.
-          </p>
-          {recycleBin !== null ? (
-            <>
-              <p>
-                {formatFileSize(recycleBin.usedBytes)} of {formatFileSize(recycleBin.capacityBytes)}{" "}
-                used
-                {recycleBin.isFull ? " — full. Ask an admin to empty it." : ""}
-              </p>
-              {recycleBin.items.length === 0 ? (
-                <p>The recycle bin is empty.</p>
-              ) : (
-                <>
-                  <div className="conversation-list">
-                    {recycleBin.items.map((item) => (
-                      <article className="conversation-item" key={item.conversation.id}>
-                        <span className="conversation-copy">
-                          <span className="conversation-title-line">
-                            <strong>{item.title ?? "Grogoni agent"}</strong>
-                          </span>
-                          <small>
-                            Deleted {formatMessageTime(item.deletedAt)} · Permanently deleted{" "}
-                            {formatMessageTime(item.purgeAt)} · {formatFileSize(item.sizeBytes)}
-                          </small>
-                        </span>
-                        <div className="conversation-actions" aria-label="Recycle bin item actions">
-                          <button
-                            type="button"
-                            onClick={() => onRestoreConversation(item.conversation.id)}
-                          >
-                            Restore
-                          </button>
-                        </div>
-                      </article>
-                    ))}
-                  </div>
-                  <button className="danger" type="button" onClick={() => onEmptyRecycleBin()}>
-                    Empty recycle bin
-                  </button>
-                </>
-              )}
-            </>
-          ) : (
-            <p>Loading…</p>
-          )}
-        </StackedModule>
+        <ChatRecycleBinPanel
+          mode={mode}
+          isRecycleBinOpen={isRecycleBinOpen}
+          setIsRecycleBinOpen={setIsRecycleBinOpen}
+          recycleBin={recycleBin}
+          onRestoreConversation={onRestoreConversation}
+          onEmptyRecycleBin={onEmptyRecycleBin}
+        />
         {mode === "marketplace" &&
         activeModuleView === null &&
         visibleMessages.filter((message) => message.id !== "welcome").length === 0 ? (
-          <div className="home-suggestion-chips" role="group" aria-label="Suggested requests">
-            {homeSuggestionPrompts.map((prompt) => (
-              <button key={prompt} type="button" onClick={() => commitDraft(prompt)}>
-                {prompt}
-              </button>
-            ))}
-          </div>
+          <HomeSuggestionChips onSelect={commitDraft} />
         ) : null}
         {participantsOpen ? (
           <ChatParticipantsPanel
@@ -1200,10 +1087,7 @@ export function ChatSurface({
             conversationId={activeConversationId}
             contacts={networkDevicePhonebook}
             onClose={() => setParticipantsOpen(false)}
-            onUpdated={(conversationId) => {
-              if (onParticipantsUpdated) onParticipantsUpdated(conversationId);
-              else onSelectConversation(conversationId);
-            }}
+            onUpdated={onParticipantsUpdated ?? onSelectConversation}
           />
         ) : null}
         <ChatComposer
