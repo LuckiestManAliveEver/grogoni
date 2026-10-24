@@ -124,6 +124,20 @@ export function StackedModule({
       </MobileChatPanel>
     );
 
+  if (embedded) {
+    return (
+      <section className={`mobile-chat-panel ${className}`} aria-label={title}>
+        <div className="stacked-module-heading">
+          <h2>{title}</h2>
+          <button type="button" onClick={onClose} aria-label={`Close ${title}`}>
+            ×
+          </button>
+        </div>
+        <div className="stacked-module-content">{children}</div>
+      </section>
+    );
+  }
+
   return createPortal(
     <div
       className="stacked-module-backdrop"

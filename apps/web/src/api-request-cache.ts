@@ -1,3 +1,4 @@
+import { readCachedAuthSession } from "./auth-bootstrap";
 import { apiFetch } from "./lib/api";
 import { isExplicitOfflineMode } from "./offline-runtime";
 import {
@@ -8,9 +9,18 @@ import {
 import { recordApiCache } from "./performance";
 
 interface CacheEntry {
+  cacheKey: string;
   value: unknown;
   updatedAt: number;
   inFlight: Promise<unknown> | null;
+}
+
+function accountCacheScope(): string {
+  return readCachedAuthSession()?.account.id ?? "anonymous";
+}
+function requireCurrentCacheScope(entry: CacheEntry): void {
+  if (!entry.cacheKey.startsWith(`${accountCacheScope()}\0`))
+    throw new DOMException("The signed-in account changed.", "AbortError");
 }
 
 const responseCache = new Map<string, CacheEntry>();
@@ -30,7 +40,8 @@ export async function getCachedJson<TResponse>(
   if (isExplicitOfflineMode()) return apiFetch<TResponse>(path);
   const now = Date.now();
   const staleTimeMs = options.staleTimeMs ?? staleTimeForPath(path);
-  const existing = responseCache.get(path);
+  const cacheKey = `${accountCacheScope()}\0${path}`;
+  const existing = responseCache.get(cacheKey);
 
   if (existing?.inFlight !== null && existing?.inFlight !== undefined && existing.updatedAt === 0) {
     recordApiCache(path, "deduplicated");
@@ -59,9 +70,14 @@ export async function getCachedJson<TResponse>(
     return existing.inFlight as Promise<TResponse>;
   }
 
-  const entry: CacheEntry = existing ?? { value: undefined, updatedAt: 0, inFlight: null };
+  const entry: CacheEntry = existing ?? {
+    cacheKey,
+    value: undefined,
+    updatedAt: 0,
+    inFlight: null
+  };
   entry.inFlight = hydrateOrRefresh<TResponse>(path, entry, options.onBackgroundUpdate);
-  responseCache.set(path, entry);
+  responseCache.set(cacheKey, entry);
   return entry.inFlight as Promise<TResponse>;
 }
 
@@ -80,7 +96,8 @@ export async function invalidateApiCacheForMutation(path: string): Promise<void>
   const agentId = normalized.match(/^\/api\/agents\/([^/]+)/)?.[1];
 
   for (const key of responseCache.keys()) {
-    const cachePath = key.split("?")[0] ?? key;
+    const path = key.slice(key.indexOf("\0") + 1);
+    const cachePath = path.split("?")[0] ?? path;
     const invalid =
       cachePath === normalized ||
       (businessRoot !== undefined && cachePath.startsWith(`${businessRoot}/`)) ||
@@ -151,6 +168,7 @@ async function hydrateOrRefresh<TResponse>(
   const persistent = persistentRepository<TResponse>(path);
   if (persistent !== null) {
     const cached = await persistent.readCached(path);
+    requireCurrentCacheScope(entry);
     if (cached.value !== null) {
       entry.value = cached.value;
       entry.updatedAt = cached.updatedAt ?? Date.now();
@@ -171,6 +189,7 @@ function refresh<TResponse>(
 ): Promise<TResponse> {
   return apiFetch<TResponse>(path)
     .then(async (value) => {
+      requireCurrentCacheScope(entry);
       entry.value = value;
       entry.updatedAt = Date.now();
       await persistent?.writeCached(path, value);
@@ -178,7 +197,7 @@ function refresh<TResponse>(
       return value;
     })
     .catch((error) => {
-      if (entry.updatedAt === 0) responseCache.delete(path);
+      if (entry.updatedAt === 0) responseCache.delete(entry.cacheKey);
       throw error;
     })
     .finally(() => {
@@ -214,10 +233,12 @@ function persistentPolicy(path: string): { domain: LocalDataDomain; scope: strin
       return { domain: "model", scope };
     }
   }
-  if (pathname === "/network") return { domain: "workspace", scope: "account" };
-  if (pathname === "/v1/conversations") {
-    return { domain: "conversation", scope: "account" };
-  }
+  const accountId = readCachedAuthSession()?.account.id;
+  // Old unscoped records are deliberately not hydrated into an account's private inbox.
+  if (pathname === "/network")
+    return accountId ? { domain: "workspace", scope: `account:${accountId}` } : null;
+  if (pathname === "/v1/conversations")
+    return accountId ? { domain: "conversation", scope: `account:${accountId}` } : null;
   return null;
 }
 

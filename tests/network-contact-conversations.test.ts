@@ -9,12 +9,12 @@ import { buildApi } from "../services/api/src/app";
 import { createCp2Store } from "../services/api/src/cp2/store";
 
 // Starting a chat from Phone Contacts: the owner picks an on-Grogoni contact by name ("Mama
-// Njeri") whose number the phonebook only ever sent as a hash. The client opens the conversation
+// Njeri") whose selected number is sent over HTTPS for keyed server matching. The client opens the conversation
 // by phonebook node id and the server mirrors that node id onto both participants, so each side's
 // Phone Contacts finds the same chat again. See apps/web/src/network-contact-conversations.ts.
 
 describe("phonebook contact conversations", () => {
-  it("opens a direct conversation from a phonebook node and marks both sides with the node id", async () => {
+  it("opens a direct conversation and resolves each viewer’s own private phonebook node", async () => {
     const app = buildApi({ cp2: { store: createCp2Store() } });
     const alice = await signUp(app, "+254799000001");
     const bob = await signUp(app, "+254799000002");
@@ -36,11 +36,19 @@ describe("phonebook contact conversations", () => {
     expect(accountParticipants.map((participant) => participant.accountId).sort()).toEqual(
       [alice.accountId, bob.accountId].sort()
     );
-    // Both sides carry it, so Alice's own Phone Contacts can match the same chat.
-    expect(accountParticipants.map((participant) => participant.networkNodeId)).toEqual([
-      bobNodeId,
-      bobNodeId
-    ]);
+    // Shared participant views must not disclose one owner's private graph IDs.
+    expect(accountParticipants.every((participant) => participant.networkNodeId == null)).toBe(
+      true
+    );
+    const bobInbox = await getJson<{ conversations: ConversationInboxItem[] }>(
+      app,
+      "/v1/conversations",
+      bob.cookie
+    );
+    expect(
+      bobInbox.conversations.find((item) => item.id === conversation.conversation.id)?.participant
+        .networkNodeId
+    ).toBe(bobNodeId);
 
     // The chat appears in Alice's inbox with the node id, so she sees it as a person-to-person chat.
     const aliceInbox = await getJson<{ conversations: ConversationInboxItem[] }>(
@@ -52,7 +60,7 @@ describe("phonebook contact conversations", () => {
       (item) => item.id === conversation.conversation.id
     );
     expect(aliceCopy).toMatchObject({ hasHumanRecipient: true });
-    expect(aliceCopy?.participant.networkNodeId).toBe(bobNodeId);
+    expect(aliceCopy?.participant.networkNodeId).toBeNull();
 
     // Reopening from the same contact lands on the same chat rather than starting a second one.
     const again = await postJson<ConversationView>(
@@ -75,6 +83,15 @@ describe("phonebook contact conversations", () => {
       alice.cookie
     );
     expect(fromAlice.conversation.id).toBe(conversation.conversation.id);
+    const refreshed = await getJson<{ conversations: ConversationInboxItem[] }>(
+      app,
+      "/v1/conversations",
+      alice.cookie
+    );
+    expect(
+      refreshed.conversations.find((item) => item.id === conversation.conversation.id)?.participant
+        .networkNodeId
+    ).toBe(aliceNodeId);
     await app.close();
   });
 

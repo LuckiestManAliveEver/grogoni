@@ -537,9 +537,14 @@ export function registerMessagingRoutes(
       }
       const idempotencyKey = parseOptionalString(request.body.idempotencyKey);
       const content = parseConversationMessageContent(request.body.content);
+      // A first message may arrive before the client has loaded its inbox, so the conversation is
+      // resolved server-side to the caller's own personal conversation when omitted. Anything else
+      // - including a blank string - must still name a real conversation explicitly.
       const messageInput = {
         sessionId,
-        conversationId: parseString(request.body.conversationId, "conversationId"),
+        ...(request.body.conversationId === undefined || request.body.conversationId === null
+          ? {}
+          : { conversationId: parseString(request.body.conversationId, "conversationId") }),
         clientMessageId: parseString(request.body.clientMessageId, "clientMessageId"),
         ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
         content,

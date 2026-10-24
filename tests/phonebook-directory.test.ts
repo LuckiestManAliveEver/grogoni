@@ -199,4 +199,11 @@ describe("phonebook directory", () => {
     ]);
     expect(devicePhonebookContactKey(contact("A", null, null))).toBe("name:a");
   });
+  it("does not merge international numbers that share a nine-digit suffix", () => {
+    const merged = mergeDevicePhonebook(
+      [],
+      [contact("US", "+12025550123", "us"), contact("UK", "+442025550123", "uk")]
+    );
+    expect(merged).toHaveLength(2);
+  });
 });

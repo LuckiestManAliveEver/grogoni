@@ -1,0 +1,166 @@
+/** Live Phase 6 acceptance probes. No deployment/config changes. Only disposable fixtures. */
+import assert from "node:assert/strict";
+import { randomInt, randomUUID, webcrypto as crypto } from "node:crypto";
+import { URL } from "node:url";
+import { createRequire } from "node:module";
+import { mkdir, writeFile } from "node:fs/promises";
+import { encryptDirectMessage, decryptDirectMessage } from "/home/kiariejane/Documents/GroGoni/apps/web/src/e2ee.ts";
+import { deleteLiveFixtureAccounts } from "/home/kiariejane/Documents/GroGoni/scripts/live-fixture-cleanup.mjs";
+if (!process.argv.includes("--live"))
+  throw new Error("Pass --live to test production with disposable fixtures.");
+const base = process.env.SMOKE_API_URL ?? "https://grogoni.com/api";
+const runId = randomUUID();
+const dir = `/tmp/phase6-production/${runId}`;
+const device = `phase6-production-${runId}`;
+const requireApi = createRequire(new URL("file:///home/kiariejane/Documents/GroGoni/services/api/package.json"));
+const { Client } = requireApi("pg");
+const accountIds = new Set();
+const businessIds = new Set();
+const steps = [];
+const evidence = { runId, base, startedAt: new Date().toISOString() };
+let browser;
+function log(message) {
+  console.log(`${new Date().toISOString()} ${message}`);
+}
+async function step(name, action) {
+  try {
+    const detail = await action();
+    steps.push({ name, status: "pass", detail });
+    log(`PASS ${name}`);
+    return detail;
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    steps.push({ name, status: "fail", detail });
+    log(`FAIL ${name}: ${detail}`);
+    return null;
+  }
+}
+function unverified(name, detail) {
+  steps.push({ name, status: "unverified", detail });
+}
+async function call(cookie, path, method = "GET", body) {
+  const res = await fetch(base + path, {
+    method,
+    headers: {
+      cookie,
+      origin: "https://grogoni.com",
+      ...(body === undefined ? {} : { "content-type": "application/json" }),
+      "x-grogoni-device-id": device,
+      "x-region": "us-east-1"
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    signal: globalThis.AbortSignal.timeout(90000)
+  });
+  const json = await res.json().catch(() => ({}));
+  return {
+    status: res.status,
+    path,
+    json,
+    cookie: res.headers
+      .getSetCookie()
+      .map((value) => value.split(";")[0])
+      .join("; ")
+  };
+}
+function ok(res) {
+  assert.equal(
+    res.status,
+    200,
+    `${res.path}: HTTP ${res.status} ${res.json.code ?? res.json.message ?? ""}`
+  );
+  return res.json;
+}
+async function signup() {
+  const phone = `+442079460${String(randomInt(1000)).padStart(3, "0")}`;
+  const pin = String(randomInt(1000, 9999));
+  const res = await call("", "/auth/pin/signup", "POST", { method: "phone", contact: phone, pin });
+  const body = ok(res);
+  assert.ok(body.account?.id && res.cookie, "Missing newly created account/session");
+  accountIds.add(body.account.id);
+  return { cookie: res.cookie, accountId: body.account.id, userId: body.user?.id, phone, pin };
+}
+async function identity(cookie) {
+  const pair = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, [
+    "deriveBits"
+  ]);
+  const jwk = await crypto.subtle.exportKey("jwk", pair.publicKey);
+  const publicKey = {
+    kty: "EC",
+    crv: "P-256",
+    x: jwk.x,
+    y: jwk.y,
+    ext: true
+  };
+  const id = `phase6-${randomUUID()}`;
+  const registered = ok(
+    await call(cookie, "/v1/e2ee/devices", "POST", {
+      deviceId: id,
+      label: "Disposable Phase 6 test device",
+      publicKey
+    })
+  );
+  return {
+    deviceId: registered.id ?? registered.device?.id ?? id,
+    privateKey: pair.privateKey,
+    publicKey
+  };
+}
+async function cleanup() {
+  if (!accountIds.size) return { accounts: 0 };
+  const client = new Client({
+    connectionString: process.env.DIRECT_DATABASE_URL ?? process.env.DATABASE_URL,
+    connectionTimeoutMillis: 15000
+  });
+  await client.connect();
+  try {
+    await client.query("begin");
+    await client.query("select pg_advisory_xact_lock(hashtext('grogoni.cp2.normalized_store'))");
+    await deleteLiveFixtureAccounts(client, {
+      accountIds: [...accountIds],
+      businessIds: [...businessIds]
+    });
+    await client.query("commit");
+    const remaining = await client.query(
+      "select count(*)::int as n from accounts where id = any($1::uuid[])",
+      [[...accountIds]]
+    );
+    assert.equal(remaining.rows[0].n, 0);
+    return { removedAccounts: accountIds.size, removedBusinesses: businessIds.size };
+  } catch (error) {
+    await client.query("rollback").catch(() => {});
+    throw error;
+  } finally {
+    await client.end();
+  }
+}
+
+await mkdir(dir, { recursive:true });
+try {
+ const a=await signup(), b=await signup();
+ const sync=()=>call(a.cookie,"/network/sync/contacts","POST",{contacts:[{name:"Privacy fixture",phone:b.phone}]});
+ await step("contact discovery and private preferences survive requests",async()=>{
+  ok(await sync());
+  ok(await call(b.cookie,"/network/privacy","PATCH",{discoverable:false}));
+  assert.equal(ok(await call(b.cookie,"/network/privacy")).discoverable,false);
+  const hidden=await call(a.cookie,"/v1/conversations","POST",{kind:"personal",activeShopId:null,recipient:b.phone});
+  assert.ok([403,404].includes(hidden.status),JSON.stringify({status:hidden.status,code:hidden.json.code}));
+  ok(await call(b.cookie,"/network/privacy","PATCH",{discoverable:true}));
+  ok(await sync());
+ });
+ await step("symmetric contact block persists and prevents reverse creation",async()=>{
+  const context=ok(await call(b.cookie,"/v1/session/context"));
+  const userId=b.userId ?? context.user?.id;
+  assert.ok(userId,"fixture user ID required");
+  ok(await call(a.cookie,"/network/blocks/"+userId,"PUT",{}));
+  assert.ok(ok(await call(a.cookie,"/network/privacy")).blockedContacts.some(x=>x.userId===userId));
+  const reverse=await call(b.cookie,"/v1/conversations","POST",{kind:"personal",activeShopId:null,recipient:a.phone});
+  assert.ok([403,404].includes(reverse.status),JSON.stringify({status:reverse.status,code:reverse.json.code}));
+  ok(await call(a.cookie,"/network/blocks/"+userId,"DELETE",{}));
+  ok(await call(b.cookie,"/v1/conversations","POST",{kind:"personal",activeShopId:null,recipient:a.phone}));
+ });
+}finally{
+ await step("remove and verify disposable privacy fixtures",cleanup);
+ await writeFile(dir+"/privacy-report.json",JSON.stringify({base,steps},null,2));
+ console.log("Privacy evidence: "+dir+"/privacy-report.json");
+ if(steps.some(s=>s.status==="fail"))process.exitCode=1;
+}

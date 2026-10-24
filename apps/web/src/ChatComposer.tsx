@@ -30,6 +30,7 @@ export function ChatComposer({
   mode,
   activeAgentName,
   audienceLabel,
+  agentControlsAvailable = true,
   pendingAttachments,
   replyToMessageId,
   selectedConversationTitle,
@@ -71,7 +72,7 @@ export function ChatComposer({
   const [channelPickerOpen, setChannelPickerOpen] = useState(false);
   const [externalAppsOpen, setExternalAppsOpen] = useState(false);
   const messageInputRef = useRef<HTMLTextAreaElement | null>(null);
-  const hashtagQuery = runtimeHashtagQuery(liveDraft);
+  const hashtagQuery = agentControlsAvailable ? runtimeHashtagQuery(liveDraft) : null;
   const sellerHashtagCapabilities = [...chatModuleCommands, ...runtimeHashtagCapabilities];
   const matchingHashtagCapabilities =
     hashtagQuery === null
@@ -216,9 +217,11 @@ export function ChatComposer({
               }
             }}
             placeholder={
-              mode === "seller"
-                ? "Ask your agent, or type # to call a capability"
-                : "Ask Grogoni..."
+              !agentControlsAvailable
+                ? "Write a message"
+                : mode === "seller"
+                  ? "Ask your agent, or type # to call a capability"
+                  : "Ask Grogoni..."
             }
           />
         </label>
@@ -234,13 +237,15 @@ export function ChatComposer({
             <span className="attach-icon" aria-hidden="true" />
             <span className="visually-hidden">More</span>
           </button>
-          <ComposerModelSwitcher
-            agent={agent}
-            business={business}
-            onAgentChange={onAgentChange}
-            onOpenAgentProfile={onOpenAgentProfile}
-            onBeforeOpen={() => messageInputRef.current?.blur()}
-          />
+          {agentControlsAvailable ? (
+            <ComposerModelSwitcher
+              agent={agent}
+              business={business}
+              onAgentChange={onAgentChange}
+              onOpenAgentProfile={onOpenAgentProfile}
+              onBeforeOpen={() => messageInputRef.current?.blur()}
+            />
+          ) : null}
           <div className="composer-bottom-row-trailing">
             {isBrowserGenerating ? (
               <button
@@ -303,7 +308,9 @@ export function ChatComposer({
           sendViaLabel={sendViaLabel}
           onClose={() => setMessageActionsOpen(false)}
           onAttachFiles={() => runMessageAction(() => fileInputRef.current?.click())}
-          onOpenCommand={() => runMessageAction(() => updateLiveDraft("#"))}
+          {...(agentControlsAvailable
+            ? { onOpenCommand: () => runMessageAction(() => updateLiveDraft("#")) }
+            : {})}
           onSendSms={() =>
             runMessageAction(() =>
               openSmsHandoff(

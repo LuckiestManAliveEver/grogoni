@@ -11,7 +11,7 @@ import { hostedJsonRequest, hostedEndpoint } from "../inference/hosted-http.js";
 import { DaemonTaskError, type DaemonExecutor } from "./worker.js";
 import type { DaemonPayload } from "./task-store.js";
 import { defaultGrogoniMaxPromptBytes } from "../agent-harness/grogoni-agent-runtime-adapter.js";
-import type { RuntimeModelPrompt } from "@grogoni/shared-types";
+import type { RuntimeModelPrompt, RuntimeModelConversationMessage } from "@grogoni/shared-types";
 
 /** The exact prompt an agent task sends; the gateway sizes it before accepting the task. */
 export function daemonAgentPrompt(message: string): RuntimeModelPrompt {
@@ -92,6 +92,9 @@ export function createDaemonExecutor(
      * function invocation; without it, jobs are triggered over HTTP at GROGONI_API_URL.
      */
     runMaintenance?: (job: string, signal: AbortSignal) => Promise<unknown>;
+    loadConversationHistory?: (
+      task: Parameters<DaemonExecutor>[0]
+    ) => Promise<RuntimeModelConversationMessage[]>;
   } = {}
 ): DaemonExecutor {
   const models = createOpenRouterRuntime(environment);
@@ -171,6 +174,13 @@ export function createDaemonExecutor(
       signal
     };
     const now = new Date().toISOString();
+    const origin = payload.conversation;
+    if (origin && !options.loadConversationHistory)
+      throw new DaemonTaskError("CONVERSATION_CONTEXT_UNAVAILABLE", false);
+    const history = origin ? await options.loadConversationHistory!(task) : [];
+    signal.throwIfAborted();
+    const prompt = daemonAgentPrompt(payload.message);
+    if (origin) prompt.conversationHistory = history;
     const result = await agentAdapter.execute({
       agent: {
         id: context.agentId,
@@ -190,10 +200,10 @@ export function createDaemonExecutor(
       bindingId: `daemon:${task.id}`,
       executionHostId: null,
       modelId,
-      conversationId: task.id,
+      conversationId: origin?.id ?? task.id,
       shopId: context.shopId,
       userMessage: payload.message,
-      prompt: daemonAgentPrompt(payload.message),
+      prompt,
       model: runtimeProviderFromAdapter({ adapter: tracked, context }),
       allowedTools: [],
       signal

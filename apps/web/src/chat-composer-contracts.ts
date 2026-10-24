@@ -15,6 +15,7 @@ export interface ChatComposerProps {
   mode: GrogoniMode;
   activeAgentName: string;
   audienceLabel?: string | undefined;
+  agentControlsAvailable?: boolean;
   pendingAttachments: ChatAttachment[];
   replyToMessageId: string | null;
   selectedConversationTitle: string;

@@ -1,0 +1,26 @@
+{
+  "base": "https://grogoni.com/api",
+  "steps": [
+    {
+      "name": "foreign account cannot read or write direct and daemon conversations",
+      "status": "pass"
+    },
+    {
+      "name": "business agent consent and real response in customer-created thread",
+      "status": "pass",
+      "detail": {
+        "modelId": "gpt-6-luna",
+        "responseSharedWithCustomer": true
+      }
+    },
+    {
+      "name": "remove and verify isolated authorization fixtures",
+      "status": "pass",
+      "detail": {
+        "removedAccounts": 3,
+        "removedBusinesses": 1,
+        "lockHeldMs": 6297
+      }
+    }
+  ]
+}

@@ -52,6 +52,8 @@ export default defineConfig({
   webServer: {
     command: "pnpm --filter @grogoni/web dev",
     env: {
+      VITE_API_BASE_URL: "http://127.0.0.1:4000",
+      VITE_API_URL: "http://127.0.0.1:4000",
       VITE_INFERENCE_CLIENT_FIRST: "true",
       VITE_INFERENCE_CLOUD_FALLBACK_ENABLED: "true"
     },

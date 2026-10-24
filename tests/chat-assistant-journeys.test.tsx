@@ -67,7 +67,9 @@ describe("buyer and seller assistant journeys", () => {
         const path = new URL(url, "http://localhost").pathname;
         const method = init?.method ?? "GET";
         const body = init?.body ? JSON.parse(String(init.body)) : {};
-        requests.push({ path, method, body });
+        // Read-only recovery runs on mount; these journeys assert submitted actions and routing.
+        if (!(path === "/v1/daemon/tasks" && method === "GET"))
+          requests.push({ path, method, body });
         let response: unknown;
         if (path === "/v1/daemon/tasks" && method === "POST")
           response = { task: { ...task(), runAt: body.runAt ?? task().runAt } };

@@ -1,4 +1,3 @@
-import type { ConversationExecutionSummary, PublicDaemonTask } from "@grogoni/shared-types";
 /**
  * Eighth slice of in-process domain modularization for the Cp2Store monolith (see
  * docs/architecture/domain-modularization-roadmap.md). Owns every messaging/channels Map:
@@ -65,6 +64,7 @@ import type { ConversationExecutionSummary, PublicDaemonTask } from "@grogoni/sh
  *   reference `nativeSmsTransportReadiness`/`queueNativeSmsCommand`/`emailTransportReadiness`/
  *   `sendEmailTransport`, all of which live here now.
  */
+import { contactIsBlocked } from "../network/shared.js";
 import { helpConversationId, helpGuides, helpGuideText } from "./help-guides.js";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type { InventoryTaskController } from "../agent-runtime/inventory-task-controller.js";
@@ -93,6 +93,7 @@ import type {
   ConnectedMailboxSyncSummary,
   ConversationAttachment,
   ConversationChannelSummary,
+  ConversationExecutionSummary,
   ConversationInboxItem,
   ConversationKind,
   ConversationMessageAuthor,
@@ -123,6 +124,7 @@ import type {
   PlatformIdentitySummary,
   ProductSummary,
   ProviderUpdateReceiptSummary,
+  PublicDaemonTask,
   PublicStorefrontMessageSummary,
   PushSubscriptionSummary,
   RecycleBinItemSummary,
@@ -222,13 +224,6 @@ export const RECYCLE_BIN_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
  * hold before new deletions are refused with `recycle_bin_full` and an admin has to empty it.
  */
 export const RECYCLE_BIN_CAPACITY_BYTES = 5 * 1024 * 1024;
-/**
- * The prefix a `recipient` carries to open a conversation with a phonebook node
- * (`network-node:<id>`), instead of a phone number or email address. Phone Contacts uses it to
- * start a chat with an on-Grogoni contact whose number it only ever sent as a hash. The same
- * prefix lives in apps/web/src/network-contact-conversations.ts.
- */
-export const networkNodeRecipientPrefix = "network-node:";
 const systemChannelDelivery = Symbol("systemChannelDelivery");
 
 export interface MessagingDomainDeps {
@@ -354,6 +349,7 @@ export interface MessagingDomainDeps {
   quarantinedBusinessIds: Set<string>;
   resolveContactAccount: (channel: AuthChannel, destination: string) => string | undefined;
   resolvePhonebookAccount: (ownerUserId: string, nodeId: string) => string | null;
+  findPhonebookNode: (ownerUserId: string, counterpartAccountId: string) => string | null;
   verifiedNotificationEmail: (accountId: string) => string | undefined;
   workspaceRoot?: string;
   workspaceDeliveryMaxFileBytes?: number;
@@ -777,6 +773,7 @@ export class MessagingDomain {
       if (!accountId)
         throw new Cp2Error(404, "recipient_not_found", "No Grogoni account matches that contact.");
     }
+    if (accountId) this.requireContactAllowed(session.user.id, accountId, true);
     const agentId = input.agent ? `account-${session.account.id}-agent` : null;
     const existing = [...this.conversationParticipants.values()].some(
       (participant) =>
@@ -886,15 +883,11 @@ export class MessagingDomain {
     }
 
     let recipientAccountId: string | null = null;
-    // Kept alongside the account so the two sides' participants can carry it; null for a number
-    // or email recipient, which resolves by destination instead.
-    let recipientNetworkNodeId: string | null = null;
     if (input.recipient?.trim()) {
-      if (input.recipient.startsWith(networkNodeRecipientPrefix)) {
-        recipientNetworkNodeId = input.recipient.slice(networkNodeRecipientPrefix.length).trim();
+      if (input.recipient.startsWith("network-node:")) {
         recipientAccountId = this.deps.resolvePhonebookAccount(
           session.user.id,
-          recipientNetworkNodeId
+          input.recipient.slice("network-node:".length).trim()
         );
       } else {
         const channel: AuthChannel = input.recipient.includes("@") ? "email" : "phone";
@@ -904,6 +897,7 @@ export class MessagingDomain {
       if (recipientAccountId === null) {
         throw new Cp2Error(404, "recipient_not_found", "No Grogoni account matches that contact.");
       }
+      this.requireContactAllowed(session.user.id, recipientAccountId, true);
       if (recipientAccountId === session.account.id) {
         throw new Cp2Error(400, "recipient_invalid", "Choose another Grogoni account.");
       }
@@ -990,7 +984,6 @@ export class MessagingDomain {
       kind: input.kind,
       activeShopId: input.activeShopId,
       recipientAccountId,
-      networkNodeId: recipientNetworkNodeId,
       title: input.title?.trim() || null,
       ...(input.taskConversationId === undefined
         ? {}
@@ -2929,7 +2922,10 @@ export class MessagingDomain {
               message.deletedAt == null &&
               Date.parse(message.createdAt) > lastRead
           ).length,
-          participant: this.participantView(participant),
+          participant: {
+            ...this.participantView(participant),
+            networkNodeId: this.contactNodeForConversation(conversation.id, session.account.id)
+          },
           hasHumanRecipient: this.conversationHasHumanRecipient(conversation.id, session.account.id)
         } satisfies ConversationInboxItem;
       })
@@ -3339,9 +3335,15 @@ export class MessagingDomain {
     return handoff;
   }
 
+  /**
+   * `conversationId` is optional only so a client can send its very first message before it has
+   * loaded its inbox: the session's own durable personal (assistant) conversation is opened - and
+   * created if needed - instead. `requireAccountConversation` then applies the same ownership check
+   * to it as to any explicit id, so this can never reach another account's conversation.
+   */
   createConversationMessage(input: {
     sessionId: string | null;
-    conversationId: string;
+    conversationId?: string;
     clientMessageId: string;
     idempotencyKey?: string;
     content: ConversationMessageContent;
@@ -3353,37 +3355,58 @@ export class MessagingDomain {
     selectedChannel?: MessageChannel;
     now?: Date;
   }): ConversationMessageSummary {
-    const actor = this.deps.requirePinVerifiedSession(input.sessionId, input.now ?? new Date());
-    const conversation = this.requireAccountConversation(input.conversationId, actor.account.id);
-    if (input.author === "agent") {
-      // Explicit MCP secure endpoints remain participant-authorized encrypted transport.
-      // A direct conversation still cannot receive plaintext agent output.
-      if (this.conversationType(conversation) === "DIRECT" && input.content.type !== "encrypted")
-        throw new Cp2Error(
-          403,
-          "agent_message_forbidden",
-          "Direct conversations contain messages from their participants."
-        );
-      if (conversation.kind !== "personal" && conversation.activeShopId) {
-        this.deps.requireAuthorizedSession(
-          input.sessionId,
-          conversation.activeShopId,
-          "customer:write",
-          input.now
-        );
-        if (!conversation.businessAgentEnabled)
-          throw new Cp2Error(409, "business_agent_disabled", "The business agent is disabled.");
-      }
+    const now = input.now ?? new Date();
+    const actor = this.deps.requirePinVerifiedSession(input.sessionId, now);
+    const conversation =
+      input.conversationId === undefined
+        ? this.ensurePersonalAccountConversation({
+            accountId: actor.account.id,
+            userId: actor.user.id,
+            now
+          })
+        : this.requireAccountConversation(input.conversationId, actor.account.id);
+    if (input.author === "agent" && conversation.kind !== "personal" && conversation.activeShopId) {
+      this.deps.requireAuthorizedSession(
+        input.sessionId,
+        conversation.activeShopId,
+        "customer:write",
+        now
+      );
+      if (!conversation.businessAgentEnabled)
+        throw new Cp2Error(409, "business_agent_disabled", "The business agent is disabled.");
     }
-    return this.createMessageForActor(input, actor);
+    return this.createMessageForActor({ ...input, conversationId: conversation.id }, actor);
   }
 
+  /**
+   * The one message writer. `createConversationMessage` reaches it with the caller's pinned
+   * session; the daemon bridge reaches it with the session of the account that owns the task, so a
+   * server-owned reply lands in the same conversation with the same checks as a typed one.
+   */
   private createMessageForActor(
-    input: Parameters<MessagingDomain["createConversationMessage"]>[0],
+    input: {
+      sessionId: string | null;
+      conversationId: string;
+      clientMessageId: string;
+      idempotencyKey?: string;
+      content: ConversationMessageContent;
+      author?: ConversationMessageAuthor;
+      replyToMessageId?: string | null;
+      forwardedFromMessageId?: string | null;
+      clientTimestamp?: string | null;
+      queuedAt?: string | null;
+      selectedChannel?: MessageChannel;
+      now?: Date;
+    },
     session: Pick<AuthSessionView, "account" | "user">
   ): ConversationMessageSummary {
     const now = input.now ?? new Date();
     const conversation = this.requireAccountConversation(input.conversationId, session.account.id);
+    if (conversation.kind === "personal")
+      for (const accountId of this.humanConversationAccountIds(conversation.id)) {
+        if (accountId !== session.account.id)
+          this.requireContactAllowed(session.user.id, accountId, false);
+      }
     const clientMessageId = input.clientMessageId.trim();
 
     if (clientMessageId.length < 8 || clientMessageId.length > 120) {
@@ -3443,10 +3466,8 @@ export class MessagingDomain {
     }
     if (input.content.type === "owner-controls") {
       this.deps.requireMembership(input.content.shopId, session.user.id);
-      const context = this.deps.ensureGrogoniSessionContext(
-        this.deps.requirePinVerifiedSession(input.sessionId, now),
-        now
-      );
+      // Only owner controls need the session's mode, which a trusted daemon writer never sends.
+      const context = this.deps.ensureGrogoniSessionContext(session as AuthSessionView, now);
 
       if (context.mode !== "seller" || context.activeShopId !== input.content.shopId) {
         throw new Cp2Error(
@@ -3567,7 +3588,10 @@ export class MessagingDomain {
     return message;
   }
 
-  /** Trusted daemon bridge. Never accepts caller-supplied author identities or delivery content. */
+  /**
+   * Trusted daemon bridge. Never accepts caller-supplied author identities or delivery content: the
+   * only account it will write for is the one that owns the task, found through `ownerUserId`.
+   */
   deliverDaemonTask(task: PublicDaemonTask, ownerUserId: string): void {
     const origin = task.payload.kind === "agent" ? task.payload.conversation : undefined;
     if (!origin || task.payload.kind !== "agent") return;
@@ -3588,9 +3612,10 @@ export class MessagingDomain {
       updatedAt: task.updatedAt
     };
     const source = this.messagesForConversation(origin.id).find(
-      (m) => m.clientMessageId === origin.clientMessageId && m.author === "user"
+      (message) => message.clientMessageId === origin.clientMessageId && message.author === "user"
     );
     const attach = (message: ConversationMessageSummary) => {
+      // A newer execution already on the message wins, so an out-of-order update cannot regress it.
       if (message.execution && Date.parse(message.execution.updatedAt) > Date.parse(task.updatedAt))
         return;
       const next = { ...message, execution };
@@ -3634,7 +3659,8 @@ export class MessagingDomain {
 
   async createAgentConversationMessage(input: {
     sessionId: string | null;
-    conversationId: string;
+    /** Omitted means the caller's own personal conversation - see createConversationMessage. */
+    conversationId?: string;
     clientMessageId: string;
     idempotencyKey?: string;
     content: ConversationMessageContent;
@@ -3650,7 +3676,14 @@ export class MessagingDomain {
   }): Promise<AgentConversationMessageResult> {
     const now = input.now ?? new Date();
     const session = this.deps.requirePinVerifiedSession(input.sessionId, now);
-    const conversation = this.requireAccountConversation(input.conversationId, session.account.id);
+    const conversation =
+      input.conversationId === undefined
+        ? this.ensurePersonalAccountConversation({
+            accountId: session.account.id,
+            userId: session.user.id,
+            now
+          })
+        : this.requireAccountConversation(input.conversationId, session.account.id);
     if (conversation.activeShopId !== null && conversation.activeShopId !== input.businessId) {
       throw new Cp2Error(
         403,
@@ -3680,7 +3713,7 @@ export class MessagingDomain {
 
     const message = this.createConversationMessage({
       sessionId: input.sessionId,
-      conversationId: input.conversationId,
+      conversationId: conversation.id,
       clientMessageId: input.clientMessageId,
       ...(input.idempotencyKey === undefined ? {} : { idempotencyKey: input.idempotencyKey }),
       content: input.content,
@@ -3759,9 +3792,7 @@ export class MessagingDomain {
       runtime = await this.deps.createRuntimeTurn({
         sessionId: input.sessionId,
         businessId: input.businessId,
-        // A business inbox is customer-owned; execute with the authorized member's shop
-        // runtime instead of adopting the customer's personal account binding.
-        ...(conversation.kind === "personal" ? { conversationId: conversation.id } : {}),
+        conversationId: conversation.id,
         ...(input.runtimeSessionId === undefined
           ? {}
           : { runtimeSessionId: input.runtimeSessionId }),
@@ -3869,6 +3900,43 @@ export class MessagingDomain {
       now
     );
     return deliveredMessage;
+  }
+
+  daemonConversationHistory(
+    ownerUserId: string,
+    conversationId: string,
+    clientMessageId: string,
+    submittedAt: Date
+  ): RuntimeModelConversationMessage[] {
+    const owner = this.deps.users.get(ownerUserId);
+    if (!owner) throw new Cp2Error(404, "conversation_not_found", "Conversation was not found.");
+    const conversation = this.requireAccountConversation(conversationId, owner.accountId);
+    if (
+      this.conversationType(conversation) !== "DAEMON" ||
+      conversation.accountId !== owner.accountId
+    )
+      throw new Cp2Error(404, "conversation_not_found", "Conversation was not found.");
+    const messages = this.messagesForConversation(conversationId);
+    const current = messages.findIndex(
+      (message) => message.clientMessageId === clientMessageId && message.author === "user"
+    );
+    const previous =
+      current >= 0
+        ? messages.slice(0, current)
+        : messages.filter((message) => Date.parse(message.createdAt) < submittedAt.getTime());
+    return previous
+      .filter((message) => !message.deletedAt && message.content.type === "text")
+      .slice(-24)
+      .flatMap((message): RuntimeModelConversationMessage[] =>
+        message.content.type === "text"
+          ? [
+              {
+                role: message.author === "agent" ? "assistant" : "user",
+                content: message.content.text.slice(0, 1000)
+              }
+            ]
+          : []
+      );
   }
 
   private runtimeConversationHistory(
@@ -4092,7 +4160,7 @@ export class MessagingDomain {
     this.conversationParticipants.set(participant.id, nextParticipant);
     if (input.title !== undefined) {
       this.conversations.set(conversation.id, {
-        ...conversation,
+        ...(this.conversations.get(conversation.id) ?? conversation),
         title: input.title?.trim() || null,
         updatedAt: now.toISOString()
       });
@@ -4108,6 +4176,14 @@ export class MessagingDomain {
         }
       }
     }
+    if (input.agentEnabled !== undefined || input.title !== undefined)
+      this.recordConversationSyncForParticipants(
+        conversation.id,
+        "conversations",
+        conversation.id,
+        this.conversations.get(conversation.id) ?? conversation,
+        now
+      );
     this.recordConversationSyncForParticipants(
       conversation.id,
       "conversation_participants",
@@ -5031,12 +5107,6 @@ export class MessagingDomain {
     kind: ConversationKind;
     activeShopId: string | null;
     recipientAccountId?: string | null;
-    /**
-     * The phonebook node a direct conversation was opened from. Mirrored onto both account
-     * participants so either side's Phone Contacts finds the chat again by node id, even though
-     * neither side ever stores the other's number in the clear.
-     */
-    networkNodeId?: string | null;
     title?: string | null;
     runtimeBindingId?: string | null;
     helpTopic?: string;
@@ -5087,7 +5157,6 @@ export class MessagingDomain {
         accountId: input.accountId,
         businessId: null,
         agentId: null,
-        ...(input.networkNodeId ? { networkNodeId: input.networkNodeId } : {}),
         displayName: this.deps.users.get(input.userId)?.displayName ?? null,
         lastReadAt: input.now.toISOString(),
         archivedAt: null,
@@ -5116,7 +5185,6 @@ export class MessagingDomain {
         accountId: input.recipientAccountId,
         businessId: null,
         agentId: null,
-        ...(input.networkNodeId ? { networkNodeId: input.networkNodeId } : {}),
         displayName: recipientUserId
           ? (this.deps.users.get(recipientUserId)?.displayName ?? null)
           : null,
@@ -5409,6 +5477,34 @@ export class MessagingDomain {
     ];
   }
 
+  private requireContactAllowed(
+    ownerUserId: string,
+    targetAccountId: string,
+    discovery: boolean
+  ): void {
+    const targetId = this.deps.userByAccount.get(targetAccountId);
+    if (
+      !targetId ||
+      contactIsBlocked(this.deps.users, ownerUserId, targetId) ||
+      (discovery && this.deps.users.get(targetId)?.contactDiscoveryEnabled === false)
+    )
+      throw new Cp2Error(
+        404,
+        "recipient_not_found",
+        "No available Grogoni account matches that contact."
+      );
+  }
+
+  private contactNodeForConversation(conversationId: string, accountId: string): string | null {
+    const ownerUserId = this.deps.userByAccount.get(accountId);
+    const counterpart = this.humanConversationAccountIds(conversationId).filter(
+      (id) => id !== accountId
+    );
+    return ownerUserId && counterpart.length === 1
+      ? this.deps.findPhonebookNode(ownerUserId, counterpart[0]!)
+      : null;
+  }
+
   private conversationHasHumanRecipient(conversationId: string, callerAccountId: string): boolean {
     if (this.conversations.get(conversationId)?.kind !== "personal") return false;
     return this.humanConversationAccountIds(conversationId).some(
@@ -5556,10 +5652,19 @@ export class MessagingDomain {
     delivery: MessageNotificationDelivery,
     now: Date
   ): Promise<MessageNotificationDelivery> {
-    const targetConversation = this.conversations.get(delivery.conversationId);
+    const target = this.conversations.get(delivery.conversationId);
+    const recipientUser = this.deps.userByAccount.get(delivery.accountId);
+    const blocked =
+      target?.kind === "personal" &&
+      recipientUser &&
+      this.humanConversationAccountIds(target.id).some((accountId) => {
+        const otherUser = this.deps.userByAccount.get(accountId);
+        return otherUser && contactIsBlocked(this.deps.users, recipientUser, otherUser);
+      });
     if (
-      !targetConversation ||
-      targetConversation.deletedAt != null ||
+      !target ||
+      target.deletedAt != null ||
+      blocked ||
       this.accountConversationParticipant(delivery.conversationId, delivery.accountId) === null
     ) {
       const expired: MessageNotificationDelivery = {

@@ -73,6 +73,8 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
     viewport.addEventListener("change", change);
     return () => viewport.removeEventListener("change", change);
   }, []);
+  const currentAccountId = useRef(deps.session?.account.id ?? null);
+  currentAccountId.current = deps.session?.account.id ?? null;
   const helpInitializedForAccount = useRef<string | null>(null);
   const [conversationInbox, setConversationInbox] = useState<ConversationInboxItem[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
@@ -116,22 +118,25 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
       return;
     }
     try {
-      if (helpInitializedForAccount.current !== session.account.id) {
-        try {
-          await postJson("/v1/help", {});
-          helpInitializedForAccount.current = session.account.id;
-        } catch {
-          setStatusMessage("Help is temporarily unavailable.");
-        }
-      }
       const response = await getJson<{ conversations: ConversationInboxItem[] }>(
         "/v1/conversations",
-        (refreshed) =>
-          setConversationInbox(
-            refreshed.conversations.filter((item) => !item.taskParentConversationId)
-          )
+        (refreshed) => {
+          if (currentAccountId.current === session.account.id)
+            setConversationInbox(
+              refreshed.conversations.filter((item) => !item.taskParentConversationId)
+            );
+        }
       );
+      if (currentAccountId.current !== session.account.id) return;
       setConversationInbox(response.conversations.filter((item) => !item.taskParentConversationId));
+      // Help initialization must not hold the primary inbox behind a separate request.
+      if (helpInitializedForAccount.current !== session.account.id) {
+        helpInitializedForAccount.current = session.account.id;
+        void postJson("/v1/help", {}).catch(() => {
+          helpInitializedForAccount.current = null;
+          setStatusMessage("Help is temporarily unavailable.");
+        });
+      }
       const selectedId =
         preferredConversationId !== null &&
         response.conversations.some((conversation) => conversation.id === preferredConversationId)
@@ -175,6 +180,7 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
       return;
     }
     const view = await getJson<ConversationView>(`/v1/conversations/${conversationId}`);
+    if (currentAccountId.current !== session.account.id) return;
     setActiveConversation(view);
     setIsContactTyping((view.typing ?? []).some((typing) => typing.actorId !== session.user.id));
     const mapped = await Promise.all(

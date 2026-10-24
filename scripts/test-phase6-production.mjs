@@ -54,6 +54,7 @@ async function call(cookie, path, method = "GET", body) {
   const json = await res.json().catch(() => ({}));
   return {
     status: res.status,
+    requestId: res.headers.get("x-request-id"),
     path,
     json,
     cookie: res.headers
@@ -439,9 +440,14 @@ try {
             }
           })
         );
+        evidence.businessRuntime = {
+          processing: res.processing,
+          model: res.runtime?.turn?.model,
+          replyText: res.agentMessage?.content?.text ?? null
+        };
         assert.ok(
           res.agentMessage?.content?.text?.includes("PHASE6-BUSINESS"),
-          "No real business agent response"
+          `No real business agent response: ${JSON.stringify(evidence.businessRuntime)}`
         );
         return { model: res.runtime?.turn?.model?.modelId, messageId: res.agentMessage.id };
       }
@@ -795,15 +801,17 @@ try {
       const browserInbox = await page.request.get(`${base}/v1/conversations`);
       assert.equal(browserInbox.status(), 200, "Authenticated browser inbox request failed");
       await page.waitForFunction(
-        () => globalThis.document.querySelectorAll(".conversation-item").length > 0,
-        {},
-        { timeout: 30000 }
+        (ids) =>
+          ids.every((id) => globalThis.document.querySelector(`[data-conversation-id="${id}"]`)),
+        [daemonId, directId, businessId].filter(Boolean),
+        { timeout: 60000 }
       );
       await page.reload({ waitUntil: "domcontentloaded" });
       await page.waitForFunction(
-        () => globalThis.document.querySelectorAll(".conversation-item").length > 0,
-        {},
-        { timeout: 30000 }
+        (ids) =>
+          ids.every((id) => globalThis.document.querySelector(`[data-conversation-id="${id}"]`)),
+        [daemonId, directId, businessId].filter(Boolean),
+        { timeout: 60000 }
       );
       const labels = await page.locator(".conversation-item .session-badge").allTextContents();
       await page.screenshot({ path: `${dir}/messenger.png`, fullPage: true });

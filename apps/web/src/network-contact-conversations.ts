@@ -11,12 +11,9 @@ import type { DevicePhonebookContact } from "./phonebook-device-cache";
  * ("Njeri Kamau"). Without this pairing, tapping a contact in Phone Contacts and then opening
  * Message history looked like two different people.
  *
- * The key both lists already share is the phonebook node id: Phone Contacts lists the on-Grogoni
- * people a sync discovered (`buildPhonebookDirectory`'s `OnGrogoniEntry.nodeId`), and the server
- * mirrors that node id onto both participants of a conversation opened from it
- * (`ConversationParticipantSummary.networkNodeId`, set by `MessagingDomain.createConversation`).
- * Nothing here sends raw numbers, and no match is made on an unverified name alone. Everything is
- * pure so it stays testable without a browser.
+ * The server resolves each viewer's own phonebook node into the inbox participant view.
+ * Private node IDs are never copied into another account's shared participant record.
+ * Only an explicit contact selection/import sends raw identifiers for secure server matching.
  */
 
 /**
@@ -99,9 +96,8 @@ export function contactDestination(contact: DevicePhonebookContact): string | nu
 }
 
 /**
- * True when two device contacts designate the same number or address. Phone numbers compare on
- * their last nine digits (as `destinationKey` does for invites): "+254 722 000 101" and
- * "0722 000 101" are the same person.
+ * True when two contacts have the same complete normalized phone identity or email address.
+ * International country codes are preserved; national numbers use the application's default region.
  */
 export function sameContactDestination(
   left: Pick<DevicePhonebookContact, "phone" | "email">,

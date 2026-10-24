@@ -212,6 +212,7 @@ export function ConversationListPanel({
       ) : null}
       <div className="conversation-list">
         <article
+          data-conversation-id={pinnedAgent?.id}
           className={`conversation-item pinned-agent ${pinnedAgent?.id === activeConversationId ? "active" : ""}`}
         >
           <button
@@ -233,6 +234,7 @@ export function ConversationListPanel({
             <span className="conversation-copy">
               <strong>{agentName}</strong>
               <small>Pinned agent</small>
+              {pinnedAgent ? <span className="session-badge">DAEMON</span> : null}
             </span>
           </button>
         </article>
@@ -258,6 +260,7 @@ export function ConversationListPanel({
             <article
               className={`conversation-item ${conversation.id === activeConversationId ? "active" : ""}`}
               key={conversation.id}
+              data-conversation-id={conversation.id}
             >
               <button
                 className="conversation-select"

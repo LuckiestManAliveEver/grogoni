@@ -228,6 +228,9 @@ export interface UserSummary {
   phoneUpdatedAt?: string | null;
   phoneSource?: "phone_login" | "shop_registration" | null;
   publicPhoneEnabled?: boolean;
+  /** Private account preferences, persisted in the existing user record. */
+  contactDiscoveryEnabled?: boolean;
+  blockedContactUserIds?: string[];
   emailAddress?: string | null;
   emailVerificationStatus?: "unverified" | "verified" | null;
 }
@@ -655,13 +658,8 @@ export interface ConversationParticipantSummary {
   businessId: string | null;
   agentId: string | null;
   externalIdentityId?: string | null;
-  /**
-   * For a person-to-person conversation opened from a phonebook node: that node's id, mirrored on
-   * both sides' participants. Phone Contacts shows people by the owner's saved name ("Mama
-   * Njeri"), so this is how the contact list and the conversation inbox agree on who they mean
-   * without sending raw numbers or guessing from a display name. See
-   * apps/web/src/network-contact-conversations.ts.
-   */
+  /** Owner-scoped phonebook association in the caller's inbox projection only.
+   * Never persist or expose another participant's private contact node ID. */
   networkNodeId?: string | null;
   displayName?: string | null;
   lastReadAt?: string | null;

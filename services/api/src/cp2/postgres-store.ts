@@ -367,6 +367,8 @@ const mutatingMethodNames = new Set([
   "setAccountPin",
   "signupWithPhonePin",
   "syncPhoneContacts",
+  "updateNetworkPrivacy",
+  "blockNetworkContact",
   "requestNetworkConnection",
   "respondToNetworkConnection",
   "removeNetworkConnection",
@@ -1714,6 +1716,20 @@ export function buildNormalizedSnapshotSql(
 }
 
 async function loadRelationalCoreSnapshot(pool: Pool, snapshot: Cp2Snapshot): Promise<void> {
+  // Core SQL remains authoritative for identity fields; private preferences live in cp2_users.
+  const privateUserPreferences = new Map(
+    snapshot.users.map((user) => [
+      user.id,
+      {
+        ...(user.contactDiscoveryEnabled === undefined
+          ? {}
+          : { contactDiscoveryEnabled: user.contactDiscoveryEnabled }),
+        ...(user.blockedContactUserIds === undefined
+          ? {}
+          : { blockedContactUserIds: user.blockedContactUserIds })
+      }
+    ])
+  );
   // Each loader fills its own snapshot key, so they run concurrently: boot against a remote
   // database was dominated by ~25 sequential round trips here (~7s at ~350ms per round trip).
   await Promise.all(
@@ -1780,6 +1796,7 @@ async function loadRelationalCoreSnapshot(pool: Pool, snapshot: Cp2Snapshot): Pr
             `
         );
         snapshot.users = usersResult.rows.map((row) => ({
+          ...privateUserPreferences.get(row.id),
           id: row.id,
           accountId: row.account_id,
           displayName: row.display_name,

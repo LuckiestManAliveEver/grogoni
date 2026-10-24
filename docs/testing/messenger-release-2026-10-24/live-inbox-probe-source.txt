@@ -1,0 +1,181 @@
+/** Live Phase 6 acceptance probes. No deployment/config changes. Only disposable fixtures. */
+import assert from "node:assert/strict";
+import { randomInt, randomUUID, webcrypto as crypto } from "node:crypto";
+import { URL } from "node:url";
+import { createRequire } from "node:module";
+import { mkdir, writeFile } from "node:fs/promises";
+import { encryptDirectMessage, decryptDirectMessage } from "/home/kiariejane/Documents/GroGoni/apps/web/src/e2ee.ts";
+import { deleteLiveFixtureAccounts } from "/home/kiariejane/Documents/GroGoni/scripts/live-fixture-cleanup.mjs";
+if (!process.argv.includes("--live"))
+  throw new Error("Pass --live to test production with disposable fixtures.");
+const base = process.env.SMOKE_API_URL ?? "https://grogoni.com/api";
+const runId = randomUUID();
+const dir = `/tmp/phase6-production/${runId}`;
+const device = `phase6-production-${runId}`;
+const requireApi = createRequire(new URL("file:///home/kiariejane/Documents/GroGoni/services/api/package.json"));
+const { Client } = requireApi("pg");
+const accountIds = new Set();
+const businessIds = new Set();
+const steps = [];
+const evidence = { runId, base, startedAt: new Date().toISOString() };
+let browser;
+function log(message) {
+  console.log(`${new Date().toISOString()} ${message}`);
+}
+async function step(name, action) {
+  try {
+    const detail = await action();
+    steps.push({ name, status: "pass", detail });
+    log(`PASS ${name}`);
+    return detail;
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    steps.push({ name, status: "fail", detail });
+    log(`FAIL ${name}: ${detail}`);
+    return null;
+  }
+}
+function unverified(name, detail) {
+  steps.push({ name, status: "unverified", detail });
+}
+async function call(cookie, path, method = "GET", body) {
+  const res = await fetch(base + path, {
+    method,
+    headers: {
+      cookie,
+      origin: "https://grogoni.com",
+      ...(body === undefined ? {} : { "content-type": "application/json" }),
+      "x-grogoni-device-id": device,
+      "x-region": "us-east-1"
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    signal: globalThis.AbortSignal.timeout(90000)
+  });
+  const json = await res.json().catch(() => ({}));
+  return {
+    status: res.status,
+    path,
+    json,
+    cookie: res.headers
+      .getSetCookie()
+      .map((value) => value.split(";")[0])
+      .join("; ")
+  };
+}
+function ok(res) {
+  assert.equal(
+    res.status,
+    200,
+    `${res.path}: HTTP ${res.status} ${res.json.code ?? res.json.message ?? ""}`
+  );
+  return res.json;
+}
+async function signup() {
+  const phone = `+442079460${String(randomInt(1000)).padStart(3, "0")}`;
+  const pin = String(randomInt(1000, 9999));
+  const res = await call("", "/auth/pin/signup", "POST", { method: "phone", contact: phone, pin });
+  const body = ok(res);
+  assert.ok(body.account?.id && res.cookie, "Missing newly created account/session");
+  accountIds.add(body.account.id);
+  return { cookie: res.cookie, accountId: body.account.id, userId: body.user?.id, phone, pin };
+}
+async function identity(cookie) {
+  const pair = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, [
+    "deriveBits"
+  ]);
+  const jwk = await crypto.subtle.exportKey("jwk", pair.publicKey);
+  const publicKey = {
+    kty: "EC",
+    crv: "P-256",
+    x: jwk.x,
+    y: jwk.y,
+    ext: true
+  };
+  const id = `phase6-${randomUUID()}`;
+  const registered = ok(
+    await call(cookie, "/v1/e2ee/devices", "POST", {
+      deviceId: id,
+      label: "Disposable Phase 6 test device",
+      publicKey
+    })
+  );
+  return {
+    deviceId: registered.id ?? registered.device?.id ?? id,
+    privateKey: pair.privateKey,
+    publicKey
+  };
+}
+async function cleanup() {
+  if (!accountIds.size) return { accounts: 0 };
+  const client = new Client({
+    connectionString: process.env.DIRECT_DATABASE_URL ?? process.env.DATABASE_URL,
+    connectionTimeoutMillis: 15000
+  });
+  await client.connect();
+  try {
+    await client.query("begin");
+    await client.query("select pg_advisory_xact_lock(hashtext('grogoni.cp2.normalized_store'))");
+    const lockStart = performance.now();
+    await deleteLiveFixtureAccounts(client, {
+      accountIds: [...accountIds],
+      businessIds: [...businessIds]
+    });
+    await client.query("commit");
+    const lockHeldMs = Math.round(performance.now() - lockStart);
+    const remaining = await client.query(
+      "select count(*)::int as n from accounts where id = any($1::uuid[])",
+      [[...accountIds]]
+    );
+    assert.equal(remaining.rows[0].n, 0);
+    return { removedAccounts: accountIds.size, removedBusinesses: businessIds.size, lockHeldMs };
+  } catch (error) {
+    await client.query("rollback").catch(() => {});
+    throw error;
+  } finally {
+    await client.end();
+  }
+}
+
+
+
+await mkdir(dir,{recursive:true});
+try {
+ const alice=await signup(),owner=await signup();
+ const daemonId=ok(await call(alice.cookie,"/v1/session/context")).conversationId;
+ const directId=ok(await call(alice.cookie,"/v1/conversations","POST",{kind:"personal",activeShopId:null,recipient:owner.phone})).conversation.id;
+ const shop=ok(await call(owner.cookie,"/businesses","POST",{name:"Browser inbox "+runId.slice(0,8),language:"en"})).business;
+ businessIds.add(shop.id);
+ const businessId=ok(await call(alice.cookie,"/v1/conversations","POST",{kind:"storefront",activeShopId:shop.id})).conversation.id;
+ const {chromium}=await import("/home/kiariejane/Documents/GroGoni/node_modules/@playwright/test/index.mjs");
+ browser=await chromium.launch({headless:true});
+ for(const width of [1280,390])await step("saved unified inbox and reload at "+width+"px",async()=>{
+  const context=await browser.newContext({viewport:{width,height:844},extraHTTPHeaders:{"x-grogoni-device-id":device}});
+  try{
+   await context.addCookies(alice.cookie.split("; ").map(value=>{const i=value.indexOf("=");return{name:value.slice(0,i),value:value.slice(i+1),domain:"grogoni.com",path:"/",httpOnly:true,secure:true,sameSite:"Lax"};}));
+   await context.addInitScript(({device})=>{localStorage.setItem("grogoni.device-id.v1",device);localStorage.setItem("grogoni.marketplace-intro.completed.v1","true");},{device});
+   const page=await context.newPage();
+   const errors=[];page.on("pageerror",e=>errors.push(e.message));
+   const verify=async()=>{
+    await page.locator(".messenger-thread").waitFor({timeout:60000});
+    if(width<760)await page.locator(".messenger-thread").evaluate(thread=>{
+     const target=thread.querySelector(".message-list")??thread;
+     target.dispatchEvent(new TouchEvent("touchstart",{bubbles:true,touches:[new Touch({identifier:1,target,clientX:80,clientY:250})]}));
+     target.dispatchEvent(new TouchEvent("touchend",{bubbles:true,touches:[],changedTouches:[new Touch({identifier:1,target,clientX:310,clientY:255})]}));
+    });
+    for(const id of [daemonId,directId,businessId])await page.locator('[data-conversation-id="'+id+'"]').first().waitFor({state:"visible",timeout:60000});
+    assert.equal(await page.getByRole("searchbox",{name:"Search conversations"}).isVisible(),true);
+   };
+   await page.goto("https://grogoni.com/marketplace",{waitUntil:"domcontentloaded",timeout:60000});
+   await verify();await page.reload({waitUntil:"domcontentloaded"});await verify();
+   await page.screenshot({path:dir+"/inbox-"+width+".png",fullPage:true});
+   assert.deepEqual(errors,[]);
+   return{width,allThreeVisible:true,reloaded:true,pageErrors:errors};
+  }finally{await context.close();}
+ });
+}finally{
+ await browser?.close();
+ await step("remove and verify production inbox fixtures",cleanup);
+ await writeFile(dir+"/inbox-report.json",JSON.stringify({base,runId,steps},null,2));
+ console.log("Inbox evidence: "+dir+"/inbox-report.json");
+ if(steps.some(s=>s.status==="fail"))process.exitCode=1;
+}

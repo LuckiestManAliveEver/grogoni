@@ -35,6 +35,42 @@ describe("native daemon executor", () => {
     expect(body.model).toBe("openai/gpt-6-luna");
     expect(body.tools).toBeUndefined();
   });
+  it("loads persisted context at execution and sends it as conversation data", async () => {
+    const request = vi.fn<typeof fetch>(async () =>
+      Response.json({
+        model: "openai/gpt-6-luna",
+        choices: [{ message: { content: '{"type":"response","message":"ALPHA"}' } }]
+      })
+    );
+    vi.stubGlobal("fetch", request);
+    const loadConversationHistory = vi.fn(async () => [
+      { role: "user" as const, content: "Remember ALPHA" }
+    ]);
+    await createDaemonExecutor({ OPENROUTER_API_KEY: "private-test" }, { loadConversationHistory })(
+      {
+        ...task,
+        owner_user_id: "owner-a",
+        payload: {
+          kind: "agent",
+          modelId: "gpt-6-luna",
+          agentAdapterId: "grogoni",
+          message: "What did I ask you to remember?",
+          conversation: {
+            id: "daemon-a",
+            clientMessageId: "source-a",
+            scope: "scope-a",
+            kind: "reply"
+          }
+        }
+      },
+      new AbortController().signal
+    );
+    expect(loadConversationHistory).toHaveBeenCalledOnce();
+    const body = JSON.parse(request.mock.calls[0]![1]!.body as string);
+    expect(body.messages).toContainEqual({ role: "user", content: "Remember ALPHA" });
+    expect(body.messages.at(-1).content).toBe("What did I ask you to remember?");
+    expect(body.tools).toBeUndefined();
+  });
   it("uses the platform default runtime fallback when a task omits an explicit adapter", async () => {
     const request = vi.fn<typeof fetch>(async () =>
       Response.json({

@@ -310,6 +310,12 @@ export function ChatSurface({
   const selectedConversation = conversations.find(
     (conversation) => conversation.id === activeConversationId
   );
+  const isHumanConversation =
+    selectedConversation !== undefined &&
+    (selectedConversation.hasHumanRecipient ||
+      selectedConversation.conversationType === "DIRECT" ||
+      selectedConversation.conversationType === "BUSINESS" ||
+      selectedConversation.kind !== "personal");
   const selectedEmailCustomerId = channelEndpoints.find(
     (endpoint) => endpoint.provider === "email"
   )?.customerId;
@@ -341,23 +347,16 @@ export function ChatSurface({
     smsHandoffRequest
   } = composer;
   const visibleConversations = showMessageThread
-    ? conversations
-        // Home lists the account's agent sessions; chat keeps the full messaging inbox.
-        .filter((conversation) =>
-          isSessionListView
-            ? conversation.kind === "personal" && !conversation.hasHumanRecipient
-            : true
-        )
-        .filter((conversation) => {
-          const query = inboxSearch.trim().toLowerCase();
-          if (!query || conversation.helpTopic) return true;
-          return (
-            (conversation.title ?? "Grogoni agent").toLowerCase().includes(query) ||
-            (conversation.lastMessage === null
-              ? false
-              : conversationMessageText(conversation.lastMessage).toLowerCase().includes(query))
-          );
-        })
+    ? conversations.filter((conversation) => {
+        const query = inboxSearch.trim().toLowerCase();
+        if (!query || conversation.helpTopic) return true;
+        return (
+          (conversation.title ?? "Grogoni agent").toLowerCase().includes(query) ||
+          (conversation.lastMessage === null
+            ? false
+            : conversationMessageText(conversation.lastMessage).toLowerCase().includes(query))
+        );
+      })
     : [];
   const visibleMessages = showMessageThread
     ? messages.filter((message) => !isRedundantAgentErrorMessage(message.body))
@@ -420,7 +419,7 @@ export function ChatSurface({
   const conversationListPanelProps = {
     agentName: agent.name,
     pinnedAgent: conversations.find(
-      (conversation) => conversation.hasHumanRecipient === false && !conversation.helpTopic
+      (conversation) => !conversation.hasHumanRecipient && !conversation.helpTopic
     ),
     isSessionListView,
     isAuthenticated,
@@ -461,10 +460,12 @@ export function ChatSurface({
 
   const isHomeConversation = mode === "marketplace" && activeModuleView === null;
   const isHomeEmpty =
-    isHomeConversation && visibleMessages.every((message) => message.id === "welcome");
+    isHomeConversation &&
+    !isHumanConversation &&
+    visibleMessages.every((message) => message.id === "welcome");
 
   const homeMessages = windowedMessages.filter(
-    (message) => !isHomeConversation || message.id !== "welcome"
+    (message) => (!isHomeConversation && !isHumanConversation) || message.id !== "welcome"
   );
 
   return (
@@ -1093,9 +1094,12 @@ export function ChatSurface({
           onAddParticipants={() =>
             isAuthenticated ? setParticipantsOpen(true) : onRequireSignIn()
           }
+          agentControlsAvailable={!isHumanConversation}
           audienceLabel={
-            selectedConversation?.hasHumanRecipient
-              ? "Discussion · messages go to participants"
+            isHumanConversation
+              ? selectedConversation?.conversationType === "BUSINESS"
+                ? "Business conversation · messages go to people"
+                : "Discussion · messages go to participants"
               : undefined
           }
           activeAgentName={agent.name}

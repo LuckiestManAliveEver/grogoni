@@ -1,0 +1,128 @@
+[
+  {
+    "phase": "api",
+    "conversationCount": 1,
+    "types": [
+      "DAEMON"
+    ]
+  },
+  {
+    "phase": "desktop",
+    "persisted": false,
+    "rows": 0,
+    "labels": [],
+    "responses": [
+      {
+        "path": "/api/auth/bootstrap",
+        "status": 200
+      },
+      {
+        "path": "/api/v1/conversations",
+        "status": 200
+      },
+      {
+        "path": "/api/v1/conversations/4d65f37f-6ba5-530c-a420-6ed604eb84f6",
+        "status": 200
+      },
+      {
+        "path": "/api/v1/conversations/4d65f37f-6ba5-530c-a420-6ed604eb84f6",
+        "status": 200
+      },
+      {
+        "path": "/api/v1/conversations/4d65f37f-6ba5-530c-a420-6ed604eb84f6",
+        "status": 200
+      },
+      {
+        "path": "/api/v1/conversations/4d65f37f-6ba5-530c-a420-6ed604eb84f6",
+        "status": 200
+      },
+      {
+        "path": "/api/v1/conversations/4d65f37f-6ba5-530c-a420-6ed604eb84f6",
+        "status": 200
+      },
+      {
+        "path": "/api/v1/conversations/4d65f37f-6ba5-530c-a420-6ed604eb84f6",
+        "status": 200
+      },
+      {
+        "path": "/api/v1/conversations/4d65f37f-6ba5-530c-a420-6ed604eb84f6",
+        "status": 200
+      },
+      {
+        "path": "/api/v1/conversations/4d65f37f-6ba5-530c-a420-6ed604eb84f6",
+        "status": 200
+      },
+      {
+        "path": "/api/v1/conversations/4d65f37f-6ba5-530c-a420-6ed604eb84f6",
+        "status": 200
+      },
+      {
+        "path": "/api/v1/conversations",
+        "status": 200
+      },
+      {
+        "path": "/api/v1/conversations",
+        "status": 200
+      }
+    ],
+    "errors": [],
+    "body": "S\nGrogoni\nMessages\nRecycle bin\nSearch conversations\nMessage a phone number or email\nS\nShopkeeper\nPinned agent\nHelp\nAsk your agent for assistance\nUser journeys and tools\nBuying\nSelling\nReceipts and documents\nMessaging\nTools\nAccount and troubleshooting\n+\nNew message\nKaribu. What do you need?\n\nFind products, shops, services, deliveries — or just ask.\n\nFind me 50kg maize nearby\nTrack my delivery\nTalk to a shop\nMore\nVoice\nSend\nConnected and authenticated."
+  },
+  {
+    "phase": "phone",
+    "persisted": false,
+    "rows": 0,
+    "labels": [],
+    "responses": [
+      {
+        "path": "/api/auth/bootstrap",
+        "status": 200
+      },
+      {
+        "path": "/api/v1/conversations",
+        "status": 200
+      },
+      {
+        "path": "/api/v1/conversations/4d65f37f-6ba5-530c-a420-6ed604eb84f6",
+        "status": 200
+      },
+      {
+        "path": "/api/v1/conversations/4d65f37f-6ba5-530c-a420-6ed604eb84f6",
+        "status": 200
+      },
+      {
+        "path": "/api/v1/conversations/4d65f37f-6ba5-530c-a420-6ed604eb84f6",
+        "status": 200
+      },
+      {
+        "path": "/api/v1/conversations/4d65f37f-6ba5-530c-a420-6ed604eb84f6",
+        "status": 200
+      },
+      {
+        "path": "/api/v1/conversations/4d65f37f-6ba5-530c-a420-6ed604eb84f6",
+        "status": 200
+      },
+      {
+        "path": "/api/v1/conversations/4d65f37f-6ba5-530c-a420-6ed604eb84f6",
+        "status": 200
+      },
+      {
+        "path": "/api/v1/conversations/4d65f37f-6ba5-530c-a420-6ed604eb84f6",
+        "status": 200
+      },
+      {
+        "path": "/api/v1/conversations/4d65f37f-6ba5-530c-a420-6ed604eb84f6",
+        "status": 200
+      },
+      {
+        "path": "/api/v1/conversations/4d65f37f-6ba5-530c-a420-6ed604eb84f6",
+        "status": 200
+      }
+    ],
+    "errors": [],
+    "body": "S\nGrogoni\nKaribu. What do you need?\n\nFind products, shops, services, deliveries — or just ask.\n\nFind me 50kg maize nearby\nTrack my delivery\nTalk to a shop\nMore\nVoice\nSend\nConnected and authenticated."
+  },
+  {
+    "cleanupVerified": true
+  }
+]

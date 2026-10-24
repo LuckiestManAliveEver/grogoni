@@ -133,7 +133,11 @@ export function ChatParticipantsPanel({
               Add contact and alert
             </button>
           </form>
-          <button type="button" disabled={busy || !view || hasAgent} onClick={() => void add(true)}>
+          <button
+            type="button"
+            disabled={busy || !view || hasAgent}
+            onClick={() => void add(true)}
+          >
             Add my agent
           </button>
           <p>

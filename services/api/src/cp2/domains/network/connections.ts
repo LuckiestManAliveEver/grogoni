@@ -27,6 +27,7 @@ import type {
   NetworkNodeSummary,
   UserSummary
 } from "@grogoni/shared-types";
+import { contactIsBlocked } from "./shared.js";
 import { Cp2Error } from "../../cp2-error.js";
 
 export const maxPendingOutgoingConnections = 100;
@@ -73,7 +74,11 @@ export function requestNetworkConnection(
     throw new Cp2Error(409, "network_connection_self", "You cannot connect with yourself.");
   }
 
-  if (!deps.users.has(targetUserId)) {
+  if (
+    !deps.users.has(targetUserId) ||
+    deps.users.get(targetUserId)?.contactDiscoveryEnabled === false ||
+    contactIsBlocked(deps.users, input.userId, targetUserId)
+  ) {
     throw new Cp2Error(
       409,
       "network_contact_not_on_grogoni",
@@ -159,7 +164,8 @@ export function respondToNetworkConnection(
   if (
     connection === undefined ||
     connection.recipientUserId !== input.userId ||
-    !isVisibleTo(connection, input.userId)
+    !isVisibleTo(connection, input.userId) ||
+    contactIsBlocked(deps.users, connection.requesterUserId, connection.recipientUserId)
   ) {
     throw new Cp2Error(404, "network_connection_not_found", "Connection request was not found.");
   }
@@ -223,7 +229,12 @@ export function summarizeConnectionFor(
   viewerUserId: string
 ): NetworkConnectionSummary | null {
   const connection = deps.connections.get(connectionId);
-  if (connection === undefined || !isVisibleTo(connection, viewerUserId)) return null;
+  if (
+    connection === undefined ||
+    !isVisibleTo(connection, viewerUserId) ||
+    contactIsBlocked(deps.users, connection.requesterUserId, connection.recipientUserId)
+  )
+    return null;
   if (!deps.users.has(counterpartOf(connection, viewerUserId))) return null;
   return summarizeConnection(deps, connection, viewerUserId);
 }
@@ -235,7 +246,11 @@ export function listNetworkConnections(
   const phonebookNodes = phonebookNodesByUser(deps, userId);
   const businessByUser = primaryBusinessByUser(deps);
   return [...deps.connections.values()]
-    .filter((connection) => isVisibleTo(connection, userId))
+    .filter(
+      (connection) =>
+        isVisibleTo(connection, userId) &&
+        !contactIsBlocked(deps.users, connection.requesterUserId, connection.recipientUserId)
+    )
     .filter((connection) => deps.users.has(counterpartOf(connection, userId)))
     .map((connection) =>
       summarizeConnection(deps, connection, userId, phonebookNodes, businessByUser)

@@ -1,0 +1,279 @@
+{
+  "runId": "d4054043-b1f4-4ef4-8567-673a2c802554",
+  "base": "https://gnmndzsughifhboqvsgd.supabase.co/functions/v1/api-candidate",
+  "startedAt": "2026-10-24T09:08:16.927Z",
+  "frontendBuild": {
+    "buildId": "7e846bac657c55a8b217f6dfc3bf29debbdef5b7",
+    "version": "0.1.0",
+    "builtAt": "2026-10-23T18:29:39.531Z",
+    "environment": "production"
+  },
+  "daemonId": "e29ed5fd-568e-5bfd-a7fb-6e60e0b89b29",
+  "directId": "d46db334-1e46-56c9-aea0-b722821826df",
+  "shopId": "d11d7344-49c2-4939-8fb3-fa7b04b1ea17",
+  "businessConversationId": "18d45275-6845-5788-a4d4-7da21929b209",
+  "realModel": {
+    "modelId": "gpt-6-luna",
+    "text": "PHASE6-PRODUCTION"
+  },
+  "failedTaskVisibility": {
+    "status": "failed",
+    "errorCode": "PHASE6_TEST_FAILURE"
+  },
+  "completedAt": "2026-10-24T09:11:44.855Z",
+  "passed": false,
+  "counts": {
+    "pass": 24,
+    "fail": 2,
+    "unverified": 0
+  },
+  "steps": [
+    {
+      "name": "production frontend build identity",
+      "status": "pass",
+      "detail": {
+        "buildId": "7e846bac657c55a8b217f6dfc3bf29debbdef5b7",
+        "version": "0.1.0",
+        "builtAt": "2026-10-23T18:29:39.531Z",
+        "environment": "production"
+      }
+    },
+    {
+      "name": "permanent DAEMON identity is returned and stable",
+      "status": "pass",
+      "detail": {
+        "conversationId": "e29ed5fd-568e-5bfd-a7fb-6e60e0b89b29"
+      }
+    },
+    {
+      "name": "DIRECT identity has no fake agent or inference binding",
+      "status": "pass",
+      "detail": {
+        "conversationId": "d46db334-1e46-56c9-aea0-b722821826df"
+      }
+    },
+    {
+      "name": "concurrent direct creation in both directions reuses the same pair",
+      "status": "pass",
+      "detail": {
+        "ids": [
+          "d46db334-1e46-56c9-aea0-b722821826df",
+          "d46db334-1e46-56c9-aea0-b722821826df",
+          "d46db334-1e46-56c9-aea0-b722821826df"
+        ]
+      }
+    },
+    {
+      "name": "direct plaintext is rejected",
+      "status": "pass",
+      "detail": {
+        "code": "e2ee_required"
+      }
+    },
+    {
+      "name": "A sends an encrypted message; B decrypts and replies; A decrypts",
+      "status": "pass",
+      "detail": {
+        "messageId": "ab2c5989-4c0e-415d-b7a5-1bc38b1a714e",
+        "replyId": "e6c35c17-e131-4adf-ba0b-ad6e00a8e514",
+        "unread": true
+      }
+    },
+    {
+      "name": "concurrent encrypted message replay stores one message",
+      "status": "pass",
+      "detail": {
+        "messageId": "ab2c5989-4c0e-415d-b7a5-1bc38b1a714e"
+      }
+    },
+    {
+      "name": "unauthorized account cannot read or write direct or daemon conversations",
+      "status": "pass",
+      "detail": {
+        "readAndWriteDenied": true
+      }
+    },
+    {
+      "name": "phonebook selection reopens the direct pair and rejects another owner's node",
+      "status": "pass",
+      "detail": {
+        "nodeResolved": true
+      }
+    },
+    {
+      "name": "customer can open the registered business conversation",
+      "status": "pass",
+      "detail": {
+        "conversation": {
+          "id": "18d45275-6845-5788-a4d4-7da21929b209",
+          "accountId": "aeb40ab8-c693-4a54-8b77-6bdb1d02d61e",
+          "kind": "storefront",
+          "activeShopId": "d11d7344-49c2-4939-8fb3-fa7b04b1ea17",
+          "runtimeBindingId": "builtin:grogoni-default-runtime:v1",
+          "title": "Phase6 business d4054043-b1f4-4ef4-8567-673a2c802554",
+          "createdAt": "2026-10-24T09:09:34.512Z",
+          "updatedAt": "2026-10-24T09:09:34.512Z",
+          "conversationType": "BUSINESS"
+        },
+        "participants": [
+          {
+            "id": "a72f8d18-4559-4ee9-bc9d-ebb0917b7529",
+            "conversationId": "18d45275-6845-5788-a4d4-7da21929b209",
+            "role": "account",
+            "accountId": "aeb40ab8-c693-4a54-8b77-6bdb1d02d61e",
+            "businessId": null,
+            "agentId": null,
+            "displayName": "Trader 0002",
+            "lastReadAt": "2026-10-24T09:09:34.512Z",
+            "archivedAt": null,
+            "mutedUntil": null,
+            "pinnedAt": null,
+            "createdAt": "2026-10-24T09:09:34.512Z"
+          },
+          {
+            "id": "39f3720e-2d63-4f70-8595-abda3e28f403",
+            "conversationId": "18d45275-6845-5788-a4d4-7da21929b209",
+            "role": "agent",
+            "accountId": null,
+            "businessId": null,
+            "agentId": "account-aeb40ab8-c693-4a54-8b77-6bdb1d02d61e-agent",
+            "displayName": "Grogoni agent",
+            "createdAt": "2026-10-24T09:09:34.512Z"
+          },
+          {
+            "id": "83386fc4-0150-4fad-9d39-e453b06b3b62",
+            "conversationId": "18d45275-6845-5788-a4d4-7da21929b209",
+            "role": "shop",
+            "accountId": null,
+            "businessId": "d11d7344-49c2-4939-8fb3-fa7b04b1ea17",
+            "agentId": null,
+            "createdAt": "2026-10-24T09:09:34.512Z"
+          }
+        ],
+        "messages": [],
+        "channels": [],
+        "typing": []
+      }
+    },
+    {
+      "name": "business conversation creation is idempotent and authoritatively typed",
+      "status": "pass",
+      "detail": {
+        "conversationId": "18d45275-6845-5788-a4d4-7da21929b209"
+      }
+    },
+    {
+      "name": "customer message reaches business inbox and owner replies in the same conversation",
+      "status": "pass",
+      "detail": {
+        "messageId": "8c3e27f1-56c1-4135-9087-57447b7562c3",
+        "replyId": "e91ec56d-9644-4981-af2e-a3d42a35084a"
+      }
+    },
+    {
+      "name": "unrelated account cannot read or write business conversation",
+      "status": "pass",
+      "detail": {
+        "denied": true
+      }
+    },
+    {
+      "name": "agent request cannot substitute a different tenant",
+      "status": "pass",
+      "detail": {
+        "code": "conversation_business_mismatch"
+      }
+    },
+    {
+      "name": "authorized business runtime responds in the existing customer conversation",
+      "status": "fail",
+      "detail": "/v1/messages: HTTP 403 RUNTIME_BINDING_FORBIDDEN\n\n403 !== 200\n"
+    },
+    {
+      "name": "revoked business membership loses inbox, read and write access",
+      "status": "pass",
+      "detail": {
+        "revoked": true
+      }
+    },
+    {
+      "name": "daemon task retains its authorized conversation association",
+      "status": "pass",
+      "detail": {
+        "taskId": "bcd2952b-fa6c-40cd-99c0-dca05d62d41e",
+        "modelId": "gpt-6-luna"
+      }
+    },
+    {
+      "name": "real production daemon model responds and task survives reload",
+      "status": "pass",
+      "detail": {
+        "modelId": "gpt-6-luna",
+        "text": "PHASE6-PRODUCTION"
+      }
+    },
+    {
+      "name": "daemon result is delivered into its originating conversation without browser projection",
+      "status": "pass",
+      "detail": {
+        "delivered": true
+      }
+    },
+    {
+      "name": "untrusted caller cannot associate daemon work with another account's conversation",
+      "status": "pass",
+      "detail": {
+        "status": 404
+      }
+    },
+    {
+      "name": "all three conversation identities restore in one inbox",
+      "status": "pass",
+      "detail": {
+        "types": [
+          "DAEMON",
+          "DIRECT",
+          "BUSINESS"
+        ]
+      }
+    },
+    {
+      "name": "owned failed-task retry route exists and hides foreign task IDs",
+      "status": "pass",
+      "detail": {
+        "unauthorizedRetryHidden": true
+      }
+    },
+    {
+      "name": "failed daemon task stays visible and can be retried through an owned route",
+      "status": "pass",
+      "detail": {
+        "taskId": "583ed97c-26ed-4947-8966-1ee7454009c3",
+        "retryStatus": 200,
+        "completed": true
+      }
+    },
+    {
+      "name": "real browser push subscription receives a private message notification",
+      "status": "fail",
+      "detail": "page.evaluate: AbortError: Registration failed - permission denied"
+    },
+    {
+      "name": "account model switching preserves daemon history and executes the second model",
+      "status": "pass",
+      "detail": {
+        "firstModel": "gpt-6-luna",
+        "secondModel": "gpt-oss-20b-openrouter",
+        "historyPreserved": true
+      }
+    },
+    {
+      "name": "remove and verify all disposable production fixtures",
+      "status": "pass",
+      "detail": {
+        "removedAccounts": 3,
+        "removedBusinesses": 1
+      }
+    }
+  ]
+}

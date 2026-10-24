@@ -9,9 +9,9 @@ const grogoniApplication = readFileSync("apps/web/src/GrogoniApplication.tsx", "
 const normalizedChatSurface = chatSurface.replace(/\s+/gu, " ");
 
 describe("session-list home screen (Phase 3)", () => {
-  it("shows only the account's own agent sessions on home, not the general messaging inbox", () => {
+  it("keeps direct, daemon and business conversations in the primary home inbox", () => {
     expect(chatSurface).toContain('const isSessionListView = activeView === "home";');
-    expect(normalizedChatSurface).toContain(
+    expect(normalizedChatSurface).not.toContain(
       'isSessionListView ? conversation.kind === "personal" && !conversation.hasHumanRecipient : true'
     );
   });

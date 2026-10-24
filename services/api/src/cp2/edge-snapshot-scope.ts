@@ -233,7 +233,9 @@ export async function createEdgeSnapshotScope(
          where a.primary_auth_destination = ${escapeLiteral(recipient)} and ${escapeLiteral(recipient)} <> ''
        union select u.id::text from public.users u join public.cp2_network_nodes n on n.record->>'grogoniUserId' = u.id::text
          where n.user_id = nullif(${actorUser}, '') and n.record->>'sourceType' = 'phone_contact'
-         and n.entity_id = ${escapeLiteral(recipient.startsWith("network-node:") ? recipient.slice("network-node:".length).trim() : "")}`
+         and n.entity_id = ${escapeLiteral(recipient.startsWith("network-node:") ? recipient.slice("network-node:".length).trim() : "")}
+       union select u.id::text from public.users u join public.cp2_network_nodes n on n.record->>'grogoniUserId' = u.id::text where n.user_id = nullif(${actorUser}, '')
+       ${path === "/network" || path.startsWith("/network/") ? "union select u.id::text from public.users u join public.accounts a on a.id = u.account_id where a.status = 'active' and a.deleted_at is null" : ""}`
     ],
     [
       "edge_user_ids",

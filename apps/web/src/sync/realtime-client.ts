@@ -18,6 +18,20 @@ export interface AccountRealtimeSocket {
   close(code?: number, reason?: string): void;
 }
 
+/** Edge functions and API proxies use HTTP catch-up, including absolute proxy URLs. */
+export function accountRealtimeTransport(
+  apiBaseUrl: string,
+  origin: string
+): "http-poll" | "websocket" {
+  const path = new URL(apiBaseUrl, origin).pathname;
+  return apiBaseUrl.startsWith("/") ||
+    path === "/api" ||
+    path.startsWith("/api/") ||
+    path.includes("/functions/v1/")
+    ? "http-poll"
+    : "websocket";
+}
+
 export function subscribeToAccountRealtime(options: AccountRealtimeOptions): () => void {
   if (options.transport === "http-poll") {
     let stopped = false;
@@ -93,7 +107,7 @@ export function subscribeToAccountRealtime(options: AccountRealtimeOptions): () 
     socket.addEventListener("error", () => {
       recordRealtimeConnection("failed");
       options.onError?.(new Error("Realtime synchronization connection failed."));
-      socket?.close(1011, "Realtime connection failed");
+      socket?.close(4000, "Realtime connection failed");
     });
     socket.addEventListener("close", () => {
       recordRealtimeConnection("closed");

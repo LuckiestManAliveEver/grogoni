@@ -9,7 +9,7 @@ interface ChatComposerActionsProps {
   onAttachFiles: () => void;
   onAddParticipants?: () => void;
   onClose: () => void;
-  onOpenCommand: () => void;
+  onOpenCommand?: () => void;
   onSendSms: () => void;
   onSendVia: () => void;
   onShareApps: () => void;
@@ -68,7 +68,7 @@ export function ChatComposerActions({
           <span className="composer-files-icon" aria-hidden="true" />
           <span>Files</span>
         </button>
-        {mode === "seller" ? (
+        {mode === "seller" && onOpenCommand ? (
           <button type="button" aria-label="Open command" onClick={onOpenCommand}>
             <span className="composer-command-icon" aria-hidden="true">
               #

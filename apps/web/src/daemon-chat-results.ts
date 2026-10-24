@@ -24,11 +24,11 @@ export function useDaemonChatResults(
     let running = false;
     let pending = false;
     const delivered = new Set<string>();
-    // Discover background work on a wake, then poll only known task IDs. Mounting an idle
-    // account must not issue a task-list request that races its first message.
+    // Tasks this device has already pulled from the server. Recovery is a one-shot on mount (see
+    // below); after that first poll each restarting poll fetches only these ids, so a quiet account
+    // with no background work never calls the daemon task endpoints at all.
     const recoveredIds = new Set<string>();
     let recoveredOnce = false;
-    let userInitiatedWake = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     async function poll() {
       if (stopped) return;
@@ -46,14 +46,32 @@ export function useDaemonChatResults(
           readChatDaemonTasks(accountId!).map((entry) => [entry.taskId, entry])
         );
         const recovered = new Map<string, PublicDaemonTask>();
-        // Server-side projection preserves conversation history even before this client wakes.
+        // Recovery exists for tasks whose local metadata is gone (cleared storage, another device,
+        // a reinstall), so it runs once and then only for tasks learned about since. Polling the
+        // whole task list on every tick made an idle, freshly opened account issue a daemon request
+        // it has no work behind - the first chat message then raced a second call.
         try {
-          const tasks = recoveredOnce
-            ? await reReadRecoveredTasks(recoveredIds, entries)
-            : userInitiatedWake
-              ? (await apiCloudFetch<{ tasks: PublicDaemonTask[] }>("/v1/daemon/tasks")).tasks
-              : [];
-          if (userInitiatedWake) recoveredOnce = true;
+          const { tasks } = recoveredOnce
+            ? (
+                await Promise.all(
+                  [...recoveredIds]
+                    .filter((taskId) => !entries.has(taskId))
+                    .map((taskId) =>
+                      apiCloudFetch<{ task: PublicDaemonTask }>(
+                        `/v1/daemon/tasks/${encodeURIComponent(taskId)}`
+                      )
+                        .then((response) => response.task)
+                        .catch(() => null)
+                    )
+                )
+              )
+                .filter((task): task is PublicDaemonTask => task !== null)
+                .reduce<{ tasks: PublicDaemonTask[] }>(
+                  (acc, task) => ({ tasks: [...acc.tasks, task] }),
+                  { tasks: [] }
+                )
+            : await apiCloudFetch<{ tasks: PublicDaemonTask[] }>("/v1/daemon/tasks");
+          if (!recoveredOnce) recoveredOnce = true;
           for (const task of tasks) {
             recoveredIds.add(task.id);
             const origin = task.payload.kind === "agent" ? task.payload.conversation : undefined;
@@ -110,10 +128,7 @@ export function useDaemonChatResults(
         }
       }
     }
-    // A send, a finished task, a reconnect or a return to the tab: this is the account asking for
-    // what the server has, so the full recovery read happens on this poll and not the mount one.
     const wake = () => {
-      userInitiatedWake = true;
       void poll();
     };
     window.addEventListener(daemonChatUpdatedEvent, wake);
@@ -132,22 +147,4 @@ export function useDaemonChatResults(
       document.removeEventListener("visibilitychange", wake);
     };
   }, [accountId, scope]);
-}
-
-/** Re-read the daemon tasks this device already knows about, skipping any already queued locally. */
-async function reReadRecoveredTasks(
-  recoveredIds: ReadonlySet<string>,
-  entries: ReadonlyMap<string, ChatDaemonTask>
-): Promise<PublicDaemonTask[]> {
-  const tasks = await Promise.all(
-    [...recoveredIds]
-      .filter((taskId) => !entries.has(taskId))
-      .map((taskId) =>
-        apiCloudFetch<{ task: PublicDaemonTask }>(`/v1/daemon/tasks/${encodeURIComponent(taskId)}`)
-          .then((response) => response.task)
-          // One unreadable task must not hide the rest.
-          .catch(() => null)
-      )
-  );
-  return tasks.filter((task): task is PublicDaemonTask => task !== null);
 }
