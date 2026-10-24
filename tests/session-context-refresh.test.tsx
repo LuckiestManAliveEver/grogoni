@@ -120,6 +120,16 @@ afterEach(() => {
   container.remove();
 });
 
+/** A cold load at `path`: the hook reads the deep link when it mounts. */
+async function remountAt(path: string) {
+  act(() => root.unmount());
+  window.history.replaceState(null, "", path);
+  await act(async () => {
+    root = createRoot(container);
+    root.render(<Harness />);
+  });
+}
+
 describe("session context refresh (retry) versus restore (sign-in)", () => {
   it("refresh forgets a stored shop the account does not belong to, and moves nothing", async () => {
     storeShop("previous-account-shop");
@@ -165,7 +175,8 @@ describe("session context refresh (retry) versus restore (sign-in)", () => {
     expect(spies.setBusiness).not.toHaveBeenCalled();
   });
 
-  it("restore still brings the owner back to where they last worked", async () => {
+  it("restore at the bare root brings the owner back to where they last worked", async () => {
+    await remountAt("/");
     await load("restore");
 
     expect(spies.setBusiness).toHaveBeenCalledWith(expect.objectContaining({ id: "owned-shop" }));
@@ -204,5 +215,85 @@ describe("session context refresh (retry) versus restore (sign-in)", () => {
     expect(spies.setBusiness).not.toHaveBeenCalled();
     expect(spies.setGrogoniSessionContext).not.toHaveBeenCalled();
     expect(localStorage.getItem(activeBusinessStorageKey)).toContain("just-created-shop");
+  });
+});
+
+describe("restore keeps the place a cold-load URL names", () => {
+  it("keeps /sell/shop open and still restores the shop", async () => {
+    await remountAt("/sell/shop");
+    await load("restore");
+
+    expect(window.location.pathname).toBe("/sell/shop");
+    expect(spies.setBusiness).toHaveBeenCalledWith(expect.objectContaining({ id: "owned-shop" }));
+    expect(spies.setMode).toHaveBeenCalledWith("seller");
+    expect(spies.setView).toHaveBeenCalledWith("chat");
+    expect(spies.setActiveConversationId).not.toHaveBeenCalled();
+  });
+
+  it("keeps a conversation URL in its own mode, over the account's last seller place", async () => {
+    // beforeEach mounted at /marketplace/conversations/user-picked-conversation.
+    await load("restore");
+
+    expect(window.location.pathname).toBe("/marketplace/conversations/user-picked-conversation");
+    expect(spies.setMode).toHaveBeenCalledWith("marketplace");
+    expect(spies.setActiveConversationId).toHaveBeenCalledWith("user-picked-conversation");
+    expect(spies.setBusiness).toHaveBeenCalledWith(expect.objectContaining({ id: "owned-shop" }));
+    expect(localStorage.getItem("grogoni.chatFirst.mode")).toBe("marketplace");
+  });
+
+  it("keeps a module URL", async () => {
+    await remountAt("/catalogue");
+    await load("restore");
+
+    expect(window.location.pathname).toBe("/catalogue");
+    expect(spies.setMode).toHaveBeenCalledWith("seller");
+    expect(spies.setView).toHaveBeenCalledWith("products");
+  });
+
+  it("keeps the Shop Hub, which offers setup, for an account with no shop", async () => {
+    mockedApiFetch.mockResolvedValue({
+      ...serverContext,
+      mode: "marketplace",
+      activeShopId: null,
+      shops: []
+    });
+    await remountAt("/sell/shop");
+    await load("restore");
+
+    expect(window.location.pathname).toBe("/sell/shop");
+    expect(spies.setMode).toHaveBeenCalledWith("seller");
+    expect(spies.setBusiness).toHaveBeenCalledWith(null);
+  });
+
+  it("sends another seller link to the Shop Hub's setup for an account with no shop", async () => {
+    mockedApiFetch.mockResolvedValue({
+      ...serverContext,
+      mode: "marketplace",
+      activeShopId: null,
+      shops: []
+    });
+    await remountAt("/workspace/conversations/someone-elses-shop-chat");
+    await load("restore");
+
+    expect(window.location.pathname).toBe("/sell/shop");
+    expect(spies.setMode).toHaveBeenCalledWith("seller");
+    expect(spies.setActiveConversationId).not.toHaveBeenCalled();
+  });
+
+  it("uses the deep link once: a later sign-in restores the last place", async () => {
+    await remountAt("/sell/shop");
+    await load("restore");
+    expect(window.location.pathname).toBe("/sell/shop");
+
+    await load("restore");
+    expect(window.location.pathname).toBe("/workspace/conversations/server-last-conversation");
+  });
+
+  it("restores the last place when the user already left the deep link", async () => {
+    await remountAt("/sell/shop");
+    window.history.replaceState(null, "", "/login");
+    await load("restore");
+
+    expect(window.location.pathname).toBe("/workspace/conversations/server-last-conversation");
   });
 });

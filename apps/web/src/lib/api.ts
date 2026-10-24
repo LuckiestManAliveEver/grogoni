@@ -32,6 +32,33 @@ const refreshPath = "/auth/session/refresh";
 const deviceIdStorageKey = "grogoni.device-id.v1";
 const defaultRequestTimeoutMs = 20_000;
 let refreshInFlight: Promise<boolean> | null = null;
+const sessionGenerationStorageKey = "grogoni.session-generation.v1";
+let memorySessionGeneration = "initial";
+
+// A session refresh rotates the access session: the server revokes the old one at once
+// (supabase/functions/api/auth-routes.ts refreshSession). A request sent before a refresh landed
+// carries the old cookie (or none, once the 15 minute cookie lapsed) and gets 401 even though a
+// valid session now exists. Treating that 401 as "refresh again" rotated once more, which revoked
+// the session other in-flight requests had just been given, and so on: a reload after expiry
+// made seven rotations and failed retries of /v1/session/context, so the restore failed. Each
+// request records the generation it was sent under; a 401 from an older generation only retries.
+// The generation lives in localStorage so a refresh in another tab (same cookie jar) counts too.
+function readSessionGeneration(): string {
+  try {
+    return localStorage.getItem(sessionGenerationStorageKey) ?? memorySessionGeneration;
+  } catch {
+    return memorySessionGeneration;
+  }
+}
+
+function advanceSessionGeneration(): void {
+  memorySessionGeneration = createRequestId();
+  try {
+    localStorage.setItem(sessionGenerationStorageKey, memorySessionGeneration);
+  } catch {
+    // Storage blocked: the in-memory generation still covers this tab.
+  }
+}
 
 // Every request (including login) must eventually settle so a caller's loading state can clear.
 // Without this, a request whose response never arrives - a stalled backend, a dropped connection -
@@ -135,13 +162,19 @@ export async function apiCloudFetch<T>(
     ...options?.headers
   };
 
+  const generationAtSend = readSessionGeneration();
   const response = await performFetch(url, method, headers, options);
+  // Only a successful refresh advances the generation. Not sign-in or other entry points: their
+  // list includes public reads such as /auth/oauth/providers, and a 200 from one of those would
+  // make a real 401 skip its refresh (the app then fell through to Continue, a new account).
   if (
     response.status === 401 &&
     options?.skipAuthRefresh !== true &&
     !isAuthenticationEntryPoint(pathOrUrl)
   ) {
-    const refreshed = await refreshAccountSession(base, options?.signal);
+    const refreshed =
+      readSessionGeneration() !== generationAtSend ||
+      (await refreshAccountSession(base, options?.signal));
     if (refreshed) {
       const retried = await performFetch(url, method, headers, options);
       return parseApiResponse<T>(retried);
@@ -166,6 +199,7 @@ export async function refreshAccountSession(
         signal: timedSignal
       });
       recordApiRequest("POST", `${baseUrl}${refreshPath}`, startedAt, response.status);
+      if (response.ok) advanceSessionGeneration();
       return response.ok;
     } catch {
       recordApiRequest("POST", `${baseUrl}${refreshPath}`, startedAt, "failed");

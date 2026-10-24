@@ -1046,7 +1046,8 @@ enforced by `tests/grogoni-home-progressive-entry.test.ts`:
   (`session-context-retry.ts`, driven from `GrogoniApplication.tsx`)
   retries on reconnect and when the app is shown again until one load
   for the current sign-in applies, then never re-runs. Only the
-  sign-in's first load restores where the owner last worked; a retry
+  sign-in's first load restores where the owner last worked (and not
+  over a deep link, see "Deep links on restore" below); a retry
   applies data only (it forgets a stored shop the account does not
   belong to) and never moves the user, who may have navigated since.
   Joining a shop (`joinStaffShop`) ends retrying for that sign-in, so
@@ -1188,6 +1189,38 @@ does not cancel it). A second tap while the shops still have not loaded goes on 
 setup, so a failing load never traps anyone, and if a create answers `409
 store_already_registered` the app opens the shop the account owns (or says so plainly when the
 shop list cannot load either).
+
+**Session expiry and silent refresh.** The access session lasts 15 minutes (the `grogoni_session`
+cookie has `Max-Age=900` and the row's `expires_at` matches); the refresh cookie lasts until the
+30 day inactivity limit. A request that gets 401 refreshes once (`POST /auth/session/refresh`) and
+retries. A refresh rotates the session and the server revokes the old one at once
+(`refreshSession` in `supabase/functions/api/auth-routes.ts`; the Node API does the same). Before
+the fix, every 401 that arrived after a refresh had already finished started another refresh: a
+reload after the cookie lapsed sends a dozen reads with no cookie, and their late 401s rotated the
+session seven times in about three seconds, each rotation revoking the session the other retries had just
+been given. Retries of `/v1/session/context` failed, so the restore failed; any caller that hands
+such a 401 to `rejectDefinitiveAuthenticationFailure` (an owner's agent-session start, a send)
+opens the sign-in screen. Now `apps/web/src/lib/api.ts` stamps each
+request with the session generation it was sent under (kept in localStorage, so a refresh in
+another tab counts) and only a successful refresh advances it. A 401 from an older generation
+retries on the new session without refreshing; only a 401 under the current generation refreshes.
+When the refresh itself is refused (past the 30 day inactivity or 180 day absolute limit, or
+revoked), the error is definitive and the app asks the user to sign in
+(`requireReauthentication` in `useAuthState.ts`). That clears only the session: drafts and the
+outbox stay on the device (only logout's `resetClientToStartup` clears them). Covered by
+`tests/session-expiry-refresh.test.ts` and `tests/authenticated-api-client.test.ts`.
+
+**Deep links on restore.** A cold load of a URL that names a place (`/sell/shop`, a conversation,
+`/marketplace`, a module such as `/catalogue`) keeps that place when the session context loads:
+the restore still adopts the account's shop and applies the URL's mode, but it does not navigate.
+The bare root (`/`, and the old `/chat` alias) restores the account's last place as before. The
+deep link is read once, when `useAuthState` mounts, and used only by the first load that applies;
+a later sign-in, or a load that lands after the user already left that URL, restores the last
+place. A seller URL for an account with no shop opens the Shop Hub (`/sell/shop`), which offers
+shop setup, instead of a seller screen with no shop behind it. The rules live in
+`apps/web/src/session-restore-place.ts`. Covered by `tests/session-restore-place.test.ts`,
+`tests/session-context-refresh.test.tsx` and the `/sell/shop` cold-load tests in
+`e2e/responsive-accessibility.spec.ts`.
 
 **Login.** The credential step is a form, so Enter in the phone, PIN, or password field submits.
 
