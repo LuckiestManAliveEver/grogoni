@@ -268,6 +268,30 @@ export function registerMessagingRoutes(
     }
   );
 
+  app.post<{ Params: ConversationParams; Body: { recipient?: string; agent?: boolean } }>(
+    "/v1/conversations/:conversationId/participants",
+    async (request, reply) => {
+      try {
+        const body = parseRequestBody(request.body);
+        const view = store.addConversationParticipant({
+          sessionId: readSessionCookie(request.headers.cookie),
+          conversationId: request.params.conversationId,
+          ...(body.recipient === undefined
+            ? {}
+            : { recipient: parseString(body.recipient, "recipient") }),
+          agent: body.agent === undefined ? false : parseBoolean(body.agent, "agent")
+        });
+        const latestMessage = view.messages.at(-1);
+        if (latestMessage) {
+          await store.deliverPendingMessageNotifications({ messageId: latestMessage.id });
+        }
+        return view;
+      } catch (error) {
+        return sendCp2Error(reply, error);
+      }
+    }
+  );
+
   app.get<{ Params: ConversationParams }>(
     "/v1/conversations/:conversationId/model",
     async (request, reply) => {
@@ -513,9 +537,14 @@ export function registerMessagingRoutes(
       }
       const idempotencyKey = parseOptionalString(request.body.idempotencyKey);
       const content = parseConversationMessageContent(request.body.content);
+      // A first message may arrive before the client has loaded its inbox, so the conversation is
+      // resolved server-side to the caller's own personal conversation when omitted. Anything else
+      // - including a blank string - must still name a real conversation explicitly.
       const messageInput = {
         sessionId,
-        conversationId: parseString(request.body.conversationId, "conversationId"),
+        ...(request.body.conversationId === undefined || request.body.conversationId === null
+          ? {}
+          : { conversationId: parseString(request.body.conversationId, "conversationId") }),
         clientMessageId: parseString(request.body.clientMessageId, "clientMessageId"),
         ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
         content,

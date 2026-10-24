@@ -69,7 +69,7 @@ it("recovers completed tasks after local storage loss and delivers only to their
     completed("other", daemonChatScope("seller", "other-business", "daemon-b"))
   ];
   await act(async () => root.render(<Harness />));
-  expect(deliver).not.toHaveBeenCalled();
+  expect(deliver).toHaveBeenCalledTimes(1);
   await act(async () => {
     window.dispatchEvent(new Event(daemonTaskUpdatedEvent));
   });

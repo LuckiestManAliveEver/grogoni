@@ -1,5 +1,9 @@
 import { Buffer } from "node:buffer";
-import type { DaemonPayload, DaemonUserTaskResult } from "@grogoni/shared-types";
+import type {
+  DaemonPayload,
+  DaemonUserTaskResult,
+  RuntimeModelConversationMessage
+} from "@grogoni/shared-types";
 import { integerFromEnv } from "./config.js";
 import { createDaemonExecutor, readDaemonCapabilities } from "./executor.js";
 import { buildDaemonGateway } from "./gateway.js";
@@ -146,6 +150,7 @@ export interface EdgeDaemonDependencies {
     conversationId: string
   ) => Promise<{ modelId: string }>;
   deliverConversationTask?: (task: DaemonTask) => Promise<void>;
+  loadConversationHistory?: (task: DaemonTask) => Promise<RuntimeModelConversationMessage[]>;
   runMaintenance?: (job: string, signal: AbortSignal) => Promise<unknown>;
   /** Tests inject a fake model; production builds the OpenRouter executor. */
   execute?: DaemonExecutor;
@@ -228,12 +233,12 @@ export function createEdgeDaemon(dependencies: EdgeDaemonDependencies) {
   const serverCanRunAgents = capabilities?.agents === true;
   const baseExecute =
     dependencies.execute ??
-    createDaemonExecutor(
-      environment,
-      dependencies.runMaintenance === undefined
-        ? {}
-        : { runMaintenance: dependencies.runMaintenance }
-    );
+    createDaemonExecutor(environment, {
+      ...(dependencies.runMaintenance ? { runMaintenance: dependencies.runMaintenance } : {}),
+      ...(dependencies.loadConversationHistory
+        ? { loadConversationHistory: dependencies.loadConversationHistory }
+        : {})
+    });
   // User tasks store one result shape for both lanes; operator tasks keep the raw agent result.
   const execute: DaemonExecutor = async (task, signal) => {
     const result = await baseExecute(task, signal);

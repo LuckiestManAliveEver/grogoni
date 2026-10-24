@@ -1,0 +1,32 @@
+import { chromium } from '@playwright/test';
+import { createRequire } from 'node:module';
+import { randomUUID, randomInt } from 'node:crypto';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { deleteLiveFixtureAccounts } from './live-fixture-cleanup.mjs';
+const dir='/tmp/grogoni-review-strict-direct-browser'; await mkdir(dir,{recursive:true});
+const device='review-'+randomUUID(); let accountId, browser; const accountIds=[]; const observations=[];
+const api=async(path, cookie='', body)=>{const r=await fetch('https://grogoni.com/api'+path,{method:body?'POST':'GET',headers:{cookie,origin:'https://grogoni.com','content-type':'application/json','x-grogoni-device-id':device},...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(45000)});const data=await r.json();if(!r.ok)throw new Error(path+': '+r.status+' '+data.code);return {data,cookie:r.headers.getSetCookie().map(c=>c.split(';')[0]).join('; ')};};
+try {
+ const created=await api('/auth/pin/signup','',{method:'phone',contact:'+442079460'+String(randomInt(1000)).padStart(3,'0'),pin:String(randomInt(1000,9999))});accountId=created.data.account.id;accountIds.push(accountId);
+ const other=await api('/auth/pin/signup','',{method:'phone',contact:'+442079460'+String(randomInt(1000)).padStart(3,'0'),pin:String(randomInt(1000,9999))});accountIds.push(other.data.account.id);
+ await api('/v1/conversations',created.cookie,{kind:'personal',activeShopId:null,recipient:other.data.account.primaryAuthDestination,title:'Audit saved direct conversation'});
+ const {data:context}=await api('/v1/session/context',created.cookie);
+ const {data:inbox}=await api('/v1/conversations',created.cookie);
+ observations.push({phase:'api',conversationCount:inbox.conversations.length,types:inbox.conversations.map(c=>c.conversationType)});
+ browser=await chromium.launch({headless:true});
+ for(const [name,viewport] of [['desktop',{width:1440,height:1000}]]){
+ const ctx=await browser.newContext({viewport,extraHTTPHeaders:{'x-grogoni-device-id':device}});
+ await ctx.addCookies(created.cookie.split('; ').map(c=>{const i=c.indexOf('=');return {name:c.slice(0,i),value:c.slice(i+1),domain:'grogoni.com',path:'/',httpOnly:true,secure:true,sameSite:'Lax'};}));
+ await ctx.addInitScript(({device})=>{localStorage.setItem('grogoni.device-id.v1',device);localStorage.setItem('grogoni.marketplace-intro.completed.v1','true');},{device});
+ const page=await ctx.newPage();const responses=[],errors=[];
+ page.on('response',r=>{const p=new URL(r.url()).pathname;if(p.includes('/api/')&&(p.includes('bootstrap')||p.includes('conversations')||r.status()>=400))responses.push({path:p,status:r.status()});});
+ page.on('pageerror',e=>errors.push(e.message));
+ await page.goto('https://grogoni.com/marketplace/conversations/'+context.conversationId,{waitUntil:'domcontentloaded'});
+ let persisted=false;try{await page.locator('.conversation-item:not(.pinned-agent)').first().waitFor({state:'visible',timeout:45000});persisted=true;}catch{}
+ const detail={phase:name,persisted,rows:await page.locator('.conversation-item:not(.pinned-agent)').count(),labels:await page.locator('.session-badge').allTextContents(),responses,errors,body:(await page.locator('body').innerText()).slice(0,2200)};
+ await page.screenshot({path:dir+'/'+name+'.png',fullPage:true});observations.push(detail);console.log(JSON.stringify(detail));await ctx.close();
+ }
+} catch(e){observations.push({error:e.message});console.log(e.message);} finally{
+ await browser?.close();if(accountId){const {Client}=createRequire(new URL('../services/api/package.json',import.meta.url))('pg');const db=new Client({connectionString:process.env.DIRECT_DATABASE_URL??process.env.DATABASE_URL,connectionTimeoutMillis:15000});await db.connect();try{await db.query('begin');await db.query("select pg_advisory_xact_lock(hashtext('grogoni.cp2.normalized_store'))");await deleteLiveFixtureAccounts(db,{accountIds});await db.query('commit');const left=await db.query('select count(*)::int n from accounts where id=any($1::uuid[])',[accountIds]);observations.push({cleanupVerified:left.rows[0].n===0});}finally{await db.end();}}
+ await writeFile(dir+'/report.json',JSON.stringify(observations,null,2));console.log('Evidence: '+dir);
+}

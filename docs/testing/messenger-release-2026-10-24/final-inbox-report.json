@@ -1,0 +1,35 @@
+{
+  "base": "https://grogoni.com/api",
+  "runId": "25fa9eac-66a5-4592-bd60-e991b135f4fc",
+  "steps": [
+    {
+      "name": "saved unified inbox and reload at 1280px",
+      "status": "pass",
+      "detail": {
+        "width": 1280,
+        "allThreeVisible": true,
+        "reloaded": true,
+        "pageErrors": []
+      }
+    },
+    {
+      "name": "saved unified inbox and reload at 390px",
+      "status": "pass",
+      "detail": {
+        "width": 390,
+        "allThreeVisible": true,
+        "reloaded": true,
+        "pageErrors": []
+      }
+    },
+    {
+      "name": "remove and verify production inbox fixtures",
+      "status": "pass",
+      "detail": {
+        "removedAccounts": 2,
+        "removedBusinesses": 1,
+        "lockHeldMs": 5881
+      }
+    }
+  ]
+}

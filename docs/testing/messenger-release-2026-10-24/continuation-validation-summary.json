@@ -1,0 +1,13 @@
+{
+  "frontendBuild": "messenger-release-20261024-context",
+  "apiVersion": 99,
+  "realtimeTests": 9,
+  "sessionContextTests": 29,
+  "composerAndHomeTests": 8,
+  "localDesktopPhoneBrowserCases": 2,
+  "liveTwoBrowserChecksPassed": 5,
+  "liveReadSamplesPassed": 6,
+  "pageErrors": [],
+  "cleanupVerified": true,
+  "physicalDeviceAcceptance": "deferred-user-has-no-device"
+}

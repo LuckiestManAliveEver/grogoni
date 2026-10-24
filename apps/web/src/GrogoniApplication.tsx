@@ -527,6 +527,7 @@ export function OwnerApp() {
     importContactsFile,
     exportOwnerContacts
   } = useNetworkState({
+    ...(session?.user.phoneCountryCode ? { defaultCountry: session.user.phoneCountryCode } : {}),
     business,
     getCustomers: () => customers,
     loadCustomers,
@@ -895,7 +896,12 @@ export function OwnerApp() {
     }
     window.addEventListener("online", sessionContextRetry.retry);
     document.addEventListener("visibilitychange", retryWhenVisible);
+    // A transient server outage must recover without requiring a reload or connectivity event.
+    const contextRetryTimer = window.setInterval(() => {
+      if (navigator.onLine) retryWhenVisible();
+    }, 15000);
     return () => {
+      window.clearInterval(contextRetryTimer);
       window.removeEventListener("online", sessionContextRetry.retry);
       document.removeEventListener("visibilitychange", retryWhenVisible);
     };
@@ -1527,6 +1533,7 @@ export function OwnerApp() {
     networkOnboarding:
       session === null ? null : (
         <IdentityNetworkOnboardingCard
+          key={session.account.id}
           session={session}
           graph={networkGraph}
           oauthProviders={oauthProviders}
@@ -1896,6 +1903,8 @@ export function OwnerApp() {
                 messages={chatMessages}
                 conversations={conversationInbox}
                 activeConversationId={activeConversationId}
+                participants={activeConversation?.participants ?? []}
+                onParticipantsUpdated={(conversationId) => void loadMessagingInbox(conversationId)}
                 isInboxOpen={isMessagingInboxOpen}
                 isContactTyping={isContactTyping}
                 isConfirming={isPending("runtime-confirm")}
@@ -2057,6 +2066,7 @@ export function OwnerApp() {
                 onCompleteMarketplaceIntro={() => void completeMarketplaceIntro()}
                 marketplaceIntroComplete={isMarketplaceIntroComplete}
                 marketplaceShortcutOpen={isMarketplaceShortcutOpen}
+                onOpenMarketplace={() => setIsMarketplaceShortcutOpen(true)}
                 onCloseMarketplace={() => setIsMarketplaceShortcutOpen(false)}
                 onSend={(draft, provider, subject, invoiceId) =>
                   void runAction("chat-send", () =>

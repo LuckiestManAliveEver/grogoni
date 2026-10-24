@@ -18,7 +18,11 @@ import {
   saveCachedAuthSession
 } from "../auth-bootstrap";
 import { getJson, patchJson, postJson } from "../api-helpers";
-import { navigateToBrowserUrl, navigateToOwnerRoute } from "../browser-navigation";
+import {
+  navigateToBrowserUrl,
+  navigateToOwnerRoute,
+  readCurrentOwnerRoute
+} from "../browser-navigation";
 import {
   getErrorMessage,
   logAuthenticationLifecycle,
@@ -600,7 +604,15 @@ export function useAuthState(deps: UseAuthStateDeps) {
   ): Promise<boolean> {
     try {
       const shopAtStart = readStoredBusiness()?.id ?? null;
-      const context = await apiFetch<GrogoniSessionContext>("/v1/session/context");
+      // Explicit conversation links take precedence over the account-wide last thread.
+      // Refresh-only retries keep their existing data-only behavior.
+      const requestedConversationId =
+        apply === "restore" ? readCurrentOwnerRoute()?.conversationId : undefined;
+      const context = await apiFetch<GrogoniSessionContext>(
+        requestedConversationId === undefined
+          ? "/v1/session/context"
+          : `/v1/session/context?conversationId=${encodeURIComponent(requestedConversationId)}`
+      );
       if (!shouldApply()) return false;
       if (apply === "refresh" || !shouldRestore()) {
         const currentShop = readStoredBusiness();
@@ -655,6 +667,8 @@ export function useAuthState(deps: UseAuthStateDeps) {
       );
       return true;
     } catch {
+      if (shouldApply() && navigator.onLine)
+        setStatusMessage("Session settings are temporarily unavailable. Retrying…");
       // Offline launch continues from the device cache; sessionContextRetry retries the load
       // when GrogoniApplication sees a reconnect or the app shown again.
       return false;

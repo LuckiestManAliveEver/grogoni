@@ -1,0 +1,7 @@
+{
+  "mode": "dry-run",
+  "fingerprints": 0,
+  "identifiersLogged": false,
+  "usesDeployedServerKey": true,
+  "temporaryFunctionDeleted": true
+}

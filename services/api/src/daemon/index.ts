@@ -1,3 +1,4 @@
+import { loadDaemonConversationHistory } from "./conversation-history.js";
 import { Pool } from "pg";
 import type { buildDaemonGateway } from "./gateway.js";
 import { repositoryDefaultRuntimePolicy } from "@grogoni/shared-types";
@@ -54,7 +55,22 @@ let app: ReturnType<typeof buildDaemonGateway> | undefined;
 function report(event: DaemonEvent) {
   console.log(JSON.stringify(event));
 }
-const execute = createDaemonExecutor(process.env);
+const execute = createDaemonExecutor(process.env, {
+  loadConversationHistory: async (task) => {
+    const client = await pool.connect();
+    try {
+      await client.query("begin read only");
+      const history = await loadDaemonConversationHistory(client, task);
+      await client.query("commit");
+      return history;
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+});
 // Repeated signals are absorbed so a second Ctrl-C or SIGTERM cannot cut the grace period short
 // and strand a claimed task; systemd's SIGKILL after TimeoutStopSec remains the hard stop.
 const shutdown = () => {

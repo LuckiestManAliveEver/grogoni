@@ -1,0 +1,25 @@
+{
+  "base": "https://grogoni.com/api",
+  "runId": "2d63a70a-36e1-4f8e-9e15-4e84e4796a32",
+  "steps": [
+    {
+      "name": "saved unified inbox and reload at 1280px",
+      "status": "fail",
+      "detail": "Expected values to be strictly deep-equal:\n+ actual - expected\n\n+ [\n+   \"Failed to execute 'close' on 'WebSocket': The close code must be either 1000, or between 3000 and 4999. 1011 is neither.\",\n+   \"Failed to execute 'close' on 'WebSocket': The close code must be either 1000, or between 3000 and 4999. 1011 is neither.\",\n+   \"Failed to execute 'close' on 'WebSocket': The close code must be either 1000, or between 3000 and 4999. 1011 is neither.\",\n+   \"Failed to execute 'close' on 'WebSocket': The close code must be either 1000, or between 3000 and 4999. 1011 is neither.\"\n+ ]\n- []\n"
+    },
+    {
+      "name": "saved unified inbox and reload at 390px",
+      "status": "fail",
+      "detail": "Expected values to be strictly deep-equal:\n+ actual - expected\n\n+ [\n+   \"Failed to execute 'close' on 'WebSocket': The close code must be either 1000, or between 3000 and 4999. 1011 is neither.\",\n+   \"Failed to execute 'close' on 'WebSocket': The close code must be either 1000, or between 3000 and 4999. 1011 is neither.\",\n+   \"Failed to execute 'close' on 'WebSocket': The close code must be either 1000, or between 3000 and 4999. 1011 is neither.\"\n+ ]\n- []\n"
+    },
+    {
+      "name": "remove and verify production inbox fixtures",
+      "status": "pass",
+      "detail": {
+        "removedAccounts": 2,
+        "removedBusinesses": 1,
+        "lockHeldMs": 5963
+      }
+    }
+  ]
+}

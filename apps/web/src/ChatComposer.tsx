@@ -36,6 +36,8 @@ interface ChatComposerProps {
   isSending: boolean;
   mode: GrogoniMode;
   activeAgentName: string;
+  audienceLabel?: string | undefined;
+  agentControlsAvailable?: boolean;
   pendingAttachments: ChatAttachment[];
   replyToMessageId: string | null;
   selectedConversationTitle: string;
@@ -45,6 +47,7 @@ interface ChatComposerProps {
   onCancelGeneration: () => void;
   onCancelReply: () => void;
   onOpenAgentProfile: () => void;
+  onAddParticipants?: () => void;
   onRemoveAttachment: (attachmentId: string) => void;
   onRequireSignIn: () => void;
   onSellerPhotoCapture: (file: File) => void;
@@ -61,6 +64,8 @@ export function ChatComposer({
   isSending,
   mode,
   activeAgentName,
+  audienceLabel,
+  agentControlsAvailable = true,
   pendingAttachments,
   replyToMessageId,
   selectedConversationTitle,
@@ -70,6 +75,7 @@ export function ChatComposer({
   onCancelGeneration,
   onCancelReply,
   onOpenAgentProfile,
+  onAddParticipants,
   onRemoveAttachment,
   onRequireSignIn,
   onSellerPhotoCapture
@@ -101,7 +107,7 @@ export function ChatComposer({
   const [channelPickerOpen, setChannelPickerOpen] = useState(false);
   const [externalAppsOpen, setExternalAppsOpen] = useState(false);
   const messageInputRef = useRef<HTMLTextAreaElement | null>(null);
-  const hashtagQuery = runtimeHashtagQuery(liveDraft);
+  const hashtagQuery = agentControlsAvailable ? runtimeHashtagQuery(liveDraft) : null;
   const sellerHashtagCapabilities = [...chatModuleCommands, ...runtimeHashtagCapabilities];
   const matchingHashtagCapabilities =
     hashtagQuery === null
@@ -160,7 +166,9 @@ export function ChatComposer({
             />
           </ChatComposerLazyPanel>
         ) : null}
-        <small className="composer-agent-indicator">{activeAgentName} will answer</small>
+        <small className="composer-agent-indicator">
+          {audienceLabel ?? `${activeAgentName} will answer`}
+        </small>
         <input
           ref={fileInputRef}
           className="chat-file-input"
@@ -244,9 +252,11 @@ export function ChatComposer({
               }
             }}
             placeholder={
-              mode === "seller"
-                ? "Ask your agent, or type # to call a capability"
-                : "Ask Grogoni..."
+              !agentControlsAvailable
+                ? "Write a message"
+                : mode === "seller"
+                  ? "Ask your agent, or type # to call a capability"
+                  : "Ask Grogoni..."
             }
           />
         </label>
@@ -262,13 +272,15 @@ export function ChatComposer({
             <span className="attach-icon" aria-hidden="true" />
             <span className="visually-hidden">More</span>
           </button>
-          <ComposerModelSwitcher
-            agent={agent}
-            business={business}
-            onAgentChange={onAgentChange}
-            onOpenAgentProfile={onOpenAgentProfile}
-            onBeforeOpen={() => messageInputRef.current?.blur()}
-          />
+          {agentControlsAvailable ? (
+            <ComposerModelSwitcher
+              agent={agent}
+              business={business}
+              onAgentChange={onAgentChange}
+              onOpenAgentProfile={onOpenAgentProfile}
+              onBeforeOpen={() => messageInputRef.current?.blur()}
+            />
+          ) : null}
           <div className="composer-bottom-row-trailing">
             {isBrowserGenerating ? (
               <button
@@ -322,13 +334,18 @@ export function ChatComposer({
           </small>
         ) : null}
         <ChatComposerActions
+          {...(onAddParticipants
+            ? { onAddParticipants: () => runMessageAction(onAddParticipants) }
+            : {})}
           draftHasText={liveDraft.trim().length > 0}
           mode={mode}
           open={messageActionsOpen}
           sendViaLabel={sendViaLabel}
           onClose={() => setMessageActionsOpen(false)}
           onAttachFiles={() => runMessageAction(() => fileInputRef.current?.click())}
-          onOpenCommand={() => runMessageAction(() => updateLiveDraft("#"))}
+          {...(agentControlsAvailable
+            ? { onOpenCommand: () => runMessageAction(() => updateLiveDraft("#")) }
+            : {})}
           onSendSms={() =>
             runMessageAction(() =>
               openSmsHandoff(

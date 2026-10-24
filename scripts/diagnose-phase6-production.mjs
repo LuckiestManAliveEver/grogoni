@@ -196,7 +196,11 @@ try {
         ).text,
         `reply ${text}`
       );
-      return { scopeHintRequired: true, decryptionBothDirections: true, idempotentReplay: true };
+      return {
+        scopeHintRequired: "not established by this diagnostic",
+        decryptionBothDirections: true,
+        idempotentReplay: true
+      };
     }
   );
   const shop = ok(
@@ -343,26 +347,22 @@ try {
     const firstInbox = await first.json();
     assert.ok(firstInbox.conversations.some((c) => c.id === id));
     // Wait for the UI to receive data instead of assuming its search field signals readiness.
-    await page
-      .waitForFunction(
-        () => globalThis.document.querySelectorAll(".conversation-item").length > 0,
-        {},
-        { timeout: 30000 }
-      )
-      .catch(() => {});
+    await page.waitForFunction(
+      (id) => globalThis.document.querySelector(`[data-conversation-id="${id}"]`) !== null,
+      id,
+      { timeout: 60000 }
+    );
     await page.screenshot({ path: `${dir}/before-reload.png`, fullPage: true });
-    const before = await page.locator(".conversation-item").count();
+    const before = await page.locator(".conversation-item[data-conversation-id]").count();
     await page.reload({ waitUntil: "domcontentloaded", timeout: 60000 });
     const second = await page.request.get(`${base}/v1/conversations`);
     assert.equal(second.status(), 200);
-    await page
-      .waitForFunction(
-        () => globalThis.document.querySelectorAll(".conversation-item").length > 0,
-        {},
-        { timeout: 30000 }
-      )
-      .catch(() => {});
-    const after = await page.locator(".conversation-item").count();
+    await page.waitForFunction(
+      (id) => globalThis.document.querySelector(`[data-conversation-id="${id}"]`) !== null,
+      id,
+      { timeout: 60000 }
+    );
+    const after = await page.locator(".conversation-item[data-conversation-id]").count();
     const labels = await page.locator(".session-badge").allTextContents();
     await page.screenshot({ path: `${dir}/after-reload.png`, fullPage: true });
     steps.push({

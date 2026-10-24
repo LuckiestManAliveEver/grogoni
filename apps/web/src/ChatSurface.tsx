@@ -18,6 +18,7 @@ import { RuntimeConfirmationButtons } from "./RuntimeConfirmationButtons";
 import { useOwnerCore } from "./hooks/OwnerCoreContext";
 import { useChatComposerState } from "./hooks/useChatComposerState";
 import { useCompactViewport } from "./hooks/useCompactViewport";
+import { ChatParticipantsPanel } from "./ChatParticipantsPanel";
 import { ChatComposer } from "./ChatComposer";
 import { ConversationAttachmentCard } from "./ConversationAttachmentCard";
 import { ConversationListPanel } from "./ConversationListPanel";
@@ -90,6 +91,7 @@ const homeSuggestionPrompts = ["Find me 50kg maize nearby", "Track my delivery",
 
 export function ChatSurface({
   activeConversationId,
+  participants = [],
   chatDraft,
   initialEmailSubject,
   channelEndpoints,
@@ -134,11 +136,13 @@ export function ChatSurface({
   onRefreshInvoices,
   onBackToChat,
   onCloseMarketplace,
+  onOpenMarketplace,
   onCloseWorkspace,
   onDraftChange,
   onSelectConversation,
   onCreateConversation,
   onCreateAgentSession,
+  onParticipantsUpdated,
   onRequireSignIn,
   onSignUp,
   onLogIn,
@@ -210,9 +214,25 @@ export function ChatSurface({
       : null;
 
   const isCompactViewport = useCompactViewport();
+  const surfaceRef = useRef<HTMLDivElement | null>(null);
+  const swipeStart = useRef<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    const surface = surfaceRef.current;
+    const composerElement = surface?.querySelector<HTMLElement>(".composer");
+    if (!surface || !composerElement || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      surface.style.setProperty(
+        "--mobile-composer-height",
+        `${composerElement.getBoundingClientRect().height}px`
+      );
+    });
+    observer.observe(composerElement);
+    return () => observer.disconnect();
+  }, []);
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const defaultMessageWindow = useRef(detectCapabilitySettings().messageWindowSize).current;
   const [messageWindowSize, setMessageWindowSize] = useState(defaultMessageWindow);
+  const [participantsOpen, setParticipantsOpen] = useState(false);
   const [inboxSearch, setInboxSearch] = useState("");
   const [editingTopic, setEditingTopic] = useState<string | null>(null);
   const [isNewConversationOpen, setIsNewConversationOpen] = useState(false);
@@ -295,6 +315,12 @@ export function ChatSurface({
   const selectedConversation = conversations.find(
     (conversation) => conversation.id === activeConversationId
   );
+  const isHumanConversation =
+    selectedConversation !== undefined &&
+    (selectedConversation.hasHumanRecipient ||
+      selectedConversation.conversationType === "DIRECT" ||
+      selectedConversation.conversationType === "BUSINESS" ||
+      selectedConversation.kind !== "personal");
   const selectedEmailCustomerId = channelEndpoints.find(
     (endpoint) => endpoint.provider === "email"
   )?.customerId;
@@ -326,25 +352,16 @@ export function ChatSurface({
     smsHandoffRequest
   } = composer;
   const visibleConversations = showMessageThread
-    ? conversations
-        // Home is the account's own agent-session list (Phase 3), not the general messaging
-        // inbox - a DM or storefront/order conversation never appears there. Selecting "chat"
-        // keeps today's full inbox unchanged.
-        .filter((conversation) =>
-          isSessionListView
-            ? conversation.kind === "personal" && !conversation.hasHumanRecipient
-            : true
-        )
-        .filter((conversation) => {
-          const query = inboxSearch.trim().toLowerCase();
-          if (!query || conversation.helpTopic) return true;
-          return (
-            (conversation.title ?? "Grogoni agent").toLowerCase().includes(query) ||
-            (conversation.lastMessage === null
-              ? false
-              : conversationMessageText(conversation.lastMessage).toLowerCase().includes(query))
-          );
-        })
+    ? conversations.filter((conversation) => {
+        const query = inboxSearch.trim().toLowerCase();
+        if (!query || conversation.helpTopic) return true;
+        return (
+          (conversation.title ?? "Grogoni agent").toLowerCase().includes(query) ||
+          (conversation.lastMessage === null
+            ? false
+            : conversationMessageText(conversation.lastMessage).toLowerCase().includes(query))
+        );
+      })
     : [];
   const visibleMessages = showMessageThread
     ? messages.filter((message) => !isRedundantAgentErrorMessage(message.body))
@@ -405,6 +422,10 @@ export function ChatSurface({
   }, [activeConversationId, messages.length, showMessageThread, workspaceCardView]);
 
   const conversationListPanelProps = {
+    agentName: agent.name,
+    pinnedAgent: conversations.find(
+      (conversation) => !conversation.hasHumanRecipient && !conversation.helpTopic
+    ),
     isSessionListView,
     isAuthenticated,
     // Lets the inbox name a chat started from Phone Contacts by the owner's saved contact name.
@@ -444,21 +465,62 @@ export function ChatSurface({
 
   const isHomeConversation = mode === "marketplace" && activeModuleView === null;
   const isHomeEmpty =
-    isHomeConversation && visibleMessages.every((message) => message.id === "welcome");
+    isHomeConversation &&
+    !isHumanConversation &&
+    visibleMessages.every((message) => message.id === "welcome");
 
   const homeMessages = windowedMessages.filter(
-    (message) => !isHomeConversation || message.id !== "welcome"
+    (message) => (!isHomeConversation && !isHumanConversation) || message.id !== "welcome"
   );
 
   return (
-    <div className={`chat-surface ${showMessageThread && isInboxOpen ? "inbox-open" : ""}`}>
+    <div
+      ref={surfaceRef}
+      className={`chat-surface ${showMessageThread && isInboxOpen ? "inbox-open" : ""}`}
+      onTouchStart={(event) => {
+        swipeStart.current = null;
+        if (
+          !isCompactViewport ||
+          event.touches.length !== 1 ||
+          (event.target instanceof Element &&
+            event.target.closest(
+              "input, textarea, select, button, a, [role='dialog'], .composer, [data-no-swipe]"
+            ))
+        )
+          return;
+        swipeStart.current = { x: event.touches[0]!.clientX, y: event.touches[0]!.clientY };
+      }}
+      onTouchCancel={() => {
+        swipeStart.current = null;
+      }}
+      onTouchEnd={(event) => {
+        const start = swipeStart.current;
+        swipeStart.current = null;
+        const end = event.changedTouches[0];
+        if (!start || !end || event.touches.length > 0) return;
+        const dx = end.clientX - start.x;
+        if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(end.clientY - start.y) * 1.5) return;
+        if (dx > 0) {
+          if (workspaceOpen) onCloseWorkspace();
+          else if (marketplaceShortcutOpen) onCloseMarketplace();
+          else {
+            onInboxOpenChange(true);
+          }
+        } else {
+          if (isInboxOpen) onInboxOpenChange(false);
+          else if (mode === "seller") onOpenWorkspace();
+          else onOpenMarketplace?.();
+        }
+      }}
+    >
       {showMessageThread ? (
         isCompactViewport ? (
           <StackedModule
+            embedded
             moduleId="messenger-inbox"
             className={`messenger-inbox-module ${isSessionListView ? "sessions-view" : ""}`}
             open={isInboxOpen}
-            title={isSessionListView ? "Chats" : "Messages"}
+            title="Contacts"
             onClose={() => onInboxOpenChange(false)}
           >
             <ConversationListPanel showHeading={false} {...conversationListPanelProps} />
@@ -529,6 +591,18 @@ export function ChatSurface({
                   <strong>{selectedConversation?.title ?? agent.name}</strong>
                 </button>
               )}
+              {participants.filter((participant) => participant.role === "account").length > 1 ? (
+                <button
+                  className="discussion-members"
+                  type="button"
+                  onClick={() => setParticipantsOpen(true)}
+                >
+                  {participants
+                    .filter((participant) => participant.role !== "shop")
+                    .map((participant) => participant.displayName ?? participant.role)
+                    .join(", ")}
+                </button>
+              ) : null}
               <small>
                 {selectedConversation?.helpTopic
                   ? "Help · Ask your agent"
@@ -893,6 +967,7 @@ export function ChatSurface({
           {children}
         </StackedModule>
         <StackedModule
+          embedded={isCompactViewport}
           moduleId="marketplace"
           className="buy-module"
           open={activeModuleView === null && mode === "marketplace" && marketplaceShortcutOpen}
@@ -940,6 +1015,7 @@ export function ChatSurface({
           )}
         </StackedModule>
         <StackedModule
+          embedded={isCompactViewport}
           moduleId="workspace"
           className={workspaceModuleClassName(workspaceCardView, mode)}
           open={workspaceOpen}
@@ -1118,7 +1194,30 @@ export function ChatSurface({
             ))}
           </div>
         ) : null}
+        {participantsOpen ? (
+          <ChatParticipantsPanel
+            key={activeConversationId}
+            conversationId={activeConversationId}
+            contacts={networkDevicePhonebook}
+            onClose={() => setParticipantsOpen(false)}
+            onUpdated={(conversationId) => {
+              if (onParticipantsUpdated) onParticipantsUpdated(conversationId);
+              else onSelectConversation(conversationId);
+            }}
+          />
+        ) : null}
         <ChatComposer
+          onAddParticipants={() =>
+            isAuthenticated ? setParticipantsOpen(true) : onRequireSignIn()
+          }
+          agentControlsAvailable={!isHumanConversation}
+          audienceLabel={
+            isHumanConversation
+              ? selectedConversation?.conversationType === "BUSINESS"
+                ? "Business conversation · messages go to people"
+                : "Discussion · messages go to participants"
+              : undefined
+          }
           activeAgentName={agent.name}
           agent={agentSettings}
           business={business}

@@ -1,3 +1,4 @@
+import { loadDaemonConversationHistory } from "./daemon/conversation-history.js";
 import { readWebPushConfiguration } from "./cp2/push.js";
 import { registerCommerceRoutes } from "./cp2/domains/commerce/routes.js";
 import { registerChatImageRoutes } from "./cp2/chat-image-routes.js";
@@ -597,6 +598,8 @@ export async function createEdgeDomainRoutes(database: EdgeDomainDatabase) {
             );
           });
         },
+        loadConversationHistory: (task) =>
+          database.transaction((client) => loadDaemonConversationHistory(client, task)),
         authorizeConversation: async (request, conversationId) => {
           const path = `/v1/conversations/${conversationId}`;
           return database.transaction(async (client) => {

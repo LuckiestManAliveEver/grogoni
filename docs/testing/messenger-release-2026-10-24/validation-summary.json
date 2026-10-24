@@ -1,0 +1,20 @@
+{
+  "realtimeTests": {
+    "passed": 9
+  },
+  "postgresCleanupTests": {
+    "passed": 5
+  },
+  "publicAuthenticationEntryChecks": {
+    "passed": 4
+  },
+  "liveUnifiedInboxChecks": {
+    "passed": 2,
+    "cleanupVerified": true
+  },
+  "webTypecheck": "passed",
+  "scopedLint": "passed",
+  "webBuild": "passed",
+  "privateTokensInArtifact": 0,
+  "physicalDeviceAcceptance": "unverified-user-has-no-device"
+}

@@ -1,4 +1,9 @@
-import { useState } from "react";
+import { useState, type ChangeEvent } from "react";
+import {
+  browserContactsAdapter,
+  readContactsFile,
+  type ContactsAccessAdapter
+} from "./contacts-access";
 
 import { getErrorMessage } from "./chat-message-plumbing";
 import {
@@ -7,7 +12,6 @@ import {
 } from "./NetworkSyncNestedCard";
 import type {
   ContactPickerContact,
-  ContactPickerNavigator,
   NetworkGraphSummary,
   OAuthProviderSummary,
   SessionResponse,
@@ -20,8 +24,10 @@ export function IdentityNetworkOnboardingCard({
   oauthProviders,
   oauthProvidersLoaded,
   onGoogleContacts,
-  onPhoneContactsSync
+  onPhoneContactsSync,
+  contactsAdapter = browserContactsAdapter
 }: {
+  contactsAdapter?: ContactsAccessAdapter;
   session: SessionResponse;
   graph: NetworkGraphSummary | null;
   oauthProviders: OAuthProviderSummary[];
@@ -42,7 +48,22 @@ export function IdentityNetworkOnboardingCard({
         : null;
   const [message, setMessage] = useState("");
   const [working, setWorking] = useState(false);
-  const [dismissed, setDismissed] = useState(false);
+  const dismissalKey = `grogoni.contact-onboarding.dismissed.v1:${session.account.id}`;
+  const [dismissed, setDismissed] = useState(() => {
+    try {
+      return localStorage.getItem(dismissalKey) === "true";
+    } catch {
+      return false;
+    }
+  });
+  function dismiss() {
+    try {
+      localStorage.setItem(dismissalKey, "true");
+    } catch {
+      /* Optional cache. */
+    }
+    setDismissed(true);
+  }
   const hasSeedNetwork =
     graph?.nodes?.some((node) => node.degree === 1 && node.sourceId !== null) ?? false;
   const isGmail = verifiedEmail !== null && /@(gmail|googlemail)\.com$/i.test(verifiedEmail);
@@ -58,28 +79,45 @@ export function IdentityNetworkOnboardingCard({
 
   if (dismissed || hasSeedNetwork) return null;
 
-  async function importPhoneContacts() {
-    const contactNavigator = navigator as ContactPickerNavigator;
-    if (contactNavigator.contacts?.select === undefined) {
-      setMessage("The contact picker is not available on this device or browser.");
+  async function syncContacts(contacts: ContactPickerContact[]) {
+    const usable = contacts.filter(
+      (contact) =>
+        getContactDisplayName(contact).length > 0 &&
+        contactPickerContactToNetworkContact(contact) !== null
+    );
+    if (!usable.length) {
+      setMessage("No contacts were selected.");
       return;
     }
+    const result = await onPhoneContactsSync(usable);
+    if (!result) {
+      setMessage("Contacts could not be synced. Try again.");
+      return;
+    }
+    const count = result.syncedContactNodeIds?.length ?? 0;
+    setMessage(
+      count < usable.length
+        ? `Added ${count} of ${usable.length} contacts. Try again to add the rest.`
+        : `${count} phonebook contact${count === 1 ? "" : "s"} added.`
+    );
+  }
+  async function importPhoneContacts() {
     setWorking(true);
     try {
-      const contacts = await contactNavigator.contacts.select(["name", "tel", "email"], {
-        multiple: true
-      });
-      const usable = contacts.filter(
-        (contact) =>
-          getContactDisplayName(contact).length > 0 &&
-          contactPickerContactToNetworkContact(contact) !== null
-      );
-      if (usable.length === 0) {
-        setMessage("No contacts were selected.");
-        return;
-      }
-      await onPhoneContactsSync(usable);
-      setMessage(`${usable.length} phonebook contact${usable.length === 1 ? "" : "s"} added.`);
+      await syncContacts(await contactsAdapter.select());
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    } finally {
+      setWorking(false);
+    }
+  }
+  async function importFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setWorking(true);
+    try {
+      await syncContacts(await readContactsFile(file));
     } catch (error) {
       setMessage(getErrorMessage(error));
     } finally {
@@ -106,14 +144,26 @@ export function IdentityNetworkOnboardingCard({
             Import Google Contacts
           </button>
         ) : null}
-        <button
-          type="button"
-          className="secondary"
-          disabled={working}
-          onClick={() => void importPhoneContacts()}
-        >
-          Choose phonebook contacts
-        </button>
+        {contactsAdapter.isSupported() ? (
+          <button
+            type="button"
+            className="secondary"
+            disabled={working}
+            onClick={() => void importPhoneContacts()}
+          >
+            Choose phonebook contacts
+          </button>
+        ) : null}
+        <label className="phonebook-file-button secondary">
+          Import contacts file
+          <input
+            type="file"
+            accept=".vcf,.csv,text/vcard,text/csv"
+            aria-label="Import contacts file"
+            disabled={working}
+            onChange={(event) => void importFile(event)}
+          />
+        </label>
       </div>
 
       <small>
@@ -121,7 +171,7 @@ export function IdentityNetworkOnboardingCard({
         permission.
       </small>
       {message ? <p className="setup-status">{message}</p> : null}
-      <button className="identity-network-dismiss" type="button" onClick={() => setDismissed(true)}>
+      <button className="identity-network-dismiss" type="button" onClick={dismiss}>
         Not now
       </button>
     </section>

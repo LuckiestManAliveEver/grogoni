@@ -1,3 +1,4 @@
+import { browserContactsAdapter } from "../contacts-access";
 import {
   useEffect,
   useRef,
@@ -32,6 +33,7 @@ import {
   type PhonebookSyncContact
 } from "../phonebook-sync";
 import {
+  canonicalDeviceContactPhone,
   mergeDevicePhonebook,
   type DevicePhonebookContact,
   clearDevicePhonebooks,
@@ -43,7 +45,6 @@ import type {
   ActiveBusiness,
   AgentRouteSummary,
   ContactPickerContact,
-  ContactPickerNavigator,
   CustomerFormState,
   CustomerSummary,
   NetworkGraphSummary,
@@ -52,6 +53,7 @@ import type {
 } from "../grogoni-application-shared";
 
 interface UseNetworkStateDeps {
+  defaultCountry?: string;
   business: ActiveBusiness | null;
   getCustomers: () => CustomerSummary[];
   loadCustomers: (businessId: string) => Promise<void>;
@@ -177,7 +179,8 @@ export function useNetworkState(deps: UseNetworkStateDeps) {
 
     const result = await syncPhonebookInBatches(
       (body) => postJson<NetworkGraphSummary>("/network/sync/contacts", body),
-      contacts
+      contacts,
+      deps.defaultCountry ?? browserDefaultCountry()
     );
 
     if (result.graph === null) {
@@ -190,7 +193,12 @@ export function useNetworkState(deps: UseNetworkStateDeps) {
     // Keep whatever was synced, even when a later batch failed.
     const picked = contacts.slice(0, result.nodeIds.length).map((contact, index) => ({
       name: contact.name,
-      phone: contact.phone,
+      phone: contact.phone
+        ? (canonicalDeviceContactPhone(
+            contact.phone,
+            deps.defaultCountry ?? browserDefaultCountry()
+          ) ?? contact.phone)
+        : null,
       email: contact.email,
       nodeId: result.nodeIds[index] ?? null
     }));
@@ -448,18 +456,14 @@ export function useNetworkState(deps: UseNetworkStateDeps) {
   // two-way dependency class fixed for Sync (Phase 7) and Runtime history (Phase 16) by passing
   // the setter at call time instead of hook-invocation time.
   async function syncOwnerPhoneContacts(setChatMessages: Dispatch<SetStateAction<ChatMessage[]>>) {
-    const contactNavigator = navigator as ContactPickerNavigator;
-
-    if (contactNavigator.contacts?.select === undefined) {
+    if (!browserContactsAdapter.isSupported()) {
       deps.setStatusMessage("Contact sync is available on supported mobile browsers");
       await shareOwnerStorefrontInvite();
       return;
     }
 
     try {
-      const selectedContacts = await contactNavigator.contacts.select(["name", "tel", "email"], {
-        multiple: true
-      });
+      const selectedContacts = await browserContactsAdapter.select();
 
       if (selectedContacts.length === 0) {
         return;

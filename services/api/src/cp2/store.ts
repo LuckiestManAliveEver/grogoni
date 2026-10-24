@@ -112,6 +112,7 @@ import { notificationRuleKey, summarizeNotifications } from "./domains/notificat
 import { NetworkDomain, type NetworkDomainDeps } from "./domains/network/store.js";
 import {
   normalizeContactEmail,
+  protectStoredContactHash,
   normalizeContactPhone,
   ownerPhoneCountry
 } from "./domains/network/shared.js";
@@ -1378,6 +1379,15 @@ export class Cp2Store {
           ? null
           : (this.users.get(node.grogoniUserId)?.accountId ?? null);
       },
+      findPhonebookNode: (ownerUserId, counterpartAccountId) => {
+        const userId = this.userByAccount.get(counterpartAccountId);
+        return (
+          [...this.networkDomain.networkNodesMap.values()].find(
+            (node) =>
+              node.ownerUserId === ownerUserId && node.degree === 1 && node.grogoniUserId === userId
+          )?.id ?? null
+        );
+      },
       verifiedNotificationEmail: (accountId) => {
         const verified = this.verifiedBackupEmail(accountId);
         const account = this.accounts.get(accountId);
@@ -1426,6 +1436,33 @@ export class Cp2Store {
         this.requireAuthorizedActor(sessionId, businessId, permission, now)
     });
     this.vocabularyDomain.initializeApprovedCache();
+    // Shared business threads are created by the customer, but an authorized participating
+    // business member executes using their own account runtime. Personal ownership stays strict.
+    const runtimeConversationForActor = (input: {
+      businessId: string;
+      accountId?: string;
+      conversationId?: string;
+    }) => {
+      const conversation =
+        input.conversationId === undefined
+          ? undefined
+          : this.messagingDomain.conversationsMap.get(input.conversationId);
+      if (
+        conversation === undefined ||
+        conversation.kind === "personal" ||
+        conversation.activeShopId !== input.businessId ||
+        input.accountId === undefined
+      )
+        return conversation;
+      const userId = this.userByAccount.get(input.accountId);
+      const member = [...this.memberships.values()].some(
+        (entry) => entry.businessId === input.businessId && entry.userId === userId
+      );
+      const participant = [...this.messagingDomain.conversationParticipantsMap.values()].some(
+        (entry) => entry.conversationId === conversation.id && entry.accountId === input.accountId
+      );
+      return member && participant ? { ...conversation, accountId: input.accountId } : conversation;
+    };
     this.agentRuntimeDomain = new AgentRuntimeDomain({
       ...(options.businessTaskEvaluations === undefined
         ? {}
@@ -1626,10 +1663,15 @@ export class Cp2Store {
           );
         }
         try {
-          return this.nativeRuntimeBindings.resolveRuntimeBinding(
-            input,
-            this.messagingDomain.conversationsMap
-          );
+          const effectiveConversation = runtimeConversationForActor(input);
+          const conversations =
+            effectiveConversation === undefined
+              ? this.messagingDomain.conversationsMap
+              : new Map(this.messagingDomain.conversationsMap).set(
+                  effectiveConversation.id,
+                  effectiveConversation
+                );
+          return this.nativeRuntimeBindings.resolveRuntimeBinding(input, conversations);
         } catch (error) {
           if (error instanceof Cp2Error) return null;
           throw error;
@@ -1675,7 +1717,7 @@ export class Cp2Store {
         if (input.conversationId === undefined) {
           return this.nativeRuntimeBindings.ensureDefaultRuntimeBinding(input);
         }
-        const conversation = this.messagingDomain.conversationsMap.get(input.conversationId);
+        const conversation = runtimeConversationForActor(input);
         if (
           conversation === undefined ||
           conversation.accountId !== input.accountId ||
@@ -1690,7 +1732,7 @@ export class Cp2Store {
         const result = this.nativeRuntimeBindings.ensureDefaultRuntimeBinding(input);
         if (conversation.runtimeBindingId !== result.binding.id) {
           this.messagingDomain.conversationsMap.set(conversation.id, {
-            ...conversation,
+            ...this.messagingDomain.conversationsMap.get(conversation.id)!,
             runtimeBindingId: result.binding.id,
             updatedAt: input.checkedAt
           });
@@ -1739,6 +1781,14 @@ export class Cp2Store {
         : { runtimeModelProvider: this.options.runtimeModelProvider })
     });
     this.runtimeHandoffDomain = new RuntimeHandoffDomain({
+      canExecuteBusinessConversation: (conversationId, accountId, businessId) => {
+        const conversation = runtimeConversationForActor({ conversationId, accountId, businessId });
+        return (
+          conversation?.kind !== "personal" &&
+          conversation?.activeShopId === businessId &&
+          conversation.accountId === accountId
+        );
+      },
       requireHandoffOwner: (businessId, userId) => {
         if (this.requireMembership(businessId, userId).role !== "owner")
           throw new Cp2Error(
@@ -3826,6 +3876,12 @@ export class Cp2Store {
     });
 
     return this.grogoniSessionContextView(session, next, now);
+  }
+
+  addConversationParticipant(
+    ...args: Parameters<MessagingDomain["addConversationParticipant"]>
+  ): ReturnType<MessagingDomain["addConversationParticipant"]> {
+    return this.messagingDomain.addConversationParticipant(...args);
   }
 
   createConversation(
@@ -8163,6 +8219,18 @@ export class Cp2Store {
   ): ReturnType<AgentRuntimeDomain["createRuntimeTurn"]> {
     return this.agentRuntimeDomain.createRuntimeTurn(...args);
   }
+  daemonConversationHistory(...args: Parameters<MessagingDomain["daemonConversationHistory"]>) {
+    return this.messagingDomain.daemonConversationHistory(...args);
+  }
+  getNetworkPrivacy(...args: Parameters<NetworkDomain["getNetworkPrivacy"]>) {
+    return this.networkDomain.getNetworkPrivacy(...args);
+  }
+  updateNetworkPrivacy(...args: Parameters<NetworkDomain["updateNetworkPrivacy"]>) {
+    return this.networkDomain.updateNetworkPrivacy(...args);
+  }
+  blockNetworkContact(...args: Parameters<NetworkDomain["blockNetworkContact"]>) {
+    return this.networkDomain.blockNetworkContact(...args);
+  }
   syncPhoneContacts(
     ...args: Parameters<NetworkDomain["syncPhoneContacts"]>
   ): ReturnType<NetworkDomain["syncPhoneContacts"]> {
@@ -9069,7 +9137,11 @@ export class Cp2Store {
       this.networkDomain.networkRoutesMap.set(route.id, route);
     }
 
-    for (const contactHash of snapshot.contactHashes ?? []) {
+    for (const stored of snapshot.contactHashes ?? []) {
+      const contactHash = {
+        ...stored,
+        hashValue: protectStoredContactHash(stored.hashType, stored.hashValue)
+      };
       this.networkDomain.contactHashesMap.set(contactHash.id, contactHash);
       this.networkDomain.contactHashIdByValueMap.set(
         `${contactHash.ownerUserId}:${contactHash.hashType}:${contactHash.hashValue}`,

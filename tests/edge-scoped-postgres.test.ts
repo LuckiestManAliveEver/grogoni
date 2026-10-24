@@ -103,10 +103,20 @@ describe.skipIf(!databaseUrl)("Edge tenant scoping on PostgreSQL", () => {
         first.checkpointVersion! + 2
       );
       await client.query("select pg_advisory_xact_lock(hashtext('grogoni.cp2.normalized_store'))");
-      await deleteLiveFixtureAccounts(client, {
-        accountIds: [actor.account.id],
-        businessIds: [shop.id]
-      });
+      let cleanupRoundTrips = 0;
+      await deleteLiveFixtureAccounts(
+        {
+          query: (sql: string, params?: unknown[]) => {
+            cleanupRoundTrips += 1;
+            return client.query(sql, params);
+          }
+        },
+        {
+          accountIds: [actor.account.id],
+          businessIds: [shop.id]
+        }
+      );
+      expect(cleanupRoundTrips).toBeLessThanOrEqual(3);
       expect(
         (
           await client.query("select entity_id from cp2_runtime_handoffs where task_id = $1", [

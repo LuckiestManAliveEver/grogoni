@@ -149,12 +149,28 @@ describe("session context refresh (retry) versus restore (sign-in)", () => {
   });
 
   it("restore still brings the owner back to where they last worked", async () => {
+    window.history.replaceState(null, "", "/marketplace");
     await load("restore");
 
     expect(spies.setBusiness).toHaveBeenCalledWith(expect.objectContaining({ id: "owned-shop" }));
     expect(spies.setMode).toHaveBeenCalledWith("seller");
     expect(spies.setActiveConversationId).toHaveBeenCalledWith("server-last-conversation");
     expect(window.location.pathname).toBe("/workspace/conversations/server-last-conversation");
+  });
+
+  it("restores the explicit conversation instead of requesting the account's default thread", async () => {
+    const requested = { ...serverContext, conversationId: "user-picked-conversation" };
+    mockedApiFetch.mockImplementation(async (path) =>
+      path === "/v1/session/context?conversationId=user-picked-conversation"
+        ? requested
+        : serverContext
+    );
+    await load("restore");
+    expect(mockedApiFetch).toHaveBeenCalledWith(
+      "/v1/session/context?conversationId=user-picked-conversation"
+    );
+    expect(spies.setActiveConversationId).toHaveBeenCalledWith("user-picked-conversation");
+    expect(window.location.pathname).toBe("/workspace/conversations/user-picked-conversation");
   });
 
   it("refresh drops an answer when the user changed shop while it was in flight", async () => {

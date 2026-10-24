@@ -1,0 +1,30 @@
+{
+  "focusedFirstRun": {
+    "passed": 87,
+    "failed": 3,
+    "failures": [
+      "daemon-chat-recovery.test.tsx: eager delivery occurs before expected event",
+      "network-contact-conversations.test.ts: networkNodeId undefined on participants",
+      "phase6-model-membership.test.ts: customer agentEnabled update no longer throws"
+    ]
+  },
+  "additionalFocusedRun": {
+    "passed": 29,
+    "failed": 0
+  },
+  "mobileChromium": {
+    "passed": 2,
+    "failed": 1,
+    "failure": "mobile-auth.spec.ts: home-welcome missing; loading shell"
+  },
+  "isolatedRevocationProbe": {
+    "passed": 0,
+    "failed": 1,
+    "failure": "pending push delivery attempted for revoked staff account"
+  },
+  "typechecks": {
+    "web": "passed",
+    "api": "passed"
+  },
+  "fullRepositorySuite": "not run"
+}

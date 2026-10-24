@@ -1,0 +1,16 @@
+{
+  "runId": "9de83019-0d39-4955-ac10-0110e993c278",
+  "checks": [
+    {
+      "check": "real daemon inference",
+      "modelId": "gpt-6-luna",
+      "passed": true
+    },
+    {
+      "check": "semantic context recall after runtime restart and server projection",
+      "modelId": "gpt-6-luna",
+      "passed": true
+    }
+  ],
+  "cleanupVerified": true
+}

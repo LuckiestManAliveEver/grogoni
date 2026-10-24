@@ -15,7 +15,7 @@ import {
   createLocalSyncMutation,
   flushLocalSyncMutations
 } from "../sync/sync-client";
-import { subscribeToAccountRealtime } from "../sync/realtime-client";
+import { accountRealtimeTransport, subscribeToAccountRealtime } from "../sync/realtime-client";
 import {
   apiBaseUrl,
   emptySyncSummary,
@@ -112,10 +112,7 @@ export function useSyncState(deps: UseSyncStateDeps) {
           closeRealtime = subscribeToAccountRealtime({
             accountId: session.account.id,
             endpoint: realtimeUrl.toString(),
-            transport:
-              apiBaseUrl.startsWith("/") || apiBaseUrl.includes("/functions/v1/")
-                ? "http-poll"
-                : "websocket",
+            transport: accountRealtimeTransport(apiBaseUrl, window.location.origin),
             onChangesAvailable: catchUp
           });
         };

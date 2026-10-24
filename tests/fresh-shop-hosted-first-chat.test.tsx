@@ -86,7 +86,9 @@ describe("fresh shop, first AI message: hosted-first with no client model state"
     async (mode, message, query) => {
       const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
         const url = typeof input === "string" ? input : input.toString();
-        expect(new URL(url, "http://localhost").pathname).toBe("/buy/assistant");
+        const path = new URL(url, "http://localhost").pathname;
+        if (path === "/v1/daemon/tasks" && !init?.method) return jsonResponse({ tasks: [] });
+        expect(path).toBe("/buy/assistant");
         expect(JSON.parse(String(init?.body)).message).toContain(query);
         return jsonResponse({
           reply: "Here are the available shopping options.",
@@ -158,7 +160,7 @@ describe("fresh shop, first AI message: hosted-first with no client model state"
       });
 
       expect(searchBuyFeed).not.toHaveBeenCalled();
-      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(1);
       expect(renderedMessages.map((message) => message.body)).toEqual([
         message,
         "Here are the available shopping options."
@@ -179,6 +181,7 @@ describe("fresh shop, first AI message: hosted-first with no client model state"
       const fetchMock = vi.fn(async (input: string | URL | Request) => {
         const url = typeof input === "string" ? input : input.toString();
         const path = new URL(url, "http://localhost").pathname;
+        if (path === "/v1/daemon/tasks") return jsonResponse({ tasks: [] });
         fetchedPaths.push(path);
         if (path === "/v1/conversations/conversation-1") return jsonResponse(conversation);
         if (path === "/v1/messages") {
@@ -246,7 +249,10 @@ describe("fresh shop, first AI message: hosted-first with no client model state"
       });
 
       expect(sendChatDraft).not.toBeNull();
-      expect(localStorage.length).toBe(0);
+      // The existing auth/device identifier is allowed; no model installation state is created.
+      expect(
+        Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index))
+      ).toEqual(["grogoni.device-id.v1"]);
 
       await act(async () => {
         await sendChatDraft!("Hello, what can you help me with today?");

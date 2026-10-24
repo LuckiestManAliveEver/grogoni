@@ -26,25 +26,32 @@ export function useInboxRefresh({
     // Refresh again when the key arrives so encrypted messages can then be decrypted.
     if (accountId === null) return;
     let cancelled = false;
+    let refreshing = false;
     const refresh = async () => {
-      const notificationConversationId = new URLSearchParams(window.location.search).get(
-        "conversation"
-      );
-      const routeConversationId = readCurrentOwnerRoute()?.conversationId ?? null;
-      if (!cancelled) {
-        await latest.current.loadMessagingInbox(
-          notificationConversationId ?? routeConversationId ?? activeConversationId
+      if (refreshing || cancelled) return;
+      refreshing = true;
+      try {
+        const notificationConversationId = new URLSearchParams(window.location.search).get(
+          "conversation"
         );
-      }
-      if (notificationConversationId) {
-        navigateToOwnerRoute(
-          {
-            mode,
-            view: "chat",
-            conversationId: notificationConversationId
-          },
-          { replace: true }
-        );
+        const routeConversationId = readCurrentOwnerRoute()?.conversationId ?? null;
+        if (!cancelled) {
+          await latest.current.loadMessagingInbox(
+            notificationConversationId ?? routeConversationId ?? activeConversationId
+          );
+        }
+        if (notificationConversationId) {
+          navigateToOwnerRoute(
+            {
+              mode,
+              view: "chat",
+              conversationId: notificationConversationId
+            },
+            { replace: true }
+          );
+        }
+      } finally {
+        refreshing = false;
       }
     };
     void refresh();

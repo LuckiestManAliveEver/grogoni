@@ -116,6 +116,41 @@ interface NetworkIdentityAddBody {
 }
 
 export function registerNetworkRoutes(app: FastifyInstance, store: Cp2Store): void {
+  app.get("/network/privacy", async (request, reply) => {
+    try {
+      return store.getNetworkPrivacy({ sessionId: readSessionCookie(request.headers.cookie) });
+    } catch (error) {
+      return sendCp2Error(reply, error);
+    }
+  });
+  app.patch<{ Body: { discoverable?: boolean } }>("/network/privacy", async (request, reply) => {
+    try {
+      if (typeof request.body?.discoverable !== "boolean")
+        throw new Cp2Error(400, "privacy_invalid", "Choose a discovery preference.");
+      return store.updateNetworkPrivacy({
+        sessionId: readSessionCookie(request.headers.cookie),
+        discoverable: request.body.discoverable
+      });
+    } catch (error) {
+      return sendCp2Error(reply, error);
+    }
+  });
+  for (const method of ["PUT", "DELETE"] as const)
+    app.route<{ Params: { userId: string } }>({
+      method,
+      url: "/network/blocks/:userId",
+      handler: async (request, reply) => {
+        try {
+          return store.blockNetworkContact({
+            sessionId: readSessionCookie(request.headers.cookie),
+            userId: parseString(request.params.userId, "userId"),
+            blocked: method === "PUT"
+          });
+        } catch (error) {
+          return sendCp2Error(reply, error);
+        }
+      }
+    });
   app.post(
     "/network/sync/contacts",
     async (request: FastifyRequest<{ Body: NetworkContactsSyncBody }>, reply) => {

@@ -3,8 +3,14 @@ import { useMemo, useState, type ChangeEvent } from "react";
 import type { NetworkConnectionSummary, NetworkInviteSummary } from "@grogoni/shared-types";
 
 import { AuthenticationActionMessage } from "./AuthenticationActionMessage";
-import { parseVcardContacts } from "./phonebook-vcard";
-import { parseContactImportContent } from "./contacts-import";
+import {
+  browserContactsAdapter,
+  readContactsFile,
+  type ContactsAccessAdapter
+} from "./contacts-access";
+import { NetworkPrivacyControls } from "./NetworkPrivacyControls";
+import { apiCloudFetch } from "./lib/api";
+import { networkChangedEvent } from "./phonebook-sync";
 import type { NetworkConnectionAction } from "./hooks/useNetworkState";
 import {
   contactPickerContactToSyncContact,
@@ -16,11 +22,7 @@ import {
   type DevicePhonebookContact,
   type OnGrogoniEntry
 } from "./phonebook-directory";
-import type {
-  ContactPickerContact,
-  ContactPickerNavigator,
-  NetworkGraphSummary
-} from "./grogoni-application-shared";
+import type { ContactPickerContact, NetworkGraphSummary } from "./grogoni-application-shared";
 
 /** Rows rendered per section; search narrows a longer phonebook. */
 const sectionRowLimit = 200;
@@ -39,8 +41,10 @@ export function PhoneContactsCard({
   onDisconnect,
   onConnectionAction,
   onInvite,
-  onMessageContact
+  onMessageContact,
+  contactsAdapter = browserContactsAdapter
 }: {
+  contactsAdapter?: ContactsAccessAdapter;
   graph: NetworkGraphSummary | null;
   connected: boolean;
   deviceContacts: DevicePhonebookContact[];
@@ -64,25 +68,12 @@ export function PhoneContactsCard({
     () => buildPhonebookDirectory({ graph, deviceContacts, invites, search }),
     [graph, deviceContacts, invites, search]
   );
-  const pickerSupported =
-    typeof navigator !== "undefined" &&
-    (navigator as ContactPickerNavigator).contacts?.select !== undefined;
+  const pickerSupported = contactsAdapter.isSupported();
   const invitable = directory.invite.filter((entry) => !entry.invited);
 
   async function syncFromPicker() {
-    const contactNavigator = navigator as ContactPickerNavigator;
-
-    if (contactNavigator.contacts?.select === undefined) {
-      setMessage(
-        "This browser cannot open your contacts. Import a contacts file (vCard or CSV) exported from your phone instead."
-      );
-      return;
-    }
-
     try {
-      const contacts = await contactNavigator.contacts.select(["name", "tel", "email"], {
-        multiple: true
-      });
+      const contacts = await contactsAdapter.select();
 
       if (contacts.length === 0) {
         setMessage("No contacts selected.");
@@ -101,15 +92,13 @@ export function PhoneContactsCard({
     event.target.value = "";
     if (file === undefined) return;
 
-    const content = await file.text();
-    // vCards keep every number and email per person; CSV exports have one column of each.
-    const contacts =
-      parseVcardContacts(content) ??
-      parseContactImportContent(content).map((record) => ({
-        name: [record.name],
-        tel: record.phone.trim() === "" ? [] : [record.phone],
-        email: record.email.trim() === "" ? [] : [record.email]
-      }));
+    let contacts: ContactPickerContact[];
+    try {
+      contacts = await readContactsFile(file);
+    } catch {
+      setMessage("That contacts file could not be read. Try a vCard or CSV export.");
+      return;
+    }
     if (contacts.length === 0) {
       setMessage("No contacts with a name were found in that file.");
       return;
@@ -193,15 +182,17 @@ export function PhoneContactsCard({
         <div>
           <h3>Phone Contacts</h3>
           <p>
-            Find the people you know on Grogoni and invite the rest. Grogoni reads only the contacts
-            you pick, and keeps only a fingerprint and the last few digits of each number, never the
-            full number.
+            Find people you know and invite the rest. Only contacts you select or import are sent
+            securely to Grogoni for matching. The server stores names, keyed fingerprints and masked
+            identifier hints; full selected numbers and emails stay in this device’s contact cache
+            for invitations. Disconnect deletes imported contact data.
           </p>
         </div>
         <span className={connected ? "network-status" : "network-status disconnected"}>
           {connected ? "Connected" : "Not Connected"}
         </span>
       </div>
+      <NetworkPrivacyControls />
       <div className="nested-form-actions">
         {pickerSupported ? (
           <button type="button" disabled={busyKey === "sync"} onClick={() => void syncFromPicker()}>
@@ -271,21 +262,38 @@ export function PhoneContactsCard({
                 None of your synced contacts are on Grogoni yet. Invite them below.
               </p>
             ) : (
-              directory.onGrogoni
-                .slice(0, sectionRowLimit)
-                .map((entry) => (
-                  <OnGrogoniRow
-                    key={entry.key}
-                    busy={busyKey === entry.key}
-                    entry={entry}
-                    onAction={(action) => void runAction(entry.key, action)}
-                    onMessage={
-                      onMessageContact && entry.nodeId
-                        ? () => onMessageContact(entry.nodeId!, entry.name)
-                        : undefined
+              directory.onGrogoni.slice(0, sectionRowLimit).map((entry) => (
+                <OnGrogoniRow
+                  key={entry.key}
+                  busy={busyKey === entry.key}
+                  entry={entry}
+                  onBlock={async () => {
+                    const userId = graph?.nodes.find(
+                      (node) => node.id === entry.nodeId
+                    )?.grogoniUserId;
+                    if (!userId) return;
+                    setBusyKey(entry.key);
+                    try {
+                      await apiCloudFetch(`/network/blocks/${encodeURIComponent(userId)}`, {
+                        method: "PUT",
+                        body: {}
+                      });
+                      setMessage(`${entry.name} blocked.`);
+                      window.dispatchEvent(new Event(networkChangedEvent));
+                    } catch {
+                      setMessage("Contact could not be blocked. Try again.");
+                    } finally {
+                      setBusyKey(null);
                     }
-                  />
-                ))
+                  }}
+                  onAction={(action) => void runAction(entry.key, action)}
+                  onMessage={
+                    onMessageContact && entry.nodeId
+                      ? () => onMessageContact(entry.nodeId!, entry.name)
+                      : undefined
+                  }
+                />
+              ))
             )}
           </section>
           <section className="network-contact-group" aria-label="Invite to Grogoni">
@@ -408,8 +416,10 @@ function OnGrogoniRow({
   entry,
   busy,
   onAction,
-  onMessage
+  onMessage,
+  onBlock
 }: {
+  onBlock?: () => Promise<void>;
   onMessage?: (() => void) | undefined;
   entry: OnGrogoniEntry;
   busy: boolean;
@@ -434,6 +444,16 @@ function OnGrogoniRow({
         </small>
       </span>
       <div className="phonebook-row-actions">
+        {entry.nodeId && onBlock ? (
+          <button
+            className="secondary"
+            type="button"
+            disabled={busy}
+            onClick={() => void onBlock()}
+          >
+            Block
+          </button>
+        ) : null}
         {onMessage ? (
           <button type="button" disabled={busy} onClick={onMessage}>
             Message
