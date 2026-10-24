@@ -53,7 +53,7 @@ describe("guest intent labeled set", () => {
 function fake(
   answer: (message: string) => GuestIntentOutcome | Promise<GuestIntentOutcome>
 ): GuestIntentClassifier {
-  return { modelId: "fake", classify: async (message) => answer(message) };
+  return { modelId: "fake", timeoutMs: 4_000, classify: async (message) => answer(message) };
 }
 
 const perfect = fake((message) => {
@@ -94,7 +94,36 @@ describe("guest intent eval scoring", () => {
     const slow = fake(() => ({ ok: false, reason: "model_timeout", latencyMs: 2_500 }));
     const summary = summarize(await scoreClassifier(guestIntentLabeledSet, slow, rules));
     expect(summary.failures).toMatchObject({ model_timeout: summary.sentToModel });
-    expect(summary.failedThresholds.some((entry) => entry.startsWith("fallbackRate"))).toBe(true);
+    expect(summary.withinServerLimit).toBe(0);
+    expect(summary.failedThresholds.some((entry) => entry.startsWith("withinServerLimit"))).toBe(
+      true
+    );
+    // Timeouts are a latency failure, not an error.
+    expect(summary.errorRate).toBe(0);
+  });
+
+  it("counts an answer slower than the server limit against the latency threshold", async () => {
+    const slowButAnswering = fake(async (message) => ({
+      ...((await perfect.classify(message)) as GuestIntentOutcome & { ok: true }),
+      latencyMs: 4_200
+    }));
+    const rows = await scoreClassifier(guestIntentLabeledSet, slowButAnswering, rules);
+    expect(summarize(rows, 4_500).pass).toBe(true);
+    const tight = summarize(rows, 4_000);
+    expect(tight.withinServerLimit).toBe(0);
+    expect(tight.pass).toBe(false);
+  });
+
+  it("fails when the model errors on more than 5% of messages", async () => {
+    let calls = 0;
+    const flaky = fake(async (message) =>
+      calls++ % 10 === 0
+        ? { ok: false, reason: "malformed_output", latencyMs: 10 }
+        : perfect.classify(message)
+    );
+    const summary = summarize(await scoreClassifier(guestIntentLabeledSet, flaky, rules), 4_000);
+    expect(summary.errorRate).toBeGreaterThan(0.05);
+    expect(summary.failedThresholds.some((entry) => entry.startsWith("errorRate"))).toBe(true);
   });
 
   it("scores queries on the product words and refuses leftover scaffolding", () => {

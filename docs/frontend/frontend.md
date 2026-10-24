@@ -1118,7 +1118,9 @@ so a model decides it: `classifyGuestMessage` in `guest-intent-client.ts` posts 
 intents and, for a search, the product words from the guest's own message ("Hi, do you have
 suger?" searches "sugar"). The model never writes a reply: every reply is app copy in
 `marketplace-search-reply.ts` (`guestRouteForIntent`), and a search query whose words are not the
-guest's is refused. The guest never waits more than 3 seconds (`guestIntentBudgetMs`) and never
+guest's is refused. While it decides, and while the search runs, the thread shows a typing
+indicator (`GuestTypingIndicator.tsx`, `guest-reply-pending.ts`). The guest never waits more than
+5 seconds for the classifier (`guestIntentBudgetMs`; the server's model limit is 4 seconds) and never
 sees a classifier error: offline, a timeout, a network error, any non-2xx answer, or an answer
 that fails validation falls back to the rules (`routeGuestMessage`), as does text with no letters
 or digits and anything over 500 characters. Recent answers are cached in memory, so a repeated

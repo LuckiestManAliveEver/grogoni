@@ -33,6 +33,7 @@ import {
 } from "../chat-device-only-messages";
 import { describeMarketplaceSearch, parseMarketplaceBuyIntent } from "../marketplace-search-reply";
 import { classifyGuestMessage } from "../guest-intent-client";
+import { beginGuestReply } from "../guest-reply-pending";
 import { postJson } from "../api-helpers";
 import {
   type ChatAttachment,
@@ -326,13 +327,15 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
         ? searchBuyFeed
         : undefined;
     // Someone without a shop has no assistant of their own: product-like text is searched, and
-    // anything else gets an honest answer. The model-based classifier decides which, within a 3s
+    // anything else gets an honest answer. The model-based classifier decides which, within a 5s
     // budget, and the rules (routeGuestMessage) answer whenever it cannot (guest-intent-client.ts).
     // A guest has no agent, so "help …" (an agent command for an owner) is routed like any other
     // guest message instead of being sent to an agent that is not there. A message to a person
     // never reaches the classifier: marketplaceSearch is undefined then.
-    const guestRoute =
-      business === null && marketplaceSearch ? (await classifyGuestMessage(message)).route : null;
+    // The thread shows a typing indicator until the reply is ready (guest-reply-pending.ts).
+    const endGuestReply =
+      business === null && marketplaceSearch ? beginGuestReply(activeConversationId) : null;
+    const guestRoute = endGuestReply ? (await classifyGuestMessage(message)).route : null;
     const buyQuery = marketplaceSearch
       ? guestRoute === null
         ? parseMarketplaceBuyIntent(message)
@@ -344,7 +347,11 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       const searched =
         guestRoute?.kind === "reply"
           ? { reply: guestRoute.reply, status: guestRoute.status }
-          : describeMarketplaceSearch(buyQuery!, await marketplaceSearch(buyQuery!));
+          : describeMarketplaceSearch(
+              buyQuery!,
+              await marketplaceSearch(buyQuery!).finally(() => endGuestReply?.())
+            );
+      endGuestReply?.();
       const createdAt = new Date().toISOString();
       // Leaving buy mode navigates to the marketplace root, outside any thread.
       const thread = mode === "marketplace" ? activeConversationId : null;
@@ -374,6 +381,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       return;
     }
 
+    endGuestReply?.();
     const offlineScope = currentOfflineScope();
     if (offlineScope) {
       if (runtimeTransition(offlineScope)) {

@@ -52,11 +52,20 @@ export type GuestIntentOutcome =
 
 export interface GuestIntentClassifier {
   readonly modelId: string;
+  /** The model limit: a call settles by then, with an answer or a timeout. */
+  readonly timeoutMs: number;
   classify(message: string, signal?: AbortSignal): Promise<GuestIntentOutcome>;
 }
 
-/** Server-side model budget. The web client's own budget (3s, guest-intent-client.ts) is larger. */
-export const defaultGuestIntentModelTimeoutMs = 2_500;
+/**
+ * Server-side model limit. The web client's own budget (5s, guest-intent-client.ts) is larger,
+ * leaving room for the network and the session lookup. GPT-6 Luna measured p50 2.7s / p95 4.1s
+ * with minimal reasoning (2026-10-23).
+ */
+export const defaultGuestIntentModelTimeoutMs = 4_000;
+
+/** The most GUEST_INTENT_MODEL_TIMEOUT_MS may be: it must fit inside the client's 5s. */
+export const maxGuestIntentModelTimeoutMs = 4_500;
 
 /**
  * A classifier over one structured model call. It never throws: every failure is an outcome the
@@ -72,19 +81,40 @@ export function createGuestIntentClassifier(input: {
   const timeoutMs = input.timeoutMs ?? defaultGuestIntentModelTimeoutMs;
   return {
     modelId: input.modelId,
+    timeoutMs,
     async classify(message, signal) {
       const started = now();
       const text = message.trim().slice(0, guestIntentLimits.maxMessageChars);
       let output: string;
+      // A referenced deadline of our own. The request's timeout (AbortSignal.timeout) is an
+      // unreferenced timer, and an in-flight request may hold no referenced handle either: in a
+      // script with nothing else running, Node would exit with this call still pending ("unsettled
+      // top-level await"). This timer keeps the process up and settles the call by the limit,
+      // even if the provider ignores the abort.
+      const controller = new AbortController();
+      let deadline: ReturnType<typeof setTimeout> | undefined;
+      const expired = new Promise<never>((_resolve, reject) => {
+        deadline = setTimeout(() => {
+          const error = new ModelRuntimeError("INFERENCE_TIMEOUT", "Guest intent timed out.", true);
+          controller.abort(error);
+          reject(error);
+        }, timeoutMs);
+      });
       try {
         output = (
-          await input.complete({
-            system: guestIntentSystemPrompt,
-            user: `Guest message:\n${JSON.stringify(text)}`,
-            maxOutputTokens: 512,
-            timeoutMs,
-            ...(signal === undefined ? {} : { signal })
-          })
+          await Promise.race([
+            input.complete({
+              system: guestIntentSystemPrompt,
+              user: `Guest message:\n${JSON.stringify(text)}`,
+              maxOutputTokens: 512,
+              timeoutMs,
+              signal:
+                signal === undefined
+                  ? controller.signal
+                  : AbortSignal.any([signal, controller.signal])
+            }),
+            expired
+          ])
         ).text;
       } catch (error) {
         const code = error instanceof ModelRuntimeError ? error.code : null;
@@ -98,6 +128,8 @@ export function createGuestIntentClassifier(input: {
                 : "model_error",
           latencyMs: now() - started
         };
+      } finally {
+        clearTimeout(deadline);
       }
       const parsed = parseGuestIntentClassification(parseJsonObject(output), text);
       if (parsed === null)

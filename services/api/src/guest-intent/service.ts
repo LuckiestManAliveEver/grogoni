@@ -9,6 +9,7 @@ import { createOpenRouterRuntime } from "../inference/openrouter-runtime.js";
 import {
   createGuestIntentClassifier,
   defaultGuestIntentModelTimeoutMs,
+  maxGuestIntentModelTimeoutMs,
   type GuestIntentClassifier
 } from "./classifier.js";
 import {
@@ -83,11 +84,11 @@ export function readGuestIntentConfiguration(
     ),
     windowMs: defaultGuestIntentRatePolicy.windowMs
   };
-  // The client gives up at 3s; the model must answer before that, network included.
+  // The client gives up at 5s; the model must answer before that, network included.
   const timeoutMs = positive(
     environment.GUEST_INTENT_MODEL_TIMEOUT_MS,
     defaultGuestIntentModelTimeoutMs,
-    2_800
+    maxGuestIntentModelTimeoutMs
   );
   const disabled = (reason: string): GuestIntentConfiguration => ({
     classifier: null,

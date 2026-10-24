@@ -72,7 +72,7 @@ if (configuration.classifier === null) {
 
 const started = Date.now();
 const rows = await scoreClassifier(guestIntentLabeledSet, configuration.classifier, rulesIntent);
-const summary = summarize(rows);
+const summary = summarize(rows, configuration.classifier.timeoutMs);
 write({
   status: summary.pass ? "pass" : "fail",
   ranAt: new Date().toISOString(),
@@ -94,7 +94,9 @@ console.log(
       modelIntentAccuracy: summary.modelIntentAccuracy,
       queryAccuracy: summary.queryAccuracy,
       neverSearchViolations: summary.neverSearchViolations,
-      fallbackRate: summary.fallbackRate,
+      withinServerLimit: summary.withinServerLimit,
+      serverLimitMs: summary.serverLimitMs,
+      errorRate: summary.errorRate,
       latencyMs: summary.latencyMs,
       rulesBaselineIntentAccuracy: rulesBaseline.intentAccuracy,
       failedThresholds: summary.failedThresholds

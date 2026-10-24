@@ -47,21 +47,29 @@ The model call goes through the existing OpenRouter runtime
 `inference/openrouter-json-completion.ts`): the same server-held `OPENROUTER_API_KEY`, the same
 `OPENROUTER_MODELS` mapping and model identity check, no provider fallback. The model is the
 platform default: `PLATFORM_DEFAULT_MODEL_ID`, else `gpt-6-luna` (the repository default). The
-call asks for low reasoning effort so it fits the latency budget; it is the same model.
+call asks for minimal reasoning effort so it fits the latency budget; it is the same model.
+Measured on 2026-10-23 with minimal reasoning: p50 2.7s, p95 4.1s. Julien kept GPT-6 Luna and set
+the guest wait budget to 5s, with a typing indicator while classifying.
 
 No key reaches the browser: the browser only calls `/v1/guest/intent`.
 
 ## Budgets and fallback
 
-- Server: the model call times out at `GUEST_INTENT_MODEL_TIMEOUT_MS` (default 2500, at most
-  2800). A timeout, provider error or malformed answer is a 503.
-- Client: `guestIntentBudgetMs = 3000` in `apps/web/src/guest-intent-client.ts`. The request is
+- Server: the model call times out at `GUEST_INTENT_MODEL_TIMEOUT_MS` (default 4000, at most
+  4500, so it fits inside the client budget with the network and session lookup). The classifier
+  holds its own referenced deadline timer, so a call always settles by the limit even if the
+  provider ignores the abort (an unreferenced timer alone let the eval script exit with a call
+  still pending). A timeout, provider error or malformed answer is a 503.
+- Client: `guestIntentBudgetMs = 5000` in `apps/web/src/guest-intent-client.ts`. The request is
   aborted and the rules answer when the budget passes, whatever the network does. The client also
   uses the rules without asking when offline (explicit offline mode or `navigator.onLine` false),
   for text with no letters or digits, and for messages over 500 characters. No session refresh is
   attempted on a 401 (it would not fit the budget).
 - The client keeps the last 100 model answers in memory, keyed by the lowercased message, so a
   repeated "hi" or "sugar" does not wait on the model again. Failures are never cached.
+- While the classifier and then the search run, the guest's thread shows "Grogoni is typing"
+  (`GuestTypingIndicator.tsx`, state in `guest-reply-pending.ts`, per thread, cleared on every
+  outcome including a failed search).
 - A message to a person (direct conversation or connected channel) never reaches the classifier.
 
 ## Abuse bounds
@@ -92,7 +100,7 @@ No key reaches the browser: the browser only calls `/v1/guest/intent`.
 | `PLATFORM_DEFAULT_MODEL_ID`          | `gpt-6-luna`         | the model; must be in `OPENROUTER_MODELS` |
 | `OPENROUTER_MODELS`                  | `{"gpt-6-luna":...}` | catalog id to OpenRouter model id         |
 | `GUEST_INTENT_ENABLED`               | on                   | `false` turns the classifier off          |
-| `GUEST_INTENT_MODEL_TIMEOUT_MS`      | 2500                 | 1 to 2800                                 |
+| `GUEST_INTENT_MODEL_TIMEOUT_MS`      | 4000                 | 1 to 4500                                 |
 | `GUEST_INTENT_RATE_LIMIT_PER_MINUTE` | 20                   | 1 to 600                                  |
 
 On Supabase these are function secrets (`supabase secrets set ...`); `OPENROUTER_API_KEY` and
@@ -133,5 +141,6 @@ the server still answered; the server line then shows `latencyMs` near the budge
   (`eval/labeled-set.ts`): every phrasing the review rounds pinned in
   `tests/guest-chat-routing.test.tsx` (a gate test enforces it), plus Swahili and Sheng, typos,
   mixed intents and prompt injection. Pass: intent accuracy at least 0.95 on what the guest gets,
-  0 never-search messages searched, query accuracy at least 0.90, model fallback rate at most 0.05.
+  0 never-search messages searched, query accuracy at least 0.90, at least 90% of messages sent to
+  the model answered within the server limit, and at most 5% model errors (malformed or failed).
   It also scores the rules alone as the baseline. Exit 0 pass, 1 fail, 2 not run (no key).

@@ -11,6 +11,8 @@ import {
 } from "../apps/web/src/guest-intent-client";
 import { guestExplainReply, routeGuestMessage } from "../apps/web/src/marketplace-search-reply";
 import { useChatRuntimeState } from "../apps/web/src/hooks/useChatRuntimeState";
+import { beginGuestReply, isGuestReplyPending } from "../apps/web/src/guest-reply-pending";
+import { GuestTypingIndicator } from "../apps/web/src/GuestTypingIndicator";
 import type { SessionResponse } from "../apps/web/src/grogoni-application-shared";
 
 /**
@@ -40,8 +42,8 @@ afterEach(() => {
 });
 
 describe("classifyGuestMessage", () => {
-  it("keeps the budget at or under three seconds", () => {
-    expect(guestIntentBudgetMs).toBeLessThanOrEqual(3_000);
+  it("keeps the budget at or under five seconds", () => {
+    expect(guestIntentBudgetMs).toBeLessThanOrEqual(5_000);
   });
 
   it("uses the model's intent and query, and posts only the message", async () => {
@@ -182,8 +184,11 @@ describe("guest chat send with the classifier", () => {
     host.remove();
   });
 
-  async function send(message: string, activeConversation: ConversationView | null = null) {
-    const searchBuyFeed = vi.fn(async () => null);
+  async function send(
+    message: string,
+    activeConversation: ConversationView | null = null,
+    searchBuyFeed: (query: string) => Promise<null> = vi.fn(async () => null)
+  ) {
     const rendered: Array<{ body: string }> = [];
     let sendChatDraft: ((draft?: string) => Promise<void>) | null = null;
     function Harness() {
@@ -264,6 +269,69 @@ describe("guest chat send with the classifier", () => {
     const { searchBuyFeed, rendered } = await send("I want to buy sugar");
     expect(searchBuyFeed).toHaveBeenCalledWith("sugar");
     expect(rendered.map((message) => message.body).join(" ")).not.toMatch(/classif|error|503/iu);
+  });
+
+  it("marks the guest's thread as typing while classifying, and clears it after", async () => {
+    let answerClassifier: (response: Response) => void = () => undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        () =>
+          new Promise<Response>((resolve) => {
+            answerClassifier = resolve;
+          })
+      )
+    );
+    expect(isGuestReplyPending("agent-thread-1")).toBe(false);
+    const sending = send("Hello, I am trying to find some good maize flour for my family");
+    for (let tries = 0; tries < 100 && !isGuestReplyPending("agent-thread-1"); tries++)
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(isGuestReplyPending("agent-thread-1")).toBe(true);
+    expect(isGuestReplyPending("other-thread")).toBe(false);
+    answerClassifier(
+      new Response(
+        JSON.stringify({ intent: "search", query: "maize flour", modelId: "m", latencyMs: 1 }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      )
+    );
+    const { searchBuyFeed } = await sending;
+    expect(searchBuyFeed).toHaveBeenCalledWith("maize flour");
+    expect(isGuestReplyPending("agent-thread-1")).toBe(false);
+  });
+
+  it("renders the typing indicator only in the waiting thread", async () => {
+    const indicatorHost = document.createElement("div");
+    document.body.append(indicatorHost);
+    const indicatorRoot = createRoot(indicatorHost);
+    await act(async () =>
+      indicatorRoot.render(
+        <>
+          <GuestTypingIndicator thread="agent-thread-1" name="Grogoni" />
+          <GuestTypingIndicator thread="other-thread" name="Other" />
+        </>
+      )
+    );
+    expect(indicatorHost.querySelector("[role=status]")).toBeNull();
+    let end: () => void = () => undefined;
+    await act(async () => {
+      end = beginGuestReply("agent-thread-1");
+    });
+    const status = indicatorHost.querySelectorAll("[role=status]");
+    expect(status).toHaveLength(1);
+    expect(status[0]!.textContent).toContain("Grogoni is typing");
+    await act(async () => end());
+    expect(indicatorHost.querySelector("[role=status]")).toBeNull();
+    act(() => indicatorRoot.unmount());
+    indicatorHost.remove();
+  });
+
+  it("clears the typing indicator when the search itself fails", async () => {
+    vi.stubGlobal("fetch", answer({ code: "guest_intent_failed" }, 503));
+    const failing = vi.fn(async () => {
+      throw new Error("search down");
+    });
+    await send("sugar", null, failing);
+    expect(isGuestReplyPending("agent-thread-1")).toBe(false);
   });
 
   it("never sends a message meant for a person to the classifier", async () => {

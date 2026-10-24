@@ -55,7 +55,7 @@ export function createOpenRouterJsonCompletion(input: {
           response_format: { type: "json_object" },
           // A routing decision, not an essay: keep reasoning short so the answer fits the
           // caller's latency budget. Same model, no fallback to another one.
-          reasoning: { effort: "low", exclude: true },
+          reasoning: { effort: "minimal", exclude: true },
           provider: { allow_fallbacks: false }
         })
       }

@@ -18,7 +18,7 @@ import {
  * sees a classifier failure: offline, a timeout, a network error, any non-2xx answer, or a body
  * that fails validation all route by rules, silently.
  */
-export const guestIntentBudgetMs = 3_000;
+export const guestIntentBudgetMs = 5_000;
 
 export type GuestRouteSource = "model" | "cache" | "rules";
 

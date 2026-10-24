@@ -22,6 +22,7 @@ const fakeService = () =>
   createGuestIntentService({
     classifier: {
       modelId: "gpt-6-luna",
+      timeoutMs: 4_000,
       classify: vi.fn(async () => ({
         ok: true as const,
         intent: "search" as const,

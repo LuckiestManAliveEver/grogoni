@@ -18,8 +18,14 @@ export const guestIntentEvalThresholds = {
   maxNeverSearchViolations: 0,
   /** Searches whose query holds the product words and none of the scaffolding. */
   queryAccuracy: 0.9,
-  /** Messages the model did not answer (timeout, error, malformed) out of those sent to it. */
-  maxFallbackRate: 0.05
+  /**
+   * Latency (Julien, 2026-10-23: 5s guest budget): of the messages sent to the model, the share
+   * it answered within the server limit (GUEST_INTENT_MODEL_TIMEOUT_MS, default 4000ms, which fits
+   * the 5s client budget). A slower answer is a timeout and the rules answer instead.
+   */
+  minWithinServerLimit: 0.9,
+  /** Messages the model failed for any reason other than time (error, malformed output). */
+  maxErrorRate: 0.05
 } as const;
 
 /** Words that are scaffolding around a product, never part of one. */
@@ -94,6 +100,9 @@ export interface GuestIntentEvalSummary {
   modelAnswered: number;
   fallbacks: number;
   fallbackRate: number;
+  serverLimitMs: number;
+  withinServerLimit: number;
+  errorRate: number;
   intentAccuracy: number;
   modelIntentAccuracy: number | null;
   queryAccuracy: number;
@@ -185,7 +194,11 @@ function percentile(values: number[], fraction: number): number {
   return sorted[Math.min(sorted.length - 1, Math.ceil(fraction * sorted.length) - 1)]!;
 }
 
-export function summarize(rows: GuestIntentEvalRow[]): GuestIntentEvalSummary {
+/** `serverLimitMs`: the model limit the classifier ran with (latency threshold). */
+export function summarize(
+  rows: GuestIntentEvalRow[],
+  serverLimitMs = Number.POSITIVE_INFINITY
+): GuestIntentEvalSummary {
   const ratio = (part: number, whole: number) => (whole === 0 ? 1 : part / whole);
   const sent = rows.filter((entry) => entry.source !== "rules_no_text");
   const answered = rows.filter((entry) => entry.source === "model");
@@ -210,6 +223,15 @@ export function summarize(rows: GuestIntentEvalRow[]): GuestIntentEvalSummary {
     modelAnswered: answered.length,
     fallbacks: fallbacks.length,
     fallbackRate: sent.length === 0 ? 0 : fallbacks.length / sent.length,
+    serverLimitMs,
+    withinServerLimit: ratio(
+      answered.filter((entry) => entry.latencyMs <= serverLimitMs).length,
+      sent.length
+    ),
+    errorRate:
+      sent.length === 0
+        ? 0
+        : fallbacks.filter((entry) => entry.failure !== "model_timeout").length / sent.length,
     intentAccuracy: ratio(rows.filter((entry) => entry.intentCorrect).length, rows.length),
     modelIntentAccuracy:
       answered.length === 0
@@ -237,8 +259,13 @@ export function summarize(rows: GuestIntentEvalRow[]): GuestIntentEvalSummary {
     ...(summary.queryAccuracy < t.queryAccuracy
       ? [`queryAccuracy ${summary.queryAccuracy.toFixed(3)} < ${t.queryAccuracy}`]
       : []),
-    ...(summary.fallbackRate > t.maxFallbackRate
-      ? [`fallbackRate ${summary.fallbackRate.toFixed(3)} > ${t.maxFallbackRate}`]
+    ...(summary.withinServerLimit < t.minWithinServerLimit
+      ? [
+          `withinServerLimit ${summary.withinServerLimit.toFixed(3)} < ${t.minWithinServerLimit} (limit ${summary.serverLimitMs}ms)`
+        ]
+      : []),
+    ...(summary.errorRate > t.maxErrorRate
+      ? [`errorRate ${summary.errorRate.toFixed(3)} > ${t.maxErrorRate}`]
       : [])
   ];
   return { ...summary, pass: failedThresholds.length === 0, failedThresholds };

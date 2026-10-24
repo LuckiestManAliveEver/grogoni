@@ -1,3 +1,4 @@
+import { GuestTypingIndicator } from "./GuestTypingIndicator";
 import { Fragment, Suspense, lazy, useEffect, useRef, useState } from "react";
 
 import type { CountryCode } from "libphonenumber-js";
@@ -801,6 +802,7 @@ export function ChatSurface({
               </article>
             </Fragment>
           ))}
+          <GuestTypingIndicator thread={activeConversationId} name={agent.name} />
         </div>
         <StackedModule
           moduleId="owner-management"

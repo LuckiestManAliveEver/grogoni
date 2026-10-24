@@ -9,7 +9,7 @@ import {
 } from "./service.js";
 
 function fakeClassifier(outcome: GuestIntentOutcome): GuestIntentClassifier {
-  return { modelId: "gpt-6-luna", classify: vi.fn(async () => outcome) };
+  return { modelId: "gpt-6-luna", timeoutMs: 4_000, classify: vi.fn(async () => outcome) };
 }
 
 const searchSugar: GuestIntentOutcome = {
