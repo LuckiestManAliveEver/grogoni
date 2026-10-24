@@ -9,6 +9,12 @@ import {
 } from "../services/api/src/cp2/postgres-store";
 import { createEdgeSnapshotScope } from "../services/api/src/cp2/edge-snapshot-scope";
 import { createEdgeDomainRoutes } from "../services/api/src/edge-domain-routes";
+import {
+  prunableRuntimeCheckpoints,
+  runtimeCheckpointRecentVersions
+} from "../services/api/src/cp2/domains/runtime-handoff/checkpoint-retention";
+import { readFile } from "node:fs/promises";
+import type { RuntimeHandoff } from "@grogoni/shared-types";
 
 vi.mock("../services/api/src/edge-store-dependencies", async (original) => ({
   ...(await original<Record<string, unknown>>()),
@@ -340,4 +346,298 @@ describe.skipIf(!databaseUrl)("Edge runtime checkpoints on PostgreSQL", () => {
       await pool.end();
     }
   }, 60000);
+
+  /** One owner, one shop, one conversation with one agent turn, on its own pool. */
+  async function ownerConversation(label: string) {
+    const pool = new Pool({ connectionString: databaseUrl, max: 4 });
+    async function transaction<T>(work: (client: PoolClient) => Promise<T>) {
+      const client = await pool.connect();
+      try {
+        await client.query("begin");
+        const result = await work(client);
+        await client.query("commit");
+        return result;
+      } catch (error) {
+        await client.query("rollback");
+        throw error;
+      } finally {
+        client.release();
+      }
+    }
+    const store = createCp2Store();
+    const baseline = store.snapshot();
+    const owner = store.continueWithChannelPin({
+      channel: "email",
+      destination: `edge-${label}-${randomUUID()}@example.invalid`,
+      pin: "1234"
+    });
+    const businessId = store.createBusiness({
+      sessionId: owner.session.id,
+      name: `Synthetic ${label} ${randomUUID()}`,
+      language: "en",
+      phoneNumber: `+25479${Date.now().toString().slice(-7)}`,
+      phoneCountry: "KE"
+    }).business.id;
+    const conversation = store.createConversation({
+      sessionId: owner.session.id,
+      kind: "personal",
+      activeShopId: businessId
+    }).conversation;
+    const outsider = store.continueWithChannelPin({
+      channel: "email",
+      destination: `edge-${label}-outsider-${randomUUID()}@example.invalid`,
+      pin: "1234"
+    });
+    await transaction((client) => saveTransactionalCp2Snapshot(client, store.snapshot(), baseline));
+    const edge = await createEdgeDomainRoutes({ transaction, approvalTransaction: transaction });
+    const call = (
+      method: string,
+      path: string,
+      body?: unknown,
+      headers: Record<string, string> = {},
+      sessionId = owner.session.id
+    ) =>
+      edge.routes(
+        new Request(`https://grogoni.com${path}`, {
+          method,
+          headers: {
+            cookie: `grogoni_session=${sessionId}`,
+            origin: "https://grogoni.com",
+            ...(body === undefined ? {} : { "content-type": "application/json" }),
+            ...headers
+          },
+          ...(body === undefined ? {} : { body: JSON.stringify(body) })
+        }),
+        path.split("?")[0]!
+      );
+    const send = async (text: string) => {
+      const response = await call("POST", "/v1/messages", {
+        conversationId: conversation.id,
+        clientMessageId: randomUUID(),
+        content: { type: "text", text },
+        agent: { businessId, message: text }
+      });
+      expect(response?.status, await response?.clone().text()).toBe(200);
+    };
+    const loadAs = (sessionId: string) =>
+      transaction(async (client) => {
+        const request = new Request("https://grogoni.com/v1/conversations", {
+          headers: { cookie: `grogoni_session=${sessionId}` }
+        });
+        const scope = await createEdgeSnapshotScope(client, request, "/v1/conversations");
+        return loadTransactionalCp2Snapshot(client, scope);
+      });
+    const stored = async () =>
+      (
+        await pool.query<{ record: RuntimeHandoff }>(
+          "select record from cp2_runtime_handoffs where task_id = $1 order by checkpoint_version",
+          [conversation.id]
+        )
+      ).rows.map((row) => row.record);
+    await send("Add 5 bags of sugar to stock");
+    return { pool, call, send, loadAs, stored, owner, outsider, conversation };
+  }
+
+  it("prunes superseded checkpoints on write and loads only the ones a reader can still need", async () => {
+    const { pool, call, send, loadAs, stored, owner, conversation } =
+      await ownerConversation("retention");
+    try {
+      // A backlog from before pruning, written straight to the table: versions up to 60 in one
+      // chain, an old branch (version 10, never promoted) and the task instance on version 7.
+      const [first] = await stored();
+      expect(first).toBeDefined();
+      const base = (await stored()).at(-1)!;
+      const byVersion = new Map<number, RuntimeHandoff>(
+        (await stored()).map((handoff) => [handoff.checkpointVersion!, handoff])
+      );
+      const startVersion = base.checkpointVersion! + 1;
+      for (let version = startVersion; version <= 60; version += 1) {
+        const parent =
+          version === 10 ? byVersion.get(5)! : byVersion.get(version === 11 ? 9 : version - 1)!;
+        const handoff: RuntimeHandoff = {
+          ...base,
+          id: randomUUID(),
+          parentHandoffId: parent.id,
+          checkpointVersion: version,
+          currentState: `Backlog checkpoint ${version}.`,
+          createdAt: new Date(Date.parse(base.createdAt) + version * 1000).toISOString()
+        };
+        byVersion.set(version, handoff);
+        await pool.query(
+          "insert into cp2_runtime_handoffs (entity_id, record) values ($1, $2::jsonb)",
+          [handoff.id, JSON.stringify(handoff)]
+        );
+      }
+      const head = byVersion.get(60)!;
+      await pool.query(
+        "update cp2_runtime_task_heads set record = record || $2::jsonb where entity_id = $1",
+        [conversation.id, JSON.stringify({ activeHandoffId: head.id, nextCheckpointVersion: 61 })]
+      );
+      await pool.query(
+        `insert into cp2_runtime_task_instances (entity_id, record) values ($1, $2::jsonb)
+         on conflict (entity_id) do update set record = excluded.record`,
+        [
+          conversation.id,
+          JSON.stringify({
+            taskId: conversation.id,
+            activeHandoffId: byVersion.get(7)!.id,
+            status: "READY",
+            ...base.runtime,
+            lastError: null,
+            updatedAt: new Date().toISOString(),
+            fenceToken: 0,
+            executionId: `legacy:${conversation.id}`
+          })
+        ]
+      );
+      const versionsOf = (handoffs: readonly RuntimeHandoff[] | undefined) =>
+        (handoffs ?? [])
+          .filter((handoff) => handoff.taskId === conversation.id)
+          .map((handoff) => handoff.checkpointVersion!)
+          .sort((left, right) => left - right);
+      const range = (from: number, to: number) =>
+        Array.from({ length: to - from + 1 }, (_value, index) => from + index);
+      expect(versionsOf(await stored())).toEqual(range(1, 60));
+
+      // A member's request loads only what a reader can still need: the latest 20 versions
+      // (head included) and the instance's checkpoint. Not the other 39 (nor the old branch).
+      expect(runtimeCheckpointRecentVersions).toBe(20);
+      expect(versionsOf((await loadAs(owner.session.id)).runtimeHandoffs)).toEqual([
+        7,
+        ...range(41, 60)
+      ]);
+
+      // The next turn adds version 61 and deletes everything superseded, backlog included.
+      await send("Add 3 bags of rice to stock");
+      expect(versionsOf(await stored())).toEqual([7, ...range(42, 61)]);
+      // The in-memory rule and the SQL rule agree: nothing stored is prunable, all of it loads.
+      const all = await stored();
+      const heads = await pool.query(
+        "select record from cp2_runtime_task_heads where entity_id = $1",
+        [conversation.id]
+      );
+      const instances = await pool.query(
+        "select record from cp2_runtime_task_instances where entity_id = $1",
+        [conversation.id]
+      );
+      expect(
+        prunableRuntimeCheckpoints({
+          handoffs: all,
+          head: heads.rows[0]?.record,
+          instance: instances.rows[0]?.record,
+          transfers: []
+        })
+      ).toEqual([]);
+      expect(versionsOf((await loadAs(owner.session.id)).runtimeHandoffs)).toEqual(versionsOf(all));
+
+      // Every reader still answers for what is kept, and says plainly what is gone.
+      const taskPath = `/v1/runtime/${conversation.id}`;
+      const resolved = await call("GET", taskPath);
+      expect(resolved?.status, await resolved?.clone().text()).toBe(200);
+      const current = ((await resolved!.json()) as { activeHandoff: RuntimeHandoff }).activeHandoff;
+      expect(current.checkpointVersion).toBe(61);
+      expect((await call("GET", `${taskPath}/handoff?version=42`))?.status).toBe(200);
+      expect((await call("GET", `${taskPath}/handoff?version=41`))?.status).toBe(404);
+      // The old unpromoted branch (version 10) is 50 versions behind: pruned.
+      expect((await call("GET", `${taskPath}/handoffs/${byVersion.get(10)!.id}`))?.status).toBe(
+        404
+      );
+      expect((await call("GET", `${taskPath}/handoffs/${byVersion.get(7)!.id}`))?.status).toBe(200);
+      const target = byVersion.get(45)!;
+      const rollback = await call("POST", `${taskPath}/rollback`, {
+        targetHandoffId: target.id,
+        expectedHandoffId: current.id
+      });
+      expect(rollback?.status, await rollback?.clone().text()).toBe(200);
+      const resume = await call("POST", `${taskPath}/resume`, {});
+      expect(resume?.status, await resume?.clone().text()).toBe(200);
+      expect(((await resume!.json()) as { activeHandoff: RuntimeHandoff }).activeHandoff.id).toBe(
+        target.id
+      );
+      // Resume moved the instance off version 7, and the next turn branches from version 45
+      // (version 62): version 7 and version 42 go, the abandoned version 61 is still in reach.
+      await send("Add 2 bags of flour to stock");
+      expect(versionsOf(await stored())).toEqual(range(43, 62));
+      const latest = (await stored()).at(-1)!;
+      expect(latest.parentHandoffId).toBe(target.id);
+      expect((await call("GET", `${taskPath}/handoffs/${byVersion.get(7)!.id}`))?.status).toBe(404);
+    } finally {
+      await pool.end();
+    }
+  }, 120000);
+
+  it("loads only the caller's idempotency records and recognizes a retried checkpoint on Edge", async () => {
+    const { pool, call, loadAs, stored, owner, outsider, conversation } =
+      await ownerConversation("dedup");
+    try {
+      const create = () =>
+        call(
+          "POST",
+          `/v1/runtime/${conversation.id}/checkpoints`,
+          { currentState: "Counted the shelf." },
+          { "idempotency-key": "count-shelf-1" }
+        );
+      const before = (await stored()).length;
+      const firstResponse = await create();
+      expect(firstResponse?.status, await firstResponse?.clone().text()).toBe(200);
+      const retry = await create();
+      expect(retry?.status, await retry?.clone().text()).toBe(200);
+      const firstId = ((await firstResponse!.json()) as { handoff: RuntimeHandoff }).handoff.id;
+      expect(((await retry!.json()) as { handoff: RuntimeHandoff }).handoff.id).toBe(firstId);
+      expect((await stored()).length).toBe(before + 1);
+
+      const rows = await pool.query<{ account_id: string | null; task_id: string | null }>(
+        "select account_id, task_id from cp2_runtime_operation_dedup where task_id = $1",
+        [conversation.id]
+      );
+      expect(rows.rows).toEqual([{ account_id: owner.account.id, task_id: conversation.id }]);
+      const mine = (await loadAs(owner.session.id)).runtimeOperationDedup ?? [];
+      expect(mine.length).toBeGreaterThanOrEqual(1);
+      expect(mine.every((record) => record.accountId === owner.account.id)).toBe(true);
+      expect((await loadAs(outsider.session.id)).runtimeOperationDedup ?? []).toEqual([]);
+
+      // Migration 124 backfills a record stored before it, and running it again changes nothing.
+      const legacyId = randomUUID();
+      await pool.query(
+        "insert into cp2_runtime_operation_dedup (entity_id, record) values ($1, $2::jsonb)",
+        [
+          legacyId,
+          JSON.stringify({
+            id: legacyId,
+            operationType: "rollback",
+            idempotencyKey: randomUUID(),
+            result: { taskHead: { taskId: conversation.id } },
+            createdAt: new Date().toISOString()
+          })
+        ]
+      );
+      const migration = await readFile(
+        new URL("../infra/db/migrations/124_runtime_operation_dedup_tenant.sql", import.meta.url),
+        "utf8"
+      );
+      await pool.query(migration);
+      const backfilled = await pool.query(
+        "select account_id, task_id, record->>'accountId' as record_account, xmin::text as version from cp2_runtime_operation_dedup where entity_id = $1",
+        [legacyId]
+      );
+      expect(backfilled.rows[0]).toMatchObject({
+        account_id: owner.account.id,
+        task_id: conversation.id,
+        record_account: owner.account.id
+      });
+      await pool.query(migration);
+      const again = await pool.query(
+        "select xmin::text as version from cp2_runtime_operation_dedup where entity_id = $1",
+        [legacyId]
+      );
+      expect(again.rows[0].version).toBe(backfilled.rows[0].version);
+      expect(
+        ((await loadAs(owner.session.id)).runtimeOperationDedup ?? []).some(
+          (record) => record.id === legacyId
+        )
+      ).toBe(true);
+    } finally {
+      await pool.end();
+    }
+  }, 120000);
 });

@@ -24,6 +24,13 @@ can exist without being active. Migration 083's immutable trigger permits byte-i
 upserts while rejecting content changes; 084 adds the index on the existing JSON `createdAt` field.
 Migration 085 stores mutable transfer lifecycle separately from checkpoint history.
 
+Checkpoint history is bounded. A task keeps its head's checkpoint, its instance's, every checkpoint
+a transfer names, checkpoints without a cloud version, and its latest 20 versions; older ones are
+deleted on the write that adds a newer one (`checkpoint-retention.ts`, migration 123). Rollback,
+reads by id or version, merge and offline sync reach that window; an older checkpoint answers
+`RUNTIME_HANDOFF_NOT_FOUND`. A kept checkpoint's `parentHandoffId` stays as recorded ancestry even
+when the parent is gone. Idempotency records carry their account and task (migration 124).
+
 The source runtime remains authoritative until the target has restored and passed verification.
 Target activation failure cannot replace the source's binding/head. Host changes through the
 legacy `/swaps/host` endpoint return `HANDOFF_RESTORE_REQUIRED`; clients must use the acknowledged
@@ -44,7 +51,7 @@ resolution before invoking the same domain. MCP retries are authorized before de
 | `POST /swaps/agent` / `/swaps/model` | Validate and materialize a native binding, checkpoint and commit             |
 | `POST /swaps/host`                   | Host changes require the acknowledged transfer API                           |
 | `POST /resume`                       | Resume the current canonical checkpoint                                      |
-| `POST /rollback`                     | Explicitly select an earlier checkpoint; does not erase history              |
+| `POST /rollback`                     | Select a kept earlier checkpoint (latest 20 versions); erases nothing itself |
 | `POST /checkpoints/sync`             | Validate and insert a causal offline checkpoint chain                        |
 | `POST /merge`                        | Create a new checkpoint combining explicitly selected branches               |
 

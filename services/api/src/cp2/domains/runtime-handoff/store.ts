@@ -52,9 +52,15 @@ import type {
   RuntimeTestResults
 } from "@grogoni/shared-types";
 import { Cp2Error } from "../../cp2-error.js";
+import { prunableRuntimeCheckpoints } from "./checkpoint-retention.js";
 
 export interface RuntimeOperationDedupRecord {
   id: string;
+  /** The caller's account (fills the row's account_id, which the Edge scope loads by). Records
+   *  stored before migration 124 that it could not backfill have none. */
+  accountId?: string;
+  /** The task (conversation) the operation ran on. */
+  taskId?: string;
   operationType: string;
   idempotencyKey: string;
   result: unknown;
@@ -1286,6 +1292,7 @@ export class RuntimeHandoffDomain {
           taskHead = { ...taskHead, activeHandoffId: targetId, updatedAt: now.toISOString() };
           this.taskHeads.set(input.taskId, taskHead);
         }
+        this.pruneSupersededCheckpoints(input.taskId);
         this.deps.recordAuditEvent({
           type: "runtime_handoff.offline_synced",
           aggregateType: "task",
@@ -1792,7 +1799,21 @@ export class RuntimeHandoffDomain {
       activeHandoffId,
       input.now
     );
+    this.pruneSupersededCheckpoints(input.taskId);
     return { handoff, taskHead };
+  }
+
+  /** Drops the task's superseded checkpoints (checkpoint-retention.ts); the snapshot writer
+   *  deletes their rows. Runs on every write that adds a checkpoint, so no operator is needed. */
+  private pruneSupersededCheckpoints(taskId: string): void {
+    const handoffs = [...this.handoffs.values()].filter((handoff) => handoff.taskId === taskId);
+    for (const id of prunableRuntimeCheckpoints({
+      handoffs,
+      head: this.taskHeads.get(taskId),
+      instance: this.taskInstances.get(taskId),
+      transfers: [...this.transfers.values()].filter((transfer) => transfer.taskId === taskId)
+    }))
+      this.handoffs.delete(id);
   }
 
   /** Shared fencing check (durable-execution-plane.md "Fencing"), used by every commit path that
@@ -2005,6 +2026,8 @@ export class RuntimeHandoffDomain {
     const result = run();
     this.operationDedup.set(dedupKey, {
       id: createHash("sha256").update(dedupKey).digest("hex"),
+      accountId: session.account.id,
+      taskId,
       operationType,
       idempotencyKey: scopedKey,
       result,

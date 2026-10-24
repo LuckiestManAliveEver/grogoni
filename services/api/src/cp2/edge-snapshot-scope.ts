@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { escapeLiteral, type PoolClient } from "pg";
+import { retainedRuntimeCheckpointSql } from "./domains/runtime-handoff/checkpoint-retention.js";
 import type { Cp2Snapshot } from "./store.js";
 
 const globalCollections = new Set<keyof Cp2Snapshot>([
@@ -20,7 +21,8 @@ const conversationChildren = new Set<keyof Cp2Snapshot>([
 /**
  * Runtime checkpoint rows carry no tenant columns: they belong to a task, and a task id is a
  * conversation id. They load with the conversations the caller works in
- * (edge_task_conversation_ids). Without this every
+ * (edge_task_conversation_ids); checkpoints load only while they are kept (see the predicate).
+ * Without this every
  * later agent turn in a conversation saw no checkpoint, bootstrapped version 1 again, and failed
  * on cp2_runtime_handoffs_task_version_idx (23505), answering 503 to the second message.
  */
@@ -291,6 +293,15 @@ export async function createEdgeSnapshotScope(
         return `user_id = nullif(${actorUser}, '') or entity_id in (select id from edge_recipient_node_ids)`;
       if (key === "statusBroadcasts")
         return "business_id in (select id from edge_business_ids) or entity_id in (select id from edge_received_status_ids)";
+      // Only the checkpoints a reader can still need (checkpoint-retention.ts), not every
+      // checkpoint of every conversation the caller works in.
+      if (key === "runtimeHandoffs")
+        return `task_id in (select id from edge_task_conversation_ids)
+          and ${retainedRuntimeCheckpointSql("cp2_runtime_handoffs")}`;
+      // Idempotency records are keyed by the caller's account (withIdempotency), so only the
+      // caller's own rows can ever match.
+      if (key === "runtimeOperationDedup")
+        return `account_id = ${actorAccount} and ${actorAccount} <> ''`;
       if (key === "passkeyCeremonies")
         return `entity_id = ${escapeLiteral(ceremony)} or account_id = nullif(${actorAccount}, '')`;
       return `${key === "nativeRuntimeAgents" || key === "nativeRuntimeBindings" ? "(account_id is null and business_id is null and user_id is null) or " : key === "nativeExecutionHosts" ? "entity_id in (select id from edge_runtime_host_ids) or " : ""}(account_id = ${actorAccount} and ${actorAccount} <> '')

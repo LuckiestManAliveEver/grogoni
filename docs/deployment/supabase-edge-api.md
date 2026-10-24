@@ -343,14 +343,36 @@ account, business or user column: they belong to a task, and a task id is a conv
 scoped snapshot loads them only with the conversations the caller works in: their own, ones they
 take part in, and those of shops they are a member of (`edge_task_conversation_ids` in
 `services/api/src/cp2/edge-snapshot-scope.ts`). A storefront visitor or a guest search never loads
-any: these rows grow with every agent turn. A member still loads the checkpoints of every
-conversation in their shops on each request, and nothing prunes them yet; scoping them to the
-conversation a request touches is follow-up work. Before this, the second agent
-message in any conversation answered 503: its request saw no checkpoint, bootstrapped version 1
-again, and hit `cp2_runtime_handoffs_task_version_idx` (`23505`)
-(`tests/edge-runtime-checkpoint-scope.test.ts`). `cp2_runtime_operation_dedup` is keyed by a hash
-of the operation and idempotency key, not by task, and is still not scoped; an idempotent replay
-of a checkpoint operation on Edge is not recognized as one.
+any. Before this, the second agent message in any conversation answered 503: its request saw no
+checkpoint, bootstrapped version 1 again, and hit `cp2_runtime_handoffs_task_version_idx`
+(`23505`) (`tests/edge-runtime-checkpoint-scope.test.ts`).
+
+**Fixed: checkpoints no longer only grow.** Each agent turn adds a checkpoint that copies the last
+one's actions and context, and a member used to load every checkpoint of every conversation in
+their shops on each request. A task now keeps only what a reader can still need
+(`services/api/src/cp2/domains/runtime-handoff/checkpoint-retention.ts`): the task head's
+checkpoint (resume, every turn, swaps), the task instance's (drift check), every checkpoint a
+transfer names (handoff restore, the web app's offline session), checkpoints without a cloud
+version, and the latest 20 versions (rollback, `GET /handoffs/:id`, `GET /handoff?version=N`,
+merge and offline sync). An older checkpoint, including an unpromoted branch 20 versions behind,
+answers `RUNTIME_HANDOFF_NOT_FOUND` (404). Pruning runs on the write that adds a checkpoint, with no
+operator or job: the in-memory store drops superseded ones (the writer deletes their rows), and on
+Edge `saveTransactionalCp2Snapshot` also deletes stored ones the request never loaded, at most 200
+per write, oldest first, so an existing backlog drains over the next writes. The Edge scope loads
+only the kept ones (the same rule as SQL). Migration `123_runtime_checkpoint_retention.sql` drops the
+checkpoint-to-parent foreign key (a kept checkpoint's parent may be pruned; a trigger still checks
+the parent exists when a checkpoint is inserted) and checks the head, instance and transfer foreign
+keys at commit, since the writer deletes checkpoints before it writes the rows that stopped
+pointing at them. Execution events (`cp2_runtime_execution_events`) still load in full for the
+conversations a member works in; their sequence numbers are allocated from the loaded rows.
+
+**Fixed: idempotency records are scoped to their account.** `cp2_runtime_operation_dedup` records
+(checkpoint, swap, rollback, offline sync, merge) now carry `accountId` and `taskId`; the writer fills
+`account_id` from the record and migration `124_runtime_operation_dedup_tenant.sql` backfills
+stored rows from their result's task head and that conversation's owner. The Edge scope loads only
+the caller's rows. Before, it loaded none, so a retried checkpoint on Edge was not recognized: it
+created a second dedup row with the same key and the write failed with `40001` (503)
+(`tests/edge-runtime-checkpoint-scope.test.ts`).
 
 ### Offline change sequences across shops
 

@@ -32,6 +32,10 @@ import type {
   InstalledOssAgentManifestSummary
 } from "@grogoni/shared-types";
 import type { ConversationAttachmentRecord } from "./workspace-file-delivery.js";
+import {
+  retainedRuntimeCheckpointSql,
+  runtimeCheckpointPruneBatch
+} from "./domains/runtime-handoff/checkpoint-retention.js";
 
 type SnapshotCollectionKey = keyof Cp2Snapshot;
 type SnapshotRecord = Record<string, unknown>;
@@ -1674,6 +1678,37 @@ export function rebaseLoadNormalizedCollections(
   return rebased;
 }
 
+/**
+ * A scoped (Edge) request loads only the checkpoints still kept, so its in-memory store cannot
+ * drop older ones it never loaded. On a write that adds a checkpoint, this deletes the task's
+ * stored checkpoints the retention rule no longer keeps (checkpoint-retention.ts), at most
+ * `runtimeCheckpointPruneBatch` per write, oldest first: a backlog from before pruning drains
+ * over later writes. It runs after this save wrote the heads, instances and transfers, so the
+ * rule sees what the next request will load; it never deletes a row the rule keeps.
+ */
+async function pruneStoredRuntimeCheckpoints(
+  client: PoolClient,
+  snapshot: Cp2Snapshot,
+  previous: Cp2Snapshot
+): Promise<void> {
+  const known = new Set((previous.runtimeHandoffs ?? []).map((handoff) => handoff.id));
+  const taskIds = [
+    ...new Set(
+      (snapshot.runtimeHandoffs ?? [])
+        .filter((handoff) => !known.has(handoff.id))
+        .map((handoff) => handoff.taskId)
+    )
+  ];
+  if (taskIds.length === 0) return;
+  await client.query(
+    `delete from cp2_runtime_handoffs where entity_id in (
+      select stored.entity_id from cp2_runtime_handoffs stored
+      where stored.task_id = any($1::text[]) and not ${retainedRuntimeCheckpointSql("stored")}
+      order by stored.checkpoint_version limit $2)`,
+    [taskIds, runtimeCheckpointPruneBatch]
+  );
+}
+
 export async function saveTransactionalCp2Snapshot(
   client: PoolClient,
   snapshot: Cp2Snapshot,
@@ -1690,6 +1725,7 @@ export async function saveTransactionalCp2Snapshot(
         edgeNormalizedBaselines.get(previous)?.get(collection.key)
       );
   }
+  await pruneStoredRuntimeCheckpoints(client, snapshot, previous);
   if (
     !collectionUnchanged(
       snapshotRecords(snapshot.conversationAttachments ?? []),

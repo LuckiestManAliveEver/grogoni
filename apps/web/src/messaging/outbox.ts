@@ -37,15 +37,18 @@ export function recordMessagingOutboxAttempt(
   now = Date.now(),
   storage: MessagingOutboxStorage = localStorage
 ): MessagingOutboxEntry | null {
-  let updated: MessagingOutboxEntry | null = null;
-  const entries = readMessagingOutbox(accountId, storage).map((entry) => {
-    if (entry.clientMessageId !== clientMessageId) return entry;
-    const attempts = (entry.attempts ?? 0) + 1;
-    updated = { ...entry, attempts, nextAttemptAt: now + outboxBackoffMs(attempts) };
-    return updated;
+  const entry = readMessagingOutbox(accountId, storage).find(
+    (candidate) => candidate.clientMessageId === clientMessageId
+  );
+  if (entry === undefined) return null;
+  const attempts = (entry.attempts ?? 0) + 1;
+  const updated = { ...entry, attempts, nextAttemptAt: now + outboxBackoffMs(attempts) };
+  mutateOutbox(accountId, storage, {
+    kind: "attempt",
+    clientMessageId,
+    attempts,
+    nextAttemptAt: updated.nextAttemptAt
   });
-  storage.setItem(storageKey(accountId), JSON.stringify(entries));
-  announceOutboxChange();
   return updated;
 }
 
@@ -60,6 +63,238 @@ export function readMessagingOutbox(
   storage: MessagingOutboxStorage = localStorage
 ): MessagingOutboxEntry[] {
   discardUnsafeLegacyOutbox(storage);
+  return applyOutboxOperations(
+    readStoredOutbox(accountId, storage),
+    pendingOutbox(storage, accountId)?.operations ?? []
+  );
+}
+
+let countMemo: { key: string; raw: string | null; count: number } | null = null;
+
+/**
+ * How many messages wait in this account's outbox (in one conversation, when given), for
+ * rendering: never writes (unlike
+ * readMessagingOutbox, which discards the legacy key), never throws (blocked storage reads as 0),
+ * and parses only when the stored value changed. Counts this tab's writes that are still waiting
+ * for the outbox lock too.
+ */
+export function countMessagingOutbox(
+  accountId: string,
+  conversationId?: string | null,
+  storage: Pick<MessagingOutboxStorage, "getItem"> = localStorage
+): number {
+  try {
+    const operations = pendingOutbox(storage, accountId)?.operations ?? [];
+    const key = `${storageKey(accountId)}#${conversationId === undefined ? "*" : conversationId}`;
+    const raw = storage.getItem(storageKey(accountId));
+    if (
+      operations.length === 0 &&
+      countMemo !== null &&
+      countMemo.key === key &&
+      countMemo.raw === raw
+    )
+      return countMemo.count;
+    const parsed = raw === null ? [] : (JSON.parse(raw) as unknown);
+    const stored = Array.isArray(parsed)
+      ? parsed.filter(
+          (entry): entry is MessagingOutboxEntry =>
+            typeof entry === "object" &&
+            entry !== null &&
+            (entry as { accountId?: unknown }).accountId === accountId
+        )
+      : [];
+    const count = applyOutboxOperations(stored, operations).filter(
+      (entry) =>
+        conversationId === undefined ||
+        (entry.payload as { conversationId?: unknown } | undefined)?.conversationId ===
+          conversationId
+    ).length;
+    if (operations.length === 0) countMemo = { key, raw, count };
+    return count;
+  } catch {
+    return 0;
+  }
+}
+
+export function queueMessagingOutbox(
+  entry: MessagingOutboxEntry,
+  storage: MessagingOutboxStorage = localStorage
+): void {
+  mutateOutbox(entry.accountId, storage, { kind: "put", entry });
+}
+
+export function removeMessagingOutboxEntry(
+  accountId: string,
+  clientMessageId: string,
+  storage: MessagingOutboxStorage = localStorage
+): void {
+  mutateOutbox(accountId, storage, { kind: "remove", clientMessageId });
+}
+
+export function clearMessagingOutbox(
+  accountId: string,
+  storage: MessagingOutboxStorage = localStorage
+): void {
+  // The thread copies of queued messages go with the queue.
+  clearDeviceOnlyMessages(accountId, storage);
+  mutateOutbox(accountId, storage, { kind: "clear" });
+}
+
+/**
+ * Cross-tab writes. Every tab of an account reads, changes and writes back the same stored list,
+ * so two tabs writing at once used to drop one tab's change (a queued message vanished). Each
+ * change is now recorded as an operation and applied to the freshest stored list under the Web
+ * Lock `grogoni-outbox-write:<account>`, one tab at a time. The callers stay synchronous: this
+ * tab's own reads (readMessagingOutbox, countMessagingOutbox) include its operations that still
+ * wait for the lock, and the change event fires at once. The lock callback is synchronous and
+ * requests nothing else, so it cannot deadlock and is released even when the write throws; it is
+ * a different lock from the resend pass (`grogoni-outbox-resend:<account>`), which holds its lock
+ * across network calls and itself writes here. Without navigator.locks each change is one
+ * synchronous read-modify-write, as before. Other tabs learn of a write from the "storage" event.
+ */
+type OutboxOperation =
+  | { kind: "put"; entry: MessagingOutboxEntry }
+  | { kind: "remove"; clientMessageId: string }
+  | { kind: "attempt"; clientMessageId: string; attempts: number; nextAttemptAt: number }
+  | { kind: "clear" };
+
+interface PendingOutbox {
+  accountId: string;
+  storage: MessagingOutboxStorage;
+  operations: OutboxOperation[];
+  /** A lock request is out and has not run yet; it writes every operation queued until it runs. */
+  waiting: boolean;
+  /** Settles when the latest lock request has run (or failed). */
+  flush: Promise<void>;
+}
+
+interface OutboxLockManager {
+  request(name: string, callback: () => void): Promise<unknown>;
+}
+
+const pendingByStorage = new WeakMap<object, Map<string, PendingOutbox>>();
+const pendingWrites = new Set<PendingOutbox>();
+
+export function messagingOutboxLockName(accountId: string): string {
+  return `grogoni-outbox-write:${accountId}`;
+}
+
+/** Resolves once every outbox write this tab has made is stored (tests, and before unload). */
+export async function settleMessagingOutbox(): Promise<void> {
+  while ([...pendingWrites].some((pending) => pending.waiting))
+    await Promise.all([...pendingWrites].map((pending) => pending.flush));
+}
+
+function outboxLocks(): OutboxLockManager | null {
+  const locks = (globalThis as { navigator?: { locks?: OutboxLockManager } }).navigator?.locks;
+  return typeof locks?.request === "function" ? locks : null;
+}
+
+function pendingOutbox(storage: object, accountId: string): PendingOutbox | undefined {
+  return pendingByStorage.get(storage)?.get(accountId);
+}
+
+function mutateOutbox(
+  accountId: string,
+  storage: MessagingOutboxStorage,
+  operation: OutboxOperation
+): void {
+  // Every write drops the unsafe pre-account outbox, as reading it does.
+  discardUnsafeLegacyOutbox(storage);
+  const locks = outboxLocks();
+  if (locks === null) {
+    writeOutbox(accountId, storage, [operation]);
+    announceOutboxChange();
+    return;
+  }
+  let byAccount = pendingByStorage.get(storage);
+  if (byAccount === undefined) pendingByStorage.set(storage, (byAccount = new Map()));
+  let pending = byAccount.get(accountId);
+  if (pending === undefined) {
+    pending = { accountId, storage, operations: [], waiting: false, flush: Promise.resolve() };
+    byAccount.set(accountId, pending);
+    pendingWrites.add(pending);
+  }
+  pending.operations.push(operation);
+  announceOutboxChange();
+  scheduleOutboxFlush(pending, locks);
+}
+
+function scheduleOutboxFlush(pending: PendingOutbox, locks: OutboxLockManager): void {
+  if (pending.waiting) return;
+  pending.waiting = true;
+  pending.flush = locks
+    .request(messagingOutboxLockName(pending.accountId), () => {
+      // Cleared first: a change made after this point needs (and gets) its own lock request.
+      pending.waiting = false;
+      flushPendingOutbox(pending);
+    })
+    .then(
+      () => undefined,
+      (error: unknown) => {
+        pending.waiting = false;
+        // Kept in this tab's operations (it still reads them); the next change writes them again.
+        console.warn("Could not save the messaging outbox.", error);
+      }
+    );
+}
+
+function flushPendingOutbox(pending: PendingOutbox): void {
+  const operations = pending.operations.splice(0);
+  if (operations.length === 0) return;
+  try {
+    writeOutbox(pending.accountId, pending.storage, operations);
+  } catch (error) {
+    pending.operations.unshift(...operations);
+    throw error;
+  }
+}
+
+/** One synchronous read-modify-write of the stored list. */
+function writeOutbox(
+  accountId: string,
+  storage: MessagingOutboxStorage,
+  operations: OutboxOperation[]
+): void {
+  const cleared = operations.some((operation) => operation.kind === "clear");
+  const entries = applyOutboxOperations(readStoredOutbox(accountId, storage), operations);
+  if (cleared && entries.length === 0) storage.removeItem(storageKey(accountId));
+  else storage.setItem(storageKey(accountId), JSON.stringify(entries));
+}
+
+function applyOutboxOperations(
+  stored: MessagingOutboxEntry[],
+  operations: readonly OutboxOperation[]
+): MessagingOutboxEntry[] {
+  let entries = stored;
+  for (const operation of operations) {
+    if (operation.kind === "clear") entries = [];
+    else if (operation.kind === "put")
+      entries = [
+        ...entries.filter(
+          (candidate) => candidate.clientMessageId !== operation.entry.clientMessageId
+        ),
+        operation.entry
+      ];
+    else if (operation.kind === "remove")
+      entries = entries.filter(
+        (candidate) => candidate.clientMessageId !== operation.clientMessageId
+      );
+    else
+      entries = entries.map((candidate) =>
+        candidate.clientMessageId === operation.clientMessageId &&
+        operation.attempts > (candidate.attempts ?? 0)
+          ? { ...candidate, attempts: operation.attempts, nextAttemptAt: operation.nextAttemptAt }
+          : candidate
+      );
+  }
+  return entries;
+}
+
+function readStoredOutbox(
+  accountId: string,
+  storage: Pick<MessagingOutboxStorage, "getItem">
+): MessagingOutboxEntry[] {
   try {
     const stored = JSON.parse(storage.getItem(storageKey(accountId)) ?? "[]") as unknown;
     if (!Array.isArray(stored)) return [];
@@ -78,80 +313,18 @@ export function readMessagingOutbox(
   }
 }
 
-let countMemo: { key: string; raw: string | null; count: number } | null = null;
-
-/**
- * How many messages wait in this account's outbox (in one conversation, when given), for
- * rendering: never writes (unlike
- * readMessagingOutbox, which discards the legacy key), never throws (blocked storage reads as 0),
- * and parses only when the stored value changed.
- */
-export function countMessagingOutbox(
-  accountId: string,
-  conversationId?: string | null,
-  storage: Pick<MessagingOutboxStorage, "getItem"> = localStorage
-): number {
-  try {
-    const key = `${storageKey(accountId)}#${conversationId === undefined ? "*" : conversationId}`;
-    const raw = storage.getItem(storageKey(accountId));
-    if (countMemo !== null && countMemo.key === key && countMemo.raw === raw)
-      return countMemo.count;
-    const parsed = raw === null ? [] : (JSON.parse(raw) as unknown);
-    const count = Array.isArray(parsed)
-      ? parsed.filter(
-          (entry) =>
-            typeof entry === "object" &&
-            entry !== null &&
-            (entry as { accountId?: unknown }).accountId === accountId &&
-            (conversationId === undefined ||
-              (entry as { payload?: { conversationId?: unknown } }).payload?.conversationId ===
-                conversationId)
-        ).length
-      : 0;
-    countMemo = { key, raw, count };
-    return count;
-  } catch {
-    return 0;
-  }
-}
-
-export function queueMessagingOutbox(
-  entry: MessagingOutboxEntry,
-  storage: MessagingOutboxStorage = localStorage
-): void {
-  const entries = readMessagingOutbox(entry.accountId, storage).filter(
-    (candidate) => candidate.clientMessageId !== entry.clientMessageId
-  );
-  storage.setItem(storageKey(entry.accountId), JSON.stringify([...entries, entry]));
-  announceOutboxChange();
-}
-
-export function removeMessagingOutboxEntry(
-  accountId: string,
-  clientMessageId: string,
-  storage: MessagingOutboxStorage = localStorage
-): void {
-  storage.setItem(
-    storageKey(accountId),
-    JSON.stringify(
-      readMessagingOutbox(accountId, storage).filter(
-        (entry) => entry.clientMessageId !== clientMessageId
-      )
-    )
-  );
-  announceOutboxChange();
-}
-
-export function clearMessagingOutbox(
-  accountId: string,
-  storage: MessagingOutboxStorage = localStorage
-): void {
-  storage.removeItem(storageKey(accountId));
-  discardUnsafeLegacyOutbox(storage);
-  // The thread copies of queued messages go with the queue.
-  clearDeviceOnlyMessages(accountId, storage);
-  announceOutboxChange();
-}
+// A tab that closes while a write still waits for the lock writes it at once (without the lock)
+// rather than losing it.
+if (typeof window !== "undefined" && typeof window.addEventListener === "function")
+  window.addEventListener("pagehide", () => {
+    for (const pending of pendingWrites) {
+      try {
+        flushPendingOutbox(pending);
+      } catch {
+        /* Storage blocked or full: nothing more can be done while the page goes away. */
+      }
+    }
+  });
 
 function announceOutboxChange(): void {
   if (typeof window !== "undefined") window.dispatchEvent(new Event(messagingOutboxChangeEvent));
