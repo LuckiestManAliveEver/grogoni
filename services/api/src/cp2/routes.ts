@@ -200,6 +200,12 @@ interface GrogoniIdRenameBody {
   handle?: string;
 }
 
+interface ShareLinksPatchBody {
+  whatsappUrl?: string | null;
+  publicNote?: string | null;
+  allowCustomerOrders?: boolean | null;
+}
+
 interface SessionContextBody {
   mode?: string;
   activeShopId?: string | null;
@@ -1711,6 +1717,50 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
           business,
           links: getStoreLinks(business.grogoniId, { webOrigin: webPublicUrl, telegramBotUsername })
         };
+      } catch (error) {
+        return sendCp2Error(reply, error);
+      }
+    }
+  );
+
+  // Public share identity for a shop (docs/architecture/business-share-links.md): the storefront
+  // and commerce addresses plus the owner-entered WhatsApp click-to-chat link, public note and
+  // order-acceptance decision. Storefront/commerce addresses are derived at read time from the
+  // canonical grogoniId, never stored separately.
+  app.get(
+    "/businesses/:businessId/share-links",
+    async (request: FastifyRequest<{ Params: BusinessParams }>, reply) => {
+      try {
+        return store.getBusinessShareLinks({
+          sessionId: readSessionCookie(request.headers.cookie),
+          businessId: request.params.businessId,
+          webOrigin: webPublicUrl
+        });
+      } catch (error) {
+        return sendCp2Error(reply, error);
+      }
+    }
+  );
+
+  app.patch(
+    "/businesses/:businessId/share-links",
+    async (
+      request: FastifyRequest<{ Params: BusinessParams; Body: ShareLinksPatchBody }>,
+      reply
+    ) => {
+      try {
+        return store.updateBusinessShareLinks({
+          sessionId: readSessionCookie(request.headers.cookie),
+          businessId: request.params.businessId,
+          webOrigin: webPublicUrl,
+          patch: {
+            ...("whatsappUrl" in request.body ? { whatsappUrl: request.body.whatsappUrl } : {}),
+            ...("publicNote" in request.body ? { publicNote: request.body.publicNote } : {}),
+            ...("allowCustomerOrders" in request.body
+              ? { allowCustomerOrders: request.body.allowCustomerOrders }
+              : {})
+          }
+        });
       } catch (error) {
         return sendCp2Error(reply, error);
       }
