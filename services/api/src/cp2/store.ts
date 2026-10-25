@@ -116,6 +116,7 @@ import { DocumentImportDomain } from "./domains/document-imports/store.js";
 import { NotificationsDomain } from "./domains/notifications/store.js";
 import { notificationRuleKey, summarizeNotifications } from "./domains/notifications/shared.js";
 import { NetworkDomain, type NetworkDomainDeps } from "./domains/network/store.js";
+import { BusinessShareLinksDomain } from "./domains/business-share-links/store.js";
 import {
   normalizeContactEmail,
   protectStoredContactHash,
@@ -1229,6 +1230,11 @@ export class Cp2Store {
       },
       ...(options.networkLimits === undefined ? {} : { limits: options.networkLimits })
     });
+    this.businessShareLinksDomain = new BusinessShareLinksDomain({
+      requireAuthorizedSession: (sessionId, businessId, permission, now) =>
+        this.requireAuthorizedActor(sessionId, businessId, permission, now),
+      businesses: this.businesses
+    });
     this.salesDomain = new SalesDomain({
       requireAuthorizedSession: (sessionId, businessId, permission, now) =>
         this.requireAuthorizedActor(sessionId, businessId, permission, now),
@@ -2191,6 +2197,7 @@ export class Cp2Store {
   // its map getters for the generic snapshot/restore/Postgres-persistence/account-deletion
   // sweeps below.
   private readonly networkDomain: NetworkDomain;
+  private readonly businessShareLinksDomain: BusinessShareLinksDomain;
   private readonly auditEvents: BusinessEvent[] = [];
 
   continueWithDevice(
@@ -8528,6 +8535,12 @@ export class Cp2Store {
   }
   daemonConversationHistory(...args: Parameters<MessagingDomain["daemonConversationHistory"]>) {
     return this.messagingDomain.daemonConversationHistory(...args);
+  }
+  getBusinessShareLinks(...args: Parameters<BusinessShareLinksDomain["getShareLinks"]>) {
+    return this.businessShareLinksDomain.getShareLinks(...args);
+  }
+  updateBusinessShareLinks(...args: Parameters<BusinessShareLinksDomain["updateShareLinks"]>) {
+    return this.businessShareLinksDomain.updateShareLinks(...args);
   }
   getNetworkPrivacy(...args: Parameters<NetworkDomain["getNetworkPrivacy"]>) {
     return this.networkDomain.getNetworkPrivacy(...args);

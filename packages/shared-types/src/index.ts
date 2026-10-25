@@ -1,5 +1,6 @@
 export type RuntimeName = "api" | "sync" | "ai-runtime" | "web";
 
+export * from "./business-settings.js";
 export * from "./commerce-address.js";
 export * from "./daemon-lanes.js";
 export * from "./purchase-orders.js";
@@ -13,6 +14,7 @@ export * from "./runtime-handoff.js";
 export * from "./runtime-registry.js";
 export * from "./staff.js";
 export * from "./store-links.js";
+export * from "./whatsapp-link.js";
 export * from "./workload.js";
 
 import type { ConversationExecutionSummary } from "./daemon-lanes.js";
