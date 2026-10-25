@@ -12,6 +12,8 @@ export interface ChatComposerProps {
   isAuthenticated: boolean;
   isBrowserGenerating: boolean;
   isSending: boolean;
+  /** True while the composer is opening a conversation before the first send. */
+  isOpening?: boolean;
   mode: GrogoniMode;
   activeAgentName: string;
   audienceLabel?: string | undefined;
