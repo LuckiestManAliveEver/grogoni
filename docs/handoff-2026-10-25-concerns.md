@@ -79,10 +79,34 @@ and no full-CI or production-deployment success is claimed here.
 | Activation and authoring UX               | Activation is explicit. Conversational creation is available in existing chat; editing/review/lifecycle and marketplace commands use the documented command/API surfaces. No automatic relevance-selection loop or separate admin application is claimed.                                                                                                         |
 | Publication review                        | Owners must inspect the separate public export for private data and redistribution rights. Validation and publisher verification do not guarantee safe instructions or provide an automated secret/proprietary-content scan.                                                                                                                                      |
 | Full-suite and existing API coverage gaps | The six pre-existing route-coverage gaps remain network, presence, product-captures, sales-agents, staff and status-broadcasts. They are outside this integration. A full-suite result was not obtained or rerun for this request.                                                                                                                                |
-| Unrelated local work                      | Uncommitted edits in packages/shared-types/src/index.ts and tests/cp2-postgres-store.test.ts, and the untracked business-settings.ts / whatsapp-link.ts modules, were preserved and excluded from PR #58. Their completion and verification remain with that separate work.                                                                                       |
+| Unrelated local work                      | The former uncommitted edits in packages/shared-types/src/index.ts and tests/cp2-postgres-store.test.ts, and the untracked business-s
 
 These operational dependencies are not represented as completed production work. No remaining
 implementation phase was silently started, deployed, or scheduled on a business's behalf.
+
+## Concerns integration and migration renumbering
+
+The separate 2026-10-25 concerns integration was subsequently reconciled with main and merged
+(`dc167f8f`), on top of `5a7877c7`. Main already used migration numbers 123–125, so the three
+concern migrations were renumbered to avoid colliding with them:
+
+| Concern migration        | Was | Now |
+| ------------------------ | --- | --- |
+| Runtime checkpoint retention | `123_runtime_checkpoint_retention.sql` | `126_runtime_checkpoint_retention.sql` |
+| Runtime operation dedup tenant | `124_runtime_operation_dedup_tenant.sql` | `127_runtime_operation_dedup_tenant.sql` |
+| Agent chat turns         | `125_agent_chat_turns.sql` | `128_agent_chat_turns.sql` |
+
+Main's own `123_buyer_shopping_sessions.sql`, `124_daemon_conversation_delivery.sql` and
+`125_agent_skills.sql` are unchanged. The renumber was applied to the migrations, their
+`.down.sql` rollbacks, the protocol and Supabase edge deployment docs, and the
+edge checkpoint-scope test; no stale references to the old numbers remain. Up-migrations and
+rollbacks parse, no duplicate numeric prefixes were introduced, and the workspace typecheck
+passed after a clean `pnpm install`.
+
+Two modules remain **outside** this integration and are still uncommitted local work:
+`packages/shared-types/src/business-settings.ts` and `packages/shared-types/src/whatsapp-link.ts`
+(and the `index.ts` exports that reference them). They are not on main and were not part of the
+merge; their completion and verification remain with that separate work.
 
 ## References
 
@@ -91,3 +115,5 @@ implementation phase was silently started, deployed, or scheduled on a business'
 - [Implemented workflows, host policies and phase reports](architecture/agent-skills-implementation.md)
 - Migration: `infra/db/migrations/125_agent_skills.sql`
 - Rollback: `infra/db/rollbacks/125_agent_skills.down.sql` — export installed packages before removing the registry.
+- Concerns migrations (renumbered): `126_runtime_checkpoint_retention.sql`, `127_runtime_operation_dedup_tenant.sql`, `128_agent_chat_turns.sql`
+- Concerns rollbacks: `infra/db/rollbacks/126_runtime_checkpoint_retention.down.sql`, `127_runtime_operation_dedup_tenant.down.sql`, `128_agent_chat_turns.down.sql`
