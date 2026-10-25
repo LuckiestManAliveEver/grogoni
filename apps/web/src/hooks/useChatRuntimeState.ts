@@ -249,7 +249,8 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
 
   const buyerShoppingSessionIds = useRef(new Map<string, string>());
   const assistantScope = daemonChatScope(mode, business?.id ?? null, activeConversationId);
-  useDaemonChatResults(session?.account.id ?? null, assistantScope, async (entry, task) => {
+  // Daemon agent tasks belong to a shop's agent. A guest (no shop) has none, so don't poll.
+  useDaemonChatResults(business === null ? null : (session?.account.id ?? null), assistantScope, async (entry, task) => {
     if (task.payload.kind === "agent" && task.payload.conversation) {
       await loadMessagingInbox(entry.conversationId);
       setStatusMessage(
@@ -357,7 +358,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
     }
     if (
       business &&
-      !currentConversation?.conversation.helpTopic &&
+      !currentConversation?.conversation?.helpTopic &&
       runtimeTransition({
         accountId: activeSession.account.id,
         storeId: business.id,
@@ -405,7 +406,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       return;
     }
 
-    if (currentConversation?.conversation.helpTopic) {
+    if (currentConversation?.conversation?.helpTopic) {
       try {
         const { runHelpQuestion } = await loadLazyModuleWithRecovery(
           "help-agent-chat",
@@ -432,7 +433,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
     const hasAccountRecipient = isHumanDirectConversation(currentConversation, activeSession);
     const hasExternalRecipient = isExternalChannelConversation(currentConversation);
     const isBusinessConversation =
-      currentConversation !== null && currentConversation.conversation.kind !== "personal";
+      currentConversation !== null && currentConversation.conversation?.kind !== "personal";
     // Business inbox messages go to people. Agent execution requires a separate authorized request.
     const hasHumanRecipient = hasAccountRecipient || hasExternalRecipient || isBusinessConversation;
     if (
