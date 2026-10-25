@@ -114,6 +114,7 @@ async function runClaim(
         ? claim.task.payload.modelId
         : null;
     if (
+      (claim.message !== null && /^\/(?:business\s|skills?(?:\s|$))/.test(claim.message)) ||
       device === null ||
       claim.message === null ||
       (selectedModel !== null && device.modelId !== selectedModel)

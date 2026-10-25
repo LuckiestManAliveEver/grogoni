@@ -151,6 +151,12 @@ export interface EdgeDaemonDependencies {
   ) => Promise<{ modelId: string }>;
   deliverConversationTask?: (task: DaemonTask) => Promise<void>;
   loadConversationHistory?: (task: DaemonTask) => Promise<RuntimeModelConversationMessage[]>;
+  runBusinessSkill?: (
+    task: DaemonTask,
+    businessId: string,
+    message: string,
+    signal: AbortSignal
+  ) => Promise<unknown>;
   runMaintenance?: (job: string, signal: AbortSignal) => Promise<unknown>;
   /** Tests inject a fake model; production builds the OpenRouter executor. */
   execute?: DaemonExecutor;
@@ -234,6 +240,7 @@ export function createEdgeDaemon(dependencies: EdgeDaemonDependencies) {
   const baseExecute =
     dependencies.execute ??
     createDaemonExecutor(environment, {
+      ...(dependencies.runBusinessSkill ? { runBusinessSkill: dependencies.runBusinessSkill } : {}),
       ...(dependencies.runMaintenance ? { runMaintenance: dependencies.runMaintenance } : {}),
       ...(dependencies.loadConversationHistory
         ? { loadConversationHistory: dependencies.loadConversationHistory }
@@ -500,6 +507,15 @@ export function createEdgeDaemon(dependencies: EdgeDaemonDependencies) {
 
   async function settleFromDevice(userId: string, id: string, body: Record<string, unknown>) {
     const claimed = await ownedClaim(userId, id, body);
+    if (
+      claimed.payload.kind === "agent" &&
+      /^\/(?:business\s|skills?(?:\s|$))/.test(claimed.payload.message)
+    )
+      throw new DaemonHttpError(
+        400,
+        "skill_server_execution_required",
+        "Skill requests require the authorized server execution path."
+      );
     const raw = body.outcome;
     if (raw === null || typeof raw !== "object" || Array.isArray(raw))
       throw new DaemonHttpError(400, "outcome_invalid", "outcome is required.");

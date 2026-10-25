@@ -223,6 +223,10 @@
     "vocabulary": {
       "status": "exempt",
       "reason": "Reviewing the agent's learned vocabulary; owner governance of the agent."
+    },
+    "skills": {
+      "status": "exempt",
+      "reason": "Owner capability governance: portable instruction package lifecycle, review and publication. Skill installation never grants business tools or schedules execution."
     }
   },
   "clientPathExceptions": [

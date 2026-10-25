@@ -1,3 +1,7 @@
+import { executeDaemonBusinessSkill } from "./business-skills.js";
+import { loadTransactionalCp2Snapshot } from "../cp2/postgres-store.js";
+import { createEdgeSnapshotScope, prepareEdgeHydration } from "../cp2/edge-snapshot-scope.js";
+import { hostedEndpoint } from "../inference/hosted-http.js";
 import { loadDaemonConversationHistory } from "./conversation-history.js";
 import { Pool } from "pg";
 import type { buildDaemonGateway } from "./gateway.js";
@@ -56,6 +60,54 @@ function report(event: DaemonEvent) {
   console.log(JSON.stringify(event));
 }
 const execute = createDaemonExecutor(process.env, {
+  runBusinessSkill: (task, businessId, message, signal) =>
+    executeDaemonBusinessSkill({
+      task,
+      businessId,
+      message,
+      signal,
+      load: async () => {
+        if (!task.owner_user_id || task.payload.kind !== "agent" || !task.payload.conversation)
+          throw new Error("Missing skill identity.");
+        const client = await pool.connect();
+        try {
+          await client.query("begin read only");
+          const request = new Request(
+            `https://grogoni.com/v1/conversations/${task.payload.conversation.id}`
+          );
+          const scope = await createEdgeSnapshotScope(
+            client,
+            request,
+            new URL(request.url).pathname,
+            undefined,
+            { daemonOwnerUserId: task.owner_user_id }
+          );
+          const snapshot = prepareEdgeHydration(await loadTransactionalCp2Snapshot(client, scope));
+          await client.query("commit");
+          return snapshot;
+        } catch (error) {
+          await client.query("rollback");
+          throw error;
+        } finally {
+          client.release();
+        }
+      },
+      send: async (request) => {
+        if (!process.env.GROGONI_API_URL)
+          throw new Error("GROGONI_API_URL is required for business skills.");
+        const base = hostedEndpoint(
+          process.env.GROGONI_API_URL,
+          process.env.DAEMON_ALLOW_LOCAL_API === "true"
+        );
+        const target = new URL(`${base.pathname.replace(/\/$/, "")}/v1/messages`, base);
+        return fetch(target, {
+          method: request.method,
+          headers: request.headers,
+          body: await request.arrayBuffer(),
+          signal: request.signal
+        });
+      }
+    }),
   loadConversationHistory: async (task) => {
     const client = await pool.connect();
     try {

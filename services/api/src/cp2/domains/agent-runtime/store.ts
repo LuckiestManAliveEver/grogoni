@@ -2165,6 +2165,14 @@ export class AgentRuntimeDomain {
     message: string;
     conversationHistory?: RuntimeModelConversationMessage[];
     confirmationToken?: string;
+    portableCatalog?: string;
+    portableSkill?: {
+      id: string;
+      version: number;
+      digest: string;
+      context: string;
+      grants: RuntimeToolName[];
+    };
     /** Server-only compiled task step; HTTP and MCP parsers never accept this field. */
     plannedStep?: BusinessTaskPlanStep;
     signal?: AbortSignal;
@@ -2287,7 +2295,18 @@ export class AgentRuntimeDomain {
         toolName,
         risk,
         status,
-        metadata
+        metadata: {
+          ...metadata,
+          ...(input.portableSkill
+            ? {
+                skillId: input.portableSkill.id,
+                skillVersion: input.portableSkill.version,
+                skillDigest: input.portableSkill.digest,
+                agentId: shopRuntime.agentId,
+                businessId: input.businessId
+              }
+            : {})
+        }
       });
       // Durable execution event log (docs/architecture/durable-execution-plane.md). Only for turns
       // attached to a task (conversation) - a turn with no conversationId never participates in the
@@ -2301,7 +2320,17 @@ export class AgentRuntimeDomain {
         executionId: turnId,
         runtimeInstanceId: nativeResolution?.binding.id ?? activeBinding?.binding.id ?? null,
         executionHostId: nativeResolution?.selected.host?.id ?? null,
-        payload: { toolName, risk },
+        payload: {
+          toolName,
+          risk,
+          ...(input.portableSkill
+            ? {
+                skillId: input.portableSkill.id,
+                skillVersion: input.portableSkill.version,
+                skillDigest: input.portableSkill.digest
+              }
+            : {})
+        },
         now
       });
     };
@@ -2499,6 +2528,8 @@ export class AgentRuntimeDomain {
           now,
           appendTelemetry,
           shopRuntime,
+          ...(input.portableCatalog ? { portableCatalog: input.portableCatalog } : {}),
+          ...(input.portableSkill ? { portableSkill: input.portableSkill } : {}),
           retrievedContext,
           memory: runtimeMemory,
           intent: parserResult.intent,
@@ -2526,7 +2557,7 @@ export class AgentRuntimeDomain {
           trace: null
         };
     if (
-      activeBinding !== null &&
+      (activeBinding !== null || input.portableSkill !== undefined) &&
       modelRoute.trace !== null &&
       modelRoute.trace.status !== "available"
     ) {
@@ -2536,9 +2567,9 @@ export class AgentRuntimeDomain {
         "The active agent model could not complete this message.",
         true,
         {
-          bindingId: activeBinding.binding.id,
-          modelId: activeBinding.model.id,
-          executionTarget: activeBinding.executionTarget,
+          bindingId: activeBinding?.binding.id ?? null,
+          modelId: activeBinding?.model.id ?? runtimeModelId,
+          executionTarget: activeBinding?.executionTarget ?? null,
           runtimeErrorCode: modelRoute.trace.errorCode
         }
       );
@@ -2626,6 +2657,13 @@ export class AgentRuntimeDomain {
         now
       });
     }
+    if (input.portableSkill)
+      this.deps.assertPortableSkillAction?.(
+        input,
+        input.portableSkill,
+        proposal.toolName,
+        shopRuntime.agentId
+      );
     const policyErrors = runtimeActionPolicyErrors(this.deps, {
       runtime: shopRuntime,
       businessId: input.businessId,
@@ -2637,6 +2675,7 @@ export class AgentRuntimeDomain {
       (binding) => binding.skillId === proposal.toolName
     );
     const runtimeRequiresConfirmation =
+      (input.portableSkill !== undefined && !definition.readOnly) ||
       definition.requiresConfirmation ||
       shopRuntime.instructions.ownerApprovalRequiredFor.includes(proposal.toolName) ||
       (skillBinding !== undefined && skillBinding.requiredConfirmationLevel !== "none");
@@ -2654,6 +2693,19 @@ export class AgentRuntimeDomain {
           : "safe_to_execute"
         : "clarification_required"
     });
+    if (input.portableSkill) {
+      plan.portableSkill = {
+        id: input.portableSkill.id,
+        version: input.portableSkill.version,
+        digest: input.portableSkill.digest
+      };
+      appendTelemetry("plan.created", plan.status, plan.toolName, plan.risk, {
+        skillId: input.portableSkill.id,
+        skillVersion: input.portableSkill.version,
+        skillDigest: input.portableSkill.digest,
+        authorization: "allowed"
+      });
+    }
     if (input.plannedStep) plan.id = stableUuid(input.plannedStep.idempotencyKey);
     const verificationErrors = [
       ...proposal.validation.errors,
@@ -2876,6 +2928,13 @@ export class AgentRuntimeDomain {
       status: "safe_to_execute",
       confirmationToken: input.token
     };
+    if (action.portableSkill)
+      this.deps.assertPortableSkillAction?.(
+        { sessionId: input.authenticatedSessionId, businessId: input.businessId },
+        action.portableSkill,
+        action.toolName,
+        input.runtime.agentId
+      );
     const definition = runtimeToolRegistry[action.toolName as RuntimeToolName];
     const roleAllowed = roleCan(
       input.context.role,
@@ -3556,6 +3615,8 @@ export class AgentRuntimeDomain {
   }
 
   private async createRuntimeModelRoute(input: {
+    portableCatalog?: string;
+    portableSkill?: { context: string; grants: RuntimeToolName[] };
     accountId: string;
     conversationHistory?: RuntimeModelConversationMessage[];
     conversationId?: string;

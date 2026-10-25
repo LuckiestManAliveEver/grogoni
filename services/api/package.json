@@ -12,7 +12,8 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "skills"
   ],
   "scripts": {
     "daemon:dev": "tsx --env-file-if-exists=../../.env.openrouter --env-file-if-exists=../../.env.daemon src/daemon/index.ts",
@@ -64,7 +65,8 @@
     "pg": "^8.22.0",
     "standardwebhooks": "^1.1.1",
     "web-push": "^3.6.7",
-    "xlsx": "file:../../vendor/xlsx-0.20.3.tgz"
+    "xlsx": "file:../../vendor/xlsx-0.20.3.tgz",
+    "yaml": "2.9.0"
   },
   "devDependencies": {
     "@types/pg": "^8.20.0",

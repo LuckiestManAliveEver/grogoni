@@ -1,3 +1,4 @@
+import { executeDaemonBusinessSkill } from "./daemon/business-skills.js";
 import { loadDaemonConversationHistory } from "./daemon/conversation-history.js";
 import { readWebPushConfiguration } from "./cp2/push.js";
 import { registerCommerceRoutes } from "./cp2/domains/commerce/routes.js";
@@ -598,6 +599,34 @@ export async function createEdgeDomainRoutes(database: EdgeDomainDatabase) {
             );
           });
         },
+        runBusinessSkill: (task, businessId, message, signal) =>
+          executeDaemonBusinessSkill({
+            task,
+            businessId,
+            message,
+            signal,
+            load: () =>
+              database.transaction(async (client) => {
+                if (
+                  !task.owner_user_id ||
+                  task.payload.kind !== "agent" ||
+                  !task.payload.conversation
+                )
+                  throw new Error("Missing skill identity.");
+                const internal = new Request(
+                  `https://grogoni.com/v1/conversations/${task.payload.conversation.id}`
+                );
+                const scope = await createEdgeSnapshotScope(
+                  client,
+                  internal,
+                  new URL(internal.url).pathname,
+                  undefined,
+                  { daemonOwnerUserId: task.owner_user_id }
+                );
+                return prepareEdgeHydration(await loadTransactionalCp2Snapshot(client, scope));
+              }),
+            send: (request) => routes(request, "/v1/messages")
+          }),
         loadConversationHistory: (task) =>
           database.transaction((client) => loadDaemonConversationHistory(client, task)),
         authorizeConversation: async (request, conversationId) => {

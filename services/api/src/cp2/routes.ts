@@ -1,3 +1,4 @@
+import { registerAgentSkillsRoutes } from "./domains/agent-skills/routes.js";
 import { registerOfflineRuntimeRoutes } from "./offline-runtime-routes.js";
 import { registerChatImageRoutes } from "./chat-image-routes.js";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -1592,6 +1593,7 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
     }
   );
 
+  registerAgentSkillsRoutes(app, store);
   registerAgentRuntimeRoutes(app, store);
   registerBusinessTaskRoutes(
     app,

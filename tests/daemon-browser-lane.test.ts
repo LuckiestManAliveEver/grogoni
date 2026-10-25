@@ -98,6 +98,19 @@ describe("browser daemon lane: one task", () => {
     expect(events.map((event) => event.type)).toEqual(["claimed", "device_completed"]);
   });
 
+  it("sends skill requests through the server even when a device model is available", async () => {
+    const claim = claimFor("skill-task");
+    claim.message =
+      "/business 11111111-1111-4111-8111-111111111111 /skill inventory-check Check stock";
+    const server = api({ "/claims": () => ({ claim }), "/execute": done });
+    const generate = vi.fn(async () => "unverified stock");
+    await runNextBrowserTask({
+      request: server.request,
+      device: () => ({ modelId: "gpt-6-luna", generate })
+    });
+    expect(generate).not.toHaveBeenCalled();
+    expect(server.paths()).toContain("/v1/daemon/claims/skill-task/execute");
+  });
   it("asks the server to run the claim, with the server's timeout, when there is no model", async () => {
     const { request, calls, paths } = api({
       "/claims": () => ({ claim: claimFor("t2"), nextDueInMs: null }),
