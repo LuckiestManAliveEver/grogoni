@@ -262,7 +262,8 @@ rate_limited` with `Retry-After`. Counters live in `cp2_edge_rate_limits` (migra
 keyed by a digest of the first `x-forwarded-for` address, which is the address Vercel's
 `/api` rewrite reports. A caller that skips Vercel and calls the function URL directly
 controls that header, so the limit protects `grogoni.com/api`, not the raw function URL.
-The `edge_rate_limit_retention` job deletes windows older than an hour.
+The `edge_rate_limit_retention` job deletes windows older than an hour. The `agent_turn_recovery` job (hourly,
+`ENABLE_AGENT_TURN_RECOVERY_RUNNER=false` turns it off) is described under "Agent turns".
 
 Limits come from `EDGE_RATE_LIMIT_MAX` (default 300) and `EDGE_RATE_LIMIT_AUTH_MAX`
 (default 60); `EDGE_RATE_LIMIT_ENABLED=false` turns the limiter off. A request without an
@@ -327,10 +328,95 @@ update"), which the handler answers as `503 service_unavailable`. Two rules keep
   by every participant, so it alone cannot say whether this one has read it). The app only asks
   when that rule says something is unread.
 
-Writes for one account run one at a time (`edge:account:` advisory lock, 10 s lock timeout). An
-agent turn holds that lock for as long as the turn runs, so another write for the same account
-waits behind it; one that waits longer than the timeout answers 503 (`55P03`). The web app keeps
-its own writes out of that queue where it can (no read marker during its own send).
+Writes for one account run one at a time (`edge:account:` and `edge:business:` advisory locks,
+10 s lock timeout), but no lock is ever held while a model answers (see "Agent turns" below), so
+the wait is the length of another short write. Read markers, typing and conversation settings
+take neither lock (see "Fast paths").
+
+### Fast paths
+
+`PATCH /v1/conversations/:id` (read marker, archive, mute, pin, title) and
+`POST /v1/conversations/:id/typing` change only the caller's own rows: the participant row, the
+read flags of other people's messages, the conversation's title, and journal rows. They skip the
+account and business locks (`isEdgeFastPathWrite` in `services/api/src/edge-domain-routes.ts`)
+and rely on the save's compare-and-set; a lost race (`40001`) reruns them, since they call no
+model and nothing outside this database.
+
+The account sync journal (`account_sync_changes`) used to be safe only under the account lock:
+each request numbered its journal rows from what it had loaded, and the journal's upsert silently
+kept only the later of two rows with the same number. Every Edge save now gives its new journal
+rows their final numbers just before commit (`allocateAccountSyncSequences` in
+`services/api/src/cp2/edge-snapshot-scope.ts`): per account, in a fixed order, it takes a lock
+held only until commit (`edge:account-sync:<account>`) and reads the highest stored number. Final
+numbers are never lower than the provisional ones and commit in order, so a client cursor never
+skips a change. This also covers rows written for other participants' accounts, which a request
+never loads.
+
+### Agent turns
+
+Before October 2026, `POST /v1/messages` with `agent` ran the whole agent turn, model call
+included, inside its request transaction while it held the account and business locks: any other
+write of that account waited up to 10 s and then answered 503 (`55P03`).
+
+Now:
+
+1. **The request saves and returns.** The message and one `agent_chat_turns` row (migration
+   `125_agent_chat_turns.sql`, status `pending`) commit together in milliseconds, and the answer
+   is the message with `processing: { status: "pending", turnId }`. A resend of the same
+   `clientMessageId` answers with the same turn while it is pending or running, with the stored
+   reply once it completed, and re-queues the same row when it failed (an explicit retry). One
+   message never gets two turns.
+2. **A background worker runs it** (`services/api/src/edge-agent-turn-worker.ts`), kept alive by
+   `EdgeRuntime.waitUntil` (the local Deno stand-in has none and simply keeps running). It claims
+   the row with a 30 s lease, renews it every 10 s, and runs turns of one conversation in the
+   order their messages arrived.
+3. **No model call runs inside a transaction, on any Edge path.** Every Edge request attempt gets
+   a deferring model resolver (`services/api/src/edge-model-deferral.ts`). Inside an attempt,
+   `generate` and `healthCheck` never reach the provider: a call that was already made with the
+   same input (UUIDs and timestamps masked) gets its recorded result; any other call is recorded
+   as pending, and the pipeline rolls the attempt back before anything is saved or committed on
+   the side. The call is then made with no transaction open, and the attempt runs again. The
+   final attempt runs the tool calls against data read under the locks, saves the reply, and marks
+   the turn `completed` in the same commit, fenced by the lease token. Outbound sends (push, email,
+   SMS gateway, invites, mailbox) are suppressed in an attempt once it is waiting for a model. The
+   synchronous routes that call a model (`/businesses/:id/runtime/turns`, storefront replies, MCP
+   runtime turns) keep their answer shape and get the same guarantee. At most 4 live calls per
+   turn; data that keeps changing under it fails the turn with `AGENT_TURN_UNSTABLE` (retryable).
+4. **Tool writes.** They commit in that one short final transaction, under the locks, against
+   fresh data, so a concurrent change is either seen or caught by the compare-and-set: a lost save
+   race reruns the attempt (its model calls replayed, not repeated) up to three times, then fails
+   the turn with `AGENT_TURN_CONFLICT` (retryable). The inventory recipe still commits its own
+   records independently; an attempt that did so is never rerun.
+5. **The client gets the reply by polling** `GET /v1/agent-turns/:turnId` (1 s, 1 s, 1 s, 2 s,
+   2 s, 2 s, then every 4 s, for at most 3 minutes; `apps/web/src/messaging/agent-turn.ts`). The
+   poll reads one row, so it works whichever isolate answers. It answers the body the synchronous
+   API answers (`agentMessage`, `runtime`, `processing`). The reply is saved with its message's
+   `createdAt` + 1 ms, so it sorts right under the message it answers. In-memory turn-stream
+   previews (`/v1/ai/turn-stream`) still work only within one isolate.
+6. **A dead run never stays pending.** A run that dies (isolate killed, the 150 s wall clock, a
+   crash) stops renewing its lease. The next poll of any turn in that conversation finds it and,
+   with an attempt left (two per queueing), starts it again; otherwise it marks it `failed` with
+   `AGENT_TURN_LOST`, retryable. A turn queued whose start was lost (no claim after 15 s) is
+   started by the next poll too. The whole run has a 120 s deadline (`AGENT_TURN_TIMEOUT`). For
+   turns nobody polls, the hourly `agent_turn_recovery` job fails expired leases and turns queued
+   for over 10 minutes, and deletes finished turns after 7 days.
+
+The worker logs one line per turn: `agent_turn_completed` (with `durationMs`, `lockedAttempts`,
+`liveModelCalls`, `replayedModelCalls`, `mismatchedModelCalls`), `agent_turn_failed` (with
+`errorCode`), `agent_turn_recovered` or `agent_turn_lease_lost`.
+
+Deploy order: apply `125_agent_chat_turns.sql` first (`NODE_ENV=production pnpm db:migrate`), then
+deploy the function, then the web app (an older web build would show a pending answer without a
+reply until its next thread refresh). Rollback: deploy the previous function, then
+`ALLOW_DB_ROLLBACK=true DB_ROLLBACK_STEPS=1 pnpm db:rollback`.
+
+Tests: `tests/edge-async-agent-turns.test.ts` (PostgreSQL: fast paths under held locks, a turn
+with a 4 s fake model while a read marker and a send in another conversation answer, no
+transaction open during any model call, resend, dead-run recovery, journal numbers under
+concurrency, the synchronous runtime route), `tests/edge-model-deferral.test.ts`,
+`tests/agent-turn-wait.test.ts` and `tests/agent-turn-async-chat.test.tsx` (the web client). The
+browser eval `pnpm eval:user-journey:local` has `write-during-running-turn-not-delayed`; run the
+stand-in with `EDGE_LOCAL_FAKE_MODEL_DELAY_MS=6000` so a turn stays open.
 
 The failure log line (`edge_transaction_failed`) carries the conflicting `table`, so the next
 hot row is named in the logs rather than guessed.

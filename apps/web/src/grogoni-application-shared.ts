@@ -1281,9 +1281,11 @@ export interface ProcessedConversationMessageResponse extends ConversationMessag
   runtime?: RuntimeTurnResult | null;
   processing?: {
     correlationId: string;
-    status: "completed" | "failed";
+    /** "pending": the reply runs after the request; see messaging/agent-turn.ts. */
+    status: "completed" | "failed" | "pending";
     errorCode: string | null;
     retryable: boolean;
+    turnId?: string;
   };
 }
 

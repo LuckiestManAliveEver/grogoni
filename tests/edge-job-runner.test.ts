@@ -61,7 +61,7 @@ function database(options: { lockAcquired?: boolean; deleted?: number } = {}) {
   const client = {
     query: vi.fn(async (sql: string) => {
       queries.push(sql);
-      if (sql.startsWith("delete from cp2_edge_rate_limits"))
+      if (sql.startsWith("delete from cp2_edge_rate_limits") || sql.includes("agent_chat_turns"))
         return { rows: [], rowCount: options.deleted ?? 0 };
       return { rows: [], rowCount: 0 };
     })
@@ -231,6 +231,21 @@ describe("Edge background job runner", () => {
     expect(db.queries.some((sql) => sql.startsWith("delete from cp2_edge_rate_limits"))).toBe(true);
     expect(db.transactions).toEqual([
       { lockKey: "edge:job:edge_rate_limit_retention", storeLock: false }
+    ]);
+  });
+
+  it("fails abandoned agent turns and purges finished ones without loading the domain store", async () => {
+    const db = database({ deleted: 3 });
+    const outcome = await runEdgeJob(db, "agent_turn_recovery", { environment: {} });
+    expect(outcome).toMatchObject({ status: "completed", result: { failed: 3, purged: 3 } });
+    expect(state.loads).toBe(0);
+    expect(state.saves).toHaveLength(0);
+    expect(
+      db.queries.some((sql) => sql.includes("update agent_chat_turns set status = 'failed'"))
+    ).toBe(true);
+    expect(db.queries.some((sql) => sql.includes("delete from agent_chat_turns"))).toBe(true);
+    expect(db.transactions).toEqual([
+      { lockKey: "edge:job:agent_turn_recovery", storeLock: false }
     ]);
   });
 

@@ -1152,6 +1152,22 @@ flashing into the new one. A queued message is dropped once the server has it (m
 client message id). Device-only messages offer no server actions (delivery attempts, edit,
 delete) and are never part of the history sent to a model (`inferenceHistory`).
 
+**Agent replies that arrive after the send.** On the Edge API, `POST /v1/messages` to an agent
+answers at once with `processing.status: "pending"` and a `turnId`, and the reply runs in the
+background (docs/deployment/supabase-edge-api.md, "Agent turns"). `waitForAgentTurn`
+(`apps/web/src/messaging/agent-turn.ts`) then polls `GET /v1/agent-turns/:turnId` (1 s three
+times, 2 s three times, then 4 s; 3 minutes at most) and hands the existing send code the same
+body a synchronous answer has, so confirmations, attachments and runtime results work unchanged.
+While it waits, a "Working on a reply…" bubble sits right under the message; it is kept across
+the 4-second thread refresh (`deviceOnlyIn` / `deviceOnlyAfter`). The reply replaces it, placed
+right under the message it answers even if the thread moved on (`placeReplyAfter`). A failed turn
+replaces it with a failed reply bubble ("The reply failed. Your message is saved; Grogoni will
+retry it, or tap Send waiting.") and queues the message in the outbox; a resend of the same
+message never starts a second turn (the server answers with the running one, or reruns the failed
+one). A turn still running after 3 minutes goes to the outbox as `AGENT_TURN_WAITING`. On the Node
+API the answer is already `completed` and nothing is polled. Tests:
+`tests/agent-turn-wait.test.ts`, `tests/agent-turn-async-chat.test.tsx`.
+
 **Sending state.** The thread header's resend control appears only while the open conversation has
 messages in the outbox ("Send 2 waiting messages"); it used to say "Retry failed" on every
 thread. A message keeps the order it was typed in: while an earlier message in the same

@@ -154,6 +154,8 @@ describe.skipIf(!databaseUrl)("Edge runtime checkpoints on PostgreSQL", () => {
         );
       const first = await send("Add 5 bags of sugar to stock");
       expect(first?.status, await first?.clone().text()).toBe(200);
+      // The reply runs in the background after the message's request (agent_chat_turns).
+      await edge.settled();
       const firstExchange = (await messageRows()).rows;
       expect(firstExchange.length).toBeGreaterThanOrEqual(1);
       // Every existing row's version, across all normalized tables. xmin changes on every write;
@@ -178,6 +180,7 @@ describe.skipIf(!databaseUrl)("Edge runtime checkpoints on PostgreSQL", () => {
       const beforeSecond = await writeTimes();
       const second = await send("Add 3 bags of rice to stock");
       expect(second?.status, await second?.clone().text()).toBe(200);
+      await edge.settled();
       // A send rewrites only rows it really changes: its conversation's latest activity, its
       // agent task head, and the shop's offline change watermark. A row rewritten on every
       // request (notifications re-stamped, messages re-normalized) collides with any concurrent

@@ -11,13 +11,22 @@ const at = (database) => {
   return url.toString();
 };
 
+// Several stand-ins can run side by side (one per worktree): EDGE_LOCAL_PORT, EDGE_LOCAL_QUEUE_DB,
+// EDGE_LOCAL_HINT_DB and EDGE_LOCAL_WEB_ORIGIN choose a port, scratch databases and the web origin
+// it accepts. The defaults are the single-checkout setup.
+const port = Number(process.env.EDGE_LOCAL_PORT ?? "8000");
+
 export const edgeLocal = {
   adminUrl: admin,
+  port,
   /** Plays Neon: the full schema, migrated from infra/db/migrations. */
-  queueUrl: at("grogoni_lanes_smoke"),
+  queueDatabase: process.env.EDGE_LOCAL_QUEUE_DB ?? "grogoni_lanes_smoke",
+  queueUrl: at(process.env.EDGE_LOCAL_QUEUE_DB ?? "grogoni_lanes_smoke"),
   /** Plays Supabase's own Postgres: the daemon wake hint and a stub for pg_net. */
-  hintUrl: at("grogoni_lanes_hint"),
-  apiUrl: "http://localhost:8000",
+  hintDatabase: process.env.EDGE_LOCAL_HINT_DB ?? "grogoni_lanes_hint",
+  hintUrl: at(process.env.EDGE_LOCAL_HINT_DB ?? "grogoni_lanes_hint"),
+  apiUrl: `http://localhost:${port}`,
+  webOrigin: process.env.EDGE_LOCAL_WEB_ORIGIN ?? "http://localhost:5173",
   backgroundJobToken: "localjobtoken_0123456789abcdefghijklmnopqrstuv",
   daemonServiceToken: "localdaemontoken_0123456789abcdefghijklmnopqrst",
   denoVersion: "2.5.4"

@@ -86,7 +86,9 @@ const transaction: Transaction = async (action) => {
     return result;
   } catch (error) {
     if (error instanceof RateLimitExceededError) throw error;
-    recordTransactionFailure(stage, error);
+    // An attempt rolled back on purpose to make a model call outside it (edge-model-deferral.ts).
+    if (!(error instanceof Error && error.name === "AttemptNeedsModelCall"))
+      recordTransactionFailure(stage, error);
     await client?.query("rollback").catch(() => {
       discardConnection = true;
     });
@@ -183,18 +185,29 @@ function getDomain() {
   return (domainInitialization ??= (async () => {
     try {
       const { createEdgeDomainRoutes } = await import("./domain-bundle.mjs");
-      domain = await createEdgeDomainRoutes({
-        transaction,
-        jobTransaction,
-        approvalTransaction: recordTransaction,
-        daemon: {
-          // Queue statements commit one by one on the shared pool: no store lock, no snapshot.
-          queue: pool,
-          hint: hintPool,
-          // A short transaction (rate limit + session lookup) that commits before any model call.
-          findUser: (request) => transaction((client) => findSessionUser(client, request))
+      domain = await createEdgeDomainRoutes(
+        {
+          transaction,
+          jobTransaction,
+          approvalTransaction: recordTransaction,
+          daemon: {
+            // Queue statements commit one by one on the shared pool: no store lock, no snapshot.
+            queue: pool,
+            hint: hintPool,
+            // A short transaction (rate limit + session lookup) that commits before any model call.
+            findUser: (request) => transaction((client) => findSessionUser(client, request))
+          }
+        },
+        {
+          // Agent replies run after their request answers (docs/deployment/supabase-edge-api.md,
+          // "Agent turns"). Supabase keeps the isolate alive for them; the local Deno stand-in has
+          // no EdgeRuntime and simply keeps running.
+          waitUntil: (work) =>
+            (
+              globalThis as { EdgeRuntime?: { waitUntil: (promise: Promise<unknown>) => void } }
+            ).EdgeRuntime?.waitUntil(work)
         }
-      });
+      );
       domainStartupError = null;
       return domain;
     } catch (error) {

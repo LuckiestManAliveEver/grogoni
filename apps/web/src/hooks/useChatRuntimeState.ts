@@ -80,6 +80,13 @@ import {
 } from "../lib/api";
 import { outboxBackoffMs, queueMessagingOutbox, readMessagingOutbox } from "../messaging/outbox";
 import {
+  clearAgentReplyPlaceholders,
+  placeReplyAfter,
+  showFailedAgentReply,
+  showPendingAgentReply,
+  waitForAgentTurn
+} from "../messaging/agent-turn";
+import {
   clientInferenceFeatureFlags,
   runtimeManager,
   type ActiveBusiness,
@@ -831,37 +838,50 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
                           }
                         },
                         { headers: turnHeaders }
+                      ).then((accepted) =>
+                        // On the Edge API the reply runs after this answer: wait for it here.
+                        waitForAgentTurn(accepted, {
+                          onPending: () =>
+                            showPendingAgentReply(
+                              setChatMessages,
+                              String(payload.conversationId),
+                              accepted.id
+                            )
+                        })
                       )
                   )
               })
             : await postJson<ProcessedConversationMessageResponse>("/v1/messages", payload);
-        if (activeConversation !== null) {
+        const agentReply = persisted.agentMessage;
+        if (activeConversation !== null || agentReply !== undefined) {
           setChatMessages((messages) => {
-            const reconciled = messages.map((item) =>
-              item.id === clientMessageId
-                ? persisted.content.type === "encrypted"
-                  ? mergePersistedEncryptedMessage(item, persisted)
-                  : mapConversationMessage(
-                      persisted,
-                      activeConversation.participants,
-                      activeSession
-                    )
-                : item
-            );
-            if (
-              persisted.agentMessage === undefined ||
-              reconciled.some((item) => item.id === persisted.agentMessage?.id)
-            ) {
-              return reconciled;
-            }
-            return [
-              ...reconciled,
+            const reconciled =
+              activeConversation === null
+                ? messages
+                : messages.map((item) =>
+                    item.id === clientMessageId
+                      ? persisted.content.type === "encrypted"
+                        ? mergePersistedEncryptedMessage(item, persisted)
+                        : mapConversationMessage(
+                            persisted,
+                            activeConversation.participants,
+                            activeSession
+                          )
+                      : item
+                  );
+            if (agentReply === undefined) return reconciled;
+            // Right under the message it answers, even if the thread moved on while it ran. Also
+            // when the conversation was still opening at send time: a reply that arrives after a
+            // background turn must not wait for the next thread refresh.
+            return placeReplyAfter(
+              reconciled,
+              reconciled.some((item) => item.id === persisted.id) ? persisted.id : clientMessageId,
               mapConversationMessage(
-                persisted.agentMessage,
-                activeConversation.participants,
+                agentReply,
+                activeConversation?.participants ?? [],
                 activeSession
               )
-            ];
+            );
           });
         }
         if (persisted.agentMessage !== undefined) {
@@ -870,7 +890,14 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
             runtime: persisted.runtime ?? null
           };
         }
+        clearAgentReplyPlaceholders(setChatMessages, persisted.id);
         if (persisted.processing?.status === "failed") {
+          showFailedAgentReply(
+            setChatMessages,
+            String(payload.conversationId),
+            persisted.id,
+            agentProcessingFailureMessage(persisted.processing.errorCode)
+          );
           // The message is saved; the agent's turn failed. Retry the turn on the same backoff.
           queueMessagingOutbox({
             accountId: activeSession.account.id,

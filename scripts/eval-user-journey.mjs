@@ -15,7 +15,7 @@
  * Evidence: $EVAL_OUT (default /tmp/user-journey/<target>) holds report.json and a screenshot per
  * check. Exit code 1 when the pass rate is below EVAL_PASS_THRESHOLD (default 1: every check).
  */
-/* global document, localStorage, window, MutationObserver -- read only inside page.evaluate, which runs in the browser. */
+/* global document, localStorage, window, MutationObserver, performance, crypto -- read only inside page.evaluate, which runs in the browser. */
 import { createRequire } from "node:module";
 import { mkdir, writeFile } from "node:fs/promises";
 import { URL } from "node:url";
@@ -512,6 +512,130 @@ if (target === "local") {
     } finally {
       page.off("response", track);
     }
+  });
+
+  /**
+   * Concern 2: an agent turn's model call no longer runs inside a locked transaction. With the
+   * local stand-in's slow fake model (EDGE_LOCAL_FAKE_MODEL_DELAY_MS, scripts/edge-local.mjs),
+   * writes of the same account made while the reply is being written (read markers, typing, a
+   * plain send) must answer 200 well under 2 s, the chat must show a pending reply, and the reply
+   * must land under its message without a reload. The metric is the p95 of those writes.
+   */
+  await check("write-during-running-turn-not-delayed", async () => {
+    await home();
+    const conversationId = await page.evaluate(
+      () => window.location.pathname.match(/conversations\/([^/]+)/u)?.[1] ?? null
+    );
+    const question = `Hello, how is business today? ${Date.now() % 10000}`;
+    // An earlier check's send may still be finishing: Send is held until it has.
+    await page.waitForFunction(
+      () => {
+        const send = [...document.querySelectorAll(".send-button")].at(-1);
+        return send !== undefined && send.getAttribute("aria-busy") !== "true";
+      },
+      undefined,
+      { timeout: 60_000 }
+    );
+    const sentAt = Date.now();
+    await sendChat(question);
+    const questionShown = await page
+      .waitForFunction((text) => document.body.innerText.includes(text), question, {
+        timeout: 15_000
+      })
+      .then(() => true)
+      .catch(() => false);
+    const pendingShown = await page
+      .waitForFunction(
+        () =>
+          (document.querySelector(".message-list")?.textContent ?? "").includes(
+            "Working on a reply"
+          ),
+        undefined,
+        { timeout: 30_000 }
+      )
+      .then(() => true)
+      .catch(() => false);
+    const measureWrites = () =>
+      page.evaluate(
+        async ({ apiUrl, conversationId }) => {
+          const timed = async (label, path, method, body) => {
+            const started = performance.now();
+            const response = await fetch(`${apiUrl}${path}`, {
+              method,
+              credentials: "include",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify(body)
+            });
+            return { label, status: response.status, ms: Math.round(performance.now() - started) };
+          };
+          const results = [];
+          for (let round = 0; round < 3; round += 1) {
+            results.push(
+              await timed("read-marker", `/v1/conversations/${conversationId}`, "PATCH", {
+                read: true
+              }),
+              await timed("typing", `/v1/conversations/${conversationId}/typing`, "POST", {
+                typing: round % 2 === 0
+              }),
+              await timed("plain-send", "/v1/messages", "POST", {
+                conversationId,
+                clientMessageId: crypto.randomUUID(),
+                content: { type: "text", text: `note ${round} while the agent works` }
+              })
+            );
+          }
+          return results;
+        },
+        { apiUrl, conversationId }
+      );
+    const writes = await measureWrites();
+    // The reply arrives by polling: no reload.
+    let replyMs = null;
+    for (let waited = 0; waited < 60_000; waited += 500) {
+      const thread = await threadOnly();
+      const asked = thread.lastIndexOf(question);
+      if (asked !== -1 && /fixture reply/u.test(thread.slice(asked))) {
+        replyMs = Date.now() - sentAt;
+        break;
+      }
+      await page.waitForTimeout(500);
+    }
+    const thread = await threadOnly();
+    const asked = thread.lastIndexOf(question);
+    const reply = thread.indexOf("fixture reply", asked);
+    const firstNote = thread.indexOf("note 0 while the agent works", asked);
+    const p95Of = (list) => {
+      const sorted = list.map((write) => write.ms).sort((a, b) => a - b);
+      return sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * 0.95) - 1)] ?? null;
+    };
+    const p95 = p95Of(writes);
+    // The same writes with no turn running: what this machine takes anyway, for comparison.
+    const idleWrites = await measureWrites();
+    const metric = {
+      event: "eval_write_during_agent_turn",
+      p95WriteMs: p95,
+      idleP95WriteMs: p95Of(idleWrites),
+      maxWriteMs: Math.max(...writes.map((write) => write.ms))
+    };
+    console.log(JSON.stringify(metric));
+    return {
+      passed:
+        conversationId !== null &&
+        questionShown &&
+        pendingShown &&
+        writes.every((write) => write.status === 200) &&
+        p95 !== null &&
+        p95 < 2000 &&
+        replyMs !== null &&
+        reply !== -1 &&
+        // The reply sits right under the question, above the notes sent while it ran.
+        (firstNote === -1 || reply < firstNote),
+      ...metric,
+      questionShown,
+      pendingShown,
+      replyMs,
+      writes
+    };
   });
 
   let firstSendTrace = null;

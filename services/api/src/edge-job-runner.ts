@@ -186,6 +186,19 @@ export const edgeJobDefinitions: Record<string, EdgeJobDefinition> = {
     run: async ({ daemon }) =>
       daemon === undefined ? { skipped: "daemon_unavailable" } : daemon.runWorker()
   },
+  agent_turn_recovery: {
+    // Agent turns nobody is polling: a run that stopped renewing its lease, or a turn queued with
+    // nobody to start it, is failed (retryable), so nothing stays pending for more than an hour.
+    // A client polling its turn recovers it at once (edge-agent-turn-worker.ts). Also deletes
+    // finished turns past their retention.
+    schedule: "40 * * * *",
+    enabled: onUnlessDisabled("ENABLE_AGENT_TURN_RECOVERY_RUNNER"),
+    needsStore: false,
+    run: async ({ client }) => {
+      const { sweepAgentTurns } = await import("./edge-agent-turns.js");
+      return sweepAgentTurns(client);
+    }
+  },
   edge_rate_limit_retention: {
     schedule: "25 * * * *",
     enabled: () => true,

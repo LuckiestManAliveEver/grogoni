@@ -150,9 +150,12 @@ describe.skipIf(!databaseUrl)("Edge inventory persistence on PostgreSQL", () => 
             })
           ]
         );
-        let failOuter = true;
+        // The message's request commits; the background agent turn's own transaction (the next
+        // one) fails after the inventory recipe acknowledged its drafts independently.
+        let transactions = 0;
+        let failFrom = Number.POSITIVE_INFINITY;
         const edge = await createEdgeDomainRoutes({
-          transaction: (work) => transaction(work, failOuter, isolation),
+          transaction: (work) => transaction(work, ++transactions >= failFrom, isolation),
           approvalTransaction: (work) => transaction(work)
         });
         const payload = {
@@ -176,7 +179,17 @@ describe.skipIf(!databaseUrl)("Edge inventory persistence on PostgreSQL", () => 
             }),
             "/v1/messages"
           );
-        await expect(call()).rejects.toThrow("injected outer request failure");
+        failFrom = transactions + 2;
+        const accepted = await call();
+        expect(accepted?.status, await accepted?.clone().text()).toBe(200);
+        const { processing, id: messageId } = await accepted!.json();
+        expect(processing.status).toBe("pending");
+        await edge.settled();
+        const turnState = () =>
+          pool
+            .query("select status from agent_chat_turns where message_id=$1", [messageId])
+            .then((result) => result.rows[0]?.status);
+        expect(await turnState()).toBe("failed");
         const drafts = await pool.query(
           "select record from business_purchase_drafts where business_id=$1",
           [businessId]
@@ -194,9 +207,11 @@ describe.skipIf(!databaseUrl)("Edge inventory persistence on PostgreSQL", () => 
           [businessId]
         );
         expect(evidence.rows.some((row) => row.status === "PASSED")).toBe(true);
-        failOuter = false;
+        failFrom = Number.POSITIVE_INFINITY;
         const replay = await call();
         expect(replay?.status, await replay?.clone().text()).toBe(200);
+        await edge.settled();
+        expect(await turnState()).toBe("completed");
         expect(
           (
             await pool.query("select record from business_purchase_drafts where business_id=$1", [

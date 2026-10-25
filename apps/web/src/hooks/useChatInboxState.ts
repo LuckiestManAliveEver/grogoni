@@ -43,6 +43,12 @@ import {
   mergePersistedEncryptedMessage,
   showMessageNotification
 } from "../chat-message-plumbing";
+import {
+  clearAgentReplyPlaceholders,
+  showFailedAgentReply,
+  showPendingAgentReply,
+  waitForAgentTurn
+} from "../messaging/agent-turn";
 import { decryptDirectMessage, encryptDirectMessage, type E2eeIdentity } from "../e2ee";
 import { isRetryableApiRequestError } from "../lib/api";
 import {
@@ -687,12 +693,29 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
         continue;
       }
       try {
-        const sent = await postJson<ProcessedConversationMessageResponse>(
+        const accepted = await postJson<ProcessedConversationMessageResponse>(
           "/v1/messages",
           entry.payload
         );
+        // On the Edge API the reply runs after this answer; a resend of a message whose turn is
+        // still running answers with that same turn, so this waits for it rather than starting
+        // another one.
+        const sent = await waitForAgentTurn(accepted, {
+          onPending: () => {
+            if (conversationId === activeConversationIdRef.current)
+              showPendingAgentReply(setChatMessages, String(conversationId), accepted.id);
+          }
+        });
+        clearAgentReplyPlaceholders(setChatMessages, accepted.id);
         reconcileResent(entry, sent);
         if (sent.processing?.status === "failed") {
+          if (conversationId === activeConversationIdRef.current)
+            showFailedAgentReply(
+              setChatMessages,
+              String(conversationId),
+              accepted.id,
+              agentProcessingFailureMessage(sent.processing.errorCode)
+            );
           setStatusMessage(agentProcessingFailureMessage(sent.processing.errorCode));
           noteFailedResend(accountId, entry.clientMessageId);
           held.add(conversationId);
