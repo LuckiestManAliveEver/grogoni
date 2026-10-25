@@ -18,6 +18,7 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    setupFiles: [fileURLToPath(new URL("./tests/setup/jsdom-shims.ts", import.meta.url))],
     include: [
       "tests/**/*.test.ts",
       "tests/**/*.test.tsx",
