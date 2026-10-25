@@ -342,7 +342,9 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
     }
     let currentConversation =
       activeConversation?.conversation.id === activeConversationId ? activeConversation : null;
-    if (activeConversationId && !currentConversation) {
+    // A guest (no shop) has no server-side conversation to load: their thread is local. Only an
+    // owner/seller thread is fetched, so a guest send is never aborted by a conversation request.
+    if (business !== null && activeConversationId && !currentConversation) {
       try {
         currentConversation = await apiFetch<NonNullable<typeof activeConversation>>(
           `/v1/conversations/${activeConversationId}`,
