@@ -68,7 +68,8 @@ export const edgeBackgroundJobNames: ReadonlySet<string> = new Set([
   "grogoniid_cooldown",
   "notification_delivery",
   "runtime_experience_retention",
-  "edge_rate_limit_retention"
+  "edge_rate_limit_retention",
+  "agent_turn_recovery"
 ]);
 
 class EdgeRouteError extends Error {

@@ -28,10 +28,45 @@ export interface AgentConversationMessageResult {
   runtime: RuntimeTurnResult | null;
   processing: {
     correlationId: string;
-    status: "completed" | "failed";
+    /** "pending": the reply runs after the request (AgentTurnQueue); poll /v1/agent-turns/:turnId. */
+    status: "completed" | "failed" | "pending";
     errorCode: string | null;
     retryable: boolean;
+    turnId?: string;
   };
+}
+
+/**
+ * Where an agent reply runs when it may not run inside the request. Only the Edge API supplies
+ * one (services/api/src/edge-domain-routes.ts): its requests hold the account and business locks,
+ * and a model call can take a minute. With a queue, the request saves the message and queues the
+ * turn; a background worker runs it. Without one the turn runs inside the request, as on the Node
+ * API.
+ */
+export interface AgentTurnQueue {
+  /** The queued turn of this message, if it ever had one. */
+  find(messageId: string): Promise<{ id: string; status: string } | null>;
+  enqueue(input: {
+    messageId: string;
+    conversationId: string;
+    accountId: string;
+    businessId: string;
+    sessionId: string | null;
+    request: {
+      conversationId: string;
+      clientMessageId: string;
+      idempotencyKey?: string;
+      content: unknown;
+      businessId: string;
+      message: string;
+      runtimeSessionId?: string;
+    };
+  }): Promise<{ id: string; status: string }>;
+  /**
+   * The message already has its reply (a run committed it, then failed before finishing): record
+   * the turn as completed with that reply.
+   */
+  settle(messageId: string, result: Record<string, unknown>): Promise<void>;
 }
 
 export interface PublicStorefrontSessionResult {

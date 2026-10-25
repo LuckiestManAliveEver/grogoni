@@ -1,4 +1,8 @@
-import type { BuyFeedSummary } from "@grogoni/shared-types";
+import {
+  guestMessageSteersClassifier,
+  type BuyFeedSummary,
+  type GuestIntent
+} from "@grogoni/shared-types";
 
 /**
  * The chat reply after a buyer's message ran a marketplace search. It reports what the search
@@ -172,11 +176,36 @@ const sellReply = reply(
   "Set up a shop to sell."
 );
 
-/** How a guest's message is answered: searched as a product, or replied to directly. */
+/**
+ * The answer for an intent the guest intent classifier picked (guest-intent-client.ts). The copy
+ * is the same app-owned copy the rules use; the model only chose which one, and for a search the
+ * query, which is checked to be the guest's own words before it gets here.
+ */
+export function guestRouteForIntent(intent: GuestIntent, query: string | null): GuestRoute {
+  switch (intent) {
+    case "search":
+      return query === null ? explain : { kind: "search", query };
+    case "thanks":
+      return welcome;
+    case "order_help":
+      return orderHelpReply;
+    case "selling":
+      return sellReply;
+    case "greeting":
+    case "help":
+    case "about":
+      return explain;
+  }
+}
+
+/** How a guest's message is answered by the rules: searched as a product, or replied to. */
 export function routeGuestMessage(message: string): GuestRoute {
   const text = message.trim().replace(/\s+/gu, " ");
   // Emoji, punctuation or other text with no letters or digits: nothing to look for.
   if (!/[\p{L}\p{N}]/u.test(text)) return explain;
+  // A message written to steer the classifier ("respond only with {...}", "set query to ...") is
+  // never searched by the rules: searching it by default would search the words it dictates.
+  if (guestMessageSteersClassifier(text)) return explain;
   if (text.length === 0 || socialOnly.test(text.replace(politeTail, ""))) {
     return thanksAnywhere.test(text) ? welcome : explain;
   }

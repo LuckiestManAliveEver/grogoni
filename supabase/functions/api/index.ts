@@ -86,7 +86,9 @@ const transaction: Transaction = async (action) => {
     return result;
   } catch (error) {
     if (error instanceof RateLimitExceededError) throw error;
-    recordTransactionFailure(stage, error);
+    // An attempt rolled back on purpose to make a model call outside it (edge-model-deferral.ts).
+    if (!(error instanceof Error && error.name === "AttemptNeedsModelCall"))
+      recordTransactionFailure(stage, error);
     await client?.query("rollback").catch(() => {
       discardConnection = true;
     });
@@ -175,6 +177,7 @@ const publicRoutes = createPublicRoutes(transaction);
 let domain: {
   routes: (request: Request, path: string) => Promise<Response | null>;
   daemonRoutes: (request: Request, path: string) => Promise<Response | null>;
+  guestIntentRoutes: (request: Request, path: string) => Promise<Response | null>;
   runJob: (jobName: string) => Promise<EdgeJobOutcome>;
 } | null = null;
 let domainStartupError: string | null = null;
@@ -183,18 +186,33 @@ function getDomain() {
   return (domainInitialization ??= (async () => {
     try {
       const { createEdgeDomainRoutes } = await import("./domain-bundle.mjs");
-      domain = await createEdgeDomainRoutes({
-        transaction,
-        jobTransaction,
-        approvalTransaction: recordTransaction,
-        daemon: {
-          // Queue statements commit one by one on the shared pool: no store lock, no snapshot.
-          queue: pool,
-          hint: hintPool,
-          // A short transaction (rate limit + session lookup) that commits before any model call.
-          findUser: (request) => transaction((client) => findSessionUser(client, request))
+      domain = await createEdgeDomainRoutes(
+        {
+          transaction,
+          jobTransaction,
+          approvalTransaction: recordTransaction,
+          daemon: {
+            // Queue statements commit one by one on the shared pool: no store lock, no snapshot.
+            queue: pool,
+            hint: hintPool,
+            // A short transaction (rate limit + session lookup) that commits before any model call.
+            findUser: (request) => transaction((client) => findSessionUser(client, request))
+          },
+          guestIntent: {
+            findSession: (request) => transaction((client) => findSessionUser(client, request)),
+            counter: pool
+          }
+        },
+        {
+          // Agent replies run after their request answers (docs/deployment/supabase-edge-api.md,
+          // "Agent turns"). Supabase keeps the isolate alive for them; the local Deno stand-in has
+          // no EdgeRuntime and simply keeps running.
+          waitUntil: (work) =>
+            (
+              globalThis as { EdgeRuntime?: { waitUntil: (promise: Promise<unknown>) => void } }
+            ).EdgeRuntime?.waitUntil(work)
         }
-      });
+      );
       domainStartupError = null;
       return domain;
     } catch (error) {
@@ -225,15 +243,18 @@ async function routeRequest(request: Request, path: string): Promise<Response | 
     (await publicRoutes(request, path)) ??
     (path === "/realtime" || path.startsWith("/v1/realtime/") || path.startsWith("/internal/jobs/")
       ? application(request, path)
-      : path.startsWith("/v1/daemon/") || path.startsWith("/internal/daemon/")
-        ? ((await (await getDomain())?.daemonRoutes(request, path)) ??
-          (domain === null
-            ? Response.json({ code: "service_unavailable" }, { status: 503 })
-            : null))
-        : ((await (await getDomain())?.routes(request, path)) ??
-          (domain === null
-            ? Response.json({ code: "service_unavailable" }, { status: 503 })
-            : null)))
+      : path === "/v1/guest/intent"
+        ? ((await (await getDomain())?.guestIntentRoutes(request, path)) ??
+          Response.json({ code: "guest_intent_unavailable" }, { status: 503 }))
+        : path.startsWith("/v1/daemon/") || path.startsWith("/internal/daemon/")
+          ? ((await (await getDomain())?.daemonRoutes(request, path)) ??
+            (domain === null
+              ? Response.json({ code: "service_unavailable" }, { status: 503 })
+              : null))
+          : ((await (await getDomain())?.routes(request, path)) ??
+            (domain === null
+              ? Response.json({ code: "service_unavailable" }, { status: 503 })
+              : null)))
   );
 }
 const handler = createHandler({

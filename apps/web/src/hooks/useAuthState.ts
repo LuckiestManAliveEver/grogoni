@@ -41,6 +41,7 @@ import {
   readStoredBusiness
 } from "../owner-app-bootstrap";
 import { authenticationRoute, routes } from "../routes";
+import { readDeepLinkedPlace, resolveRestoredPlace } from "../session-restore-place";
 import {
   activeAgentStorageKey,
   activeBusinessStorageKey,
@@ -113,6 +114,8 @@ export function useAuthState(deps: UseAuthStateDeps) {
   const sessionRefreshInFlightRef = useRef<Promise<SessionResponse | null> | null>(null);
   // One per app instance: tracks whether this account's session context has applied yet.
   const sessionContextRetryRef = useRef(createSessionContextRetry());
+  // The place the app was opened at (session-restore-place.ts), kept until a context applies.
+  const deepLinkRef = useRef(readDeepLinkedPlace(window.location.pathname));
 
   const {
     business,
@@ -596,21 +599,31 @@ export function useAuthState(deps: UseAuthStateDeps) {
    * newer load superseded it (shouldApply, from session-context-retry.ts) before it returned.
    *
    * "restore" (sign-in, joining a shop) also restores where the owner last worked: shop, mode,
-   * view, conversation and route. "refresh" (a retry after a failed restore) applies only the
-   * data: by then the user may have moved on from the device cache, and moving them to the
-   * server's last place would yank them away. It keeps the current shop when the account still
-   * belongs to it and otherwise forgets it, without picking another. A device with no shop at all
-   * adopts the account's shop (no navigation), so an owner is never treated as shopless.
+   * view, conversation and route. On the app's first applied load, a URL that names a place
+   * (/sell/shop, a conversation, a module) keeps that place instead and only the data is restored
+   * (resolveRestoredPlace in session-restore-place.ts). "refresh" (a retry after a failed
+   * restore) applies only the data: by then the user may have moved on from the device cache,
+   * and moving them to the server's last place would yank them away. It keeps the current shop
+   * when the account still belongs to it and otherwise forgets it, without picking another. A
+   * device with no shop at all adopts the account's shop (no navigation), so an owner is never
+   * treated as shopless.
+   *
+   * `keepUrlPlace: false` (joining a shop) restores the last place even on the first applied
+   * load: the user picked what to do next, so the URL the app was opened with no longer applies.
+   * The deep link is used up either way, so a later load does not act on it.
    */
   async function loadGrogoniSessionContext(
     setActiveConversationId: (conversationId: string | null) => void,
     shouldApply: () => boolean = () => true,
-    apply: "restore" | "refresh" = "restore"
+    apply: "restore" | "refresh" = "restore",
+    keepUrlPlace = true
   ): Promise<boolean> {
     try {
       const shopAtStart = readStoredBusiness()?.id ?? null;
       const context = await apiFetch<GrogoniSessionContext>("/v1/session/context");
       if (!shouldApply()) return false;
+      const deepLink = keepUrlPlace ? deepLinkRef.current : null;
+      deepLinkRef.current = null;
       if (apply === "refresh") {
         const currentShop = readStoredBusiness();
         // The user switched, created or restored a shop while this was in flight: the answer may
@@ -638,7 +651,16 @@ export function useAuthState(deps: UseAuthStateDeps) {
         context.shops.find((shop) => shop.business.id === context.activeShopId) ?? context.shops[0];
       const restoredMode =
         context.mode === "seller" && activeShop === undefined ? "marketplace" : context.mode;
-      const restoredView = shellViewForSurface(context.activeSurface, restoredMode);
+      const place = resolveRestoredPlace({
+        deepLink,
+        currentPath: window.location.pathname,
+        hasShop: activeShop !== undefined,
+        last: {
+          mode: restoredMode,
+          view: shellViewForSurface(context.activeSurface, restoredMode),
+          conversationId: context.conversationId
+        }
+      });
 
       if (activeShop !== undefined) {
         adoptShop(activeShop);
@@ -649,18 +671,11 @@ export function useAuthState(deps: UseAuthStateDeps) {
         localStorage.removeItem(activeBusinessStorageKey);
       }
 
-      setMode(restoredMode);
-      setView(restoredView);
-      setActiveConversationId(context.conversationId);
-      localStorage.setItem(activeModeStorageKey, restoredMode);
-      navigateToOwnerRoute(
-        {
-          mode: restoredMode,
-          view: restoredView,
-          ...(restoredView === "chat" ? { conversationId: context.conversationId } : {})
-        },
-        { replace: true }
-      );
+      setMode(place.mode);
+      setView(place.view);
+      if (place.conversationId !== undefined) setActiveConversationId(place.conversationId);
+      localStorage.setItem(activeModeStorageKey, place.mode);
+      if (place.navigateTo !== null) navigateToOwnerRoute(place.navigateTo, { replace: true });
       return true;
     } catch {
       // Offline launch continues from the device cache; sessionContextRetry retries the load
@@ -749,7 +764,12 @@ export function useAuthState(deps: UseAuthStateDeps) {
     const load = sessionContextRetryRef.current.beginExternalLoad();
     let applied = false;
     try {
-      applied = await loadGrogoniSessionContext(setActiveConversationId, load.shouldApply);
+      applied = await loadGrogoniSessionContext(
+        setActiveConversationId,
+        load.shouldApply,
+        "restore",
+        false
+      );
     } finally {
       load.settle(applied);
     }

@@ -18,6 +18,7 @@
   },
   "scripts": {
     "eval:inventory:hosted": "INVENTORY_BENCHMARK_PROVIDER=openrouter node --env-file-if-exists=.env.openrouter --import tsx services/api/src/benchmarks/run-inventory-benchmark.ts --require-model-pass",
+    "eval:guest-intent": "node --env-file-if-exists=.env --env-file-if-exists=.env.openrouter --import tsx scripts/eval-guest-intent.ts",
     "eval:inventory": "node --import tsx services/api/src/benchmarks/run-inventory-benchmark.ts",
     "daemon:dev": "pnpm --filter @grogoni/api daemon:dev",
     "daemon:start": "pnpm --filter @grogoni/api daemon:start",

@@ -538,6 +538,18 @@ export function getErrorMessage(error: unknown): string {
 }
 
 export function agentProcessingFailureMessage(errorCode: string | null): string {
+  if (errorCode === "AGENT_TURN_WAITING") {
+    return "The reply is taking longer than usual. Your message is saved; Grogoni will check again.";
+  }
+  if (
+    errorCode === "AGENT_TURN_LOST" ||
+    errorCode === "AGENT_TURN_TIMEOUT" ||
+    errorCode === "AGENT_TURN_CONFLICT" ||
+    errorCode === "AGENT_TURN_UNSTABLE" ||
+    errorCode === "AGENT_TURN_FAILED"
+  ) {
+    return "The reply failed. Your message is saved; Grogoni will retry it, or tap Send waiting.";
+  }
   if (errorCode === "MODEL_NOT_INSTALLED") {
     return "Agent model is not installed. Ask an administrator to install the configured model, then retry.";
   }

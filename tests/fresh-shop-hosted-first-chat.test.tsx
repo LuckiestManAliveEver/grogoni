@@ -131,7 +131,9 @@ describe("fresh shop, first AI message: hosted-first with no client model state"
           loadDocumentImports: async () => undefined,
           chatMessages: [],
           setChatMessages: (next) => {
-            const resolved = typeof next === "function" ? next([]) : next;
+            // Applied to what is rendered, as React does: a guest's bubble and its reply arrive
+            // as two updates.
+            const resolved = typeof next === "function" ? next([...renderedMessages]) : next;
             renderedMessages.splice(0, renderedMessages.length, ...resolved);
           },
           chatDraft: "",
@@ -161,7 +163,13 @@ describe("fresh shop, first AI message: hosted-first with no client model state"
       });
 
       expect(searchBuyFeed).toHaveBeenCalledWith(query);
-      expect(fetchMock).not.toHaveBeenCalled();
+      // The only request is the guest intent classifier (it fails here, so the rules route);
+      // nothing reaches the agent runtime.
+      expect(
+        fetchMock.mock.calls
+          .map(([input]) => String(input))
+          .filter((url) => !url.endsWith("/v1/guest/intent"))
+      ).toEqual([]);
       expect(renderedMessages.map((message) => message.body)).toEqual([
         message,
         `I found 1 item from 1 shop for "${query}". Open a result to see the shop and add it to your cart.`

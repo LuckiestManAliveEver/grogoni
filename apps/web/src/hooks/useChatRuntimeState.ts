@@ -31,11 +31,8 @@ import {
   inferenceHistory,
   saveDeviceOnlyMessages
 } from "../chat-device-only-messages";
-import {
-  describeMarketplaceSearch,
-  routeGuestMessage,
-  parseMarketplaceBuyIntent
-} from "../marketplace-search-reply";
+import { describeMarketplaceSearch, parseMarketplaceBuyIntent } from "../marketplace-search-reply";
+import { sendGuestMessage } from "../guest-chat-send";
 import { postJson } from "../api-helpers";
 import {
   type ChatAttachment,
@@ -79,6 +76,13 @@ import {
   readStableDeviceId
 } from "../lib/api";
 import { outboxBackoffMs, queueMessagingOutbox, readMessagingOutbox } from "../messaging/outbox";
+import {
+  clearAgentReplyPlaceholders,
+  placeReplyAfter,
+  showFailedAgentReply,
+  showPendingAgentReply,
+  waitForAgentTurn
+} from "../messaging/agent-turn";
 import {
   clientInferenceFeatureFlags,
   runtimeManager,
@@ -329,22 +333,35 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
         ? searchBuyFeed
         : undefined;
     // Someone without a shop has no assistant of their own: product-like text is searched, and
-    // anything else gets an honest answer (routeGuestMessage).
+    // anything else gets an honest answer. The model-based classifier decides which, within a 5s
+    // budget, and the rules (routeGuestMessage) answer whenever it cannot (guest-intent-client.ts).
     // A guest has no agent, so "help …" (an agent command for an owner) is routed like any other
-    // guest message instead of being sent to an agent that is not there.
-    const guestRoute = business === null ? routeGuestMessage(message) : null;
-    const buyQuery = marketplaceSearch
-      ? guestRoute === null
-        ? parseMarketplaceBuyIntent(message)
-        : guestRoute.kind === "search"
-          ? guestRoute.query
-          : null
-      : null;
-    if (marketplaceSearch && (buyQuery !== null || guestRoute?.kind === "reply")) {
-      const searched =
-        guestRoute?.kind === "reply"
-          ? { reply: guestRoute.reply, status: guestRoute.status }
-          : describeMarketplaceSearch(buyQuery!, await marketplaceSearch(buyQuery!));
+    // guest message instead of being sent to an agent that is not there. A message to a person
+    // never reaches the classifier: marketplaceSearch is undefined then.
+    if (business === null && marketplaceSearch) {
+      await sendGuestMessage({
+        message,
+        accountId: activeSession.account.id,
+        mode,
+        activeConversationId,
+        chatMessages,
+        setChatMessages,
+        isOpen: () => currentConversationRef.current === activeConversationId,
+        searchBuyFeed: marketplaceSearch,
+        afterBubble: () => {
+          clearSentDraft();
+          setPendingAttachments([]);
+          setReplyToMessageId(null);
+        },
+        navigateToMarketplace: () => navigateToView("chat", { mode: "marketplace" }),
+        setStatusMessage
+      });
+      return;
+    }
+    // Someone with a shop asking to buy: the buy phrase is searched (a guest is handled above).
+    const buyQuery = marketplaceSearch ? parseMarketplaceBuyIntent(message) : null;
+    if (marketplaceSearch && buyQuery !== null) {
+      const searched = describeMarketplaceSearch(buyQuery, await marketplaceSearch(buyQuery));
       const createdAt = new Date().toISOString();
       // Leaving buy mode navigates to the marketplace root, outside any thread.
       const thread = mode === "marketplace" ? activeConversationId : null;
@@ -831,37 +848,50 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
                           }
                         },
                         { headers: turnHeaders }
+                      ).then((accepted) =>
+                        // On the Edge API the reply runs after this answer: wait for it here.
+                        waitForAgentTurn(accepted, {
+                          onPending: () =>
+                            showPendingAgentReply(
+                              setChatMessages,
+                              String(payload.conversationId),
+                              accepted.id
+                            )
+                        })
                       )
                   )
               })
             : await postJson<ProcessedConversationMessageResponse>("/v1/messages", payload);
-        if (activeConversation !== null) {
+        const agentReply = persisted.agentMessage;
+        if (activeConversation !== null || agentReply !== undefined) {
           setChatMessages((messages) => {
-            const reconciled = messages.map((item) =>
-              item.id === clientMessageId
-                ? persisted.content.type === "encrypted"
-                  ? mergePersistedEncryptedMessage(item, persisted)
-                  : mapConversationMessage(
-                      persisted,
-                      activeConversation.participants,
-                      activeSession
-                    )
-                : item
-            );
-            if (
-              persisted.agentMessage === undefined ||
-              reconciled.some((item) => item.id === persisted.agentMessage?.id)
-            ) {
-              return reconciled;
-            }
-            return [
-              ...reconciled,
+            const reconciled =
+              activeConversation === null
+                ? messages
+                : messages.map((item) =>
+                    item.id === clientMessageId
+                      ? persisted.content.type === "encrypted"
+                        ? mergePersistedEncryptedMessage(item, persisted)
+                        : mapConversationMessage(
+                            persisted,
+                            activeConversation.participants,
+                            activeSession
+                          )
+                      : item
+                  );
+            if (agentReply === undefined) return reconciled;
+            // Right under the message it answers, even if the thread moved on while it ran. Also
+            // when the conversation was still opening at send time: a reply that arrives after a
+            // background turn must not wait for the next thread refresh.
+            return placeReplyAfter(
+              reconciled,
+              reconciled.some((item) => item.id === persisted.id) ? persisted.id : clientMessageId,
               mapConversationMessage(
-                persisted.agentMessage,
-                activeConversation.participants,
+                agentReply,
+                activeConversation?.participants ?? [],
                 activeSession
               )
-            ];
+            );
           });
         }
         if (persisted.agentMessage !== undefined) {
@@ -870,7 +900,14 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
             runtime: persisted.runtime ?? null
           };
         }
+        clearAgentReplyPlaceholders(setChatMessages, persisted.id);
         if (persisted.processing?.status === "failed") {
+          showFailedAgentReply(
+            setChatMessages,
+            String(payload.conversationId),
+            persisted.id,
+            agentProcessingFailureMessage(persisted.processing.errorCode)
+          );
           // The message is saved; the agent's turn failed. Retry the turn on the same backoff.
           queueMessagingOutbox({
             accountId: activeSession.account.id,

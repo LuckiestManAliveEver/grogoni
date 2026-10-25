@@ -521,6 +521,22 @@ export function registerMessagingRoutes(
           );
           throw error;
         }
+        if (processed.processing.status === "pending") {
+          // The reply runs after this request (Edge API only); the client polls the turn.
+          request.log.info(
+            {
+              event: "agent_turn_queued",
+              correlationId: processed.processing.correlationId,
+              tenantId: businessId,
+              conversationId: processed.message.conversationId,
+              messageId: processed.message.id,
+              turnId: processed.processing.turnId ?? null
+            },
+            "Agent turn queued."
+          );
+          await store.deliverPendingMessageNotifications({ messageId: processed.message.id });
+          return { ...processed.message, processing: processed.processing };
+        }
         const modelPromptEvent = processed.runtime?.turn.telemetry.find(
           (event) => event.state === "model.prompt_built"
         );
@@ -609,6 +625,13 @@ export function registerMessagingRoutes(
       return sendCp2Error(reply, error);
     }
   });
+
+  // Agent replies that run after their message's request exist only on the Edge API, which
+  // answers this route before it reaches here (services/api/src/edge-domain-routes.ts). This API
+  // runs every turn inside its request, so no turn is ever pending here.
+  app.get("/v1/agent-turns/:turnId", async (_request, reply) =>
+    sendCp2Error(reply, new Cp2Error(404, "agent_turn_not_found", "This agent turn was not found."))
+  );
 
   app.get(
     "/businesses/:businessId/mailboxes/providers",

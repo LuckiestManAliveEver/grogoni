@@ -253,7 +253,9 @@ describe("guest chat send", () => {
         loadDocumentImports: async () => undefined,
         chatMessages: [],
         setChatMessages: (next) => {
-          const resolved = typeof next === "function" ? next([]) : next;
+          // Applied to what is rendered, as React does: a guest's bubble and its reply arrive
+          // as two updates.
+          const resolved = typeof next === "function" ? next([...rendered]) : next;
           rendered.splice(0, rendered.length, ...resolved);
         },
         chatDraft: "",
@@ -344,7 +346,9 @@ describe("guest chat send", () => {
         loadDocumentImports: async () => undefined,
         chatMessages: [],
         setChatMessages: (next) => {
-          const resolved = typeof next === "function" ? next([]) : next;
+          // Applied to what is rendered, as React does: a guest's bubble and its reply arrive
+          // as two updates.
+          const resolved = typeof next === "function" ? next([...rendered]) : next;
           rendered.splice(0, rendered.length, ...resolved);
         },
         chatDraft: "",
@@ -374,7 +378,9 @@ describe("guest chat send", () => {
       finishSearch(null);
       await sending;
     });
-    expect(rendered).toEqual([]);
+    // The guest's bubble showed at once, while thread-1 was open. The reply, ready only after the
+    // switch, never flashes into thread-2: it waits in storage for its own thread.
+    expect(rendered.map((message) => message.body)).toEqual(["sugar"]);
     expect(
       readDeviceOnlyMessages("account-1").map((message) => [message.body, message.deviceOnlyIn])
     ).toEqual([

@@ -203,6 +203,7 @@ import {
   validateConversationMessageContent,
   validateE2eePublicKey,
   type AgentConversationMessageResult,
+  type AgentTurnQueue,
   type AppUpdateBroadcastSummary,
   type ChannelIdentityLinkGrantRecord,
   type ConnectedMailboxBackgroundSyncSummary,
@@ -352,6 +353,7 @@ export interface MessagingDomainDeps {
 
 export class MessagingDomain {
   private inventoryTaskController: InventoryTaskController | undefined;
+  private agentTurnQueue: AgentTurnQueue | undefined;
   private readonly conversations = new Map<string, ConversationSummary>();
   private readonly conversationParticipants = new Map<string, ConversationParticipantSummary>();
   private readonly conversationMessages = new Map<string, ConversationMessageSummary>();
@@ -382,6 +384,10 @@ export class MessagingDomain {
 
   setInventoryTaskController(controller: InventoryTaskController): void {
     this.inventoryTaskController = controller;
+  }
+
+  setAgentTurnQueue(queue: AgentTurnQueue): void {
+    this.agentTurnQueue = queue;
   }
 
   constructor(private readonly deps: MessagingDomainDeps) {
@@ -3189,6 +3195,11 @@ export class MessagingDomain {
     businessId: string;
     message: string;
     runtimeSessionId?: string;
+    /**
+     * Date the reply right after its message (its createdAt + 1 ms) instead of now: a reply that
+     * ran in the background still sorts directly under the message it answers.
+     */
+    replyRightAfterMessage?: boolean;
     now?: Date;
   }): Promise<AgentConversationMessageResult> {
     const now = input.now ?? new Date();
@@ -3230,7 +3241,7 @@ export class MessagingDomain {
     );
 
     if (existingAgentMessage !== undefined) {
-      return {
+      const answered: AgentConversationMessageResult = {
         message,
         agentMessage: existingAgentMessage,
         runtime: null,
@@ -3241,7 +3252,56 @@ export class MessagingDomain {
           retryable: false
         }
       };
+      await this.agentTurnQueue?.settle(message.id, {
+        ...message,
+        agentMessage: existingAgentMessage,
+        runtime: null,
+        processing: answered.processing
+      });
+      return answered;
     }
+
+    const queue = this.agentTurnQueue;
+    const queued = queue === undefined ? null : await queue.find(message.id);
+    const pending = (turnId: string): AgentConversationMessageResult => ({
+      message,
+      agentMessage: null,
+      runtime: null,
+      processing: {
+        correlationId: message.id,
+        status: "pending",
+        errorCode: null,
+        retryable: false,
+        turnId
+      }
+    });
+    // A resend while its turn is queued or running answers with that turn, never a second one.
+    if (queued !== null && (queued.status === "pending" || queued.status === "running"))
+      return pending(queued.id);
+    if (queue !== undefined) {
+      const turn = await queue.enqueue({
+        messageId: message.id,
+        conversationId: conversation.id,
+        accountId: session.account.id,
+        businessId: input.businessId,
+        sessionId: input.sessionId,
+        request: {
+          conversationId: conversation.id,
+          clientMessageId: message.clientMessageId,
+          ...(input.idempotencyKey === undefined ? {} : { idempotencyKey: input.idempotencyKey }),
+          content: input.content,
+          businessId: input.businessId,
+          message: input.message,
+          ...(input.runtimeSessionId === undefined
+            ? {}
+            : { runtimeSessionId: input.runtimeSessionId })
+        }
+      });
+      return pending(turn.id);
+    }
+    const replyAt = input.replyRightAfterMessage
+      ? new Date(Math.max(Date.parse(message.createdAt) + 1, 0))
+      : now;
 
     if (this.inventoryTaskController && message.content.type === "text") {
       const handled = await this.inventoryTaskController.handle({
@@ -3266,7 +3326,7 @@ export class MessagingDomain {
               ? {}
               : { businessTask: { businessId: input.businessId, taskId: handled.taskId } })
           },
-          now
+          now: replyAt
         });
         return {
           message: this.markAgentProcessedMessageDelivered(message, now),
@@ -3311,7 +3371,7 @@ export class MessagingDomain {
         },
         replyToMessageId: message.id,
         clientTimestamp: now.toISOString(),
-        now
+        now: replyAt
       });
       return {
         message: this.markAgentProcessedMessageDelivered(message, now),
@@ -3354,7 +3414,7 @@ export class MessagingDomain {
               },
         replyToMessageId: message.id,
         clientTimestamp: now.toISOString(),
-        now
+        now: replyAt
       });
     } catch (error) {
       await this.discardUnassociatedWorkspaceAttachments(deliveredAttachments);
@@ -3402,10 +3462,15 @@ export class MessagingDomain {
     conversationId: string,
     currentMessageId: string
   ): RuntimeModelConversationMessage[] {
+    // What was said before the message being answered: a reply that runs after its request (Edge
+    // agent turns) must not see, or be asked again because of, messages sent while it ran.
+    const current = this.conversationMessages.get(currentMessageId);
+    const before = current === undefined ? Number.POSITIVE_INFINITY : Date.parse(current.createdAt);
     return this.messagesForConversation(conversationId)
       .filter(
         (message) =>
           message.id !== currentMessageId &&
+          !(Date.parse(message.createdAt) > before) &&
           message.deletedAt === null &&
           (message.content.type === "text" || message.content.type === "confirmation")
       )

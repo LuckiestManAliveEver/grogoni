@@ -740,9 +740,9 @@ for (const width of [390, 1366]) {
       localStorage.removeItem("grogoni.chatFirst.activeBusiness");
       localStorage.setItem("grogoni.chatFirst.mode", "marketplace");
     });
-    // The account's shops. The launch load fails (which is what leaves the Shop Hub up: a load
-    // that works restores the account's last place). Until a load works, "no shop" may only mean
+    // The account's shops. The launch load fails: until a load works, "no shop" may only mean
     // "not loaded yet", so Set up retries it and finishes once the server answers: no shops.
+    // The sibling test below covers a launch load that works.
     let contextLoads = 0;
     await page.route("**/v1/session/context", (route) =>
       contextLoads++ === 0
@@ -775,6 +775,96 @@ for (const width of [390, 1366]) {
     });
     await setup.click();
     await expect(page.getByLabel("Phone number", { exact: true })).toBeVisible();
+  });
+}
+
+const responsiveSessionContext = {
+  accountId: "responsive-account",
+  userId: "responsive-user",
+  sessionId: "responsive-session",
+  conversationId: "responsive-conversation",
+  agentId: "responsive-agent",
+  activeModelId: "responsive-model",
+  // The account last worked in the marketplace: a restore to the last place would leave /sell/shop.
+  mode: "marketplace",
+  activeSurface: "conversation",
+  permissions: [],
+  sessionVersion: 1
+};
+
+for (const width of [390, 1366]) {
+  test(`a cold load of /sell/shop keeps the Shop Hub's setup when the context load works at ${width}px`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.addInitScript(() => {
+      localStorage.removeItem("grogoni.chatFirst.activeBusiness");
+      localStorage.setItem("grogoni.chatFirst.mode", "marketplace");
+    });
+    let contextLoads = 0;
+    await page.route("**/v1/session/context", (route) => {
+      contextLoads++;
+      return route.fulfill({
+        json: { ...responsiveSessionContext, activeShopId: null, shops: [] }
+      });
+    });
+    await page.goto("/sell/shop");
+    const setup = page.getByRole("button", { name: "Set up your shop", exact: true });
+    // App boot only; the place checks below are what this test is about.
+    await expect(setup).toBeVisible({ timeout: 15_000 });
+    await expect.poll(() => contextLoads).toBeGreaterThan(0);
+    // The applied restore must not move the page to the account's last place.
+    await page.waitForTimeout(500);
+    await expect(page).toHaveURL(/\/sell\/shop$/u);
+    await expect(setup).toBeVisible();
+    await expectNoViewportOverflow(page);
+    await page.screenshot({
+      path: testInfo.outputPath(`no-shop-context-works-${width}.png`),
+      fullPage: true
+    });
+    await setup.click();
+    await expect(page.getByLabel("Phone number", { exact: true })).toBeVisible();
+  });
+}
+
+for (const width of [390, 1366]) {
+  test(`a cold load of /sell/shop keeps the Shop Hub when the account has a shop at ${width}px`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 844 });
+    let contextLoads = 0;
+    await page.route("**/v1/session/context", (route) => {
+      contextLoads++;
+      return route.fulfill({
+        json: {
+          ...responsiveSessionContext,
+          activeShopId: "responsive-certification-shop",
+          shops: [
+            {
+              business: {
+                id: "responsive-certification-shop",
+                name: "Jane's International Neighborhood Market and Supplies",
+                language: "en",
+                grogoniId: "grogoni.janes-market"
+              },
+              membership: { role: "owner" }
+            }
+          ]
+        }
+      });
+    });
+    await page.goto("/sell/shop");
+    const dialog = page.getByRole("dialog", { name: "Your shop" });
+    await expect(dialog).toBeVisible({ timeout: 15_000 });
+    await expect.poll(() => contextLoads).toBeGreaterThan(0);
+    await page.waitForTimeout(500);
+    await expect(page).toHaveURL(/\/sell\/shop$/u);
+    await expect(dialog).toBeVisible();
+    await expectNoViewportOverflow(page);
+    await page.screenshot({
+      path: testInfo.outputPath(`shop-hub-kept-${width}.png`),
+      fullPage: true
+    });
   });
 }
 

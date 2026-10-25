@@ -8795,3 +8795,45 @@ body {
   color: var(--grogoni-sell, #c2543f);
   font-weight: 600;
 }
+
+/* Guest typing indicator (GuestTypingIndicator.tsx) while a guest message is classified. */
+.guest-typing .typing-dots {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px 0;
+}
+
+.guest-typing .typing-dots span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.35;
+  animation: guest-typing-pulse 1.2s infinite ease-in-out;
+}
+
+.guest-typing .typing-dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.guest-typing .typing-dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes guest-typing-pulse {
+  0%,
+  80%,
+  100% {
+    opacity: 0.35;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .guest-typing .typing-dots span {
+    animation: none;
+    opacity: 0.7;
+  }
+}

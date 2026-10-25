@@ -433,6 +433,7 @@ import type { RuntimeApprovalStore } from "./domains/agent-runtime/runtime-appro
 import type { InventoryProcurementStore } from "./domains/agent-runtime/inventory-procurement-store.js";
 import type { BusinessTaskEvaluationReader } from "./domains/agent-runtime/business-task-evaluation-reader.js";
 import type { InventoryTaskController } from "./domains/agent-runtime/inventory-task-controller.js";
+import type { AgentTurnQueue } from "./domains/messaging/shared.js";
 import {
   createMemoryConversationAttachmentBlobStore,
   type ConversationAttachmentBlobStore
@@ -4559,6 +4560,10 @@ export class Cp2Store {
 
   setInventoryTaskController(controller: InventoryTaskController): void {
     this.messagingDomain.setInventoryTaskController(controller);
+  }
+  /** Edge only: agent replies that need a model run after the request (edge-domain-routes.ts). */
+  setAgentTurnQueue(queue: AgentTurnQueue): void {
+    this.messagingDomain.setAgentTurnQueue(queue);
   }
   listConversations(
     ...args: Parameters<MessagingDomain["listConversations"]>

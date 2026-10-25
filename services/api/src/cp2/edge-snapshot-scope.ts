@@ -428,3 +428,50 @@ export async function allocateOfflineSequences(
   }
   next.offlineMetadata = [...metadata.values()];
 }
+
+/**
+ * Gives a request's new account sync journal rows (account_sync_changes) their final sequence
+ * numbers just before they are saved. A request numbers them from what it loaded, which is safe
+ * only while every writer of that account holds its account lock; the read marker, typing and
+ * conversation settings routes no longer take that lock (edge-domain-routes.ts), and a write
+ * also journals for other participants' accounts, which it never loads. Here, per account in a
+ * fixed order, a lock held only from this point to commit (`edge:account-sync:<account>`) and
+ * one index lookup of the highest stored number decide the numbers, so two writers never take the
+ * same one (the journal's upsert would silently keep only the later row). Numbers only go up from
+ * the provisional ones and commit in order, so a client cursor never skips a change. `assigned`
+ * keeps the numbers given within this request for its later saves.
+ */
+export async function allocateAccountSyncSequences(
+  client: PoolClient,
+  next: Cp2Snapshot,
+  previous: Cp2Snapshot,
+  assigned: Map<string, number>
+): Promise<void> {
+  const known = new Set((previous.syncChanges ?? []).map((change) => change.cursor));
+  for (const change of next.syncChanges ?? []) {
+    const sequence = assigned.get(change.cursor);
+    if (sequence !== undefined) change.sequence = sequence;
+  }
+  const fresh = (next.syncChanges ?? []).filter(
+    (change) => !known.has(change.cursor) && !assigned.has(change.cursor)
+  );
+  if (fresh.length === 0) return;
+  const byAccount = new Map<string, typeof fresh>();
+  for (const change of fresh)
+    byAccount.set(change.accountId, [...(byAccount.get(change.accountId) ?? []), change]);
+  for (const accountId of [...byAccount.keys()].sort()) {
+    await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [
+      `edge:account-sync:${accountId}`
+    ]);
+    const stored = await client.query<{ sequence: string | null }>(
+      "select max(sequence) as sequence from account_sync_changes where account_id = $1",
+      [accountId]
+    );
+    let sequence = Number(stored.rows[0]?.sequence ?? 0);
+    for (const change of byAccount.get(accountId)!.sort((a, b) => a.sequence - b.sequence)) {
+      sequence += 1;
+      change.sequence = sequence;
+      assigned.set(change.cursor, sequence);
+    }
+  }
+}
