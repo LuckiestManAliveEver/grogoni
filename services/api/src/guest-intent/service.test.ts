@@ -257,7 +257,11 @@ describe("guest intent request deadline", () => {
           modelId: "gpt-6-luna",
           complete: async () => {
             order.push("model");
-            return { text: '{"intent":"search","query":"rice"}', modelId: "gpt-6-luna", latencyMs: 0 };
+            return {
+              text: '{"intent":"search","query":"rice"}',
+              modelId: "gpt-6-luna",
+              latencyMs: 0
+            };
           }
         }),
         limiter: createMemoryGuestIntentLimiter(),

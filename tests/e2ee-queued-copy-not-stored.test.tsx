@@ -33,7 +33,7 @@ describe("a queued end-to-end encrypted message", () => {
     session: { id: "s1", expiresAt: new Date(Date.now() + 3_600_000).toISOString() }
   } as never;
   const direct = {
-    conversation: { id: "dm-1" },
+    conversation: { id: "dm-1", kind: "personal" },
     participants: [
       { role: "account", accountId: "account-1" },
       { role: "account", accountId: "friend-2" }

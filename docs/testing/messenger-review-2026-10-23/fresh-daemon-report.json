@@ -2,9 +2,7 @@
   {
     "phase": "api",
     "conversationCount": 1,
-    "types": [
-      "DAEMON"
-    ]
+    "types": ["DAEMON"]
   },
   {
     "phase": "desktop",

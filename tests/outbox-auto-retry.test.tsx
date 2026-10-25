@@ -48,7 +48,16 @@ describe("automatic outbox resend", () => {
       globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
     ).IS_REACT_ACT_ENVIRONMENT = true;
     localStorage.clear();
-    window.matchMedia = ((query: string) => ({ matches: false, media: query })) as never;
+    window.matchMedia = ((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      addListener: () => undefined,
+      removeListener: () => undefined,
+      dispatchEvent: () => false
+    })) as never;
     posts = 0;
     postResolvers = [];
     vi.useFakeTimers({ toFake: ["Date"] });

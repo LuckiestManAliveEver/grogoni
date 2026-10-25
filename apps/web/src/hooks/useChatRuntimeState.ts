@@ -342,7 +342,9 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
     }
     let currentConversation =
       activeConversation?.conversation.id === activeConversationId ? activeConversation : null;
-    if (activeConversationId && !currentConversation) {
+    // A guest (no shop) has no server-side conversation to load: their thread is local. Only an
+    // owner/seller thread is fetched, so a guest send is never aborted by a conversation request.
+    if (business !== null && activeConversationId && !currentConversation) {
       try {
         currentConversation = await apiFetch<NonNullable<typeof activeConversation>>(
           `/v1/conversations/${activeConversationId}`,
@@ -355,7 +357,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
     }
     if (
       business &&
-      !currentConversation?.conversation.helpTopic &&
+      !currentConversation?.conversation?.helpTopic &&
       runtimeTransition({
         accountId: activeSession.account.id,
         storeId: business.id,
@@ -403,7 +405,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       return;
     }
 
-    if (currentConversation?.conversation.helpTopic) {
+    if (currentConversation?.conversation?.helpTopic) {
       try {
         const { runHelpQuestion } = await loadLazyModuleWithRecovery(
           "help-agent-chat",
@@ -430,7 +432,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
     const hasAccountRecipient = isHumanDirectConversation(currentConversation, activeSession);
     const hasExternalRecipient = isExternalChannelConversation(currentConversation);
     const isBusinessConversation =
-      currentConversation !== null && currentConversation.conversation.kind !== "personal";
+      currentConversation !== null && currentConversation.conversation?.kind !== "personal";
     // Business inbox messages go to people. Agent execution requires a separate authorized request.
     const hasHumanRecipient = hasAccountRecipient || hasExternalRecipient || isBusinessConversation;
     if (
@@ -531,6 +533,9 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       ) || /^(confirm checkout|cancel checkout)$/iu.test(message.trim());
     if (
       business === null &&
+      // A conversation-less buyer send goes to the buyer assistant / daemon (it can search,
+      // quote and check out server-side); the guest classifier answers only inside a thread.
+      activeConversationId !== null &&
       marketplaceSearch &&
       !explicitCapability &&
       reminder === null &&

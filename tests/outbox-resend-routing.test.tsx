@@ -101,9 +101,21 @@ describe("outbox resend routing", () => {
       globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
     ).IS_REACT_ACT_ENVIRONMENT = true;
     localStorage.clear();
-    window.matchMedia = ((query: string) => ({ matches: false, media: query })) as never;
+    window.matchMedia = ((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      addListener: () => undefined,
+      removeListener: () => undefined,
+      dispatchEvent: () => false
+    })) as never;
     vi.mocked(getJson).mockReset();
     vi.mocked(postJson).mockReset();
+    // The real postJson returns a promise; keep that contract after the reset so a code path that
+    // does `postJson(...).catch(...)` is not broken by a bare vi.fn() returning undefined.
+    vi.mocked(postJson).mockResolvedValue({});
     host = document.createElement("div");
     document.body.append(host);
     root = createRoot(host);

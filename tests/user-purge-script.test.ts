@@ -62,8 +62,10 @@ describe("registered-user purge script", () => {
     // reference two user accounts and must not survive a purge of either.
     // Discovery budgets (infra/db/migrations/107_discovery_budgets.sql) added
     // cp2_discovery_budgets, classified DELETE - per-user spending records.
-    expect(plan.size).toBe(204);
-    expect([...plan.values()].filter((value) => value === "DELETE")).toHaveLength(197);
+    // Agent Skills (infra/db/migrations/125_agent_skills.sql) added cp2_agent_skills,
+    // classified DELETE - business/account-owned skill installations and publications.
+    expect(plan.size).toBe(205);
+    expect([...plan.values()].filter((value) => value === "DELETE")).toHaveLength(198);
     expect(
       [...plan.entries()]
         .filter(([, classification]) => classification === "PRESERVE")

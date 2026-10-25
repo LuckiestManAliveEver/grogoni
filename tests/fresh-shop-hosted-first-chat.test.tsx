@@ -94,6 +94,7 @@ describe("fresh shop, first AI message: hosted-first with no client model state"
         const url = typeof input === "string" ? input : input.toString();
         const path = new URL(url, "http://localhost").pathname;
         if (path === "/v1/daemon/tasks" && !init?.method) return jsonResponse({ tasks: [] });
+        // A conversation-less buyer's product question goes to the hosted buyer assistant.
         expect(path).toBe("/buy/assistant");
         expect(JSON.parse(String(init?.body)).message).toContain(query);
         return jsonResponse({
@@ -173,22 +174,21 @@ describe("fresh shop, first AI message: hosted-first with no client model state"
         await sendChatDraft!(message);
       });
 
-      expect(searchBuyFeed).toHaveBeenCalledWith(query);
-      // The only request is the guest intent classifier (it fails here, so the rules route);
-      // nothing reaches the agent runtime.
+      // The hosted buyer assistant answers a conversation-less product question; the local search
+      // connector is not used on this path.
+      expect(searchBuyFeed).not.toHaveBeenCalled();
       expect(
         fetchMock.mock.calls
           .map(([input]) => String(input))
-          .filter((url) => !url.endsWith("/v1/guest/intent"))
-      ).toEqual([]);
+          .filter((url) => !String(url).endsWith("/v1/daemon/tasks"))
+      ).toEqual([expect.stringContaining("/buy/assistant")]);
       expect(renderedMessages.map((message) => message.body)).toEqual([
         message,
-        `I found 1 item from 1 shop for "${query}". Open a result to see the shop and add it to your cart.`
+        "Here are the available shopping options."
       ]);
-      expect(statusMessages).toContain("1 item found.");
-      // A buyer stays in their thread; leaving its route reloads the inbox and wipes the reply.
-      if (mode === "marketplace") expect(navigateToView).not.toHaveBeenCalled();
-      else expect(navigateToView).toHaveBeenCalledWith("chat", { mode: "marketplace" });
+      // The hosted buyer assistant answers in place for both modes; it does not force a mode
+      // switch, so the user stays where they asked the question.
+      expect(navigateToView).not.toHaveBeenCalled();
     }
   );
 

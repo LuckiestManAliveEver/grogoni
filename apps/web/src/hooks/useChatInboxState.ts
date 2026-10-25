@@ -216,12 +216,15 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
           navigateToOwnerRoute({ mode: routed.mode, view: "chat" }, { replace: true });
         if (activeConversationId !== null) setActiveConversationId(null);
         if (activeConversation !== null) setActiveConversation(null);
-        // No thread open: only device-only messages shown outside any thread remain.
-        const stored = readDeviceOnlyMessages(session.account.id);
-        setChatMessages((current) => {
-          const kept = keepDeviceOnlyMessages(current, [], null, stored);
-          return chatMessagesEqual(current, kept) ? current : kept;
-        });
+        // Only a *requested* conversation that turned out to be unopenable drops the messages; a
+        // plain inbox refresh (no requested conversation) keeps local assistant replies in place.
+        if (preferredConversationId !== null) {
+          const stored = readDeviceOnlyMessages(session.account.id);
+          setChatMessages((current) => {
+            const kept = keepDeviceOnlyMessages(current, [], null, stored);
+            return chatMessagesEqual(current, kept) ? current : kept;
+          });
+        }
       }
     } catch (error) {
       if (navigator.onLine) setStatusMessage(getErrorMessage(error));

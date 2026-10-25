@@ -86,33 +86,42 @@ describe("classifyGuestMessage", () => {
   });
 
   it("falls back to the rules at the budget when the API hangs", async () => {
-    vi.useFakeTimers();
-    let aborted = false;
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(
-        (_url: FetchArgs[0], init?: FetchArgs[1]) =>
-          new Promise<Response>(() => {
-            init?.signal?.addEventListener("abort", () => {
-              aborted = true;
-            });
-          })
-      )
-    );
-    const pending = classifyGuestMessage("I want to buy sugar");
-    let settled = false;
-    void pending.then(() => {
-      settled = true;
-    });
-    await vi.advanceTimersByTimeAsync(guestIntentBudgetMs - 1);
-    expect(settled).toBe(false);
-    await vi.advanceTimersByTimeAsync(1);
-    expect(await pending).toEqual({
-      route: { kind: "search", query: "sugar" },
-      source: "rules",
-      fallback: "timeout"
-    });
-    expect(aborted).toBe(true);
+    // Only setTimeout is faked: this test advances the budget timer itself. Faking Date/performance
+    // here would leave the module's clock behind for later tests in the file.
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    try {
+      let aborted = false;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          (_url: FetchArgs[0], init?: FetchArgs[1]) =>
+            new Promise<Response>((_resolve, reject) => {
+              // A hanging request: it never resolves, but it rejects when the budget aborts it, so
+              // the underlying promise settles instead of leaking into later tests.
+              init?.signal?.addEventListener("abort", () => {
+                aborted = true;
+                reject(new DOMException("Aborted", "AbortError"));
+              });
+            })
+        )
+      );
+      const pending = classifyGuestMessage("I want to buy sugar");
+      let settled = false;
+      void pending.then(() => {
+        settled = true;
+      });
+      await vi.advanceTimersByTimeAsync(guestIntentBudgetMs - 1);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(await pending).toEqual({
+        route: { kind: "search", query: "sugar" },
+        source: "rules",
+        fallback: "timeout"
+      });
+      expect(aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it.each([

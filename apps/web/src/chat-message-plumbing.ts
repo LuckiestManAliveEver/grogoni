@@ -198,9 +198,9 @@ export function isHumanDirectConversation(
 ): boolean {
   return Boolean(
     conversation &&
-    conversation.conversation.kind === "personal" &&
+    conversation.conversation?.kind === "personal" &&
     session &&
-    conversation.participants.some(
+    conversation.participants?.some(
       (participant) =>
         participant.role === "account" && participant.accountId !== session.account.id
     )
@@ -209,7 +209,7 @@ export function isHumanDirectConversation(
 
 export function isExternalChannelConversation(conversation: ConversationView | null): boolean {
   return Boolean(
-    conversation?.participants.some(
+    conversation?.participants?.some(
       (participant) => participant.role === "external" && participant.externalIdentityId
     )
   );
