@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { escapeLiteral, type PoolClient } from "pg";
 import { retainedRuntimeCheckpointSql } from "./domains/runtime-handoff/checkpoint-retention.js";
+import { runtimeOperationDedupCutoffSql } from "./domains/runtime-handoff/operation-dedup-retention.js";
 import type { Cp2Snapshot } from "./store.js";
 
 const globalCollections = new Set<keyof Cp2Snapshot>([
@@ -77,6 +78,7 @@ export async function createEdgeSnapshotScope(
       ? createHash("sha256").update(callbackState).digest("hex")
       : ""
   );
+  const dedupTask = requestedRuntimeTask(path, input);
   const businessId =
     path.match(/^\/businesses\/([^/]+)/)?.[1] ??
     (typeof input.businessId === "string" ? input.businessId : null);
@@ -298,10 +300,13 @@ export async function createEdgeSnapshotScope(
       if (key === "runtimeHandoffs")
         return `task_id in (select id from edge_task_conversation_ids)
           and ${retainedRuntimeCheckpointSql("cp2_runtime_handoffs")}`;
-      // Idempotency records are keyed by the caller's account (withIdempotency), so only the
-      // caller's own rows can ever match.
+      // Idempotency records are keyed by the caller's account and task (withIdempotency), so
+      // only the caller's own unexpired rows can ever match, and only the named task's when the
+      // request names one.
       if (key === "runtimeOperationDedup")
-        return `account_id = ${actorAccount} and ${actorAccount} <> ''`;
+        return `account_id = ${actorAccount} and ${actorAccount} <> ''
+          and record->>'createdAt' >= ${runtimeOperationDedupCutoffSql}
+          ${dedupTask === null ? "" : `and task_id = ${escapeLiteral(dedupTask)}`}`;
       if (key === "passkeyCeremonies")
         return `entity_id = ${escapeLiteral(ceremony)} or account_id = nullif(${actorAccount}, '')`;
       return `${key === "nativeRuntimeAgents" || key === "nativeRuntimeBindings" ? "(account_id is null and business_id is null and user_id is null) or " : key === "nativeExecutionHosts" ? "entity_id in (select id from edge_runtime_host_ids) or " : ""}(account_id = ${actorAccount} and ${actorAccount} <> '')
@@ -314,6 +319,26 @@ export async function createEdgeSnapshotScope(
         ${key === "staffInvitations" ? `or record->>'destination' = nullif(${destination}, '')` : ""}`;
     }
   };
+}
+
+/**
+ * The one task a request's idempotent runtime operation can run on: the `/v1/runtime/:taskId`
+ * path, or the `taskId` argument of a single MCP tool call (or a plain JSON body). Null when the
+ * request names none or several (a JSON-RPC batch): then every unexpired record of the account
+ * loads.
+ */
+export function requestedRuntimeTask(path: string, input: Record<string, unknown>): string | null {
+  const fromPath = path.match(/^\/v1\/runtime\/([^/]+)/)?.[1];
+  if (fromPath !== undefined) {
+    try {
+      return decodeURIComponent(fromPath);
+    } catch {
+      return null;
+    }
+  }
+  const params = input.params as { arguments?: { taskId?: unknown } } | undefined;
+  const taskId = params?.arguments?.taskId ?? input.taskId;
+  return typeof taskId === "string" && taskId.length > 0 ? taskId : null;
 }
 
 /**

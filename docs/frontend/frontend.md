@@ -1164,7 +1164,12 @@ message on its own backoff of 15 seconds, 1 minute and 4 minutes, then stops (a 
 agent reruns a paid model turn each time); this includes a message that was saved but whose agent
 turn failed. A message that stopped holds back only later messages in its own conversation. A
 reconnect skips the wait but not the three-try cap. A tap on the resend control sends at once, or
-says why it cannot ("Already sending your waiting messages", or another tab is sending them). A Web Lock keeps two tabs from resending the same queue at once, where the browser has Web Locks. Every outbox write (queue, remove, record an attempt, clear) is applied to the freshest stored list under a second lock, `grogoni-outbox-write:<account>`, one tab at a time; before, two tabs writing at once could drop one tab's queued message (`tests/messaging-outbox-cross-tab.test.ts` races two tabs in two threads). Callers stay synchronous: a tab reads its own writes at once while they wait for the lock, other tabs see them through the `storage` event, and a tab that closes first writes them on `pagehide`. Without Web Locks each write is one synchronous read and write, as before. A message the server refuses for good leaves
+says why it cannot ("Already sending your waiting messages", or another tab is sending them). A Web Lock keeps two tabs from resending the same queue at once, where the browser has Web Locks. Every outbox write (queue, remove, record an attempt, clear) is applied to the freshest stored list under a second lock, `grogoni-outbox-write:<account>`, one tab at a time; before, two tabs writing at once could drop one tab's queued message (`tests/messaging-outbox-cross-tab.test.ts` races two tabs in two threads). Callers stay synchronous: a tab reads its own writes at once while they wait for the lock, other tabs see them through the `storage` event, and a tab that closes first writes them on `pagehide`. A write that fails (storage full or blocked) stays in the tab, is tried again
+on its own (1 s, 2 s, 4 s, up to 30 s) and with every later change, and the chat says "A waiting
+message could not be saved on this device" (`useMessagingOutboxSaveFailure`). Without Web Locks
+there is no cross-tab lock: each write is one synchronous read and write as before (a storage error
+is thrown to the caller), and two tabs writing at once can still lose a change; the race test
+measures it in that mode too. A message the server refuses for good leaves
 the queue: its text goes back into the message box when that is clean (its thread is open, the box
 is empty, nothing attached), and otherwise it stays in the thread marked "Not sent", where it can
 still be read. A resend that finishes after the user opened another thread changes nothing on

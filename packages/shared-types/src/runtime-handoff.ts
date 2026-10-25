@@ -121,6 +121,12 @@ export interface RuntimeHandoff {
   schemaVersion: number;
 
   createdAt: string;
+  /** When the server wrote this checkpoint off the head's line: created without being promoted,
+   *  or synced from an offline client. It and its parent are kept for 30 days from then even when
+   *  older than the latest versions (services/api/src/cp2/domains/runtime-handoff/
+   *  checkpoint-retention.ts), so an unmerged branch can still be merged and a retried sync still
+   *  finds every checkpoint it sent. Absent on every other checkpoint. */
+  branchedAt?: string;
 }
 
 /** The authoritative mutable pointer for a task's current execution state (invariant 1.2).

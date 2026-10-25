@@ -87,12 +87,14 @@ describe("messaging outbox across tabs", () => {
 class MemoryStorage {
   readonly values = new Map<string, string>();
   failNextWrite = false;
+  failWrites = 0;
   getItem(key: string) {
     return this.values.get(key) ?? null;
   }
   setItem(key: string, value: string) {
-    if (this.failNextWrite) {
+    if (this.failNextWrite || this.failWrites > 0) {
       this.failNextWrite = false;
+      this.failWrites = Math.max(0, this.failWrites - 1);
       throw new DOMException("Storage is full.", "QuotaExceededError");
     }
     this.values.set(key, value);
@@ -127,6 +129,29 @@ const entry = (clientMessageId: string) => ({
   accountId: "account-a",
   clientMessageId,
   payload: { conversationId: "conversation-a" }
+});
+
+describe("messaging outbox without navigator.locks", () => {
+  it("measures what the unlocked fallback loses when two tabs write at once", async () => {
+    // There is no cross-tab lock in this mode (documented in outbox.ts). This records how much
+    // it loses instead of asserting it loses nothing; the stored list stays well formed.
+    const expected = [...expectedFor("tab-a"), ...expectedFor("tab-b")];
+    let lost = 0;
+    for (let round = 0; round < 3; round += 1) {
+      const { entries } = await raceTwoTabs(false);
+      const ids = new Set(entries.map((entry) => entry.clientMessageId));
+      for (const entry of entries) expect(typeof entry.clientMessageId).toBe("string");
+      lost += expected.filter((id) => !ids.has(id)).length;
+    }
+    console.info(
+      JSON.stringify({
+        event: "outbox_fallback_race",
+        rounds: 3,
+        expectedPerRound: expected.length,
+        lost
+      })
+    );
+  }, 60_000);
 });
 
 describe("messaging outbox lock", () => {
@@ -166,29 +191,55 @@ describe("messaging outbox lock", () => {
     expect(storage.getItem(key)).toBeNull();
   });
 
-  it("releases the lock when a write fails and keeps the change for the next write", async () => {
+  it("releases the lock when a write fails, says so, and saves the change again on its own", async () => {
+    vi.useFakeTimers();
     const locks = fakeLocks();
+    const failures: unknown[] = [];
     vi.stubGlobal("navigator", { locks });
+    vi.stubGlobal("window", {
+      addEventListener: () => undefined,
+      dispatchEvent: (event: Event) => {
+        if (event.type === "grogoni:messaging-outbox-save-failed")
+          failures.push((event as CustomEvent).detail);
+        return true;
+      }
+    });
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    const outbox = await import("../apps/web/src/messaging/outbox");
-    const storage = new MemoryStorage();
-    storage.failNextWrite = true;
-    outbox.queueMessagingOutbox(entry("first"), storage);
-    await outbox.settleMessagingOutbox();
-    expect(warn).toHaveBeenCalledWith(
-      "Could not save the messaging outbox.",
-      expect.any(DOMException)
-    );
-    expect(storage.getItem(key)).toBeNull();
-    // Still queued in this tab, and the lock was released: the next change gets it and writes both.
-    expect(outbox.readMessagingOutbox("account-a", storage)).toHaveLength(1);
-    outbox.queueMessagingOutbox(entry("second"), storage);
-    await outbox.settleMessagingOutbox();
-    expect(locks.granted).toHaveLength(2);
-    expect(
-      JSON.parse(storage.getItem(key)!).map((e: { clientMessageId: string }) => e.clientMessageId)
-    ).toEqual(["first", "second"]);
-    warn.mockRestore();
+    try {
+      const outbox = await import("../apps/web/src/messaging/outbox");
+      const storage = new MemoryStorage();
+      storage.failWrites = 2;
+      outbox.queueMessagingOutbox(entry("first"), storage);
+      await outbox.settleMessagingOutbox();
+      expect(warn).toHaveBeenCalledWith(
+        "Could not save the messaging outbox.",
+        expect.any(DOMException)
+      );
+      // The chat is told (useMessagingOutboxSaveFailure shows it), and nothing is stored yet.
+      expect(failures).toEqual([{ accountId: "account-a", message: "Storage is full." }]);
+      expect(storage.getItem(key)).toBeNull();
+      // Still queued in this tab, and the lock was released.
+      expect(outbox.readMessagingOutbox("account-a", storage)).toHaveLength(1);
+      // Tried again after 1 s (fails again), then after 2 s (saves), with no further change.
+      await vi.advanceTimersByTimeAsync(1_000);
+      await outbox.settleMessagingOutbox();
+      expect(failures).toHaveLength(2);
+      expect(storage.getItem(key)).toBeNull();
+      await vi.advanceTimersByTimeAsync(2_000);
+      await outbox.settleMessagingOutbox();
+      expect(locks.granted).toHaveLength(3);
+      expect(
+        JSON.parse(storage.getItem(key)!).map((e: { clientMessageId: string }) => e.clientMessageId)
+      ).toEqual(["first"]);
+      // A later change still goes through the lock as usual.
+      outbox.queueMessagingOutbox(entry("second"), storage);
+      await outbox.settleMessagingOutbox();
+      expect(locks.granted).toHaveLength(4);
+      expect(failures).toHaveLength(2);
+    } finally {
+      warn.mockRestore();
+      vi.useRealTimers();
+    }
   });
 
   it("writes at once without navigator.locks, and before the page goes away with them", async () => {

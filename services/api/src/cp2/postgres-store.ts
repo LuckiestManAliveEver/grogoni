@@ -36,6 +36,10 @@ import {
   retainedRuntimeCheckpointSql,
   runtimeCheckpointPruneBatch
 } from "./domains/runtime-handoff/checkpoint-retention.js";
+import {
+  runtimeOperationDedupCutoffSql,
+  runtimeOperationDedupPruneBatch
+} from "./domains/runtime-handoff/operation-dedup-retention.js";
 
 type SnapshotCollectionKey = keyof Cp2Snapshot;
 type SnapshotRecord = Record<string, unknown>;
@@ -1681,17 +1685,20 @@ export function rebaseLoadNormalizedCollections(
 /**
  * A scoped (Edge) request loads only the checkpoints still kept, so its in-memory store cannot
  * drop older ones it never loaded. On a write that adds a checkpoint, this deletes the task's
- * stored checkpoints the retention rule no longer keeps (checkpoint-retention.ts), at most
- * `runtimeCheckpointPruneBatch` per write, oldest first: a backlog from before pruning drains
- * over later writes. It runs after this save wrote the heads, instances and transfers, so the
- * rule sees what the next request will load; it never deletes a row the rule keeps.
+ * stored checkpoints that the retention rule (checkpoint-retention.ts) no longer keeps and that
+ * this request did not load, at most `runtimeCheckpointPruneBatch` per write, oldest first: a
+ * backlog from before pruning drains over later writes. It runs before this save writes anything,
+ * so it judges the stored rows as they were loaded: a row this request loaded is left to the
+ * in-memory rule (which the writer then applies), and a row it did not load cannot be one this
+ * request points at, because a request can only point at checkpoints it loaded.
  */
 async function pruneStoredRuntimeCheckpoints(
   client: PoolClient,
   snapshot: Cp2Snapshot,
   previous: Cp2Snapshot
 ): Promise<void> {
-  const known = new Set((previous.runtimeHandoffs ?? []).map((handoff) => handoff.id));
+  const loaded = (previous.runtimeHandoffs ?? []).map((handoff) => handoff.id);
+  const known = new Set(loaded);
   const taskIds = [
     ...new Set(
       (snapshot.runtimeHandoffs ?? [])
@@ -1703,9 +1710,44 @@ async function pruneStoredRuntimeCheckpoints(
   await client.query(
     `delete from cp2_runtime_handoffs where entity_id in (
       select stored.entity_id from cp2_runtime_handoffs stored
-      where stored.task_id = any($1::text[]) and not ${retainedRuntimeCheckpointSql("stored")}
+      where stored.task_id = any($1::text[]) and not (stored.entity_id = any($3::text[]))
+        and not ${retainedRuntimeCheckpointSql("stored")}
       order by stored.checkpoint_version limit $2)`,
-    [taskIds, runtimeCheckpointPruneBatch]
+    [taskIds, runtimeCheckpointPruneBatch, loaded]
+  );
+}
+
+/**
+ * The same for idempotency records: an Edge request loads only unexpired records of its account
+ * (operation-dedup-retention.ts). On a write that records an operation, this deletes that
+ * account's expired records the request did not load, at most one batch, oldest first, and a
+ * stored record with the id of one this request writes (an expired record of the same key, which
+ * the request did not load and now replaces).
+ */
+async function pruneStoredOperationDedup(
+  client: PoolClient,
+  snapshot: Cp2Snapshot,
+  previous: Cp2Snapshot
+): Promise<void> {
+  const loaded = (previous.runtimeOperationDedup ?? []).map((record) => record.id);
+  const known = new Set(loaded);
+  const written = (snapshot.runtimeOperationDedup ?? []).filter(
+    (record) => !known.has(record.id) && record.accountId !== undefined
+  );
+  if (written.length === 0) return;
+  await client.query(
+    `delete from cp2_runtime_operation_dedup where entity_id in (
+      select stored.entity_id from cp2_runtime_operation_dedup stored
+      where not (stored.entity_id = any($3::text[]))
+        and ((stored.account_id = any($1::text[]) and stored.record->>'createdAt' < ${runtimeOperationDedupCutoffSql})
+          or stored.entity_id = any($4::text[]))
+      order by stored.record->>'createdAt' limit $2)`,
+    [
+      [...new Set(written.map((record) => record.accountId))],
+      runtimeOperationDedupPruneBatch,
+      loaded,
+      written.map((record) => record.id)
+    ]
   );
 }
 
@@ -1714,6 +1756,8 @@ export async function saveTransactionalCp2Snapshot(
   snapshot: Cp2Snapshot,
   previous: Cp2Snapshot
 ): Promise<void> {
+  await pruneStoredRuntimeCheckpoints(client, snapshot, previous);
+  await pruneStoredOperationDedup(client, snapshot, previous);
   for (const collection of normalizedCollections) {
     const records = getSnapshotCollection(snapshot, collection.key);
     if (!collectionUnchanged(records, getSnapshotCollection(previous, collection.key)))
@@ -1725,7 +1769,6 @@ export async function saveTransactionalCp2Snapshot(
         edgeNormalizedBaselines.get(previous)?.get(collection.key)
       );
   }
-  await pruneStoredRuntimeCheckpoints(client, snapshot, previous);
   if (
     !collectionUnchanged(
       snapshotRecords(snapshot.conversationAttachments ?? []),

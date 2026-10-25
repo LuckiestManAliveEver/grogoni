@@ -419,12 +419,12 @@ describe.skipIf(!databaseUrl)("Edge runtime checkpoints on PostgreSQL", () => {
       });
       expect(response?.status, await response?.clone().text()).toBe(200);
     };
-    const loadAs = (sessionId: string) =>
+    const loadAs = (sessionId: string, path = "/v1/conversations") =>
       transaction(async (client) => {
-        const request = new Request("https://grogoni.com/v1/conversations", {
+        const request = new Request(`https://grogoni.com${path}`, {
           headers: { cookie: `grogoni_session=${sessionId}` }
         });
-        const scope = await createEdgeSnapshotScope(client, request, "/v1/conversations");
+        const scope = await createEdgeSnapshotScope(client, request, path);
         return loadTransactionalCp2Snapshot(client, scope);
       });
     const stored = async () =>
@@ -435,7 +435,7 @@ describe.skipIf(!databaseUrl)("Edge runtime checkpoints on PostgreSQL", () => {
         )
       ).rows.map((row) => row.record);
     await send("Add 5 bags of sugar to stock");
-    return { pool, call, send, loadAs, stored, owner, outsider, conversation };
+    return { pool, call, send, loadAs, stored, owner, outsider, conversation, transaction };
   }
 
   it("prunes superseded checkpoints on write and loads only the ones a reader can still need", async () => {
@@ -443,7 +443,8 @@ describe.skipIf(!databaseUrl)("Edge runtime checkpoints on PostgreSQL", () => {
       await ownerConversation("retention");
     try {
       // A backlog from before pruning, written straight to the table: versions up to 60 in one
-      // chain, an old branch (version 10, never promoted) and the task instance on version 7.
+      // chain written two months ago, a branch (version 10, from version 5, never promoted, not
+      // merged yet) and the task instance on version 7.
       const [first] = await stored();
       expect(first).toBeDefined();
       const base = (await stored()).at(-1)!;
@@ -460,7 +461,8 @@ describe.skipIf(!databaseUrl)("Edge runtime checkpoints on PostgreSQL", () => {
           parentHandoffId: parent.id,
           checkpointVersion: version,
           currentState: `Backlog checkpoint ${version}.`,
-          createdAt: new Date(Date.parse(base.createdAt) + version * 1000).toISOString()
+          createdAt: new Date(Date.now() - 60 * 86_400_000 + version * 1000).toISOString(),
+          ...(version === 10 ? { branchedAt: new Date().toISOString() } : {})
         };
         byVersion.set(version, handoff);
         await pool.query(
@@ -500,16 +502,19 @@ describe.skipIf(!databaseUrl)("Edge runtime checkpoints on PostgreSQL", () => {
       expect(versionsOf(await stored())).toEqual(range(1, 60));
 
       // A member's request loads only what a reader can still need: the latest 20 versions
-      // (head included) and the instance's checkpoint. Not the other 39 (nor the old branch).
+      // (head included), the instance's checkpoint, and the unmerged branch with the checkpoint
+      // it started from. Not the other 36.
       expect(runtimeCheckpointRecentVersions).toBe(20);
       expect(versionsOf((await loadAs(owner.session.id)).runtimeHandoffs)).toEqual([
+        5,
         7,
+        10,
         ...range(41, 60)
       ]);
 
       // The next turn adds version 61 and deletes everything superseded, backlog included.
       await send("Add 3 bags of rice to stock");
-      expect(versionsOf(await stored())).toEqual([7, ...range(42, 61)]);
+      expect(versionsOf(await stored())).toEqual([5, 7, 10, ...range(42, 61)]);
       // The in-memory rule and the SQL rule agree: nothing stored is prunable, all of it loads.
       const all = await stored();
       const heads = await pool.query(
@@ -521,12 +526,15 @@ describe.skipIf(!databaseUrl)("Edge runtime checkpoints on PostgreSQL", () => {
         [conversation.id]
       );
       expect(
-        prunableRuntimeCheckpoints({
-          handoffs: all,
-          head: heads.rows[0]?.record,
-          instance: instances.rows[0]?.record,
-          transfers: []
-        })
+        prunableRuntimeCheckpoints(
+          {
+            handoffs: all,
+            head: heads.rows[0]?.record,
+            instance: instances.rows[0]?.record,
+            transfers: []
+          },
+          new Date()
+        )
       ).toEqual([]);
       expect(versionsOf((await loadAs(owner.session.id)).runtimeHandoffs)).toEqual(versionsOf(all));
 
@@ -538,9 +546,9 @@ describe.skipIf(!databaseUrl)("Edge runtime checkpoints on PostgreSQL", () => {
       expect(current.checkpointVersion).toBe(61);
       expect((await call("GET", `${taskPath}/handoff?version=42`))?.status).toBe(200);
       expect((await call("GET", `${taskPath}/handoff?version=41`))?.status).toBe(404);
-      // The old unpromoted branch (version 10) is 50 versions behind: pruned.
+      // The unmerged branch (version 10) is 50 versions behind and still there to merge.
       expect((await call("GET", `${taskPath}/handoffs/${byVersion.get(10)!.id}`))?.status).toBe(
-        404
+        200
       );
       expect((await call("GET", `${taskPath}/handoffs/${byVersion.get(7)!.id}`))?.status).toBe(200);
       const target = byVersion.get(45)!;
@@ -555,12 +563,22 @@ describe.skipIf(!databaseUrl)("Edge runtime checkpoints on PostgreSQL", () => {
         target.id
       );
       // Resume moved the instance off version 7, and the next turn branches from version 45
-      // (version 62): version 7 and version 42 go, the abandoned version 61 is still in reach.
+      // (version 62): version 7 (two months old, nothing descends from it any more) and version
+      // 42 go; the abandoned head (version 61) is in reach, the branch stays.
       await send("Add 2 bags of flour to stock");
-      expect(versionsOf(await stored())).toEqual(range(43, 62));
+      expect(versionsOf(await stored())).toEqual([5, 10, ...range(43, 62)]);
       const latest = (await stored()).at(-1)!;
       expect(latest.parentHandoffId).toBe(target.id);
       expect((await call("GET", `${taskPath}/handoffs/${byVersion.get(7)!.id}`))?.status).toBe(404);
+      // The branch merges into the head.
+      const merge = await call("POST", `${taskPath}/merge`, {
+        branchHandoffIds: [latest.id, byVersion.get(10)!.id],
+        expectedHandoffId: latest.id
+      });
+      expect(merge?.status, await merge?.clone().text()).toBe(200);
+      expect(
+        ((await merge!.json()) as { handoff: RuntimeHandoff }).handoff.mergedFromHandoffIds
+      ).toEqual([byVersion.get(10)!.id]);
     } finally {
       await pool.end();
     }
@@ -595,6 +613,55 @@ describe.skipIf(!databaseUrl)("Edge runtime checkpoints on PostgreSQL", () => {
       expect(mine.length).toBeGreaterThanOrEqual(1);
       expect(mine.every((record) => record.accountId === owner.account.id)).toBe(true);
       expect((await loadAs(outsider.session.id)).runtimeOperationDedup ?? []).toEqual([]);
+
+      // A request that names a task loads only that task's records.
+      const otherTask = randomUUID();
+      const freshOther = randomUUID();
+      const expiredId = randomUUID();
+      const dedupRow = (id: string, taskId: string, createdAt: string) => [
+        id,
+        owner.account.id,
+        JSON.stringify({
+          id,
+          accountId: owner.account.id,
+          taskId,
+          operationType: "checkpoint",
+          idempotencyKey: randomUUID(),
+          result: { taskHead: { taskId } },
+          createdAt
+        })
+      ];
+      const insertDedup =
+        "insert into cp2_runtime_operation_dedup (entity_id, account_id, record) values ($1, $2, $3::jsonb)";
+      await pool.query(insertDedup, dedupRow(freshOther, otherTask, new Date().toISOString()));
+      // Expired (8 days old, records answer for 7): never loaded, deleted by the next write.
+      await pool.query(
+        insertDedup,
+        dedupRow(expiredId, conversation.id, new Date(Date.now() - 8 * 86_400_000).toISOString())
+      );
+      const ids = (records: { id: string }[] | undefined) => (records ?? []).map((r) => r.id);
+      const accountWide = ids((await loadAs(owner.session.id)).runtimeOperationDedup);
+      expect(accountWide).toContain(freshOther);
+      expect(accountWide).not.toContain(expiredId);
+      const taskOnly = ids(
+        (await loadAs(owner.session.id, `/v1/runtime/${conversation.id}/checkpoints`))
+          .runtimeOperationDedup
+      );
+      expect(taskOnly.length).toBeGreaterThanOrEqual(1);
+      expect(taskOnly).not.toContain(freshOther);
+      expect(taskOnly).not.toContain(expiredId);
+      const recorded = await call(
+        "POST",
+        `/v1/runtime/${conversation.id}/checkpoints`,
+        { currentState: "Counted the till." },
+        { "idempotency-key": "count-till-1" }
+      );
+      expect(recorded?.status, await recorded?.clone().text()).toBe(200);
+      const remaining = await pool.query<{ entity_id: string }>(
+        "select entity_id from cp2_runtime_operation_dedup where entity_id = any($1::text[])",
+        [[expiredId, freshOther]]
+      );
+      expect(remaining.rows.map((row) => row.entity_id)).toEqual([freshOther]);
 
       // Migration 124 backfills a record stored before it, and running it again changes nothing.
       const legacyId = randomUUID();
@@ -640,4 +707,105 @@ describe.skipIf(!databaseUrl)("Edge runtime checkpoints on PostgreSQL", () => {
       await pool.end();
     }
   }, 120000);
+
+  it("still refuses a checkpoint whose parent does not exist (migration 123's trigger)", async () => {
+    const { pool, stored } = await ownerConversation("parent-trigger");
+    try {
+      const base = (await stored()).at(-1)!;
+      const checkpoint = (id: string, parentHandoffId: string | null) =>
+        JSON.stringify({ ...base, id, parentHandoffId, checkpointVersion: null });
+      const orphan = randomUUID();
+      await expect(
+        pool.query("insert into cp2_runtime_handoffs (entity_id, record) values ($1, $2::jsonb)", [
+          orphan,
+          checkpoint(orphan, randomUUID())
+        ])
+      ).rejects.toMatchObject({ code: "23503" });
+      // Parent and child in one statement (an offline chain saved at once) are accepted.
+      const parent = randomUUID();
+      const child = randomUUID();
+      await pool.query(
+        "insert into cp2_runtime_handoffs (entity_id, record) values ($1, $2::jsonb), ($3, $4::jsonb)",
+        [child, checkpoint(child, parent), parent, checkpoint(parent, base.id)]
+      );
+      const rows = await pool.query(
+        "select entity_id from cp2_runtime_handoffs where entity_id = any($1::text[])",
+        [[orphan, parent, child]]
+      );
+      expect(rows.rows).toHaveLength(2);
+      // Pruning a parent is allowed: its child keeps the id as recorded ancestry.
+      await pool.query("delete from cp2_runtime_handoffs where entity_id = $1", [parent]);
+      await pool.query("delete from cp2_runtime_handoffs where entity_id = $1", [child]);
+    } finally {
+      await pool.end();
+    }
+  }, 120000);
+
+  it("keeps a synced offline batch on Edge, so the same 25 checkpoints can be sent again", async () => {
+    const { pool, call, stored, loadAs, owner, conversation } = await ownerConversation("resync");
+    try {
+      const taskPath = `/v1/runtime/${conversation.id}`;
+      const head = (await stored()).at(-1)!;
+      // Made offline 40 days ago, synced now: kept from when it was synced.
+      const createdAt = new Date(Date.now() - 40 * 86_400_000).toISOString();
+      const checkpoints = Array.from({ length: 25 }, (_value, index) => ({
+        id: randomUUID(),
+        goal: head.goal,
+        currentState: `Offline step ${index}.`,
+        runtime: head.runtime,
+        createdAt
+      })).map((checkpoint, index, all) => ({
+        ...checkpoint,
+        parentHandoffId: index === 0 ? head.id : all[index - 1]!.id
+      }));
+      const sync = () => call("POST", `${taskPath}/checkpoints/sync`, { checkpoints });
+      const first = await sync();
+      expect(first?.status, await first?.clone().text()).toBe(200);
+      const firstBody = (await first!.json()) as { syncedHandoffs: RuntimeHandoff[] };
+      // The hosted line goes on for 22 checkpoints, past the batch's whole version range.
+      for (let index = 0; index < 22; index += 1) {
+        const current = (
+          (await (await call("GET", taskPath))!.json()) as { activeHandoff: RuntimeHandoff }
+        ).activeHandoff;
+        const created = await call("POST", `${taskPath}/checkpoints`, {
+          currentState: `Hosted step ${index}.`,
+          promote: true,
+          expectedHandoffId: current.id
+        });
+        expect(created?.status, await created?.clone().text()).toBe(200);
+      }
+      // No idempotency key: the client lost the first answer and sends the same batch again.
+      const retry = await sync();
+      expect(retry?.status, await retry?.clone().text()).toBe(200);
+      const retryBody = (await retry!.json()) as { syncedHandoffs: RuntimeHandoff[] };
+      expect(retryBody.syncedHandoffs).toEqual(firstBody.syncedHandoffs);
+      const versions = (await stored()).map((handoff) => handoff.checkpointVersion);
+      // Kept: the head's line from version 30 on (the latest 20), the whole synced batch
+      // (versions 3 to 27) and version 2 it started from. Gone: version 1, and versions 28 and 29
+      // of the hosted line.
+      const range = (from: number, to: number) =>
+        Array.from({ length: to - from + 1 }, (_value, index) => from + index);
+      expect(versions).toEqual([...range(2, 27), ...range(30, 49)]);
+      // Both rules keep exactly what is stored, and the member loads all of it.
+      const all = await stored();
+      const headRow = await pool.query(
+        "select record from cp2_runtime_task_heads where entity_id = $1",
+        [conversation.id]
+      );
+      expect(
+        prunableRuntimeCheckpoints(
+          { handoffs: all, head: headRow.rows[0]?.record, instance: undefined, transfers: [] },
+          new Date()
+        )
+      ).toEqual([]);
+      expect(
+        ((await loadAs(owner.session.id)).runtimeHandoffs ?? [])
+          .filter((handoff) => handoff.taskId === conversation.id)
+          .map((handoff) => handoff.checkpointVersion)
+          .sort((left, right) => left! - right!)
+      ).toEqual(versions);
+    } finally {
+      await pool.end();
+    }
+  }, 240000);
 });

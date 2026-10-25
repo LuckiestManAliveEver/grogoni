@@ -149,9 +149,28 @@ export function clearMessagingOutbox(
  * wait for the lock, and the change event fires at once. The lock callback is synchronous and
  * requests nothing else, so it cannot deadlock and is released even when the write throws; it is
  * a different lock from the resend pass (`grogoni-outbox-resend:<account>`), which holds its lock
- * across network calls and itself writes here. Without navigator.locks each change is one
- * synchronous read-modify-write, as before. Other tabs learn of a write from the "storage" event.
+ * across network calls and itself writes here. Other tabs learn of a write from the "storage"
+ * event.
+ *
+ * A write that fails (storage full or blocked) stays in this tab, which keeps reading it, and is
+ * tried again on its own after 1 s, 2 s, 4 s and so on up to 30 s, and by every later change. Each
+ * failure fires `messagingOutboxSaveFailedEvent`, which the chat shows
+ * (messaging/useMessagingOutboxSaveFailure.ts), since the caller no longer gets the error thrown at it.
+ *
+ * Without navigator.locks (every current browser has it) there is no cross-tab lock: each change
+ * is one synchronous read-modify-write, as before, and a storage error is thrown to the caller.
+ * Two such tabs writing at the same moment can still lose a change;
+ * tests/messaging-outbox-cross-tab.test.ts measures how often.
  */
+export const messagingOutboxSaveFailedEvent = "grogoni:messaging-outbox-save-failed";
+export const messagingOutboxSaveFailureMessage =
+  "A waiting message could not be saved on this device. Grogoni keeps it open here and keeps trying; free some storage if this continues.";
+export interface MessagingOutboxSaveFailure {
+  accountId: string;
+  message: string;
+}
+const outboxRetryMaxMs = 30_000;
+
 type OutboxOperation =
   | { kind: "put"; entry: MessagingOutboxEntry }
   | { kind: "remove"; clientMessageId: string }
@@ -166,6 +185,9 @@ interface PendingOutbox {
   waiting: boolean;
   /** Settles when the latest lock request has run (or failed). */
   flush: Promise<void>;
+  /** Failed writes in a row, for the retry delay. */
+  failures: number;
+  retry: ReturnType<typeof setTimeout> | null;
 }
 
 interface OutboxLockManager {
@@ -211,7 +233,15 @@ function mutateOutbox(
   if (byAccount === undefined) pendingByStorage.set(storage, (byAccount = new Map()));
   let pending = byAccount.get(accountId);
   if (pending === undefined) {
-    pending = { accountId, storage, operations: [], waiting: false, flush: Promise.resolve() };
+    pending = {
+      accountId,
+      storage,
+      operations: [],
+      waiting: false,
+      flush: Promise.resolve(),
+      failures: 0,
+      retry: null
+    };
     byAccount.set(accountId, pending);
     pendingWrites.add(pending);
   }
@@ -230,13 +260,36 @@ function scheduleOutboxFlush(pending: PendingOutbox, locks: OutboxLockManager): 
       flushPendingOutbox(pending);
     })
     .then(
-      () => undefined,
+      () => {
+        pending.failures = 0;
+      },
       (error: unknown) => {
         pending.waiting = false;
-        // Kept in this tab's operations (it still reads them); the next change writes them again.
+        pending.failures += 1;
+        // Kept in this tab's operations (it still reads them) and tried again below.
         console.warn("Could not save the messaging outbox.", error);
+        announceOutboxSaveFailure(pending.accountId, error);
+        retryOutboxFlush(pending, locks);
       }
     );
+}
+
+function retryOutboxFlush(pending: PendingOutbox, locks: OutboxLockManager): void {
+  if (pending.retry !== null || typeof setTimeout !== "function") return;
+  const delay = Math.min(outboxRetryMaxMs, 1_000 * 2 ** (pending.failures - 1));
+  pending.retry = setTimeout(() => {
+    pending.retry = null;
+    if (pending.operations.length > 0) scheduleOutboxFlush(pending, locks);
+  }, delay);
+}
+
+function announceOutboxSaveFailure(accountId: string, error: unknown): void {
+  if (typeof window === "undefined" || typeof CustomEvent !== "function") return;
+  window.dispatchEvent(
+    new CustomEvent<MessagingOutboxSaveFailure>(messagingOutboxSaveFailedEvent, {
+      detail: { accountId, message: error instanceof Error ? error.message : String(error) }
+    })
+  );
 }
 
 function flushPendingOutbox(pending: PendingOutbox): void {

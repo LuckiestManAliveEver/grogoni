@@ -52,6 +52,7 @@ import {
   recordMessagingOutboxAttempt,
   removeMessagingOutboxEntry
 } from "../messaging/outbox";
+import { useMessagingOutboxSaveFailure } from "../messaging/useMessagingOutboxSaveFailure";
 import { replaceActorReaction, replaceMessageReactions } from "../optimistic-message-reactions";
 import type {
   ActiveBusiness,
@@ -131,6 +132,7 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
     setChatDraft,
     setReplyToMessageId
   } = deps;
+  useMessagingOutboxSaveFailure(session?.account.id ?? null, setStatusMessage);
 
   // Deliberately never auto-selects or auto-creates a conversation when no valid preferred id is
   // given: the startup chat window stays blank (like a fresh ChatGPT tab) until the account picks

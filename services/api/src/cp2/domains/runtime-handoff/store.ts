@@ -53,6 +53,10 @@ import type {
 } from "@grogoni/shared-types";
 import { Cp2Error } from "../../cp2-error.js";
 import { prunableRuntimeCheckpoints } from "./checkpoint-retention.js";
+import {
+  runtimeOperationDedupExpired,
+  runtimeOperationDedupPruneBatch
+} from "./operation-dedup-retention.js";
 
 export interface RuntimeOperationDedupRecord {
   id: string;
@@ -1292,7 +1296,7 @@ export class RuntimeHandoffDomain {
           taskHead = { ...taskHead, activeHandoffId: targetId, updatedAt: now.toISOString() };
           this.taskHeads.set(input.taskId, taskHead);
         }
-        this.pruneSupersededCheckpoints(input.taskId);
+        this.pruneSupersededCheckpoints(input.taskId, now);
         this.deps.recordAuditEvent({
           type: "runtime_handoff.offline_synced",
           aggregateType: "task",
@@ -1616,6 +1620,8 @@ export class RuntimeHandoffDomain {
       checkpointVersion: version,
       schemaVersion: offline.schemaVersion,
       createdAt: offline.createdAt,
+      // Kept with its parent for a while, so retrying this sync finds it (checkpoint-retention.ts).
+      branchedAt: now.toISOString(),
       now
     });
     // Advance the head's version counter without moving activeHandoffId - a sync's optional
@@ -1644,14 +1650,14 @@ export class RuntimeHandoffDomain {
       existing.nextAction === offline.nextAction &&
       existing.schemaVersion === offline.schemaVersion &&
       existing.createdAt === offline.createdAt &&
-      JSON.stringify(existing.completedActions) === JSON.stringify(offline.completedActions) &&
-      JSON.stringify(existing.decisions) === JSON.stringify(offline.decisions) &&
-      JSON.stringify(existing.rejectedPaths) === JSON.stringify(offline.rejectedPaths) &&
-      JSON.stringify(existing.pendingActions) === JSON.stringify(offline.pendingActions) &&
-      JSON.stringify(existing.relevantContext) === JSON.stringify(offline.relevantContext) &&
-      JSON.stringify(existing.artifacts) === JSON.stringify(offline.artifacts) &&
-      JSON.stringify(existing.tests) === JSON.stringify(offline.tests) &&
-      JSON.stringify(existing.runtime) === JSON.stringify(offline.runtime);
+      sameJson(existing.completedActions, offline.completedActions) &&
+      sameJson(existing.decisions, offline.decisions) &&
+      sameJson(existing.rejectedPaths, offline.rejectedPaths) &&
+      sameJson(existing.pendingActions, offline.pendingActions) &&
+      sameJson(existing.relevantContext, offline.relevantContext) &&
+      sameJson(existing.artifacts, offline.artifacts) &&
+      sameJson(existing.tests, offline.tests) &&
+      sameJson(existing.runtime, offline.runtime);
     if (!matches) {
       throw new Cp2Error(
         409,
@@ -1683,6 +1689,7 @@ export class RuntimeHandoffDomain {
     checkpointVersion: number | null;
     schemaVersion: number;
     createdAt?: string;
+    branchedAt?: string;
     now: Date;
   }): RuntimeHandoff {
     const handoff: RuntimeHandoff = {
@@ -1704,7 +1711,8 @@ export class RuntimeHandoffDomain {
       runtime: input.runtime,
       checkpointVersion: input.checkpointVersion,
       schemaVersion: input.schemaVersion,
-      createdAt: input.createdAt ?? input.now.toISOString()
+      createdAt: input.createdAt ?? input.now.toISOString(),
+      ...(input.branchedAt === undefined ? {} : { branchedAt: input.branchedAt })
     };
     this.handoffs.set(handoff.id, handoff);
     return handoff;
@@ -1766,10 +1774,13 @@ export class RuntimeHandoffDomain {
     promote: boolean;
   }): { handoff: RuntimeHandoff; taskHead: RuntimeTaskHead } {
     const { version, existingHead } = this.allocateNextCheckpointVersion(input.taskId);
+    const promoteHead = input.promote || existingHead === undefined;
     const handoff = this.insertHandoff({
       taskId: input.taskId,
       conversationId: input.conversationId,
       parentHandoffId: input.parentHandoffId,
+      // Off the head's line: a branch, kept for a while so it can still be merged.
+      ...(promoteHead ? {} : { branchedAt: input.now.toISOString() }),
       ...(input.mergedFromHandoffIds === undefined
         ? {}
         : { mergedFromHandoffIds: input.mergedFromHandoffIds }),
@@ -1788,7 +1799,6 @@ export class RuntimeHandoffDomain {
       schemaVersion: 1,
       now: input.now
     });
-    const promoteHead = input.promote || existingHead === undefined;
     const activeHandoffId = promoteHead
       ? handoff.id
       : (existingHead as RuntimeTaskHead).activeHandoffId;
@@ -1799,20 +1809,23 @@ export class RuntimeHandoffDomain {
       activeHandoffId,
       input.now
     );
-    this.pruneSupersededCheckpoints(input.taskId);
+    this.pruneSupersededCheckpoints(input.taskId, input.now);
     return { handoff, taskHead };
   }
 
   /** Drops the task's superseded checkpoints (checkpoint-retention.ts); the snapshot writer
    *  deletes their rows. Runs on every write that adds a checkpoint, so no operator is needed. */
-  private pruneSupersededCheckpoints(taskId: string): void {
+  private pruneSupersededCheckpoints(taskId: string, now: Date): void {
     const handoffs = [...this.handoffs.values()].filter((handoff) => handoff.taskId === taskId);
-    for (const id of prunableRuntimeCheckpoints({
-      handoffs,
-      head: this.taskHeads.get(taskId),
-      instance: this.taskInstances.get(taskId),
-      transfers: [...this.transfers.values()].filter((transfer) => transfer.taskId === taskId)
-    }))
+    for (const id of prunableRuntimeCheckpoints(
+      {
+        handoffs,
+        head: this.taskHeads.get(taskId),
+        instance: this.taskInstances.get(taskId),
+        transfers: [...this.transfers.values()].filter((transfer) => transfer.taskId === taskId)
+      },
+      now
+    ))
       this.handoffs.delete(id);
   }
 
@@ -2020,7 +2033,8 @@ export class RuntimeHandoffDomain {
       .digest("hex");
     const dedupKey = `${operationType}:${scopedKey}`;
     const existing = this.operationDedup.get(dedupKey);
-    if (existing !== undefined) {
+    // An expired record no longer answers (operation-dedup-retention.ts); the operation runs again.
+    if (existing !== undefined && !runtimeOperationDedupExpired(existing, now)) {
       return existing.result as T;
     }
     const result = run();
@@ -2031,9 +2045,21 @@ export class RuntimeHandoffDomain {
       operationType,
       idempotencyKey: scopedKey,
       result,
-      createdAt: new Date().toISOString()
+      // The operation's own time, the clock its expiry is measured on.
+      createdAt: now.toISOString()
     });
+    this.pruneExpiredOperationDedup(now);
     return result;
+  }
+
+  /** Drops expired idempotency records, oldest first, at most one batch per recorded operation;
+   *  the snapshot writer deletes their rows. */
+  private pruneExpiredOperationDedup(now: Date): void {
+    const expired = [...this.operationDedup.entries()]
+      .filter(([, record]) => runtimeOperationDedupExpired(record, now))
+      .sort(([, left], [, right]) => left.createdAt.localeCompare(right.createdAt))
+      .slice(0, runtimeOperationDedupPruneBatch);
+    for (const [key] of expired) this.operationDedup.delete(key);
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -2098,4 +2124,24 @@ export class RuntimeHandoffDomain {
   get executionEventsMap(): Map<string, RuntimeExecutionEvent> {
     return this.executionEvents;
   }
+}
+
+/** Equal as JSON regardless of key order: a checkpoint read back from Postgres (jsonb orders keys
+ *  by length) must still match the same checkpoint sent again by its offline client. */
+function sameJson(left: unknown, right: unknown): boolean {
+  return canonicalJson(left) === canonicalJson(right);
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value !== null && typeof value === "object")
+    return `{${Object.keys(value)
+      // As JSON.stringify does: a key whose value is undefined is not written.
+      .filter((key) => (value as Record<string, unknown>)[key] !== undefined)
+      .sort()
+      .map(
+        (key) => `${JSON.stringify(key)}:${canonicalJson((value as Record<string, unknown>)[key])}`
+      )
+      .join(",")}}`;
+  return JSON.stringify(value) ?? "null";
 }

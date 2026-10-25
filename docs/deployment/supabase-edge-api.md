@@ -354,23 +354,31 @@ their shops on each request. A task now keeps only what a reader can still need
 checkpoint (resume, every turn, swaps), the task instance's (drift check), every checkpoint a
 transfer names (handoff restore, the web app's offline session), checkpoints without a cloud
 version, and the latest 20 versions (rollback, `GET /handoffs/:id`, `GET /handoff?version=N`,
-merge and offline sync). An older checkpoint, including an unpromoted branch 20 versions behind,
-answers `RUNTIME_HANDOFF_NOT_FOUND` (404). Pruning runs on the write that adds a checkpoint, with no
+merge and offline sync). For 30 days it also keeps every branch: a checkpoint written without
+promotion or synced from offline (`branchedAt`) and the checkpoint it started from, and any
+checkpoint nothing descends from (counted from `createdAt`). So an unmerged branch can still be
+merged and a retried offline sync, with or without an idempotency key, finds every checkpoint it
+sent. Anything else older answers `RUNTIME_HANDOFF_NOT_FOUND` (404). Pruning runs on the write that adds a checkpoint, with no
 operator or job: the in-memory store drops superseded ones (the writer deletes their rows), and on
-Edge `saveTransactionalCp2Snapshot` also deletes stored ones the request never loaded, at most 200
-per write, oldest first, so an existing backlog drains over the next writes. The Edge scope loads
+Edge `saveTransactionalCp2Snapshot` first deletes stored ones the request never loaded, at most
+200 per write, oldest first, so an existing backlog drains over the next writes. The Edge scope loads
 only the kept ones (the same rule as SQL). Migration `123_runtime_checkpoint_retention.sql` drops the
 checkpoint-to-parent foreign key (a kept checkpoint's parent may be pruned; a trigger still checks
 the parent exists when a checkpoint is inserted) and checks the head, instance and transfer foreign
 keys at commit, since the writer deletes checkpoints before it writes the rows that stopped
-pointing at them. Execution events (`cp2_runtime_execution_events`) still load in full for the
+pointing at them. Rollback `123_runtime_checkpoint_retention.down.sql` cannot restore the parent
+foreign key once any parent was pruned (it adds it back only when every parent still exists), so
+after pruning has run in production 123 is in practice not reversible. Execution events (`cp2_runtime_execution_events`) still load in full for the
 conversations a member works in; their sequence numbers are allocated from the loaded rows.
 
 **Fixed: idempotency records are scoped to their account.** `cp2_runtime_operation_dedup` records
 (checkpoint, swap, rollback, offline sync, merge) now carry `accountId` and `taskId`; the writer fills
 `account_id` from the record and migration `124_runtime_operation_dedup_tenant.sql` backfills
 stored rows from their result's task head and that conversation's owner. The Edge scope loads only
-the caller's rows. Before, it loaded none, so a retried checkpoint on Edge was not recognized: it
+the caller's rows, and only the named task's when the request names one (`/v1/runtime/:taskId`, or
+an MCP tool call's `taskId`). A record answers retries for 7 days; older ones are not consulted and
+are deleted on the next write that records an operation (at most 200, in memory and on Edge from
+storage). Before, it loaded none, so a retried checkpoint on Edge was not recognized: it
 created a second dedup row with the same key and the write failed with `40001` (503)
 (`tests/edge-runtime-checkpoint-scope.test.ts`).
 

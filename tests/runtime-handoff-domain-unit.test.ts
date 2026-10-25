@@ -1570,3 +1570,155 @@ describe('RuntimeHandoffDomain execution fencing (durable-execution-plane.md "Fe
     release.release();
   });
 });
+
+// Checkpoint retention in the in-memory store (checkpoint-retention.ts). This is the only pruning
+// on the Node API path, so it is tested here and not only through Edge.
+describe("RuntimeHandoffDomain checkpoint retention", () => {
+  const day = 86_400_000;
+  const versions = (harness: Harness, taskId: string) =>
+    [...harness.domain.handoffsMap.values()]
+      .filter((handoff) => handoff.taskId === taskId)
+      .map((handoff) => handoff.checkpointVersion!)
+      .sort((left, right) => left - right);
+  const range = (from: number, to: number) =>
+    Array.from({ length: to - from + 1 }, (_value, index) => from + index);
+  const advance = (
+    harness: Harness,
+    sessionId: string,
+    taskId: string,
+    count: number,
+    now?: Date
+  ) => {
+    for (let index = 0; index < count; index += 1) {
+      const head = harness.domain.resolveHandoff(sessionId, taskId).taskHead.activeHandoffId;
+      harness.domain.createCheckpoint(
+        sessionId,
+        { taskId, promote: true, expectedHandoffId: head, currentState: `turn ${index}` },
+        now
+      );
+    }
+  };
+
+  it("keeps only the latest 20 versions of a chain of promoted checkpoints", () => {
+    const harness = buildHarness();
+    const { conversationId, accountId } = seedConversation(harness, "retention-chain");
+    const sessionId = harness.sessionIdFor(accountId);
+    harness.domain.resolveHandoff(sessionId, conversationId);
+    advance(harness, sessionId, conversationId, 30);
+    expect(versions(harness, conversationId)).toEqual(range(12, 31));
+    const head = harness.domain.resolveHandoff(sessionId, conversationId);
+    expect(head.activeHandoff.checkpointVersion).toBe(31);
+    expect(() => harness.domain.getHandoffByVersion(sessionId, conversationId, 11)).toThrow(
+      "No checkpoint exists at that version."
+    );
+    expect(
+      harness.domain.getHandoffByVersion(sessionId, conversationId, 12).checkpointVersion
+    ).toBe(12);
+  });
+
+  it("keeps a synced offline batch and its parent, so retrying the same 25 checkpoints is a no-op", () => {
+    const harness = buildHarness();
+    const { conversationId, accountId } = seedConversation(harness, "retention-offline");
+    const sessionId = harness.sessionIdFor(accountId);
+    const bootstrap = harness.domain.resolveHandoff(sessionId, conversationId);
+    const runtime = bootstrap.activeHandoff.runtime;
+    const batch = Array.from({ length: 25 }, (_value, index) =>
+      buildOfflineCheckpoint({
+        id: `offline-retention-${index}`,
+        parentHandoffId:
+          index === 0 ? bootstrap.activeHandoff.id : `offline-retention-${index - 1}`,
+        runtime,
+        currentState: `offline step ${index}`
+      })
+    );
+    const first = harness.domain.syncOfflineCheckpoints(sessionId, {
+      taskId: conversationId,
+      checkpoints: batch
+    });
+    expect(first.syncedHandoffs.map((handoff) => handoff.checkpointVersion)).toEqual(range(2, 26));
+    // The hosted line goes on past the batch's oldest versions before the client retries.
+    advance(harness, sessionId, conversationId, 5);
+    expect(versions(harness, conversationId)).toEqual(range(1, 31));
+    // No idempotency key: the client lost the response and sends the same payload again.
+    const retry = harness.domain.syncOfflineCheckpoints(sessionId, {
+      taskId: conversationId,
+      checkpoints: batch
+    });
+    expect(retry.syncedHandoffs).toEqual(first.syncedHandoffs);
+    expect(
+      harness.domain.resolveHandoff(sessionId, conversationId).taskHead.nextCheckpointVersion
+    ).toBe(32);
+    // 30 days on the batch counts as merged or abandoned: it is pruned like any other history.
+    advance(harness, sessionId, conversationId, 1, new Date(Date.now() + 31 * day));
+    expect(versions(harness, conversationId)).toEqual(range(13, 32));
+  });
+
+  it("keeps an unmerged branch so it can still be merged, for 30 days", () => {
+    const harness = buildHarness();
+    const { conversationId, accountId } = seedConversation(harness, "retention-branch");
+    const sessionId = harness.sessionIdFor(accountId);
+    harness.domain.resolveHandoff(sessionId, conversationId);
+    // Two checkpoints written next to the head, never promoted: branches.
+    const branch = harness.domain.createCheckpoint(sessionId, {
+      taskId: conversationId,
+      currentState: "branch to merge"
+    }).handoff;
+    const abandoned = harness.domain.createCheckpoint(sessionId, {
+      taskId: conversationId,
+      currentState: "branch nobody merges"
+    }).handoff;
+    expect(branch.branchedAt).toBeDefined();
+    advance(harness, sessionId, conversationId, 25);
+    const kept = versions(harness, conversationId);
+    expect(kept).toEqual(
+      expect.arrayContaining([branch.checkpointVersion, abandoned.checkpointVersion])
+    );
+    const head = harness.domain.resolveHandoff(sessionId, conversationId).taskHead.activeHandoffId;
+    const merge = harness.domain.mergeCheckpoints(sessionId, {
+      taskId: conversationId,
+      branchHandoffIds: [head, branch.id],
+      expectedHandoffId: head
+    });
+    expect(merge.handoff.mergedFromHandoffIds).toEqual([branch.id]);
+    advance(harness, sessionId, conversationId, 1, new Date(Date.now() + 31 * day));
+    const later = [...harness.domain.handoffsMap.keys()];
+    expect(later).not.toContain(abandoned.id);
+    expect(later).not.toContain(branch.id);
+    expect(versions(harness, conversationId)).toHaveLength(20);
+  });
+
+  it("expires idempotency records after 7 days and deletes them on a later write", () => {
+    const harness = buildHarness();
+    const { conversationId, accountId } = seedConversation(harness, "retention-dedup");
+    const sessionId = harness.sessionIdFor(accountId);
+    const first = harness.domain.createCheckpoint(sessionId, {
+      taskId: conversationId,
+      idempotencyKey: "count-shelf"
+    });
+    const retry = harness.domain.createCheckpoint(sessionId, {
+      taskId: conversationId,
+      idempotencyKey: "count-shelf"
+    });
+    expect(retry.handoff.id).toBe(first.handoff.id);
+    expect(harness.domain.operationDedupMap.size).toBe(1);
+    const later = new Date(Date.now() + 8 * day);
+    harness.domain.createCheckpoint(
+      sessionId,
+      { taskId: conversationId, idempotencyKey: "count-till" },
+      later
+    );
+    // The expired record was deleted by that write; the new one stays.
+    expect([...harness.domain.operationDedupMap.keys()]).toHaveLength(1);
+    expect(
+      [...harness.domain.operationDedupMap.values()].every(
+        (record) => record.createdAt > new Date(Date.now() - day).toISOString()
+      )
+    ).toBe(true);
+    const afterExpiry = harness.domain.createCheckpoint(
+      sessionId,
+      { taskId: conversationId, idempotencyKey: "count-shelf" },
+      later
+    );
+    expect(afterExpiry.handoff.id).not.toBe(first.handoff.id);
+  });
+});
