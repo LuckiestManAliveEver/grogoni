@@ -113,6 +113,9 @@ describe("outbox resend routing", () => {
     })) as never;
     vi.mocked(getJson).mockReset();
     vi.mocked(postJson).mockReset();
+    // The real postJson returns a promise; keep that contract after the reset so a code path that
+    // does `postJson(...).catch(...)` is not broken by a bare vi.fn() returning undefined.
+    vi.mocked(postJson).mockResolvedValue({});
     host = document.createElement("div");
     document.body.append(host);
     root = createRoot(host);
