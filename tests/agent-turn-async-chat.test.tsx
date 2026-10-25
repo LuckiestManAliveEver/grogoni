@@ -98,6 +98,11 @@ describe("chat with an agent reply that runs after the message was accepted", ()
               turnId: "turn-1"
             }
           });
+        if (path === "/v1/conversations/conversation-1")
+          return json({
+            conversation: { id: "conversation-1", kind: "personal", activeShopId: "shop-1" },
+            participants: []
+          });
         if (path === "/v1/agent-turns/turn-1") return json(turnAnswers.shift());
         if (path.startsWith("/v1/ai/turn-stream/")) return new Response("", { status: 204 });
         throw new Error(`Unexpected fetch to ${path}`);
