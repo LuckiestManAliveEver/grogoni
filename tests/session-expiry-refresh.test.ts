@@ -13,6 +13,8 @@ interface FakeServer {
   refreshAllowed: boolean;
   refreshRequests: number;
   latencyMs: Record<string, number>;
+  /** Every request the fake server answered, by path. */
+  served: string[];
 }
 
 let server: FakeServer;
@@ -52,13 +54,29 @@ beforeEach(() => {
     validSessions: new Set(),
     refreshAllowed: true,
     refreshRequests: 0,
-    latencyMs: { "/a": 10, "/b": 30, "/c": 50, "/d": 70 }
+    latencyMs: { "/a": 10, "/b": 30, "/c": 50, "/d": 70 },
+    served: []
   };
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: string | URL | Request) => {
       const path = new URL(String(input)).pathname;
       const sentCookie = server.jar.session;
+      server.served.push(path);
+      if (path === "/auth/login/password") {
+        // Signing in as another account replaces the cookie with that account's session.
+        await delay(5);
+        server.validSessions.clear();
+        server.validSessions.add("account-b");
+        server.jar.session = "account-b";
+        return jsonResponse(200, { authenticated: true });
+      }
+      if (path === "/auth/logout") {
+        await delay(5);
+        server.validSessions.clear();
+        server.jar.session = null;
+        return jsonResponse(200, { loggedOut: true });
+      }
       if (path === "/auth/session/refresh") {
         server.refreshRequests += 1;
         await delay(15);
@@ -131,6 +149,33 @@ describe("session restore after the 15 minute expiry", () => {
     server.jar.session = null;
     await expect(apiFetch("/a")).resolves.toMatchObject({ path: "/a" });
     expect(server.refreshRequests).toBe(2);
+  });
+
+  it("never refreshes or retries a previous account's request as the account signed in meanwhile", async () => {
+    // /d was sent for the lapsed account; signing in as account B lands before its 401 does.
+    const late = apiFetch("/d").catch((error: unknown) => error);
+    await delay(5);
+    await apiFetch("/auth/login/password", { method: "POST", body: { password: "x" } });
+
+    const failure = await late;
+    expect(failure).toMatchObject({ status: 401 });
+    expect(server.refreshRequests).toBe(0);
+    expect(server.served.filter((path) => path === "/d")).toHaveLength(1);
+  });
+
+  it("never refreshes or retries a request whose 401 lands after signing out", async () => {
+    server.validSessions.add("account-a");
+    server.jar.session = "account-a";
+    // Sent with account A's cookie, which sign-out revokes before the answer comes back.
+    server.validSessions.clear();
+    const late = apiFetch("/d").catch((error: unknown) => error);
+    await delay(5);
+    await apiFetch("/auth/logout", { method: "POST", body: {} });
+
+    const failure = await late;
+    expect(failure).toMatchObject({ status: 401 });
+    expect(server.refreshRequests).toBe(0);
+    expect(server.served.filter((path) => path === "/d")).toHaveLength(1);
   });
 
   it("reports a definitive sign-in failure, once, when the refresh itself has expired", async () => {

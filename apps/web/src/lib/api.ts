@@ -51,6 +51,42 @@ function readSessionGeneration(): string {
   }
 }
 
+// Which account the cookie belongs to. A generation only covers a refresh of the same session: a
+// 401 from before a sign-in or sign-out was answered for the previous account, so retrying it, or
+// refreshing for it, would run that request as the new account. Advanced by a successful sign-in
+// or sign-out POST; a request sent under an older epoch keeps its 401.
+const accountEpochStorageKey = "grogoni.session-account-epoch.v1";
+let memoryAccountEpoch = "initial";
+
+function readAccountEpoch(): string {
+  try {
+    return localStorage.getItem(accountEpochStorageKey) ?? memoryAccountEpoch;
+  } catch {
+    return memoryAccountEpoch;
+  }
+}
+
+function advanceAccountEpoch(): void {
+  memoryAccountEpoch = createRequestId();
+  try {
+    localStorage.setItem(accountEpochStorageKey, memoryAccountEpoch);
+  } catch {
+    // Storage blocked: the in-memory epoch still covers this tab.
+  }
+}
+
+/** A POST that, when it succeeds, signs this browser in as an account or out of one. */
+function changesSignedInAccount(pathOrUrl: string, method: string): boolean {
+  if (method !== "POST") return false;
+  const pathname = requestPathname(pathOrUrl);
+  if (pathname === null || pathname === refreshPath) return false;
+  return (
+    pathname === "/auth/logout" ||
+    pathname === "/auth/logout-all" ||
+    isAuthenticationEntryPoint(pathOrUrl)
+  );
+}
+
 function advanceSessionGeneration(): void {
   memorySessionGeneration = createRequestId();
   try {
@@ -163,7 +199,14 @@ export async function apiCloudFetch<T>(
   };
 
   const generationAtSend = readSessionGeneration();
+  const accountEpochAtSend = readAccountEpoch();
   const response = await performFetch(url, method, headers, options);
+  if (response.ok && changesSignedInAccount(pathOrUrl, method.toUpperCase())) advanceAccountEpoch();
+  // Sent for an account this browser has since signed out of or switched away from: the 401 is
+  // that account's answer, never a reason to refresh or retry as the account signed in now.
+  if (response.status === 401 && readAccountEpoch() !== accountEpochAtSend) {
+    return parseApiResponse<T>(response);
+  }
   // Only a successful refresh advances the generation. Not sign-in or other entry points: their
   // list includes public reads such as /auth/oauth/providers, and a 200 from one of those would
   // make a real 401 skip its refresh (the app then fell through to Continue, a new account).
@@ -267,6 +310,14 @@ async function parseApiResponse<T>(response: Response): Promise<T> {
     });
   }
   return (await response.json()) as T;
+}
+
+function requestPathname(pathOrUrl: string): string | null {
+  try {
+    return pathOrUrl.startsWith("http") ? new URL(pathOrUrl).pathname : pathOrUrl.split("?")[0]!;
+  } catch {
+    return null;
+  }
 }
 
 function isAuthenticationEntryPoint(pathOrUrl: string): boolean {

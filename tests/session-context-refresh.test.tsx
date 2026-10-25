@@ -15,8 +15,12 @@ vi.mock("../apps/web/src/lib/api", async () => {
   return { ...actual, apiFetch: vi.fn() };
 });
 
-const { apiFetch } = await import("../apps/web/src/lib/api");
+const { apiFetch, ApiRequestError } = await import("../apps/web/src/lib/api");
 const { useAuthState } = await import("../apps/web/src/hooks/useAuthState");
+const { queueMessagingOutbox, readMessagingOutbox } =
+  await import("../apps/web/src/messaging/outbox");
+const { saveDeviceOnlyMessages, readDeviceOnlyMessages } =
+  await import("../apps/web/src/chat-device-only-messages");
 
 const mockedApiFetch = vi.mocked(apiFetch);
 const activeBusinessStorageKey = "grogoni.chatFirst.activeBusiness";
@@ -289,11 +293,74 @@ describe("restore keeps the place a cold-load URL names", () => {
     expect(window.location.pathname).toBe("/workspace/conversations/server-last-conversation");
   });
 
+  it("joining a shop as the first applied load restores the last place and uses up the deep link", async () => {
+    await remountAt("/sell/shop");
+    await act(async () => {
+      await latestApi!.joinStaffShop(ownedShop as never, spies.setActiveConversationId);
+    });
+    expect(window.location.pathname).not.toBe("/sell/shop");
+    expect(spies.setActiveConversationId).toHaveBeenCalledWith("server-last-conversation");
+
+    // The deep link is gone: a later sign-in restores the last place too.
+    window.history.replaceState(null, "", "/sell/shop");
+    await load("restore");
+    expect(window.location.pathname).toBe("/workspace/conversations/server-last-conversation");
+  });
+
+  it("joining a shop after the launch restore kept the URL restores the last place", async () => {
+    await remountAt("/sell/shop");
+    await load("restore");
+    expect(window.location.pathname).toBe("/sell/shop");
+
+    spies.setActiveConversationId.mockReset();
+    await act(async () => {
+      await latestApi!.joinStaffShop(ownedShop as never, spies.setActiveConversationId);
+    });
+    expect(spies.setActiveConversationId).toHaveBeenCalledWith("server-last-conversation");
+  });
+
   it("restores the last place when the user already left the deep link", async () => {
     await remountAt("/sell/shop");
     window.history.replaceState(null, "", "/login");
     await load("restore");
 
     expect(window.location.pathname).toBe("/workspace/conversations/server-last-conversation");
+  });
+});
+
+describe("a refused session refresh", () => {
+  it("asks to sign in but keeps the waiting messages and their thread copies on the device", async () => {
+    // docs/frontend/frontend.md, "Session expiry and silent refresh": past the refresh limit the
+    // app asks to sign in; only logout (resetClientToStartup) clears what is waiting to send.
+    queueMessagingOutbox({
+      accountId: "account-1",
+      clientMessageId: "waiting-1",
+      payload: { content: { type: "text", text: "Add 5 bags of sugar" } }
+    });
+    saveDeviceOnlyMessages("account-1", [
+      {
+        id: "waiting-1",
+        author: "owner",
+        body: "Add 5 bags of sugar",
+        status: "failed",
+        outboxState: "retrying",
+        deviceOnlyIn: "conversation-1"
+      } as never
+    ]);
+
+    let handled = false;
+    act(() => {
+      handled = latestApi!.rejectDefinitiveAuthenticationFailure(
+        new ApiRequestError(401, "The refresh session has expired.", {
+          code: "auth_refresh_expired"
+        })
+      );
+    });
+
+    expect(handled).toBe(true);
+    expect(readMessagingOutbox("account-1").map((entry) => entry.clientMessageId)).toEqual([
+      "waiting-1"
+    ]);
+    expect(readDeviceOnlyMessages("account-1").map((message) => message.id)).toEqual(["waiting-1"]);
   });
 });

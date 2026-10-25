@@ -795,7 +795,7 @@ const responsiveSessionContext = {
 for (const width of [390, 1366]) {
   test(`a cold load of /sell/shop keeps the Shop Hub's setup when the context load works at ${width}px`, async ({
     page
-  }) => {
+  }, testInfo) => {
     await page.setViewportSize({ width, height: 844 });
     await page.addInitScript(() => {
       localStorage.removeItem("grogoni.chatFirst.activeBusiness");
@@ -819,7 +819,7 @@ for (const width of [390, 1366]) {
     await expect(setup).toBeVisible();
     await expectNoViewportOverflow(page);
     await page.screenshot({
-      path: `/tmp/concerns/web-session/no-shop-context-works-${width}.png`,
+      path: testInfo.outputPath(`no-shop-context-works-${width}.png`),
       fullPage: true
     });
     await setup.click();
@@ -827,39 +827,46 @@ for (const width of [390, 1366]) {
   });
 }
 
-test("a cold load of /sell/shop keeps the Shop Hub when the account has a shop", async ({
-  page
-}) => {
-  let contextLoads = 0;
-  await page.route("**/v1/session/context", (route) => {
-    contextLoads++;
-    return route.fulfill({
-      json: {
-        ...responsiveSessionContext,
-        activeShopId: "responsive-certification-shop",
-        shops: [
-          {
-            business: {
-              id: "responsive-certification-shop",
-              name: "Jane's International Neighborhood Market and Supplies",
-              language: "en",
-              grogoniId: "grogoni.janes-market"
-            },
-            membership: { role: "owner" }
-          }
-        ]
-      }
+for (const width of [390, 1366]) {
+  test(`a cold load of /sell/shop keeps the Shop Hub when the account has a shop at ${width}px`, async ({
+    page
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 844 });
+    let contextLoads = 0;
+    await page.route("**/v1/session/context", (route) => {
+      contextLoads++;
+      return route.fulfill({
+        json: {
+          ...responsiveSessionContext,
+          activeShopId: "responsive-certification-shop",
+          shops: [
+            {
+              business: {
+                id: "responsive-certification-shop",
+                name: "Jane's International Neighborhood Market and Supplies",
+                language: "en",
+                grogoniId: "grogoni.janes-market"
+              },
+              membership: { role: "owner" }
+            }
+          ]
+        }
+      });
+    });
+    await page.goto("/sell/shop");
+    const dialog = page.getByRole("dialog", { name: "Your shop" });
+    await expect(dialog).toBeVisible({ timeout: 15_000 });
+    await expect.poll(() => contextLoads).toBeGreaterThan(0);
+    await page.waitForTimeout(500);
+    await expect(page).toHaveURL(/\/sell\/shop$/u);
+    await expect(dialog).toBeVisible();
+    await expectNoViewportOverflow(page);
+    await page.screenshot({
+      path: testInfo.outputPath(`shop-hub-kept-${width}.png`),
+      fullPage: true
     });
   });
-  await page.goto("/sell/shop");
-  const dialog = page.getByRole("dialog", { name: "Your shop" });
-  await expect(dialog).toBeVisible({ timeout: 15_000 });
-  await expect.poll(() => contextLoads).toBeGreaterThan(0);
-  await page.waitForTimeout(500);
-  await expect(page).toHaveURL(/\/sell\/shop$/u);
-  await expect(dialog).toBeVisible();
-  await page.screenshot({ path: "/tmp/concerns/web-session/shop-hub-kept.png", fullPage: true });
-});
+}
 
 test("the Shop Hub opens at /sell/shop, opens modules as drawers, and closes with Escape", async ({
   page

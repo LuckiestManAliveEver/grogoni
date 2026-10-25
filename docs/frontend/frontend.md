@@ -1207,8 +1207,12 @@ retries on the new session without refreshing; only a 401 under the current gene
 When the refresh itself is refused (past the 30 day inactivity or 180 day absolute limit, or
 revoked), the error is definitive and the app asks the user to sign in
 (`requireReauthentication` in `useAuthState.ts`). That clears only the session: drafts and the
-outbox stay on the device (only logout's `resetClientToStartup` clears them). Covered by
-`tests/session-expiry-refresh.test.ts` and `tests/authenticated-api-client.test.ts`.
+outbox stay on the device (only logout's `resetClientToStartup` clears them; the "a refused
+session refresh" test in `tests/session-context-refresh.test.tsx` checks it). A generation only
+covers a refresh of the same account's session. A request still in flight when the browser signs
+in as another account, or signs out, keeps its 401: it is never refreshed for, or retried as, the
+account signed in now. A successful sign-in or sign-out POST advances a separate account epoch for
+this. Covered by `tests/session-expiry-refresh.test.ts` and `tests/authenticated-api-client.test.ts`.
 
 **Deep links on restore.** A cold load of a URL that names a place (`/sell/shop`, a conversation,
 `/marketplace`, a module such as `/catalogue`) keeps that place when the session context loads:
@@ -1216,7 +1220,11 @@ the restore still adopts the account's shop and applies the URL's mode, but it d
 The bare root (`/`, and the old `/chat` alias) restores the account's last place as before. The
 deep link is read once, when `useAuthState` mounts, and used only by the first load that applies;
 a later sign-in, or a load that lands after the user already left that URL, restores the last
-place. A seller URL for an account with no shop opens the Shop Hub (`/sell/shop`), which offers
+place. Joining a shop (`joinStaffShop`) always restores the last place, even when it is the first
+load that applies: the user chose what to do next. A conversation URL the account cannot open
+(deleted, or someone else's) is kept by the restore and then left by `loadMessagingInbox`, which
+does not find it in the inbox and returns to that mode's chat (tested in
+`tests/outbox-resend-routing.test.tsx`). A seller URL for an account with no shop opens the Shop Hub (`/sell/shop`), which offers
 shop setup, instead of a seller screen with no shop behind it. The rules live in
 `apps/web/src/session-restore-place.ts`. Covered by `tests/session-restore-place.test.ts`,
 `tests/session-context-refresh.test.tsx` and the `/sell/shop` cold-load tests in

@@ -607,17 +607,22 @@ export function useAuthState(deps: UseAuthStateDeps) {
    * when the account still belongs to it and otherwise forgets it, without picking another. A
    * device with no shop at all adopts the account's shop (no navigation), so an owner is never
    * treated as shopless.
+   *
+   * `keepUrlPlace: false` (joining a shop) restores the last place even on the first applied
+   * load: the user picked what to do next, so the URL the app was opened with no longer applies.
+   * The deep link is used up either way, so a later load does not act on it.
    */
   async function loadGrogoniSessionContext(
     setActiveConversationId: (conversationId: string | null) => void,
     shouldApply: () => boolean = () => true,
-    apply: "restore" | "refresh" = "restore"
+    apply: "restore" | "refresh" = "restore",
+    keepUrlPlace = true
   ): Promise<boolean> {
     try {
       const shopAtStart = readStoredBusiness()?.id ?? null;
       const context = await apiFetch<GrogoniSessionContext>("/v1/session/context");
       if (!shouldApply()) return false;
-      const deepLink = deepLinkRef.current;
+      const deepLink = keepUrlPlace ? deepLinkRef.current : null;
       deepLinkRef.current = null;
       if (apply === "refresh") {
         const currentShop = readStoredBusiness();
@@ -759,7 +764,12 @@ export function useAuthState(deps: UseAuthStateDeps) {
     const load = sessionContextRetryRef.current.beginExternalLoad();
     let applied = false;
     try {
-      applied = await loadGrogoniSessionContext(setActiveConversationId, load.shouldApply);
+      applied = await loadGrogoniSessionContext(
+        setActiveConversationId,
+        load.shouldApply,
+        "restore",
+        false
+      );
     } finally {
       load.settle(applied);
     }
