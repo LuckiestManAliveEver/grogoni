@@ -382,6 +382,10 @@ export async function createEdgeSnapshotScope(
     accountId: actor?.account_id as string | undefined,
     withClause,
     predicate(key: keyof Cp2Snapshot) {
+      if (key === "agentSkills")
+        return `record->>'kind' = 'publication' or record->>'scope' = 'SYSTEM'
+        or (record->>'scope' = 'TENANT' and business_id in (select id from edge_business_ids))
+        or (record->>'scope' = 'USER' and account_id = ${actorAccount} and ${actorAccount} <> '')`;
       if (globalCollections.has(key)) return "true";
       // Runtime task records carry taskId rather than tenant columns. Omitting their
       // head resets checkpoint allocation to version 1 on the next Edge request.

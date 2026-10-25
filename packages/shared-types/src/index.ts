@@ -4265,6 +4265,7 @@ export interface RuntimeModelTrace {
 }
 
 export interface RuntimePlannedAction {
+  portableSkill?: { id: string; version: number; digest: string };
   id: string;
   toolName: RuntimeToolName;
   risk: "low" | "medium" | "high" | "critical";

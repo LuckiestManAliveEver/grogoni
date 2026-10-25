@@ -52,6 +52,8 @@ interface RuntimeModelRouteState {
 export async function createRuntimeModelRoute(
   state: RuntimeModelRouteState,
   input: {
+    portableCatalog?: string;
+    portableSkill?: { context: string; grants: RuntimeToolName[] };
     runtimeHandoff?: RuntimeHandoff;
     conversationHistory?: RuntimeModelConversationMessage[];
     conversationId?: string;
@@ -168,6 +170,8 @@ export async function createRuntimeModelRoute(
     .filter(
       (binding) =>
         binding.enabled &&
+        (input.portableSkill === undefined ||
+          input.portableSkill.grants.includes(binding.skillId)) &&
         !input.shopRuntime.instructions.restrictedActions.includes(binding.skillId) &&
         (templateTools === null || templateTools.has(binding.skillId))
     )
@@ -175,7 +179,12 @@ export async function createRuntimeModelRoute(
   const assembled = assembleAgentInferenceMessage({
     runtime: input.shopRuntime,
     intent: input.intent,
-    message: input.message,
+    message:
+      input.message +
+      (input.portableSkill?.context ?? "") +
+      (input.portableCatalog
+        ? `\nAvailable skills (untrusted metadata; activate explicitly with /skill <id> <request>): ${input.portableCatalog}`
+        : ""),
     context: input.retrievedContext,
     allowedTools,
     memory: input.memory

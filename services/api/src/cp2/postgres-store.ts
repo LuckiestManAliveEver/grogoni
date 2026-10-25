@@ -47,6 +47,7 @@ interface NormalizedCollection {
 }
 
 export const normalizedCollections: NormalizedCollection[] = [
+  { key: "agentSkills", tableName: "cp2_agent_skills" },
   { key: "accounts", tableName: "cp2_accounts" },
   { key: "users", tableName: "cp2_users" },
   { key: "deviceAccountBootstraps", tableName: "cp2_device_account_bootstraps" },
@@ -219,6 +220,12 @@ export const normalizedCollections: NormalizedCollection[] = [
 // persistence round trip - and blocking the response on it via app.ts's runtime GET flush wait -
 // on every capability/status poll is not worth it.
 const mutatingMethodNames = new Set([
+  "draftAgentSkill",
+  "generateAgentSkill",
+  "updateAgentSkill",
+  "transitionAgentSkill",
+  "publishAgentSkill",
+  "installPublicAgentSkill",
   "createBuyerShoppingTurn",
   "createUnifiedCheckout",
   "heartbeatRuntimeHost",
@@ -5121,6 +5128,7 @@ function emptySnapshot(): Cp2Snapshot {
     activeAiModels: [],
     agentProfiles: [],
     agentRuntimeVersions: [],
+    agentSkills: [],
     agentContextSources: [],
     agentEvaluationEvents: [],
     agentOwnerCorrections: [],

@@ -1,3 +1,9 @@
+import {
+  AgentSkillsDomain,
+  type SkillRecord,
+  type SkillRequest,
+  type SkillInput
+} from "./domains/agent-skills/store.js";
 import { runBuyerAssistant } from "./domains/commerce/buyer-assistant.js";
 import type {
   BuyFeedSummary,
@@ -690,6 +696,7 @@ export interface RoleCheckResult {
 
 export interface Cp2Snapshot
   extends ModelTemplatesSnapshot, VocabularySnapshot, ComputerRuntimeSnapshot {
+  agentSkills?: SkillRecord[];
   accounts: AccountSummary[];
   users: UserSummary[];
   deviceAccountBootstraps?: DeviceAccountBootstrapRecord[];
@@ -1004,6 +1011,7 @@ export class Cp2Store {
   private readonly inferencePlatform: InferencePlatform;
   /** The deployment's default runtime, with its engine resolved to one this deployment runs. */
   private readonly platformDefaultRuntime: PlatformDefaultRuntimePolicy;
+  private readonly agentSkills: AgentSkillsDomain;
   private readonly modelRuntimeAdapterResolver: Cp2StoreOptions["modelRuntimeAdapterResolver"];
 
   constructor(private readonly options: Cp2StoreOptions = {}) {
@@ -1026,6 +1034,97 @@ export class Cp2Store {
               modelId: input.modelId,
               executionTarget: input.executionTarget
             });
+    this.agentSkills = new AgentSkillsDomain({
+      authorize: (input) => {
+        const now = input.now ?? new Date();
+        const actor = input.businessId
+          ? this.requireAuthorizedSession(input.sessionId, input.businessId, "business:read", now)
+          : this.requirePinVerifiedSession(input.sessionId, now);
+        this.requireAccountNotPendingDeletion(actor.account.id, now);
+        return {
+          userId: actor.user.id,
+          accountId: actor.account.id,
+          role: input.businessId
+            ? this.requireMembership(input.businessId, actor.user.id).role
+            : "owner",
+          operator: this.platformOperators.has(actor.account.id)
+        };
+      },
+      agentAllowed: (businessId, agentId) =>
+        this.agentRuntimeDomain.currentAgentProfile(businessId, new Date()).agentId === agentId,
+      audit: (actorId, id, event, details) =>
+        this.recordAuditEvent({
+          type: `agent_skill.${event}`,
+          aggregateType: "agent_skill",
+          aggregateId: id,
+          actorId,
+          occurredAt: new Date().toISOString(),
+          payload: details
+        }),
+      generate: async (input, description) => {
+        const actor = this.requirePinVerifiedSession(input.sessionId, new Date());
+        const modelId = this.platformDefaultRuntime.modelId;
+        const adapter = this.modelRuntimeAdapterResolver?.({
+          modelId,
+          executionTarget: this.platformDefaultRuntime.executionTarget,
+          agentId: "skill-drafter",
+          shopId: input.businessId ?? ""
+        });
+        const provider =
+          this.options.runtimeModelProviderResolver?.(modelId) ??
+          this.options.runtimeModelProvider ??
+          (adapter
+            ? runtimeProviderFromAdapter({
+                adapter,
+                context: {
+                  modelId,
+                  agentId: "skill-drafter",
+                  shopId: input.businessId ?? "",
+                  accountId: actor.account.id
+                }
+              })
+            : undefined);
+        if (!provider)
+          throw new Cp2Error(
+            503,
+            "skill_generation_unavailable",
+            "The existing model integration is not configured."
+          );
+        const completion = await provider.complete({
+          schemaVersion: "cp11-runtime-model-v1",
+          allowedTools: [],
+          agentInstructions:
+            'Draft a portable Agent Skills SKILL.md. Return JSON {"files":{"SKILL.md":"..."}} only. YAML frontmatter requires lowercase-hyphen name and description. Include no secrets or business records. Use only capability names supplied by the server. Never grant permissions, execute actions, or create schedules. Explain that recurring/event automation requires a separately approved existing workflow.',
+          message: JSON.stringify({
+            intent: description,
+            availableCapabilities: Object.keys(runtimeToolRegistry)
+          })
+        });
+        if (
+          completion.status !== "available" ||
+          !completion.outputText ||
+          completion.outputText.length > 262144
+        )
+          throw new Cp2Error(
+            503,
+            "skill_generation_failed",
+            "The model could not produce a bounded skill draft."
+          );
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(completion.outputText);
+        } catch {
+          throw new Cp2Error(
+            422,
+            "skill_generation_invalid",
+            "The model did not return a skill file mapping."
+          );
+        }
+        if (!parsed || typeof parsed !== "object" || !("files" in parsed))
+          throw new Cp2Error(422, "skill_generation_invalid", "Missing generated files.");
+        return (parsed as { files: Record<string, string> }).files;
+      }
+    });
     this.nativeRuntimeBindings = new NativeRuntimeBindingStore(this.platformDefaultRuntime);
     this.channelGateway = options.channelGateway ?? createChannelGatewayFromEnvironment({});
     this.emailMailboxProviderClient =
@@ -1347,7 +1446,8 @@ export class Cp2Store {
         this.pushOfflineOrderIntents(sessionId, intents),
       createChannelOrder: (input) => this.createChannelOrder(input),
       ensureGrogoniSessionContext: (session, now) => this.ensureGrogoniSessionContext(session, now),
-      createRuntimeTurn: (input) => this.agentRuntimeDomain.createRuntimeTurn(input),
+      handleSkillChat: (input) => this.handleAgentSkillChat(input),
+      createRuntimeTurn: (input) => this.createRuntimeTurn(input),
       agentModelRecoveryGuidance: (businessId, error) =>
         this.agentRuntimeDomain.agentModelRecoveryGuidance(businessId, error),
       attemptPublicAgentReply: (input) => this.attemptPublicAgentReply(input),
@@ -1464,6 +1564,8 @@ export class Cp2Store {
       return member && participant ? { ...conversation, accountId: input.accountId } : conversation;
     };
     this.agentRuntimeDomain = new AgentRuntimeDomain({
+      assertPortableSkillAction: (input, ref, tool, agentId) =>
+        this.agentSkills.assertAction(input, ref, tool, agentId),
       ...(options.businessTaskEvaluations === undefined
         ? {}
         : { businessTaskEvaluations: options.businessTaskEvaluations }),
@@ -1580,7 +1682,7 @@ export class Cp2Store {
         this.documentImportDomain.requireDocumentImport(businessId, importJobId),
       suppliersForBusiness: (businessId) => this.supplierDomain.suppliersForBusiness(businessId),
       purchaseReceipts: this.supplierDomain.purchaseReceiptsMap,
-      queryCatalogue: (input) => this.salesDomain.queryCatalogue(input),
+      queryCatalogue: (input) => this.queryCatalogue(input),
       listProducts: (input) => this.salesDomain.listProducts(input),
       listInvoices: (input) => this.salesDomain.listInvoices(input),
       listCustomerDebts: (input) => this.salesDomain.listCustomerDebts(input),
@@ -8217,7 +8319,198 @@ export class Cp2Store {
   createRuntimeTurn(
     ...args: Parameters<AgentRuntimeDomain["createRuntimeTurn"]>
   ): ReturnType<AgentRuntimeDomain["createRuntimeTurn"]> {
-    return this.agentRuntimeDomain.createRuntimeTurn(...args);
+    const input = args[0];
+    const match = /^\/skill\s+(\S+)\s+([\s\S]+)$/.exec(input.message);
+    if (match && input.confirmationToken === undefined) {
+      const profile = this.agentRuntimeDomain.getAgentProfile({
+        sessionId: input.sessionId,
+        businessId: input.businessId
+      });
+      const active = this.agentSkills.activate(input, match[1]!, profile.agentId);
+      const actor = this.requireAuthorizedSession(
+        input.sessionId,
+        input.businessId,
+        "business:read",
+        input.now ?? new Date()
+      );
+      const recordOutcome = (
+        outcome: string,
+        capability: string | null,
+        failureCategory: string | null
+      ) =>
+        this.recordAuditEvent({
+          type: "agent_skill.execution",
+          aggregateType: "agent_skill",
+          aggregateId: active.ref.id,
+          actorId: actor.user.id,
+          occurredAt: new Date().toISOString(),
+          payload: {
+            skillId: active.ref.id,
+            skillVersion: active.ref.version,
+            skillDigest: active.ref.digest,
+            agentId: profile.agentId,
+            businessId: input.businessId,
+            capability,
+            outcome,
+            failureCategory
+          }
+        });
+      return this.agentRuntimeDomain
+        .createRuntimeTurn({
+          ...input,
+          message: match[2]!,
+          portableSkill: { ...active.ref, context: active.context, grants: active.grants }
+        })
+        .then(
+          (result) => {
+            recordOutcome(
+              result.turn.status,
+              result.turn.plan.toolName,
+              result.turn.verification.ok ? null : "authorization_or_validation"
+            );
+            return result;
+          },
+          (error) => {
+            recordOutcome(
+              "failed",
+              null,
+              error instanceof Cp2Error ? error.code : "execution_failed"
+            );
+            throw error;
+          }
+        );
+    }
+    const profile = this.agentRuntimeDomain.getAgentProfile({
+      sessionId: input.sessionId,
+      businessId: input.businessId
+    });
+    const catalog = this.agentSkills.catalog(input, profile.agentId);
+    return this.agentRuntimeDomain.createRuntimeTurn({
+      ...input,
+      ...(catalog.length ? { portableCatalog: JSON.stringify(catalog) } : {})
+    });
+  }
+  async handleAgentSkillChat(input: SkillRequest & { message: string }): Promise<string | null> {
+    const naturalDraft = /^(?:create|make) (?:a )?(?:business )?skill:\s*([\s\S]+)$/i.exec(
+      input.message
+    );
+    if (naturalDraft)
+      return this.handleAgentSkillChat({ ...input, message: `/skills create ${naturalDraft[1]}` });
+    if (!input.message.startsWith("/skills")) return null;
+    const match = /^\/skills(?:\s+(\S+))?(?:\s+([\s\S]*))?$/.exec(input.message);
+    if (!match) return null;
+    const operation = match[1] ?? "list";
+    const rest = match[2] ?? "";
+    if (operation === "create") {
+      const draft = await this.generateAgentSkill(input, rest);
+      return `Draft ${draft.id} (not installed; no permissions granted). Review the full package and proposed behavior below. Installation never schedules automation.\n${JSON.stringify(draft)}\nAfter review: /skills approve ${draft.id} ${draft.reviewDigest}`;
+    }
+    if (operation === "list") return JSON.stringify(this.listAgentSkills(input));
+    if (operation === "search") return JSON.stringify(this.searchAgentSkills(input, rest));
+    const [id, ...words] = rest.split(/\s+/);
+    if (!id) throw new Cp2Error(400, "skill_command_invalid", "Provide a skill identifier.");
+    if (operation === "review") return JSON.stringify(this.inspectAgentSkill(input, id));
+    if (operation === "export") return JSON.stringify(this.exportAgentSkill(input, id));
+    if (operation === "approve") {
+      const installed = this.transitionAgentSkill(input, id, "install", words[0]);
+      return `${JSON.stringify(installed)}\nEnable when ready: /skills enable ${id}. Installation does not create a schedule.`;
+    }
+    if (operation === "resource") {
+      const request = JSON.parse(words.join(" ")) as {
+        version: number;
+        digest: string;
+        path: string;
+      };
+      return JSON.stringify(
+        this.readAgentSkillResource(
+          input,
+          { id, version: request.version, digest: request.digest },
+          request.path
+        )
+      );
+    }
+    if (["enable", "disable", "uninstall", "revoke"].includes(operation))
+      return JSON.stringify(
+        this.transitionAgentSkill(
+          input,
+          id,
+          operation as "enable" | "disable" | "uninstall" | "revoke"
+        )
+      );
+    if (operation === "edit")
+      return JSON.stringify(
+        this.updateAgentSkill(input, id, JSON.parse(words.join(" ")) as SkillInput)
+      );
+    if (operation === "publish")
+      return JSON.stringify(
+        this.publishAgentSkill(
+          input,
+          id,
+          JSON.parse(words.join(" ")) as Parameters<AgentSkillsDomain["publish"]>[2]
+        )
+      );
+    if (operation === "install-public") {
+      const body = JSON.parse(words.join(" ")) as { digest: string; grants: string[] };
+      return JSON.stringify(this.installPublicAgentSkill(input, id, body.digest, body.grants));
+    }
+    throw new Cp2Error(
+      400,
+      "skill_command_invalid",
+      "Use /skills list, create, review, edit, approve, enable, disable, uninstall, search, publish, install-public or export."
+    );
+  }
+  listAgentSkills(input: SkillRequest) {
+    return this.agentSkills.list(input);
+  }
+  inspectAgentSkill(input: SkillRequest, id: string) {
+    return this.agentSkills.inspect(input, id);
+  }
+  draftAgentSkill(input: SkillRequest, values: SkillInput) {
+    return this.agentSkills.draft(input, values);
+  }
+  generateAgentSkill(input: SkillRequest, description: string) {
+    return this.agentSkills.generate(input, description);
+  }
+  updateAgentSkill(input: SkillRequest, id: string, values: SkillInput) {
+    return this.agentSkills.update(input, id, values);
+  }
+  transitionAgentSkill(
+    input: SkillRequest,
+    id: string,
+    operation: Parameters<AgentSkillsDomain["transition"]>[2],
+    digest?: string
+  ) {
+    return this.agentSkills.transition(input, id, operation, digest);
+  }
+  publishAgentSkill(
+    input: SkillRequest,
+    id: string,
+    review: Parameters<AgentSkillsDomain["publish"]>[2]
+  ) {
+    return this.agentSkills.publish(input, id, review);
+  }
+  searchAgentSkills(input: SkillRequest, query?: string) {
+    return this.agentSkills.search(input, query);
+  }
+  installPublicAgentSkill(input: SkillRequest, id: string, digest: string, grants: string[]) {
+    return this.agentSkills.installPublic(input, id, digest, grants);
+  }
+  exportAgentSkill(input: SkillRequest, id: string) {
+    return this.agentSkills.export(input, id);
+  }
+  readAgentSkillResource(
+    input: SkillRequest,
+    ref: Parameters<AgentSkillsDomain["resource"]>[1],
+    resource: string
+  ) {
+    return this.agentSkills.resource(
+      input,
+      ref,
+      resource,
+      input.businessId
+        ? this.agentRuntimeDomain.currentAgentProfile(input.businessId, new Date()).agentId
+        : undefined
+    );
   }
   daemonConversationHistory(...args: Parameters<MessagingDomain["daemonConversationHistory"]>) {
     return this.messagingDomain.daemonConversationHistory(...args);
@@ -8559,6 +8852,7 @@ export class Cp2Store {
       e2eeDevices: [...this.messagingDomain.e2eeDevicesMap.values()],
       pushSubscriptions: [...this.messagingDomain.pushSubscriptionsMap.values()],
       marketplaceIntroStates: [...this.marketplaceIntroStates.values()],
+      agentSkills: structuredClone([...this.agentSkills.records.values()]),
       activeAiModels: [...this.agentRuntimeDomain.activeAiModelsMap.values()],
       agentProfiles: [...this.agentRuntimeDomain.agentProfilesMap.values()].map(
         cloneBusinessAgentProfile
@@ -8769,6 +9063,9 @@ export class Cp2Store {
     this.sessionContexts.clear();
     this.messagingDomain.clear();
     this.marketplaceIntroStates.clear();
+    this.agentSkills.records.clear();
+    for (const record of snapshot.agentSkills ?? [])
+      this.agentSkills.records.set(record.id, structuredClone(record));
     this.agentRuntimeDomain.clear();
     this.modelTemplatesDomain.clear();
     this.vocabularyDomain.clear();
@@ -12722,6 +13019,7 @@ export class Cp2Store {
         this.messagingDomain.conversationTypingMap,
         scope
       );
+      deletedRecordCount += deleteScopedMapRecords(this.agentSkills.records, scope);
       deletedRecordCount += deleteScopedMapRecords(this.marketplaceIntroStates, scope);
       deletedRecordCount += deleteScopedMapRecords(
         this.agentRuntimeDomain.activeAiModelsMap,

@@ -1096,3 +1096,13 @@ export const cp2VocabularyOccurrences = pgTable(
     )
   })
 );
+
+export const cp2AgentSkills = pgTable("cp2_agent_skills", {
+  entityId: text("entity_id").primaryKey(),
+  businessId: text("business_id"),
+  accountId: text("account_id"),
+  userId: text("user_id"),
+  parentId: text("parent_id"),
+  record: jsonb("record").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+});

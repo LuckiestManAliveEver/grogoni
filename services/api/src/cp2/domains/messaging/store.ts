@@ -227,6 +227,11 @@ export const RECYCLE_BIN_CAPACITY_BYTES = 5 * 1024 * 1024;
 const systemChannelDelivery = Symbol("systemChannelDelivery");
 
 export interface MessagingDomainDeps {
+  handleSkillChat?: (input: {
+    sessionId: string | null;
+    businessId: string;
+    message: string;
+  }) => Promise<string | null>;
   requireAuthorizedSession: (
     sessionId: string | null,
     businessId: string,
@@ -3629,6 +3634,26 @@ export class MessagingDomain {
       );
     };
     if (source) attach(source);
+    if (source && task.status === "completed" && /^\/business\s/.test(task.payload.message)) {
+      const executionSource =
+        Number(task.executions) > 1
+          ? this.messagesForConversation(origin.id).find(
+              (m) => m.clientMessageId === `daemon-skill:${task.id}:${Number(task.executions) - 1}`
+            )
+          : source;
+      const existingReply =
+        executionSource &&
+        this.messagesForConversation(origin.id).find(
+          (m) =>
+            m.author === "agent" &&
+            m.replyToMessageId === executionSource.id &&
+            m.clientMessageId === `agent-reply-${executionSource.id}`
+        );
+      if (existingReply) {
+        attach(existingReply);
+        return;
+      }
+    }
     if (task.status !== "completed" && task.status !== "failed" && task.status !== "cancelled")
       return;
     const result = task.result as { text?: unknown } | null;
@@ -3747,6 +3772,34 @@ export class MessagingDomain {
       };
     }
 
+    const skillReply = await this.deps.handleSkillChat?.({
+      sessionId: input.sessionId,
+      businessId: input.businessId,
+      message: input.message
+    });
+    if (skillReply !== undefined && skillReply !== null) {
+      const agentMessage = this.createConversationMessage({
+        sessionId: input.sessionId,
+        conversationId: conversation.id,
+        clientMessageId: `agent-reply-${message.id}`,
+        idempotencyKey: `grogoni-agent-reply:${message.id}`,
+        author: "agent",
+        replyToMessageId: message.id,
+        content: { type: "text", text: skillReply },
+        now
+      });
+      return {
+        message: this.markAgentProcessedMessageDelivered(message, now),
+        agentMessage,
+        runtime: null,
+        processing: {
+          correlationId: message.id,
+          status: "completed",
+          errorCode: null,
+          retryable: false
+        }
+      };
+    }
     if (this.inventoryTaskController && message.content.type === "text") {
       const handled = await this.inventoryTaskController.handle({
         sessionId: input.sessionId,
