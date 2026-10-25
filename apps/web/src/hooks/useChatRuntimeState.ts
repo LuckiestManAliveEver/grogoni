@@ -249,8 +249,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
 
   const buyerShoppingSessionIds = useRef(new Map<string, string>());
   const assistantScope = daemonChatScope(mode, business?.id ?? null, activeConversationId);
-  // Daemon agent tasks belong to a shop's agent. A guest (no shop) has none, so don't poll.
-  useDaemonChatResults(business === null ? null : (session?.account.id ?? null), assistantScope, async (entry, task) => {
+  useDaemonChatResults(session?.account.id ?? null, assistantScope, async (entry, task) => {
     if (task.payload.kind === "agent" && task.payload.conversation) {
       await loadMessagingInbox(entry.conversationId);
       setStatusMessage(
@@ -534,6 +533,9 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       ) || /^(confirm checkout|cancel checkout)$/iu.test(message.trim());
     if (
       business === null &&
+      // A conversation-less buyer send goes to the buyer assistant / daemon (it can search,
+      // quote and check out server-side); the guest classifier answers only inside a thread.
+      activeConversationId !== null &&
       marketplaceSearch &&
       !explicitCapability &&
       reminder === null &&
