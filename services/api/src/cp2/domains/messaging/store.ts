@@ -17,7 +17,7 @@
  *
  * **Load-bearing invariant - read before touching `createConversationMessage` or
  * `updateConversationMessage`:** `validateConversationEncryption` (below) enforces that once a
- * conversation has two or more distinct human `role: "account"` participants, every message must
+ * conversation has two or more distinct human `role: "account"` participants, every user message must
  * be `content.type === "encrypted"`, every participant must have a live registered
  * `e2eeDevices` entry, and the encrypted envelope's recipient device set must exactly match the
  * live device set. Dropping or reordering this check re-opens a real confidentiality regression:
@@ -65,7 +65,10 @@
  *   `sendEmailTransport`, all of which live here now.
  */
 import { isDeepStrictEqual } from "node:util";
-import { randomBytes, randomUUID } from "node:crypto";
+import { contactIsBlocked } from "../network/shared.js";
+import { helpConversationId, helpGuides, helpGuideText } from "./help-guides.js";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
+
 import type { InventoryTaskController } from "../agent-runtime/inventory-task-controller.js";
 import type {
   PurchaseOrderActor,
@@ -92,6 +95,7 @@ import type {
   ConnectedMailboxSyncSummary,
   ConversationAttachment,
   ConversationChannelSummary,
+  ConversationExecutionSummary,
   ConversationInboxItem,
   ConversationKind,
   ConversationMessageAuthor,
@@ -122,6 +126,7 @@ import type {
   PlatformIdentitySummary,
   ProductSummary,
   ProviderUpdateReceiptSummary,
+  PublicDaemonTask,
   PublicStorefrontMessageSummary,
   PushSubscriptionSummary,
   RecycleBinItemSummary,
@@ -138,6 +143,7 @@ import type {
 import type { BusinessPermission } from "@grogoni/business-core";
 import {
   ChannelGatewayError,
+  type CanonicalInboundChannelMessage,
   createEmailChannelAdapter,
   createNativeSmsChannelAdapter,
   providerToMessageChannel,
@@ -168,7 +174,6 @@ import {
   normalizeInternationalOwnerPhoneNumber
 } from "../../phone-identity.js";
 import {
-  destinationAccountKey,
   normalizeOptionalBoundedText,
   normalizeRequiredBoundedText
 } from "../../text-normalization.js";
@@ -225,6 +230,11 @@ export const RECYCLE_BIN_CAPACITY_BYTES = 5 * 1024 * 1024;
 const systemChannelDelivery = Symbol("systemChannelDelivery");
 
 export interface MessagingDomainDeps {
+  handleSkillChat?: (input: {
+    sessionId: string | null;
+    businessId: string;
+    message: string;
+  }) => Promise<string | null>;
   requireAuthorizedSession: (
     sessionId: string | null,
     businessId: string,
@@ -345,7 +355,10 @@ export interface MessagingDomainDeps {
   sessions: Map<string, SessionRecord>;
   customers: Map<string, CustomerSummary>;
   quarantinedBusinessIds: Set<string>;
-  accountByDestination: Map<string, string>;
+  resolveContactAccount: (channel: AuthChannel, destination: string) => string | undefined;
+  resolvePhonebookAccount: (ownerUserId: string, nodeId: string) => string | null;
+  findPhonebookNode: (ownerUserId: string, counterpartAccountId: string) => string | null;
+  verifiedNotificationEmail: (accountId: string) => string | undefined;
   workspaceRoot?: string;
   workspaceDeliveryMaxFileBytes?: number;
   conversationAttachmentBlobStore: ConversationAttachmentBlobStore;
@@ -678,6 +691,186 @@ export class MessagingDomain {
     }
   }
 
+  ensureHelpConversations(input: { sessionId: string | null; now?: Date }): {
+    conversationId: string;
+  } {
+    const now = input.now ?? new Date();
+    const session = this.deps.requirePinVerifiedSession(input.sessionId, now);
+    const rootId = helpConversationId(session.account.id, "home");
+    for (const guide of helpGuides) {
+      const id = helpConversationId(session.account.id, guide.key);
+      const existing = this.conversations.get(id);
+      if (existing) {
+        if (existing.accountId !== session.account.id || existing.helpTopic !== guide.key)
+          throw new Cp2Error(
+            409,
+            "help_conversation_conflict",
+            "Help conversation ownership changed."
+          );
+      } else
+        this.createAccountConversation({
+          accountId: session.account.id,
+          userId: session.user.id,
+          kind: "personal",
+          activeShopId: null,
+          title: guide.title,
+          taskConversationId: id,
+          helpTopic: guide.key,
+          ...(guide.key === "home" ? {} : { helpParentConversationId: rootId }),
+          now
+        });
+      const chunks: string[] = [];
+      for (const line of helpGuideText(guide.key).split("\n")) {
+        const last = chunks.length - 1;
+        if (last >= 0 && chunks[last]!.length + line.length + 1 <= 3500)
+          chunks[last] += `\n${line}`;
+        else chunks.push(line);
+      }
+      chunks.forEach((text, index) =>
+        this.createConversationMessage({
+          sessionId: input.sessionId,
+          conversationId: id,
+          clientMessageId: `help-guide-v1:${guide.key}:${index}`,
+          author: "agent",
+          content: { type: "text", text },
+          now
+        })
+      );
+    }
+    return { conversationId: rootId };
+  }
+
+  addConversationParticipant(input: {
+    sessionId: string | null;
+    conversationId: string;
+    recipient?: string;
+    agent?: boolean;
+    now?: Date;
+  }): ConversationView {
+    const now = input.now ?? new Date();
+    const session = this.deps.requirePinVerifiedSession(input.sessionId, now);
+    const conversation = this.requireAccountConversation(input.conversationId, session.account.id);
+    if (conversation.accountId !== session.account.id) {
+      throw new Cp2Error(
+        403,
+        "conversation_owner_required",
+        "Only the chat owner can add participants."
+      );
+    }
+    if (
+      conversation.kind !== "personal" ||
+      conversation.helpTopic ||
+      conversation.isPermanentDaemon ||
+      conversation.taskParentConversationId
+    ) {
+      throw new Cp2Error(
+        400,
+        "conversation_group_unavailable",
+        "Start a new personal chat to create a discussion."
+      );
+    }
+    if (Boolean(input.agent) === Boolean(input.recipient?.trim())) {
+      throw new Cp2Error(400, "participant_invalid", "Choose an agent or a contact.");
+    }
+    let accountId: string | null = null;
+    if (!input.agent) {
+      const recipient = input.recipient!.trim();
+      if (recipient.startsWith("network-node:")) {
+        accountId = this.deps.resolvePhonebookAccount(session.user.id, recipient.slice(13).trim());
+      } else {
+        const channel: AuthChannel = recipient.includes("@") ? "email" : "phone";
+        accountId =
+          this.deps.resolveContactAccount(channel, normalizeDestination(channel, recipient)) ??
+          null;
+      }
+      if (!accountId)
+        throw new Cp2Error(404, "recipient_not_found", "No Grogoni account matches that contact.");
+    }
+    if (accountId) this.requireContactAllowed(session.user.id, accountId, true);
+    const agentId = input.agent ? `account-${session.account.id}-agent` : null;
+    const existing = [...this.conversationParticipants.values()].some(
+      (participant) =>
+        participant.conversationId === conversation.id &&
+        (input.agent
+          ? participant.agentId === agentId
+          : participant.role === "account" && participant.accountId === accountId)
+    );
+    if (existing) return this.conversationView(conversation);
+    const userId = accountId ? this.deps.userByAccount.get(accountId) : undefined;
+    const displayName = input.agent
+      ? "Grogoni agent"
+      : ((userId ? this.deps.users.get(userId)?.displayName : null) ?? "Contact");
+    const participant: ConversationParticipantSummary = {
+      id: randomUUID(),
+      conversationId: conversation.id,
+      role: input.agent ? "agent" : "account",
+      accountId,
+      agentId,
+      businessId: null,
+      displayName,
+      lastReadAt: null,
+      archivedAt: null,
+      mutedUntil: null,
+      pinnedAt: null,
+      createdAt: now.toISOString()
+    };
+    this.conversationParticipants.set(participant.id, participant);
+    this.deps.recordAuditEvent({
+      type: "conversation.participant_added",
+      aggregateType: "conversation",
+      aggregateId: conversation.id,
+      actorId: session.user.id,
+      occurredAt: now.toISOString(),
+      payload: { participantId: participant.id, role: participant.role }
+    });
+    const updated = { ...conversation, updatedAt: now.toISOString() };
+    this.conversations.set(conversation.id, updated);
+    // Membership metadata is server-authored. User message content still always passes
+    // validateConversationEncryption; an invitation never exposes message text to push.
+    const eventId = randomUUID();
+    const message: ConversationMessageSummary = {
+      id: eventId,
+      conversationId: conversation.id,
+      clientMessageId: eventId,
+      idempotencyKey: `membership:${participant.id}`,
+      author: "system",
+      authorId: session.user.id,
+      content: { type: "text", text: `${displayName} was added to the discussion.` },
+      status: "delivered",
+      selectedChannel: "grogoni",
+      actualChannel: "grogoni",
+      sentAt: now.toISOString(),
+      deliveredAt: now.toISOString(),
+      readAt: null,
+      clientTimestamp: null,
+      createdAt: now.toISOString()
+    };
+    this.conversationMessages.set(message.id, message);
+    this.recordConversationSyncForParticipants(
+      conversation.id,
+      "conversations",
+      conversation.id,
+      updated,
+      now
+    );
+    this.recordConversationSyncForParticipants(
+      conversation.id,
+      "conversation_participants",
+      participant.id,
+      participant,
+      now
+    );
+    this.recordConversationSyncForParticipants(
+      conversation.id,
+      "conversation_messages",
+      message.id,
+      message,
+      now
+    );
+    this.enqueueConversationNotifications(updated, message, session.account.id, now);
+    return this.conversationView(updated);
+  }
+
   createConversation(input: {
     sessionId: string | null;
     kind: ConversationKind;
@@ -704,16 +897,65 @@ export class MessagingDomain {
 
     let recipientAccountId: string | null = null;
     if (input.recipient?.trim()) {
-      const channel: AuthChannel = input.recipient.includes("@") ? "email" : "phone";
-      const destination = normalizeDestination(channel, input.recipient);
-      recipientAccountId =
-        this.deps.accountByDestination.get(destinationAccountKey(channel, destination)) ?? null;
+      if (input.recipient.startsWith("network-node:")) {
+        recipientAccountId = this.deps.resolvePhonebookAccount(
+          session.user.id,
+          input.recipient.slice("network-node:".length).trim()
+        );
+      } else {
+        const channel: AuthChannel = input.recipient.includes("@") ? "email" : "phone";
+        const destination = normalizeDestination(channel, input.recipient);
+        recipientAccountId = this.deps.resolveContactAccount(channel, destination) ?? null;
+      }
       if (recipientAccountId === null) {
         throw new Cp2Error(404, "recipient_not_found", "No Grogoni account matches that contact.");
       }
+      this.requireContactAllowed(session.user.id, recipientAccountId, true);
       if (recipientAccountId === session.account.id) {
         throw new Cp2Error(400, "recipient_invalid", "Choose another Grogoni account.");
       }
+    }
+
+    // Reuse the authoritative pair, including when the other person starts the chat.
+    // This method has no await between lookup and insertion; store transactions serialize writes.
+    if (recipientAccountId !== null) {
+      if (input.kind !== "personal" || input.activeShopId !== null) {
+        throw new Cp2Error(
+          400,
+          "direct_conversation_scope_invalid",
+          "Direct conversations cannot have a business scope."
+        );
+      }
+      const existing = [...this.conversations.values()].find(
+        (candidate) =>
+          candidate.deletedAt == null &&
+          candidate.kind === "personal" &&
+          candidate.activeShopId === null &&
+          this.humanConversationAccountIds(candidate.id).length === 2 &&
+          this.accountConversationParticipant(candidate.id, session.account.id) !== null &&
+          this.accountConversationParticipant(candidate.id, recipientAccountId!) !== null
+      );
+      if (existing) return this.conversationView(existing);
+    }
+    if ((input.kind === "storefront" || input.kind === "order") && input.activeShopId === null) {
+      throw new Cp2Error(
+        400,
+        "business_conversation_scope_required",
+        "Choose a business for this conversation."
+      );
+    }
+    if (input.kind === "storefront" && !input.recipient) {
+      const existing = [...this.conversations.values()].find(
+        (candidate) =>
+          candidate.deletedAt == null &&
+          candidate.kind === "storefront" &&
+          candidate.accountId === session.account.id &&
+          candidate.activeShopId === input.activeShopId &&
+          ![...this.conversationChannels.values()].some(
+            (channel) => channel.conversationId === candidate.id
+          )
+      );
+      if (existing) return this.conversationView(existing);
     }
 
     if (input.taskConversationId !== undefined) {
@@ -763,6 +1005,11 @@ export class MessagingDomain {
         ? {}
         : { taskParentConversationId: input.taskParentConversationId }),
       ...(input.runtimeBindingId === undefined ? {} : { runtimeBindingId: input.runtimeBindingId }),
+      ...(recipientAccountId
+        ? { identityKey: `direct:${[session.account.id, recipientAccountId].sort().join(":")}` }
+        : input.kind === "storefront"
+          ? { identityKey: `business:${input.activeShopId}:${session.account.id}` }
+          : {}),
       now
     });
     this.deps.recordAuditEvent({
@@ -2017,7 +2264,7 @@ export class MessagingDomain {
       }
     }
     const token = randomBytes(32).toString("base64url");
-    const linkUrl = this.deps.channelGateway.createLinkUrl(input.provider, token);
+    const linkUrl = this.deps.channelGateway.createLinkUrl(input.provider, token, input.businessId);
     if (linkUrl === null) {
       throw new Cp2Error(
         409,
@@ -2064,6 +2311,7 @@ export class MessagingDomain {
     provider: ChannelProvider;
     headers: Record<string, string | string[] | undefined>;
     payload: unknown;
+    rawBody?: Buffer;
     now?: Date;
   }): {
     receipt: ProviderUpdateReceiptSummary;
@@ -2076,16 +2324,53 @@ export class MessagingDomain {
       inbound = this.deps.channelGateway.normalizeInbound({
         provider: input.provider,
         headers: input.headers,
-        payload: input.payload
+        payload: input.payload,
+        ...(input.rawBody ? { rawBody: input.rawBody } : {})
       });
     } catch (error) {
       throw this.channelError(error);
     }
 
+    return this.ingestNormalizedChannelMessage(input.provider, inbound, now);
+  }
+
+  channelWebhookChallenge(
+    provider: ChannelProvider,
+    query: Record<string, unknown>
+  ): string | null {
+    return this.deps.channelGateway.webhookChallenge(provider, query);
+  }
+
+  ingestChannelWebhookBatch(input: {
+    provider: ChannelProvider;
+    headers: Record<string, string | string[] | undefined>;
+    payload: unknown;
+    rawBody: Buffer;
+    now?: Date;
+  }) {
+    let messages;
+    try {
+      messages = this.deps.channelGateway.normalizeInboundBatch(input);
+    } catch (error) {
+      throw this.channelError(error);
+    }
+    return messages.map((inbound) =>
+      this.ingestNormalizedChannelMessage(input.provider, inbound, input.now ?? new Date())
+    );
+  }
+
+  private ingestNormalizedChannelMessage(
+    provider: ChannelProvider,
+    inbound: CanonicalInboundChannelMessage,
+    now: Date
+  ): {
+    receipt: ProviderUpdateReceiptSummary;
+    message: ConversationMessageSummary | null;
+    orderIntentOutcome: OfflineOrderIntentOutcome | null;
+  } {
     const existingReceipt = [...this.providerUpdateReceipts.values()].find(
       (candidate) =>
-        candidate.provider === input.provider &&
-        candidate.externalUpdateId === inbound.externalUpdateId
+        candidate.provider === provider && candidate.externalUpdateId === inbound.externalUpdateId
     );
     if (existingReceipt) {
       return {
@@ -2100,14 +2385,18 @@ export class MessagingDomain {
 
     const matchingChannels = [...this.conversationChannels.values()].filter(
       (candidate) =>
-        candidate.provider === input.provider &&
-        candidate.externalConversationId === inbound.externalConversationId
+        candidate.provider === provider &&
+        candidate.externalConversationId === inbound.externalConversationId &&
+        (inbound.businessId === undefined || candidate.businessId === inbound.businessId)
     );
     let channel = matchingChannels.length === 1 ? matchingChannels[0] : undefined;
     if (inbound.linkToken !== null) {
       const tokenHash = hashCustomerCapability(inbound.linkToken);
       const grant = [...this.channelIdentityLinkGrants.values()].find(
-        (candidate) => candidate.provider === input.provider && candidate.tokenHash === tokenHash
+        (candidate) =>
+          candidate.provider === provider &&
+          candidate.tokenHash === tokenHash &&
+          (inbound.businessId === undefined || candidate.businessId === inbound.businessId)
       );
       if (
         grant === undefined ||
@@ -2125,7 +2414,7 @@ export class MessagingDomain {
       }
       const linked = this.upsertProviderConversation({
         businessId: grant.businessId,
-        provider: input.provider,
+        provider: provider,
         customerId: grant.customerId,
         externalUserId: inbound.externalUserId,
         externalConversationId: inbound.externalConversationId,
@@ -2134,6 +2423,14 @@ export class MessagingDomain {
         ownerAccountId: owner.accountId,
         ownerUserId: owner.id,
         now
+      });
+      this.platformIdentities.set(linked.identity.id, {
+        ...linked.identity,
+        verifiedAt: now.toISOString(),
+        optInStatus: "granted",
+        optInSource: "provider_link_grant",
+        optInAt: now.toISOString(),
+        optOutAt: null
       });
       channel = linked.channel;
       this.channelIdentityLinkGrants.set(grant.id, { ...grant, consumedAt: now.toISOString() });
@@ -2146,31 +2443,68 @@ export class MessagingDomain {
       );
     }
     const ingested = this.ingestProviderMessage({
-      provider: input.provider,
+      provider: provider,
       businessId: channel.businessId,
       externalConversationId: inbound.externalConversationId,
       externalUpdateId: inbound.externalUpdateId,
-      body: inbound.linkToken === null ? inbound.text : `[${input.provider} identity linked]`,
+      body: inbound.linkToken === null ? inbound.text : `[${provider} identity linked]`,
       providerMessageId: inbound.externalMessageId,
       now
     });
+    const currentChannel = this.conversationChannels.get(channel.id);
+    const providerTime = Date.parse(inbound.receivedAt);
+    const previousTime = Date.parse(channel.lastInboundAt ?? "");
+    if (currentChannel && Number.isFinite(providerTime)) {
+      this.conversationChannels.set(channel.id, {
+        ...currentChannel,
+        lastInboundAt: new Date(
+          Math.max(providerTime, Number.isFinite(previousTime) ? previousTime : 0)
+        ).toISOString()
+      });
+    }
     const identity = [...this.platformIdentities.values()].find(
       (candidate) =>
         candidate.businessId === channel.businessId &&
-        candidate.provider === input.provider &&
+        candidate.provider === provider &&
         candidate.externalUserId === inbound.externalUserId
     );
+    if (
+      identity &&
+      (provider === "sms" || provider === "whatsapp") &&
+      /^(?:stop|unsubscribe)$/i.test(inbound.text.trim())
+    ) {
+      this.platformIdentities.set(identity.id, {
+        ...identity,
+        optInStatus: "revoked",
+        optOutAt: now.toISOString(),
+        updatedAt: now.toISOString()
+      });
+    }
+    if (
+      identity &&
+      (provider === "sms" || provider === "whatsapp") &&
+      /^start$/i.test(inbound.text.trim())
+    ) {
+      this.platformIdentities.set(identity.id, {
+        ...identity,
+        optInStatus: "granted",
+        optInSource: "provider_start_message",
+        optInAt: now.toISOString(),
+        optOutAt: null,
+        updatedAt: now.toISOString()
+      });
+    }
     const ownerMembership = [...this.deps.memberships.values()].find(
       (membership) => membership.businessId === channel.businessId && membership.role === "owner"
     );
     const orderIntentOutcome =
       inbound.linkToken !== null ||
-      input.provider !== "telegram" ||
+      provider !== "telegram" ||
       identity?.customerId == null ||
       ownerMembership === undefined
         ? null
         : this.reconcileInboundChannelOrder({
-            provider: input.provider,
+            provider: provider,
             businessId: channel.businessId,
             customerId: identity.customerId,
             actorId: ownerMembership.userId,
@@ -2329,6 +2663,13 @@ export class MessagingDomain {
       selection.endpoint.provider === "email"
         ? normalizeEmailSubject(input.subject ?? replyTo?.subject ?? "")
         : null;
+    if (selection.endpoint.provider !== "email" && (input.attachments?.length ?? 0) > 0) {
+      throw new Cp2Error(
+        400,
+        "channel_attachment_unsupported",
+        "Send document attachments through a connected mailbox."
+      );
+    }
     const resolvedAttachments =
       selection.endpoint.provider === "email"
         ? this.resolveTrustedEmailAttachments(
@@ -2565,8 +2906,13 @@ export class MessagingDomain {
   }): ConversationInboxItem[] {
     const now = input.now ?? new Date();
     const session = this.deps.requirePinVerifiedSession(input.sessionId, now);
+    this.ensurePersonalAccountConversation({
+      accountId: session.account.id,
+      userId: session.user.id,
+      now
+    });
     return [...this.conversations.values()]
-      .map((conversation) => {
+      .map((conversation): ConversationInboxItem | null => {
         if (conversation.deletedAt != null) return null;
         const participant = this.accountConversationParticipant(
           conversation.id,
@@ -2581,6 +2927,7 @@ export class MessagingDomain {
             : Date.parse(participant.lastReadAt);
         return {
           ...conversation,
+          conversationType: this.conversationType(conversation),
           lastMessage,
           unreadCount: messages.filter(
             (message) =>
@@ -2588,12 +2935,23 @@ export class MessagingDomain {
               message.deletedAt == null &&
               Date.parse(message.createdAt) > lastRead
           ).length,
-          participant: this.participantView(participant),
+          participant: {
+            ...this.participantView(participant),
+            networkNodeId: this.contactNodeForConversation(conversation.id, session.account.id)
+          },
           hasHumanRecipient: this.conversationHasHumanRecipient(conversation.id, session.account.id)
         } satisfies ConversationInboxItem;
       })
       .filter((conversation): conversation is ConversationInboxItem => conversation !== null)
       .sort((left, right) => {
+        if (left.helpTopic || right.helpTopic) {
+          if (!left.helpTopic) return 1;
+          if (!right.helpTopic) return -1;
+          return (
+            helpGuides.findIndex((guide) => guide.key === left.helpTopic) -
+            helpGuides.findIndex((guide) => guide.key === right.helpTopic)
+          );
+        }
         const pinned =
           Number(Boolean(right.participant.pinnedAt)) - Number(Boolean(left.participant.pinnedAt));
         return pinned || Date.parse(right.updatedAt) - Date.parse(left.updatedAt);
@@ -2990,9 +3348,15 @@ export class MessagingDomain {
     return handoff;
   }
 
+  /**
+   * `conversationId` is optional only so a client can send its very first message before it has
+   * loaded its inbox: the session's own durable personal (assistant) conversation is opened - and
+   * created if needed - instead. `requireAccountConversation` then applies the same ownership check
+   * to it as to any explicit id, so this can never reach another account's conversation.
+   */
   createConversationMessage(input: {
     sessionId: string | null;
-    conversationId: string;
+    conversationId?: string;
     clientMessageId: string;
     idempotencyKey?: string;
     content: ConversationMessageContent;
@@ -3005,8 +3369,57 @@ export class MessagingDomain {
     now?: Date;
   }): ConversationMessageSummary {
     const now = input.now ?? new Date();
-    const session = this.deps.requirePinVerifiedSession(input.sessionId, now);
+    const actor = this.deps.requirePinVerifiedSession(input.sessionId, now);
+    const conversation =
+      input.conversationId === undefined
+        ? this.ensurePersonalAccountConversation({
+            accountId: actor.account.id,
+            userId: actor.user.id,
+            now
+          })
+        : this.requireAccountConversation(input.conversationId, actor.account.id);
+    if (input.author === "agent" && conversation.kind !== "personal" && conversation.activeShopId) {
+      this.deps.requireAuthorizedSession(
+        input.sessionId,
+        conversation.activeShopId,
+        "customer:write",
+        now
+      );
+      if (!conversation.businessAgentEnabled)
+        throw new Cp2Error(409, "business_agent_disabled", "The business agent is disabled.");
+    }
+    return this.createMessageForActor({ ...input, conversationId: conversation.id }, actor);
+  }
+
+  /**
+   * The one message writer. `createConversationMessage` reaches it with the caller's pinned
+   * session; the daemon bridge reaches it with the session of the account that owns the task, so a
+   * server-owned reply lands in the same conversation with the same checks as a typed one.
+   */
+  private createMessageForActor(
+    input: {
+      sessionId: string | null;
+      conversationId: string;
+      clientMessageId: string;
+      idempotencyKey?: string;
+      content: ConversationMessageContent;
+      author?: ConversationMessageAuthor;
+      replyToMessageId?: string | null;
+      forwardedFromMessageId?: string | null;
+      clientTimestamp?: string | null;
+      queuedAt?: string | null;
+      selectedChannel?: MessageChannel;
+      now?: Date;
+    },
+    session: Pick<AuthSessionView, "account" | "user">
+  ): ConversationMessageSummary {
+    const now = input.now ?? new Date();
     const conversation = this.requireAccountConversation(input.conversationId, session.account.id);
+    if (conversation.kind === "personal")
+      for (const accountId of this.humanConversationAccountIds(conversation.id)) {
+        if (accountId !== session.account.id)
+          this.requireContactAllowed(session.user.id, accountId, false);
+      }
     const clientMessageId = input.clientMessageId.trim();
 
     if (clientMessageId.length < 8 || clientMessageId.length > 120) {
@@ -3066,7 +3479,8 @@ export class MessagingDomain {
     }
     if (input.content.type === "owner-controls") {
       this.deps.requireMembership(input.content.shopId, session.user.id);
-      const context = this.deps.ensureGrogoniSessionContext(session, now);
+      // Only owner controls need the session's mode, which a trusted daemon writer never sends.
+      const context = this.deps.ensureGrogoniSessionContext(session as AuthSessionView, now);
 
       if (context.mode !== "seller" || context.activeShopId !== input.content.shopId) {
         throw new Cp2Error(
@@ -3082,6 +3496,7 @@ export class MessagingDomain {
     const author = input.author ?? "user";
     if (
       author === "agent" &&
+      conversation.kind === "personal" &&
       input.content.type !== "encrypted" &&
       [...this.conversationParticipants.values()].some(
         (participant) =>
@@ -3177,13 +3592,108 @@ export class MessagingDomain {
         selectedChannel
       }
     });
-    this.enqueueConversationNotifications(conversation, message, session.account.id, now);
+    this.enqueueConversationNotifications(
+      conversation,
+      message,
+      message.author === "agent" ? "agent" : session.account.id,
+      now
+    );
     return message;
+  }
+
+  /**
+   * Trusted daemon bridge. Never accepts caller-supplied author identities or delivery content: the
+   * only account it will write for is the one that owns the task, found through `ownerUserId`.
+   */
+  deliverDaemonTask(task: PublicDaemonTask, ownerUserId: string): void {
+    const origin = task.payload.kind === "agent" ? task.payload.conversation : undefined;
+    if (!origin || task.payload.kind !== "agent") return;
+    const user = this.deps.users.get(ownerUserId);
+    const account = user && this.deps.accounts.get(user.accountId);
+    if (!user || !account)
+      throw new Cp2Error(404, "conversation_not_found", "Conversation was not found.");
+    const conversation = this.requireAccountConversation(origin.id, account.id);
+    if (conversation.accountId !== account.id || this.conversationType(conversation) !== "DAEMON")
+      throw new Cp2Error(404, "conversation_not_found", "Conversation was not found.");
+    const execution: ConversationExecutionSummary = {
+      taskId: task.id,
+      status: task.status,
+      modelId: task.payload.modelId,
+      attempts: task.attempts,
+      errorCode: task.errorCode,
+      retryable: task.status === "failed" || task.status === "cancelled",
+      updatedAt: task.updatedAt
+    };
+    const source = this.messagesForConversation(origin.id).find(
+      (message) => message.clientMessageId === origin.clientMessageId && message.author === "user"
+    );
+    const attach = (message: ConversationMessageSummary) => {
+      // A newer execution already on the message wins, so an out-of-order update cannot regress it.
+      if (message.execution && Date.parse(message.execution.updatedAt) > Date.parse(task.updatedAt))
+        return;
+      const next = { ...message, execution };
+      this.conversationMessages.set(next.id, next);
+      this.recordConversationSyncForParticipants(
+        origin.id,
+        "conversation_messages",
+        next.id,
+        next,
+        new Date(task.updatedAt)
+      );
+    };
+    if (source) attach(source);
+    if (source && task.status === "completed" && /^\/business\s/.test(task.payload.message)) {
+      const executionSource =
+        Number(task.executions) > 1
+          ? this.messagesForConversation(origin.id).find(
+              (m) => m.clientMessageId === `daemon-skill:${task.id}:${Number(task.executions) - 1}`
+            )
+          : source;
+      const existingReply =
+        executionSource &&
+        this.messagesForConversation(origin.id).find(
+          (m) =>
+            m.author === "agent" &&
+            m.replyToMessageId === executionSource.id &&
+            m.clientMessageId === `agent-reply-${executionSource.id}`
+        );
+      if (existingReply) {
+        attach(existingReply);
+        return;
+      }
+    }
+    if (task.status !== "completed" && task.status !== "failed" && task.status !== "cancelled")
+      return;
+    const result = task.result as { text?: unknown } | null;
+    const text =
+      task.status === "completed" && typeof result?.text === "string"
+        ? origin.kind === "reminder" && origin.reminderText
+          ? `Reminder: ${origin.reminderText}`
+          : result.text
+        : task.status === "cancelled"
+          ? "This task was cancelled."
+          : "The daemon could not finish this task. You can retry it here.";
+    // Failed attempts and a later successful retry must not share the same response key.
+    const message = this.createMessageForActor(
+      {
+        sessionId: null,
+        conversationId: origin.id,
+        clientMessageId: `daemon:${task.id}:${task.executions}:${task.status}:${task.attempts}`,
+        author: "agent",
+        content: { type: "text", text },
+        replyToMessageId: source?.id ?? null,
+        clientTimestamp: task.updatedAt,
+        now: new Date(task.updatedAt)
+      },
+      { account, user }
+    );
+    attach(message);
   }
 
   async createAgentConversationMessage(input: {
     sessionId: string | null;
-    conversationId: string;
+    /** Omitted means the caller's own personal conversation - see createConversationMessage. */
+    conversationId?: string;
     clientMessageId: string;
     idempotencyKey?: string;
     content: ConversationMessageContent;
@@ -3204,7 +3714,28 @@ export class MessagingDomain {
   }): Promise<AgentConversationMessageResult> {
     const now = input.now ?? new Date();
     const session = this.deps.requirePinVerifiedSession(input.sessionId, now);
-    const conversation = this.requireAccountConversation(input.conversationId, session.account.id);
+    const conversation =
+      input.conversationId === undefined
+        ? this.ensurePersonalAccountConversation({
+            accountId: session.account.id,
+            userId: session.user.id,
+            now
+          })
+        : this.requireAccountConversation(input.conversationId, session.account.id);
+    if (conversation.activeShopId !== null && conversation.activeShopId !== input.businessId) {
+      throw new Cp2Error(
+        403,
+        "conversation_business_mismatch",
+        "Agent business does not match this conversation."
+      );
+    }
+    if (conversation.kind !== "personal" && !conversation.businessAgentEnabled)
+      throw new Cp2Error(
+        409,
+        "business_agent_disabled",
+        "The business owner has not enabled its agent in this conversation."
+      );
+    this.deps.requireAuthorizedSession(input.sessionId, input.businessId, "customer:write", now);
     const hasHumanRecipient = this.conversationHasHumanRecipient(
       conversation.id,
       session.account.id
@@ -3220,7 +3751,7 @@ export class MessagingDomain {
 
     const message = this.createConversationMessage({
       sessionId: input.sessionId,
-      conversationId: input.conversationId,
+      conversationId: conversation.id,
       clientMessageId: input.clientMessageId,
       ...(input.idempotencyKey === undefined ? {} : { idempotencyKey: input.idempotencyKey }),
       content: input.content,
@@ -3302,6 +3833,35 @@ export class MessagingDomain {
     const replyAt = input.replyRightAfterMessage
       ? new Date(Math.max(Date.parse(message.createdAt) + 1, 0))
       : now;
+
+    const skillReply = await this.deps.handleSkillChat?.({
+      sessionId: input.sessionId,
+      businessId: input.businessId,
+      message: input.message
+    });
+    if (skillReply !== undefined && skillReply !== null) {
+      const agentMessage = this.createConversationMessage({
+        sessionId: input.sessionId,
+        conversationId: conversation.id,
+        clientMessageId: `agent-reply-${message.id}`,
+        idempotencyKey: `grogoni-agent-reply:${message.id}`,
+        author: "agent",
+        replyToMessageId: message.id,
+        content: { type: "text", text: skillReply },
+        now
+      });
+      return {
+        message: this.markAgentProcessedMessageDelivered(message, now),
+        agentMessage,
+        runtime: null,
+        processing: {
+          correlationId: message.id,
+          status: "completed",
+          errorCode: null,
+          retryable: false
+        }
+      };
+    }
 
     if (this.inventoryTaskController && message.content.type === "text") {
       const handled = await this.inventoryTaskController.handle({
@@ -3456,6 +4016,43 @@ export class MessagingDomain {
       now
     );
     return deliveredMessage;
+  }
+
+  daemonConversationHistory(
+    ownerUserId: string,
+    conversationId: string,
+    clientMessageId: string,
+    submittedAt: Date
+  ): RuntimeModelConversationMessage[] {
+    const owner = this.deps.users.get(ownerUserId);
+    if (!owner) throw new Cp2Error(404, "conversation_not_found", "Conversation was not found.");
+    const conversation = this.requireAccountConversation(conversationId, owner.accountId);
+    if (
+      this.conversationType(conversation) !== "DAEMON" ||
+      conversation.accountId !== owner.accountId
+    )
+      throw new Cp2Error(404, "conversation_not_found", "Conversation was not found.");
+    const messages = this.messagesForConversation(conversationId);
+    const current = messages.findIndex(
+      (message) => message.clientMessageId === clientMessageId && message.author === "user"
+    );
+    const previous =
+      current >= 0
+        ? messages.slice(0, current)
+        : messages.filter((message) => Date.parse(message.createdAt) < submittedAt.getTime());
+    return previous
+      .filter((message) => !message.deletedAt && message.content.type === "text")
+      .slice(-24)
+      .flatMap((message): RuntimeModelConversationMessage[] =>
+        message.content.type === "text"
+          ? [
+              {
+                role: message.author === "agent" ? "assistant" : "user",
+                content: message.content.text.slice(0, 1000)
+              }
+            ]
+          : []
+      );
   }
 
   private runtimeConversationHistory(
@@ -3620,6 +4217,7 @@ export class MessagingDomain {
   updateConversationSettings(input: {
     sessionId: string | null;
     conversationId: string;
+    agentEnabled?: boolean;
     archived?: boolean;
     mutedUntil?: string | null;
     pinned?: boolean;
@@ -3630,6 +4228,44 @@ export class MessagingDomain {
     const now = input.now ?? new Date();
     const session = this.deps.requirePinVerifiedSession(input.sessionId, now);
     const conversation = this.requireAccountConversation(input.conversationId, session.account.id);
+    if (input.agentEnabled !== undefined) {
+      if (
+        typeof input.agentEnabled !== "boolean" ||
+        conversation.kind === "personal" ||
+        !conversation.activeShopId
+      )
+        throw new Cp2Error(
+          400,
+          "business_agent_configuration_invalid",
+          "Choose a business conversation."
+        );
+      const membership = this.deps.requireMembership(conversation.activeShopId, session.user.id);
+      if (membership.role !== "owner")
+        throw new Cp2Error(
+          403,
+          "business_owner_required",
+          "Only the business owner can configure its agent."
+        );
+      this.conversations.set(conversation.id, {
+        ...conversation,
+        businessAgentEnabled: input.agentEnabled
+      });
+    }
+    if (conversation.isPermanentDaemon && input.archived === true)
+      throw new Cp2Error(
+        400,
+        "daemon_conversation_permanent",
+        "Your daemon remains available in the messenger."
+      );
+    if (
+      conversation.helpTopic &&
+      (input.archived === true || input.title !== undefined || input.pinned === false)
+    )
+      throw new Cp2Error(
+        400,
+        "help_conversation_permanent",
+        "Help chats keep their names and remain available."
+      );
     const participant = this.accountConversationParticipant(conversation.id, session.account.id);
     if (participant === null)
       throw new Cp2Error(404, "conversation_not_found", "Conversation was not found.");
@@ -3664,7 +4300,7 @@ export class MessagingDomain {
     this.conversationParticipants.set(participant.id, nextParticipant);
     if (input.title !== undefined) {
       this.conversations.set(conversation.id, {
-        ...conversation,
+        ...(this.conversations.get(conversation.id) ?? conversation),
         title: input.title?.trim() || null,
         updatedAt: now.toISOString()
       });
@@ -3678,6 +4314,14 @@ export class MessagingDomain {
         });
       }
     }
+    if (input.agentEnabled !== undefined || input.title !== undefined)
+      this.recordConversationSyncForParticipants(
+        conversation.id,
+        "conversations",
+        conversation.id,
+        this.conversations.get(conversation.id) ?? conversation,
+        now
+      );
     this.recordConversationSyncForParticipants(
       conversation.id,
       "conversation_participants",
@@ -3704,6 +4348,18 @@ export class MessagingDomain {
     const now = input.now ?? new Date();
     const session = this.deps.requirePinVerifiedSession(input.sessionId, now);
     const conversation = this.requireAccountConversation(input.conversationId, session.account.id);
+    if (conversation.isPermanentDaemon)
+      throw new Cp2Error(
+        400,
+        "daemon_conversation_permanent",
+        "Your daemon conversation cannot be deleted."
+      );
+    if (conversation.helpTopic)
+      throw new Cp2Error(
+        400,
+        "help_conversation_permanent",
+        "Help chats remain available and cannot be deleted."
+      );
     this.requireConversationAdmin(conversation, session);
 
     const { scope, scopeId } = this.recycleBinScopeKey(conversation);
@@ -4583,6 +5239,7 @@ export class MessagingDomain {
   }
 
   private createAccountConversation(input: {
+    identityKey?: string;
     accountId: string;
     userId: string;
     kind: ConversationKind;
@@ -4590,29 +5247,45 @@ export class MessagingDomain {
     recipientAccountId?: string | null;
     title?: string | null;
     runtimeBindingId?: string | null;
+    helpTopic?: string;
+    helpParentConversationId?: string;
     taskConversationId?: string;
     taskParentConversationId?: string;
     now: Date;
   }): ConversationSummary {
     const conversation: ConversationSummary = {
-      id: input.taskConversationId ?? randomUUID(),
+      id:
+        input.taskConversationId ??
+        (input.identityKey ? stableConversationId(input.identityKey) : randomUUID()),
+      ...(input.helpTopic ? { helpTopic: input.helpTopic } : {}),
+      ...(input.helpParentConversationId
+        ? { helpParentConversationId: input.helpParentConversationId }
+        : {}),
       ...(input.taskParentConversationId === undefined
         ? {}
         : { taskParentConversationId: input.taskParentConversationId }),
       accountId: input.accountId,
       kind: input.kind,
       activeShopId: input.activeShopId,
-      runtimeBindingId: this.deps.assignRuntimeBinding({
-        accountId: input.accountId,
-        activeShopId: input.activeShopId,
-        ...(input.runtimeBindingId === undefined
-          ? {}
-          : { requestedBindingId: input.runtimeBindingId })
-      }),
+      runtimeBindingId: input.recipientAccountId
+        ? null
+        : this.deps.assignRuntimeBinding({
+            accountId: input.accountId,
+            activeShopId: input.activeShopId,
+            ...(input.runtimeBindingId === undefined
+              ? {}
+              : { requestedBindingId: input.runtimeBindingId })
+          }),
       title: input.title ?? null,
       createdAt: input.now.toISOString(),
       updatedAt: input.now.toISOString()
     };
+    if (this.conversations.has(conversation.id))
+      throw new Cp2Error(
+        409,
+        "conversation_identity_conflict",
+        "Restore the existing conversation before reopening it."
+      );
     this.conversations.set(conversation.id, conversation);
     const participants: ConversationParticipantSummary[] = [
       {
@@ -4674,6 +5347,7 @@ export class MessagingDomain {
     }
 
     for (const participant of participants) {
+      if (input.recipientAccountId && participant.role === "agent") continue;
       this.conversationParticipants.set(participant.id, participant);
     }
 
@@ -4693,23 +5367,33 @@ export class MessagingDomain {
     userId: string;
     now: Date;
   }): ConversationSummary {
-    const existing = [...this.conversations.values()].find(
+    const candidates = [...this.conversations.values()].filter(
       (conversation) =>
         conversation.accountId === input.accountId &&
         conversation.kind === "personal" &&
+        this.humanConversationAccountIds(conversation.id).length === 1 &&
+        !conversation.taskParentConversationId &&
+        !conversation.helpTopic &&
         conversation.activeShopId === null &&
         conversation.deletedAt == null &&
         this.accountConversationParticipant(conversation.id, input.accountId) !== null
     );
 
-    return (
+    const existing =
+      candidates.find((conversation) => conversation.isPermanentDaemon) ?? candidates[0];
+    const conversation =
       existing ??
       this.createAccountConversation({
         ...input,
         kind: "personal",
-        activeShopId: null
-      })
-    );
+        activeShopId: null,
+        identityKey: `daemon:${input.accountId}`,
+        title: "Your daemon"
+      });
+    if (conversation.isPermanentDaemon) return conversation;
+    const permanent = { ...conversation, isPermanentDaemon: true };
+    this.conversations.set(permanent.id, permanent);
+    return permanent;
   }
 
   private validateManagedConversationAttachments(
@@ -4838,6 +5522,11 @@ export class MessagingDomain {
     return conversation;
   }
 
+  private conversationType(conversation: ConversationSummary): "DIRECT" | "DAEMON" | "BUSINESS" {
+    if (conversation.kind !== "personal") return "BUSINESS";
+    return this.humanConversationAccountIds(conversation.id).length > 1 ? "DIRECT" : "DAEMON";
+  }
+
   private conversationView(conversation: ConversationSummary): ConversationView {
     const now = new Date();
     const channels = [...this.conversationChannels.values()]
@@ -4847,7 +5536,7 @@ export class MessagingDomain {
         return identity === undefined ? [] : [this.deps.channelGateway.endpoint(channel, identity)];
       });
     return {
-      conversation,
+      conversation: { ...conversation, conversationType: this.conversationType(conversation) },
       participants: [...this.conversationParticipants.values()]
         .filter((participant) => participant.conversationId === conversation.id)
         .map((participant) => this.participantView(participant)),
@@ -4874,28 +5563,88 @@ export class MessagingDomain {
     conversationId: string,
     accountId: string
   ): ConversationParticipantSummary | null {
-    return (
-      [...this.conversationParticipants.values()].find(
-        (participant) =>
-          participant.conversationId === conversationId &&
-          participant.role === "account" &&
-          participant.accountId === accountId
-      ) ?? null
+    const conversation = this.conversations.get(conversationId);
+    const businessConversation =
+      conversation && conversation.kind !== "personal" && conversation.activeShopId !== null;
+    const userId = this.deps.userByAccount.get(accountId);
+    const member =
+      businessConversation &&
+      [...this.deps.memberships.values()].some(
+        (membership) =>
+          membership.businessId === conversation.activeShopId && membership.userId === userId
+      );
+    if (businessConversation && conversation.accountId !== accountId && !member) return null;
+    const existing = [...this.conversationParticipants.values()].find(
+      (participant) =>
+        participant.conversationId === conversationId &&
+        participant.role === "account" &&
+        participant.accountId === accountId
     );
+    if (existing) return existing;
+    if (!member || !conversation) return null;
+    const participant: ConversationParticipantSummary = {
+      id: randomUUID(),
+      conversationId,
+      role: "account",
+      accountId,
+      businessId: conversation.activeShopId,
+      agentId: null,
+      displayName: userId ? (this.deps.users.get(userId)?.displayName ?? null) : null,
+      lastReadAt: null,
+      archivedAt: null,
+      mutedUntil: null,
+      pinnedAt: null,
+      createdAt: new Date().toISOString()
+    };
+    this.conversationParticipants.set(participant.id, participant);
+    return participant;
   }
 
   private humanConversationAccountIds(conversationId: string): string[] {
-    return [...this.conversationParticipants.values()]
-      .filter(
-        (participant) =>
-          participant.conversationId === conversationId &&
-          participant.role === "account" &&
-          participant.accountId !== null
+    return [
+      ...new Set(
+        [...this.conversationParticipants.values()]
+          .filter(
+            (participant) =>
+              participant.conversationId === conversationId &&
+              participant.role === "account" &&
+              participant.accountId !== null
+          )
+          .map((participant) => participant.accountId as string)
       )
-      .map((participant) => participant.accountId as string);
+    ];
+  }
+
+  private requireContactAllowed(
+    ownerUserId: string,
+    targetAccountId: string,
+    discovery: boolean
+  ): void {
+    const targetId = this.deps.userByAccount.get(targetAccountId);
+    if (
+      !targetId ||
+      contactIsBlocked(this.deps.users, ownerUserId, targetId) ||
+      (discovery && this.deps.users.get(targetId)?.contactDiscoveryEnabled === false)
+    )
+      throw new Cp2Error(
+        404,
+        "recipient_not_found",
+        "No available Grogoni account matches that contact."
+      );
+  }
+
+  private contactNodeForConversation(conversationId: string, accountId: string): string | null {
+    const ownerUserId = this.deps.userByAccount.get(accountId);
+    const counterpart = this.humanConversationAccountIds(conversationId).filter(
+      (id) => id !== accountId
+    );
+    return ownerUserId && counterpart.length === 1
+      ? this.deps.findPhonebookNode(ownerUserId, counterpart[0]!)
+      : null;
   }
 
   private conversationHasHumanRecipient(conversationId: string, callerAccountId: string): boolean {
+    if (this.conversations.get(conversationId)?.kind !== "personal") return false;
     return this.humanConversationAccountIds(conversationId).some(
       (accountId) => accountId !== callerAccountId
     );
@@ -4905,6 +5654,7 @@ export class MessagingDomain {
     conversationId: string,
     content: ConversationMessageContent
   ): void {
+    if (this.conversations.get(conversationId)?.kind !== "personal") return;
     const accountIds = this.humanConversationAccountIds(conversationId);
     if (accountIds.length < 2) return;
     if (content.type !== "encrypted") {
@@ -4941,6 +5691,22 @@ export class MessagingDomain {
     }
   }
 
+  private conversationAudience(conversation: ConversationSummary): string[] {
+    const ids = new Set(
+      this.humanConversationAccountIds(conversation.id).filter(
+        (accountId) => this.accountConversationParticipant(conversation.id, accountId) !== null
+      )
+    );
+    if (conversation.kind !== "personal" && conversation.activeShopId !== null) {
+      for (const membership of this.deps.memberships.values()) {
+        if (membership.businessId !== conversation.activeShopId) continue;
+        const user = this.deps.users.get(membership.userId);
+        if (user) ids.add(user.accountId);
+      }
+    }
+    return [...ids];
+  }
+
   private enqueueConversationNotifications(
     conversation: ConversationSummary,
     message: ConversationMessageSummary,
@@ -4948,9 +5714,7 @@ export class MessagingDomain {
     now: Date
   ): void {
     const recipientIds = new Set(
-      this.humanConversationAccountIds(conversation.id).filter(
-        (accountId) => accountId !== senderAccountId
-      )
+      this.conversationAudience(conversation).filter((accountId) => accountId !== senderAccountId)
     );
     for (const participant of this.conversationParticipants.values()) {
       if (
@@ -4978,14 +5742,14 @@ export class MessagingDomain {
     }
     if (this.deps.messageEmailNotificationSender !== undefined) {
       for (const accountId of recipientIds) {
-        const account = this.deps.accounts.get(accountId);
-        if (account?.primaryAuthChannel !== "email") continue;
+        const destination = this.deps.verifiedNotificationEmail(accountId);
+        if (destination === undefined) continue;
         this.addMessageNotificationDelivery({
           message,
           accountId,
           channel: "email",
           targetId: `email:${accountId}`,
-          destination: account.primaryAuthDestination,
+          destination,
           now
         });
       }
@@ -5026,6 +5790,30 @@ export class MessagingDomain {
     delivery: MessageNotificationDelivery,
     now: Date
   ): Promise<MessageNotificationDelivery> {
+    const target = this.conversations.get(delivery.conversationId);
+    const recipientUser = this.deps.userByAccount.get(delivery.accountId);
+    const blocked =
+      target?.kind === "personal" &&
+      recipientUser &&
+      this.humanConversationAccountIds(target.id).some((accountId) => {
+        const otherUser = this.deps.userByAccount.get(accountId);
+        return otherUser && contactIsBlocked(this.deps.users, recipientUser, otherUser);
+      });
+    if (
+      !target ||
+      target.deletedAt != null ||
+      blocked ||
+      this.accountConversationParticipant(delivery.conversationId, delivery.accountId) === null
+    ) {
+      const expired: MessageNotificationDelivery = {
+        ...delivery,
+        status: "dead_letter",
+        nextAttemptAt: null,
+        updatedAt: now.toISOString()
+      };
+      this.messageNotificationDeliveries.set(expired.id, expired);
+      return expired;
+    }
     const attempts = delivery.attempts + 1;
     let outcome: "sent" | "failed" | "expired" = "failed";
     try {
@@ -5040,7 +5828,11 @@ export class MessagingDomain {
             conversationId: delivery.conversationId,
             messageId: delivery.messageId,
             title: conversation?.title?.trim() || "New Grogoni message",
-            body: "Open Grogoni to read your message."
+            body: this.conversationMessages
+              .get(delivery.messageId)
+              ?.idempotencyKey.startsWith("membership:")
+              ? "A participant was added to your discussion. Open Grogoni to view it."
+              : "Open Grogoni to read your message."
           });
           if (outcome === "expired") {
             this.pushSubscriptions.delete(subscription.id);
@@ -5144,13 +5936,7 @@ export class MessagingDomain {
   ): void {
     const conversation = this.conversations.get(conversationId);
     if (!conversation) return;
-    const accountIds = new Set(
-      [...this.conversationParticipants.values()]
-        .filter(
-          (participant) => participant.conversationId === conversationId && participant.accountId
-        )
-        .map((participant) => participant.accountId as string)
-    );
+    const accountIds = new Set(this.conversationAudience(conversation));
     for (const accountId of accountIds) {
       this.deps.recordSyncChange({
         accountId,
@@ -6422,4 +7208,10 @@ function sanitizeWorkspaceAttachmentCaption(value: string | undefined): string |
     .join("")
     .slice(0, 240);
   return caption || null;
+}
+
+/** Stable UUID-shaped server identity; legacy conversations are always reused before calling. */
+function stableConversationId(key: string): string {
+  const hex = createHash("sha256").update(`grogoni:conversation:v1:${key}`).digest("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-5${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }

@@ -100,6 +100,67 @@ describe("Edge shared user and business routes", () => {
     const denied = await call(`/businesses/${business.id}/products`, other.session.id);
     expect([403, 404]).toContain(denied!.status);
   });
+  it("authenticates image reading in a short lookup and performs model inference without snapshot locks", async () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "test-key");
+    let lookupOpen = false;
+    const transaction = vi.fn(async () => {
+      throw new Error("Image inference must not open a snapshot transaction");
+    });
+    const findUser = vi.fn(async () => {
+      lookupOpen = true;
+      await Promise.resolve();
+      lookupOpen = false;
+      return { userId: "owner" };
+    });
+    const fetch = vi.fn(async () => {
+      expect(lookupOpen).toBe(false);
+      return Response.json({
+        model: "openai/gpt-6-luna",
+        choices: [
+          {
+            message: { content: JSON.stringify({ type: "response", message: "Receipt total 570" }) }
+          }
+        ]
+      });
+    });
+    vi.stubGlobal("fetch", fetch);
+    try {
+      const { routes } = await createEdgeDomainRoutes({
+        transaction,
+        daemon: { queue: {} as never, hint: null, findUser }
+      });
+      const path = "/v1/chat/images/read";
+      const response = await routes(
+        new Request(`https://grogoni.com${path}`, {
+          method: "POST",
+          headers: { "content-type": "application/json", cookie: "grogoni_session=test" },
+          body: JSON.stringify({
+            fileName: "receipt.png",
+            contentType: "image/png",
+            contentBase64: Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0]).toString("base64")
+          })
+        }),
+        path
+      );
+      expect(response!.status).toBe(200);
+      expect(findUser).toHaveBeenCalledOnce();
+      expect(fetch).toHaveBeenCalledOnce();
+      expect(transaction).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    }
+  });
+  it("coordinates GET handlers before loading a snapshot because session maintenance can write", async () => {
+    const { call, client } = await setup();
+    expect((await call("/v1/shops"))!.status).toBe(200);
+    const statements = vi.mocked(client.query).mock.calls.map((call) => String(call[0]));
+    expect(
+      statements.some(
+        (sql) => sql.includes("edge:business:") && sql.includes("pg_advisory_xact_lock")
+      )
+    ).toBe(true);
+  });
   it("does not open a database transaction for an unknown route", async () => {
     const transaction = vi.fn();
     const { routes } = await createEdgeDomainRoutes({ transaction });

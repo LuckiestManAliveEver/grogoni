@@ -107,6 +107,7 @@ export type RuntimeToolName =
   | "network.identity.reject"
   | "network.identity.unlink"
   | "network.identity.add"
+  | "commerce.website.open"
   | "commerce.search"
   | "commerce.checkout"
   | "product.create"

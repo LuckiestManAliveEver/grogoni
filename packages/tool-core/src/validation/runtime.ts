@@ -9,6 +9,13 @@ export function validateRuntimeToolInput(
   toolName: RuntimeToolName,
   input: Record<string, unknown>
 ): ValidationResult {
+  if (
+    toolName.startsWith("computer.") &&
+    toolName !== "computer.session.create" &&
+    (typeof input.sessionId !== "string" || input.sessionId.trim().length === 0)
+  ) {
+    return invalid("Choose a computer session first. Use #computer.session.create to open one.");
+  }
   switch (toolName) {
     case "procurement.submit": {
       const allowed = [
@@ -236,6 +243,16 @@ export function validateRuntimeToolInput(
       return errors.length === 0 ? valid() : invalid(...errors);
     }
 
+    case "commerce.website.open": {
+      try {
+        const url = new URL(String(input.url ?? ""));
+        return url.protocol === "https:" && !url.username && !url.password
+          ? valid()
+          : invalid("Provide an HTTPS retailer URL without credentials.");
+      } catch {
+        return invalid("Provide an HTTPS retailer URL.");
+      }
+    }
     case "commerce.checkout": {
       const items = Array.isArray(input.items) ? input.items : [];
       const errors: string[] = [];
@@ -320,6 +337,24 @@ export function validateRuntimeToolInput(
       const provider = typeof input.provider === "string" ? input.provider.trim() : "";
       const subject = typeof input.subject === "string" ? input.subject.trim() : "";
       const errors: string[] = [];
+      if (
+        input.provider !== undefined &&
+        (typeof input.provider !== "string" ||
+          ![
+            "grogoni",
+            "telegram",
+            "whatsapp",
+            "messenger",
+            "instagram",
+            "tiktok",
+            "x",
+            "sms",
+            "native_sms",
+            "email"
+          ].includes(input.provider))
+      ) {
+        errors.push("Choose a supported messaging provider; the route will not be substituted.");
+      }
       if (text.length === 0 || text.length > 4000) {
         errors.push("A message between 1 and 4000 characters is required.");
       }

@@ -1,0 +1,301 @@
+{
+  "overallResult": "phase6_acceptance_failed",
+  "interpretation": "Primary browser readiness was premature; final diagnostic confirms existing conversations render and reload. See the Markdown report for per-workflow outcomes and unverified requirements.",
+  "primary": {
+    "runId": "aef1c1ba-e6ae-4545-940f-e71c8c951c10",
+    "base": "https://grogoni.com/api",
+    "startedAt": "2026-10-22T19:22:43.310Z",
+    "frontendBuild": {
+      "buildId": "00c0ddb22f8b0d6c9027806f20a65bc140b514e0",
+      "version": "0.1.0",
+      "builtAt": "2026-10-22T15:21:33.434Z",
+      "environment": "production"
+    },
+    "daemonId": "3581b457-0a23-4d8c-b1ce-88d84af7598d",
+    "directId": "7db2e0d3-b2c2-4747-83f9-978367deb3c8",
+    "shopId": "0872dc92-a5f2-4810-9503-747d4ddcb639",
+    "realModel": {
+      "modelId": "gpt-6-luna",
+      "text": "PHASE6-PRODUCTION"
+    },
+    "failedTaskVisibility": {
+      "status": "failed",
+      "errorCode": "PHASE6_TEST_FAILURE"
+    },
+    "completedAt": "2026-10-22T19:24:50.724Z",
+    "passed": false,
+    "counts": {
+      "pass": 5,
+      "fail": 14,
+      "unverified": 4
+    },
+    "steps": [
+      {
+        "name": "production frontend build identity",
+        "status": "pass",
+        "detail": {
+          "buildId": "00c0ddb22f8b0d6c9027806f20a65bc140b514e0",
+          "version": "0.1.0",
+          "builtAt": "2026-10-22T15:21:33.434Z",
+          "environment": "production"
+        }
+      },
+      {
+        "name": "permanent DAEMON identity is returned and stable",
+        "status": "fail",
+        "detail": "No authoritative DAEMON conversationType\n+ actual - expected\n\n+ undefined\n- 'DAEMON'\n"
+      },
+      {
+        "name": "DIRECT identity has no fake agent or inference binding",
+        "status": "fail",
+        "detail": "Expected values to be strictly equal:\n+ actual - expected\n\n+ undefined\n- 'DIRECT'\n"
+      },
+      {
+        "name": "concurrent direct creation in both directions reuses the same pair",
+        "status": "fail",
+        "detail": "Created 4 conversations for one pair\n\n4 !== 1\n"
+      },
+      {
+        "name": "direct plaintext is rejected",
+        "status": "pass",
+        "detail": {
+          "code": "e2ee_required"
+        }
+      },
+      {
+        "name": "A sends an encrypted message; B decrypts and replies; A decrypts",
+        "status": "fail",
+        "detail": "/v1/messages: HTTP 409 e2ee_recipient_unavailable\n\n409 !== 200\n"
+      },
+      {
+        "name": "concurrent encrypted message replay stores one message",
+        "status": "fail",
+        "detail": "/v1/messages: HTTP 409 e2ee_recipient_unavailable\n\n409 !== 200\n"
+      },
+      {
+        "name": "unauthorized account cannot read or write direct or daemon conversations",
+        "status": "pass",
+        "detail": {
+          "readAndWriteDenied": true
+        }
+      },
+      {
+        "name": "phonebook selection reopens the direct pair and rejects another owner's node",
+        "status": "fail",
+        "detail": "/v1/conversations: HTTP 400 INVALID_PHONE_NUMBER\n\n400 !== 200\n"
+      },
+      {
+        "name": "customer can open the registered business conversation",
+        "status": "fail",
+        "detail": "/v1/conversations: HTTP 404 business_not_found\n\n404 !== 200\n"
+      },
+      {
+        "name": "business inbox reply, tenant routing and business agent response",
+        "status": "unverified",
+        "detail": "Customer conversation creation failed; dependent business workflows could not run."
+      },
+      {
+        "name": "daemon task retains its authorized conversation association",
+        "status": "fail",
+        "detail": "Server discarded originating conversation\n+ actual - expected\n\n+ undefined\n- '3581b457-0a23-4d8c-b1ce-88d84af7598d'\n"
+      },
+      {
+        "name": "real production daemon model responds and task survives reload",
+        "status": "pass",
+        "detail": {
+          "modelId": "gpt-6-luna",
+          "text": "PHASE6-PRODUCTION"
+        }
+      },
+      {
+        "name": "daemon result is delivered into its originating conversation without browser projection",
+        "status": "fail",
+        "detail": "Completed task result is absent from conversation history"
+      },
+      {
+        "name": "untrusted caller cannot associate daemon work with another account's conversation",
+        "status": "fail",
+        "detail": "Unauthorized association accepted: HTTP 201"
+      },
+      {
+        "name": "all three conversation identities restore in one inbox",
+        "status": "fail",
+        "detail": "DAEMON not restored with authoritative identity\n+ actual - expected\n\n+ undefined\n- 'DAEMON'\n"
+      },
+      {
+        "name": "owned failed-task retry route exists and hides foreign task IDs",
+        "status": "fail",
+        "detail": "No owned retry endpoint (generic route 404 is not sufficient)\n+ actual - expected\n\n+ 'route_not_found'\n- 'task_not_found'\n"
+      },
+      {
+        "name": "failed daemon task stays visible and can be retried through an owned route",
+        "status": "fail",
+        "detail": "Failed task remained visible, but owned retry returned HTTP 404 route_not_found"
+      },
+      {
+        "name": "production browser exposes the common conversation list after reload",
+        "status": "fail",
+        "detail": "Unified labels missing: "
+      },
+      {
+        "name": "model switching keeps the same daemon history",
+        "status": "unverified",
+        "detail": "No account-specific model switch performed: production must not be validated by changing a shared/global model binding."
+      },
+      {
+        "name": "actual model/daemon outage leaves direct messaging functional",
+        "status": "unverified",
+        "detail": "No production provider outage was induced; plaintext rejection and encrypted messaging were tested independently of inference."
+      },
+      {
+        "name": "push notification receipt and revoked membership access",
+        "status": "unverified",
+        "detail": "Unread inbox delivery was probed; no real push subscription or membership-revocation fixture was exercised."
+      },
+      {
+        "name": "remove and verify all disposable production fixtures",
+        "status": "pass",
+        "detail": {
+          "removedAccounts": 3,
+          "removedBusinesses": 1
+        }
+      }
+    ]
+  },
+  "diagnostic": {
+    "runId": "331b5a9c-38e4-4184-bfce-cdcb353dae37",
+    "base": "https://grogoni.com/api",
+    "completedAt": "2026-10-23T03:17:36.317Z",
+    "steps": [
+      {
+        "name": "recipient encryption-device access",
+        "status": "fail",
+        "detail": {
+          "status": 404,
+          "code": "conversation_not_found"
+        }
+      },
+      {
+        "name": "encryption enumeration observation",
+        "status": "observation",
+        "detail": {
+          "aCount": 1,
+          "bCount": 0,
+          "aAccounts": ["f3d1b30e-77b1-4ef8-80ab-774d76cf17d3"],
+          "bAccounts": []
+        }
+      },
+      {
+        "name": "encryption device enumeration includes both authorized accounts",
+        "status": "fail",
+        "detail": "Sender cannot enumerate recipient's registered device"
+      },
+      {
+        "name": "diagnostic recipient scope hint allows encrypted exchange and message deduplication",
+        "status": "fail",
+        "detail": "/v1/messages: HTTP 409 e2ee_recipient_unavailable\n\n409 !== 200\n"
+      },
+      {
+        "name": "standard customer business creation",
+        "status": "fail",
+        "detail": {
+          "status": 404,
+          "code": "business_not_found"
+        }
+      },
+      {
+        "name": "diagnostic business scope hint resolves the existing registered business",
+        "status": "pass",
+        "detail": {
+          "scopeHintRequired": true,
+          "conversationId": "369416b1-8498-4222-bb6c-575e1e3fb4f5"
+        }
+      },
+      {
+        "name": "customer sends into diagnostically scoped business conversation",
+        "status": "pass",
+        "detail": {
+          "messageId": "f1dc1c61-16fc-440a-ba47-fb8273b10940"
+        }
+      },
+      {
+        "name": "business owner access observation",
+        "status": "observation",
+        "detail": {
+          "inInbox": false,
+          "readStatus": 404,
+          "readCode": "conversation_not_found"
+        }
+      },
+      {
+        "name": "business owner can read and reply to customer's scoped conversation",
+        "status": "fail",
+        "detail": "/v1/conversations/369416b1-8498-4222-bb6c-575e1e3fb4f5: HTTP 404 conversation_not_found\n\n404 !== 200\n"
+      },
+      {
+        "name": "authorized business runtime generates a real response in an owner session",
+        "status": "pass",
+        "detail": {
+          "text": "PHASE6-OWNER-RUNTIME",
+          "modelId": "gpt-6-luna",
+          "scope": "owner session, not shared customer thread"
+        }
+      },
+      {
+        "name": "browser settled state observation",
+        "status": "observation",
+        "detail": {
+          "before": 3,
+          "after": 3,
+          "labels": ["Chat", "Buy", "Buy"],
+          "calls": [
+            {
+              "path": "/api/auth/bootstrap",
+              "status": 200
+            },
+            {
+              "path": "/api/v1/conversations",
+              "status": 200
+            },
+            {
+              "path": "/api/auth/bootstrap",
+              "status": 200
+            }
+          ],
+          "apiConversationCount": 3
+        }
+      },
+      {
+        "name": "authenticated production browser loads and reloads actual inbox data",
+        "status": "pass",
+        "detail": {
+          "before": 3,
+          "after": 3,
+          "labels": ["Chat", "Buy", "Buy"],
+          "calls": [
+            {
+              "path": "/api/auth/bootstrap",
+              "status": 200
+            },
+            {
+              "path": "/api/v1/conversations",
+              "status": 200
+            },
+            {
+              "path": "/api/auth/bootstrap",
+              "status": 200
+            }
+          ]
+        }
+      },
+      {
+        "name": "remove and verify diagnostic fixtures",
+        "status": "pass",
+        "detail": {
+          "accounts": 2,
+          "businesses": 1
+        }
+      }
+    ]
+  }
+}

@@ -1,3 +1,4 @@
+import { computerWorkerFromEnvironment } from "./computer-runtime/client.js";
 import { type RuntimeModelProviderName } from "@grogoni/shared-types";
 import { createMetrics, type Metrics } from "@grogoni/observability";
 import { Pool } from "pg";
@@ -256,7 +257,9 @@ await retryDatabaseStartup(
     backgroundRetry
   );
 });
+const computerWorkerClient = computerWorkerFromEnvironment();
 const cp2StoreOptions = {
+  ...(computerWorkerClient ? { computerWorkerClient } : {}),
   channelGateway,
   emailMailboxProviderClient,
   metrics,

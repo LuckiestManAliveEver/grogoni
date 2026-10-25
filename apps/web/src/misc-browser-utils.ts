@@ -2,18 +2,35 @@ import { useEffect, useState } from "react";
 
 import { type BeforeInstallPromptEvent } from "./grogoni-application-shared";
 
+const INSTALL_PROMPT_DISMISSED_KEY = "grogoni-install-prompt-dismissed";
+
 export function useInstallPrompt() {
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const canInstall = installPrompt !== null && !isStandaloneWebApp();
+  const [dismissedInstallPrompt, setDismissedInstallPrompt] = useState<boolean>(() => {
+    try {
+      return window.localStorage.getItem(INSTALL_PROMPT_DISMISSED_KEY) === "true";
+    } catch {
+      return false;
+    }
+  });
+  const canInstall = installPrompt !== null && !isStandaloneWebApp() && !dismissedInstallPrompt;
 
   useEffect(() => {
     function handleBeforeInstallPrompt(event: Event) {
+      if (dismissedInstallPrompt) {
+        return;
+      }
       event.preventDefault();
       setInstallPrompt(event as BeforeInstallPromptEvent);
     }
 
     function handleAppInstalled() {
       setInstallPrompt(null);
+      try {
+        window.localStorage.removeItem(INSTALL_PROMPT_DISMISSED_KEY);
+      } catch {
+        // Ignore storage errors while preserving operational behavior.
+      }
     }
 
     window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
@@ -23,21 +40,39 @@ export function useInstallPrompt() {
       window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
       window.removeEventListener("appinstalled", handleAppInstalled);
     };
-  }, []);
+  }, [dismissedInstallPrompt]);
 
   async function installApp() {
     if (installPrompt === null) {
       return;
     }
 
+    try {
+      window.localStorage.setItem(INSTALL_PROMPT_DISMISSED_KEY, "true");
+    } catch {
+      // Ignore storage errors while preserving installation flow.
+    }
+
     await installPrompt.prompt();
     await installPrompt.userChoice;
     setInstallPrompt(null);
+    setDismissedInstallPrompt(true);
+  }
+
+  function dismissInstallPrompt() {
+    setInstallPrompt(null);
+    setDismissedInstallPrompt(true);
+    try {
+      window.localStorage.setItem(INSTALL_PROMPT_DISMISSED_KEY, "true");
+    } catch {
+      // Ignore storage errors while preserving installation flow.
+    }
   }
 
   return {
     canInstall,
-    installApp
+    installApp,
+    dismissInstallPrompt
   };
 }
 

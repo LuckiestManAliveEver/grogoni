@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 
-import type { AndroidSmsComposerBridge } from "./messaging/sms-handoff";
+import type { AndroidSmsComposerBridge, SmsComposerBridge } from "./messaging/sms-handoff";
 
 declare global {
   const __APP_NAME__: string;
@@ -12,6 +12,7 @@ declare global {
 
   interface Window {
     GrogoniAndroid?: AndroidSmsComposerBridge;
+    GrogoniDevice?: SmsComposerBridge;
   }
 }
 

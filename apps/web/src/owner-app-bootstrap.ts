@@ -234,7 +234,7 @@ export function createDefaultAgent(business: ActiveBusiness | null): AgentSettin
     id: `agent-${globalAgentId}`,
     name: defaultAgentDefinition.displayName,
     description: defaultAgentDefinition.description,
-    model: "qwen2.5-0.5b-android",
+    model: "gpt-6-luna",
     role: defaultAgentDefinition.role,
     globalAgentId,
     storefrontUrl: createStorefrontUrl(globalAgentId),

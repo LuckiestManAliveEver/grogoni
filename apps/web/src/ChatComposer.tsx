@@ -1,51 +1,22 @@
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
-
-import type { ChannelEndpointSummary } from "@grogoni/shared-types";
+import { useEffect, useRef, useState } from "react";
 import { runtimeHashtagCapabilities, runtimeHashtagQuery } from "@grogoni/tool-core";
 
-import type { ChatAttachment, GrogoniMode } from "./app-shell";
-import {
-  type ActiveBusiness,
-  type AgentSettings,
-  type InvoiceSummary,
-  chatAttachmentAccept
-} from "./grogoni-application-shared";
+import { chatAttachmentAccept } from "./grogoni-application-shared";
 import { chatModuleCommands } from "./chat-module-commands";
 import { startVoiceInput } from "./chat-message-plumbing";
 import { formatChannelProvider } from "./formatters";
-import type { ChatComposerState } from "./hooks/useChatComposerState";
-import { ChatChannelPicker } from "./ChatChannelPicker";
-import { ChatComposerActions } from "./ChatComposerActions";
-import { ChatHashtagCapabilityPicker } from "./ChatHashtagCapabilityPicker";
-import { ComposerAttachmentWorkbench } from "./ComposerAttachmentWorkbench";
-import { ComposerModelSwitcher } from "./ComposerModelSwitcher";
+import type { ChatComposerProps } from "./chat-composer-contracts";
+import {
+  ChatComposerLazyPanel,
+  ChatHashtagCapabilityPicker,
+  ComposerAttachmentWorkbench,
+  ExternalMessagingAppPicker
+} from "./chat-composer-lazy-panels";
 
-interface ChatComposerProps {
-  agent: AgentSettings | null;
-  business: ActiveBusiness | null;
-  channelEndpoints: ChannelEndpointSummary[];
-  composer: ChatComposerState;
-  invoices: InvoiceSummary[];
-  isAuthenticated: boolean;
-  isBrowserGenerating: boolean;
-  isSending: boolean;
-  /** The conversation in the URL is still being opened: there is nothing to send to yet. */
-  isOpening?: boolean;
-  mode: GrogoniMode;
-  activeAgentName: string;
-  pendingAttachments: ChatAttachment[];
-  replyToMessageId: string | null;
-  selectedConversationTitle: string;
-  selectedEmailCustomerId: string | null | undefined;
-  onAgentChange: (agent: AgentSettings) => void;
-  onAttachmentChange: (event: ChangeEvent<HTMLInputElement>) => void;
-  onCancelGeneration: () => void;
-  onCancelReply: () => void;
-  onOpenAgentProfile: () => void;
-  onRemoveAttachment: (attachmentId: string) => void;
-  onRequireSignIn: () => void;
-  onSellerPhotoCapture: (file: File) => void;
-}
+import { DeferredChatChannelPicker as ChatChannelPicker } from "./chat-composer-lazy-panels";
+import { DeferredChatComposerActions as ChatComposerActions } from "./chat-composer-lazy-panels";
+
+import { ComposerModelSwitcher } from "./ComposerModelSwitcher";
 
 export function ChatComposer({
   agent,
@@ -59,6 +30,8 @@ export function ChatComposer({
   isOpening = false,
   mode,
   activeAgentName,
+  audienceLabel,
+  agentControlsAvailable = true,
   pendingAttachments,
   replyToMessageId,
   selectedConversationTitle,
@@ -68,6 +41,7 @@ export function ChatComposer({
   onCancelGeneration,
   onCancelReply,
   onOpenAgentProfile,
+  onAddParticipants,
   onRemoveAttachment,
   onRequireSignIn,
   onSellerPhotoCapture
@@ -97,8 +71,9 @@ export function ChatComposer({
   } = composer;
   const [messageActionsOpen, setMessageActionsOpen] = useState(false);
   const [channelPickerOpen, setChannelPickerOpen] = useState(false);
+  const [externalAppsOpen, setExternalAppsOpen] = useState(false);
   const messageInputRef = useRef<HTMLTextAreaElement | null>(null);
-  const hashtagQuery = mode === "seller" ? runtimeHashtagQuery(liveDraft) : null;
+  const hashtagQuery = agentControlsAvailable ? runtimeHashtagQuery(liveDraft) : null;
   const sellerHashtagCapabilities = [...chatModuleCommands, ...runtimeHashtagCapabilities];
   const matchingHashtagCapabilities =
     hashtagQuery === null
@@ -149,13 +124,17 @@ export function ChatComposer({
           </div>
         ) : null}
         {hashtagQuery !== null ? (
-          <ChatHashtagCapabilityPicker
-            capabilities={matchingHashtagCapabilities}
-            query={hashtagQuery}
-            onSelect={updateLiveDraft}
-          />
+          <ChatComposerLazyPanel label="Shop capabilities" moduleKey="composer-capabilities">
+            <ChatHashtagCapabilityPicker
+              capabilities={matchingHashtagCapabilities}
+              query={hashtagQuery}
+              onSelect={updateLiveDraft}
+            />
+          </ChatComposerLazyPanel>
         ) : null}
-        <small className="composer-agent-indicator">{activeAgentName} will answer</small>
+        <small className="composer-agent-indicator">
+          {audienceLabel ?? `${activeAgentName} will answer`}
+        </small>
         <input
           ref={fileInputRef}
           className="chat-file-input"
@@ -179,11 +158,15 @@ export function ChatComposer({
             }}
           />
         ) : null}
-        <ComposerAttachmentWorkbench
-          pendingAttachments={pendingAttachments}
-          onRemoveAttachment={onRemoveAttachment}
-          onCommitDraft={commitDraft}
-        />
+        {pendingAttachments.length > 0 ? (
+          <ChatComposerLazyPanel label="Selected attachments" moduleKey="composer-attachments">
+            <ComposerAttachmentWorkbench
+              pendingAttachments={pendingAttachments}
+              onRemoveAttachment={onRemoveAttachment}
+              onCommitDraft={commitDraft}
+            />
+          </ChatComposerLazyPanel>
+        ) : null}
         {selectedProvider === "email" ? (
           <>
             <label className="composer-input">
@@ -238,9 +221,11 @@ export function ChatComposer({
             placeholder={
               isOpening
                 ? "Opening this chat…"
-                : mode === "seller"
-                  ? "Ask your agent, or type # to call a capability"
-                  : "Ask Grogoni..."
+                : !agentControlsAvailable
+                  ? "Write a message"
+                  : mode === "seller"
+                    ? "Ask your agent, or type # to call a capability"
+                    : "Ask Grogoni..."
             }
           />
         </label>
@@ -256,13 +241,15 @@ export function ChatComposer({
             <span className="attach-icon" aria-hidden="true" />
             <span className="visually-hidden">More</span>
           </button>
-          <ComposerModelSwitcher
-            agent={agent}
-            business={business}
-            onAgentChange={onAgentChange}
-            onOpenAgentProfile={onOpenAgentProfile}
-            onBeforeOpen={() => messageInputRef.current?.blur()}
-          />
+          {agentControlsAvailable ? (
+            <ComposerModelSwitcher
+              agent={agent}
+              business={business}
+              onAgentChange={onAgentChange}
+              onOpenAgentProfile={onOpenAgentProfile}
+              onBeforeOpen={() => messageInputRef.current?.blur()}
+            />
+          ) : null}
           <div className="composer-bottom-row-trailing">
             {isBrowserGenerating ? (
               <button
@@ -317,13 +304,18 @@ export function ChatComposer({
           </small>
         ) : null}
         <ChatComposerActions
+          {...(onAddParticipants
+            ? { onAddParticipants: () => runMessageAction(onAddParticipants) }
+            : {})}
           draftHasText={liveDraft.trim().length > 0}
           mode={mode}
           open={messageActionsOpen}
           sendViaLabel={sendViaLabel}
           onClose={() => setMessageActionsOpen(false)}
           onAttachFiles={() => runMessageAction(() => fileInputRef.current?.click())}
-          onOpenCommand={() => runMessageAction(() => updateLiveDraft("#"))}
+          {...(agentControlsAvailable
+            ? { onOpenCommand: () => runMessageAction(() => updateLiveDraft("#")) }
+            : {})}
           onSendSms={() =>
             runMessageAction(() =>
               openSmsHandoff(
@@ -333,11 +325,23 @@ export function ChatComposer({
             )
           }
           onSendVia={() => runMessageAction(() => setChannelPickerOpen(true))}
-          onShareApps={() =>
-            runMessageAction(() => void openPlatformHandoff(selectedConversationTitle))
-          }
+          onShareApps={() => runMessageAction(() => setExternalAppsOpen(true))}
           onTakePhoto={() => runMessageAction(() => sellerPhotoInputRef.current?.click())}
         />
+        {externalAppsOpen ? (
+          <ChatComposerLazyPanel label="Share to apps" moduleKey="external-messaging-apps">
+            <ExternalMessagingAppPicker
+              open={externalAppsOpen}
+              {...(business ? { businessId: business.id } : {})}
+              text={liveDraft}
+              onClose={() => setExternalAppsOpen(false)}
+              onSystemShare={() => {
+                setExternalAppsOpen(false);
+                void openPlatformHandoff(selectedConversationTitle);
+              }}
+            />
+          </ChatComposerLazyPanel>
+        ) : null}
         <ChatChannelPicker
           bluetoothAvailable={bluetoothAvailable}
           bluetoothBusy={bluetoothBusy}

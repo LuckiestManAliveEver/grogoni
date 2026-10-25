@@ -1,3 +1,8 @@
+import type {
+  ReceiptStructuredExtractionSummary,
+  ReceiptContactMatchingResultSummary
+} from "@grogoni/shared-types";
+import { restoreReceiptJobFields } from "./domains/suppliers/receipt-fields.js";
 import { randomUUID } from "node:crypto";
 import type { Metrics } from "@grogoni/observability";
 import {
@@ -50,6 +55,7 @@ interface NormalizedCollection {
 }
 
 export const normalizedCollections: NormalizedCollection[] = [
+  { key: "agentSkills", tableName: "cp2_agent_skills" },
   { key: "accounts", tableName: "cp2_accounts" },
   { key: "users", tableName: "cp2_users" },
   { key: "deviceAccountBootstraps", tableName: "cp2_device_account_bootstraps" },
@@ -140,6 +146,7 @@ export const normalizedCollections: NormalizedCollection[] = [
   { key: "buyOrders", tableName: "buy_orders" },
   { key: "statusOrders", tableName: "status_orders" },
   { key: "unifiedCheckouts", tableName: "unified_checkouts" },
+  { key: "buyerShoppingSessions", tableName: "buyer_shopping_sessions" },
   { key: "customers", tableName: "cp2_customers" },
   { key: "suppliers", tableName: "cp2_suppliers" },
   { key: "salesAgents", tableName: "cp2_sales_agents" },
@@ -221,6 +228,14 @@ export const normalizedCollections: NormalizedCollection[] = [
 // persistence round trip - and blocking the response on it via app.ts's runtime GET flush wait -
 // on every capability/status poll is not worth it.
 const mutatingMethodNames = new Set([
+  "draftAgentSkill",
+  "generateAgentSkill",
+  "updateAgentSkill",
+  "transitionAgentSkill",
+  "publishAgentSkill",
+  "installPublicAgentSkill",
+  "createBuyerShoppingTurn",
+  "createUnifiedCheckout",
   "heartbeatRuntimeHost",
   "beginRuntimeTransfer",
   "completeRuntimeTransfer",
@@ -259,6 +274,9 @@ const mutatingMethodNames = new Set([
   "setupTotp",
   "confirmTotp",
   "verifyMfa",
+  "beginEmailMfa",
+  "challengePinLoginMfa",
+  "recoverPasswordWithPasskey",
   "beginRecovery",
   "verifyEmailRecovery",
   "resetRecoveredPassword",
@@ -275,6 +293,7 @@ const mutatingMethodNames = new Set([
   "createBetaSupportTicket",
   "createBusiness",
   "createConversation",
+  "addConversationParticipant",
   "createAgentConversationMessage",
   "createConversationMessage",
   "deleteConversation",
@@ -363,6 +382,8 @@ const mutatingMethodNames = new Set([
   "setAccountPin",
   "signupWithPhonePin",
   "syncPhoneContacts",
+  "updateNetworkPrivacy",
+  "blockNetworkContact",
   "requestNetworkConnection",
   "respondToNetworkConnection",
   "removeNetworkConnection",
@@ -1813,6 +1834,20 @@ export function buildNormalizedSnapshotSql(
 }
 
 async function loadRelationalCoreSnapshot(pool: Pool, snapshot: Cp2Snapshot): Promise<void> {
+  // Core SQL remains authoritative for identity fields; private preferences live in cp2_users.
+  const privateUserPreferences = new Map(
+    snapshot.users.map((user) => [
+      user.id,
+      {
+        ...(user.contactDiscoveryEnabled === undefined
+          ? {}
+          : { contactDiscoveryEnabled: user.contactDiscoveryEnabled }),
+        ...(user.blockedContactUserIds === undefined
+          ? {}
+          : { blockedContactUserIds: user.blockedContactUserIds })
+      }
+    ])
+  );
   // Each loader fills its own snapshot key, so they run concurrently: boot against a remote
   // database was dominated by ~25 sequential round trips here (~7s at ~350ms per round trip).
   await Promise.all(
@@ -1879,6 +1914,7 @@ async function loadRelationalCoreSnapshot(pool: Pool, snapshot: Cp2Snapshot): Pr
             `
         );
         snapshot.users = usersResult.rows.map((row) => ({
+          ...privateUserPreferences.get(row.id),
           id: row.id,
           accountId: row.account_id,
           displayName: row.display_name,
@@ -2174,6 +2210,11 @@ async function loadRelationalCoreSnapshot(pool: Pool, snapshot: Cp2Snapshot): Pr
             `
         );
         snapshot.receiptOCRJobs = ocrJobsResult.rows.map((row) => ({
+          ...restoreReceiptJobFields(
+            row.structured_extraction as ReceiptStructuredExtractionSummary,
+            row.contact_matching_result as ReceiptContactMatchingResultSummary,
+            row.full_text
+          ),
           id: row.id,
           businessId: row.business_id,
           tenantId: row.tenant_id,
@@ -3382,6 +3423,7 @@ export async function saveCollectionRecords(
         on conflict (entity_id) do update set business_id=excluded.business_id, account_id=excluded.account_id,
           user_id=excluded.user_id,parent_id=excluded.parent_id,record=excluded.record,updated_at=now()
         where ${collection.tableName}.record = (select expected from input where input.entity_id = excluded.entity_id)
+           or ${collection.tableName}.record = excluded.record
         returning entity_id`,
         chunk.flatMap((row) => [...row, JSON.stringify(expectedById.get(String(row[0])) ?? null)])
       );
@@ -5197,6 +5239,7 @@ function emptySnapshot(): Cp2Snapshot {
     activeAiModels: [],
     agentProfiles: [],
     agentRuntimeVersions: [],
+    agentSkills: [],
     agentContextSources: [],
     agentEvaluationEvents: [],
     agentOwnerCorrections: [],
@@ -5235,6 +5278,7 @@ function emptySnapshot(): Cp2Snapshot {
     buyOrders: [],
     statusOrders: [],
     unifiedCheckouts: [],
+    buyerShoppingSessions: [],
     customers: [],
     suppliers: [],
     salesAgents: [],

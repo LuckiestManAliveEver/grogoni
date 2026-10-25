@@ -682,7 +682,7 @@ describe.skipIf(!databaseUrl)("Edge runtime checkpoints on PostgreSQL", () => {
         ]
       );
       const migration = await readFile(
-        new URL("../infra/db/migrations/124_runtime_operation_dedup_tenant.sql", import.meta.url),
+        new URL("../infra/db/migrations/127_runtime_operation_dedup_tenant.sql", import.meta.url),
         "utf8"
       );
       await pool.query(migration);

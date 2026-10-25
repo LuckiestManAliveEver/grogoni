@@ -1,5 +1,7 @@
+import { computerWorkerFromEnvironment } from "./computer-runtime/client.js";
 import { positiveIntegerFromEnv } from "@grogoni/resource-control";
 import { repositoryDefaultRuntimePolicy } from "@grogoni/shared-types";
+import { ModelRuntimeError, type ModelRuntimeAdapter } from "./inference/model-runtime.js";
 import { createOpenRouterRuntime } from "./inference/openrouter-runtime.js";
 import { readAccountDeletionProcessors } from "./cp2/account-deletion-processors.js";
 import { createEmailProviderFromEnvironment } from "./cp2/email-provider.js";
@@ -14,6 +16,46 @@ import {
 import type { Pool } from "pg";
 import { createChannelGatewayFromEnvironment } from "./messaging/channel-gateway.js";
 import { createEmailMailboxProviderClient } from "./messaging/email-provider-client.js";
+
+/** Invalid provider settings disable inference only; inbox and human delivery still start. */
+export function createEdgeModelRuntime(environment: NodeJS.ProcessEnv) {
+  try {
+    return createOpenRouterRuntime(environment);
+  } catch {
+    const unavailable = {
+      available: false,
+      errorCode: "MODEL_CONFIGURATION_INVALID",
+      message:
+        "The model provider configuration is invalid. Ask the service administrator to check it."
+    };
+    const adapter: ModelRuntimeAdapter = {
+      provider: "openrouter",
+      executionTarget: "backend",
+      async canRun() {
+        return unavailable;
+      },
+      async healthCheck(context) {
+        return {
+          ...unavailable,
+          modelId: context.modelId,
+          provider: "openrouter",
+          executionTarget: "backend",
+          latencyMs: 0,
+          responsePreview: null,
+          retryable: false
+        };
+      },
+      async generate() {
+        throw new ModelRuntimeError(unavailable.errorCode, unavailable.message, false);
+      }
+    };
+    return {
+      catalog: () => [],
+      resolve: (input: { modelId: string; executionTarget: string }) =>
+        input.executionTarget === "backend" ? adapter : undefined
+    };
+  }
+}
 
 /**
  * The outbound providers a Cp2Store needs to have side effects outside the database: web push,
@@ -34,15 +76,21 @@ export function createEdgeStoreDependencies(
   | "emailMailboxProviderClient"
   | "accountDeletionProcessors"
   | "messageWebBaseUrl"
+  | "configuredModels"
   | "modelRuntimeAdapterResolver"
   | "platformDefaultRuntime"
+  | "computerWorkerClient"
 > {
+  const hostedRuntime = createEdgeModelRuntime(environment);
+  const computerWorkerClient = computerWorkerFromEnvironment(environment);
   const webPush = readWebPushConfiguration();
   const emailProvider = createEmailProviderFromEnvironment(environment);
   const networkInviteSender = createNetworkInviteSenderFromEnvironment(environment);
   const accountDeletionProcessors = readAccountDeletionProcessors(environment);
   return {
-    modelRuntimeAdapterResolver: createOpenRouterRuntime(environment).resolve,
+    ...(computerWorkerClient ? { computerWorkerClient } : {}),
+    configuredModels: hostedRuntime.catalog(),
+    modelRuntimeAdapterResolver: hostedRuntime.resolve,
     platformDefaultRuntime: repositoryDefaultRuntimePolicy,
     ...(webPush === null ? {} : { pushNotificationSender: createWebPushSender(webPush) }),
     messageEmailNotificationSender:

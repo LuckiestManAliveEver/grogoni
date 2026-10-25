@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import type {
   BuyFeedSummary,
   BuyResultSummary,
@@ -20,6 +21,9 @@ interface UseBuyCartStateDeps {
 
 export function useBuyCartState(deps: UseBuyCartStateDeps) {
   const { runAction, setStatusMessage, buyCart, setBuyCart, setBuyFeed, setChatMessages } = deps;
+
+  const checkoutInFlight = useRef(false);
+  const checkoutAttempt = useRef<{ fingerprint: string; key: string } | null>(null);
 
   /** Runs the search and returns the feed, or null when the search failed. */
   async function handleSearchBuyFeed(query: string): Promise<BuyFeedSummary | null> {
@@ -65,37 +69,69 @@ export function useBuyCartState(deps: UseBuyCartStateDeps) {
   }
 
   async function handleCheckout() {
-    if (buyCart.length === 0) return;
-    await runAction("buy-checkout", async () => {
-      try {
-        const checkout = await postJson<UnifiedCheckoutSummary>("/buy/checkout", {
-          items: buyCart.map((item) => ({
-            sourceKind: item.sourceKind,
-            sourceId: item.sourceId,
-            sourceLabel: item.sourceLabel,
-            title: item.title,
-            quantity: item.quantity,
-            agentId: item.agentId,
-            productId: item.productId,
-            statusBroadcastId: item.statusBroadcastId,
-            productCaptureItemId: item.productCaptureItemId
-          }))
-        });
-        setBuyCart([]);
-        setChatMessages((messages) => [
-          ...messages,
-          {
-            id: `unified-checkout-${checkout.id}`,
-            author: "merchant",
-            body: "Checked out",
-            unifiedCheckoutId: checkout.id,
-            createdAt: new Date().toISOString()
-          }
-        ]);
-      } catch (error) {
-        setStatusMessage(getErrorMessage(error));
-      }
-    });
+    if (buyCart.length === 0 || checkoutInFlight.current) return;
+    const submittedCart = [...buyCart];
+    const fingerprint = JSON.stringify(submittedCart);
+    if (checkoutAttempt.current?.fingerprint !== fingerprint) {
+      checkoutAttempt.current = { fingerprint, key: crypto.randomUUID() };
+    }
+    const idempotencyKey = checkoutAttempt.current.key;
+    checkoutInFlight.current = true;
+    try {
+      await runAction("buy-checkout", async () => {
+        try {
+          const checkout = await postJson<UnifiedCheckoutSummary>(
+            "/buy/checkout",
+            {
+              items: submittedCart.map((item) => ({
+                sourceKind: item.sourceKind,
+                sourceId: item.sourceId,
+                sourceLabel: item.sourceLabel,
+                title: item.title,
+                quantity: item.quantity,
+                agentId: item.agentId,
+                productId: item.productId,
+                statusBroadcastId: item.statusBroadcastId,
+                productCaptureItemId: item.productCaptureItemId
+              }))
+            },
+            { idempotencyKey }
+          );
+          const submittedIds = new Set(submittedCart.map((item) => item.cartItemId));
+          setBuyCart((current) =>
+            current.filter(
+              (item) =>
+                !submittedIds.has(item.cartItemId) ||
+                checkout.failures.some((failure) =>
+                  failure.checkoutItemIndex !== undefined
+                    ? submittedCart[failure.checkoutItemIndex]?.cartItemId === item.cartItemId
+                    : failure.sourceLabel === item.sourceLabel && failure.title === item.title
+                )
+            )
+          );
+          checkoutAttempt.current = null;
+          setStatusMessage(
+            checkout.failures.length > 0
+              ? "Some items could not be ordered. Review the receipt; those items remain in your cart."
+              : "Orders requested. Your unified receipt is in this chat."
+          );
+          setChatMessages((messages) => [
+            ...messages,
+            {
+              id: `unified-checkout-${checkout.id}`,
+              author: "merchant",
+              body: "Orders requested",
+              content: { type: "unified-checkout", unifiedCheckoutId: checkout.id },
+              createdAt: new Date().toISOString()
+            }
+          ]);
+        } catch (error) {
+          setStatusMessage(getErrorMessage(error));
+        }
+      });
+    } finally {
+      checkoutInFlight.current = false;
+    }
   }
 
   function handleStatusBroadcastPosted(statusBroadcastId: string) {

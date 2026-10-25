@@ -1,13 +1,22 @@
 # External SMS composer handoff
 
+For the current cross-device contract, see `docs/messaging/cross-device-sms.md`. The repository
+diagnosis below describes the original implementation before the Android native node was added.
+
 ## Repository diagnosis
 
-Grogoni is currently a React 19/Vite progressive web application in `apps/web`. It is not a native
-Android app, Capacitor app, React Native app, Flutter app, or Trusted Web Activity. There is no
-Gradle project, Android manifest, Kotlin source, or native bridge implementation in this
-repository. Android release identity is only proposed and verified by
-`config/android-release-identity.json`; `documentation/CP26_ANDROID_RELEASE_IDENTITY.md` proposes a
-future TWA.
+The owner-facing product remains a React 19/Vite progressive web application in `apps/web`. It is
+not a Capacitor, React Native, Flutter, or Trusted Web Activity shell for the web app.
+
+A native Android SMS node now lives in `apps/android` (Gradle project, `AndroidManifest.xml`, and
+Kotlin sources). It is deliberately narrow: it reads Android's SMS provider, sends manual replies
+through the selected SIM, and implements the `native_sms` Channel Gateway provider. It does not
+host the Grogoni web UI and the PWA never receives Android telephony privileges. See
+`apps/android/README.md` and `docs/messaging/cross-device-sms.md` for the current contract.
+
+Android release identity is proposed and verified by `config/android-release-identity.json` and
+`documentation/CP26_ANDROID_RELEASE_IDENTITY.md`; Play Console ownership, signing, and policy
+approvals remain pending, so interim distribution is described in `apps/android/README.md`.
 
 The authenticated chat send flow is:
 
@@ -61,7 +70,8 @@ Empty/invalid input and values containing letters or the `grogoni:` prefix are r
 ## Android and PWA behavior
 
 The PWA fallback builds a user-initiated, safely encoded
-`sms:+254…?body=<encoded text>` navigation. Android delegates that URI to a compatible handler and
+`sms:+254…?body=<encoded text>` navigation. Apple browser links use the recipient-only
+`sms:+254…` format and retain the text for copying. The operating system delegates the URI to a compatible handler and
 the selected SMS app or Android system owns dual-SIM choice. No SMS app package is hard-coded.
 
 A typed `window.GrogoniAndroid.openSmsComposer(recipient, body)` contract is preferred when a future
@@ -70,7 +80,7 @@ Android wrapper supplies it. That wrapper must implement Mode A with `Intent.ACT
 export an intent receiver or accept arbitrary inbound intent data.
 
 Browser navigation does not expose whether an SMS handler actually opened or whether the user sent
-the message. Desktop use is rejected with an explanation. Mobile browser URI handling varies by
+the message. The browser attempts dispatch on every device; it does not infer SMS capability from the user agent. Mobile browser URI handling varies by
 browser and installed SMS apps. A production Android wrapper therefore still needs a separate
 native implementation and device tests.
 
@@ -82,5 +92,12 @@ error code. The phone number, contact label, and message body are not sent to th
 
 ## Permissions
 
-This implementation adds no Android manifest and requests no SMS permissions. In particular it
-does not request `READ_SMS`, `RECEIVE_SMS`, `SEND_SMS`, or `WRITE_SMS`.
+The **web** SMS handoff path (Mode A/browser fallback) adds no Android manifest entries and
+requests no SMS permissions: it only navigates an `sms:` URI.
+
+The native Android node in `apps/android` does request the restricted SMS permissions
+(`READ_SMS`, `RECEIVE_SMS`, `SEND_SMS`, `WRITE_SMS`) because it implements the default SMS-handler
+role, along with the other device permissions it declares in
+`apps/android/app/src/main/AndroidManifest.xml`. Those permissions are gated behind the SMS role and
+are subject to Google Play default-SMS-handler policy review; they are granted at runtime only after
+the user enables native SMS, as described in `apps/android/README.md`.

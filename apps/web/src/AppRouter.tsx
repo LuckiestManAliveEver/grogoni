@@ -5,6 +5,7 @@ import {
   installBrowserLinkInterceptor,
   subscribeToBrowserNavigation
 } from "./browser-navigation";
+import InstallPage from "./InstallPage";
 import { appRouteModuleKeys, loadLazyModuleWithRecovery } from "./lazy-module-recovery";
 import { LazyModuleErrorBoundary } from "./LazyModuleErrorBoundary";
 import { recordComponentRender, recordRouteRender } from "./performance";
@@ -79,6 +80,10 @@ export function AppRouter() {
         }
       />
     );
+  }
+
+  if (window.location.pathname === routes.install) {
+    return <InstallPage />;
   }
 
   if (window.location.pathname === routes.terms) {

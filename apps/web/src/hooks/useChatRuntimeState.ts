@@ -1,3 +1,6 @@
+import { daemonChatReply } from "../daemon-chat-text";
+import { submitBuyerShoppingChat, isBuyerShoppingRequest } from "../buyer-shopping-chat";
+import { loadLazyModuleWithRecovery } from "../lazy-module-recovery";
 import { useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { currentOfflineScope, isExplicitOfflineMode } from "../offline-runtime";
 import { runtimeHandoffController, runtimeTransition } from "../runtime-handoff";
@@ -6,6 +9,7 @@ import { readCurrentOwnerRoute } from "../browser-navigation";
 import type { RuntimeToolName } from "@grogoni/tool-core";
 import { renderRuntimeModelOutputInstructions, runtimeToolRegistry } from "@grogoni/tool-core";
 import type {
+  ReceiptOCRJobSummary,
   AuthBootstrapState,
   BuyFeedSummary,
   ChannelProvider,
@@ -33,6 +37,16 @@ import {
 } from "../chat-device-only-messages";
 import { describeMarketplaceSearch, parseMarketplaceBuyIntent } from "../marketplace-search-reply";
 import { sendGuestMessage } from "../guest-chat-send";
+import { parseReminderIntent, isDeliveryTrackingIntent } from "../chat-assistant-intents";
+import {
+  daemonChatScope,
+  submitChatDaemonTask,
+  readChatDaemonTasks,
+  forgetChatDaemonTask
+} from "../daemon-chat";
+import { useDaemonChatResults } from "../daemon-chat-results";
+import type { UnifiedCheckoutSummary } from "@grogoni/shared-types";
+
 import { postJson } from "../api-helpers";
 import {
   type ChatAttachment,
@@ -233,6 +247,51 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
     ) => Promise<void>
   >(async () => undefined);
 
+  const buyerShoppingSessionIds = useRef(new Map<string, string>());
+  const assistantScope = daemonChatScope(mode, business?.id ?? null, activeConversationId);
+  useDaemonChatResults(session?.account.id ?? null, assistantScope, async (entry, task) => {
+    if (task.payload.kind === "agent" && task.payload.conversation) {
+      await loadMessagingInbox(entry.conversationId);
+      setStatusMessage(
+        task.status === "failed"
+          ? "Daemon task failed. You can retry it here."
+          : "Daemon task updated."
+      );
+      return;
+    }
+    if (task.status === "cancelled") return;
+    if (entry.conversationId && activeConversation?.conversation.id !== entry.conversationId)
+      throw new Error("Waiting for the originating conversation to load.");
+    let reply = daemonChatReply(task, entry.reminderText);
+    if (entry.conversationId && activeConversation && session) {
+      const persisted = await postJson<ConversationMessageSummary>("/v1/messages", {
+        conversationId: entry.conversationId,
+        clientMessageId: reply.id,
+        author: "agent",
+        content: { type: "text", text: reply.body },
+        clientTimestamp: task.updatedAt
+      });
+      reply = mapConversationMessage(persisted, activeConversation.participants, session);
+    }
+    setChatMessages((messages) => {
+      const delivered = messages.map((message) =>
+        message.id === entry.clientMessageId
+          ? { ...message, status: "delivered" as const }
+          : message
+      );
+      return delivered.some((message) => message.id === reply.id)
+        ? delivered
+        : [...delivered, reply];
+    });
+    setStatusMessage(
+      task.status === "completed"
+        ? entry.kind === "reminder"
+          ? "Reminder delivered."
+          : "Assistant replied."
+        : "Background request failed. Please try again."
+    );
+  });
+
   async function sendChatDraft(
     draftOverride?: string,
     preferredProvider?: ChannelProvider,
@@ -241,7 +300,13 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
   ) {
     const send = () =>
       sendChatDraftOnRuntime(draftOverride, preferredProvider, emailSubject, emailInvoiceId);
-    if (session && business && navigator.locks && !isExplicitOfflineMode()) {
+    if (
+      session &&
+      business &&
+      !activeConversation?.conversation.helpTopic &&
+      navigator.locks &&
+      !isExplicitOfflineMode()
+    ) {
       await navigator.locks.request(
         "grogoni-runtime-handoff",
         { ifAvailable: true },
@@ -275,8 +340,22 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       }
       activeSession = bootstrappedSession;
     }
+    let currentConversation =
+      activeConversation?.conversation.id === activeConversationId ? activeConversation : null;
+    if (activeConversationId && !currentConversation) {
+      try {
+        currentConversation = await apiFetch<NonNullable<typeof activeConversation>>(
+          `/v1/conversations/${activeConversationId}`,
+          { priority: true }
+        );
+      } catch (error) {
+        setStatusMessage(getErrorMessage(error));
+        return;
+      }
+    }
     if (
       business &&
+      !currentConversation?.conversation.helpTopic &&
       runtimeTransition({
         accountId: activeSession.account.id,
         storeId: business.id,
@@ -324,12 +403,120 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       return;
     }
 
-    // A person (or a connected channel) on the other end always gets the message itself.
-    const talkingToPerson =
-      isHumanDirectConversation(activeConversation, activeSession) ||
-      isExternalChannelConversation(activeConversation);
+    if (currentConversation?.conversation.helpTopic) {
+      try {
+        const { runHelpQuestion } = await loadLazyModuleWithRecovery(
+          "help-agent-chat",
+          () => import("../help-chat")
+        );
+        await runHelpQuestion({
+          accountId: activeSession.account.id,
+          scope: assistantScope,
+          conversation: currentConversation,
+          message,
+          clientMessageId: createClientMessageId("help"),
+          history: chatMessages,
+          hasAttachments: attachments.length > 0,
+          setMessages: setChatMessages,
+          setDraft: setChatDraft,
+          setStatus: setStatusMessage
+        });
+      } catch (error) {
+        setStatusMessage(getErrorMessage(error));
+      }
+      return;
+    }
+
+    const hasAccountRecipient = isHumanDirectConversation(currentConversation, activeSession);
+    const hasExternalRecipient = isExternalChannelConversation(currentConversation);
+    const isBusinessConversation =
+      currentConversation !== null && currentConversation.conversation.kind !== "personal";
+    // Business inbox messages go to people. Agent execution requires a separate authorized request.
+    const hasHumanRecipient = hasAccountRecipient || hasExternalRecipient || isBusinessConversation;
+    if (
+      !hasHumanRecipient &&
+      attachments.length > 0 &&
+      (!navigator.onLine || isExplicitOfflineMode())
+    ) {
+      setStatusMessage("Reading chat attachments needs a connection to Luna. Your draft is saved.");
+      return;
+    }
+    const receiptDrafts: ReceiptOCRJobSummary[] = [];
+    if (!hasHumanRecipient && attachments.length > 0) {
+      setStatusMessage("Luna is reading your attachments…");
+      try {
+        runtimeMessage = await appendExtractedDocumentContent(
+          runtimeMessage,
+          attachments,
+          (mode === "seller" ? business?.id : null) ?? null,
+          { onReceiptDraft: (job) => receiptDrafts.push(job) }
+        );
+      } catch (error) {
+        setChatDraft(message);
+        setStatusMessage(
+          `Couldn't read the attachment. ${getErrorMessage(error)} Your draft is saved.`
+        );
+        return;
+      }
+    }
+    if (receiptDrafts.length && business && mode === "seller") {
+      const createdAt = new Date().toISOString();
+      const id = createClientMessageId("message");
+      const body = `Luna filled ${receiptDrafts.length === 1 ? "the receipt fields" : `${receiptDrafts.length} receipt drafts`}, including the wholesaler, sales agent and delivered products where readable. Review the fields, then confirm to receive the stock and link the document to those records.`;
+      try {
+        if (activeConversationId) {
+          await postJson("/v1/messages", {
+            conversationId: activeConversationId,
+            clientMessageId: id,
+            content: {
+              type: "text",
+              text: message,
+              attachments: chatAttachmentsToConversationAttachments(attachments)
+            },
+            clientTimestamp: createdAt
+          });
+          await postJson("/v1/messages", {
+            conversationId: activeConversationId,
+            clientMessageId: createClientMessageId("agent"),
+            author: "agent",
+            content: { type: "supplier-management", businessId: business.id },
+            clientTimestamp: createdAt
+          });
+        }
+        setChatMessages((current) => [
+          ...current,
+          { id, author: "merchant", body: message, attachments, createdAt, status: "delivered" },
+          {
+            id: createClientMessageId("agent"),
+            author: "grogoniclaw",
+            body,
+            content: { type: "supplier-management", businessId: business.id },
+            createdAt,
+            status: "delivered"
+          }
+        ]);
+        setChatDraft("");
+        setPendingAttachments([]);
+        setReplyToMessageId(null);
+        setStatusMessage(
+          "Receipt fields are ready to review. Confirm the delivery to update stock."
+        );
+      } catch (error) {
+        setChatDraft(message);
+        setPendingAttachments(attachments);
+        setStatusMessage(getErrorMessage(error));
+      }
+      return;
+    }
+    const reminder =
+      !hasHumanRecipient && attachments.length === 0 ? parseReminderIntent(message) : null;
+    // Explicit capabilities must reach the authorized runtime, including from buyer mode.
+    const explicitCapability = message.startsWith("#");
+    const buyerAssistant = !explicitCapability && (mode !== "seller" || business === null);
+    const tracking =
+      buyerAssistant && attachments.length === 0 && isDeliveryTrackingIntent(message);
     const marketplaceSearch =
-      (mode !== "seller" || business === null) && attachments.length === 0 && !talkingToPerson
+      (mode !== "seller" || business === null) && attachments.length === 0 && !hasHumanRecipient
         ? searchBuyFeed
         : undefined;
     // Someone without a shop has no assistant of their own: product-like text is searched, and
@@ -338,7 +525,18 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
     // A guest has no agent, so "help …" (an agent command for an owner) is routed like any other
     // guest message instead of being sent to an agent that is not there. A message to a person
     // never reaches the classifier: marketplaceSearch is undefined then.
-    if (business === null && marketplaceSearch) {
+    const continuingCheckout =
+      buyerShoppingSessionIds.current.has(
+        `grogoni:buyer-shopping:${activeSession.account.id}:${assistantScope}`
+      ) || /^(confirm checkout|cancel checkout)$/iu.test(message.trim());
+    if (
+      business === null &&
+      marketplaceSearch &&
+      !explicitCapability &&
+      reminder === null &&
+      !tracking &&
+      !continuingCheckout
+    ) {
       await sendGuestMessage({
         message,
         accountId: activeSession.account.id,
@@ -358,6 +556,156 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       });
       return;
     }
+    if (
+      !hasHumanRecipient &&
+      (attachments.length === 0 || buyerAssistant) &&
+      (reminder !== null || tracking || (buyerAssistant && helpCommand === undefined))
+    ) {
+      const clientMessageId = createClientMessageId("message");
+      const createdAt = new Date().toISOString();
+      setChatMessages((messages) => [
+        ...messages,
+        {
+          id: clientMessageId,
+          author: "merchant",
+          body: message,
+          ...(attachments.length ? { attachments } : {}),
+          createdAt,
+          status: "pending"
+        }
+      ]);
+      setChatDraft("");
+      setPendingAttachments([]);
+      setReplyToMessageId(null);
+      const reply = async (body: string) => {
+        const id = createClientMessageId("agent");
+        if (activeConversationId)
+          await postJson("/v1/messages", {
+            conversationId: activeConversationId,
+            clientMessageId: id,
+            author: "agent",
+            content: { type: "text", text: body },
+            clientTimestamp: new Date().toISOString()
+          });
+        setChatMessages((messages) => [
+          ...messages,
+          {
+            id,
+            author: "grogoniclaw",
+            body,
+            createdAt: new Date().toISOString(),
+            status: "delivered"
+          }
+        ]);
+      };
+      try {
+        if (activeConversationId)
+          await postJson("/v1/messages", {
+            conversationId: activeConversationId,
+            clientMessageId,
+            content: {
+              type: "text",
+              text: message,
+              ...(attachments.length
+                ? { attachments: chatAttachmentsToConversationAttachments(attachments) }
+                : {})
+            },
+            replyToMessageId,
+            clientTimestamp: createdAt
+          });
+        if (reminder?.kind === "clarify") {
+          await reply("When should I remind you? Try “Remind me in 2 minutes to check my stock.”");
+          setStatusMessage("Choose a reminder time.");
+        } else if (reminder?.kind === "cancel") {
+          const last = readChatDaemonTasks(activeSession.account.id)
+            .filter((task) => task.scope === assistantScope && task.kind === "reminder")
+            .at(-1);
+          if (last) {
+            await apiFetch(`/v1/daemon/tasks/${encodeURIComponent(last.taskId)}`, {
+              method: "DELETE"
+            });
+            forgetChatDaemonTask(activeSession.account.id, last.taskId);
+          }
+          await reply(
+            last
+              ? "Your latest reminder is cancelled."
+              : "There is no pending reminder in this chat."
+          );
+          setStatusMessage("Reminder request processed.");
+        } else if (tracking) {
+          const checkoutId = message.match(
+            /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/iu
+          )?.[0];
+          if (!checkoutId) {
+            await reply(
+              "Send your checkout ID with ‘Track my delivery’ so I can look up its current status. You can find it in your checkout confirmation."
+            );
+          } else {
+            const checkout = await apiFetch<UnifiedCheckoutSummary>(
+              `/buy/checkouts/${encodeURIComponent(checkoutId)}`
+            );
+            await reply(
+              checkout.handoffs.length
+                ? checkout.handoffs
+                    .map((handoff) => `Order ${handoff.orderId}: ${handoff.status}`)
+                    .join("\n")
+                : "This checkout has no delivery orders yet."
+            );
+          }
+          setStatusMessage(checkoutId ? "Checkout status loaded." : "A checkout ID is needed.");
+        } else if (
+          buyerAssistant &&
+          reminder === null &&
+          isBuyerShoppingRequest(
+            message,
+            buyerShoppingSessionIds.current.has(
+              `grogoni:buyer-shopping:${activeSession.account.id}:${assistantScope}`
+            )
+          )
+        ) {
+          await submitBuyerShoppingChat({
+            accountId: activeSession.account.id,
+            scope: assistantScope,
+            message: runtimeMessage,
+            conversationId: activeConversationId,
+            rememberedSessionIds: buyerShoppingSessionIds.current,
+            reply,
+            setChatMessages,
+            setStatusMessage
+          });
+        } else {
+          await submitChatDaemonTask({
+            accountId: activeSession.account.id,
+            scope: assistantScope,
+            conversationId: activeConversationId,
+            clientMessageId,
+            message: runtimeMessage,
+            history: chatMessages,
+            ...(reminder?.kind === "schedule" ? { reminder } : {})
+          });
+          if (reminder?.kind === "schedule") {
+            await reply(
+              `Reminder scheduled for ${new Date(reminder.runAt).toLocaleString()}: ${reminder.message}. You can say “Cancel my latest reminder” here.`
+            );
+          }
+          setStatusMessage(
+            reminder?.kind === "schedule" ? "Reminder scheduled." : "Assistant is thinking…"
+          );
+        }
+        setChatMessages((messages) =>
+          messages.map((item) =>
+            item.id === clientMessageId ? { ...item, status: "delivered" } : item
+          )
+        );
+      } catch (error) {
+        setChatMessages((messages) => messages.filter((item) => item.id !== clientMessageId));
+        setChatDraft(message);
+        setPendingAttachments(attachments);
+        setStatusMessage(getErrorMessage(error));
+      }
+      return;
+    }
+
     // Someone with a shop asking to buy: the buy phrase is searched (a guest is handled above).
     const buyQuery = marketplaceSearch ? parseMarketplaceBuyIntent(message) : null;
     if (marketplaceSearch && buyQuery !== null) {
@@ -400,8 +748,8 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       if (
         !activeConversationId ||
         business?.id !== offlineScope.storeId ||
-        isHumanDirectConversation(activeConversation, activeSession) ||
-        isExternalChannelConversation(activeConversation) ||
+        isHumanDirectConversation(currentConversation, activeSession) ||
+        isExternalChannelConversation(currentConversation) ||
         attachments.length
       ) {
         setStatusMessage("This message needs an online connection. Your draft is saved.");
@@ -470,13 +818,8 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
     setPendingAttachments([]);
     setReplyToMessageId(null);
 
-    const hasAccountRecipient = isHumanDirectConversation(activeConversation, activeSession);
-    const hasExternalRecipient = isExternalChannelConversation(activeConversation);
-    const hasHumanRecipient = hasAccountRecipient || hasExternalRecipient;
     const localModuleCommand =
-      mode === "seller" && !hasHumanRecipient && attachments.length === 0
-        ? parseChatModuleCommand(message)
-        : null;
+      !hasHumanRecipient && attachments.length === 0 ? parseChatModuleCommand(message) : null;
     if (localModuleCommand !== null) {
       if (business === null) {
         setChatMessages((messages) => [
@@ -547,7 +890,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
             item.id === clientMessageId
               ? mapConversationMessage(
                   sent.message,
-                  activeConversation!.participants,
+                  currentConversation!.participants,
                   activeSession
                 )
               : item
@@ -556,7 +899,9 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
         setStatusMessage(
           sent.message.provider === "native_sms" && sent.message.status === "queued"
             ? "SMS queued — waiting for the linked Android device to send it."
-            : `Sent via ${sent.message.provider ?? preferredProvider ?? "connected channel"}.`
+            : sent.message.status === "queued"
+              ? `Message queued with ${sent.message.provider ?? preferredProvider ?? "connected channel"}. Delivery is not confirmed yet.`
+              : `Sent via ${sent.message.provider ?? preferredProvider ?? "connected channel"}.`
         );
         // The message went out; a failed refresh must not look like a failed send (resending
         // would use a new idempotency key and send the SMS or email twice).
@@ -847,7 +1192,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
                             runtimeSessionId: managedRuntimeSessionId
                           }
                         },
-                        { headers: turnHeaders }
+                        { headers: turnHeaders, timeoutMs: 90_000 }
                       ).then((accepted) =>
                         // On the Edge API the reply runs after this answer: wait for it here.
                         waitForAgentTurn(accepted, {
@@ -863,10 +1208,10 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
               })
             : await postJson<ProcessedConversationMessageResponse>("/v1/messages", payload);
         const agentReply = persisted.agentMessage;
-        if (activeConversation !== null || agentReply !== undefined) {
+        if (currentConversation !== null || agentReply !== undefined) {
           setChatMessages((messages) => {
             const reconciled =
-              activeConversation === null
+              currentConversation === null
                 ? messages
                 : messages.map((item) =>
                     item.id === clientMessageId
@@ -874,7 +1219,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
                         ? mergePersistedEncryptedMessage(item, persisted)
                         : mapConversationMessage(
                             persisted,
-                            activeConversation.participants,
+                            currentConversation.participants,
                             activeSession
                           )
                       : item
@@ -888,7 +1233,8 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
               reconciled.some((item) => item.id === persisted.id) ? persisted.id : clientMessageId,
               mapConversationMessage(
                 agentReply,
-                activeConversation?.participants ?? [],
+                currentConversation?.participants ?? [],
+
                 activeSession
               )
             );
@@ -979,8 +1325,8 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
                 : { type: "confirmation", confirmationToken, prompt: body },
             clientTimestamp: new Date().toISOString()
           });
-          if (activeConversation !== null) {
-            next = mapConversationMessage(persisted, activeConversation.participants, session);
+          if (currentConversation !== null) {
+            next = mapConversationMessage(persisted, currentConversation.participants, session);
           }
         } catch {
           // The reply remains visible locally and the next refresh can reconcile the thread.
@@ -1007,10 +1353,10 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
           content,
           clientTimestamp: new Date().toISOString()
         });
-        if (activeConversation !== null) {
+        if (currentConversation !== null) {
           setChatMessages((messages) => [
             ...messages,
-            mapConversationMessage(persisted, activeConversation.participants, session)
+            mapConversationMessage(persisted, currentConversation.participants, session)
           ]);
         }
       } catch {
@@ -1036,10 +1382,10 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
           content,
           clientTimestamp: new Date().toISOString()
         });
-        if (activeConversation !== null) {
+        if (currentConversation !== null) {
           setChatMessages((messages) => [
             ...messages,
-            mapConversationMessage(persisted, activeConversation.participants, session)
+            mapConversationMessage(persisted, currentConversation.participants, session)
           ]);
         }
       } catch {
@@ -1065,10 +1411,10 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
           content,
           clientTimestamp: new Date().toISOString()
         });
-        if (activeConversation !== null) {
+        if (currentConversation !== null) {
           setChatMessages((messages) => [
             ...messages,
-            mapConversationMessage(persisted, activeConversation.participants, session)
+            mapConversationMessage(persisted, currentConversation.participants, session)
           ]);
         }
       } catch {
@@ -1094,10 +1440,10 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
           content,
           clientTimestamp: new Date().toISOString()
         });
-        if (activeConversation !== null) {
+        if (currentConversation !== null) {
           setChatMessages((messages) => [
             ...messages,
-            mapConversationMessage(persisted, activeConversation.participants, session)
+            mapConversationMessage(persisted, currentConversation.participants, session)
           ]);
         }
       } catch {
@@ -1123,10 +1469,10 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
           content,
           clientTimestamp: new Date().toISOString()
         });
-        if (activeConversation !== null) {
+        if (currentConversation !== null) {
           setChatMessages((messages) => [
             ...messages,
-            mapConversationMessage(persisted, activeConversation.participants, session)
+            mapConversationMessage(persisted, currentConversation.participants, session)
           ]);
         }
       } catch {
@@ -1156,10 +1502,10 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
           content,
           clientTimestamp: new Date().toISOString()
         });
-        if (activeConversation !== null) {
+        if (currentConversation !== null) {
           setChatMessages((messages) => [
             ...messages,
-            mapConversationMessage(persisted, activeConversation.participants, session)
+            mapConversationMessage(persisted, currentConversation.participants, session)
           ]);
         }
       } catch {
@@ -1190,10 +1536,10 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
           content,
           clientTimestamp: new Date().toISOString()
         });
-        if (activeConversation !== null) {
+        if (currentConversation !== null) {
           setChatMessages((messages) => [
             ...messages,
-            mapConversationMessage(persisted, activeConversation.participants, session)
+            mapConversationMessage(persisted, currentConversation.participants, session)
           ]);
         }
       } catch {
@@ -1287,10 +1633,16 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       if (business !== null && session !== null) {
         runtimeManager.adoptSession(
           runtimeManagerKey(session.account.id, business.id),
-          result.session.id
+          result.session.id,
+          result.session.turnCount
         );
       }
       setRuntimeSessionId(result.session.id);
+      setChatMessages((messages) =>
+        messages.map((item) =>
+          item.id === clientMessageId ? { ...item, status: "delivered" as const } : item
+        )
+      );
       if (appendResponse) {
         const confirmationToken = result.turn.plan.confirmationToken;
         const deliveredAttachments =
@@ -1309,8 +1661,9 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       }
 
       if (result.turn.plan.toolName === "products.list" && business !== null) {
-        await loadProducts(business.id);
-        navigateToView("products");
+        void loadProducts(business.id);
+        if (explicitCapability) await postProductManagementCard(business.id, undefined);
+        else navigateToView("products");
       }
 
       if (
@@ -1318,7 +1671,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
         result.turn.plan.executedAt !== null &&
         business !== null
       ) {
-        await loadProducts(business.id);
+        void loadProducts(business.id);
         await postProductManagementCard(
           business.id,
           productIdFromToolResult(result.turn.toolResult)
@@ -1330,7 +1683,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
         result.turn.plan.executedAt !== null &&
         business !== null
       ) {
-        await loadSuppliers(business.id);
+        void loadSuppliers(business.id);
         await postSupplierManagementCard(
           business.id,
           supplierIdFromToolResult(result.turn.toolResult)
@@ -1342,7 +1695,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
         result.turn.plan.executedAt !== null &&
         business !== null
       ) {
-        await loadCustomers(business.id);
+        void loadCustomers(business.id);
         await postCustomerManagementCard(
           business.id,
           customerIdFromToolResult(result.turn.toolResult)
@@ -1350,18 +1703,19 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       }
 
       if (result.turn.plan.toolName === "reports.summary" && business !== null) {
-        await loadReports(business.id);
-        navigateToView("reports");
+        void loadReports(business.id);
+        if (!explicitCapability) navigateToView("reports");
       }
 
       if (result.turn.plan.toolName === "notifications.list" && business !== null) {
-        await loadNotifications(business.id);
-        navigateToView("notifications");
+        void loadNotifications(business.id);
+        if (!explicitCapability) navigateToView("notifications");
       }
 
       if (result.turn.plan.toolName === "invoices.list" && business !== null) {
-        await loadInvoices(business.id);
-        navigateToView("invoices");
+        void loadInvoices(business.id);
+        if (explicitCapability) await postInvoiceManagementCard(business.id, undefined);
+        else navigateToView("invoices");
       }
 
       if (result.turn.plan.toolName === "invoice.draft" && business !== null) {
@@ -1387,7 +1741,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
           typeof importJobId === "string" ? importJobId : undefined
         );
         if (result.turn.plan.executedAt !== null) {
-          await loadDocumentImports(business.id);
+          void loadDocumentImports(business.id);
         }
       }
 
@@ -1400,11 +1754,11 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       }
 
       if (result.turn.plan.toolName === "network.route" && result.turn.plan.executedAt !== null) {
-        navigateToView("network");
+        if (!explicitCapability) navigateToView("network");
       }
 
       if (business !== null) {
-        await loadRuntimeSessions(business.id);
+        void loadRuntimeSessions(business.id);
       }
       const modelDiagnostic =
         result.turn.model?.status === "available" &&
@@ -1456,32 +1810,6 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
     }
 
     try {
-      runtimeMessage = await appendExtractedDocumentContent(
-        runtimeMessage,
-        attachments,
-        business.id,
-        {
-          // Shown in the chat as well as the status line (the turn's progress status replaces
-          // the status line moments later), but kept local: it is not the agent's reply and is
-          // not saved to the conversation.
-          onUnreadable: (files) => {
-            const notice = files
-              .map((file) => `Couldn't read the text in ${file.name}. ${file.reason}`)
-              .join(" ");
-            setStatusMessage(notice);
-            setChatMessages((messages) => [
-              ...messages,
-              {
-                id: createClientMessageId("agent"),
-                author: "grogoniclaw",
-                body: notice,
-                createdAt: new Date().toISOString(),
-                status: "delivered"
-              }
-            ]);
-          }
-        }
-      );
       const key = runtimeManagerKey(activeSession.account.id, business.id);
       const result = await withAgentTurnPreview({
         setChatMessages,
@@ -1494,14 +1822,19 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
               postJson<RuntimeTurnResult>(
                 `/businesses/${business.id}/runtime/turns`,
                 { runtimeSessionId: managedRuntimeSessionId, message: runtimeMessage },
-                { headers: turnHeaders }
+                { headers: turnHeaders, timeoutMs: 90_000 }
               )
           )
       });
       await applyRuntimeResult(result, true);
     } catch (error) {
+      if (payload === null)
+        setChatMessages((messages) => messages.filter((item) => item.id !== clientMessageId));
+      setChatDraft(message);
+      setPendingAttachments(attachments);
+      setReplyToMessageId(replyToMessageId);
       await appendAgentMessage(
-        "The authorized business runtime is unavailable, so I did not interpret or apply this request locally. Please retry when the connection recovers."
+        "The shop assistant is temporarily unavailable. Your draft is saved. Please try again."
       );
       setStatusMessage(getErrorMessage(error));
     }
@@ -1550,10 +1883,17 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
               confirmationToken,
               ...(scope?.conversationId ? { conversationId: scope.conversationId } : {})
             },
-            { headers: turnHeaders }
+            { headers: turnHeaders, timeoutMs: 90_000 }
           )
       });
       setRuntimeSessionId(result.session.id);
+      if (session !== null) {
+        runtimeManager.adoptSession(
+          runtimeManagerKey(session.account.id, business.id),
+          result.session.id,
+          result.session.turnCount
+        );
+      }
       clearApproval(confirmationToken);
       setChatMessages((messages) => [
         ...messages,
@@ -1565,25 +1905,22 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       ]);
 
       if (result.turn.plan.toolName === "product.create") {
-        await loadProducts(business.id);
-        navigateToView("products");
+        void loadProducts(business.id);
       }
 
       if (result.turn.plan.toolName === "customer.create") {
-        await loadCustomers(business.id);
-        navigateToView("customers");
+        void loadCustomers(business.id);
       }
 
       if (result.turn.plan.toolName === "document_import.confirm") {
-        await Promise.all([
+        void Promise.allSettled([
           loadDocumentImports(business.id),
           loadProducts(business.id),
           loadSuppliers(business.id)
         ]);
-        navigateToView("imports");
       }
 
-      await loadRuntimeSessions(business.id);
+      void loadRuntimeSessions(business.id);
       setStatusMessage(`Runtime ${result.turn.status.replace("_", " ")}`);
     } catch (error) {
       setStatusMessage(getErrorMessage(error));

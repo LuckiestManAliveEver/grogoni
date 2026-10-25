@@ -21,6 +21,7 @@ interface ChatComposerStateInput {
   initialEmailSubject: string;
   nearbyScope: Scope | null;
   smsDefaultCountry: CountryCode;
+  smsFallbackRecipient?: { recipient: string; label: string };
   onDraftChange: (draft: string) => void;
   onPlatformHandoff: (status: MessageHandoffStatus, normalizedErrorCode: string | null) => void;
   onSend: (draft: string, provider?: ChannelProvider, subject?: string, invoiceId?: string) => void;
@@ -37,6 +38,7 @@ export function useChatComposerState(input: ChatComposerStateInput) {
   const [emailInvoiceId, setEmailInvoiceId] = useState("");
   const [selectedProvider, setSelectedProviderState] = useState<ChannelProvider | null>(null);
   const bluetooth = useBluetoothSendState(input.nearbyScope);
+  const resetBluetooth = bluetooth.reset;
 
   const setSelectedProvider = useCallback(
     (provider: ChannelProvider | null) => {
@@ -85,9 +87,22 @@ export function useChatComposerState(input: ChatComposerStateInput) {
       });
       return;
     }
+    if (
+      navigator.onLine === false &&
+      input.smsFallbackRecipient !== undefined &&
+      (selectedProvider === null ||
+        selectedProvider === "grogoni" ||
+        selectedProvider === "native_sms") &&
+      liveDraft.trim().length > 0
+    ) {
+      // Review the carrier route before opening the phone's SMS app. Keep the
+      // draft intact: opening a composer does not confirm that an SMS was sent.
+      openSmsHandoff(input.smsFallbackRecipient.recipient, input.smsFallbackRecipient.label);
+      return;
+    }
     input.onSend(
       liveDraft,
-      selectedProvider ?? undefined,
+      selectedProvider ?? "grogoni",
       selectedProvider === "email" ? emailSubject : undefined,
       selectedProvider === "email" && emailInvoiceId !== "" ? emailInvoiceId : undefined
     );
@@ -115,17 +130,12 @@ export function useChatComposerState(input: ChatComposerStateInput) {
     setEmailInvoiceId("");
   }, [input.activeConversationId, input.initialEmailSubject]);
 
+  // Endpoint refreshes must never change the selected route. Offline SMS is
+  // reviewed separately when Send is pressed.
   useEffect(() => {
-    const available = input.channelEndpoints.find(
-      (endpoint) =>
-        endpoint.status === "available" &&
-        endpoint.configured &&
-        endpoint.authorized &&
-        (endpoint.capabilities.includes("CAN_REPLY") ||
-          endpoint.capabilities.includes("CAN_INITIATE"))
-    );
-    setSelectedProvider(available?.provider ?? null);
-  }, [input.activeConversationId, input.channelEndpoints, setSelectedProvider]);
+    resetBluetooth();
+    setSelectedProviderState(null);
+  }, [input.activeConversationId, resetBluetooth]);
 
   useEffect(() => () => clearDraftSyncTimer(), []);
 

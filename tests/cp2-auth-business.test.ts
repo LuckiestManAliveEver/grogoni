@@ -1,4 +1,9 @@
-import { describe, expect, it } from "vitest";
+import {
+  seedLegacyEmailAccount,
+  signupWithBackupEmail,
+  completeEmailMfa
+} from "./fixtures/account-auth";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildApi } from "../services/api/src/app";
 import { createCp2Store } from "../services/api/src/cp2/store";
 
@@ -73,6 +78,7 @@ interface PublicStorefrontResponse {
 }
 
 describe("CP2 auth and business creation", () => {
+  afterEach(() => vi.unstubAllEnvs());
   it("creates an owner account, session, business, language preference, role, and audit events", async () => {
     const store = createCp2Store();
     const app = buildApi({ cp2: { store } });
@@ -266,29 +272,17 @@ describe("CP2 auth and business creation", () => {
     ]);
   });
 
-  it("rejects invalid OTPs and unauthenticated business creation", async () => {
+  it("rejects retired OTP login and unauthenticated business creation", async () => {
     const store = createCp2Store();
     const app = buildApi({ cp2: { store } });
-
-    const otpResponse = await postJson<OtpRequestResponse>(app, "/auth/otp/request", {
-      channel: "email",
-      destination: "owner@example.com"
-    });
 
     const badOtp = await app.inject({
       method: "POST",
       url: "/auth/otp/verify",
-      headers: jsonHeaders(),
-      payload: JSON.stringify({
-        challengeId: otpResponse.challengeId,
-        code: "000000"
-      })
+      payload: { challengeId: "retired", code: "000000" }
     });
-
-    expect(badOtp.statusCode).toBe(401);
-    expect(badOtp.json()).toMatchObject({
-      code: "otp_invalid"
-    });
+    expect(badOtp.statusCode).toBe(403);
+    expect(badOtp.json()).toMatchObject({ code: "phone_login_required" });
 
     const unauthenticatedBusiness = await app.inject({
       method: "POST",
@@ -302,11 +296,8 @@ describe("CP2 auth and business creation", () => {
 
     expect(unauthenticatedBusiness.statusCode).toBe(401);
 
-    const invalidRole = await postJson<VerifyOtpResponse>(app, "/auth/otp/verify", {
-      challengeId: otpResponse.challengeId,
-      code: otpResponse.devOtp
-    });
-    const sessionCookie = `grogoni_session=${invalidRole.session.id}`;
+    const migrated = seedLegacyEmailAccount(store, "owner@example.com");
+    const sessionCookie = `grogoni_session=${migrated.session.id}`;
     const createdBusiness = await app.inject({
       method: "POST",
       url: "/businesses",
@@ -360,32 +351,25 @@ describe("CP2 auth and business creation", () => {
     await app.close();
   });
 
-  it("accepts email OTP setup payloads with method, contact, and otp", async () => {
+  it("links and verifies backup email without allowing email session creation", async () => {
     const store = createCp2Store();
     const app = buildApi({ cp2: { store } });
-
-    const otpResponse = await postJson<OtpRequestResponse>(app, "/auth/otp/request", {
-      method: "email",
-      contact: "Owner@Example.com"
-    });
-
-    expect(otpResponse.destination).toBe("owner@example.com");
-
-    const verifyResponse = await app.inject({
+    const owner = await signupWithBackupEmail(app, "Owner@Example.com");
+    expect(store.snapshot().accountIdentities).toContainEqual(
+      expect.objectContaining({
+        type: "email",
+        normalizedValue: "owner@example.com",
+        verifiedAt: expect.any(String)
+      })
+    );
+    const blocked = await app.inject({
       method: "POST",
       url: "/auth/otp/verify",
-      headers: jsonHeaders(),
-      payload: JSON.stringify({
-        method: "email",
-        contact: "owner@example.com",
-        otp: otpResponse.devOtp
-      })
+      payload: { method: "email", contact: "owner@example.com", otp: "000000" }
     });
-    const sessionCookie = extractSessionCookie(verifyResponse.headers["set-cookie"]);
-
-    expect(verifyResponse.statusCode).toBe(200);
-    expect(sessionCookie).toContain("grogoni_session=");
-
+    expect(blocked.statusCode).toBe(403);
+    expect(blocked.headers["set-cookie"]).toBeUndefined();
+    expect(owner.cookie).toContain("grogoni_session=");
     await app.close();
   });
 
@@ -526,7 +510,8 @@ describe("CP2 auth and business creation", () => {
 
     const otpResponse = await postJson<OtpRequestResponse>(app, "/auth/otp/request", {
       channel: "email",
-      destination: "owner@example.com"
+      destination: "owner@example.com",
+      purpose: "recovery"
     });
 
     const duplicate = await app.inject({
@@ -539,8 +524,8 @@ describe("CP2 auth and business creation", () => {
       })
     });
 
-    expect(duplicate.statusCode).toBe(409);
-    expect(duplicate.json()).toMatchObject({ code: "identity_in_use" });
+    expect(duplicate.statusCode).toBe(403);
+    expect(duplicate.json()).toMatchObject({ code: "phone_login_required" });
 
     await app.close();
   });
@@ -564,25 +549,13 @@ describe("CP2 auth and business creation", () => {
     expect(login.account.primaryAuthChannel).toBe("phone");
   });
 
-  it("sets and verifies an owner login PIN after email verification", async () => {
+  it("sets a migrated account PIN and logs in through its linked phone", async () => {
+    vi.stubEnv("OTP_COOLDOWN_SECONDS", "0");
     const store = createCp2Store();
     const app = buildApi({ cp2: { store } });
 
-    const otpResponse = await postJson<OtpRequestResponse>(app, "/auth/otp/request", {
-      method: "email",
-      contact: "pin-owner@example.test"
-    });
-    const verifyResponse = await app.inject({
-      method: "POST",
-      url: "/auth/otp/verify",
-      headers: jsonHeaders(),
-      payload: JSON.stringify({
-        method: "email",
-        contact: "pin-owner@example.test",
-        otp: otpResponse.devOtp
-      })
-    });
-    const sessionCookie = extractSessionCookie(verifyResponse.headers["set-cookie"]);
+    const verified = seedLegacyEmailAccount(store, "pin-owner@example.test");
+    const sessionCookie = `grogoni_session=${verified.session.id}`;
     const initialPinStatus = await app.inject({
       method: "GET",
       url: "/auth/pin/status",
@@ -637,7 +610,7 @@ describe("CP2 auth and business creation", () => {
       sessionCookie
     );
 
-    expect(pinSetup.account.id).toBe(verifyResponse.json<VerifyOtpResponse>().account.id);
+    expect(pinSetup.account.id).toBe(verified.account.id);
     expect(setupPinStatus.json()).toMatchObject({
       hasPin: true
     });
@@ -656,8 +629,8 @@ describe("CP2 auth and business creation", () => {
       url: "/auth/pin/login",
       headers: jsonHeaders(),
       payload: JSON.stringify({
-        method: "email",
-        contact: "pin-owner@example.test",
+        method: "phone",
+        contact: "+254712345678",
         pin: "0000"
       })
     });
@@ -667,23 +640,27 @@ describe("CP2 auth and business creation", () => {
       code: "auth_credentials_invalid"
     });
 
-    const login = await app.inject({
+    const pendingLogin = await app.inject({
       method: "POST",
       url: "/auth/pin/login",
       headers: jsonHeaders(),
       payload: JSON.stringify({
-        method: "email",
-        contact: "pin-owner@example.test",
+        method: "phone",
+        contact: "+254712345678",
         pin: "1234"
       })
     });
+    expect(pendingLogin.statusCode).toBe(202);
+    expect(pendingLogin.headers["set-cookie"]).toBeUndefined();
+    const login = await completeEmailMfa(
+      app,
+      pendingLogin.json<{ transactionId: string }>().transactionId
+    );
     const loginCookie = extractSessionCookie(login.headers["set-cookie"]);
 
     expect(login.statusCode).toBe(200);
     expect(loginCookie).toContain("grogoni_session=");
-    expect(login.json<VerifyOtpResponse>().account.id).toBe(
-      verifyResponse.json<VerifyOtpResponse>().account.id
-    );
+    expect(login.json<VerifyOtpResponse>().account.id).toBe(verified.account.id);
 
     const allowedRole = await postJson<RoleCheckResponse>(
       app,
@@ -705,22 +682,33 @@ describe("CP2 auth and business creation", () => {
       }
     });
 
-    const recoveryOtp = await postJson<OtpRequestResponse>(app, "/auth/otp/request", {
-      method: "email",
-      contact: "pin-owner@example.test",
-      purpose: "recovery"
-    });
-    const recoveryVerify = await app.inject({
+    const unauthenticatedRecovery = await app.inject({
       method: "POST",
-      url: "/auth/otp/verify",
+      url: "/auth/pin/recover",
+      headers: jsonHeaders(),
+      payload: JSON.stringify({ pin: "7777" })
+    });
+    expect(unauthenticatedRecovery.statusCode).toBe(401);
+    expect(unauthenticatedRecovery.headers["set-cookie"]).toBeUndefined();
+
+    // Recover from a session obtained through the supported phone login and email MFA APIs.
+    const recoveryLogin = await app.inject({
+      method: "POST",
+      url: "/auth/pin/login",
       headers: jsonHeaders(),
       payload: JSON.stringify({
-        method: "email",
-        contact: "pin-owner@example.test",
-        otp: recoveryOtp.devOtp
+        method: "phone",
+        contact: "+254712345678",
+        pin: "1234"
       })
     });
-    const recoveryCookie = extractSessionCookie(recoveryVerify.headers["set-cookie"]);
+    expect(recoveryLogin.statusCode).toBe(202);
+    expect(recoveryLogin.headers["set-cookie"]).toBeUndefined();
+    const recovery = await completeEmailMfa(
+      app,
+      recoveryLogin.json<{ transactionId: string }>().transactionId
+    );
+    const recoveryCookie = extractSessionCookie(recovery.headers["set-cookie"]);
 
     await postJson<VerifyOtpResponse>(
       app,
@@ -756,8 +744,8 @@ describe("CP2 auth and business creation", () => {
       url: "/auth/pin/login",
       headers: jsonHeaders(),
       payload: JSON.stringify({
-        method: "email",
-        contact: "pin-owner@example.test",
+        method: "phone",
+        contact: "+254712345678",
         pin: "1234"
       })
     });
@@ -766,17 +754,19 @@ describe("CP2 auth and business creation", () => {
       url: "/auth/pin/login",
       headers: jsonHeaders(),
       payload: JSON.stringify({
-        method: "email",
-        contact: "pin-owner@example.test",
+        method: "phone",
+        contact: "+254712345678",
         pin: "7777"
       })
     });
 
     expect(oldPin.statusCode).toBe(401);
-    expect(newPin.statusCode).toBe(200);
-    expect(newPin.json<VerifyOtpResponse>().account.id).toBe(
-      verifyResponse.json<VerifyOtpResponse>().account.id
+    expect(newPin.statusCode).toBe(202);
+    const verifiedNewPin = await completeEmailMfa(
+      app,
+      newPin.json<{ transactionId: string }>().transactionId
     );
+    expect(verifiedNewPin.json<VerifyOtpResponse>().account.id).toBe(verified.account.id);
 
     await app.close();
   });

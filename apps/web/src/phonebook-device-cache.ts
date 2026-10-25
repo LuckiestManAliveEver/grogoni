@@ -1,6 +1,9 @@
+import { normalizePhoneInput } from "@grogoni/shared-types";
+import { getCountryCallingCode, isSupportedCountry, type CountryCode } from "libphonenumber-js";
+
 /**
  * The contacts the owner picked, with their raw numbers, kept on this device only so the invite
- * list survives a reload. The server stores hashes, never these numbers (see
+ * list survives a reload. Selected numbers are transmitted over HTTPS for server matching; persisted server records use keyed hashes rather than these numbers (see
  * docs/architecture/phonebook-identity-resolution.md). Scoped per Grogoni user and cleared on
  * logout. Storage can be missing or throw (private window, blocked site data): every access
  * degrades to "nothing cached".
@@ -41,11 +44,27 @@ export function mergeDevicePhonebook(
   return [...merged.values()];
 }
 
-/** Phone numbers compare by their last nine digits ("+254 722 000 101" = "0722000101"). */
-export function destinationKey(channel: "phone" | "email", value: string): string {
-  return channel === "phone"
-    ? `phone:${value.replace(/\D/g, "").slice(-9)}`
-    : `email:${value.trim().toLowerCase()}`;
+/** Normalize the complete identity; never merge different country codes by a digit suffix. */
+export function canonicalDeviceContactPhone(value: string, defaultCountry = "KE"): string | null {
+  const country: CountryCode = isSupportedCountry(defaultCountry) ? defaultCountry : "KE";
+  const normalized = normalizePhoneInput({
+    rawInput: value,
+    selectedCountry: country,
+    selectedCallingCode: getCountryCallingCode(country)
+  });
+  return normalized.valid ? normalized.e164 : null;
+}
+
+export function destinationKey(
+  channel: "phone" | "email",
+  value: string,
+  defaultCountry = "KE"
+): string {
+  if (channel === "email") return `email:${value.trim().toLowerCase()}`;
+  const canonical = canonicalDeviceContactPhone(value, defaultCountry);
+  return canonical
+    ? `phone:${canonical}`
+    : `phone:unparsed:${value.trim().replace(/[\s().-]/gu, "")}`;
 }
 
 export function readDevicePhonebook(userId: string): DevicePhonebookContact[] {

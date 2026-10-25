@@ -1,0 +1,30 @@
+{
+  "processing": {
+    "correlationId": "1c20ea8d-63f2-4da0-9b3f-cd6c77636dc4",
+    "status": "completed",
+    "errorCode": null,
+    "retryable": false
+  },
+  "model": {
+    "provider": "openrouter",
+    "status": "available",
+    "durationMs": 1861,
+    "outputKind": "response",
+    "errorCode": null,
+    "rawOutputText": "{\"type\":\"response\",\"message\":\"PHASE6-BUSINESS\"}",
+    "inferenceRequestId": "gen-1792834905-zLlDScdpICNvOOJ6TZil",
+    "promptTokens": 3160,
+    "completionTokens": 64,
+    "bindingId": "builtin:grogoni-default-runtime:v1",
+    "modelId": "gpt-6-luna",
+    "executionHostId": "builtin:provider-router:v1",
+    "fallbackIndex": 0,
+    "fallbackUsed": false,
+    "fallbackReason": null,
+    "agentId": "builtin:shopkeeper:v1",
+    "agentAdapterId": "grogoni",
+    "resolutionReason": "explicit-native-host",
+    "executionTarget": "backend"
+  },
+  "replyText": "PHASE6-BUSINESS"
+}

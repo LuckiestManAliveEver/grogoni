@@ -10,49 +10,10 @@ import type {
   PlatformIdentitySummary
 } from "@grogoni/shared-types";
 
-export type ChannelErrorCode =
-  | "CHANNEL_NOT_CONNECTED"
-  | "CHANNEL_UNAVAILABLE"
-  | "CHANNEL_IDENTITY_NOT_FOUND"
-  | "CHANNEL_INITIATION_NOT_ALLOWED"
-  | "CHANNEL_REPLY_WINDOW_EXPIRED"
-  | "CHANNEL_OPT_IN_REQUIRED"
-  | "CHANNEL_TEMPLATE_REQUIRED"
-  | "CHANNEL_IDENTITY_ALREADY_LINKED"
-  | "CHANNEL_RATE_LIMITED"
-  | "CHANNEL_SEND_FAILED"
-  | "PROVIDER_AUTH_EXPIRED"
-  | "CHANNEL_WEBHOOK_INVALID"
-  | "CHANNEL_INBOUND_UNSUPPORTED"
-  | "SMS_DEVICE_UNAVAILABLE"
-  | "SMS_SETUP_REQUIRED"
-  | "SMS_PERMISSION_REQUIRED"
-  | "SMS_ROLE_REQUIRED"
-  | "SMS_SIM_UNAVAILABLE"
-  | "SMS_SIM_SELECTION_REQUIRED"
-  | "SMS_NO_SERVICE"
-  | "SMS_SEND_FAILED"
-  | "SMS_DELIVERY_UNKNOWN"
-  | "EMAIL_MAILBOX_NOT_CONNECTED"
-  | "EMAIL_MAILBOX_NOT_FOUND"
-  | "EMAIL_REAUTHORIZATION_REQUIRED"
-  | "EMAIL_RECIPIENT_NOT_FOUND"
-  | "EMAIL_INVALID_RECIPIENT"
-  | "EMAIL_SEND_FAILED"
-  | "EMAIL_PROVIDER_UNAVAILABLE"
-  | "EMAIL_ATTACHMENT_UNAVAILABLE"
-  | "EMAIL_SYNC_FAILED";
-
-export class ChannelGatewayError extends Error {
-  constructor(
-    readonly code: ChannelErrorCode,
-    message: string,
-    readonly retryable = false
-  ) {
-    super(message);
-    this.name = "ChannelGatewayError";
-  }
-}
+import { ChannelGatewayError } from "./channel-errors.js";
+export { ChannelGatewayError, type ChannelErrorCode } from "./channel-errors.js";
+import type { ChannelErrorCode } from "./channel-errors.js";
+import { createExternalChannelAdapters } from "./external-channel-adapters.js";
 
 export interface OutboundChannelMessage {
   businessId: string;
@@ -90,6 +51,14 @@ export interface CanonicalInboundChannelMessage {
   text: string;
   linkToken: string | null;
   receivedAt: string;
+  /** Present for a provider account explicitly bound to one shop. */
+  businessId?: string;
+}
+
+export interface ChannelWebhookInput {
+  headers: Record<string, string | string[] | undefined>;
+  payload: unknown;
+  rawBody?: Buffer;
 }
 
 export interface MessagingChannelAdapter {
@@ -102,7 +71,9 @@ export interface MessagingChannelAdapter {
   sendMessage(request: OutboundChannelMessage): Promise<ChannelSendResult>;
   validateWebhook?(headers: Record<string, string | string[] | undefined>): boolean;
   normalizeInbound?(payload: unknown): CanonicalInboundChannelMessage;
-  createLinkUrl?(token: string): string | null;
+  parseWebhook?(input: ChannelWebhookInput): CanonicalInboundChannelMessage[];
+  webhookChallenge?(query: Record<string, unknown>): string | null;
+  createLinkUrl?(token: string, businessId?: string): string | null;
   executionContext?(businessId: string): {
     environment: "server" | "android-device";
     deviceId: string | null;
@@ -264,8 +235,19 @@ export class ChannelGateway {
     provider: ChannelProvider;
     headers: Record<string, string | string[] | undefined>;
     payload: unknown;
+    rawBody?: Buffer;
   }): CanonicalInboundChannelMessage {
+    const inbound = this.normalizeInboundBatch(input)[0];
+    if (inbound === undefined)
+      throw new ChannelGatewayError("CHANNEL_INBOUND_UNSUPPORTED", "No text message was included.");
+    return inbound;
+  }
+
+  normalizeInboundBatch(
+    input: ChannelWebhookInput & { provider: ChannelProvider }
+  ): CanonicalInboundChannelMessage[] {
     const adapter = this.adapters.get(input.provider);
+    if (adapter?.parseWebhook) return adapter.parseWebhook(input);
     if (adapter?.normalizeInbound === undefined) {
       throw new ChannelGatewayError(
         "CHANNEL_INBOUND_UNSUPPORTED",
@@ -275,11 +257,15 @@ export class ChannelGateway {
     if (adapter.validateWebhook?.(input.headers) !== true) {
       throw new ChannelGatewayError("CHANNEL_WEBHOOK_INVALID", "Webhook authentication failed.");
     }
-    return adapter.normalizeInbound(input.payload);
+    return [adapter.normalizeInbound(input.payload)];
   }
 
-  createLinkUrl(provider: ChannelProvider, token: string): string | null {
-    return this.adapters.get(provider)?.createLinkUrl?.(token) ?? null;
+  webhookChallenge(provider: ChannelProvider, query: Record<string, unknown>): string | null {
+    return this.adapters.get(provider)?.webhookChallenge?.(query) ?? null;
+  }
+
+  createLinkUrl(provider: ChannelProvider, token: string, businessId?: string): string | null {
+    return this.adapters.get(provider)?.createLinkUrl?.(token, businessId) ?? null;
   }
 
   private assertCanSend(endpoint: ChannelEndpointSummary): void {
@@ -380,28 +366,7 @@ export function createChannelGatewayFromEnvironment(
       botUsername: telegramUsername,
       fetcher
     }),
-    disabledAdapter(
-      "whatsapp",
-      ["REQUIRES_OPT_IN", "REQUIRES_TEMPLATE"],
-      "WhatsApp Business Cloud API credentials and approved templates are required."
-    ),
-    disabledAdapter(
-      "messenger",
-      ["REQUIRES_EXISTING_THREAD"],
-      "A Meta Page messaging authorization is required."
-    ),
-    disabledAdapter(
-      "instagram",
-      ["REQUIRES_EXISTING_THREAD"],
-      "An Instagram professional messaging authorization is required."
-    ),
-    disabledAdapter("tiktok", [], "TikTok Business Messaging API access is not configured."),
-    disabledAdapter("x", [], "An X API tier with Direct Message access is not configured."),
-    disabledAdapter(
-      "sms",
-      [],
-      "No server-side SMS provider or trusted native bridge is configured."
-    ),
+    ...createExternalChannelAdapters(environment, fetcher),
     disabledAdapter(
       "native_sms",
       [

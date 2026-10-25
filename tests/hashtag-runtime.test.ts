@@ -52,6 +52,10 @@ describe("runtime hashtag capabilities", () => {
   });
 
   it("returns safe clarification proposals for unknown commands and bad input", () => {
+    expect(parseRuntimeHashtagInvocation("#constructor")).toMatchObject({
+      toolName: null,
+      proposal: { toolName: "unknown.clarify", validation: { ok: false } }
+    });
     expect(parseRuntimeHashtagInvocation("#not.a.tool")).toMatchObject({
       toolName: null,
       proposal: { toolName: "unknown.clarify", validation: { ok: false } }
@@ -60,6 +64,17 @@ describe("runtime hashtag capabilities", () => {
       proposal: { toolName: "product.create", validation: { ok: false } }
     });
     expect(parseRuntimeHashtagInvocation("Please check #products.list")).toBeNull();
+  });
+
+  it("asks for computer session prerequisites before calling a provider", () => {
+    for (const name of Object.keys(runtimeToolRegistry).filter(
+      (name) => name.startsWith("computer.") && name !== "computer.session.create"
+    )) {
+      expect(parseRuntimeHashtagInvocation(`#${name} {}`)?.proposal.validation).toMatchObject({
+        ok: false,
+        errors: [expect.stringContaining("computer session")]
+      });
+    }
   });
 
   it("extracts a picker query only while a leading command is being typed", () => {

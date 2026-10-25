@@ -1,0 +1,32 @@
+import type { ChangeEvent } from "react";
+import type { ChannelEndpointSummary } from "@grogoni/shared-types";
+import type { ChatAttachment, GrogoniMode } from "./app-shell";
+import type { ActiveBusiness, AgentSettings, InvoiceSummary } from "./grogoni-application-shared";
+import type { ChatComposerState } from "./hooks/useChatComposerState";
+export interface ChatComposerProps {
+  agent: AgentSettings | null;
+  business: ActiveBusiness | null;
+  channelEndpoints: ChannelEndpointSummary[];
+  composer: ChatComposerState;
+  invoices: InvoiceSummary[];
+  isAuthenticated: boolean;
+  isBrowserGenerating: boolean;
+  isSending: boolean;
+  mode: GrogoniMode;
+  activeAgentName: string;
+  audienceLabel?: string | undefined;
+  agentControlsAvailable?: boolean;
+  pendingAttachments: ChatAttachment[];
+  replyToMessageId: string | null;
+  selectedConversationTitle: string;
+  selectedEmailCustomerId: string | null | undefined;
+  onAgentChange: (agent: AgentSettings) => void;
+  onAttachmentChange: (event: ChangeEvent<HTMLInputElement>) => void;
+  onCancelGeneration: () => void;
+  onCancelReply: () => void;
+  onOpenAgentProfile: () => void;
+  onAddParticipants?: () => void;
+  onRemoveAttachment: (attachmentId: string) => void;
+  onRequireSignIn: () => void;
+  onSellerPhotoCapture: (file: File) => void;
+}

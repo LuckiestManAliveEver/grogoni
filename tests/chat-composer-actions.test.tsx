@@ -4,8 +4,51 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { ActiveBusiness } from "../apps/web/src/grogoni-application-shared";
 import { ChatComposer } from "../apps/web/src/ChatComposer";
 import { useChatComposerState } from "../apps/web/src/hooks/useChatComposerState";
+
+function ComposerHarness({ human = false }: { human?: boolean }) {
+  const composer = useChatComposerState({
+    activeConversationId: "conversation-1",
+    channelEndpoints: [],
+    chatDraft: human ? "# inventory" : "",
+    initialEmailSubject: "",
+    nearbyScope: null,
+    smsDefaultCountry: "KE",
+    onDraftChange: vi.fn(),
+    onPlatformHandoff: vi.fn(),
+    onSend: vi.fn()
+  });
+  return (
+    <ChatComposer
+      activeAgentName="Shopkeeper"
+      agentControlsAvailable={!human}
+      audienceLabel={human ? "Discussion · messages go to participants" : undefined}
+      agent={null}
+      business={human ? ({ id: "context-shop", role: "owner" } as ActiveBusiness) : null}
+      channelEndpoints={[]}
+      composer={composer}
+      invoices={[]}
+      isAuthenticated
+      isBrowserGenerating={false}
+      isSending={false}
+      mode="seller"
+      pendingAttachments={[]}
+      replyToMessageId={null}
+      selectedConversationTitle=""
+      selectedEmailCustomerId={null}
+      onAgentChange={vi.fn()}
+      onAttachmentChange={vi.fn()}
+      onCancelGeneration={vi.fn()}
+      onCancelReply={vi.fn()}
+      onOpenAgentProfile={vi.fn()}
+      onRemoveAttachment={vi.fn()}
+      onRequireSignIn={vi.fn()}
+      onSellerPhotoCapture={vi.fn()}
+    />
+  );
+}
 
 describe("mobile chat composer actions", () => {
   let host: HTMLDivElement;
@@ -25,49 +68,31 @@ describe("mobile chat composer actions", () => {
     document.body.replaceChildren();
   });
 
-  it("puts the message box on top, a bottom row with More/pills/mic/Send, moves Send via under the plus sign, and opens the accessible action sheet", async () => {
-    function Harness() {
-      const composer = useChatComposerState({
-        activeConversationId: "conversation-1",
-        channelEndpoints: [],
-        chatDraft: "",
-        initialEmailSubject: "",
-        nearbyScope: null,
-        smsDefaultCountry: "KE",
-        onDraftChange: vi.fn(),
-        onPlatformHandoff: vi.fn(),
-        onSend: vi.fn()
-      });
-      return (
-        <ChatComposer
-          activeAgentName="Shopkeeper"
-          agent={null}
-          business={null}
-          channelEndpoints={[]}
-          composer={composer}
-          invoices={[]}
-          isAuthenticated
-          isBrowserGenerating={false}
-          isSending={false}
-          mode="seller"
-          pendingAttachments={[]}
-          replyToMessageId={null}
-          selectedConversationTitle=""
-          selectedEmailCustomerId={null}
-          onAgentChange={vi.fn()}
-          onAttachmentChange={vi.fn()}
-          onCancelGeneration={vi.fn()}
-          onCancelReply={vi.fn()}
-          onOpenAgentProfile={vi.fn()}
-          onRemoveAttachment={vi.fn()}
-          onRequireSignIn={vi.fn()}
-          onSellerPhotoCapture={vi.fn()}
-        />
-      );
-    }
-
+  it("keeps a shop owner's human chat free of model and execution controls", async () => {
     const root = createRoot(host);
-    await act(async () => root.render(<Harness />));
+    await act(async () => root.render(<ComposerHarness human />));
+    expect(host.querySelector("textarea")?.getAttribute("placeholder")).toBe("Write a message");
+    expect(host.querySelector(".composer-agent-indicator")?.textContent).toBe(
+      "Discussion · messages go to participants"
+    );
+    expect(host.querySelector('[aria-label="Open model library"]')).toBeNull();
+    expect(host.querySelector('[aria-label="Switch model or runtime"]')).toBeNull();
+    expect(host.querySelector('[aria-label="Shop capabilities"]')).toBeNull();
+    await act(async () =>
+      host.querySelector<HTMLButtonElement>('[aria-label="Open message actions"]')!.click()
+    );
+    await act(async () => {
+      await import("../apps/web/src/ChatComposerActions");
+    });
+    const dialog = document.body.querySelector('[role="dialog"]');
+    expect(dialog?.querySelector('[aria-label="Open command"]')).toBeNull();
+    expect(dialog?.querySelector('[aria-label="Files"]')).not.toBeNull();
+    await act(async () => root.unmount());
+  });
+
+  it("puts the message box on top, a bottom row with More/pills/mic/Send, moves Send via under the plus sign, and opens the accessible action sheet", async () => {
+    const root = createRoot(host);
+    await act(async () => root.render(<ComposerHarness />));
 
     const composer = host.querySelector(".composer")!;
     const bottomRow = composer.querySelector(".composer-bottom-row")!;
@@ -92,6 +117,9 @@ describe("mobile chat composer actions", () => {
 
     const more = host.querySelector<HTMLButtonElement>('[aria-label="Open message actions"]')!;
     await act(async () => more.click());
+    await act(async () => {
+      await import("../apps/web/src/ChatComposerActions");
+    });
 
     const dialog = document.body.querySelector('[role="dialog"]');
     expect(dialog?.getAttribute("aria-labelledby")).toBe("composer-message-actions-title");
@@ -120,6 +148,9 @@ describe("mobile chat composer actions", () => {
       vi.useRealTimers();
     }
 
+    await act(async () => {
+      await import("../apps/web/src/ChatChannelPicker");
+    });
     const channelDialog = document.body.querySelector(
       '[aria-labelledby="composer-channel-picker-title"]'
     );

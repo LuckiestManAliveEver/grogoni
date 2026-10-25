@@ -97,6 +97,7 @@ interface BuySearchQuery {
 
 interface BuyCheckoutBody {
   items?: Array<{
+    websiteUrl?: string;
     sourceKind?: string;
     sourceId?: string;
     sourceLabel?: string;
@@ -509,6 +510,32 @@ export function registerCommerceRoutes(
     }
   );
 
+  app.post("/buy/assistant", async (request, reply) => {
+    try {
+      const body = parseRequestBody(request.body);
+      const shoppingSessionId = parseString(body.shoppingSessionId, "shoppingSessionId");
+      const requestId = parseString(body.requestId, "requestId");
+      const message = parseString(body.message, "message");
+      const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
+      if (!uuid.test(shoppingSessionId) || !uuid.test(requestId) || message.length > 16000) {
+        throw new Cp2Error(
+          400,
+          "buyer_shopping_input_invalid",
+          "Send a valid shopping request of at most 16,000 characters."
+        );
+      }
+      return await store.createBuyerShoppingTurn({
+        sessionId: readSessionCookie(request.headers.cookie),
+        shoppingSessionId,
+        requestId,
+        message,
+        signal: AbortSignal.timeout(55000)
+      });
+    } catch (error) {
+      return sendCp2Error(reply, error);
+    }
+  });
+
   app.get(
     "/buy/search",
     async (request: FastifyRequest<{ Querystring: BuySearchQuery }>, reply) => {
@@ -624,6 +651,7 @@ function parseBuyCheckoutItems(value: unknown): BuyCheckoutItemInput[] {
   return value.map((raw, index) => {
     const item = parseRequestBody(raw);
     return {
+      ...(typeof item.websiteUrl === "string" ? { websiteUrl: item.websiteUrl } : {}),
       sourceKind: parseBuySourceKind(item.sourceKind),
       sourceId: parseString(item.sourceId, `items[${index}].sourceId`),
       sourceLabel: parseString(item.sourceLabel, `items[${index}].sourceLabel`),

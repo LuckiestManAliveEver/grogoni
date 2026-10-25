@@ -1,3 +1,4 @@
+import { isSnapshotRequest, queueCloudRequest } from "./cloud-request-queue";
 import { isExplicitOfflineMode, routeOfflineRequest } from "../offline-runtime";
 import { getResponseErrorMessage } from "../user-facing-error";
 import { recordApiRequest } from "../performance";
@@ -160,6 +161,7 @@ export async function apiFetch<T>(
     idempotencyKey?: string;
     skipAuthRefresh?: boolean;
     timeoutMs?: number;
+    priority?: boolean;
   }
 ) {
   if (isExplicitOfflineMode()) {
@@ -184,6 +186,7 @@ export async function apiCloudFetch<T>(
     idempotencyKey?: string;
     skipAuthRefresh?: boolean;
     timeoutMs?: number;
+    priority?: boolean;
   }
 ) {
   const base = readApiBaseUrl();
@@ -272,7 +275,23 @@ async function performFetch(
   url: string,
   method: string,
   headers: Record<string, string>,
-  options?: { body?: unknown; signal?: AbortSignal; timeoutMs?: number }
+  options?: { body?: unknown; signal?: AbortSignal; timeoutMs?: number; priority?: boolean }
+): Promise<Response> {
+  const run = () => performNetworkFetch(url, method, headers, options);
+  return isSnapshotRequest(url)
+    ? queueCloudRequest(
+        run,
+        options?.priority || (method !== "GET" && method !== "HEAD"),
+        options?.signal
+      )
+    : run();
+}
+
+async function performNetworkFetch(
+  url: string,
+  method: string,
+  headers: Record<string, string>,
+  options?: { body?: unknown; signal?: AbortSignal; timeoutMs?: number; priority?: boolean }
 ): Promise<Response> {
   const startedAt = performance.now();
   const { signal: timedSignal, cleanup } = withRequestTimeout(

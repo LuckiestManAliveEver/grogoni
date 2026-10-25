@@ -18,8 +18,8 @@ export {
  * the owner, people already on Grogoni (with the connect action that fits their state), people to
  * invite, and contacts with no number or email.
  *
- * Raw numbers only exist on the device (see phonebook-device-cache.ts); the server returns hashed
- * contacts plus discovery. `syncedContactNodeIds` from a sync pairs the two.
+ * Selected raw numbers are transmitted securely for matching; the server persists keyed
+ * fingerprints, names and masked hints. The device retains numbers for invitations. `syncedContactNodeIds` from a sync pairs the two.
  */
 
 export type OnGrogoniState = "connect" | "requested" | "connected";

@@ -1,7 +1,9 @@
+import { runtimeSessionTurnLimit } from "@grogoni/shared-types";
 import { useRef, useState } from "react";
 import { reportBackgroundLoadError } from "../background-load-error";
 
 import { getErrorMessage, runtimeManagerKey } from "../chat-message-plumbing";
+import { isRetryableApiRequestError } from "../lib/api";
 import { getJson, postJson } from "../api-helpers";
 import {
   runtimeManager,
@@ -75,10 +77,16 @@ export function useRuntimeHistoryState(deps: UseRuntimeHistoryStateDeps) {
       };
     }
     const attempt = runtimeCreationAttemptRef.current;
-    const created = await postJson<RuntimeSessionSummary>(
-      `/businesses/${deps.business.id}/runtime/sessions`,
-      { idempotencyKey: attempt.idempotencyKey }
-    );
+    const create = () =>
+      postJson<RuntimeSessionSummary>(`/businesses/${deps.business!.id}/runtime/sessions`, {
+        idempotencyKey: attempt.idempotencyKey
+      });
+    // The same key makes a retry safe even if the first response was lost after committing.
+    const created = await create().catch(async (error) => {
+      if (!isRetryableApiRequestError(error)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      return create();
+    });
     if (runtimeCreationAttemptRef.current === attempt) {
       runtimeCreationAttemptRef.current = null;
     }
@@ -142,9 +150,14 @@ export function useRuntimeHistoryState(deps: UseRuntimeHistoryStateDeps) {
         `/businesses/${businessId}/runtime/sessions`
       );
       setRuntimeSessions(sessions);
-      const existing = [...sessions].reverse().find((candidate) => candidate.status === "active");
+      const existing = [...sessions]
+        .reverse()
+        .find(
+          (candidate) =>
+            candidate.status === "active" && candidate.turnCount < runtimeSessionTurnLimit
+        );
       if (existing !== undefined) {
-        runtimeManager.adoptSession(key, existing.id);
+        runtimeManager.adoptSession(key, existing.id, existing.turnCount);
         setRuntimeSessionId(existing.id);
         setSelectedRuntimeHistorySessionId(existing.id);
         return existing.id;

@@ -1,0 +1,148 @@
+{
+  "runId": "0e71295d-b83b-4121-bec4-655850369023",
+  "base": "https://grogoni.com/api",
+  "completedAt": "2026-10-23T18:39:36.612Z",
+  "steps": [
+    {
+      "name": "recipient encryption-device access",
+      "status": "pass",
+      "detail": {
+        "status": 200
+      }
+    },
+    {
+      "name": "encryption enumeration observation",
+      "status": "observation",
+      "detail": {
+        "aCount": 2,
+        "bCount": 2,
+        "aAccounts": [
+          "044a920b-bc44-4dd9-ad98-048226867b2d",
+          "67b689a5-6a75-4e4c-9a87-2e6e366c69f7"
+        ],
+        "bAccounts": [
+          "044a920b-bc44-4dd9-ad98-048226867b2d",
+          "67b689a5-6a75-4e4c-9a87-2e6e366c69f7"
+        ]
+      }
+    },
+    {
+      "name": "encryption device enumeration includes both authorized accounts",
+      "status": "pass",
+      "detail": {
+        "aCount": 2,
+        "bCount": 2,
+        "aAccounts": [
+          "044a920b-bc44-4dd9-ad98-048226867b2d",
+          "67b689a5-6a75-4e4c-9a87-2e6e366c69f7"
+        ],
+        "bAccounts": [
+          "044a920b-bc44-4dd9-ad98-048226867b2d",
+          "67b689a5-6a75-4e4c-9a87-2e6e366c69f7"
+        ]
+      }
+    },
+    {
+      "name": "diagnostic recipient scope hint allows encrypted exchange and message deduplication",
+      "status": "pass",
+      "detail": {
+        "scopeHintRequired": true,
+        "decryptionBothDirections": true,
+        "idempotentReplay": true
+      }
+    },
+    {
+      "name": "standard customer business creation",
+      "status": "pass",
+      "detail": {
+        "status": 200
+      }
+    },
+    {
+      "name": "diagnostic business scope hint resolves the existing registered business",
+      "status": "pass",
+      "detail": {
+        "scopeHintRequired": false,
+        "conversationId": "e0a1d56c-7bfd-5b84-a8c4-21a0a3736bd9"
+      }
+    },
+    {
+      "name": "customer sends into diagnostically scoped business conversation",
+      "status": "pass",
+      "detail": {
+        "messageId": "390013fc-9890-4504-80d0-d87cc3350984"
+      }
+    },
+    {
+      "name": "business owner access observation",
+      "status": "observation",
+      "detail": {
+        "inInbox": true,
+        "readStatus": 200
+      }
+    },
+    {
+      "name": "business owner can read and reply to customer's scoped conversation",
+      "status": "pass",
+      "detail": {
+        "readAndReply": true
+      }
+    },
+    {
+      "name": "authorized business runtime generates a real response in an owner session",
+      "status": "pass",
+      "detail": {
+        "text": "PHASE6-OWNER-RUNTIME",
+        "modelId": "gpt-6-luna",
+        "scope": "owner session, not shared customer thread"
+      }
+    },
+    {
+      "name": "browser settled state observation",
+      "status": "observation",
+      "detail": {
+        "before": 1,
+        "after": 1,
+        "labels": [],
+        "calls": [
+          {
+            "path": "/api/auth/bootstrap",
+            "status": 200
+          },
+          {
+            "path": "/api/auth/bootstrap",
+            "status": 200
+          }
+        ],
+        "apiConversationCount": 3
+      }
+    },
+    {
+      "name": "authenticated production browser loads and reloads actual inbox data",
+      "status": "pass",
+      "detail": {
+        "before": 1,
+        "after": 1,
+        "labels": [],
+        "calls": [
+          {
+            "path": "/api/auth/bootstrap",
+            "status": 200
+          },
+          {
+            "path": "/api/auth/bootstrap",
+            "status": 200
+          }
+        ]
+      }
+    },
+    {
+      "name": "remove and verify diagnostic fixtures",
+      "status": "pass",
+      "detail": {
+        "accounts": 2,
+        "businesses": 1
+      }
+    }
+  ]
+}

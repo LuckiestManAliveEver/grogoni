@@ -28,11 +28,11 @@ Checkpoint history is bounded. A task keeps its head's checkpoint, its instance'
 a transfer names, checkpoints without a cloud version, and its latest 20 versions. For 30 days it
 also keeps branches: a checkpoint written without promotion or synced from offline (`branchedAt`)
 with the checkpoint it started from, and any checkpoint nothing descends from. Older ones are
-deleted on the write that adds a newer one (`checkpoint-retention.ts`, migration 123); rollback,
+deleted on the write that adds a newer one (`checkpoint-retention.ts`, migration 126); rollback,
 reads by id or version, merge and offline sync then answer `RUNTIME_HANDOFF_NOT_FOUND`. Within the
 30 days, re-syncing the same offline checkpoints stays a no-op (contents compare regardless of JSON
 key order). A kept checkpoint's `parentHandoffId` stays as recorded ancestry even when the parent
-is gone. Idempotency records carry their account and task (migration 124) and answer retries for 7
+is gone. Idempotency records carry their account and task (migration 127) and answer retries for 7
 days.
 
 The source runtime remains authoritative until the target has restored and passed verification.

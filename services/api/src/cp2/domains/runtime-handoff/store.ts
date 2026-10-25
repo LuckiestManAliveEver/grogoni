@@ -155,6 +155,11 @@ export interface RuntimeHandoffNativeRuntimeAccess {
 }
 
 export interface RuntimeHandoffDomainDeps {
+  canExecuteBusinessConversation?: (
+    taskId: string,
+    accountId: string,
+    businessId: string
+  ) => boolean;
   requireHandoffOwner?: (businessId: string, userId: string) => void;
   conversations: ReadonlyMap<string, ConversationSummary>;
   requireAnySession: (sessionId: string | null, now: Date) => AuthSessionView;
@@ -195,7 +200,8 @@ export class RuntimeHandoffDomain {
   acquireTurn(taskId: string, accountId: string, businessId: string): AcquiredRuntimeTurn {
     const conversation = this.requireConversationRecord(taskId);
     if (
-      conversation.accountId !== accountId ||
+      (conversation.accountId !== accountId &&
+        !this.deps.canExecuteBusinessConversation?.(taskId, accountId, businessId)) ||
       (conversation.activeShopId !== null && conversation.activeShopId !== businessId)
     )
       throw new Cp2Error(
@@ -1421,6 +1427,14 @@ export class RuntimeHandoffDomain {
     const scope = conversation.runtimeBindingId
       ? this.deps.nativeRuntimeBindings.bindingScope(conversation.runtimeBindingId)
       : null;
+    if (
+      scope?.accountId &&
+      scope.accountId !== conversation.accountId &&
+      scope.businessId === conversation.activeShopId &&
+      scope.businessId !== null &&
+      this.deps.canExecuteBusinessConversation?.(taskId, scope.accountId, scope.businessId)
+    )
+      return { ...conversation, accountId: scope.accountId };
     if (scope?.accountId && scope.accountId !== conversation.accountId)
       throw new Cp2Error(
         403,

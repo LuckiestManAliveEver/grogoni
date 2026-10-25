@@ -1,4 +1,5 @@
-import { useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
+
 import { currentOfflineScope, getOfflineState } from "../offline-runtime";
 import { handoffChatMessages } from "../runtime-handoff";
 
@@ -14,6 +15,7 @@ import type {
 } from "@grogoni/shared-types";
 
 import { deleteJson, getJson, patchJson, postJson } from "../api-helpers";
+import { conversationForNode, readNodeIdFromRecipient } from "../network-contact-conversations";
 import {
   createInitialChatMessages,
   type ChatMessage,
@@ -109,6 +111,15 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
   const [isMessagingInboxOpen, setIsMessagingInboxOpen] = useState(
     () => window.matchMedia("(min-width: 760px)").matches
   );
+  useEffect(() => {
+    const viewport = window.matchMedia("(min-width: 760px)");
+    const change = (event: MediaQueryListEvent) => setIsMessagingInboxOpen(event.matches);
+    viewport.addEventListener("change", change);
+    return () => viewport.removeEventListener("change", change);
+  }, []);
+  const currentAccountId = useRef(deps.session?.account.id ?? null);
+  currentAccountId.current = deps.session?.account.id ?? null;
+  const helpInitializedForAccount = useRef<string | null>(null);
   const [conversationInbox, setConversationInbox] = useState<ConversationInboxItem[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [activeConversation, setActiveConversation] = useState<ConversationView | null>(null);
@@ -140,10 +151,15 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
   } = deps;
   useMessagingOutboxSaveFailure(session?.account.id ?? null, setStatusMessage);
 
-  // Deliberately never auto-selects or auto-creates a conversation when no valid preferred id is
-  // given: the startup chat window stays blank (like a fresh ChatGPT tab) until the account picks
-  // an existing chat from the sidebar or starts a new one via onCreateAgentSession/
-  // onCreateConversation. See docs/frontend/frontend.md Phase 3 "New chat" affordance.
+  useEffect(() => {
+    const refresh = () => {
+      void loadMessagingInbox(activeConversationId);
+    };
+    window.addEventListener("grogoni:conversation-updated", refresh);
+    return () => window.removeEventListener("grogoni:conversation-updated", refresh);
+  });
+
+  // The server owns daemon identity; open that durable thread on initial launch.
   async function loadMessagingInbox(preferredConversationId: string | null = activeConversationId) {
     if (session === null) return;
     const offlineScope = currentOfflineScope();
@@ -158,17 +174,34 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
     try {
       const response = await getJson<{ conversations: ConversationInboxItem[] }>(
         "/v1/conversations",
-        (refreshed) =>
-          setConversationInbox(
-            refreshed.conversations.filter((item) => !item.taskParentConversationId)
-          )
+        (refreshed) => {
+          if (currentAccountId.current === session.account.id)
+            setConversationInbox(
+              refreshed.conversations.filter((item) => !item.taskParentConversationId)
+            );
+        }
       );
+      if (currentAccountId.current !== session.account.id) return;
       setConversationInbox(response.conversations.filter((item) => !item.taskParentConversationId));
+      // Help initialization must not hold the primary inbox behind a separate request.
+      if (helpInitializedForAccount.current !== session.account.id) {
+        helpInitializedForAccount.current = session.account.id;
+        void postJson("/v1/help", {}).catch(() => {
+          helpInitializedForAccount.current = null;
+          setStatusMessage("Help is temporarily unavailable.");
+        });
+      }
       const selectedId =
         preferredConversationId !== null &&
         response.conversations.some((conversation) => conversation.id === preferredConversationId)
           ? preferredConversationId
-          : null;
+          : (response.conversations.find(
+              (conversation) =>
+                conversation.isPermanentDaemon &&
+                !conversation.helpTopic &&
+                !conversation.taskParentConversationId &&
+                conversation.activeShopId === null
+            )?.id ?? null);
       if (selectedId !== null) {
         setActiveConversationId(selectedId);
         await loadConversationThread(selectedId);
@@ -208,6 +241,7 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
       return;
     }
     const view = await getJson<ConversationView>(`/v1/conversations/${conversationId}`);
+    if (currentAccountId.current !== session.account.id) return;
     setActiveConversation(view);
     setIsContactTyping((view.typing ?? []).some((typing) => typing.actorId !== session.user.id));
     const mapped = await Promise.all(
@@ -314,6 +348,35 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
     if (session === null) {
       requireMessagingSignIn();
       return;
+    }
+    // Phone Contacts opens a chat by phonebook node id. The server already reuses the one
+    // conversation between the two accounts, and so does this: the same guard against a second
+    // chat for the same two people that a number or email recipient gets. A chat archived on this
+    // side is still the right one to reopen, so the inbox is read with archived included.
+    const nodeId = readNodeIdFromRecipient(recipient);
+    if (nodeId !== null) {
+      try {
+        const existing = conversationForNode(
+          (
+            await getJson<{ conversations: ConversationInboxItem[] }>(
+              "/v1/conversations?includeArchived=true"
+            )
+          ).conversations,
+          nodeId
+        );
+        if (existing !== null) {
+          await loadMessagingInbox(existing.id);
+          navigateToOwnerRoute({
+            mode,
+            view: "chat",
+            conversationId: existing.id
+          });
+          return;
+        }
+      } catch {
+        // Fall through to creating: the server's own pair reuse is the authority, and a failed
+        // lookup must not block starting a chat.
+      }
     }
     let created: ConversationView;
     if (business !== null && /^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(recipient.trim())) {

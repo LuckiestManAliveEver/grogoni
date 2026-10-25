@@ -12,6 +12,61 @@ const primaryModelId = "smollm2-360m";
 const fallbackModelId = "qwen2.5-0.5b-android";
 
 describe("zero-setup native runtime", () => {
+  it("runs the enabled business agent for a participating owner of a customer-created thread", async () => {
+    const generate = vi.fn(async () => generation(primaryModelId, "Business reply."));
+    const store = createCp2Store({
+      modelRuntimeAdapterResolver: ({ modelId }) =>
+        modelId === primaryModelId ? adapter(modelId, generate) : undefined
+    });
+    const app = buildApi({ cp2: { store } });
+    try {
+      const owner = await createActorAndShop(app, "+254700008119", "Shared runtime");
+      const customer = store.continueWithChannelPin({
+        channel: "phone",
+        destination: "+254700008120",
+        pin: "1234"
+      });
+      const thread = store.createConversation({
+        sessionId: customer.session.id,
+        kind: "storefront",
+        activeShopId: owner.businessId
+      });
+      const conversationId = thread.conversation.id;
+      const ownerCookie = owner.cookie;
+      const enable = await app.inject({
+        method: "PATCH",
+        url: `/v1/conversations/${conversationId}`,
+        headers: jsonHeaders(ownerCookie),
+        payload: { agentEnabled: true }
+      });
+      expect(enable.statusCode).toBe(200);
+      const response = await app.inject({
+        method: "POST",
+        url: "/v1/messages",
+        headers: jsonHeaders(ownerCookie),
+        payload: {
+          conversationId,
+          clientMessageId: "shared-business-inference",
+          content: { type: "text", text: "Hello" },
+          agent: { businessId: owner.businessId, message: "Hello" }
+        }
+      });
+      expect(response.statusCode, response.body).toBe(200);
+      expect(response.json().agentMessage.content.text).toBe("Business reply.");
+      expect(generate).toHaveBeenCalledOnce();
+      expect(
+        store.getConversation({ sessionId: customer.session.id, conversationId }).conversation
+          .accountId
+      ).toBe(customer.account.id);
+      const foreign = await createActorAndShop(app, "+254700008121", "Other runtime");
+      expect(
+        (await runtimeTurn(app, foreign.cookie, foreign.businessId, conversationId)).statusCode
+      ).toBe(403);
+    } finally {
+      await app.close();
+    }
+  });
+
   it("completes a brand-new user's first /v1/messages chat without a download or activation", async () => {
     const generate = vi.fn(async () =>
       generation(primaryModelId, "Welcome to Grogoni AI.", "local")

@@ -1,0 +1,11 @@
+{
+  "maximumRoundTrips": 3,
+  "postgresTestsPassed": 5,
+  "unrelatedAccountPreserved": true,
+  "fixtureRuntimeRecordsDeleted": true,
+  "validationTarget": "isolated-local-postgresql",
+  "latestProductionRunBeforeThisOptimization": {
+    "lockHeldMs": 9407,
+    "cleanupVerified": true
+  }
+}

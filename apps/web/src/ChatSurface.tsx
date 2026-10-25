@@ -1,4 +1,9 @@
 import { GuestTypingIndicator } from "./GuestTypingIndicator";
+import { DiscussionMembersButton } from "./DiscussionMembersButton";
+import { ChatRecycleBinPanel } from "./ChatRecycleBinPanel";
+import { useMobileChatNavigation } from "./hooks/useMobileChatNavigation";
+import { HomeSuggestionChips } from "./HomeSuggestionChips";
+
 import { Fragment, Suspense, lazy, useEffect, useRef, useState } from "react";
 
 import type { CountryCode } from "libphonenumber-js";
@@ -16,8 +21,8 @@ import { RuntimeConfirmationButtons } from "./RuntimeConfirmationButtons";
 import { useOwnerCore } from "./hooks/OwnerCoreContext";
 import { useChatComposerState } from "./hooks/useChatComposerState";
 import { useCompactViewport } from "./hooks/useCompactViewport";
-import { useSwipeNavigation } from "./hooks/useSwipeNavigation";
-import { chatSwipeEnabled } from "./swipe-navigation";
+import { ChatParticipantsPanel } from "./ChatParticipantsPanel";
+
 import { ChatComposer } from "./ChatComposer";
 import { readCurrentOwnerRoute } from "./browser-navigation";
 import { ConversationAttachmentCard } from "./ConversationAttachmentCard";
@@ -26,7 +31,11 @@ import { ConversationListPanel } from "./ConversationListPanel";
 import { SmsHandoffDialog } from "./grogoni-application-shared";
 import { renderGeneratedSurface } from "./generated-surface-registry";
 
-import { formatFileSize, formatMessageTime } from "./formatters";
+import {
+  DaemonExecutionStatus,
+  ConversationExecutionControls
+} from "./ConversationExecutionControls";
+
 
 import { viewLabel } from "./agent-command-engine";
 import {
@@ -81,10 +90,9 @@ function capabilityTraceLabel(content: ConversationMessageContent | undefined): 
   return capabilityTraceLabels[content.type] ?? null;
 }
 
-const homeSuggestionPrompts = ["Find me 50kg maize nearby", "Track my delivery", "Talk to a shop"];
-
 export function ChatSurface({
   activeConversationId,
+  participants = [],
   chatDraft,
   initialEmailSubject,
   channelEndpoints,
@@ -129,11 +137,13 @@ export function ChatSurface({
   onRefreshInvoices,
   onBackToChat,
   onCloseMarketplace,
+  onOpenMarketplace,
   onCloseWorkspace,
   onDraftChange,
   onSelectConversation,
   onCreateConversation,
   onCreateAgentSession,
+  onParticipantsUpdated,
   onRequireSignIn,
   onSignUp,
   onLogIn,
@@ -157,7 +167,6 @@ export function ChatSurface({
   onForwardMessage,
   onRetryMessages,
   queuedMessageCount,
-  onOpenShop,
   onNavigate,
   onOpenWorkspace,
   onModeChange,
@@ -207,10 +216,22 @@ export function ChatSurface({
       : null;
 
   const isCompactViewport = useCompactViewport();
+  const { surfaceRef, ...mobileNavigation } = useMobileChatNavigation({
+    isCompactViewport,
+    workspaceOpen,
+    marketplaceShortcutOpen,
+    isInboxOpen,
+    mode,
+    onCloseWorkspace,
+    onCloseMarketplace,
+    onInboxOpenChange,
+    onOpenWorkspace,
+    onOpenMarketplace
+  });
   const messageListRef = useRef<HTMLDivElement | null>(null);
-  const chatSurfaceRef = useRef<HTMLDivElement | null>(null);
   const defaultMessageWindow = useRef(detectCapabilitySettings().messageWindowSize).current;
   const [messageWindowSize, setMessageWindowSize] = useState(defaultMessageWindow);
+  const [participantsOpen, setParticipantsOpen] = useState(false);
   const [inboxSearch, setInboxSearch] = useState("");
   const [editingTopic, setEditingTopic] = useState<string | null>(null);
   const [isNewConversationOpen, setIsNewConversationOpen] = useState(false);
@@ -256,13 +277,16 @@ export function ChatSurface({
   const showMessageThread = true;
   const activeModuleView = activeView === "chat" || activeView === "home" ? null : activeView;
   const isSessionListView = activeView === "home";
-  // The session list starts blank (no chat auto-selected/auto-created - see
-  // useChatInboxState.loadMessagingInbox) until the account opens an existing chat or starts a
-  // new one, matching a fresh ChatGPT tab rather than always dropping back into old history.
   const showBlankSessionState = isSessionListView && activeConversationId === null;
   const selectedConversation = conversations.find(
     (conversation) => conversation.id === activeConversationId
   );
+  const isHumanConversation =
+    selectedConversation !== undefined &&
+    (selectedConversation.hasHumanRecipient ||
+      selectedConversation.conversationType === "DIRECT" ||
+      selectedConversation.conversationType === "BUSINESS" ||
+      selectedConversation.kind !== "personal");
   const selectedEmailCustomerId = channelEndpoints.find(
     (endpoint) => endpoint.provider === "email"
   )?.customerId;
@@ -273,6 +297,14 @@ export function ChatSurface({
     initialEmailSubject,
     nearbyScope,
     smsDefaultCountry,
+    ...(selectedConversation?.hasHumanRecipient
+      ? {
+          smsFallbackRecipient: {
+            recipient: selectedConversation.title ?? "",
+            label: selectedConversation.title ?? "SMS recipient"
+          }
+        }
+      : {}),
     onDraftChange,
     onPlatformHandoff,
     onSend
@@ -286,25 +318,16 @@ export function ChatSurface({
     smsHandoffRequest
   } = composer;
   const visibleConversations = showMessageThread
-    ? conversations
-        // Home is the account's own agent-session list (Phase 3), not the general messaging
-        // inbox - a DM or storefront/order conversation never appears there. Selecting "chat"
-        // keeps today's full inbox unchanged.
-        .filter((conversation) =>
-          isSessionListView
-            ? conversation.kind === "personal" && !conversation.hasHumanRecipient
-            : true
-        )
-        .filter((conversation) => {
-          const query = inboxSearch.trim().toLowerCase();
-          if (!query) return true;
-          return (
-            (conversation.title ?? "Grogoni agent").toLowerCase().includes(query) ||
-            (conversation.lastMessage === null
-              ? false
-              : conversationMessageText(conversation.lastMessage).toLowerCase().includes(query))
-          );
-        })
+    ? conversations.filter((conversation) => {
+        const query = inboxSearch.trim().toLowerCase();
+        if (!query || conversation.helpTopic) return true;
+        return (
+          (conversation.title ?? "Grogoni agent").toLowerCase().includes(query) ||
+          (conversation.lastMessage === null
+            ? false
+            : conversationMessageText(conversation.lastMessage).toLowerCase().includes(query))
+        );
+      })
     : [];
   const visibleMessages = showMessageThread
     ? messages.filter((message) => !isRedundantAgentErrorMessage(message.body))
@@ -365,8 +388,14 @@ export function ChatSurface({
   }, [activeConversationId, messages.length, showMessageThread, workspaceCardView]);
 
   const conversationListPanelProps = {
+    agentName: agent.name,
+    pinnedAgent: conversations.find(
+      (conversation) => !conversation.hasHumanRecipient && !conversation.helpTopic
+    ),
     isSessionListView,
     isAuthenticated,
+    // Lets the inbox name a chat started from Phone Contacts by the owner's saved contact name.
+    devicePhonebook: networkDevicePhonebook,
     inboxSearch,
     setInboxSearch,
     isNewConversationOpen,
@@ -402,43 +431,28 @@ export function ChatSurface({
 
   const isHomeConversation = mode === "marketplace" && activeModuleView === null;
   const isHomeEmpty =
-    isHomeConversation && visibleMessages.every((message) => message.id === "welcome");
+    isHomeConversation &&
+    !isHumanConversation &&
+    visibleMessages.every((message) => message.id === "welcome");
 
   const homeMessages = windowedMessages.filter(
-    (message) => !isHomeConversation || message.id !== "welcome"
+    (message) => (!isHomeConversation && !isHumanConversation) || message.id !== "welcome"
   );
-
-  useSwipeNavigation(chatSurfaceRef, {
-    enabled: chatSwipeEnabled({
-      moduleOpen: activeModuleView !== null,
-      workspaceOpen,
-      inboxCoversChat: isCompactViewport && isInboxOpen,
-      overlays: [
-        marketplaceShortcutOpen,
-        isRecycleBinOpen,
-        isNewSessionOpen,
-        smsHandoffRequest !== null,
-        forwardingMessageId !== null,
-        activeMessageMenuId !== null,
-        editingMessageId !== null
-      ]
-    }),
-    onSwipeLeft: () => onNavigate("network"),
-    onSwipeRight: onOpenShop
-  });
 
   return (
     <div
-      ref={chatSurfaceRef}
+      ref={surfaceRef}
       className={`chat-surface ${showMessageThread && isInboxOpen ? "inbox-open" : ""}`}
+      {...mobileNavigation}
     >
       {showMessageThread ? (
         isCompactViewport ? (
           <StackedModule
+            embedded
             moduleId="messenger-inbox"
             className={`messenger-inbox-module ${isSessionListView ? "sessions-view" : ""}`}
             open={isInboxOpen}
-            title={isSessionListView ? "Chats" : "Messages"}
+            title="Contacts"
             onClose={() => onInboxOpenChange(false)}
           >
             <ConversationListPanel showHeading={false} {...conversationListPanelProps} />
@@ -500,24 +514,36 @@ export function ChatSurface({
                 <button
                   type="button"
                   className="thread-topic-button"
-                  disabled={selectedConversation === undefined}
-                  aria-label="Edit conversation topic"
+                  disabled={selectedConversation === undefined || !!selectedConversation.helpTopic}
+                  aria-label={
+                    selectedConversation?.helpTopic ? "Help topic" : "Edit conversation topic"
+                  }
                   onClick={() => setEditingTopic(selectedConversation?.title ?? agent.name)}
                 >
                   <strong>{selectedConversation?.title ?? agent.name}</strong>
                 </button>
               )}
+              <DiscussionMembersButton
+                participants={participants}
+                onOpen={() => setParticipantsOpen(true)}
+              />
               <small>
-                {showBlankSessionState
-                  ? "Not started yet"
-                  : `${mode === "seller" ? "Sell session" : "Buy session"} · ${
-                      isContactTyping ? "typing…" : securityLabel
-                    }`}
+                {selectedConversation?.helpTopic
+                  ? "Help · Ask your agent"
+                  : showBlankSessionState
+                    ? "Not started yet"
+                    : `${mode === "seller" ? "Sell session" : "Buy session"} · ${
+                        isContactTyping ? "typing…" : securityLabel
+                      }`}
               </small>
             </div>
             {!showBlankSessionState ? (
               <WaitingMessagesButton count={queuedMessageCount} onSend={onRetryMessages} />
             ) : null}
+            <ConversationExecutionControls
+              conversation={selectedConversation}
+              businessId={hasBusiness ? businessId : null}
+            />
           </header>
         ) : null}
         <div
@@ -603,6 +629,7 @@ export function ChatSurface({
                     message.body
                   )}
                 </p>
+                {message.execution ? <DaemonExecutionStatus execution={message.execution} /> : null}
                 {message.author === "grogoniclaw" &&
                 capabilityTraceLabel(message.content) !== null ? (
                   <span className="capability-trace" aria-hidden="true">
@@ -814,6 +841,7 @@ export function ChatSurface({
           {children}
         </StackedModule>
         <StackedModule
+          embedded={isCompactViewport}
           moduleId="marketplace"
           className="buy-module"
           open={activeModuleView === null && mode === "marketplace" && marketplaceShortcutOpen}
@@ -861,6 +889,7 @@ export function ChatSurface({
           )}
         </StackedModule>
         <StackedModule
+          embedded={isCompactViewport}
           moduleId="workspace"
           className={workspaceModuleClassName(workspaceCardView, mode)}
           open={workspaceOpen}
@@ -908,6 +937,10 @@ export function ChatSurface({
             />
           ) : workspaceCardView === "networkSync" ? (
             <NetworkSyncNestedCard
+              onMessageContact={(nodeId, name) => {
+                onCreateConversation(`network-node:${nodeId}`, name);
+                onCloseWorkspace();
+              }}
               graph={networkGraph}
               devicePhonebook={networkDevicePhonebook}
               networkInvites={networkInvites}
@@ -969,73 +1002,40 @@ export function ChatSurface({
             />
           )}
         </StackedModule>
-        <StackedModule
-          moduleId="recycle-bin"
-          className={mode === "seller" ? "sell-module" : "buy-module"}
-          open={isRecycleBinOpen}
-          title="Recycle bin"
-          onClose={() => setIsRecycleBinOpen(false)}
-        >
-          <p>
-            Deleted chats stay here for 14 days before they're permanently removed. Restoring or
-            emptying the bin requires admin privileges.
-          </p>
-          {recycleBin !== null ? (
-            <>
-              <p>
-                {formatFileSize(recycleBin.usedBytes)} of {formatFileSize(recycleBin.capacityBytes)}{" "}
-                used
-                {recycleBin.isFull ? " — full. Ask an admin to empty it." : ""}
-              </p>
-              {recycleBin.items.length === 0 ? (
-                <p>The recycle bin is empty.</p>
-              ) : (
-                <>
-                  <div className="conversation-list">
-                    {recycleBin.items.map((item) => (
-                      <article className="conversation-item" key={item.conversation.id}>
-                        <span className="conversation-copy">
-                          <span className="conversation-title-line">
-                            <strong>{item.title ?? "Grogoni agent"}</strong>
-                          </span>
-                          <small>
-                            Deleted {formatMessageTime(item.deletedAt)} · Permanently deleted{" "}
-                            {formatMessageTime(item.purgeAt)} · {formatFileSize(item.sizeBytes)}
-                          </small>
-                        </span>
-                        <div className="conversation-actions" aria-label="Recycle bin item actions">
-                          <button
-                            type="button"
-                            onClick={() => onRestoreConversation(item.conversation.id)}
-                          >
-                            Restore
-                          </button>
-                        </div>
-                      </article>
-                    ))}
-                  </div>
-                  <button className="danger" type="button" onClick={() => onEmptyRecycleBin()}>
-                    Empty recycle bin
-                  </button>
-                </>
-              )}
-            </>
-          ) : (
-            <p>Loading…</p>
-          )}
-        </StackedModule>
+        <ChatRecycleBinPanel
+          mode={mode}
+          isRecycleBinOpen={isRecycleBinOpen}
+          setIsRecycleBinOpen={setIsRecycleBinOpen}
+          recycleBin={recycleBin}
+          onRestoreConversation={onRestoreConversation}
+          onEmptyRecycleBin={onEmptyRecycleBin}
+        />
         {mode === "marketplace" &&
         activeModuleView === null &&
         visibleMessages.filter((message) => message.id !== "welcome").length === 0 ? (
-          <div className="home-suggestion-chips" role="group" aria-label="Suggested requests">
-            {homeSuggestionPrompts.map((prompt) => (
-              <button key={prompt} type="button" onClick={() => commitDraft(prompt)}>
-                {prompt}
-              </button>
-            ))}
-          </div>
+          <HomeSuggestionChips onSelect={commitDraft} />
+        ) : null}
+        {participantsOpen ? (
+          <ChatParticipantsPanel
+            key={activeConversationId}
+            conversationId={activeConversationId}
+            contacts={networkDevicePhonebook}
+            onClose={() => setParticipantsOpen(false)}
+            onUpdated={onParticipantsUpdated ?? onSelectConversation}
+          />
         ) : null}
         <ChatComposer
+          onAddParticipants={() =>
+            isAuthenticated ? setParticipantsOpen(true) : onRequireSignIn()
+          }
+          agentControlsAvailable={!isHumanConversation}
+          audienceLabel={
+            isHumanConversation
+              ? selectedConversation?.conversationType === "BUSINESS"
+                ? "Business conversation · messages go to people"
+                : "Discussion · messages go to participants"
+              : undefined
+          }
           activeAgentName={agent.name}
           agent={agentSettings}
           business={business}

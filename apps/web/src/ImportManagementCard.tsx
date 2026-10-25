@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useAsyncActions } from "./hooks/useAsyncActions";
 import { useApiMutationRevision } from "./hooks/useApiMutationRevision";
-import { getJson, patchJson, postJson } from "./api-helpers";
+import { fetchFreshJson, patchJson, postJson } from "./api-helpers";
 import { getUserFacingErrorMessage } from "./user-facing-error";
 import type {
   DocumentImportConfirmResult,
@@ -28,7 +28,7 @@ export default function ImportManagementCard(props: { businessId: string; import
 
   useEffect(() => {
     let cancelled = false;
-    void getJson<DocumentImportJobSummary[]>(importsPath)
+    void fetchFreshJson<DocumentImportJobSummary[]>(importsPath)
       .then((jobs) => {
         if (cancelled) return;
         const matched =

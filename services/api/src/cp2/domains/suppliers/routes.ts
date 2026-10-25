@@ -1,3 +1,4 @@
+import { receiptNetwork } from "./receipt-network.js";
 /**
  * Fifth domain slice of in-process modularization for services/api/src/cp2/routes.ts (see
  * docs/architecture/routes-modularization-roadmap.md). Needs `binaryUploadPipeline`/
@@ -53,10 +54,12 @@ interface PhonebookLinkBody {
 }
 
 interface ReceiptOCRBody {
+  engine?: string;
   fileName?: string;
   contentType?: string;
   contentBase64?: string;
   extractedText?: string;
+  structuredExtraction?: unknown;
   fileSizeBytes?: number;
   fileSignature?: string;
 }
@@ -66,10 +69,12 @@ interface ReceiptOCRConfirmBody {
   salesAgentId?: string | null;
   createSupplier?: boolean;
   createSalesAgent?: boolean;
+  receiveInventory?: boolean;
 }
 
 interface ReceiptOCRCorrectionBody {
   extractedText?: string;
+  structuredExtraction?: unknown;
 }
 
 export interface ToolExtractionResult {
@@ -344,9 +349,27 @@ export function registerSuppliersRoutes(
           sourceFileName: body.fileName,
           contentType: body.contentType,
           extractedText: body.extractedText,
+          ...(request.body.structuredExtraction === undefined
+            ? {}
+            : { structuredExtraction: request.body.structuredExtraction }),
           fileSizeBytes,
           fileSignature,
-          ...(sourceChecksum === undefined ? {} : { sourceChecksum })
+          ...(sourceChecksum === undefined ? {} : { sourceChecksum }),
+          ...(request.body.engine === "gpt-6-luna"
+            ? {
+                extraction: {
+                  engine: "gpt-6-luna" as const,
+                  engineVersion: "openrouter",
+                  modelVersion: "gpt-6-luna",
+                  profile: "accurate" as const,
+                  fallbackUsed: false,
+                  blocks: [],
+                  fullText: body.extractedText,
+                  averageConfidence: 0,
+                  warnings: ["model_extraction_requires_review"]
+                }
+              }
+            : {})
         });
       } catch (error) {
         return sendCp2Error(reply, error);
@@ -380,6 +403,7 @@ export function registerSuppliersRoutes(
           sessionId: readSessionCookie(request.headers.cookie),
           businessId: request.params.businessId,
           ocrJobId: request.params.ocrJobId,
+          receiveInventory: request.body?.receiveInventory === true,
           supplierId: body.supplierId,
           salesAgentId: body.salesAgentId,
           createSupplier: body.createSupplier,
@@ -402,7 +426,10 @@ export function registerSuppliersRoutes(
           sessionId: readSessionCookie(request.headers.cookie),
           businessId: request.params.businessId,
           ocrJobId: request.params.ocrJobId,
-          extractedText: parseString(request.body?.extractedText, "extractedText")
+          extractedText: parseString(request.body?.extractedText, "extractedText"),
+          ...(request.body.structuredExtraction === undefined
+            ? {}
+            : { structuredExtraction: request.body.structuredExtraction })
         });
       } catch (error) {
         return sendCp2Error(reply, error);
@@ -433,6 +460,23 @@ export function registerSuppliersRoutes(
           sessionId: readSessionCookie(request.headers.cookie),
           businessId: request.params.businessId
         });
+      } catch (error) {
+        return sendCp2Error(reply, error);
+      }
+    }
+  );
+
+  app.get(
+    "/businesses/:businessId/purchase-receipts/:receiptId/network",
+    async (request: FastifyRequest<{ Params: PurchaseReceiptParams }>, reply) => {
+      try {
+        const input = {
+          sessionId: readSessionCookie(request.headers.cookie),
+          businessId: request.params.businessId
+        };
+        const receipt = store.getPurchaseReceipt({ ...input, receiptId: request.params.receiptId });
+        const job = store.listReceiptOCRJobs(input).find((job) => job.id === receipt.ocrJobId);
+        return receiptNetwork(receipt, job);
       } catch (error) {
         return sendCp2Error(reply, error);
       }

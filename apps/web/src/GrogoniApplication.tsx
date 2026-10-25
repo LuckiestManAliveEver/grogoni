@@ -1,3 +1,4 @@
+import { useInboxRefresh } from "./hooks/useInboxRefresh";
 import { OfflineRuntimeNotice } from "./OfflineRuntimeNotice";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 
@@ -52,7 +53,6 @@ import { useRuntimeHistoryState } from "./hooks/useRuntimeHistoryState";
 import { useStorefrontCareState } from "./hooks/useStorefrontCareState";
 import { useNetworkState } from "./hooks/useNetworkState";
 import { stopDaemonLane, useDaemonLane } from "./hooks/useDaemonLane";
-import { useSessionContextLoading } from "./hooks/useSessionContextLoading";
 import { useMessagingOutboxCount } from "./hooks/useMessagingOutboxCount";
 import { useProductsState } from "./hooks/useProductsState";
 import { useSyncState } from "./hooks/useSyncState";
@@ -534,6 +534,7 @@ export function OwnerApp() {
     importContactsFile,
     exportOwnerContacts
   } = useNetworkState({
+    ...(session?.user.phoneCountryCode ? { defaultCountry: session.user.phoneCountryCode } : {}),
     business,
     getCustomers: () => customers,
     loadCustomers,
@@ -796,7 +797,11 @@ export function OwnerApp() {
   // Device-only identities are cookie-backed but still need explicit signup/login.
   // Auth completion upgrades this temporary session, as it does a fresh session.
   const isSignedOut = session === null || session.account.identityLevel === "device";
-  useDaemonLane(isSignedOut ? null : (session?.account.id ?? null));
+  useDaemonLane(
+    session && (!isSignedOut || activeConversation?.conversation.helpTopic)
+      ? session.account.id
+      : null
+  );
   const shouldShowAuth = !authBootstrapPending && isAuthOpen && isSignedOut;
   // Log in / Sign up entry points (menu drawer, seller header). A device account can already own a
   // shop; offering it a login that replaces that account would strand the shop, so a shop owner's
@@ -876,13 +881,50 @@ export function OwnerApp() {
     if (view !== "chat" && view !== "home") returnToChat();
     setIsMarketplaceShortcutOpen(true);
   }
-  useSessionContextLoading({
-    accountId: session?.account.id ?? null,
-    retry: sessionContextRetry,
-    load: (shouldApply, apply) =>
-      loadGrogoniSessionContext(setActiveConversationId, shouldApply, apply),
-    clear: () => setGrogoniSessionContext(null)
-  });
+  // The account's session context (its shops, last mode and surface) applies once per sign-in
+  // (session-context-retry.ts). A load that failed (offline, server down) used to stay failed until
+  // a reload, keeping a stale stored shop, which for a device session also hid Log in
+  // (showsSignInEntry). It now retries when the device comes back online or the app is shown
+  // again, and never re-runs once any load in this sign-in has applied. A retry only refreshes
+  // data (it never moves the user: they may have navigated since).
+  useEffect(() => {
+    if (session === null) {
+      sessionContextRetry.track(null);
+      setGrogoniSessionContext(null);
+      return;
+    }
+    // The retry decides restore (first load of the sign-in) versus refresh (data-only retry).
+    sessionContextRetry.track(session.account.id, (shouldApply, apply) => {
+      const started = navigationSessionSnapshotRef.current;
+      const path = window.location.pathname;
+      return loadGrogoniSessionContext(setActiveConversationId, shouldApply, apply, () => {
+        const current = navigationSessionSnapshotRef.current;
+        return (
+          !started.chatDraft.trim() &&
+          !started.chatMessages.some((message) => message.id !== "welcome") &&
+          current.chatDraft === started.chatDraft &&
+          current.chatMessages === started.chatMessages &&
+          current.activeConversationId === started.activeConversationId &&
+          window.location.pathname === path
+        );
+      });
+    });
+
+    function retryWhenVisible() {
+      if (document.visibilityState === "visible") sessionContextRetry.retry();
+    }
+    window.addEventListener("online", sessionContextRetry.retry);
+    document.addEventListener("visibilitychange", retryWhenVisible);
+    // A transient server outage must recover without requiring a reload or connectivity event.
+    const contextRetryTimer = window.setInterval(() => {
+      if (navigator.onLine) retryWhenVisible();
+    }, 15000);
+    return () => {
+      window.clearInterval(contextRetryTimer);
+      window.removeEventListener("online", sessionContextRetry.retry);
+      document.removeEventListener("visibilitychange", retryWhenVisible);
+    };
+  }, [session?.account.id]);
 
   useEffect(() => {
     if (session === null || grogoniSessionContext === null) return;
@@ -1005,16 +1047,19 @@ export function OwnerApp() {
   // stale chunk before the debounced navigation-session write above may have flushed - register a
   // synchronous flush so the active conversation and any unsent composer draft never lose the
   // latest keystroke to that reload.
-  useEffect(
-    () =>
-      registerPreReloadFlush(() => {
-        writeOwnerNavigationSession(
-          session?.account.id ?? null,
-          navigationSessionSnapshotRef.current
-        );
-      }),
-    [session?.account.id]
-  );
+  useEffect(() => {
+    const flush = () =>
+      writeOwnerNavigationSession(
+        session?.account.id ?? null,
+        navigationSessionSnapshotRef.current
+      );
+    const unregister = registerPreReloadFlush(flush);
+    window.addEventListener("pagehide", flush);
+    return () => {
+      unregister();
+      window.removeEventListener("pagehide", flush);
+    };
+  }, [session?.account.id]);
 
   useEffect(() => {
     if (routedProductId === null || products.length === 0) return;
@@ -1088,52 +1133,15 @@ export function OwnerApp() {
     };
   }, [session?.account.id]);
 
-  useEffect(() => {
-    if (session === null || e2eeIdentity === null) return;
-    let cancelled = false;
-    const refresh = async () => {
-      void retryQueuedMessages({ automatic: true });
-      const notificationConversationId = new URLSearchParams(window.location.search).get(
-        "conversation"
-      );
-      const routeConversationId = readCurrentOwnerRoute()?.conversationId ?? null;
-      if (!cancelled) {
-        await loadMessagingInbox(
-          notificationConversationId ?? routeConversationId ?? activeConversationId
-        );
-      }
-      if (notificationConversationId) {
-        navigateToOwnerRoute(
-          {
-            mode,
-            view: "chat",
-            conversationId: notificationConversationId
-          },
-          { replace: true }
-        );
-      }
-    };
-    void refresh();
-    const interval = window.setInterval(() => void refresh(), 4_000);
-    const onOnline = () => {
-      void retryQueuedMessages({ reconnect: true });
-      void refresh();
-    };
-    const onServiceWorkerMessage = (event: MessageEvent<unknown>) => {
-      const data = event.data as { type?: string; conversationId?: string };
-      if (data.type === "message.notification.open" && data.conversationId) {
-        void selectConversation(data.conversationId);
-      }
-    };
-    window.addEventListener("online", onOnline);
-    navigator.serviceWorker?.addEventListener("message", onServiceWorkerMessage);
-    return () => {
-      cancelled = true;
-      window.clearInterval(interval);
-      window.removeEventListener("online", onOnline);
-      navigator.serviceWorker?.removeEventListener("message", onServiceWorkerMessage);
-    };
-  }, [session?.account.id, activeConversationId, e2eeIdentity?.deviceId, mode]);
+  useInboxRefresh({
+    accountId: session?.account.id ?? null,
+    encryptionDeviceId: e2eeIdentity?.deviceId ?? null,
+    mode,
+    activeConversationId,
+    loadMessagingInbox,
+    retryQueuedMessages,
+    selectConversation
+  });
 
   useEffect(() => {
     if (business !== null) {
@@ -1183,14 +1191,10 @@ export function OwnerApp() {
           storefrontUrl: defaultAgent.storefrontUrl
         };
       });
-      setChatMessages((messages) =>
-        messages[0]?.id === "welcome"
-          ? createInitialChatMessages(business.name)
-          : [
-              createInitialChatMessages(business.name)[0] as ChatMessage,
-              ...messages.filter((message) => message.id !== "welcome")
-            ]
-      );
+      setChatMessages((messages) => [
+        createInitialChatMessages(business.name)[0] as ChatMessage,
+        ...messages.filter((message) => message.id !== "welcome")
+      ]);
     }
   }, [business]);
 
@@ -1548,6 +1552,7 @@ export function OwnerApp() {
     networkOnboarding:
       session === null ? null : (
         <IdentityNetworkOnboardingCard
+          key={session.account.id}
           session={session}
           graph={networkGraph}
           oauthProviders={oauthProviders}
@@ -1794,7 +1799,11 @@ export function OwnerApp() {
                       data-testid="header-signup-button"
                       onClick={() => openAuth("signup")}
                     >
-                      Sign up
+                      <span
+                        className="header-auth-icon header-auth-icon-signup"
+                        aria-hidden="true"
+                      />
+                      <span>Sign up</span>
                     </button>
                     <button
                       className="header-auth-button"
@@ -1802,7 +1811,11 @@ export function OwnerApp() {
                       data-testid="header-login-button"
                       onClick={() => openAuth("login")}
                     >
-                      Log in
+                      <span
+                        className="header-auth-icon header-auth-icon-login"
+                        aria-hidden="true"
+                      />
+                      <span>Log in</span>
                     </button>
                   </>
                 ) : null}
@@ -1907,6 +1920,8 @@ export function OwnerApp() {
                 messages={chatMessages}
                 conversations={conversationInbox}
                 activeConversationId={activeConversationId}
+                participants={activeConversation?.participants ?? []}
+                onParticipantsUpdated={(conversationId) => void loadMessagingInbox(conversationId)}
                 isInboxOpen={isMessagingInboxOpen}
                 isContactTyping={isContactTyping}
                 isConfirming={isPending("runtime-confirm")}
@@ -1919,7 +1934,9 @@ export function OwnerApp() {
                       ? "Sign in for end-to-end encrypted messaging"
                       : isHumanDirectConversation(activeConversation, session)
                         ? "End-to-end encrypted"
-                        : "Messages are processed by the Grogoni agent"
+                        : mode === "seller"
+                          ? "Shop assistant"
+                          : "Marketplace assistant"
                 }
                 replyToMessageId={replyToMessageId}
                 networkGraph={networkGraph}
@@ -2068,6 +2085,7 @@ export function OwnerApp() {
                 onCompleteMarketplaceIntro={() => void completeMarketplaceIntro()}
                 marketplaceIntroComplete={isMarketplaceIntroComplete}
                 marketplaceShortcutOpen={isMarketplaceShortcutOpen}
+                onOpenMarketplace={() => setIsMarketplaceShortcutOpen(true)}
                 onCloseMarketplace={() => setIsMarketplaceShortcutOpen(false)}
                 onSend={(draft, provider, subject, invoiceId) =>
                   void runAction("chat-send", () =>

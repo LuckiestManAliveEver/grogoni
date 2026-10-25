@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useAsyncActions } from "./hooks/useAsyncActions";
 import { useApiMutationRevision } from "./hooks/useApiMutationRevision";
-import { getJson, patchJson } from "./api-helpers";
+import { fetchFreshJson, patchJson } from "./api-helpers";
 import { getUserFacingErrorMessage } from "./user-facing-error";
 import type { FulfillmentStatus, LogisticsSummary } from "./grogoni-application-shared";
 
@@ -29,7 +29,7 @@ export default function LogisticsManagementCard(props: {
 
   useEffect(() => {
     let cancelled = false;
-    void getJson<LogisticsSummary[]>(logisticsPath)
+    void fetchFreshJson<LogisticsSummary[]>(logisticsPath)
       .then((loaded) => {
         if (cancelled) return;
         const open = loaded.filter((item) => openStatuses.includes(item.status));

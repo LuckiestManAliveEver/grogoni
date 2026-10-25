@@ -28,6 +28,14 @@ export const interactiveResponseBudgetMs = 150;
 export interface BuildApiOptions {
   allowedCorsOrigins?: string[];
   bodyLimit?: number;
+  maxConcurrentRequests?: number;
+  requestTimeoutMs?: number;
+  trustedProxy?: boolean | string[];
+  maxRequestBytes?: number;
+  perUserRateLimitMax?: number;
+  perUserRateLimitWindowMs?: number;
+  perTenantRateLimitMax?: number;
+  perTenantRateLimitWindowMs?: number;
   cp2?: Cp2RouteOptions;
   agentRuntimeDiagnostic?: (runInference: boolean) => Promise<RuntimeModelDiagnostic>;
   databaseHealth?: () => Promise<Record<string, unknown>>;
@@ -65,13 +73,95 @@ export interface BuildApiOptions {
 }
 
 export function buildApi(options: BuildApiOptions = {}) {
+  const maxConcurrentRequests = Math.max(1, options.maxConcurrentRequests ?? 256);
+  const requestTimeoutMs = Math.max(5_000, options.requestTimeoutMs ?? 30_000);
+  const bodyLimitBytes = Math.max(
+    1_000,
+    options.bodyLimit ?? options.maxRequestBytes ?? 15_000_000
+  );
   const app = Fastify({
     logger: true,
-    bodyLimit: options.bodyLimit ?? 15_000_000
+    bodyLimit: bodyLimitBytes,
+    trustProxy: options.trustedProxy ?? false,
+    requestTimeout: requestTimeoutMs,
+    keepAliveTimeout: 5000,
+    connectionTimeout: requestTimeoutMs + 5_000
   });
   const allowedCorsOrigins = new Set(options.allowedCorsOrigins ?? defaultAllowedCorsOrigins);
   const oauthAllowedRedirectOrigins = readOAuthAllowedRedirectOrigins([...allowedCorsOrigins]);
   const persistenceBarrierRequests = new WeakSet<object>();
+  let outstandingRequests = 0;
+  const admittedRequests = new WeakSet<FastifyRequest>();
+  const releaseAdmission = (request: FastifyRequest) => {
+    if (admittedRequests.delete(request)) outstandingRequests -= 1;
+  };
+  const authUserBudgetMs = options.perUserRateLimitWindowMs ?? 60_000;
+  const authUserBudgetMax = options.perUserRateLimitMax ?? 120;
+  const authTenantBudgetMs = options.perTenantRateLimitWindowMs ?? 60_000;
+  const authTenantBudgetMax = options.perTenantRateLimitMax ?? 300;
+  const userBudgetHits = new Map<string, number[]>();
+  const tenantBudgetHits = new Map<string, number[]>();
+  const pruneBudgetHits = (store: Map<string, number[]>, cutoff: number) => {
+    for (const [key, hits] of store.entries()) {
+      const filtered = hits.filter((at) => at > cutoff);
+      if (filtered.length === 0) store.delete(key);
+      else store.set(key, filtered);
+    }
+  };
+  const getRequestIdentity = (request: Pick<FastifyRequest, "ip" | "headers">) => {
+    const forwardedFor = request.headers["x-forwarded-for"];
+    const forwardedValues = Array.isArray(forwardedFor)
+      ? forwardedFor
+      : typeof forwardedFor === "string"
+        ? forwardedFor.split(",")
+        : [];
+    const candidate = forwardedValues
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0)
+      .pop();
+    const fallback = typeof request.ip === "string" ? request.ip : null;
+    return candidate ?? fallback ?? "unknown";
+  };
+  const budgetResponse = (retryAfterMs: number) => ({
+    code: "rate_limited",
+    message: "Too many requests. Please retry shortly.",
+    retryAfterMs,
+    retryAfter: `${Math.max(1, Math.ceil(retryAfterMs / 1000))}s`
+  });
+  const enforceBudget = (
+    key: string,
+    bucket: Map<string, number[]>,
+    max: number,
+    windowMs: number,
+    request: Pick<FastifyRequest, "url" | "method" | "id" | "log">
+  ) => {
+    const now = Date.now();
+    const cutoff = now - windowMs;
+    const hits = (bucket.get(key) ?? []).filter((at) => at > cutoff);
+    if (hits.length >= max) {
+      const earliestHit = hits[0] ?? now;
+      const retryAfterMs = Math.max(1, earliestHit + windowMs - now);
+      request.log.warn(
+        {
+          event: "http.rate_limit_exceeded",
+          key,
+          route: request.url,
+          method: request.method,
+          requestId: request.id
+        },
+        "Rate-limit budget exhausted."
+      );
+      throw Object.assign(new Error("Too many requests."), {
+        statusCode: 429,
+        code: "rate_limited",
+        retryAfterMs,
+        responsePayload: budgetResponse(retryAfterMs)
+      });
+    }
+    hits.push(now);
+    bucket.set(key, hits);
+    pruneBudgetHits(bucket, cutoff);
+  };
   // Assigned once registerCp2Routes runs, below - Fastify finishes loading every registered
   // plugin (so this is always assigned) before it accepts its first real request or `.inject()`
   // call resolves. See the onRequest hook right after this for why it needs to be set this early.
@@ -87,17 +177,97 @@ export function buildApi(options: BuildApiOptions = {}) {
 
   void app.register(rateLimit, {
     global: true,
-    max: (request) => (request.url.startsWith("/auth/") ? authRateLimitMax : defaultRateLimitMax),
+    max: (request) => {
+      if (request.url.startsWith("/auth/")) return authRateLimitMax;
+      if (
+        request.url.startsWith("/v1/runtime/") ||
+        request.url.includes("/agents/") ||
+        request.url.includes("/models/")
+      )
+        return 120;
+      return defaultRateLimitMax;
+    },
     timeWindow: rateLimitWindowMs,
     hook: "onRequest",
-    keyGenerator: (request) => request.ip,
+    keyGenerator: (request) => {
+      const identity = getRequestIdentity(request);
+      const scope = request.url.startsWith("/auth/") ? "auth" : "general";
+      return `${scope}:${identity}`;
+    },
     allowList: (request) => request.url.startsWith("/health") || request.url === "/metrics",
     skipOnError: true,
     ...(options.rateLimitRedisClient === undefined ? {} : { redis: options.rateLimitRedisClient }),
-    errorResponseBuilder: (_request, context) => ({
-      code: "rate_limited",
-      message: `Too many requests. Please retry after ${context.after}.`
-    })
+    errorResponseBuilder: (_request, context) =>
+      Object.assign(new Error(`Too many requests. Please retry after ${context.after}.`), {
+        statusCode: context.statusCode,
+        code: "rate_limited",
+        retryAfterMs: Number(context.after ?? 0)
+      })
+  });
+
+  app.addHook("onRequest", async (request, reply) => {
+    if (request.url.startsWith("/health") || request.url === "/metrics") return;
+    if (outstandingRequests >= maxConcurrentRequests) {
+      reply.code(503);
+      throw Object.assign(new Error("The API is temporarily saturated."), {
+        statusCode: 503,
+        code: "api_busy",
+        retryAfterMs: 1000
+      });
+    }
+    outstandingRequests += 1;
+    admittedRequests.add(request);
+    // WebSocket upgrade injection supplies a request-shaped object without EventEmitter methods.
+    // Count each admitted request once, and release once on response or client disconnect.
+    if (typeof request.raw.once === "function") {
+      request.raw.once("aborted", () => releaseAdmission(request));
+    }
+    if (typeof reply.raw.once === "function") {
+      reply.raw.once("close", () => releaseAdmission(request));
+    }
+    const contentLength = Number(request.headers["content-length"] ?? 0);
+    const maxRequestBytes = Math.max(0, options.maxRequestBytes ?? bodyLimitBytes);
+    if (contentLength > maxRequestBytes) {
+      releaseAdmission(request);
+      return reply.code(413).send({
+        code: "request_too_large",
+        message: "Request body is too large for this endpoint."
+      });
+    }
+    const requestType = request.url.startsWith("/auth/") ? "auth" : "general";
+    if (requestType === "auth") {
+      const authKey = `auth:user:${getRequestIdentity(request)}`;
+      enforceBudget(authKey, userBudgetHits, authUserBudgetMax, authUserBudgetMs, request);
+    }
+    const sessionId = request.headers.cookie?.match(/(?:^|;\s*)grogoni_session=([^;]+)/)?.[1];
+    if (sessionId) {
+      const userKey = `user:${sessionId}`;
+      enforceBudget(userKey, userBudgetHits, authUserBudgetMax, authUserBudgetMs, request);
+    }
+    const tenantHeader = request.headers["x-grogoni-business-id"];
+    const tenantId =
+      typeof tenantHeader === "string" && tenantHeader.trim().length > 0
+        ? tenantHeader.trim()
+        : undefined;
+    if (tenantId) {
+      enforceBudget(
+        `tenant:${tenantId}`,
+        tenantBudgetHits,
+        authTenantBudgetMax,
+        authTenantBudgetMs,
+        request
+      );
+    }
+  });
+
+  app.addHook("onResponse", async (request) => {
+    releaseAdmission(request);
+  });
+
+  app.addHook("preHandler", async (request) => {
+    // Once an upgrade reaches its handler, the WebSocket transport owns the connection.
+    // A long-lived socket is not an outstanding HTTP request.
+    if (request.ws) releaseAdmission(request);
   });
 
   // Per-turn context (services/api/src/inference/turn-stream.ts): a client that watches a turn's
@@ -311,6 +481,19 @@ export function buildApi(options: BuildApiOptions = {}) {
       statusCode: reply.statusCode,
       durationSeconds: elapsedMs / 1000
     });
+    if (reply.statusCode === 429 || reply.statusCode === 413 || reply.statusCode === 503) {
+      request.log.warn(
+        {
+          event: "http.security_response",
+          statusCode: reply.statusCode,
+          route: request.url,
+          method: request.method,
+          requestId: request.id,
+          clientIp: getRequestIdentity(request)
+        },
+        "Security control rejected the request."
+      );
+    }
     if (budgetClass === "interactive" && elapsedMs > interactiveResponseBudgetMs) {
       request.log.warn(
         {
@@ -565,6 +748,7 @@ export function responseBudgetClass(method: string, url: string): "interactive" 
   const pathname = url.split("?")[0] ?? url;
   if (
     pathname.startsWith("/v1/inference") ||
+    pathname === "/v1/chat/images/read" ||
     pathname.startsWith("/v1/runtime/") ||
     pathname.startsWith("/auth/") ||
     pathname.startsWith("/v1/webhooks/") ||

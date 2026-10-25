@@ -1,5 +1,9 @@
 import { Buffer } from "node:buffer";
-import type { DaemonPayload, DaemonUserTaskResult } from "@grogoni/shared-types";
+import type {
+  DaemonPayload,
+  DaemonUserTaskResult,
+  RuntimeModelConversationMessage
+} from "@grogoni/shared-types";
 import { integerFromEnv } from "./config.js";
 import { createDaemonExecutor, readDaemonCapabilities } from "./executor.js";
 import { buildDaemonGateway } from "./gateway.js";
@@ -98,6 +102,7 @@ export const daemonLaneRoutes: ReadonlyArray<{ method: string; path: string }> =
   { method: "POST", path: "/v1/daemon/tasks" },
   { method: "GET", path: "/v1/daemon/tasks/:taskId" },
   { method: "DELETE", path: "/v1/daemon/tasks/:taskId" },
+  { method: "POST", path: "/v1/daemon/tasks/:taskId/retry" },
   { method: "POST", path: "/v1/daemon/claims" },
   ...["renew", "settle", "release", "execute"].map((action) => ({
     method: "POST",
@@ -140,6 +145,18 @@ export interface EdgeDaemonDependencies {
   /** Resolves the signed-in user or throws DaemonHttpError(401). */
   authenticate: (request: Request) => Promise<{ userId: string }>;
   environment: NodeJS.ProcessEnv;
+  authorizeConversation?: (
+    request: Request,
+    conversationId: string
+  ) => Promise<{ modelId: string }>;
+  deliverConversationTask?: (task: DaemonTask) => Promise<void>;
+  loadConversationHistory?: (task: DaemonTask) => Promise<RuntimeModelConversationMessage[]>;
+  runBusinessSkill?: (
+    task: DaemonTask,
+    businessId: string,
+    message: string,
+    signal: AbortSignal
+  ) => Promise<unknown>;
   runMaintenance?: (job: string, signal: AbortSignal) => Promise<unknown>;
   /** Tests inject a fake model; production builds the OpenRouter executor. */
   execute?: DaemonExecutor;
@@ -166,9 +183,37 @@ export function createEdgeDaemon(dependencies: EdgeDaemonDependencies) {
   const config = readEdgeDaemonConfig(environment);
   const report = (event: Parameters<NonNullable<EdgeDaemonDependencies["report"]>>[0]) =>
     dependencies.report?.(event);
-  const store: DaemonTaskStore = createPostgresDaemonTaskStore(dependencies.queue, {
+  const rawStore: DaemonTaskStore = createPostgresDaemonTaskStore(dependencies.queue, {
     userTakeoverMs: config.takeoverMs
   });
+  const deliver = async (task: DaemonTask | null) => {
+    if (
+      !task ||
+      !dependencies.deliverConversationTask ||
+      task.payload.kind !== "agent" ||
+      !task.payload.conversation
+    )
+      return;
+    try {
+      await dependencies.deliverConversationTask(task);
+      if (["completed", "failed", "cancelled"].includes(task.status))
+        await rawStore.markConversationDelivered(task);
+    } catch {
+      report({ type: "conversation_delivery_failed", taskId: task.id });
+    }
+  };
+  const flushDeliveries = async () => {
+    if (!dependencies.deliverConversationTask) return;
+    for (const task of await rawStore.pendingConversationDeliveries(100)) await deliver(task);
+  };
+  const store: DaemonTaskStore = {
+    ...rawStore,
+    async settle(task, outcome) {
+      const accepted = await rawStore.settle(task, outcome);
+      if (accepted) await deliver(await rawStore.get(task.id));
+      return accepted;
+    }
+  };
   // The native daemon's own rules for what this server can run. A misconfiguration refuses
   // agent work with a clear code instead of failing the whole API at startup.
   let capabilities: ReturnType<typeof readDaemonCapabilities> | null = null;
@@ -194,12 +239,13 @@ export function createEdgeDaemon(dependencies: EdgeDaemonDependencies) {
   const serverCanRunAgents = capabilities?.agents === true;
   const baseExecute =
     dependencies.execute ??
-    createDaemonExecutor(
-      environment,
-      dependencies.runMaintenance === undefined
-        ? {}
-        : { runMaintenance: dependencies.runMaintenance }
-    );
+    createDaemonExecutor(environment, {
+      ...(dependencies.runBusinessSkill ? { runBusinessSkill: dependencies.runBusinessSkill } : {}),
+      ...(dependencies.runMaintenance ? { runMaintenance: dependencies.runMaintenance } : {}),
+      ...(dependencies.loadConversationHistory
+        ? { loadConversationHistory: dependencies.loadConversationHistory }
+        : {})
+    });
   // User tasks store one result shape for both lanes; operator tasks keep the raw agent result.
   const execute: DaemonExecutor = async (task, signal) => {
     const result = await baseExecute(task, signal);
@@ -255,7 +301,7 @@ export function createEdgeDaemon(dependencies: EdgeDaemonDependencies) {
     return task;
   }
 
-  async function createTask(userId: string, body: Record<string, unknown>) {
+  async function createTask(userId: string, body: Record<string, unknown>, request: Request) {
     const key = body.key;
     if (typeof key !== "string" || !userKeyPattern.test(key))
       throw new DaemonHttpError(
@@ -285,6 +331,42 @@ export function createEdgeDaemon(dependencies: EdgeDaemonDependencies) {
         );
       intervalMs = body.intervalMs;
     }
+    let conversationModelId: string | undefined;
+    let conversation: Extract<DaemonPayload, { kind: "agent" }>["conversation"];
+    if (body.conversation !== undefined) {
+      const value = body.conversation as Record<string, unknown> | null;
+      if (
+        !value ||
+        typeof value.id !== "string" ||
+        !uuidPattern.test(value.id) ||
+        typeof value.clientMessageId !== "string" ||
+        !userKeyPattern.test(value.clientMessageId) ||
+        typeof value.scope !== "string" ||
+        value.scope.length > 1000 ||
+        (value.kind !== "reply" && value.kind !== "reminder") ||
+        (value.reminderText !== undefined &&
+          (typeof value.reminderText !== "string" || value.reminderText.length > maxMessageChars))
+      )
+        throw new DaemonHttpError(
+          400,
+          "task_conversation_invalid",
+          "Invalid originating conversation."
+        );
+      if (!dependencies.authorizeConversation)
+        throw new DaemonHttpError(
+          503,
+          "task_conversation_unavailable",
+          "Conversation delivery is unavailable."
+        );
+      conversationModelId = (await dependencies.authorizeConversation(request, value.id)).modelId;
+      conversation = {
+        id: value.id,
+        clientMessageId: value.clientMessageId,
+        scope: value.scope,
+        kind: value.kind,
+        ...(typeof value.reminderText === "string" ? { reminderText: value.reminderText } : {})
+      };
+    }
     const now = Date.now();
     let runAt = new Date(now);
     if (body.runAt !== undefined && body.runAt !== null) {
@@ -297,7 +379,7 @@ export function createEdgeDaemon(dependencies: EdgeDaemonDependencies) {
         );
       runAt = new Date(Math.max(now, parsed));
     }
-    if (config.modelId === null)
+    if (config.modelId === null && !conversationModelId)
       throw new DaemonHttpError(
         503,
         "daemon_server_lane_unavailable",
@@ -307,8 +389,9 @@ export function createEdgeDaemon(dependencies: EdgeDaemonDependencies) {
     const payload: DaemonPayload = {
       kind: "agent",
       message,
-      modelId: config.modelId,
-      agentAdapterId: "grogoni"
+      modelId: conversationModelId ?? config.modelId!,
+      agentAdapterId: "grogoni",
+      ...(conversation ? { conversation } : {})
     };
     const refused = refusal(payload);
     if (refused === "MESSAGE_TOO_LARGE")
@@ -342,7 +425,16 @@ export function createEdgeDaemon(dependencies: EdgeDaemonDependencies) {
     const { created, task } = added;
     if (task.owner_user_id !== userId)
       throw new DaemonHttpError(409, "task_key_conflict", "That key is already in use.");
-    if (created) await lowerHintFor(task);
+    if (task.payload.kind === "agent" && task.payload.conversation?.id !== conversation?.id)
+      throw new DaemonHttpError(
+        409,
+        "task_key_conflict",
+        "That key belongs to another conversation."
+      );
+    if (created) {
+      await lowerHintFor(task);
+      await deliver(task);
+    }
     report({ type: created ? "user_task_created" : "user_task_replayed", taskId: task.id });
     return { created, task };
   }
@@ -415,6 +507,15 @@ export function createEdgeDaemon(dependencies: EdgeDaemonDependencies) {
 
   async function settleFromDevice(userId: string, id: string, body: Record<string, unknown>) {
     const claimed = await ownedClaim(userId, id, body);
+    if (
+      claimed.payload.kind === "agent" &&
+      /^\/(?:business\s|skills?(?:\s|$))/.test(claimed.payload.message)
+    )
+      throw new DaemonHttpError(
+        400,
+        "skill_server_execution_required",
+        "Skill requests require the authorized server execution path."
+      );
     const raw = body.outcome;
     if (raw === null || typeof raw !== "object" || Array.isArray(raw))
       throw new DaemonHttpError(400, "outcome_invalid", "outcome is required.");
@@ -429,6 +530,16 @@ export function createEdgeDaemon(dependencies: EdgeDaemonDependencies) {
         );
       if (typeof outcome.modelId !== "string" || !/^[\w./:@-]{1,200}$/u.test(outcome.modelId))
         throw new DaemonHttpError(400, "outcome_invalid", "modelId is required.");
+      if (
+        claimed.payload.kind === "agent" &&
+        claimed.payload.conversation &&
+        claimed.payload.modelId !== outcome.modelId
+      )
+        throw new DaemonHttpError(
+          400,
+          "outcome_model_mismatch",
+          "Use the selected conversation model."
+        );
       settled = {
         result: { text: outcome.text, modelId: outcome.modelId, executedBy: "device" }
       };
@@ -487,7 +598,8 @@ export function createEdgeDaemon(dependencies: EdgeDaemonDependencies) {
     const [collection, id, action, ...rest] = segments;
     const known =
       rest.length === 0 &&
-      ((collection === "tasks" && action === undefined) ||
+      ((collection === "tasks" &&
+        (action === undefined || (id !== undefined && action === "retry"))) ||
         (collection === "claims" &&
           (id === undefined
             ? true
@@ -504,7 +616,7 @@ export function createEdgeDaemon(dependencies: EdgeDaemonDependencies) {
       if (method === "GET")
         return json({ tasks: (await store.listOwned(userId, 50)).map(toPublicDaemonTask) });
       if (method === "POST") {
-        const { created, task } = await createTask(userId, body);
+        const { created, task } = await createTask(userId, body, request);
         return json({ task: toPublicDaemonTask(task) }, created ? 201 : 200);
       }
       throw new DaemonHttpError(405, "method_not_allowed", "Method not allowed.");
@@ -512,7 +624,32 @@ export function createEdgeDaemon(dependencies: EdgeDaemonDependencies) {
     if (collection === "tasks") {
       const task = uuidPattern.test(id!) ? await store.getOwned(userId, id!) : null;
       if (task === null) throw new DaemonHttpError(404, "task_not_found", "Task was not found.");
-      if (method === "GET") return json({ task: toPublicDaemonTask(task) });
+      if (action === "retry") {
+        if (method !== "POST")
+          throw new DaemonHttpError(405, "method_not_allowed", "Method not allowed.");
+        if (task.payload.kind === "agent" && task.payload.conversation) {
+          if (!dependencies.authorizeConversation)
+            throw new DaemonHttpError(503, "daemon_unavailable", "Daemon unavailable.");
+          await dependencies.authorizeConversation(request, task.payload.conversation.id);
+        }
+        const outcome = await store.retryOwned(userId, id!, config.maxActivePerUser);
+        if (outcome === "limited")
+          throw new DaemonHttpError(429, "daemon_task_limit", "Too many active tasks.");
+        if (outcome === "conflict")
+          throw new DaemonHttpError(
+            409,
+            "task_not_retryable",
+            "This task cannot be retried while its prior lease is active."
+          );
+        const retried = await store.getOwned(userId, id!);
+        await lowerHintFor(retried);
+        await deliver(retried);
+        return json({ task: toPublicDaemonTask(retried!) });
+      }
+      if (method === "GET") {
+        await deliver(task);
+        return json({ task: toPublicDaemonTask(task) });
+      }
       if (method === "DELETE") {
         if (!(await store.cancelOwned(userId, id!)))
           throw new DaemonHttpError(
@@ -520,7 +657,9 @@ export function createEdgeDaemon(dependencies: EdgeDaemonDependencies) {
             "task_not_active",
             "Only queued or running tasks can be cancelled."
           );
-        return json({ task: toPublicDaemonTask((await store.getOwned(userId, id!))!) });
+        const cancelled = (await store.getOwned(userId, id!))!;
+        await deliver(cancelled);
+        return json({ task: toPublicDaemonTask(cancelled) });
       }
       throw new DaemonHttpError(405, "method_not_allowed", "Method not allowed.");
     }
@@ -532,6 +671,7 @@ export function createEdgeDaemon(dependencies: EdgeDaemonDependencies) {
       if (task === null) {
         return json({ claim: null, nextDueInMs: await store.nextOwnedDueInMs(userId) });
       }
+      await deliver(task);
       report({ type: "browser_claimed", taskId: task.id, attempt: task.attempts });
       return json({
         claim: {
@@ -581,6 +721,7 @@ export function createEdgeDaemon(dependencies: EdgeDaemonDependencies) {
     /** One bounded server-lane run (the daemon_worker Edge job). */
     async runWorker(): Promise<EdgeWorkerRun> {
       const started = performance.now();
+      await flushDeliveries();
       let version: number | null = null;
       if (dependencies.hint !== null) {
         const read = await withinBudget(
@@ -630,7 +771,13 @@ export function createEdgeDaemon(dependencies: EdgeDaemonDependencies) {
           report(event);
         }
       });
-      return finish(false, await store.nextServerDueAt());
+      await flushDeliveries();
+      const next = await store.nextServerDueAt();
+      const pending =
+        dependencies.deliverConversationTask &&
+        (await rawStore.pendingConversationDeliveries(1)).length > 0;
+      const retryAt = new Date(Date.now() + 60000);
+      return finish(false, pending && (!next || next > retryAt) ? retryAt : next);
     }
   };
 }
@@ -665,7 +812,8 @@ function userResultFromAgent(task: DaemonTask, result: unknown): UserTaskResult 
   }
   return {
     text,
-    modelId: task.payload.kind === "agent" ? task.payload.modelId : "",
+    modelId:
+      task.payload.kind === "agent" ? ("modelId" in task.payload ? task.payload.modelId : "") : "",
     executedBy: "server"
   };
 }

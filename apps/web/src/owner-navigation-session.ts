@@ -44,6 +44,7 @@ export function writeOwnerNavigationSession(
   storage: Storage | undefined = browserSessionStorage()
 ): void {
   if (storage === undefined) return;
+  cancelPendingWrite(storageKey(accountId));
   try {
     storage.setItem(
       storageKey(accountId),

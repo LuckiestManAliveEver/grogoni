@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { buildApi } from "../services/api/src/app";
 import { createCp2Store } from "../services/api/src/cp2/store";
 
@@ -253,8 +253,26 @@ describe("phone-first authentication", () => {
       country: "KE",
       password: "correct horse battery staple"
     });
-    expect(login.statusCode).toBe(200);
-    expect(cookies(login.headers["set-cookie"])).toContain("grogoni_refresh=");
+    expect(login.statusCode).toBe(202);
+    expect(login.headers["set-cookie"]).toBeUndefined();
+    const transactionId = login.json<{ transactionId: string }>().transactionId;
+    const emailMfa = await post(app, "/auth/mfa/email/challenge", { transactionId });
+    expect(emailMfa.statusCode).toBe(200);
+    const wrongMfa = await post(app, "/auth/mfa/verify", {
+      transactionId,
+      factor: "email",
+      code: "wrong"
+    });
+    expect(wrongMfa.statusCode).toBe(401);
+    const mfaPayload = {
+      transactionId,
+      factor: "email",
+      code: emailMfa.json<{ developmentCode: string }>().developmentCode
+    };
+    const verifiedLogin = await post(app, "/auth/mfa/verify", mfaPayload);
+    expect(verifiedLogin.statusCode).toBe(200);
+    expect(cookies(verifiedLogin.headers["set-cookie"])).toContain("grogoni_refresh=");
+    expect((await post(app, "/auth/mfa/verify", mfaPayload)).statusCode).toBe(400);
 
     const phoneRecovery = await post(app, "/auth/recovery/start", {
       ...credentials,
@@ -264,10 +282,12 @@ describe("phone-first authentication", () => {
     expect(phoneRecovery.statusCode).toBe(400);
     expect(phoneRecovery.json()).toMatchObject({ code: "phone_recovery_unavailable" });
 
+    vi.stubEnv("OTP_COOLDOWN_SECONDS", "0");
     const recovery = await post(app, "/auth/recovery/start", {
       type: "email",
       identifier: "owner-recovery@example.com"
     });
+    vi.unstubAllEnvs();
     expect(recovery.json()).toMatchObject({
       message: "If an account matches those details, recovery instructions have been sent."
     });
@@ -325,7 +345,7 @@ describe("phone-first authentication", () => {
           password: "user initiated password change"
         })
       ).statusCode
-    ).toBe(200);
+    ).toBe(202);
     await app.close();
   });
 

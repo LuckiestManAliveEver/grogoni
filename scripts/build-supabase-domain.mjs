@@ -13,6 +13,7 @@ const pdfBrowserEntry = fileURLToPath(
 );
 const externalPackages = new Map([
   ["fastify", "npm:fastify@5.9.0"],
+  ["@simplewebauthn/server", "npm:@simplewebauthn/server@13.3.2"],
   ["@fastify/websocket", "npm:@fastify/websocket@11.3.0"],
   ["pg", "npm:pg@8.22.0"],
   ["mammoth", "npm:mammoth@1.12.0"],
@@ -39,7 +40,7 @@ await build({
         builder.onResolve(
           {
             filter:
-              /^(fastify|@fastify\/websocket|pg|mammoth|pdf-parse|libphonenumber-js(?:\/max)?)$/
+              /^(@simplewebauthn\/server|fastify|@fastify\/websocket|pg|mammoth|pdf-parse|libphonenumber-js(?:\/max)?)$/
           },
           (args) => ({
             // Avoid shipping native canvas binaries to Edge for PDF text extraction.

@@ -1,21 +1,21 @@
+import { seedLegacyEmailAccount, completeEmailMfa } from "./fixtures/account-auth";
 import { describe, expect, it } from "vitest";
 import { buildApi } from "../services/api/src/app";
 import { createCp2Store } from "../services/api/src/cp2/store";
 
 describe("existing account credential management", () => {
   it("creates and changes a login PIN without allowing setup to overwrite it", async () => {
-    const app = buildApi({ cp2: { store: createCp2Store() } });
-    const signup = await post(app, "/auth/otp/request", {
-      method: "email",
-      contact: "pin-settings-owner@example.test"
+    const store = createCp2Store();
+    const app = buildApi({ cp2: { store } });
+    const verified = seedLegacyEmailAccount(store, "pin-settings-owner@example.test");
+    const cookie = `grogoni_session=${verified.session.id}`;
+    const linked = await app.inject({
+      method: "PUT",
+      url: "/account/phone",
+      headers: { cookie },
+      payload: { phoneNumber: "+254712345681", country: "KE" }
     });
-    const challenge = signup.json<{ challengeId: string; devOtp: string }>();
-    const verified = await post(app, "/auth/otp/verify", {
-      method: "email",
-      contact: "pin-settings-owner@example.test",
-      otp: challenge.devOtp
-    });
-    const cookie = cookies(verified.headers["set-cookie"]);
+    expect(linked.statusCode).toBe(200);
 
     expect((await get(app, "/auth/credentials/status", cookie)).json()).toEqual({
       hasPin: false,
@@ -66,21 +66,20 @@ describe("existing account credential management", () => {
     expect(
       (
         await post(app, "/auth/pin/login", {
-          method: "email",
-          contact: "pin-settings-owner@example.test",
+          method: "phone",
+          contact: "+254712345681",
           pin: "1234"
         })
       ).statusCode
     ).toBe(401);
-    expect(
-      (
-        await post(app, "/auth/pin/login", {
-          method: "email",
-          contact: "pin-settings-owner@example.test",
-          pin: "5678"
-        })
-      ).statusCode
-    ).toBe(200);
+    const login = await post(app, "/auth/pin/login", {
+      method: "phone",
+      contact: "+254712345681",
+      pin: "5678"
+    });
+    expect(login.statusCode).toBe(202);
+    expect(login.headers["set-cookie"]).toBeUndefined();
+    await completeEmailMfa(app, login.json<{ transactionId: string }>().transactionId);
 
     await app.close();
   });

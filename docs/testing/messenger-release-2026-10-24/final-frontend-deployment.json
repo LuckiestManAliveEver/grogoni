@@ -1,0 +1,15 @@
+{
+  "id": "dpl_5B8R2pV4jy8gjSZq7voYnJLohqYs",
+  "url": "grogoni-frontend-bnke0ucp4-nairbeiraik-6236s-projects.vercel.app",
+  "state": "READY",
+  "projectId": "prj_P3gFtpmAB0w5dlTX3RGp6bcTlzqS",
+  "teamId": "team_vCTQZEh9ywU3vYLpn5e7DT7t",
+  "buildId": "messenger-release-20261024-realtime",
+  "target": "production",
+  "aliases": [
+    "grogoni.com",
+    "grogoni-frontend.vercel.app",
+    "www.grogoni.com",
+    "grogoni-frontend-nairbeiraik-6236s-projects.vercel.app"
+  ]
+}

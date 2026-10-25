@@ -7,7 +7,7 @@ describe("computer runtime policy", () => {
     expect(
       classifyComputerAction({
         toolName: "computer.navigate",
-        actionInput: { url: "https://example.com" }
+        actionInput: { sessionId: "browser-session", url: "https://example.com" }
       })
     ).toMatchObject({ risk: "READ", requiresApproval: false });
 
@@ -63,11 +63,17 @@ describe("computer runtime policy", () => {
   });
 
   it("validates navigation protocols before provider execution", () => {
-    expect(validateRuntimeToolInput("computer.navigate", { url: "https://example.com" }).ok).toBe(
-      true
-    );
-    expect(validateRuntimeToolInput("computer.navigate", { url: "file:///etc/passwd" }).ok).toBe(
-      false
-    );
+    expect(
+      validateRuntimeToolInput("computer.navigate", {
+        sessionId: "browser-session",
+        url: "https://example.com"
+      }).ok
+    ).toBe(true);
+    expect(
+      validateRuntimeToolInput("computer.navigate", {
+        sessionId: "browser-session",
+        url: "file:///etc/passwd"
+      }).ok
+    ).toBe(false);
   });
 });

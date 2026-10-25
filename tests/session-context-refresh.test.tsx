@@ -181,12 +181,28 @@ describe("session context refresh (retry) versus restore (sign-in)", () => {
 
   it("restore at the bare root brings the owner back to where they last worked", async () => {
     await remountAt("/");
+
     await load("restore");
 
     expect(spies.setBusiness).toHaveBeenCalledWith(expect.objectContaining({ id: "owned-shop" }));
     expect(spies.setMode).toHaveBeenCalledWith("seller");
     expect(spies.setActiveConversationId).toHaveBeenCalledWith("server-last-conversation");
     expect(window.location.pathname).toBe("/workspace/conversations/server-last-conversation");
+  });
+
+  it("restores the explicit conversation instead of requesting the account's default thread", async () => {
+    const requested = { ...serverContext, conversationId: "user-picked-conversation" };
+    mockedApiFetch.mockImplementation(async (path) =>
+      path === "/v1/session/context?conversationId=user-picked-conversation"
+        ? requested
+        : serverContext
+    );
+    await load("restore");
+    expect(mockedApiFetch).toHaveBeenCalledWith(
+      "/v1/session/context?conversationId=user-picked-conversation"
+    );
+    expect(spies.setActiveConversationId).toHaveBeenCalledWith("user-picked-conversation");
+    expect(window.location.pathname).toBe("/workspace/conversations/user-picked-conversation");
   });
 
   it("refresh drops an answer when the user changed shop while it was in flight", async () => {
@@ -219,6 +235,35 @@ describe("session context refresh (retry) versus restore (sign-in)", () => {
     expect(spies.setBusiness).not.toHaveBeenCalled();
     expect(spies.setGrogoniSessionContext).not.toHaveBeenCalled();
     expect(localStorage.getItem(activeBusinessStorageKey)).toContain("just-created-shop");
+  });
+  it("a late initial restore refreshes data without moving a chat the user has started", async () => {
+    let answer: (context: unknown) => void = () => undefined;
+    mockedApiFetch.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        })
+    );
+    let userStartedChat = false;
+    let loading: Promise<boolean> = Promise.resolve(false);
+    await act(async () => {
+      loading = latestApi!.loadGrogoniSessionContext(
+        spies.setActiveConversationId,
+        () => true,
+        "restore",
+        () => !userStartedChat
+      );
+    });
+    userStartedChat = true;
+    await act(async () => {
+      answer(serverContext);
+      await loading;
+    });
+    expect(spies.setGrogoniSessionContext).toHaveBeenCalledWith(serverContext);
+    expect(spies.setMode).not.toHaveBeenCalled();
+    expect(spies.setView).not.toHaveBeenCalled();
+    expect(spies.setActiveConversationId).not.toHaveBeenCalled();
+    expect(window.location.pathname).toBe("/marketplace/conversations/user-picked-conversation");
   });
 });
 

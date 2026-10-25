@@ -1,0 +1,21 @@
+{
+  "runId": "ccfec1f1-f73f-4df3-b76a-4cd779e50bfc",
+  "base": "https://grogoni.com/api",
+  "checks": [
+    {
+      "name": "browser messaging workflow",
+      "status": "fail",
+      "detail": "locator.waitFor: Timeout 60000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('[data-conversation-id=\"ac58ad29-54e1-584d-ae06-0ced90b241c1\"].active')\u001b[22m\n"
+    },
+    {
+      "name": "remove and verify all disposable messaging fixtures",
+      "status": "pass",
+      "detail": {
+        "removedAccounts": 2,
+        "removedBusinesses": 1,
+        "lockHeldMs": 6273
+      }
+    }
+  ],
+  "pageErrors": []
+}

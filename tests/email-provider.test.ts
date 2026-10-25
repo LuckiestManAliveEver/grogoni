@@ -10,6 +10,7 @@ import { createCp2Store } from "../services/api/src/cp2/store";
 describe("transactional email API", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
   it("sends signup OTPs and privacy-preserving encrypted-message notifications through Resend", async () => {
@@ -79,7 +80,7 @@ describe("transactional email API", () => {
     });
   });
 
-  it("routes email signup OTP through the email provider without exposing the code", async () => {
+  it("delivers backup email verification without exposing a code or creating a login session", async () => {
     const deliveries: EmailOtpInput[] = [];
     const emailProvider: EmailProvider = {
       name: "mock-email-api",
@@ -90,19 +91,21 @@ describe("transactional email API", () => {
       sendEncryptedMessageNotification: async () => "sent"
     };
     const app = buildApi({ cp2: { store: createCp2Store(), emailProvider } });
+    const signup = await app.inject({
+      method: "POST",
+      url: "/auth/pin/signup",
+      payload: { method: "phone", contact: "+254700002211", pin: "2468" }
+    });
+    expect(signup.statusCode).toBe(200);
+    const cookie = sessionCookie(signup.headers["set-cookie"]);
     const requested = await app.inject({
       method: "POST",
-      url: "/auth/otp/request",
-      headers: { "content-type": "application/json" },
-      payload: JSON.stringify({
-        method: "email",
-        contact: "mock-email-api@example.test",
-        deliveryChannel: "email",
-        purpose: "signup"
-      })
+      url: "/auth/identity/email/start",
+      headers: { cookie },
+      payload: { email: "mock-email-api@example.test" }
     });
-
     expect(requested.statusCode).toBe(200);
+    expect(requested.json()).not.toHaveProperty("developmentCode");
     expect(requested.json()).not.toHaveProperty("devOtp");
     expect(deliveries).toEqual([
       expect.objectContaining({
@@ -110,22 +113,26 @@ describe("transactional email API", () => {
         to: "mock-email-api@example.test"
       })
     ]);
-
     const verified = await app.inject({
       method: "POST",
-      url: "/auth/otp/verify",
-      headers: { "content-type": "application/json" },
-      payload: JSON.stringify({
-        challengeId: requested.json<{ challengeId: string }>().challengeId,
-        code: deliveries[0]?.code
-      })
+      url: "/auth/identity/email/verify",
+      headers: { cookie },
+      payload: { challengeId: deliveries[0]!.challengeId, code: deliveries[0]!.code }
     });
     expect(verified.statusCode).toBe(200);
-    expect(verified.headers["set-cookie"]).toBeDefined();
+    expect(verified.headers["set-cookie"]).toBeUndefined();
+    const blocked = await app.inject({
+      method: "POST",
+      url: "/auth/otp/verify",
+      payload: { challengeId: deliveries[0]!.challengeId, code: deliveries[0]!.code }
+    });
+    expect(blocked.statusCode).toBe(403);
+    expect(blocked.headers["set-cookie"]).toBeUndefined();
     await app.close();
   });
 
-  it("signs up, logs out, logs in, and recovers a PIN using the same email account", async () => {
+  it("logs in by phone and recovers a password through verified backup email", async () => {
+    vi.stubEnv("OTP_COOLDOWN_SECONDS", "0");
     const deliveries: EmailOtpInput[] = [];
     const emailProvider: EmailProvider = {
       name: "mock-email-roundtrip",
@@ -136,140 +143,91 @@ describe("transactional email API", () => {
       sendEncryptedMessageNotification: async () => "sent"
     };
     const app = buildApi({ cp2: { store: createCp2Store(), emailProvider } });
+    const phone = "+254700002212";
     const email = "owner.roundtrip@example.test";
-
-    const signupRequest = await app.inject({
-      method: "POST",
-      url: "/auth/otp/request",
-      headers: { "content-type": "application/json" },
-      payload: JSON.stringify({
-        method: "email",
-        contact: email,
-        deliveryChannel: "email",
-        purpose: "signup"
-      })
-    });
-    const signupChallengeId = signupRequest.json<{ challengeId: string }>().challengeId;
-    const signupDelivery = deliveries.find(
-      (delivery) => delivery.challengeId === signupChallengeId
+    const post = (url: string, payload: unknown, cookie?: string) =>
+      app.inject({
+        method: "POST",
+        url,
+        payload: payload as Record<string, unknown>,
+        headers: cookie ? { cookie } : {}
+      });
+    const signup = await post("/auth/pin/signup", { method: "phone", contact: phone, pin: "2468" });
+    expect(signup.statusCode).toBe(200);
+    const accountId = signup.json<{ account: { id: string } }>().account.id;
+    const cookie = sessionCookie(signup.headers["set-cookie"]);
+    const password = "first secure recovery password";
+    expect(
+      (
+        await post(
+          "/auth/password/setup",
+          { currentPin: "2468", password, passwordConfirmation: password },
+          cookie
+        )
+      ).statusCode
+    ).toBe(200);
+    const link = await post("/auth/identity/email/start", { email }, cookie);
+    expect(link.statusCode).toBe(200);
+    const linkCode = deliveries.find(
+      (item) => item.challengeId === link.json<{ challengeId: string }>().challengeId
+    )!;
+    expect(
+      (
+        await post(
+          "/auth/identity/email/verify",
+          { challengeId: linkCode.challengeId, code: linkCode.code },
+          cookie
+        )
+      ).statusCode
+    ).toBe(200);
+    await post("/auth/logout", {}, cookie);
+    const login = await post("/auth/pin/login", { method: "phone", contact: phone, pin: "2468" });
+    expect(login.statusCode).toBe(202);
+    expect(login.headers["set-cookie"]).toBeUndefined();
+    const authenticated = await finishEmailMfa(
+      app,
+      login.json<{ transactionId: string }>().transactionId,
+      deliveries
     );
-    const signupVerify = await app.inject({
-      method: "POST",
-      url: "/auth/otp/verify",
-      headers: { "content-type": "application/json" },
-      payload: JSON.stringify({
-        method: "email",
-        contact: email,
-        challengeId: signupChallengeId,
-        otp: signupDelivery?.code
-      })
-    });
-    const accountId = signupVerify.json<{ account: { id: string } }>().account.id;
-    const signupCookie = sessionCookie(signupVerify.headers["set-cookie"]);
+    expect(authenticated.json()).toMatchObject({ account: { id: accountId } });
+    await post("/auth/logout", {}, sessionCookie(authenticated.headers["set-cookie"]));
 
-    expect(signupRequest.statusCode).toBe(200);
-    expect(signupVerify.statusCode).toBe(200);
-    expect(signupVerify.json()).toMatchObject({ resumed: false });
-
-    const pinSetup = await app.inject({
-      method: "POST",
-      url: "/auth/pin/setup",
-      headers: { "content-type": "application/json", cookie: signupCookie },
-      payload: JSON.stringify({ pin: "2468" })
+    const recovery = await post("/auth/recovery/start", { type: "email", identifier: email });
+    expect(recovery.statusCode).toBe(200);
+    expect(recovery.json()).not.toHaveProperty("developmentCode");
+    const transactionId = recovery.json<{ transactionId: string }>().transactionId;
+    const recoveryDelivery = deliveries.at(-1)!;
+    expect(
+      (await post("/auth/recovery/verify", { transactionId, code: recoveryDelivery.code }))
+        .statusCode
+    ).toBe(200);
+    const replacement = "replacement secure recovery password";
+    const reset = await post("/auth/recovery/reset-password", {
+      transactionId,
+      password: replacement,
+      passwordConfirmation: replacement
     });
-    expect(pinSetup.statusCode).toBe(200);
-
-    await app.inject({
-      method: "POST",
-      url: "/auth/logout",
-      headers: { cookie: signupCookie }
+    expect(reset.statusCode).toBe(200);
+    expect(reset.json()).toMatchObject({ account: { id: accountId } });
+    expect(
+      (await post("/auth/login/password", { type: "phone", identifier: phone, password }))
+        .statusCode
+    ).toBe(401);
+    const newLogin = await post("/auth/login/password", {
+      type: "phone",
+      identifier: phone,
+      password: replacement
     });
-
-    const pinLogin = await app.inject({
-      method: "POST",
-      url: "/auth/pin/login",
-      headers: { "content-type": "application/json" },
-      payload: JSON.stringify({
-        method: "email",
-        contact: "OWNER.ROUNDTRIP@EXAMPLE.TEST",
-        pin: "2468"
-      })
-    });
-    const pinLoginCookie = sessionCookie(pinLogin.headers["set-cookie"]);
-    expect(pinLogin.statusCode).toBe(200);
-    expect(pinLogin.json()).toMatchObject({ account: { id: accountId } });
-
-    await app.inject({
-      method: "POST",
-      url: "/auth/logout",
-      headers: { cookie: pinLoginCookie }
-    });
-
-    const recoveryRequest = await app.inject({
-      method: "POST",
-      url: "/auth/otp/request",
-      headers: { "content-type": "application/json" },
-      payload: JSON.stringify({
-        method: "email",
-        contact: email,
-        deliveryChannel: "email",
-        purpose: "recovery"
-      })
-    });
-    const recoveryChallengeId = recoveryRequest.json<{ challengeId: string }>().challengeId;
-    const recoveryDelivery = deliveries.find(
-      (delivery) => delivery.challengeId === recoveryChallengeId
+    expect(newLogin.statusCode).toBe(202);
+    const verified = await finishEmailMfa(
+      app,
+      newLogin.json<{ transactionId: string }>().transactionId,
+      deliveries
     );
-    const recoveryVerify = await app.inject({
-      method: "POST",
-      url: "/auth/otp/verify",
-      headers: { "content-type": "application/json" },
-      payload: JSON.stringify({
-        method: "email",
-        contact: email,
-        challengeId: recoveryChallengeId,
-        otp: recoveryDelivery?.code
-      })
-    });
-    const recoveryCookie = sessionCookie(recoveryVerify.headers["set-cookie"]);
-
-    expect(recoveryRequest.statusCode).toBe(200);
-    expect(recoveryVerify.statusCode).toBe(200);
-    expect(recoveryVerify.json()).toMatchObject({
-      account: { id: accountId },
-      resumed: true
-    });
-
-    const recoverPin = await app.inject({
-      method: "POST",
-      url: "/auth/pin/recover",
-      headers: { "content-type": "application/json", cookie: recoveryCookie },
-      payload: JSON.stringify({ pin: "1357" })
-    });
-    expect(recoverPin.statusCode).toBe(200);
-
-    await app.inject({
-      method: "POST",
-      url: "/auth/logout",
-      headers: { cookie: recoveryCookie }
-    });
-
-    const oldPinLogin = await app.inject({
-      method: "POST",
-      url: "/auth/pin/login",
-      headers: { "content-type": "application/json" },
-      payload: JSON.stringify({ method: "email", contact: email, pin: "2468" })
-    });
-    const recoveredPinLogin = await app.inject({
-      method: "POST",
-      url: "/auth/pin/login",
-      headers: { "content-type": "application/json" },
-      payload: JSON.stringify({ method: "email", contact: email, pin: "1357" })
-    });
-
-    expect(oldPinLogin.statusCode).toBe(401);
-    expect(recoveredPinLogin.statusCode).toBe(200);
-    expect(recoveredPinLogin.json()).toMatchObject({ account: { id: accountId } });
+    expect(verified.json()).toMatchObject({ account: { id: accountId } });
+    expect(
+      (await post("/auth/pin/login", { method: "email", contact: email, pin: "2468" })).statusCode
+    ).toBe(400);
     await app.close();
   });
 });
@@ -278,4 +236,25 @@ function sessionCookie(setCookie: string | string[] | undefined): string {
   const value = Array.isArray(setCookie) ? setCookie[0] : setCookie;
   if (value === undefined) throw new Error("Session cookie missing.");
   return value.split(";")[0] ?? value;
+}
+
+async function finishEmailMfa(
+  app: ReturnType<typeof buildApi>,
+  transactionId: string,
+  deliveries: EmailOtpInput[]
+) {
+  const challenge = await app.inject({
+    method: "POST",
+    url: "/auth/mfa/email/challenge",
+    payload: { transactionId }
+  });
+  expect(challenge.statusCode).toBe(200);
+  const delivery = deliveries.at(-1)!;
+  const verified = await app.inject({
+    method: "POST",
+    url: "/auth/mfa/verify",
+    payload: { transactionId, factor: "email", code: delivery.code }
+  });
+  expect(verified.statusCode).toBe(200);
+  return verified;
 }

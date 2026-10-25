@@ -1,3 +1,4 @@
+import { signupPhone } from "./fixtures/account-auth";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ExternalRegistryConnection } from "@grogoni/shared-types";
 import { buildApi } from "../services/api/src/app";
@@ -46,14 +47,7 @@ describe("external registry connections (GitHub / Hugging Face token connect)", 
   }
 
   async function signUp(app: ReturnType<typeof buildApi>, email: string): Promise<string> {
-    const started = await post(app, "/auth/otp/request", { method: "email", contact: email });
-    const challenge = started.json<{ challengeId: string; devOtp: string }>();
-    const verified = await post(app, "/auth/otp/verify", {
-      method: "email",
-      contact: email,
-      otp: challenge.devOtp
-    });
-    return cookies(verified.headers["set-cookie"]);
+    return (await signupPhone(app, email)).cookie;
   }
 
   it("connects GitHub with a valid token and never returns the secret in the response", async () => {
@@ -302,9 +296,4 @@ function get(app: ReturnType<typeof buildApi>, url: string, cookie: string) {
 
 function del(app: ReturnType<typeof buildApi>, url: string, cookie: string) {
   return app.inject({ method: "DELETE", url, headers: { cookie } });
-}
-
-function cookies(value: string | string[] | undefined): string {
-  const values = Array.isArray(value) ? value : value === undefined ? [] : [value];
-  return values.map((item) => item.split(";", 1)[0]).join("; ");
 }

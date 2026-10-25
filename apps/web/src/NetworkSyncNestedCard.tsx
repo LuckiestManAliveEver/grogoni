@@ -39,8 +39,10 @@ export function NetworkSyncNestedCard({
   onPhoneContactsSync,
   onInviteContacts,
   onConnectionAction,
-  onRefresh
+  onRefresh,
+  onMessageContact
 }: {
+  onMessageContact?: (nodeId: string, name: string) => void;
   graph: NetworkGraphSummary | null;
   devicePhonebook: DevicePhonebookContact[];
   networkInvites: NetworkInviteSummary[];
@@ -118,6 +120,7 @@ export function NetworkSyncNestedCard({
             onDisconnect={disconnectPhoneSource}
             onInvite={onInviteContacts}
             onSync={onPhoneContactsSync}
+            {...(onMessageContact ? { onMessageContact } : {})}
           />
         </Suspense>
       </LazyModuleErrorBoundary>

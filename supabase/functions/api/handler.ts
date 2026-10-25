@@ -99,6 +99,14 @@ export function createHandler({
             method: request.method,
             route: path,
             errorType: error instanceof Error ? error.name : "UnknownError",
+            table:
+              typeof error === "object" &&
+              error !== null &&
+              "table" in error &&
+              typeof error.table === "string" &&
+              /^[a-z][a-z0-9_]{0,62}$/.test(error.table)
+                ? error.table
+                : null,
             code:
               typeof error === "object" && error !== null && "code" in error
                 ? String(error.code)

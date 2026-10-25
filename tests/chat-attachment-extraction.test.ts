@@ -1,139 +1,78 @@
 // @vitest-environment jsdom
-import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import type { ChatAttachment } from "../apps/web/src/app-shell";
 import {
   appendExtractedDocumentContent,
-  extractChatAttachment,
-  type AttachmentExtractionDependencies
+  extractChatAttachment
 } from "../apps/web/src/chat-message-plumbing";
 
-const photoBytes = "maize flour 2kg KES 240";
-const photo: ChatAttachment = {
-  id: "photo-1",
-  name: "receipt.jpg",
-  type: "image/jpeg",
-  size: photoBytes.length,
+const photo = {
+  id: "receipt",
+  name: "receipt.png",
+  type: "image/png",
+  size: 8,
   category: "image",
-  dataUrl: `data:image/jpeg;base64,${Buffer.from(photoBytes).toString("base64")}`
+  dataUrl: "data:image/png;base64,cGhvdG8="
 } as ChatAttachment;
-const sheet: ChatAttachment = {
-  id: "sheet-1",
+const sheet = {
+  ...photo,
   name: "stock.csv",
   type: "text/csv",
-  size: 12,
-  category: "document",
-  dataUrl: `data:text/csv;base64,${Buffer.from("item,qty\nrice,4").toString("base64")}`
+  category: "document"
 } as ChatAttachment;
-
-function dependencies(overrides: Partial<AttachmentExtractionDependencies> = {}) {
-  return {
-    runLocalOcr: vi.fn(async () => ({
-      fullText: "MAIZE FLOUR 2KG 240",
-      averageConfidence: 0.91,
-      warnings: []
-    })),
-    postJson: vi.fn(async () => ({
-      fileName: "stock.csv",
-      contentType: "text/csv",
-      text: "item,qty\nrice,4",
-      format: "spreadsheet",
-      warnings: [],
-      sizeBytes: 15,
-      checksum: "abc"
-    })),
-    ...overrides
-  } satisfies AttachmentExtractionDependencies;
-}
+const extracted = {
+  fileName: "receipt.png",
+  text: "Rice 360\nTOTAL KES 570",
+  format: "ocr",
+  engine: "gpt-6-luna",
+  warnings: []
+};
 
 describe("chat attachment extraction", () => {
-  it("reads photos on the device and never calls the retired server OCR route", async () => {
-    const deps = dependencies();
-    const result = await extractChatAttachment(photo, "shop-1", deps);
-
-    expect(deps.runLocalOcr).toHaveBeenCalledWith({
-      fileName: "receipt.jpg",
-      contentType: "image/jpeg",
-      contentBase64: Buffer.from(photoBytes).toString("base64")
+  it.each([null, "shop-1"])(
+    "sends actual image bytes to Luna without a device scanner for shop %s",
+    async (businessId) => {
+      const postJson = vi.fn(async () => extracted);
+      expect(await extractChatAttachment(photo, businessId, { postJson })).toEqual(extracted);
+      expect(postJson).toHaveBeenCalledWith("/v1/chat/images/read", {
+        fileName: "receipt.png",
+        contentType: "image/png",
+        contentBase64: "cGhvdG8="
+      });
+    }
+  );
+  it("marks Luna's transcription as untrusted reference data", async () => {
+    const result = await appendExtractedDocumentContent("Read this", [photo], null, {
+      dependencies: { postJson: vi.fn(async () => extracted) }
     });
-    expect(deps.postJson).not.toHaveBeenCalled();
-    expect(result).toMatchObject({
-      text: "MAIZE FLOUR 2KG 240",
-      format: "ocr",
-      engine: "tesseract",
-      averageConfidence: 0.91,
-      sizeBytes: photoBytes.length,
-      checksum: createHash("sha256").update(photoBytes).digest("hex")
-    });
+    expect(result).toContain("untrusted reference data");
+    expect(result).toContain("Rice 360\nTOTAL KES 570");
   });
-
-  it("sends documents to the extract route only", async () => {
-    const deps = dependencies();
-    await extractChatAttachment(sheet, "shop-1", deps);
-    expect(deps.postJson).toHaveBeenCalledTimes(1);
-    expect(deps.postJson).toHaveBeenCalledWith(
+  it("fails a blind image turn so the caller can preserve the draft for retry", async () => {
+    const postJson = vi.fn(async () => {
+      throw new Error("Luna unavailable");
+    });
+    await expect(
+      appendExtractedDocumentContent("Read this", [photo], null, { dependencies: { postJson } })
+    ).rejects.toThrow("Luna unavailable");
+  });
+  it("keeps text documents on the existing shop extraction route", async () => {
+    const postJson = vi.fn(async () => ({ text: "rice,4" }));
+    await extractChatAttachment(sheet, "shop-1", { postJson });
+    expect(postJson).toHaveBeenCalledWith(
       "/businesses/shop-1/documents/extract",
       expect.objectContaining({ fileName: "stock.csv" })
     );
-    expect(deps.runLocalOcr).not.toHaveBeenCalled();
   });
-
-  it("does not fall back to a server OCR route when a scanned PDF has no text layer", async () => {
-    const deps = dependencies({
-      postJson: vi.fn(async () => {
-        throw new Error("No text layer.");
+  it("does not send a scanned PDF to an image-only provider", async () => {
+    const postJson = vi.fn(async () => {
+      throw new Error("No text layer");
+    });
+    await expect(
+      extractChatAttachment({ ...sheet, name: "scan.pdf", type: "application/pdf" }, "shop-1", {
+        postJson
       })
-    });
-    const pdf = { ...sheet, name: "scan.pdf", type: "application/pdf" } as ChatAttachment;
-    await expect(extractChatAttachment(pdf, "shop-1", deps)).rejects.toThrow("No text layer.");
-    expect(deps.postJson).toHaveBeenCalledTimes(1);
-  });
-
-  it("treats a photo with no text as a normal result, without warning the person", async () => {
-    const deps = dependencies({
-      runLocalOcr: vi.fn(async () => ({ fullText: "  \n", averageConfidence: 0, warnings: [] }))
-    });
-    const result = await extractChatAttachment(photo, "shop-1", deps);
-    expect(result).toMatchObject({
-      text: "(no readable text in this photo)",
-      warnings: ["no_readable_text"]
-    });
-    const onUnreadable = vi.fn();
-    const message = await appendExtractedDocumentContent("Price this", [photo], "shop-1", {
-      dependencies: deps,
-      onUnreadable
-    });
-    expect(onUnreadable).not.toHaveBeenCalled();
-    expect(message).toContain("(no readable text in this photo)");
-  });
-
-  it("keeps the turn alive when one attachment cannot be read", async () => {
-    const deps = dependencies({
-      runLocalOcr: vi.fn(async () => {
-        throw new Error(
-          "The on-device scanner is not installed on this device. Enable it from Settings."
-        );
-      })
-    });
-
-    const onUnreadable = vi.fn();
-    const message = await appendExtractedDocumentContent(
-      "What is in these?",
-      [photo, sheet],
-      "shop-1",
-      { dependencies: deps, onUnreadable }
-    );
-    expect(onUnreadable).toHaveBeenCalledWith([
-      {
-        name: "receipt.jpg",
-        reason: "The on-device scanner is not installed on this device. Enable it from Settings."
-      }
-    ]);
-
-    expect(message).toContain("What is in these?");
-    expect(message).toContain('[document-extraction file="receipt.jpg" status="unreadable"]');
-    expect(message).toContain("The on-device scanner is not installed on this device.");
-    expect(message).toContain('[document-extraction file="stock.csv" format="spreadsheet"]');
-    expect(message).toContain("rice,4");
+    ).rejects.toThrow("No text layer");
+    expect(postJson).toHaveBeenCalledTimes(1);
   });
 });

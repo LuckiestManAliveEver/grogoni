@@ -1,3 +1,8 @@
+import { executeDaemonBusinessSkill } from "./daemon/business-skills.js";
+import { loadDaemonConversationHistory } from "./daemon/conversation-history.js";
+import { readWebPushConfiguration } from "./cp2/push.js";
+import { registerCommerceRoutes } from "./cp2/domains/commerce/routes.js";
+import { registerChatImageRoutes } from "./cp2/chat-image-routes.js";
 import Fastify from "fastify";
 import websocket from "@fastify/websocket";
 import { registerMcpRoutes, createMcpRouteState } from "./mcp/routes.js";
@@ -62,7 +67,7 @@ import {
   type EdgeDaemon
 } from "./daemon/edge-lane.js";
 import { createPostgresWakeHint } from "./daemon/wake-hint.js";
-import type { DaemonPool, DaemonQueryable } from "./daemon/task-store.js";
+import { toPublicDaemonTask, type DaemonPool, type DaemonQueryable } from "./daemon/task-store.js";
 import {
   createEdgeGuestIntentRoutes,
   createGuestIntentService,
@@ -293,6 +298,22 @@ export async function createEdgeDomainRoutes(
     )
   }));
 
+  // A model call must not keep snapshot/account/business locks or a Neon connection open.
+  // The session lookup commits first; receipt drafts are persisted by a separate short request.
+  const imageReader = edgeDatabase.daemon
+    ? Fastify({ logger: false, bodyLimit: 14_000_000 })
+    : null;
+  if (imageReader) {
+    registerChatImageRoutes(imageReader, null, undefined, async (request) => {
+      const user = await edgeDatabase.daemon!.findUser(
+        new Request("https://grogoni.com/v1/chat/images/read", {
+          headers: { cookie: request.headers.cookie ?? "" }
+        })
+      );
+      return user ? {} : null;
+    });
+    await imageReader.ready();
+  }
   /** One attempt's store dependencies: model calls deferred, sends stopped once one is. */
   const realResolver = storeDependencies.modelRuntimeAdapterResolver ?? (() => undefined);
   const newLedger = (streamTurnId: string | null) =>
@@ -359,10 +380,21 @@ export async function createEdgeDomainRoutes(
     const { request, path, url, payload, attempt, ledger } = input;
     ledger.beginAttempt();
     const database = trackIndependentWork(edgeDatabase, attempt, ledger);
+
     return database.transaction(async (client) => {
       const scope = await createEdgeSnapshotScope(client, request, path, payload);
-      if (request.method !== "GET" && request.method !== "HEAD") {
+      // GET handlers also refresh sessions, mark messages read and initialize runtime defaults.
+      // Their snapshots must be loaded after the same tenant locks as explicit writes.
+      {
         await client.query("set local lock_timeout = '10s'");
+        if (scope.modelSelectionLock)
+          await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [
+            scope.modelSelectionLock
+          ]);
+        if (scope.directPairLock)
+          await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [
+            scope.directPairLock
+          ]);
         if (!isEdgeFastPathWrite(request.method, path)) {
           if (scope.accountId)
             await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [
@@ -615,6 +647,9 @@ export async function createEdgeDomainRoutes(
         });
         registerCp2Routes(app, {
           store,
+          ...(readWebPushConfiguration()
+            ? { vapidPublicKey: readWebPushConfiguration()!.publicKey }
+            : {}),
           ...(inventoryTaskController === undefined ? {} : { inventoryTaskController }),
           businessTaskStore: createPostgresBusinessTaskStore(pool, (input) =>
             store.authorizeBusinessPermission(input)
@@ -674,6 +709,7 @@ export async function createEdgeDomainRoutes(
         });
         const headers = Object.fromEntries(request.headers);
         delete headers["content-length"];
+        if (payload === undefined) delete headers["content-type"];
         const inject = () =>
           app.inject({
             method: request.method as
@@ -748,6 +784,114 @@ export async function createEdgeDomainRoutes(
         : Buffer.from(await request.arrayBuffer());
     if (payload && payload.length > 15_000_000)
       return Response.json({ code: "request_too_large" }, { status: 413 });
+    if (path === "/v1/chat/images/read" && imageReader) {
+      const result = await imageReader.inject({
+        method: "POST",
+        url: path,
+        headers: {
+          cookie: request.headers.get("cookie") ?? "",
+          "content-type": request.headers.get("content-type") ?? "application/json"
+        },
+        ...(payload ? { payload } : {})
+      });
+      return new Response(result.body, {
+        status: result.statusCode,
+        headers: {
+          "content-type": "application/json",
+          "cache-control": "no-store"
+        }
+      });
+    }
+    // Buyer browsing is read-only outside our own checkout review. Model/browser calls must
+    // not hold a database connection or account lock; only load and CAS-persist in short phases.
+    let shoppingMessage = "";
+    if (path === "/buy/assistant" && payload) {
+      try {
+        shoppingMessage = String(JSON.parse(payload.toString()).message ?? "")
+          .trim()
+          .toLowerCase()
+          .replace(/[.!]+$/u, "");
+      } catch {
+        /* Route validates JSON. */
+      }
+    }
+    if (
+      path === "/buy/assistant" &&
+      !["confirm checkout", "cancel checkout"].includes(shoppingMessage)
+    ) {
+      const loaded = await edgeDatabase.transaction(async (client) => {
+        const scope = await createEdgeSnapshotScope(client, request, path, payload);
+        return { scope, snapshot: await loadTransactionalCp2Snapshot(client, scope) };
+      });
+      const store = createCp2Store({
+        ...storeDependencies,
+        buyerShoppingSearch: async ({ sessionId, query }) => {
+          const searchRequest = new Request(
+            `https://grogoni.com/buy/search?query=${encodeURIComponent(query.slice(0, 120))}`,
+            { headers: request.headers }
+          );
+          const found = await edgeDatabase.transaction(async (client) => {
+            const scope = await createEdgeSnapshotScope(client, searchRequest, "/buy/search");
+            return loadTransactionalCp2Snapshot(client, scope);
+          });
+          const catalogue = createCp2Store(storeDependencies);
+          catalogue.hydrateSnapshot(prepareEdgeHydration(found));
+          return {
+            feed: catalogue.searchBuyFeed({ sessionId, query }),
+            businesses: found.businesses,
+            products: found.products
+          };
+        }
+      });
+      store.hydrateSnapshot(prepareEdgeHydration(loaded.snapshot));
+      const shoppingApp = Fastify({ logger: false, bodyLimit: 64000 });
+      registerCommerceRoutes(shoppingApp, store, undefined);
+      try {
+        const headers = Object.fromEntries(request.headers);
+        delete headers["content-length"];
+        const result = await shoppingApp.inject({
+          method: "POST",
+          url: path,
+          headers,
+          ...(payload ? { payload } : {})
+        });
+        if (result.statusCode >= 400)
+          return new Response(result.body, {
+            status: result.statusCode,
+            headers: { "content-type": "application/json", "cache-control": "no-store" }
+          });
+        const next = prepareEdgePersistence(store.snapshot(), loaded.snapshot);
+        await edgeDatabase.transaction(async (client) => {
+          const current = await createEdgeSnapshotScope(client, request, path, payload);
+          if (!current.accountId || current.accountId !== loaded.scope.accountId) {
+            throw new Cp2Error(401, "session_expired", "Sign in again to continue shopping.");
+          }
+          await saveTransactionalCp2Snapshot(client, next, loaded.snapshot);
+        });
+        return new Response(result.body, {
+          status: result.statusCode,
+          headers: { "content-type": "application/json", "cache-control": "no-store" }
+        });
+      } catch (error) {
+        if (error instanceof Cp2Error)
+          return Response.json(
+            { code: error.code, message: error.message },
+            { status: error.statusCode }
+          );
+        if ((error as { code?: string }).code === "40001") {
+          return Response.json(
+            {
+              code: "buyer_shopping_concurrent_update",
+              message: "This shopping chat changed in another tab. Please send your request again."
+            },
+            { status: 409 }
+          );
+        }
+        throw error;
+      } finally {
+        await shoppingApp.close();
+      }
+    }
     const streamHeader = request.headers.get("x-grogoni-turn-id");
     const streamTurnId = isValidTurnId(streamHeader) ? streamHeader : null;
     const agentTurn =
@@ -896,6 +1040,109 @@ export async function createEdgeDomainRoutes(
           if (user === null)
             throw new DaemonHttpError(401, "auth_required", "Authentication is required.");
           return user;
+        },
+        deliverConversationTask: async (task) => {
+          if (!task.owner_user_id || task.payload.kind !== "agent" || !task.payload.conversation)
+            return;
+          const origin = task.payload.conversation;
+          const internal = new Request(`https://grogoni.com/v1/conversations/${origin.id}`);
+          await edgeDatabase.transaction(async (client) => {
+            const scope = await createEdgeSnapshotScope(
+              client,
+              internal,
+              `/v1/conversations/${origin.id}`,
+              undefined,
+              { daemonOwnerUserId: task.owner_user_id! }
+            );
+            if (!scope.accountId) return; // Deleted account: no further delivery authority.
+            await client.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [
+              `edge:account:${scope.accountId}`
+            ]);
+            const previous = await loadTransactionalCp2Snapshot(client, scope);
+            const store = createCp2Store(storeDependencies);
+            store.hydrateSnapshot(prepareEdgeHydration(previous));
+            try {
+              store.deliverDaemonTask(toPublicDaemonTask(task), task.owner_user_id!);
+            } catch (error) {
+              if (error instanceof Cp2Error && error.statusCode === 404) return;
+              throw error;
+            }
+            await store.deliverPendingMessageNotifications();
+            await saveTransactionalCp2Snapshot(
+              client,
+              prepareEdgePersistence(store.snapshot(), previous),
+              previous
+            );
+          });
+        },
+        runBusinessSkill: (task, businessId, message, signal) =>
+          executeDaemonBusinessSkill({
+            task,
+            businessId,
+            message,
+            signal,
+            load: () =>
+              edgeDatabase.transaction(async (client) => {
+                if (
+                  !task.owner_user_id ||
+                  task.payload.kind !== "agent" ||
+                  !task.payload.conversation
+                )
+                  throw new Error("Missing skill identity.");
+                const internal = new Request(
+                  `https://grogoni.com/v1/conversations/${task.payload.conversation.id}`
+                );
+                const scope = await createEdgeSnapshotScope(
+                  client,
+                  internal,
+                  new URL(internal.url).pathname,
+                  undefined,
+                  { daemonOwnerUserId: task.owner_user_id }
+                );
+                return prepareEdgeHydration(await loadTransactionalCp2Snapshot(client, scope));
+              }),
+            send: (request) => routes(request, "/v1/messages")
+          }),
+        loadConversationHistory: (task) =>
+          edgeDatabase.transaction((client) => loadDaemonConversationHistory(client, task)),
+        authorizeConversation: async (request, conversationId) => {
+          const path = `/v1/conversations/${conversationId}`;
+          return edgeDatabase.transaction(async (client) => {
+            const scope = await createEdgeSnapshotScope(client, request, path);
+            const snapshot = await loadTransactionalCp2Snapshot(client, scope);
+            const store = createCp2Store(storeDependencies);
+            store.hydrateSnapshot(prepareEdgeHydration(snapshot));
+            const sessionId =
+              (request.headers.get("cookie") ?? "").match(
+                /(?:^|;\s*)grogoni_session=([^;]+)/u
+              )?.[1] ?? null;
+            let view;
+            try {
+              view = store.getConversation({ sessionId, conversationId });
+            } catch {
+              throw new DaemonHttpError(
+                404,
+                "conversation_not_found",
+                "Conversation was not found."
+              );
+            }
+            if (view.conversation.conversationType !== "DAEMON")
+              throw new DaemonHttpError(
+                403,
+                "task_conversation_invalid",
+                "Background assistant tasks require your daemon conversation."
+              );
+            try {
+              const runtime = store.resolveRuntimeBinding(conversationId);
+              return { modelId: runtime.selected.model.id };
+            } catch {
+              throw new DaemonHttpError(
+                503,
+                "conversation_model_unavailable",
+                "The selected conversation model is unavailable."
+              );
+            }
+          });
         },
         environment: process.env,
         // A queued maintenance task runs the same job in-process, under its own job lock.

@@ -11,7 +11,9 @@ class NativeSmsReceiver : BroadcastReceiver() {
         if (intent.action != Telephony.Sms.Intents.SMS_DELIVER_ACTION) return
         val sms = MultipartSmsAssembler.fromIntent(intent) ?: return
         persistForDefaultSmsRole(context, sms)
+        runCatching { LocalSmsNotifications.show(context, sms.id) }
         val session = GrogoniSessionStore(context)
+        if (!session.syncEnabled) return
         val businessId = session.businessId ?: return
         val sender = runCatching {
             NativePhoneNormalizer.normalize(sms.sender, session.networkCountryIso)

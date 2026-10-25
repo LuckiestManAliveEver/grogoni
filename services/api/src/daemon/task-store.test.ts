@@ -228,9 +228,13 @@ describe.skipIf(!url)("durable native daemon queue", () => {
           }
         );
         let output = "";
+        let signalled = false;
         const collect = (chunk: Buffer) => {
           output += chunk.toString();
-          if (untilLine && output.includes(untilLine)) daemon.kill(signal);
+          if (!signalled && untilLine && output.includes(untilLine)) {
+            signalled = true;
+            daemon.kill(signal);
+          }
         };
         daemon.stdout.on("data", collect);
         daemon.stderr.on("data", collect);

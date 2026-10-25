@@ -1,3 +1,5 @@
+import { seedLegacyEmailAccount } from "./fixtures/account-auth";
+import type { Cp2Store } from "../services/api/src/cp2/store";
 import { describe, expect, it } from "vitest";
 import { buildApi } from "../services/api/src/app";
 import { createCp2Store } from "../services/api/src/cp2/store";
@@ -6,7 +8,7 @@ describe("compulsory owner phone identity", () => {
   it("normalizes, stores, reuses, and keeps the owner phone private", async () => {
     const store = createCp2Store();
     const app = buildApi({ cp2: { store } });
-    const firstOwner = await createEmailOwner(app, "phone-owner-one@example.test");
+    const firstOwner = await createEmailOwner(app, store, "phone-owner-one@example.test");
 
     const unauthenticated = await app.inject({
       method: "PUT",
@@ -78,8 +80,8 @@ describe("compulsory owner phone identity", () => {
   it("rejects invalid, missing, and cross-owner phone assignments without enumeration", async () => {
     const store = createCp2Store();
     const app = buildApi({ cp2: { store } });
-    const firstOwner = await createEmailOwner(app, "phone-conflict-one@example.test");
-    const secondOwner = await createEmailOwner(app, "phone-conflict-two@example.test");
+    const firstOwner = await createEmailOwner(app, store, "phone-conflict-one@example.test");
+    const secondOwner = await createEmailOwner(app, store, "phone-conflict-two@example.test");
 
     const missingPhoneShop = await app.inject({
       method: "POST",
@@ -166,32 +168,11 @@ describe("compulsory owner phone identity", () => {
 
 async function createEmailOwner(
   app: ReturnType<typeof buildApi>,
+  store: Cp2Store,
   email: string
 ): Promise<{ cookie: string; userId: string }> {
-  const requested = await app.inject({
-    method: "POST",
-    url: "/auth/otp/request",
-    headers: jsonHeaders(),
-    payload: JSON.stringify({
-      method: "email",
-      contact: email,
-      deliveryChannel: "email",
-      purpose: "signup"
-    })
-  });
-  expect(requested.statusCode).toBe(200);
-
-  const verified = await app.inject({
-    method: "POST",
-    url: "/auth/otp/verify",
-    headers: jsonHeaders(),
-    payload: JSON.stringify({
-      challengeId: requested.json<{ challengeId: string }>().challengeId,
-      code: requested.json<{ devOtp: string }>().devOtp
-    })
-  });
-  expect(verified.statusCode).toBe(200);
-  const cookie = extractSessionCookie(verified.headers["set-cookie"]);
+  const verified = seedLegacyEmailAccount(store, email);
+  const cookie = `grogoni_session=${verified.session.id}`;
   const pin = await app.inject({
     method: "POST",
     url: "/auth/pin/setup",
@@ -202,7 +183,7 @@ async function createEmailOwner(
 
   return {
     cookie,
-    userId: verified.json<{ user: { id: string } }>().user.id
+    userId: verified.user.id
   };
 }
 
@@ -219,11 +200,6 @@ async function createShop(
   });
   expect(response.statusCode).toBe(200);
   return response.json();
-}
-
-function extractSessionCookie(setCookie: string | string[] | undefined): string {
-  const cookie = Array.isArray(setCookie) ? setCookie[0] : setCookie;
-  return cookie?.split(";")[0] ?? "";
 }
 
 function jsonHeaders() {

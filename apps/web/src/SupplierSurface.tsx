@@ -1,3 +1,6 @@
+import { ReceiptBindingCard } from "./ReceiptBindingCard";
+import { ReceiptFieldsForm } from "./ReceiptFieldsForm";
+import { patchJson } from "./api-helpers";
 import { useState, type ChangeEvent } from "react";
 
 import {
@@ -41,6 +44,8 @@ export interface SupplierSurfaceProps {
 }
 
 export function SupplierSurface(props: SupplierSurfaceProps) {
+  const [receiptReady, setReceiptReady] = useState<Record<string, boolean>>({});
+  const [reviewedJobs, setReviewedJobs] = useState<Record<string, ReceiptOCRJobSummary>>({});
   const [openSupplierId, setOpenSupplierId] = useState<string | null>(
     props.suppliers[0]?.id ?? null
   );
@@ -126,79 +131,108 @@ export function SupplierSurface(props: SupplierSurfaceProps) {
             confirmation. Use JPEG, PNG or WebP photos; PDFs and HEIC receipts need a connection.
           </p>
         )}
-        {props.receiptOcrJobs.map((receiptJob) => (
-          <article className="receipt-ocr-card" key={receiptJob.id}>
-            <strong>{receiptJob.sourceFileName}</strong>
-            <details>
-              <summary>Extracted receipt text</summary>
-              <pre>{receiptJob.fullText}</pre>
-            </details>
-            <strong>OCR status: {receiptJob.status.replace("_", " ")}</strong>
-            {receiptJob.errorMessage !== null ? <span>{receiptJob.errorMessage}</span> : null}
-            <span>
-              Engine: {receiptJob.engine} ({receiptJob.profile})
-            </span>
-            <span>Confidence: {Math.round(receiptJob.averageConfidence * 100)}%</span>
-            <span>Supplier: {receiptJob.supplierName ?? "No match"}</span>
-            <span>Sales agent: {receiptJob.salesAgentName ?? "No match"}</span>
-            <div className="mini-card">
-              <strong>Receipt contact matching</strong>
+        {props.receiptOcrJobs.map((sourceJob) => {
+          const corrected = reviewedJobs[sourceJob.id];
+          const receiptJob =
+            corrected && corrected.updatedAt >= sourceJob.updatedAt ? corrected : sourceJob;
+          return (
+            <article className="receipt-ocr-card" key={receiptJob.id}>
+              <strong>{receiptJob.sourceFileName}</strong>
+              <ReceiptFieldsForm
+                key={`${receiptJob.id}:${receiptJob.updatedAt}`}
+                job={receiptJob}
+                onReviewStateChange={(ready) =>
+                  setReceiptReady((current) =>
+                    current[receiptJob.id] === ready
+                      ? current
+                      : { ...current, [receiptJob.id]: ready }
+                  )
+                }
+                onSave={async (fields) => {
+                  const corrected = await patchJson<ReceiptOCRJobSummary>(
+                    `/businesses/${props.businessId}/receipt-ocr/jobs/${receiptJob.id}`,
+                    { extractedText: receiptJob.fullText, structuredExtraction: fields }
+                  );
+                  // Update the reviewed instance used by Confirm; the normal refresh reconciles it.
+                  setReviewedJobs((current) => ({ ...current, [corrected.id]: corrected }));
+                }}
+              />
+              <details>
+                <summary>Extracted receipt text</summary>
+                <pre>{receiptJob.fullText}</pre>
+              </details>
+              <strong>OCR status: {receiptJob.status.replace("_", " ")}</strong>
+              {receiptJob.errorMessage !== null ? <span>{receiptJob.errorMessage}</span> : null}
               <span>
-                Supplier confidence:{" "}
-                {Math.round(receiptJob.contactMatchingResult.supplier.confidence * 100)}%
+                Engine: {receiptJob.engine} ({receiptJob.profile})
               </span>
-              <small>
-                Matched from:{" "}
-                {receiptJob.contactMatchingResult.supplier.sources.join(", ") || "No contact match"}
-              </small>
-              <small>
-                Why:{" "}
-                {receiptJob.contactMatchingResult.supplier.matchedBy.join(", ") || "Needs review"}
-              </small>
+              {receiptJob.engine !== "gpt-6-luna" && (
+                <span>Confidence: {Math.round(receiptJob.averageConfidence * 100)}%</span>
+              )}
+              <span>Supplier: {receiptJob.supplierName ?? "No match"}</span>
+              <span>Sales agent: {receiptJob.salesAgentName ?? "No match"}</span>
+              <div className="mini-card">
+                <strong>Receipt contact matching</strong>
+                <span>
+                  Supplier confidence:{" "}
+                  {Math.round(receiptJob.contactMatchingResult.supplier.confidence * 100)}%
+                </span>
+                <small>
+                  Matched from:{" "}
+                  {receiptJob.contactMatchingResult.supplier.sources.join(", ") ||
+                    "No contact match"}
+                </small>
+                <small>
+                  Why:{" "}
+                  {receiptJob.contactMatchingResult.supplier.matchedBy.join(", ") || "Needs review"}
+                </small>
+                <span>
+                  Sales-agent confidence:{" "}
+                  {Math.round(receiptJob.contactMatchingResult.salesAgent.confidence * 100)}%
+                </span>
+                <small>
+                  Matched from:{" "}
+                  {receiptJob.contactMatchingResult.salesAgent.sources.join(", ") ||
+                    "No contact match"}
+                </small>
+                <small>
+                  Why:{" "}
+                  {receiptJob.contactMatchingResult.salesAgent.matchedBy.join(", ") ||
+                    "Needs review"}
+                </small>
+              </div>
+              <span>Items: {receiptJob.items.length}</span>
               <span>
-                Sales-agent confidence:{" "}
-                {Math.round(receiptJob.contactMatchingResult.salesAgent.confidence * 100)}%
+                Uploaded image retained temporarily: {receiptJob.imageRetained ? "Yes" : "No"}
               </span>
-              <small>
-                Matched from:{" "}
-                {receiptJob.contactMatchingResult.salesAgent.sources.join(", ") ||
-                  "No contact match"}
-              </small>
-              <small>
-                Why:{" "}
-                {receiptJob.contactMatchingResult.salesAgent.matchedBy.join(", ") || "Needs review"}
-              </small>
-            </div>
-            <span>Items: {receiptJob.items.length}</span>
-            <span>
-              Uploaded image retained temporarily: {receiptJob.imageRetained ? "Yes" : "No"}
-            </span>
-            {receiptJob.imageDeletedAt !== null ? (
-              <span>Uploaded image deleted after processing.</span>
-            ) : receiptJob.cleanupPending ? (
-              <span>Image cleanup pending after confirmation.</span>
-            ) : null}
-            {receiptJob.warnings.length > 0 ? (
-              <ul>
-                {receiptJob.warnings.map((warning) => (
-                  <li key={warning}>{warning}</li>
-                ))}
-              </ul>
-            ) : null}
-            <button
-              type="button"
-              disabled={
-                offline ||
-                !["REVIEW_REQUIRED", "MATCHING", "matched", "needs_review"].includes(
-                  receiptJob.status
-                )
-              }
-              onClick={() => props.onConfirmReceipt(receiptJob)}
-            >
-              Confirm and save
-            </button>
-          </article>
-        ))}
+              {receiptJob.imageDeletedAt !== null ? (
+                <span>Uploaded image deleted after processing.</span>
+              ) : receiptJob.cleanupPending ? (
+                <span>Image cleanup pending after confirmation.</span>
+              ) : null}
+              {receiptJob.warnings.length > 0 ? (
+                <ul>
+                  {receiptJob.warnings.map((warning) => (
+                    <li key={warning}>{warning}</li>
+                  ))}
+                </ul>
+              ) : null}
+              <button
+                type="button"
+                disabled={
+                  receiptReady[receiptJob.id] === false ||
+                  offline ||
+                  !["REVIEW_REQUIRED", "MATCHING", "matched", "needs_review"].includes(
+                    receiptJob.status
+                  )
+                }
+                onClick={() => props.onConfirmReceipt(receiptJob)}
+              >
+                Confirm and save
+              </button>
+            </article>
+          );
+        })}
       </section>
 
       <section className="record-form" aria-label="Supplier form">
@@ -498,6 +532,10 @@ export function SupplierSurface(props: SupplierSurfaceProps) {
                             <strong>{new Date(receipt.receiptDate).toLocaleDateString()}</strong>
                             <span>{formatMoney(receipt.total)}</span>
                             <small>{receipt.salesAgentName ?? "No sales agent"}</small>
+                            <ReceiptBindingCard
+                              businessId={props.businessId}
+                              receiptId={receipt.id}
+                            />
                             <small>Image stored: {receipt.imageStored ? "Yes" : "No"}</small>
                           </article>
                         ))

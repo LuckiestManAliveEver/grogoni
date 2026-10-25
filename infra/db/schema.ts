@@ -624,6 +624,7 @@ export const statusBroadcasts = platformCommerceRecordTable("status_broadcasts")
 export const buyOrders = platformCommerceRecordTable("buy_orders");
 export const statusOrders = platformCommerceRecordTable("status_orders");
 export const unifiedCheckouts = platformCommerceRecordTable("unified_checkouts");
+export const buyerShoppingSessions = platformCommerceRecordTable("buyer_shopping_sessions");
 export const canonicalContacts = platformCommerceRecordTable("cp2_contacts");
 export const supplierContactRelationships = platformCommerceRecordTable(
   "cp2_supplier_contact_relationships"
@@ -1095,3 +1096,13 @@ export const cp2VocabularyOccurrences = pgTable(
     )
   })
 );
+
+export const cp2AgentSkills = pgTable("cp2_agent_skills", {
+  entityId: text("entity_id").primaryKey(),
+  businessId: text("business_id"),
+  accountId: text("account_id"),
+  userId: text("user_id"),
+  parentId: text("parent_id"),
+  record: jsonb("record").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+});

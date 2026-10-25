@@ -109,7 +109,17 @@ async function runClaim(
   try {
     if (signal?.aborted) return await release();
     const device = claim.message === null ? null : deviceFor();
-    if (device === null || claim.message === null) return await executeOnServer();
+    const selectedModel =
+      claim.task.payload.kind === "agent" && claim.task.payload.conversation
+        ? claim.task.payload.modelId
+        : null;
+    if (
+      (claim.message !== null && /^\/(?:business\s|skills?(?:\s|$))/.test(claim.message)) ||
+      device === null ||
+      claim.message === null ||
+      (selectedModel !== null && device.modelId !== selectedModel)
+    )
+      return await executeOnServer();
     const outcome = await generateUnderLease(
       request,
       claim,
@@ -240,15 +250,21 @@ export function startBrowserDaemonLane(loop: BrowserDaemonLaneLoop): () => Promi
   const maxTasks = loop.maxTasksPerWake ?? 10;
   let failures = 0;
   let wake: (() => void) | null = null;
-  const unsubscribe = loop.onWake(() => wake?.());
+  // A wake may arrive while a claim/execute request is in flight. Remember it until pause.
+  let pendingWake = false;
+  const unsubscribe = loop.onWake(() => {
+    pendingWake = true;
+    wake?.();
+  });
   const pause = (ms: number) =>
-    stop.signal.aborted
-      ? Promise.resolve()
+    stop.signal.aborted || pendingWake
+      ? ((pendingWake = false), Promise.resolve())
       : new Promise<void>((resolve) => {
           const timer = setTimeout(finish, ms);
           function finish() {
             clearTimeout(timer);
             wake = null;
+            pendingWake = false;
             stop.signal.removeEventListener("abort", finish);
             resolve();
           }

@@ -1,3 +1,15 @@
+import {
+  AgentSkillsDomain,
+  type SkillRecord,
+  type SkillRequest,
+  type SkillInput
+} from "./domains/agent-skills/store.js";
+import { runBuyerAssistant } from "./domains/commerce/buyer-assistant.js";
+import type {
+  BuyFeedSummary,
+  BuyerShoppingSession,
+  BuyerShoppingTurnResult
+} from "@grogoni/shared-types";
 import { withRuntimeDeadline } from "./runtime-deadline.js";
 import { isLocalRuntimeHost, isModelExecutionTarget } from "@grogoni/shared-types";
 import {
@@ -106,6 +118,7 @@ import { notificationRuleKey, summarizeNotifications } from "./domains/notificat
 import { NetworkDomain, type NetworkDomainDeps } from "./domains/network/store.js";
 import {
   normalizeContactEmail,
+  protectStoredContactHash,
   normalizeContactPhone,
   ownerPhoneCountry
 } from "./domains/network/shared.js";
@@ -349,7 +362,10 @@ import {
   ComputerRuntimeDomain,
   type ComputerRuntimeSnapshot
 } from "./domains/computer-runtime/store.js";
-import { type ModelRuntimeAdapter } from "../inference/model-runtime.js";
+import {
+  runtimeProviderFromAdapter,
+  type ModelRuntimeAdapter
+} from "../inference/model-runtime.js";
 import {
   createInferencePlatform,
   type InferencePlatform
@@ -681,6 +697,7 @@ export interface RoleCheckResult {
 
 export interface Cp2Snapshot
   extends ModelTemplatesSnapshot, VocabularySnapshot, ComputerRuntimeSnapshot {
+  agentSkills?: SkillRecord[];
   accounts: AccountSummary[];
   users: UserSummary[];
   deviceAccountBootstraps?: DeviceAccountBootstrapRecord[];
@@ -740,6 +757,7 @@ export interface Cp2Snapshot
   buyOrders?: BuyOrderSummary[];
   statusOrders?: StatusOrderSummary[];
   unifiedCheckouts?: UnifiedCheckoutSummary[];
+  buyerShoppingSessions?: BuyerShoppingSession[];
   customers: CustomerSummary[];
   suppliers: SupplierSummary[];
   salesAgents: SalesAgentSummary[];
@@ -826,11 +844,19 @@ export interface Cp2StoreOptions {
    * got that account's ID and the insert failed on the unique index.
    */
   externalGrogoniIdTaken?: (normalizedGrogoniId: string) => boolean;
+  /** Edge loads each model-selected catalogue query in a short independent transaction. */
+  buyerShoppingSearch?: (input: { sessionId: string | null; query: string }) => Promise<{
+    feed: BuyFeedSummary;
+    businesses: BusinessSummary[];
+    products: ProductSummary[];
+  }>;
+
   businessTaskEvaluations?: BusinessTaskEvaluationReader;
   inventoryProcurement?: InventoryProcurementStore;
   runtimeApprovalStore?: RuntimeApprovalStore;
   computerWorkerClient?: ComputerWorkerClient;
   passkeyAuthenticationVerifier?: typeof verifyAuthenticationResponse;
+  configuredModels?: AiModelSummary[];
   runtimeModelProvider?: RuntimeModelProvider;
   runtimeModelProviderResolver?: (modelId: string) => RuntimeModelProvider | undefined;
   modelRuntimeAdapterResolver?: (input: {
@@ -993,6 +1019,7 @@ export class Cp2Store {
   private readonly inferencePlatform: InferencePlatform;
   /** The deployment's default runtime, with its engine resolved to one this deployment runs. */
   private readonly platformDefaultRuntime: PlatformDefaultRuntimePolicy;
+  private readonly agentSkills: AgentSkillsDomain;
   private readonly modelRuntimeAdapterResolver: Cp2StoreOptions["modelRuntimeAdapterResolver"];
   private readonly externalGrogoniIdTaken: Cp2StoreOptions["externalGrogoniIdTaken"];
 
@@ -1017,6 +1044,97 @@ export class Cp2Store {
               modelId: input.modelId,
               executionTarget: input.executionTarget
             });
+    this.agentSkills = new AgentSkillsDomain({
+      authorize: (input) => {
+        const now = input.now ?? new Date();
+        const actor = input.businessId
+          ? this.requireAuthorizedSession(input.sessionId, input.businessId, "business:read", now)
+          : this.requirePinVerifiedSession(input.sessionId, now);
+        this.requireAccountNotPendingDeletion(actor.account.id, now);
+        return {
+          userId: actor.user.id,
+          accountId: actor.account.id,
+          role: input.businessId
+            ? this.requireMembership(input.businessId, actor.user.id).role
+            : "owner",
+          operator: this.platformOperators.has(actor.account.id)
+        };
+      },
+      agentAllowed: (businessId, agentId) =>
+        this.agentRuntimeDomain.currentAgentProfile(businessId, new Date()).agentId === agentId,
+      audit: (actorId, id, event, details) =>
+        this.recordAuditEvent({
+          type: `agent_skill.${event}`,
+          aggregateType: "agent_skill",
+          aggregateId: id,
+          actorId,
+          occurredAt: new Date().toISOString(),
+          payload: details
+        }),
+      generate: async (input, description) => {
+        const actor = this.requirePinVerifiedSession(input.sessionId, new Date());
+        const modelId = this.platformDefaultRuntime.modelId;
+        const adapter = this.modelRuntimeAdapterResolver?.({
+          modelId,
+          executionTarget: this.platformDefaultRuntime.executionTarget,
+          agentId: "skill-drafter",
+          shopId: input.businessId ?? ""
+        });
+        const provider =
+          this.options.runtimeModelProviderResolver?.(modelId) ??
+          this.options.runtimeModelProvider ??
+          (adapter
+            ? runtimeProviderFromAdapter({
+                adapter,
+                context: {
+                  modelId,
+                  agentId: "skill-drafter",
+                  shopId: input.businessId ?? "",
+                  accountId: actor.account.id
+                }
+              })
+            : undefined);
+        if (!provider)
+          throw new Cp2Error(
+            503,
+            "skill_generation_unavailable",
+            "The existing model integration is not configured."
+          );
+        const completion = await provider.complete({
+          schemaVersion: "cp11-runtime-model-v1",
+          allowedTools: [],
+          agentInstructions:
+            'Draft a portable Agent Skills SKILL.md. Return JSON {"files":{"SKILL.md":"..."}} only. YAML frontmatter requires lowercase-hyphen name and description. Include no secrets or business records. Use only capability names supplied by the server. Never grant permissions, execute actions, or create schedules. Explain that recurring/event automation requires a separately approved existing workflow.',
+          message: JSON.stringify({
+            intent: description,
+            availableCapabilities: Object.keys(runtimeToolRegistry)
+          })
+        });
+        if (
+          completion.status !== "available" ||
+          !completion.outputText ||
+          completion.outputText.length > 262144
+        )
+          throw new Cp2Error(
+            503,
+            "skill_generation_failed",
+            "The model could not produce a bounded skill draft."
+          );
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(completion.outputText);
+        } catch {
+          throw new Cp2Error(
+            422,
+            "skill_generation_invalid",
+            "The model did not return a skill file mapping."
+          );
+        }
+        if (!parsed || typeof parsed !== "object" || !("files" in parsed))
+          throw new Cp2Error(422, "skill_generation_invalid", "Missing generated files.");
+        return (parsed as { files: Record<string, string> }).files;
+      }
+    });
     this.nativeRuntimeBindings = new NativeRuntimeBindingStore(this.platformDefaultRuntime);
     this.channelGateway = options.channelGateway ?? createChannelGatewayFromEnvironment({});
     this.emailMailboxProviderClient =
@@ -1190,6 +1308,28 @@ export class Cp2Store {
       recordAuditEvent: (input) => this.recordAuditEvent(input)
     });
     this.passkeyDomain = new PasskeyDomain({
+      createRecoveryGrant: (sessionId, accountId, now) => {
+        this.createAuthTransaction("recovery", accountId, now, {
+          expiresAt: new Date(now.getTime() + 5 * 60 * 1000).toISOString(),
+          metadata: { passkeyRecoverySessionId: sessionId }
+        });
+      },
+      recoveryGrantExpiry: (sessionId) =>
+        [...this.authTransactions.values()].find(
+          (record) =>
+            record.purpose === "recovery" &&
+            record.metadata.passkeyRecoverySessionId === sessionId &&
+            record.consumedAt === null
+        )?.expiresAt,
+      consumeRecoveryGrant: (sessionId) => {
+        for (const [id, record] of this.authTransactions) {
+          if (
+            record.purpose === "recovery" &&
+            record.metadata.passkeyRecoverySessionId === sessionId
+          )
+            this.authTransactions.delete(id);
+        }
+      },
       requireAnySession: (sessionId, now) => this.requireAnySession(sessionId, now),
       requireRecentlyAuthenticatedSession: (sessionId, now) =>
         this.requireRecentlyAuthenticatedSession(sessionId, now),
@@ -1316,7 +1456,8 @@ export class Cp2Store {
         this.pushOfflineOrderIntents(sessionId, intents),
       createChannelOrder: (input) => this.createChannelOrder(input),
       ensureGrogoniSessionContext: (session, now) => this.ensureGrogoniSessionContext(session, now),
-      createRuntimeTurn: (input) => this.agentRuntimeDomain.createRuntimeTurn(input),
+      handleSkillChat: (input) => this.handleAgentSkillChat(input),
+      createRuntimeTurn: (input) => this.createRuntimeTurn(input),
       agentModelRecoveryGuidance: (businessId, error) =>
         this.agentRuntimeDomain.agentModelRecoveryGuidance(businessId, error),
       attemptPublicAgentReply: (input) => this.attemptPublicAgentReply(input),
@@ -1340,7 +1481,31 @@ export class Cp2Store {
       sessions: this.sessions,
       customers: this.salesDomain.customersMap,
       quarantinedBusinessIds: this.quarantinedBusinessIds,
-      accountByDestination: this.accountByDestination,
+      resolveContactAccount: (channel, destination) =>
+        this.resolveIdentityAccount(channel, destination),
+      resolvePhonebookAccount: (ownerUserId, nodeId) => {
+        const node = this.networkDomain.requirePhonebookNode(ownerUserId, nodeId);
+        return node.grogoniUserId === null
+          ? null
+          : (this.users.get(node.grogoniUserId)?.accountId ?? null);
+      },
+      findPhonebookNode: (ownerUserId, counterpartAccountId) => {
+        const userId = this.userByAccount.get(counterpartAccountId);
+        return (
+          [...this.networkDomain.networkNodesMap.values()].find(
+            (node) =>
+              node.ownerUserId === ownerUserId && node.degree === 1 && node.grogoniUserId === userId
+          )?.id ?? null
+        );
+      },
+      verifiedNotificationEmail: (accountId) => {
+        const verified = this.verifiedBackupEmail(accountId);
+        const account = this.accounts.get(accountId);
+        return (
+          verified ??
+          (account?.primaryAuthChannel === "email" ? account.primaryAuthDestination : undefined)
+        );
+      },
       conversationAttachmentBlobStore: this.conversationAttachmentBlobStore,
       ...(this.options.workspaceRoot === undefined
         ? {}
@@ -1381,7 +1546,36 @@ export class Cp2Store {
         this.requireAuthorizedActor(sessionId, businessId, permission, now)
     });
     this.vocabularyDomain.initializeApprovedCache();
+    // Shared business threads are created by the customer, but an authorized participating
+    // business member executes using their own account runtime. Personal ownership stays strict.
+    const runtimeConversationForActor = (input: {
+      businessId: string;
+      accountId?: string;
+      conversationId?: string;
+    }) => {
+      const conversation =
+        input.conversationId === undefined
+          ? undefined
+          : this.messagingDomain.conversationsMap.get(input.conversationId);
+      if (
+        conversation === undefined ||
+        conversation.kind === "personal" ||
+        conversation.activeShopId !== input.businessId ||
+        input.accountId === undefined
+      )
+        return conversation;
+      const userId = this.userByAccount.get(input.accountId);
+      const member = [...this.memberships.values()].some(
+        (entry) => entry.businessId === input.businessId && entry.userId === userId
+      );
+      const participant = [...this.messagingDomain.conversationParticipantsMap.values()].some(
+        (entry) => entry.conversationId === conversation.id && entry.accountId === input.accountId
+      );
+      return member && participant ? { ...conversation, accountId: input.accountId } : conversation;
+    };
     this.agentRuntimeDomain = new AgentRuntimeDomain({
+      assertPortableSkillAction: (input, ref, tool, agentId) =>
+        this.agentSkills.assertAction(input, ref, tool, agentId),
       ...(options.businessTaskEvaluations === undefined
         ? {}
         : { businessTaskEvaluations: options.businessTaskEvaluations }),
@@ -1498,7 +1692,7 @@ export class Cp2Store {
         this.documentImportDomain.requireDocumentImport(businessId, importJobId),
       suppliersForBusiness: (businessId) => this.supplierDomain.suppliersForBusiness(businessId),
       purchaseReceipts: this.supplierDomain.purchaseReceiptsMap,
-      queryCatalogue: (input) => this.salesDomain.queryCatalogue(input),
+      queryCatalogue: (input) => this.queryCatalogue(input),
       listProducts: (input) => this.salesDomain.listProducts(input),
       listInvoices: (input) => this.salesDomain.listInvoices(input),
       listCustomerDebts: (input) => this.salesDomain.listCustomerDebts(input),
@@ -1581,10 +1775,15 @@ export class Cp2Store {
           );
         }
         try {
-          return this.nativeRuntimeBindings.resolveRuntimeBinding(
-            input,
-            this.messagingDomain.conversationsMap
-          );
+          const effectiveConversation = runtimeConversationForActor(input);
+          const conversations =
+            effectiveConversation === undefined
+              ? this.messagingDomain.conversationsMap
+              : new Map(this.messagingDomain.conversationsMap).set(
+                  effectiveConversation.id,
+                  effectiveConversation
+                );
+          return this.nativeRuntimeBindings.resolveRuntimeBinding(input, conversations);
         } catch (error) {
           if (error instanceof Cp2Error) return null;
           throw error;
@@ -1630,7 +1829,7 @@ export class Cp2Store {
         if (input.conversationId === undefined) {
           return this.nativeRuntimeBindings.ensureDefaultRuntimeBinding(input);
         }
-        const conversation = this.messagingDomain.conversationsMap.get(input.conversationId);
+        const conversation = runtimeConversationForActor(input);
         if (
           conversation === undefined ||
           conversation.accountId !== input.accountId ||
@@ -1645,7 +1844,7 @@ export class Cp2Store {
         const result = this.nativeRuntimeBindings.ensureDefaultRuntimeBinding(input);
         if (conversation.runtimeBindingId !== result.binding.id) {
           this.messagingDomain.conversationsMap.set(conversation.id, {
-            ...conversation,
+            ...this.messagingDomain.conversationsMap.get(conversation.id)!,
             runtimeBindingId: result.binding.id,
             updatedAt: input.checkedAt
           });
@@ -1694,6 +1893,14 @@ export class Cp2Store {
         : { runtimeModelProvider: this.options.runtimeModelProvider })
     });
     this.runtimeHandoffDomain = new RuntimeHandoffDomain({
+      canExecuteBusinessConversation: (conversationId, accountId, businessId) => {
+        const conversation = runtimeConversationForActor({ conversationId, accountId, businessId });
+        return (
+          conversation?.kind !== "personal" &&
+          conversation?.activeShopId === businessId &&
+          conversation.accountId === accountId
+        );
+      },
       requireHandoffOwner: (businessId, userId) => {
         if (this.requireMembership(businessId, userId).role !== "owner")
           throw new Cp2Error(
@@ -1923,6 +2130,8 @@ export class Cp2Store {
   // `commerce` (services/api/src/cp2/domains/commerce/store.ts) - accessed via its map getters for
   // the generic snapshot/restore/Postgres-persistence/account-deletion sweeps below.
   private readonly commerce: CommerceDomain;
+  private readonly buyerShoppingSessions = new Map<string, BuyerShoppingSession>();
+  private readonly buyerShoppingTurnsInFlight = new Set<string>();
   private readonly supplierDomain: SupplierDomain;
   private readonly logisticsDomain: LogisticsDomain;
   private readonly commercialRecordsDomain: CommercialRecordsDomain;
@@ -2917,13 +3126,16 @@ export class Cp2Store {
     const account = this.requireAccount(accountId);
     this.requireAccountAuthenticationAllowed(account);
     const factors = this.activeMfaFactors(accountId);
-    if (factors.length > 0) {
+    if (factors.length > 0 || this.verifiedBackupEmail(accountId)) {
       const transaction = this.createAuthTransaction("login_mfa", accountId, now);
       this.recordSecurityEvent("auth.mfa_requested", accountId, "success", now, {});
       return {
         mfaRequired: true,
         transactionId: transaction.id,
-        factors: ["totp", "recovery_code"],
+        factors: [
+          ...(factors.length > 0 ? ["totp", "recovery_code"] : []),
+          ...(this.verifiedBackupEmail(accountId) ? ["email"] : [])
+        ],
         expiresAt: transaction.expiresAt
       };
     }
@@ -2991,7 +3203,7 @@ export class Cp2Store {
 
   verifyMfa(input: {
     transactionId: string;
-    factor: "totp" | "recovery_code";
+    factor: "totp" | "recovery_code" | "email";
     code: string;
     now?: Date;
   }): AuthSessionView {
@@ -2999,7 +3211,24 @@ export class Cp2Store {
     const transaction = this.requireAuthTransaction(input.transactionId, "login_mfa", now);
     const accountId = transaction.accountId!;
     let verified = false;
-    if (input.factor === "totp") {
+    if (input.factor === "email") {
+      const challenge =
+        transaction.providerChallengeId === null
+          ? undefined
+          : this.otpDomain.otpChallengesMap.get(transaction.providerChallengeId);
+      if (
+        challenge &&
+        challenge.destination === this.verifiedBackupEmail(accountId) &&
+        challenge.purpose === "recovery" &&
+        challenge.verifiedAt === null &&
+        Date.parse(challenge.expiresAt) > now.getTime() &&
+        challenge.attempts < challenge.maxAttempts
+      ) {
+        challenge.attempts += 1;
+        verified = safeHashEqual(challenge.codeHash, hashOtp(challenge.id, input.code));
+        if (verified) challenge.verifiedAt = now.toISOString();
+      }
+    } else if (input.factor === "totp") {
       const factor = this.activeMfaFactors(accountId)[0];
       if (factor !== undefined) {
         const step = verifyTotp(
@@ -3761,6 +3990,12 @@ export class Cp2Store {
     return this.grogoniSessionContextView(session, next, now);
   }
 
+  addConversationParticipant(
+    ...args: Parameters<MessagingDomain["addConversationParticipant"]>
+  ): ReturnType<MessagingDomain["addConversationParticipant"]> {
+    return this.messagingDomain.addConversationParticipant(...args);
+  }
+
   createConversation(
     ...args: Parameters<MessagingDomain["createConversation"]>
   ): ReturnType<MessagingDomain["createConversation"]> {
@@ -3870,6 +4105,12 @@ export class Cp2Store {
     ...args: Parameters<MessagingDomain["createChannelIdentityLinkGrant"]>
   ): ReturnType<MessagingDomain["createChannelIdentityLinkGrant"]> {
     return this.messagingDomain.createChannelIdentityLinkGrant(...args);
+  }
+  channelWebhookChallenge(...args: Parameters<MessagingDomain["channelWebhookChallenge"]>) {
+    return this.messagingDomain.channelWebhookChallenge(...args);
+  }
+  ingestChannelWebhookBatch(...args: Parameters<MessagingDomain["ingestChannelWebhookBatch"]>) {
+    return this.messagingDomain.ingestChannelWebhookBatch(...args);
   }
   ingestChannelWebhook(
     ...args: Parameters<MessagingDomain["ingestChannelWebhook"]>
@@ -4267,6 +4508,86 @@ export class Cp2Store {
     return this.agentRuntimeDomain.activateAiModel(...args);
   }
 
+  getConversationModelSelection(sessionId: string | null, conversationId: string) {
+    const actor = this.requirePinVerifiedSession(sessionId, new Date());
+    const view = this.messagingDomain.getConversation({ sessionId, conversationId });
+    if (
+      view.conversation.accountId !== actor.account.id ||
+      view.conversation.conversationType !== "DAEMON"
+    )
+      throw new Cp2Error(404, "conversation_not_found", "Conversation was not found.");
+    const models = this.listAiModels()
+      .filter((m) => m.available && m.runtimeAvailability?.backend === "configured")
+      .map((m) => ({ id: m.id, label: m.label }));
+    try {
+      const runtime = this.resolveRuntimeBinding(conversationId);
+      return {
+        selectedModelId: runtime.selected.model.id,
+        models,
+        available: true,
+        errorCode: null
+      };
+    } catch (error) {
+      return {
+        selectedModelId: null,
+        models,
+        available: false,
+        errorCode: error instanceof Cp2Error ? error.code : "MODEL_UNAVAILABLE"
+      };
+    }
+  }
+
+  async selectConversationModel(sessionId: string | null, conversationId: string, modelId: string) {
+    this.getConversationModelSelection(sessionId, conversationId);
+    const actor = this.requirePinVerifiedSession(sessionId, new Date());
+    const conversation = this.messagingDomain.requireAccountConversation(
+      conversationId,
+      actor.account.id
+    );
+    if (conversation.activeShopId) this.requireMembership(conversation.activeShopId, actor.user.id);
+    const model = this.listAiModels().find(
+      (m) => m.id === modelId && m.available && m.runtimeAvailability?.backend === "configured"
+    );
+    if (!model || !model.hostedExecutionTarget)
+      throw new Cp2Error(400, "model_unavailable", "Choose a configured model.");
+    const adapter = this.modelRuntimeAdapterResolver?.({
+      modelId,
+      executionTarget: model.hostedExecutionTarget,
+      agentId: `account-${actor.account.id}-agent`,
+      shopId: conversation.activeShopId ?? ""
+    });
+    if (!adapter)
+      throw new Cp2Error(503, "model_unavailable", "The model provider is unavailable.");
+    const health = await adapter.healthCheck({
+      modelId,
+      agentId: `account-${actor.account.id}-agent`,
+      shopId: conversation.activeShopId ?? "",
+      accountId: actor.account.id,
+      conversationId,
+      signal: AbortSignal.timeout(20000)
+    });
+    if (!health.available)
+      throw new Cp2Error(
+        503,
+        health.errorCode ?? "model_unavailable",
+        "The selected model is unavailable."
+      );
+    const binding = this.nativeRuntimeBindings.selectConversationModel({
+      accountId: actor.account.id,
+      businessId: conversation.activeShopId,
+      conversationId,
+      model,
+      executionTarget: model.hostedExecutionTarget,
+      checkedAt: new Date().toISOString(),
+      updatedBy: actor.user.id
+    });
+    this.messagingDomain.conversationsMap.set(conversationId, {
+      ...conversation,
+      runtimeBindingId: binding.id
+    });
+    return this.getConversationModelSelection(sessionId, conversationId);
+  }
+
   /** In-process, state-only resolver. It never performs a network probe. */
   resolveRuntimeBinding(conversationId: string): ResolvedNativeRuntimeBinding {
     const conversation = this.messagingDomain.conversationsMap.get(conversationId);
@@ -4565,6 +4886,10 @@ export class Cp2Store {
   setAgentTurnQueue(queue: AgentTurnQueue): void {
     this.messagingDomain.setAgentTurnQueue(queue);
   }
+  ensureHelpConversations(...args: Parameters<MessagingDomain["ensureHelpConversations"]>) {
+    return this.messagingDomain.ensureHelpConversations(...args);
+  }
+
   listConversations(
     ...args: Parameters<MessagingDomain["listConversations"]>
   ): ReturnType<MessagingDomain["listConversations"]> {
@@ -4615,6 +4940,10 @@ export class Cp2Store {
   ): ReturnType<MessagingDomain["recordMessageHandoff"]> {
     return this.messagingDomain.recordMessageHandoff(...args);
   }
+  deliverDaemonTask(...args: Parameters<MessagingDomain["deliverDaemonTask"]>): void {
+    this.messagingDomain.deliverDaemonTask(...args);
+  }
+
   createConversationMessage(
     ...args: Parameters<MessagingDomain["createConversationMessage"]>
   ): ReturnType<MessagingDomain["createConversationMessage"]> {
@@ -5746,6 +6075,157 @@ export class Cp2Store {
     return this.commerce.createUnifiedCheckout(...args);
   }
 
+  async createBuyerShoppingTurn(input: {
+    sessionId: string | null;
+    shoppingSessionId: string;
+    requestId: string;
+    message: string;
+    signal?: AbortSignal;
+  }): Promise<BuyerShoppingTurnResult> {
+    const actor = this.requirePinVerifiedSession(input.sessionId, new Date());
+    let shopping = this.buyerShoppingSessions.get(input.shoppingSessionId);
+    if (shopping && shopping.accountId !== actor.account.id) {
+      throw new Cp2Error(404, "buyer_shopping_session_not_found", "Shopping chat was not found.");
+    }
+    const modelId = this.platformDefaultRuntime.modelId;
+    const agentId = `buyer-assistant:${actor.account.id}`;
+    const adapter = this.modelRuntimeAdapterResolver?.({
+      modelId,
+      executionTarget: this.platformDefaultRuntime.executionTarget,
+      agentId,
+      shopId: ""
+    });
+    const provider =
+      this.options.runtimeModelProviderResolver?.(modelId) ??
+      this.options.runtimeModelProvider ??
+      (adapter
+        ? runtimeProviderFromAdapter({
+            adapter,
+            context: {
+              agentId,
+              modelId,
+              shopId: "",
+              accountId: actor.account.id,
+              conversationId: input.shoppingSessionId,
+              ...(input.signal ? { signal: input.signal } : {})
+            }
+          })
+        : undefined);
+    if (!provider)
+      throw new Cp2Error(
+        503,
+        "buyer_assistant_unavailable",
+        "The shopping assistant is not configured."
+      );
+    if (!shopping) {
+      const timestamp = new Date().toISOString();
+      shopping = {
+        id: input.shoppingSessionId,
+        accountId: actor.account.id,
+        browserSessionIds: [],
+        observedUrls: [],
+        history: [],
+        pendingCheckout: null,
+        turns: [],
+        createdAt: timestamp,
+        updatedAt: timestamp
+      };
+      this.buyerShoppingSessions.set(shopping.id, shopping);
+    }
+    if (this.buyerShoppingTurnsInFlight.has(shopping.id)) {
+      throw new Cp2Error(
+        409,
+        "buyer_shopping_turn_in_progress",
+        "Wait for the current shopping request to finish."
+      );
+    }
+    this.buyerShoppingTurnsInFlight.add(shopping.id);
+    try {
+      return await runBuyerAssistant(shopping, input, {
+        provider,
+        quote: (items) => this.commerce.quoteBuyerCheckout({ sessionId: input.sessionId, items }),
+        checkout: (items, idempotencyKey) =>
+          this.commerce.createUnifiedCheckout({
+            sessionId: input.sessionId,
+            items,
+            idempotencyKey
+          }).id,
+        execute: async (tool, values, current) => {
+          // Recheck authentication before every operation, including after a slow model call.
+          this.requirePinVerifiedSession(input.sessionId, new Date());
+          if (tool === "commerce.search") {
+            const query = String(values.query ?? "");
+            if (this.options.buyerShoppingSearch) {
+              const found = await this.options.buyerShoppingSearch({
+                sessionId: input.sessionId,
+                query
+              });
+              for (const business of found.businesses)
+                if (!this.businesses.has(business.id)) this.businesses.set(business.id, business);
+              for (const product of found.products)
+                if (!this.salesDomain.productsMap.has(product.id))
+                  this.salesDomain.productsMap.set(product.id, product);
+              return found.feed;
+            }
+            return this.commerce.searchBuyFeed({ sessionId: input.sessionId, query });
+          }
+          let browserSessionId = values.sessionId;
+          if (tool === "commerce.website.open" && !browserSessionId) {
+            const url = new URL(String(values.url));
+            const created = await this.requireComputerRuntime().createSession(input.sessionId, {
+              businessId: null,
+              conversationId: null,
+              taskId: null,
+              profileId: null,
+              agentId,
+              modelId,
+              executionHostId: "browser-computer",
+              runtimeInstanceId: current.id,
+              externalSurface: { id: url.origin, type: "web", provider: url.hostname }
+            });
+            browserSessionId = created.id;
+            current.browserSessionIds.push(created.id);
+          }
+          if (
+            typeof browserSessionId !== "string" ||
+            !current.browserSessionIds.includes(browserSessionId)
+          ) {
+            throw new Cp2Error(
+              404,
+              "buyer_browser_session_not_found",
+              "This browser session does not belong to this shopping chat."
+            );
+          }
+          const kind =
+            tool === "commerce.website.open" || tool === "computer.navigate"
+              ? "navigate"
+              : tool === "computer.scroll"
+                ? "scroll"
+                : "observe";
+          const observation = await this.requireComputerRuntime().perform(input.sessionId, {
+            id: randomUUID(),
+            sessionId: browserSessionId,
+            kind,
+            target: {
+              ...(typeof values.url === "string" ? { url: values.url } : {}),
+              ...(typeof values.text === "string" ? { text: values.text } : {})
+            },
+            risk: "READ",
+            semanticIntent: "Read retailer products without placing orders or processing payments."
+          });
+          const result = observation as { url?: string; observation?: { url?: string } };
+          const observedUrl = result.url ?? result.observation?.url;
+          if (observedUrl && !current.observedUrls.includes(observedUrl))
+            current.observedUrls.push(observedUrl);
+          current.observedUrls = current.observedUrls.slice(-100);
+          return { sessionId: browserSessionId, observation };
+        }
+      });
+    } finally {
+      this.buyerShoppingTurnsInFlight.delete(shopping.id);
+    }
+  }
+
   syncShopSystemCatalogue(input: { accessToken: string; products: unknown[]; now?: Date }): {
     products: ProductSummary[];
   } {
@@ -5983,7 +6463,112 @@ export class Cp2Store {
   confirmReceiptOCRJob(
     ...args: Parameters<SupplierDomain["confirmReceiptOCRJob"]>
   ): ReturnType<SupplierDomain["confirmReceiptOCRJob"]> {
-    return this.supplierDomain.confirmReceiptOCRJob(...args);
+    const [input] = args;
+    if (!input.receiveInventory) return this.supplierDomain.confirmReceiptOCRJob(input);
+    this.requireAuthorizedActor(input.sessionId, input.businessId, "import:write", input.now);
+    const job = this.supplierDomain.receiptOCRJobsMap.get(input.ocrJobId);
+    if (!job || job.businessId !== input.businessId)
+      throw new Cp2Error(404, "receipt_not_found", "Receipt draft not found.");
+    if (job.structuredExtraction.deliveryBinding)
+      return this.supplierDomain.confirmReceiptOCRJob(input);
+    const products = job.structuredExtraction.products;
+    if (
+      !products.length ||
+      products.some(
+        (p) =>
+          !p.itemName.trim() ||
+          !Number.isFinite(p.quantity) ||
+          p.quantity <= 0 ||
+          !Number.isFinite(p.unitPrice) ||
+          p.unitPrice < 0
+      )
+    )
+      throw new Cp2Error(
+        400,
+        "delivery_products_required",
+        "Review the delivered products and quantities first."
+      );
+    const existing = [...this.salesDomain.productsMap.values()].filter(
+      (p) => p.businessId === input.businessId
+    );
+    const plan = products.map((item) => {
+      const matches = existing.filter((p) =>
+        item.sku
+          ? p.sku?.toLowerCase() === item.sku.toLowerCase()
+          : p.name.toLowerCase() === item.itemName.toLowerCase()
+      );
+      if (matches.length > 1)
+        throw new Cp2Error(
+          409,
+          "delivery_product_ambiguous",
+          `More than one product matches ${item.itemName}. Add a unique SKU before confirming.`
+        );
+      this.requireAuthorizedActor(input.sessionId, input.businessId, "inventory:adjust", input.now);
+      if (!matches.length)
+        this.requireAuthorizedActor(input.sessionId, input.businessId, "product:write", input.now);
+      return { item, existing: matches[0] };
+    });
+    const before = this.snapshot();
+    try {
+      const receipt = this.supplierDomain.confirmReceiptOCRJob(input);
+      const bindings = plan.map(({ item, existing }, lineIndex) => {
+        // A repeated line may refer to a product created earlier in this same delivery.
+        const product =
+          existing ??
+          [...this.salesDomain.productsMap.values()].find(
+            (p) =>
+              p.businessId === input.businessId &&
+              (item.sku
+                ? p.sku?.toLowerCase() === item.sku.toLowerCase()
+                : p.name.toLowerCase() === item.itemName.toLowerCase())
+          ) ??
+          this.createProduct({
+            sessionId: input.sessionId,
+            businessId: input.businessId,
+            product: {
+              name: item.itemName,
+              sku: item.sku,
+              unit: item.unit,
+              quantity: 0,
+              buyingPrice: item.unitPrice
+            },
+            ...(input.now ? { now: input.now } : {})
+          });
+        const current = this.salesDomain.productsMap.get(product.id)!;
+        const result = this.adjustProductStock({
+          sessionId: input.sessionId,
+          businessId: input.businessId,
+          productId: product.id,
+          adjustment: {
+            quantityAfter: current.quantity + item.quantity,
+            reason: `Delivery receipt ${receipt.id}`
+          },
+          ...(input.now ? { now: input.now } : {})
+        });
+        return {
+          lineIndex,
+          receiptLineItemId: receipt.lineItems[lineIndex]!.id,
+          productId: product.id,
+          movementId: result.movement.id
+        };
+      });
+      const confirmed = this.supplierDomain.receiptOCRJobsMap.get(job.id)!;
+      this.supplierDomain.receiptOCRJobsMap.set(job.id, {
+        ...confirmed,
+        structuredExtraction: {
+          ...confirmed.structuredExtraction,
+          deliveryBinding: {
+            purchaseReceiptId: receipt.id,
+            receivedAt: (input.now ?? new Date()).toISOString(),
+            products: bindings
+          }
+        }
+      });
+      return receipt;
+    } catch (error) {
+      this.hydrateSnapshot(before);
+      throw error;
+    }
   }
 
   correctReceiptOCRJob(
@@ -7748,7 +8333,210 @@ export class Cp2Store {
   createRuntimeTurn(
     ...args: Parameters<AgentRuntimeDomain["createRuntimeTurn"]>
   ): ReturnType<AgentRuntimeDomain["createRuntimeTurn"]> {
-    return this.agentRuntimeDomain.createRuntimeTurn(...args);
+    const input = args[0];
+    const match = /^\/skill\s+(\S+)\s+([\s\S]+)$/.exec(input.message);
+    if (match && input.confirmationToken === undefined) {
+      const profile = this.agentRuntimeDomain.getAgentProfile({
+        sessionId: input.sessionId,
+        businessId: input.businessId
+      });
+      const active = this.agentSkills.activate(input, match[1]!, profile.agentId);
+      const actor = this.requireAuthorizedSession(
+        input.sessionId,
+        input.businessId,
+        "business:read",
+        input.now ?? new Date()
+      );
+      const recordOutcome = (
+        outcome: string,
+        capability: string | null,
+        failureCategory: string | null
+      ) =>
+        this.recordAuditEvent({
+          type: "agent_skill.execution",
+          aggregateType: "agent_skill",
+          aggregateId: active.ref.id,
+          actorId: actor.user.id,
+          occurredAt: new Date().toISOString(),
+          payload: {
+            skillId: active.ref.id,
+            skillVersion: active.ref.version,
+            skillDigest: active.ref.digest,
+            agentId: profile.agentId,
+            businessId: input.businessId,
+            capability,
+            outcome,
+            failureCategory
+          }
+        });
+      return this.agentRuntimeDomain
+        .createRuntimeTurn({
+          ...input,
+          message: match[2]!,
+          portableSkill: { ...active.ref, context: active.context, grants: active.grants }
+        })
+        .then(
+          (result) => {
+            recordOutcome(
+              result.turn.status,
+              result.turn.plan.toolName,
+              result.turn.verification.ok ? null : "authorization_or_validation"
+            );
+            return result;
+          },
+          (error) => {
+            recordOutcome(
+              "failed",
+              null,
+              error instanceof Cp2Error ? error.code : "execution_failed"
+            );
+            throw error;
+          }
+        );
+    }
+    const profile = this.agentRuntimeDomain.getAgentProfile({
+      sessionId: input.sessionId,
+      businessId: input.businessId
+    });
+    const catalog = this.agentSkills.catalog(input, profile.agentId);
+    return this.agentRuntimeDomain.createRuntimeTurn({
+      ...input,
+      ...(catalog.length ? { portableCatalog: JSON.stringify(catalog) } : {})
+    });
+  }
+  async handleAgentSkillChat(input: SkillRequest & { message: string }): Promise<string | null> {
+    const naturalDraft = /^(?:create|make) (?:a )?(?:business )?skill:\s*([\s\S]+)$/i.exec(
+      input.message
+    );
+    if (naturalDraft)
+      return this.handleAgentSkillChat({ ...input, message: `/skills create ${naturalDraft[1]}` });
+    if (!input.message.startsWith("/skills")) return null;
+    const match = /^\/skills(?:\s+(\S+))?(?:\s+([\s\S]*))?$/.exec(input.message);
+    if (!match) return null;
+    const operation = match[1] ?? "list";
+    const rest = match[2] ?? "";
+    if (operation === "create") {
+      const draft = await this.generateAgentSkill(input, rest);
+      return `Draft ${draft.id} (not installed; no permissions granted). Review the full package and proposed behavior below. Installation never schedules automation.\n${JSON.stringify(draft)}\nAfter review: /skills approve ${draft.id} ${draft.reviewDigest}`;
+    }
+    if (operation === "list") return JSON.stringify(this.listAgentSkills(input));
+    if (operation === "search") return JSON.stringify(this.searchAgentSkills(input, rest));
+    const [id, ...words] = rest.split(/\s+/);
+    if (!id) throw new Cp2Error(400, "skill_command_invalid", "Provide a skill identifier.");
+    if (operation === "review") return JSON.stringify(this.inspectAgentSkill(input, id));
+    if (operation === "export") return JSON.stringify(this.exportAgentSkill(input, id));
+    if (operation === "approve") {
+      const installed = this.transitionAgentSkill(input, id, "install", words[0]);
+      return `${JSON.stringify(installed)}\nEnable when ready: /skills enable ${id}. Installation does not create a schedule.`;
+    }
+    if (operation === "resource") {
+      const request = JSON.parse(words.join(" ")) as {
+        version: number;
+        digest: string;
+        path: string;
+      };
+      return JSON.stringify(
+        this.readAgentSkillResource(
+          input,
+          { id, version: request.version, digest: request.digest },
+          request.path
+        )
+      );
+    }
+    if (["enable", "disable", "uninstall", "revoke"].includes(operation))
+      return JSON.stringify(
+        this.transitionAgentSkill(
+          input,
+          id,
+          operation as "enable" | "disable" | "uninstall" | "revoke"
+        )
+      );
+    if (operation === "edit")
+      return JSON.stringify(
+        this.updateAgentSkill(input, id, JSON.parse(words.join(" ")) as SkillInput)
+      );
+    if (operation === "publish")
+      return JSON.stringify(
+        this.publishAgentSkill(
+          input,
+          id,
+          JSON.parse(words.join(" ")) as Parameters<AgentSkillsDomain["publish"]>[2]
+        )
+      );
+    if (operation === "install-public") {
+      const body = JSON.parse(words.join(" ")) as { digest: string; grants: string[] };
+      return JSON.stringify(this.installPublicAgentSkill(input, id, body.digest, body.grants));
+    }
+    throw new Cp2Error(
+      400,
+      "skill_command_invalid",
+      "Use /skills list, create, review, edit, approve, enable, disable, uninstall, search, publish, install-public or export."
+    );
+  }
+  listAgentSkills(input: SkillRequest) {
+    return this.agentSkills.list(input);
+  }
+  inspectAgentSkill(input: SkillRequest, id: string) {
+    return this.agentSkills.inspect(input, id);
+  }
+  draftAgentSkill(input: SkillRequest, values: SkillInput) {
+    return this.agentSkills.draft(input, values);
+  }
+  generateAgentSkill(input: SkillRequest, description: string) {
+    return this.agentSkills.generate(input, description);
+  }
+  updateAgentSkill(input: SkillRequest, id: string, values: SkillInput) {
+    return this.agentSkills.update(input, id, values);
+  }
+  transitionAgentSkill(
+    input: SkillRequest,
+    id: string,
+    operation: Parameters<AgentSkillsDomain["transition"]>[2],
+    digest?: string
+  ) {
+    return this.agentSkills.transition(input, id, operation, digest);
+  }
+  publishAgentSkill(
+    input: SkillRequest,
+    id: string,
+    review: Parameters<AgentSkillsDomain["publish"]>[2]
+  ) {
+    return this.agentSkills.publish(input, id, review);
+  }
+  searchAgentSkills(input: SkillRequest, query?: string) {
+    return this.agentSkills.search(input, query);
+  }
+  installPublicAgentSkill(input: SkillRequest, id: string, digest: string, grants: string[]) {
+    return this.agentSkills.installPublic(input, id, digest, grants);
+  }
+  exportAgentSkill(input: SkillRequest, id: string) {
+    return this.agentSkills.export(input, id);
+  }
+  readAgentSkillResource(
+    input: SkillRequest,
+    ref: Parameters<AgentSkillsDomain["resource"]>[1],
+    resource: string
+  ) {
+    return this.agentSkills.resource(
+      input,
+      ref,
+      resource,
+      input.businessId
+        ? this.agentRuntimeDomain.currentAgentProfile(input.businessId, new Date()).agentId
+        : undefined
+    );
+  }
+  daemonConversationHistory(...args: Parameters<MessagingDomain["daemonConversationHistory"]>) {
+    return this.messagingDomain.daemonConversationHistory(...args);
+  }
+  getNetworkPrivacy(...args: Parameters<NetworkDomain["getNetworkPrivacy"]>) {
+    return this.networkDomain.getNetworkPrivacy(...args);
+  }
+  updateNetworkPrivacy(...args: Parameters<NetworkDomain["updateNetworkPrivacy"]>) {
+    return this.networkDomain.updateNetworkPrivacy(...args);
+  }
+  blockNetworkContact(...args: Parameters<NetworkDomain["blockNetworkContact"]>) {
+    return this.networkDomain.blockNetworkContact(...args);
   }
   syncPhoneContacts(
     ...args: Parameters<NetworkDomain["syncPhoneContacts"]>
@@ -8078,6 +8866,7 @@ export class Cp2Store {
       e2eeDevices: [...this.messagingDomain.e2eeDevicesMap.values()],
       pushSubscriptions: [...this.messagingDomain.pushSubscriptionsMap.values()],
       marketplaceIntroStates: [...this.marketplaceIntroStates.values()],
+      agentSkills: structuredClone([...this.agentSkills.records.values()]),
       activeAiModels: [...this.agentRuntimeDomain.activeAiModelsMap.values()],
       agentProfiles: [...this.agentRuntimeDomain.agentProfilesMap.values()].map(
         cloneBusinessAgentProfile
@@ -8191,6 +8980,7 @@ export class Cp2Store {
       buyOrders: [...this.commerce.buyOrdersMap.values()],
       statusOrders: [...this.commerce.statusOrdersMap.values()],
       unifiedCheckouts: [...this.commerce.unifiedCheckoutsMap.values()],
+      buyerShoppingSessions: [...this.buyerShoppingSessions.values()],
       customers: [...this.salesDomain.customersMap.values()],
       suppliers: [...this.supplierDomain.suppliersMap.values()],
       salesAgents: [...this.supplierDomain.salesAgentsMap.values()],
@@ -8287,12 +9077,16 @@ export class Cp2Store {
     this.sessionContexts.clear();
     this.messagingDomain.clear();
     this.marketplaceIntroStates.clear();
+    this.agentSkills.records.clear();
+    for (const record of snapshot.agentSkills ?? [])
+      this.agentSkills.records.set(record.id, structuredClone(record));
     this.agentRuntimeDomain.clear();
     this.modelTemplatesDomain.clear();
     this.vocabularyDomain.clear();
     this.nativeRuntimeBindings.clear();
     this.runtimeHandoffDomain.clear();
     this.computerRuntimeDomain.clear();
+    this.buyerShoppingSessions.clear();
     this.modelCatalog.clear();
     this.agentCatalog.clear();
     this.platformOperators.clear();
@@ -8426,6 +9220,9 @@ export class Cp2Store {
     for (const order of snapshot.buyOrders ?? []) this.commerce.buyOrdersMap.set(order.id, order);
     for (const order of snapshot.statusOrders ?? []) {
       this.commerce.statusOrdersMap.set(order.id, order);
+    }
+    for (const shopping of snapshot.buyerShoppingSessions ?? []) {
+      this.buyerShoppingSessions.set(shopping.id, shopping);
     }
     for (const checkout of snapshot.unifiedCheckouts ?? []) {
       this.commerce.unifiedCheckoutsMap.set(checkout.id, checkout);
@@ -8651,7 +9448,11 @@ export class Cp2Store {
       this.networkDomain.networkRoutesMap.set(route.id, route);
     }
 
-    for (const contactHash of snapshot.contactHashes ?? []) {
+    for (const stored of snapshot.contactHashes ?? []) {
+      const contactHash = {
+        ...stored,
+        hashValue: protectStoredContactHash(stored.hashType, stored.hashValue)
+      };
       this.networkDomain.contactHashesMap.set(contactHash.id, contactHash);
       this.networkDomain.contactHashIdByValueMap.set(
         `${contactHash.ownerUserId}:${contactHash.hashType}:${contactHash.hashValue}`,
@@ -8709,6 +9510,9 @@ export class Cp2Store {
         this.modelCatalog.set(model.id, cloneModelCatalogEntry(model));
       }
     }
+    for (const model of this.options.configuredModels ?? [])
+      if (!this.modelCatalog.has(model.id))
+        this.modelCatalog.set(model.id, cloneModelCatalogEntry(model));
     // Existing snapshots predate the hosted default; add it without changing selected bindings.
     const hostedDefault = inferenceRouterSeedModels.find((model) => model.id === "gpt-6-luna");
     if (hostedDefault && !this.modelCatalog.has(hostedDefault.id)) {
@@ -9395,6 +10199,79 @@ export class Cp2Store {
     this.markSessionPinVerified(sessionRecord.id, now);
     this.recordSecurityEvent("auth.password_reset", account.id, "success", now, {});
     return this.requireAnySession(sessionRecord.id, now);
+  }
+
+  recoverPasswordWithPasskey(input: {
+    sessionId: string | null;
+    password: string;
+    now?: Date;
+  }): AuthSessionView {
+    const now = input.now ?? new Date();
+    const session = this.requireAnySession(input.sessionId, now);
+    this.passkeyDomain.requireCredentialRecoveryGrant(session.session.id, now);
+    validatePassword(input.password);
+    this.passwordCredentials.set(
+      session.account.id,
+      createPasswordCredential(session.account.id, input.password, now)
+    );
+    this.passkeyDomain.consumePinRecoveryGrant(session.session.id);
+    for (const candidate of this.sessions.values()) {
+      if (
+        candidate.accountId === session.account.id &&
+        candidate.id !== session.session.id &&
+        candidate.revokedAt === null
+      ) {
+        candidate.revokedAt = now.toISOString();
+        candidate.revocationReason = "password_reset";
+      }
+    }
+    this.recordSecurityEvent("auth.password_reset", session.account.id, "success", now, {
+      method: "passkey"
+    });
+    return this.requireAnySession(session.session.id, now);
+  }
+
+  private verifiedBackupEmail(accountId: string): string | undefined {
+    return [...this.accountIdentities.values()].find(
+      (identity) =>
+        identity.accountId === accountId &&
+        identity.type === "email" &&
+        identity.verifiedAt !== null
+    )?.normalizedValue;
+  }
+
+  challengePinLoginMfa(
+    session: AuthSessionView,
+    now = new Date()
+  ): { mfaRequired: true; transactionId: string; factors: string[] } | null {
+    if (
+      !this.verifiedBackupEmail(session.account.id) &&
+      this.activeMfaFactors(session.account.id).length === 0
+    )
+      return null;
+    const record = this.sessions.get(session.session.id)!;
+    record.revokedAt = now.toISOString();
+    record.revocationReason = "mfa_pending";
+    const transaction = this.createAuthTransaction("login_mfa", session.account.id, now);
+    return {
+      mfaRequired: true,
+      transactionId: transaction.id,
+      factors: [
+        ...(this.activeMfaFactors(session.account.id).length > 0 ? ["totp", "recovery_code"] : []),
+        ...(this.verifiedBackupEmail(session.account.id) ? ["email"] : [])
+      ]
+    };
+  }
+
+  beginEmailMfa(input: { transactionId: string; now?: Date }) {
+    const now = input.now ?? new Date();
+    const transaction = this.requireAuthTransaction(input.transactionId, "login_mfa", now);
+    const destination = this.verifiedBackupEmail(transaction.accountId!);
+    if (!destination)
+      throw new Cp2Error(400, "email_mfa_unavailable", "No verified backup email is available.");
+    const otp = this.requestOtp({ channel: "email", destination, purpose: "recovery", now });
+    transaction.providerChallengeId = otp.challengeId;
+    return otp;
   }
 
   changePassword(input: {
@@ -12156,6 +13033,7 @@ export class Cp2Store {
         this.messagingDomain.conversationTypingMap,
         scope
       );
+      deletedRecordCount += deleteScopedMapRecords(this.agentSkills.records, scope);
       deletedRecordCount += deleteScopedMapRecords(this.marketplaceIntroStates, scope);
       deletedRecordCount += deleteScopedMapRecords(
         this.agentRuntimeDomain.activeAiModelsMap,
@@ -12206,6 +13084,7 @@ export class Cp2Store {
         scope
       );
       deletedRecordCount += this.computerRuntimeDomain.deleteAccount(request.accountId);
+      deletedRecordCount += deleteScopedMapRecords(this.buyerShoppingSessions, scope);
       deletedRecordCount += deleteScopedMapRecords(this.salesDomain.productFieldSchemasMap, scope);
       deletedRecordCount += deleteScopedMapRecords(this.salesDomain.productsMap, scope);
       deletedRecordCount += deleteScopedMapRecords(this.salesDomain.productMediaMap, scope);

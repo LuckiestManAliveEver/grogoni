@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { daemonTaskUpdatedEvent } from "../daemon-chat";
 import { apiCloudFetch } from "../lib/api";
 import { isExplicitOfflineMode } from "../offline-runtime";
 import { idleLoadedDeviceModel } from "../device-models";
@@ -56,6 +57,10 @@ export function useDaemonLane(accountId: string | null): void {
     const stop = startBrowserDaemonLane({
       request: (path, init) => apiCloudFetch(path, init),
       device: deviceRunner,
+      report: (event) => {
+        if (event.type === "server_completed" || event.type === "device_completed")
+          window.dispatchEvent(new Event(daemonTaskUpdatedEvent));
+      },
       isActive: () =>
         document.visibilityState === "visible" && navigator.onLine && !isExplicitOfflineMode(),
       exclusive: async (action) =>

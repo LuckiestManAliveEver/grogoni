@@ -206,6 +206,54 @@ describe("passkey authentication", () => {
     expect(oldPin.statusCode).toBe(401);
     expect(newPin.statusCode).toBe(200);
 
+    const normalPasswordAuth = await authenticatePasskey(app, "login");
+    const resetPassword = (
+      cookie: string,
+      password = "new secure recovery password",
+      confirmation = password
+    ) =>
+      app.inject({
+        method: "POST",
+        url: "/auth/password/recover/passkey",
+        headers: { cookie },
+        payload: { password, passwordConfirmation: confirmation }
+      });
+    expect((await resetPassword(normalPasswordAuth.cookie)).statusCode).toBe(401);
+    const passwordAuth = await authenticatePasskey(app, "pin_recovery");
+    // Hosted requests hydrate a fresh store; recovery proof must survive that boundary.
+    store.hydrateSnapshot(store.snapshot());
+    expect((await resetPassword(passwordAuth.cookie, "too short")).statusCode).toBe(400);
+    expect(
+      (
+        await resetPassword(
+          passwordAuth.cookie,
+          "new secure recovery password",
+          "mismatched password"
+        )
+      ).statusCode
+    ).toBe(400);
+    const passwordReset = await resetPassword(passwordAuth.cookie);
+    expect(passwordReset.statusCode).toBe(200);
+    expect((await resetPassword(passwordAuth.cookie)).statusCode).toBe(401);
+    const passwordLogin = await app.inject({
+      method: "POST",
+      url: "/auth/login/password",
+      payload: {
+        type: "phone",
+        identifier: "+254700000099",
+        password: "new secure recovery password"
+      }
+    });
+    expect(passwordLogin.statusCode).toBe(200);
+    expect(
+      store
+        .snapshot()
+        .sessions.filter(
+          (session) =>
+            session.accountId === account.id && session.revocationReason === "password_reset"
+        ).length
+    ).toBeGreaterThan(0);
+
     await app.close();
   });
 
@@ -358,26 +406,11 @@ function responseCookies(response: { cookies: Array<{ name: string; value: strin
 }
 
 async function createSessionCookie(app: ReturnType<typeof buildApi>): Promise<string> {
-  const otpRequest = await app.inject({
-    method: "POST",
-    url: "/auth/otp/request",
-    headers: { "content-type": "application/json" },
-    payload: {
-      channel: "email",
-      destination: "passkey-owner@example.com"
-    }
-  });
-  const challenge = otpRequest.json<{ challengeId: string; devOtp: string }>();
   const verified = await app.inject({
     method: "POST",
-    url: "/auth/otp/verify",
-    headers: { "content-type": "application/json" },
-    payload: {
-      challengeId: challenge.challengeId,
-      code: challenge.devOtp
-    }
+    url: "/auth/pin/signup",
+    payload: { method: "phone", contact: "+254711123456", pin: "2468" }
   });
-  const setCookie = verified.headers["set-cookie"];
-  const value = Array.isArray(setCookie) ? setCookie[0] : setCookie;
-  return String(value).split(";")[0] ?? "";
+  expect(verified.statusCode).toBe(200);
+  return responseCookies(verified);
 }

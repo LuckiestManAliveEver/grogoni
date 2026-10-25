@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  accountRealtimeTransport,
   subscribeToAccountRealtime,
   type AccountRealtimeSocket
 } from "../apps/web/src/sync/realtime-client";
@@ -9,6 +10,43 @@ afterEach(() => {
 });
 
 describe("CP22 web realtime client", () => {
+  it("uses HTTP polling for relative and absolute API proxies and Edge functions", () => {
+    for (const base of [
+      "/api",
+      "https://grogoni.com/api",
+      "https://grogoni.com/api/",
+      "https://project.supabase.co/functions/v1/api"
+    ])
+      expect(accountRealtimeTransport(base, "https://grogoni.com")).toBe("http-poll");
+    expect(accountRealtimeTransport("http://localhost:4000", "http://localhost:5173")).toBe(
+      "websocket"
+    );
+  });
+
+  it("closes a failed socket using a browser-valid code and reconnects", async () => {
+    vi.useFakeTimers();
+    const sockets: FakeRealtimeSocket[] = [];
+    const onError = vi.fn();
+    const stop = subscribeToAccountRealtime({
+      accountId: "account-1",
+      endpoint: "wss://api.example.test/v1/realtime",
+      reconnectDelayMs: 250,
+      onChangesAvailable: vi.fn(),
+      onError,
+      createSocket: () => {
+        const socket = new FakeRealtimeSocket();
+        sockets.push(socket);
+        return socket;
+      }
+    });
+    expect(() => sockets[0]!.emitError()).not.toThrow();
+    expect(onError).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(250);
+    expect(sockets).toHaveLength(2);
+    stop();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(sockets).toHaveLength(2);
+  });
   it("polls without sockets and stops scheduling after teardown", async () => {
     vi.useFakeTimers();
     const createSocket = vi.fn();
@@ -126,7 +164,15 @@ class FakeRealtimeSocket implements AccountRealtimeSocket {
     }
   }
 
-  close(): void {}
+  close(code = 1000): void {
+    if (code !== 1000 && (code < 3000 || code > 4999))
+      throw new DOMException("Invalid browser close code", "InvalidAccessError");
+    this.emitClose();
+  }
+
+  emitError(): void {
+    for (const listener of this.errorListeners) listener();
+  }
 
   emitMessage(event: unknown): void {
     for (const listener of this.messageListeners) {

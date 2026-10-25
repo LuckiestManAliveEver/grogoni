@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { InvoicePaymentSummary, PaymentMethod } from "@grogoni/shared-types";
 import { useAsyncActions } from "./hooks/useAsyncActions";
 import { useApiMutationRevision } from "./hooks/useApiMutationRevision";
-import { getJson, postJson } from "./api-helpers";
+import { fetchFreshJson, postJson } from "./api-helpers";
 import { getUserFacingErrorMessage } from "./user-facing-error";
 import type { RecordPaymentResponse } from "./grogoni-application-shared";
 
@@ -37,7 +37,7 @@ export default function PaymentManagementCard(props: {
 
   useEffect(() => {
     let cancelled = false;
-    void getJson<InvoicePaymentSummary[]>(paymentSummariesPath)
+    void fetchFreshJson<InvoicePaymentSummary[]>(paymentSummariesPath)
       .then((loaded) => {
         if (cancelled) return;
         const unpaid = loaded.filter((summary) => summary.status !== "paid");

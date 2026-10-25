@@ -132,6 +132,15 @@ describe("unified buy feed and checkout", () => {
     expect(catalogueHandoff.status).toBe("requested");
     expect(contactHandoff.sourceLabel).toBe("Farm Fresh Guy");
     expect(contactHandoff.status).toBe("requested");
+    expect(catalogueHandoff.items).toEqual([{ title: "Mangoes", quantity: 2, unitPrice: 200 }]);
+    expect(contactHandoff.items).toEqual([{ title: "Bananas", quantity: 3, unitPrice: 100 }]);
+
+    const forbidden = await app.inject({
+      method: "GET",
+      url: `/buy/checkouts/${checkout.id}`,
+      headers: { cookie: seller.cookie }
+    });
+    expect(forbidden.statusCode).toBe(404);
 
     const readBack = await getJson<UnifiedCheckoutSummary>(
       app,
@@ -205,6 +214,139 @@ describe("unified buy feed and checkout", () => {
       new Set(["Shop A", "Shop B"])
     );
 
+    await app.close();
+  });
+
+  it("checks duplicate lines against their combined stock and rejects private contact statuses", async () => {
+    const store = createCp2Store();
+    const app = buildApi({ cp2: { store } });
+    const seller = await createOwnerBusiness(app, "254700000711", "Stock Shop");
+    await postJson(
+      app,
+      `/businesses/${seller.business.id}/products`,
+      { name: "Limited Rice", unit: "kg", quantity: 3, buyingPrice: 80, sellingPrice: 120 },
+      seller.cookie
+    );
+    const buyer = await createOwnerBusiness(app, "254700000712", "Stock Buyer");
+    const feed = await getJson<BuyFeedSummary>(app, "/buy/search?query=Limited", buyer.cookie);
+    const product = feed.results.find((item) => item.title === "Limited Rice")!;
+    const item = { ...product, quantity: 2 };
+    const checkout = await postJson<UnifiedCheckoutSummary>(
+      app,
+      "/buy/checkout",
+      {
+        items: [item, item]
+      },
+      buyer.cookie
+    );
+    expect(checkout.handoffs).toHaveLength(1);
+    expect(checkout.handoffs[0]?.items).toEqual([
+      { title: "Limited Rice", quantity: 2, unitPrice: 120 }
+    ]);
+    expect(checkout.failures).toEqual([expect.objectContaining({ reason: "Not enough stock." })]);
+
+    const job = await postJson<ProductCaptureJobSummary>(
+      app,
+      `/businesses/${seller.business.id}/product-captures`,
+      { fileName: "private.png", contentType: "image/png", contentBase64: onePixelPng },
+      seller.cookie
+    );
+    await postJson(
+      app,
+      `/businesses/${seller.business.id}/product-captures/${job.id}/items/${job.items[0]!.id}/confirm`,
+      { title: "Private item", visiblePrice: 100 },
+      seller.cookie
+    );
+    const graph = await postJson<NetworkGraphSummary>(
+      app,
+      "/network/sync/contacts",
+      { contacts: [{ name: "Other recipient", phone: "+254700000713" }] },
+      seller.cookie
+    );
+    const status = await postJson<StatusBroadcastSummary>(
+      app,
+      `/businesses/${seller.business.id}/status-broadcasts`,
+      {
+        sourceCaptureJobId: job.id,
+        recipientNodeIds: [graph.nodes.find((node) => node.displayName === "Other recipient")!.id]
+      },
+      seller.cookie
+    );
+    const denied = await postJson<UnifiedCheckoutSummary>(
+      app,
+      "/buy/checkout",
+      {
+        items: [
+          {
+            sourceKind: "contact",
+            sourceId: status.id,
+            sourceLabel: "Private seller",
+            title: "Private item",
+            quantity: 1,
+            productCaptureItemId: job.items[0]!.id
+          }
+        ]
+      },
+      buyer.cookie
+    );
+    expect(denied.handoffs).toEqual([]);
+    expect(denied.failures).toHaveLength(1);
+    await app.close();
+  });
+
+  it("includes retailer links in a durable unified summary without claiming external orders", async () => {
+    const store = createCp2Store();
+    const app = buildApi({ cp2: { store } });
+    const buyer = await createOwnerBusiness(app, "254700000714", "External Buyer");
+    const checkout = await postJson<UnifiedCheckoutSummary>(
+      app,
+      "/buy/checkout",
+      {
+        items: [
+          {
+            sourceKind: "marketplace_connector",
+            sourceId: "retailer.example",
+            sourceLabel: "Untrusted label",
+            title: "Shoes",
+            quantity: 2,
+            websiteUrl: "https://retailer.example/products/shoes"
+          }
+        ]
+      },
+      buyer.cookie
+    );
+    expect(checkout.handoffs).toEqual([]);
+    expect(checkout.failures).toEqual([]);
+    expect(checkout.externalRequests).toEqual([
+      {
+        sourceLabel: "retailer.example",
+        title: "Shoes",
+        quantity: 2,
+        websiteUrl: "https://retailer.example/products/shoes"
+      }
+    ]);
+    expect(
+      (await getJson<UnifiedCheckoutSummary>(app, `/buy/checkouts/${checkout.id}`, buyer.cookie))
+        .externalRequests
+    ).toEqual(checkout.externalRequests);
+    const invalid = await app.inject({
+      method: "POST",
+      url: "/buy/checkout",
+      headers: jsonHeaders(buyer.cookie),
+      payload: JSON.stringify({
+        items: [
+          {
+            sourceKind: "marketplace_connector",
+            sourceId: "bad",
+            sourceLabel: "bad",
+            title: "Bad link",
+            quantity: 1,
+            websiteUrl: "javascript:alert(1)"
+          }
+        ]
+      })
+    });
+    expect(invalid.statusCode).toBe(400);
     await app.close();
   });
 

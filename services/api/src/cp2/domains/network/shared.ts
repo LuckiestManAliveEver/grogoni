@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import {
   normalizeInternationalPhoneInput,
   normalizePhoneInput,
@@ -115,7 +115,10 @@ export function createContactHash(
       : hashType === "email"
         ? normalizeDestination("email", rawValue)
         : rawValue.trim().toLowerCase();
-  return createHash("sha256").update(`${hashType}:${normalized}`).digest("hex");
+  return protectStoredContactHash(
+    hashType,
+    createHash("sha256").update(`${hashType}:${normalized}`).digest("hex")
+  );
 }
 
 /**
@@ -125,7 +128,43 @@ export function createContactHash(
  * account in the discovery index, is hashed.
  */
 export function hashCanonicalContact(hashType: "phone" | "email", canonicalValue: string): string {
-  return createHash("sha256").update(`${hashType}:${canonicalValue}`).digest("hex");
+  return protectStoredContactHash(
+    hashType,
+    createHash("sha256").update(`${hashType}:${canonicalValue}`).digest("hex")
+  );
+}
+
+/** Wrap the legacy digest so existing persisted contacts can migrate without raw identifiers.
+ * A dedicated stable secret is preferred; the existing server audit secret is a compatible fallback.
+ * No production fallback to an unkeyed fingerprint is permitted.
+ */
+export function protectStoredContactHash(
+  type: "phone" | "email" | "social",
+  digest: string
+): string {
+  if (type === "social" || digest.startsWith("hmac-v1:")) return digest;
+  const secret =
+    process.env.CONTACT_DISCOVERY_HMAC_SECRET ??
+    process.env.AUTH_AUDIT_HMAC_SECRET ??
+    (process.env.NODE_ENV === "production" ? "" : "grogoni-development-contact-discovery-only");
+  if (!secret)
+    throw new Cp2Error(
+      503,
+      "contact_discovery_unavailable",
+      "Contact discovery is not configured."
+    );
+  return `hmac-v1:${createHmac("sha256", secret).update(`grogoni:contact-discovery:v1:${type}:${digest}`).digest("hex")}`;
+}
+
+export function contactIsBlocked(
+  users: Map<string, UserSummary>,
+  left: string,
+  right: string
+): boolean {
+  return Boolean(
+    users.get(left)?.blockedContactUserIds?.includes(right) ||
+    users.get(right)?.blockedContactUserIds?.includes(left)
+  );
 }
 
 const canonicalPhonePattern = /^\+[1-9]\d{6,14}$/u;

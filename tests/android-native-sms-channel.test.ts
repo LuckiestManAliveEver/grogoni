@@ -135,6 +135,13 @@ describe("Android native SMS channel", () => {
     expect(duplicate.message.id).toBe(inbound.message.id);
     expect(duplicate.receipt.id).toBe(inbound.receipt.id);
 
+    const enabled = await app.inject({
+      method: "PATCH",
+      url: `/v1/conversations/${inbound.message.conversationId}`,
+      headers: { "content-type": "application/json", cookie: owner.cookie },
+      payload: JSON.stringify({ agentEnabled: true })
+    });
+    expect(enabled.statusCode, enabled.body).toBe(200);
     await postJson(
       app,
       "/v1/messages",

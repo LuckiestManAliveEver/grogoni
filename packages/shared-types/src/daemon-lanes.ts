@@ -4,7 +4,20 @@
  */
 
 export type DaemonPayload =
-  | { kind: "agent"; message: string; modelId: string; agentAdapterId: "grogoni" | "pi" }
+  | {
+      kind: "agent";
+      message: string;
+      modelId: string;
+      agentAdapterId: "grogoni" | "pi";
+      /** Authorized by the API before enqueue; execution never trusts it as tool authority. */
+      conversation?: {
+        id: string;
+        clientMessageId: string;
+        scope: string;
+        kind: "reply" | "reminder";
+        reminderText?: string;
+      };
+    }
   | { kind: "maintenance"; job: string };
 
 export type DaemonTaskStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
@@ -66,3 +79,14 @@ export interface DaemonClaimResponse {
 /** POST /v1/daemon/claims/:id/settle from a device: the reply, or a failure. */
 export type DaemonDeviceOutcome =
   { text: string; modelId: string } | { errorCode: string; retryable: boolean };
+
+/** Durable messenger execution state, owned by the daemon rather than client UI flags. */
+export interface ConversationExecutionSummary {
+  taskId: string;
+  status: DaemonTaskStatus;
+  modelId: string;
+  attempts: number;
+  errorCode: string | null;
+  retryable: boolean;
+  updatedAt: string;
+}

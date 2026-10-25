@@ -1,3 +1,4 @@
+import { openRetailerWebsite } from "./retailer-capabilities.js";
 import type {
   ClientWorkspaceFileTransfer,
   FulfillmentStatus,
@@ -47,6 +48,7 @@ export async function executeRuntimeCapability(
     now: Date;
   }
 ): Promise<unknown> {
+  if (input.action.toolName === "commerce.website.open") return openRetailerWebsite(deps, input);
   if (input.action.toolName.startsWith("computer.")) {
     if (deps.executeComputerCapability)
       return deps.executeComputerCapability({

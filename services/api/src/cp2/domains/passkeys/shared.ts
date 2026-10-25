@@ -24,12 +24,8 @@
  * its control flow as before the extraction - normalizing it lazily inside a hashing callback
  * instead would silently reorder which error wins when both the PIN and the session are invalid.
  *
- * **Known pre-existing gap, preserved as-is, not silently fixed:** `passkeyPinRecoveryGrants` is
- * never swept by `deleteAccountOwnedData` - no `deleteScopedMapRecords` call for it exists
- * anywhere. Low severity: it is a bare `Map<sessionId, expiresAt>` with no scope-identifying
- * object field, so the generic sweep helper would not apply to it unmodified anyway, and
- * `prunePasskeyPinRecoveryGrants` already self-heals once the underlying session is purged
- * (`getSession(sessionId, now) === null`), on top of the 5-minute TTL bounding the exposure.
+ * Recovery grants are persisted as internal, session-bound auth transactions through callbacks
+ * into Cp2Store so proof survives the hosted runtime's per-request snapshot hydration.
  */
 import type { PasskeySummary } from "@grogoni/shared-types";
 

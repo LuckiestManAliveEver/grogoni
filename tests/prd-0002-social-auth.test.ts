@@ -1,18 +1,8 @@
+import { signupPhone } from "./fixtures/account-auth";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildApi } from "../services/api/src/app";
 import { createCp2Store } from "../services/api/src/cp2/store";
 import type { OAuthProvider } from "../packages/shared-types/src";
-
-interface OtpRequestResponse {
-  challengeId: string;
-  devOtp: string;
-}
-
-interface SessionResponse {
-  account: {
-    id: string;
-  };
-}
 
 const providers: OAuthProvider[] = [
   "google",
@@ -30,17 +20,19 @@ describe("authentication channels", () => {
     vi.unstubAllEnvs();
   });
 
-  it("keeps phone PIN and email OTP authentication available", async () => {
+  it("keeps phone PIN available and rejects email OTP session creation", async () => {
     const store = createCp2Store();
     const app = buildApi({ cp2: { store } });
-
-    const phone = await verifyOtp(app, "phone", "254700000201");
-    const email = await verifyOtp(app, "email", "owner@example.com");
-
-    expect(phone.account.id).toBeTruthy();
-    expect(email.account.id).toBeTruthy();
-    expect(phone.account.id).not.toBe(email.account.id);
-
+    await signupPhone(app, "social-auth-boundary");
+    const email = await app.inject({
+      method: "POST",
+      url: "/auth/otp/request",
+      payload: { method: "email", contact: "owner@example.com" }
+    });
+    expect(email.statusCode).toBe(403);
+    expect(email.json()).toMatchObject({ code: "phone_login_required" });
+    expect(email.headers["set-cookie"]).toBeUndefined();
+    expect(store.snapshot().accounts).toHaveLength(1);
     await app.close();
   });
 
@@ -135,56 +127,6 @@ describe("authentication channels", () => {
     await app.close();
   });
 });
-
-async function verifyOtp(
-  app: ReturnType<typeof buildApi>,
-  channel: "phone" | "email",
-  destination: string
-): Promise<SessionResponse> {
-  if (channel === "phone") {
-    const response = await app.inject({
-      method: "POST",
-      url: "/auth/pin/signup",
-      headers: jsonHeaders(),
-      payload: JSON.stringify({
-        method: "phone",
-        contact: destination,
-        pin: "1234"
-      })
-    });
-    expect(response.statusCode).toBe(200);
-    return response.json<SessionResponse>();
-  }
-  const otp = await postJson<OtpRequestResponse>(app, "/auth/otp/request", {
-    channel,
-    destination
-  });
-  const response = await app.inject({
-    method: "POST",
-    url: "/auth/otp/verify",
-    headers: jsonHeaders(),
-    payload: JSON.stringify({ challengeId: otp.challengeId, code: otp.devOtp })
-  });
-
-  expect(response.statusCode).toBe(200);
-  return response.json<SessionResponse>();
-}
-
-async function postJson<T>(
-  app: ReturnType<typeof buildApi>,
-  url: string,
-  payload: unknown
-): Promise<T> {
-  const response = await app.inject({
-    method: "POST",
-    url,
-    headers: jsonHeaders(),
-    payload: JSON.stringify(payload)
-  });
-
-  expect(response.statusCode).toBe(200);
-  return response.json<T>();
-}
 
 function jsonHeaders() {
   return { "content-type": "application/json" };

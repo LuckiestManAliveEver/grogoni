@@ -1,0 +1,21 @@
+{
+  "base": "https://grogoni.com/api",
+  "steps": [
+    {
+      "name": "contact discovery and private preferences survive requests",
+      "status": "pass"
+    },
+    {
+      "name": "symmetric contact block persists and prevents reverse creation",
+      "status": "pass"
+    },
+    {
+      "name": "remove and verify disposable privacy fixtures",
+      "status": "pass",
+      "detail": {
+        "removedAccounts": 2,
+        "removedBusinesses": 0
+      }
+    }
+  ]
+}

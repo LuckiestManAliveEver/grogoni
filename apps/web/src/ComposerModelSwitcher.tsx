@@ -1,7 +1,14 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 
 import type { ActiveBusiness, AgentSettings } from "./grogoni-application-shared";
-import { QuickRuntimeSwitcher } from "./QuickRuntimeSwitcher";
+import { LazyModuleErrorBoundary } from "./LazyModuleErrorBoundary";
+import { loadLazyModuleWithRecovery } from "./lazy-module-recovery";
+const QuickRuntimeSwitcher = lazy(() =>
+  loadLazyModuleWithRecovery(
+    "composer-runtime-switcher",
+    () => import("./QuickRuntimeSwitcher")
+  ).then((module) => ({ default: module.QuickRuntimeSwitcher }))
+);
 import { StackedModule } from "./StackedModule";
 
 export interface ComposerModelSwitcherProps {
@@ -66,7 +73,7 @@ export function ComposerModelSwitcher({
         </span>
         <span className="composer-pill-label">Library</span>
       </button>
-      {agent !== null ? (
+      {agent !== null && modelPanelOpen ? (
         <StackedModule
           className="composer-model-module"
           moduleId="composer-model-panel"
@@ -74,12 +81,16 @@ export function ComposerModelSwitcher({
           title="Model and runtime"
           onClose={() => setModelPanelOpen(false)}
         >
-          <QuickRuntimeSwitcher
-            business={business}
-            agent={agent}
-            updateAgent={(patch) => onAgentChange({ ...agent, ...patch })}
-            onAgentChange={onAgentChange}
-          />
+          <LazyModuleErrorBoundary label="Model and runtime" moduleKey="composer-runtime-switcher">
+            <Suspense fallback={<p>Opening model choices…</p>}>
+              <QuickRuntimeSwitcher
+                business={business}
+                agent={agent}
+                updateAgent={(patch) => onAgentChange({ ...agent, ...patch })}
+                onAgentChange={onAgentChange}
+              />
+            </Suspense>
+          </LazyModuleErrorBoundary>
           <button type="button" className="secondary" onClick={openModelLibrary}>
             Open full model library
           </button>

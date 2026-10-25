@@ -70,9 +70,20 @@ describe.skipIf(!url)("daemon lanes inside the Edge API", () => {
         if (!userId) throw new DaemonHttpError(401, "auth_required", "Authentication is required.");
         return { userId };
       },
+      authorizeConversation: async (_request, id) => {
+        if (id !== "11111111-1111-4111-8111-111111111111")
+          throw new DaemonHttpError(404, "conversation_not_found", "Conversation not found.");
+        return { modelId: "gpt-6-luna" };
+      },
+      deliverConversationTask: async (task) => {
+        if (deliveryFailure) throw new Error("Messaging database unavailable");
+        delivered.push(`${task.id}:${task.status}`);
+      },
       environment: env,
       execute
     });
+  let deliveryFailure = false;
+  const delivered: string[] = [];
   let daemon: EdgeDaemon;
   const call = async (
     session: string,
@@ -109,6 +120,8 @@ describe.skipIf(!url)("daemon lanes inside the Edge API", () => {
       );
   });
   beforeEach(async () => {
+    deliveryFailure = false;
+    delivered.length = 0;
     calls.length = 0;
     behavior = async (message) => agentResult(`done: ${message}`);
     await pool.query("truncate grogoni_daemon_tasks");
@@ -131,6 +144,83 @@ describe.skipIf(!url)("daemon lanes inside the Edge API", () => {
     await pool.end();
     await admin.query(`drop schema ${schema} cascade`);
     await admin.end();
+  });
+
+  it("retries failed owned tasks idempotently and fences stale leases", async () => {
+    const created = await call("session-a", "POST", "/v1/daemon/tasks", {
+      key: "owned-retry",
+      message: "fail this task"
+    });
+    const first = (await call("session-a", "POST", "/v1/daemon/claims")).json.claim;
+    await call("session-a", "POST", `/v1/daemon/claims/${created.json.task.id}/settle`, {
+      leaseToken: first.leaseToken,
+      outcome: { errorCode: "PROVIDER_UNAVAILABLE", retryable: false }
+    });
+    expect(
+      (await call("session-b", "POST", `/v1/daemon/tasks/${created.json.task.id}/retry`, {})).status
+    ).toBe(404);
+    const retries = await Promise.all(
+      [1, 2, 3].map(() =>
+        call("session-a", "POST", `/v1/daemon/tasks/${created.json.task.id}/retry`, {})
+      )
+    );
+    expect(retries.every((r) => r.status === 200)).toBe(true);
+    expect((await daemon.store.get(created.json.task.id))?.attempts).toBe(0);
+    const second = (await call("session-a", "POST", "/v1/daemon/claims")).json.claim;
+    expect(second.leaseToken).not.toBe(first.leaseToken);
+    expect(
+      (
+        await call("session-a", "POST", `/v1/daemon/claims/${created.json.task.id}/settle`, {
+          leaseToken: first.leaseToken,
+          outcome: { text: "stale", modelId: "gpt-6-luna" }
+        })
+      ).status
+    ).toBe(409);
+    expect(
+      (
+        await call("session-a", "POST", `/v1/daemon/claims/${created.json.task.id}/execute`, {
+          leaseToken: second.leaseToken
+        })
+      ).json.task.status
+    ).toBe("completed");
+  });
+  it("retries terminal conversation delivery independently of the latest-50 task list", async () => {
+    deliveryFailure = true;
+    const created = await call("session-a", "POST", "/v1/daemon/tasks", {
+      key: "conversation-outbox",
+      message: "hello",
+      conversation: {
+        id: "11111111-1111-4111-8111-111111111111",
+        clientMessageId: "origin-message",
+        scope: "test",
+        kind: "reply"
+      }
+    });
+    expect(created.status).toBe(201);
+    const claim = (await call("session-a", "POST", "/v1/daemon/claims")).json.claim;
+    await call("session-a", "POST", `/v1/daemon/claims/${claim.task.id}/execute`, {
+      leaseToken: claim.leaseToken
+    });
+    expect((await daemon.store.pendingConversationDeliveries(100)).map((t) => t.id)).toContain(
+      claim.task.id
+    );
+    for (let i = 0; i < 51; i++)
+      await daemon.store.enqueue({
+        key: `later-${i}`,
+        payload: {
+          kind: "agent",
+          message: "later",
+          modelId: "gpt-6-luna",
+          agentAdapterId: "grogoni"
+        },
+        ownerUserId: "user-a",
+        runAt: new Date(Date.now() + 3600000),
+        maxAttempts: 1
+      });
+    deliveryFailure = false;
+    await daemon.runWorker();
+    expect(delivered).toContain(`${claim.task.id}:completed`);
+    expect(await daemon.store.pendingConversationDeliveries(100)).toHaveLength(0);
   });
 
   it("serves only the signed-in user's tasks and never another user's", async () => {

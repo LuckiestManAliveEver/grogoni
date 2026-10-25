@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -5,6 +7,26 @@ plugins {
 
 val grogoniApiOrigin = providers.gradleProperty("GROGONI_API_ORIGIN")
     .orElse("https://grogoni.com/api")
+
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = if (keystorePropertiesFile.exists()) {
+    Properties().apply { keystorePropertiesFile.inputStream().use { load(it) } }
+} else {
+    Properties()
+}
+
+val releaseStoreFile = System.getenv("GROGONI_RELEASE_STORE_FILE")
+    ?: keystoreProperties.getProperty("storeFile")
+    ?: ""
+val releaseStorePassword = System.getenv("GROGONI_RELEASE_STORE_PASSWORD")
+    ?: keystoreProperties.getProperty("storePassword")
+    ?: ""
+val releaseKeyAlias = System.getenv("GROGONI_RELEASE_KEY_ALIAS")
+    ?: keystoreProperties.getProperty("keyAlias")
+    ?: ""
+val releaseKeyPassword = System.getenv("GROGONI_RELEASE_KEY_PASSWORD")
+    ?: keystoreProperties.getProperty("keyPassword")
+    ?: ""
 
 android {
     namespace = "market.grogoni.app"
@@ -18,6 +40,26 @@ android {
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "GROGONI_API_ORIGIN", "\"${grogoniApiOrigin.get()}\"")
+    }
+
+    signingConfigs {
+        create("release") {
+            if (releaseStoreFile.isNotBlank()) {
+                storeFile = file(releaseStoreFile)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            if (releaseStoreFile.isNotBlank()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
     }
 
     buildFeatures {

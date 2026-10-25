@@ -141,6 +141,156 @@ button:disabled {
   color: #85eec3;
 }
 
+.install-page-shell {
+  background: linear-gradient(180deg, #eef6f0 0%, #f5f8f5 100%);
+  color: #163526;
+  min-height: 100vh;
+  overflow-y: auto;
+  padding: 24px 16px 48px;
+}
+
+.install-card {
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(17, 122, 79, 0.15);
+  border-radius: 22px;
+  box-shadow: 0 20px 42px rgba(15, 39, 27, 0.12);
+  margin: 0 auto;
+  max-width: 860px;
+  padding: 22px 18px 20px;
+}
+
+.install-brand {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+}
+
+.install-brand-icon {
+  width: 54px;
+  height: 54px;
+}
+
+.install-kicker {
+  color: #117a4f;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  margin: 0 0 4px;
+  text-transform: uppercase;
+}
+
+.install-card h1,
+.install-card h2,
+.install-card p,
+.install-card li,
+.install-card a,
+.install-card button {
+  font-family: inherit;
+}
+
+.install-card h1 {
+  font-size: clamp(2rem, 6vw, 3rem);
+  margin: 0;
+}
+
+.install-card h2 {
+  margin: 0 0 8px;
+}
+
+.install-intro {
+  font-size: 1.025rem;
+  line-height: 1.6;
+  margin: 18px 0 0;
+}
+
+.install-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.install-pill,
+.install-browser-pill {
+  background: #ebf9f0;
+  border: 1px solid rgba(17, 122, 79, 0.2);
+  border-radius: 999px;
+  color: #0f5a3a;
+  display: inline-flex;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 7px 10px;
+}
+
+.install-pill.is-installed {
+  background: #e0f8e2;
+}
+
+.install-primary-action,
+.install-link {
+  align-items: center;
+  background: linear-gradient(180deg, #117a4f 0%, #0c5d3c 100%);
+  border-radius: 12px;
+  color: #f2fff7;
+  display: inline-flex;
+  font-weight: 800;
+  justify-content: center;
+  min-height: 48px;
+  padding: 0 18px;
+  text-decoration: none;
+}
+
+.install-secondary-stack {
+  margin-top: 18px;
+}
+
+.install-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  margin-top: 22px;
+}
+
+.install-panel,
+.install-steps {
+  background: #f7faf7;
+  border: 1px solid rgba(17, 122, 79, 0.1);
+  border-radius: 18px;
+  padding: 16px;
+}
+
+.install-panel p,
+.install-steps p,
+.install-steps li,
+.install-panel li {
+  color: #2c4539;
+  line-height: 1.5;
+}
+
+.install-note {
+  margin-top: 12px;
+}
+
+.install-steps {
+  margin-top: 18px;
+}
+
+.install-steps ol,
+.install-steps ul {
+  margin: 12px 0 0;
+  padding-left: 22px;
+}
+
+.install-steps li + li {
+  margin-top: 8px;
+}
+
+@media (min-width: 720px) {
+  .install-card {
+    padding: 30px 28px 28px;
+  }
+}
+
 .app-frame {
   display: grid;
   gap: 0;
@@ -278,12 +428,15 @@ button:disabled {
 }
 
 .header-auth-button {
+  align-items: center;
   background: #117a4f;
   border: 1px solid #117a4f;
   border-radius: 999px;
   color: #ebebeb;
+  display: inline-flex;
   font-size: 12px;
   font-weight: 800;
+  gap: 6px;
   min-height: 38px;
   padding: 7px 13px;
   white-space: nowrap;
@@ -292,6 +445,68 @@ button:disabled {
 .header-auth-button.secondary {
   background: #242424;
   color: #85eec3;
+}
+
+.header-auth-icon {
+  display: inline-block;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.header-auth-icon-login {
+  height: 12px;
+  width: 12px;
+}
+
+.header-auth-icon-login::before {
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  content: "";
+  height: 5px;
+  left: 3px;
+  position: absolute;
+  top: 0;
+  width: 5px;
+}
+
+.header-auth-icon-login::after {
+  border: 1.5px solid currentColor;
+  border-bottom: 0;
+  border-radius: 6px 6px 0 0;
+  bottom: 0;
+  content: "";
+  height: 6px;
+  left: 0;
+  position: absolute;
+  width: 12px;
+}
+
+.header-auth-icon-signup {
+  height: 12px;
+  width: 14px;
+}
+
+.header-auth-icon-signup::before {
+  background:
+    linear-gradient(currentColor, currentColor) 9px 0 / 1.5px 5px no-repeat,
+    linear-gradient(currentColor, currentColor) 7px 2px / 6px 1.5px no-repeat;
+  content: "";
+  height: 12px;
+  left: 0;
+  position: absolute;
+  top: 0;
+  width: 14px;
+}
+
+.header-auth-icon-signup::after {
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  content: "";
+  height: 5px;
+  left: 2px;
+  position: absolute;
+  top: 1px;
+  width: 5px;
 }
 
 .auth-top-bar {
@@ -8836,4 +9051,109 @@ body {
     animation: none;
     opacity: 0.7;
   }
+}
+.help-conversations {
+  padding: 0.75rem;
+  margin-bottom: 0.75rem;
+  border: 1px solid var(--grogoni-line-strong);
+  border-radius: 1rem;
+}
+.help-conversations > button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+}
+.help-conversations summary {
+  cursor: pointer;
+  padding: 0.75rem 0.25rem;
+}
+.help-conversations nav {
+  display: grid;
+  gap: 0.25rem;
+}
+.help-conversations nav button {
+  padding: 0.5rem;
+  font-size: 0.875rem;
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  text-align: left;
+}
+.help-conversations [aria-current="page"] {
+  outline: 2px solid var(--grogoni-accent);
+  outline-offset: -2px;
+}
+
+@media (min-width: 760px) {
+  .app-frame[data-commerce-mode="buy"] .chat-surface.inbox-open > .messenger-inbox {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .app-frame[data-commerce-mode="buy"] .chat-surface.inbox-open > .messenger-thread {
+    grid-column: 2;
+  }
+}
+
+/* Mobile navigation panels share the thread while leaving its composer interactive. */
+@media (max-width: 759px) {
+  .chat-surface,
+  .messenger-thread {
+    position: relative;
+  }
+  .chat-surface {
+    --mobile-composer-height: 150px;
+    touch-action: pan-y;
+  }
+  .mobile-chat-panel {
+    position: absolute;
+    inset: 0 0 calc(var(--mobile-composer-height) + 8px);
+    z-index: 15;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    background: var(--grogoni-paper);
+    color: var(--grogoni-ink);
+    border: 1px solid var(--grogoni-line);
+    border-radius: 16px;
+    overflow: hidden;
+  }
+  .mobile-chat-panel > .stacked-module-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .mobile-chat-panel > .stacked-module-content {
+    overflow-y: auto;
+    min-height: 0;
+    flex: 1;
+  }
+  .mobile-chat-panel .new-chat-fab {
+    position: static;
+    margin-top: 12px;
+  }
+}
+
+@media (max-width: 759px) {
+  .chat-surface,
+  .chat-surface.inbox-open {
+    grid-template-rows: minmax(0, 1fr);
+  }
+  .messenger-thread {
+    grid-row: 1;
+  }
+}
+
+.pinned-agent {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--grogoni-paper);
+}
+.discussion-members {
+  background: transparent;
+  color: var(--grogoni-ink-soft);
+  font-size: 12px;
+  text-align: left;
 }

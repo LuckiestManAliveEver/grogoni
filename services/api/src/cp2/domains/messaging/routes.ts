@@ -177,6 +177,7 @@ interface NativeSmsDeviceParams {
 }
 
 interface UpdateConversationBody {
+  agentEnabled?: boolean;
   archived?: boolean;
   mutedUntil?: string | null;
   pinned?: boolean;
@@ -224,6 +225,15 @@ export function registerMessagingRoutes(
   oauthAllowedRedirectOrigins: ReadonlySet<string>,
   vapidPublicKey: string | undefined
 ): void {
+  app.post("/v1/help", async (request, reply) => {
+    try {
+      return store.ensureHelpConversations({
+        sessionId: readSessionCookie(request.headers.cookie)
+      });
+    } catch (error) {
+      return sendCp2Error(reply, error);
+    }
+  });
   app.get(
     "/v1/conversations",
     async (request: FastifyRequest<{ Querystring: { includeArchived?: string } }>, reply) => {
@@ -252,6 +262,58 @@ export function registerMessagingRoutes(
           title: parseNullableString(request.body.title),
           runtimeBindingId: parseNullableString(request.body.runtimeBindingId)
         });
+      } catch (error) {
+        return sendCp2Error(reply, error);
+      }
+    }
+  );
+
+  app.post<{ Params: ConversationParams; Body: { recipient?: string; agent?: boolean } }>(
+    "/v1/conversations/:conversationId/participants",
+    async (request, reply) => {
+      try {
+        const body = parseRequestBody(request.body);
+        const view = store.addConversationParticipant({
+          sessionId: readSessionCookie(request.headers.cookie),
+          conversationId: request.params.conversationId,
+          ...(body.recipient === undefined
+            ? {}
+            : { recipient: parseString(body.recipient, "recipient") }),
+          agent: body.agent === undefined ? false : parseBoolean(body.agent, "agent")
+        });
+        const latestMessage = view.messages.at(-1);
+        if (latestMessage) {
+          await store.deliverPendingMessageNotifications({ messageId: latestMessage.id });
+        }
+        return view;
+      } catch (error) {
+        return sendCp2Error(reply, error);
+      }
+    }
+  );
+
+  app.get<{ Params: ConversationParams }>(
+    "/v1/conversations/:conversationId/model",
+    async (request, reply) => {
+      try {
+        return store.getConversationModelSelection(
+          readSessionCookie(request.headers.cookie),
+          parseString(request.params.conversationId, "conversationId")
+        );
+      } catch (error) {
+        return sendCp2Error(reply, error);
+      }
+    }
+  );
+  app.put<{ Params: ConversationParams; Body: { modelId?: string } }>(
+    "/v1/conversations/:conversationId/model",
+    async (request, reply) => {
+      try {
+        return await store.selectConversationModel(
+          readSessionCookie(request.headers.cookie),
+          parseString(request.params.conversationId, "conversationId"),
+          parseString(request.body.modelId, "modelId")
+        );
       } catch (error) {
         return sendCp2Error(reply, error);
       }
@@ -475,9 +537,14 @@ export function registerMessagingRoutes(
       }
       const idempotencyKey = parseOptionalString(request.body.idempotencyKey);
       const content = parseConversationMessageContent(request.body.content);
+      // A first message may arrive before the client has loaded its inbox, so the conversation is
+      // resolved server-side to the caller's own personal conversation when omitted. Anything else
+      // - including a blank string - must still name a real conversation explicitly.
       const messageInput = {
         sessionId,
-        conversationId: parseString(request.body.conversationId, "conversationId"),
+        ...(request.body.conversationId === undefined || request.body.conversationId === null
+          ? {}
+          : { conversationId: parseString(request.body.conversationId, "conversationId") }),
         clientMessageId: parseString(request.body.clientMessageId, "clientMessageId"),
         ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
         content,
@@ -1159,29 +1226,71 @@ export function registerMessagingRoutes(
     }
   );
 
-  app.post(
+  app.get(
     "/v1/webhooks/channels/:provider",
-    async (request: FastifyRequest<{ Params: ChannelWebhookParams; Body: unknown }>, reply) => {
+    async (
+      request: FastifyRequest<{
+        Params: ChannelWebhookParams;
+        Querystring: Record<string, unknown>;
+      }>,
+      reply
+    ) => {
       try {
-        const result = store.ingestChannelWebhook({
-          provider: parseChannelProvider(request.params.provider),
-          headers: request.headers,
-          payload: request.body
-        });
-        request.log.info(
-          {
-            provider: request.params.provider,
-            receiptId: result.receipt.id,
-            duplicate: result.message === null
-          },
-          "Channel webhook processed."
-        );
-        return result;
+        const provider = parseChannelProvider(request.params.provider);
+        const challenge = store.channelWebhookChallenge(provider, request.query);
+        if (challenge === null) return reply.code(401).send({ code: "CHANNEL_WEBHOOK_INVALID" });
+        return reply.type(provider === "x" ? "application/json" : "text/plain").send(challenge);
       } catch (error) {
         return sendCp2Error(reply, error);
       }
     }
   );
+
+  // Signature checks use the exact provider bytes, including whitespace and Unicode.
+  void app.register(async (webhook) => {
+    webhook.removeContentTypeParser("application/json");
+    if (webhook.hasContentTypeParser("application/x-www-form-urlencoded"))
+      webhook.removeContentTypeParser("application/x-www-form-urlencoded");
+    webhook.addContentTypeParser(
+      "application/json",
+      { parseAs: "buffer" },
+      (_request, body, done) => done(null, body)
+    );
+    webhook.addContentTypeParser(
+      "application/x-www-form-urlencoded",
+      { parseAs: "buffer" },
+      (_request, body, done) => done(null, body)
+    );
+    webhook.post(
+      "/v1/webhooks/channels/:provider",
+      async (request: FastifyRequest<{ Params: ChannelWebhookParams; Body: Buffer }>, reply) => {
+        try {
+          const provider = parseChannelProvider(request.params.provider);
+          const rawBody = request.body;
+          let payload: unknown;
+          try {
+            payload = request.headers["content-type"]?.includes("application/x-www-form-urlencoded")
+              ? Object.fromEntries(new URLSearchParams(rawBody.toString("utf8")))
+              : JSON.parse(rawBody.toString("utf8"));
+          } catch {
+            return reply.code(400).send({ code: "webhook_payload_invalid" });
+          }
+          const results = store.ingestChannelWebhookBatch({
+            provider,
+            headers: request.headers,
+            payload,
+            rawBody
+          });
+          request.log.info({ provider, count: results.length }, "Channel webhook processed.");
+          if (provider === "sms") return reply.type("text/xml").send("<Response/>");
+          // Preserve the existing single-message response contract for Telegram clients.
+          return results.length === 1 ? results[0] : { results };
+        } catch (error) {
+          return sendCp2Error(reply, error);
+        }
+      }
+    );
+  });
 
   app.post(
     "/v1/message-handoffs",
@@ -1231,6 +1340,9 @@ export function registerMessagingRoutes(
               ? null
               : parseIsoTimestamp(request.body.mutedUntil, "mutedUntil");
         return store.updateConversationSettings({
+          ...(request.body.agentEnabled === undefined
+            ? {}
+            : { agentEnabled: request.body.agentEnabled }),
           sessionId: readSessionCookie(request.headers.cookie),
           conversationId: parseString(request.params.conversationId, "conversationId"),
           ...(request.body.archived !== undefined ? { archived: request.body.archived } : {}),
@@ -1540,6 +1652,34 @@ function parseConversationKind(value: unknown): ConversationKind {
 function parseConversationMessageContent(value: unknown): ConversationMessageContent {
   const content = parseRequestBody(value);
   const type = parseString(content.type, "content.type");
+
+  if (
+    type === "product-management" ||
+    type === "supplier-management" ||
+    type === "customer-management" ||
+    type === "invoice-management" ||
+    type === "payment-management" ||
+    type === "import-management" ||
+    type === "logistics-management"
+  ) {
+    const optionalField =
+      type === "product-management"
+        ? "productId"
+        : type === "supplier-management"
+          ? "supplierId"
+          : type === "customer-management"
+            ? "customerId"
+            : type === "import-management"
+              ? "importJobId"
+              : "customerName";
+    return {
+      type,
+      businessId: parseString(content.businessId, "content.businessId"),
+      ...(content[optionalField] === undefined
+        ? {}
+        : { [optionalField]: parseString(content[optionalField], `content.${optionalField}`) })
+    };
+  }
 
   if (type === "text") {
     const attachments = content.attachments;

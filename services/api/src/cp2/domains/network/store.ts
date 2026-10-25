@@ -60,6 +60,7 @@ import type {
 } from "@grogoni/shared-types";
 import { Cp2Error } from "../../cp2-error.js";
 import {
+  contactIsBlocked,
   createContactDisplayHint,
   createContactHash,
   hashCanonicalContact,
@@ -137,6 +138,65 @@ export class NetworkDomain {
   private readonly discoveryBudgets = new Map<string, DiscoveryBudgetRecord>();
 
   constructor(private readonly deps: NetworkDomainDeps) {}
+
+  getNetworkPrivacy(input: { sessionId: string | null; now?: Date }) {
+    const actor = this.deps.requirePinVerifiedSession(input.sessionId, input.now ?? new Date());
+    const user = this.deps.users.get(actor.user.id)!;
+    return {
+      discoverable: user.contactDiscoveryEnabled !== false,
+      blockedContacts: (user.blockedContactUserIds ?? []).map((id) => ({
+        userId: id,
+        name: this.deps.users.get(id)?.displayName ?? "Blocked contact"
+      }))
+    };
+  }
+
+  updateNetworkPrivacy(input: { sessionId: string | null; discoverable: boolean; now?: Date }) {
+    const actor = this.deps.requirePinVerifiedSession(input.sessionId, input.now ?? new Date());
+    if (typeof input.discoverable !== "boolean")
+      throw new Cp2Error(400, "privacy_invalid", "Choose a discovery preference.");
+    const user = this.deps.users.get(actor.user.id)!;
+    this.deps.users.set(user.id, { ...user, contactDiscoveryEnabled: input.discoverable });
+    return this.getNetworkPrivacy(input);
+  }
+
+  blockNetworkContact(input: {
+    sessionId: string | null;
+    userId: string;
+    blocked: boolean;
+    now?: Date;
+  }) {
+    const actor = this.deps.requirePinVerifiedSession(input.sessionId, input.now ?? new Date());
+    const user = this.deps.users.get(actor.user.id)!;
+    const ids = new Set(user.blockedContactUserIds ?? []);
+    if (input.blocked) {
+      const known =
+        [...this.networkNodes.values()].some(
+          (node) => node.ownerUserId === user.id && node.grogoniUserId === input.userId
+        ) ||
+        [...this.networkConnections.values()].some(
+          (connection) =>
+            (connection.requesterUserId === user.id &&
+              connection.recipientUserId === input.userId) ||
+            (connection.recipientUserId === user.id && connection.requesterUserId === input.userId)
+        );
+      if (input.userId === user.id || (!ids.has(input.userId) && !known))
+        throw new Cp2Error(404, "network_contact_not_found", "Contact was not found.");
+      if (ids.size >= 500 && !ids.has(input.userId))
+        throw new Cp2Error(409, "contact_block_limit", "Your blocked contact list is full.");
+      ids.add(input.userId);
+    } else ids.delete(input.userId);
+    this.deps.users.set(user.id, { ...user, blockedContactUserIds: [...ids] });
+    if (input.blocked)
+      for (const [id, connection] of this.networkConnections) {
+        if (
+          (connection.requesterUserId === user.id && connection.recipientUserId === input.userId) ||
+          (connection.recipientUserId === user.id && connection.requesterUserId === input.userId)
+        )
+          this.networkConnections.delete(id);
+      }
+    return this.getNetworkPrivacy(input);
+  }
 
   get networkNodesMap(): Map<string, NetworkNodeSummary> {
     return this.networkNodes;
@@ -297,7 +357,7 @@ export class NetworkDomain {
     }
 
     if (activeSource === null) {
-      this.disconnectActiveNetworkSources(ownerUserId, "phone", now);
+      this.disconnectActiveNetworkSources(ownerUserId, "phone", now, true);
     }
 
     const source =
@@ -349,6 +409,7 @@ export class NetworkDomain {
       ...counted,
       importedCount: counted.directCount
     } as NetworkSyncSourceSummary);
+    this.pruneUnreferencedContactHashes(ownerUserId);
     this.recordPhonebookSync(ownerUserId, probes, now);
     return {
       ...this.getNetworkGraph({ sessionId: input.sessionId, now }),
@@ -598,8 +659,10 @@ export class NetworkDomain {
     this.assertPhonebookSyncBudget(input.userId, probes, input.now);
     const { index } = this.discoveryPass();
     return {
-      find: (channel, canonicalValue) =>
-        index.get(`${channel}:${hashCanonicalContact(channel, canonicalValue)}`) ?? null,
+      find: (channel, canonicalValue) => {
+        const target = index.get(`${channel}:${hashCanonicalContact(channel, canonicalValue)}`);
+        return target && !contactIsBlocked(this.deps.users, input.userId, target) ? target : null;
+      },
       commit: () => this.recordPhonebookSync(input.userId, probes, input.now)
     };
   }
@@ -1158,7 +1221,8 @@ export class NetworkDomain {
   private disconnectActiveNetworkSources(
     ownerUserId: string,
     sourcePlatform: "phone" | SocialNetworkProvider,
-    now: Date
+    now: Date,
+    preserveContactHashes = false
   ): void {
     for (const source of this.networkSources.values()) {
       if (
@@ -1166,12 +1230,16 @@ export class NetworkDomain {
         source.sourcePlatform === sourcePlatform &&
         source.status === "active"
       ) {
-        this.disconnectNetworkSourceRecord(source, now);
+        this.disconnectNetworkSourceRecord(source, now, preserveContactHashes);
       }
     }
   }
 
-  private disconnectNetworkSourceRecord(source: NetworkSyncSourceSummary, now: Date): void {
+  private disconnectNetworkSourceRecord(
+    source: NetworkSyncSourceSummary,
+    now: Date,
+    preserveContactHashes = false
+  ): void {
     this.networkSources.set(source.id, {
       ...source,
       status: "disconnected",
@@ -1210,8 +1278,37 @@ export class NetworkDomain {
       }
     }
 
-    for (const nodeId of nodeIds) {
-      this.networkNodes.delete(nodeId);
+    const removedIdentityIds = new Set(
+      [...nodeIds].flatMap((id) => this.networkNodes.get(id)?.externalIdentityIds ?? [])
+    );
+    for (const nodeId of nodeIds) this.networkNodes.delete(nodeId);
+    const retained = [...this.networkNodes.values()].filter(
+      (node) => node.ownerUserId === source.ownerUserId
+    );
+    if (!preserveContactHashes) this.pruneUnreferencedContactHashes(source.ownerUserId);
+    const identities = new Set(retained.flatMap((node) => node.externalIdentityIds));
+    for (const id of removedIdentityIds) {
+      const identity = this.externalIdentities.get(id);
+      if (identity && !identities.has(id)) {
+        this.externalIdentities.delete(id);
+        this.externalIdentityIdBySubject.delete(
+          `${identity.ownerUserId}:${identity.provider}:${identity.providerSubjectHash}`
+        );
+      }
+    }
+  }
+
+  private pruneUnreferencedContactHashes(ownerUserId: string): void {
+    const referenced = new Set(
+      [...this.networkNodes.values()]
+        .filter((node) => node.ownerUserId === ownerUserId)
+        .flatMap((node) => node.contactHashIds)
+    );
+    for (const [id, hash] of this.contactHashes) {
+      if (hash.ownerUserId === ownerUserId && !referenced.has(id)) {
+        this.contactHashes.delete(id);
+        this.contactHashIdByValue.delete(`${hash.ownerUserId}:${hash.hashType}:${hash.hashValue}`);
+      }
     }
   }
 
@@ -1414,7 +1511,11 @@ export class NetworkDomain {
       const linkedUserId = index.get(`${contactHash.hashType}:${contactHash.hashValue}`);
 
       // The owner's own number in their own phonebook is not a contact to connect with.
-      if (linkedUserId === undefined || linkedUserId === input.ownerUserId) {
+      if (
+        linkedUserId === undefined ||
+        linkedUserId === input.ownerUserId ||
+        contactIsBlocked(this.deps.users, input.ownerUserId, linkedUserId)
+      ) {
         continue;
       }
 
@@ -1464,7 +1565,8 @@ export class NetworkDomain {
     for (const account of this.deps.accounts.values()) {
       if (account.status !== undefined && account.status !== "active") continue;
       const userId = this.deps.userByAccount.get(account.id);
-      if (userId === undefined) continue;
+      if (userId === undefined || this.deps.users.get(userId)?.contactDiscoveryEnabled === false)
+        continue;
       if (account.primaryAuthChannel === "phone" || account.primaryAuthChannel === "email") {
         add(account.primaryAuthChannel, account.primaryAuthDestination, userId);
       }

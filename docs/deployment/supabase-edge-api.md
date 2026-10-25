@@ -361,7 +361,7 @@ write of that account waited up to 10 s and then answered 503 (`55P03`).
 Now:
 
 1. **The request saves and returns.** The message and one `agent_chat_turns` row (migration
-   `125_agent_chat_turns.sql`, status `pending`) commit together in milliseconds, and the answer
+   `128_agent_chat_turns.sql`, status `pending`) commit together in milliseconds, and the answer
    is the message with `processing: { status: "pending", turnId }`. A resend of the same
    `clientMessageId` answers with the same turn while it is pending or running, with the stored
    reply once it completed, and re-queues the same row when it failed (an explicit retry). One
@@ -405,7 +405,7 @@ The worker logs one line per turn: `agent_turn_completed` (with `durationMs`, `l
 `liveModelCalls`, `replayedModelCalls`, `mismatchedModelCalls`), `agent_turn_failed` (with
 `errorCode`), `agent_turn_recovered` or `agent_turn_lease_lost`.
 
-Deploy order: apply `125_agent_chat_turns.sql` first (`NODE_ENV=production pnpm db:migrate`), then
+Deploy order: apply `128_agent_chat_turns.sql` first (`NODE_ENV=production pnpm db:migrate`), then
 deploy the function, then the web app (an older web build would show a pending answer without a
 reply until its next thread refresh). Rollback: deploy the previous function, then
 `ALLOW_DB_ROLLBACK=true DB_ROLLBACK_STEPS=1 pnpm db:rollback`.
@@ -448,18 +448,18 @@ sent. Anything else older answers `RUNTIME_HANDOFF_NOT_FOUND` (404). Pruning run
 operator or job: the in-memory store drops superseded ones (the writer deletes their rows), and on
 Edge `saveTransactionalCp2Snapshot` first deletes stored ones the request never loaded, at most
 200 per write, oldest first, so an existing backlog drains over the next writes. The Edge scope loads
-only the kept ones (the same rule as SQL). Migration `123_runtime_checkpoint_retention.sql` drops the
+only the kept ones (the same rule as SQL). Migration `126_runtime_checkpoint_retention.sql` drops the
 checkpoint-to-parent foreign key (a kept checkpoint's parent may be pruned; a trigger still checks
 the parent exists when a checkpoint is inserted) and checks the head, instance and transfer foreign
 keys at commit, since the writer deletes checkpoints before it writes the rows that stopped
-pointing at them. Rollback `123_runtime_checkpoint_retention.down.sql` cannot restore the parent
+pointing at them. Rollback `126_runtime_checkpoint_retention.down.sql` cannot restore the parent
 foreign key once any parent was pruned (it adds it back only when every parent still exists), so
-after pruning has run in production 123 is in practice not reversible. Execution events (`cp2_runtime_execution_events`) still load in full for the
+after pruning has run in production 126 is in practice not reversible. Execution events (`cp2_runtime_execution_events`) still load in full for the
 conversations a member works in; their sequence numbers are allocated from the loaded rows.
 
 **Fixed: idempotency records are scoped to their account.** `cp2_runtime_operation_dedup` records
 (checkpoint, swap, rollback, offline sync, merge) now carry `accountId` and `taskId`; the writer fills
-`account_id` from the record and migration `124_runtime_operation_dedup_tenant.sql` backfills
+`account_id` from the record and migration `127_runtime_operation_dedup_tenant.sql` backfills
 stored rows from their result's task head and that conversation's owner. The Edge scope loads only
 the caller's rows, and only the named task's when the request names one (`/v1/runtime/:taskId`, or
 an MCP tool call's `taskId`). A record answers retries for 7 days; older ones are not consulted and

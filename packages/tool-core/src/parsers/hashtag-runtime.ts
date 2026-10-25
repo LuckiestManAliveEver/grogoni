@@ -74,7 +74,7 @@ export function parseRuntimeHashtagInvocation(message: string): RuntimeHashtagIn
       "Choose a capability after #. Start typing to search the available shop modules."
     );
   }
-  if (!(command in runtimeToolRegistry)) {
+  if (!Object.hasOwn(runtimeToolRegistry, command)) {
     return invalidInvocation(
       command,
       `Unknown capability #${command}. Type # in chat to choose an available capability.`

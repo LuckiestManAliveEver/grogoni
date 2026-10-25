@@ -15,7 +15,11 @@ export type DaemonQueryable = Pick<Pool, "query">;
 export type DaemonPool = Pick<Pool, "query" | "connect">;
 
 /** Every migration that shapes grogoni_daemon_tasks, in order (infra/db/migrations). */
-export const daemonQueueMigrations = ["112_native_daemon.sql", "116_daemon_lanes.sql"] as const;
+export const daemonQueueMigrations = [
+  "112_native_daemon.sql",
+  "116_daemon_lanes.sql",
+  "124_daemon_conversation_delivery.sql"
+] as const;
 
 /** How long a user's due task waits for their browser before a server worker takes it. */
 export const defaultUserTakeoverMs = 10 * 60_000;
@@ -83,6 +87,13 @@ export interface DaemonTaskStore {
     /** Makes it a user task. Callers namespace `key` per owner: keys are globally unique. */
     ownerUserId?: string;
   }): Promise<DaemonTask>;
+  pendingConversationDeliveries(limit: number): Promise<DaemonTask[]>;
+  markConversationDelivered(task: DaemonTask): Promise<void>;
+  retryOwned(
+    ownerUserId: string,
+    id: string,
+    maxActive: number
+  ): Promise<"queued" | "limited" | "conflict">;
   get(id: string): Promise<DaemonTask | null>;
   list(): Promise<DaemonTask[]>;
   retry(id: string): Promise<boolean>;
@@ -208,6 +219,66 @@ export function createPostgresDaemonTaskStore(
           "select * from grogoni_daemon_tasks order by updated_at desc,id limit 50"
         )
       ).rows;
+    },
+    async pendingConversationDeliveries(limit) {
+      return (
+        await pool.query<DaemonTask>(
+          `select * from grogoni_daemon_tasks
+        where owner_user_id is not null and payload->'conversation' is not null
+          and status in ('completed','failed','cancelled')
+          and (conversation_delivered_at is null or conversation_delivered_at < updated_at)
+        order by updated_at,id limit $1`,
+          [limit]
+        )
+      ).rows;
+    },
+    async markConversationDelivered(task) {
+      await pool.query(
+        `update grogoni_daemon_tasks set conversation_delivered_at=updated_at
+        where id=$1 and date_trunc('milliseconds',updated_at)=$2 and status=$3 and attempts=$4 and executions=$5`,
+        [task.id, task.updated_at, task.status, task.attempts, task.executions]
+      );
+    },
+    async retryOwned(ownerUserId, id, maxActive) {
+      const client = await pool.connect();
+      try {
+        await client.query("begin");
+        await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [
+          `grogoni_daemon_owner:${ownerUserId}`
+        ]);
+        const row = (
+          await client.query<DaemonTask>(
+            "select * from grogoni_daemon_tasks where id=$1 and owner_user_id=$2 for update",
+            [id, ownerUserId]
+          )
+        ).rows[0];
+        // Replaying a retry while queued/running is idempotent and never resets its lease.
+        if (row && (row.status === "queued" || row.status === "running")) {
+          await client.query("commit");
+          return "queued";
+        }
+        const active = await client.query<{ total: string }>(
+          `select count(*) as total from grogoni_daemon_tasks where owner_user_id=$1 and (status in ('queued','running') or (status='cancelled' and lease_until > now()))`,
+          [ownerUserId]
+        );
+        if (Number(active.rows[0]?.total ?? 0) >= maxActive) {
+          await client.query("commit");
+          return "limited";
+        }
+        const updated = await client.query(
+          `update grogoni_daemon_tasks set status='queued',attempts=0,result=null,
+          run_at=now(),error_code=null,lease_token=null,lease_until=null,conversation_delivered_at=null,updated_at=now()
+          where id=$1 and owner_user_id=$2 and status in ('failed','cancelled') and (lease_until is null or lease_until <= now())`,
+          [id, ownerUserId]
+        );
+        await client.query("commit");
+        return updated.rowCount === 1 ? "queued" : "conflict";
+      } catch (error) {
+        await client.query("rollback").catch(() => undefined);
+        throw error;
+      } finally {
+        client.release();
+      }
     },
     async retry(id) {
       return (
@@ -482,6 +553,7 @@ export function createPostgresDaemonTaskStore(
             `with doomed as (
            select id from grogoni_daemon_tasks
            where status in ('completed','failed','cancelled')
+             and (payload->'conversation' is null or owner_user_id is null or conversation_delivered_at >= updated_at)
              and updated_at < now()-$1::bigint*interval '1 millisecond'
            order by updated_at limit $2 for update skip locked)
          delete from grogoni_daemon_tasks t using doomed

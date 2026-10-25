@@ -1,0 +1,115 @@
+{
+  "runId": "8d205201-4280-465e-b14e-7d78deaab0c3",
+  "base": "https://grogoni.com/api",
+  "checks": [
+    {
+      "name": "two browsers send and decrypt direct messages in both directions",
+      "status": "pass",
+      "detail": {
+        "encryptedAtRequestAndStorage": true,
+        "bothBrowsersDecrypted": true,
+        "reloadVerified": true
+      }
+    },
+    {
+      "name": "customer and business owner exchange browser replies in one business thread",
+      "status": "pass",
+      "detail": {
+        "sameConversation": true,
+        "customerReceivedOwnerReply": true,
+        "noAgentInference": true,
+        "reloadVerified": true
+      }
+    },
+    {
+      "name": "bounded parallel session and inbox reads remain available",
+      "status": "pass",
+      "detail": {
+        "samples": [
+          {
+            "round": 0,
+            "status": 200,
+            "durationMs": 2977,
+            "requestId": null,
+            "code": null
+          },
+          {
+            "round": 0,
+            "status": 200,
+            "durationMs": 2670,
+            "requestId": null,
+            "code": null
+          },
+          {
+            "round": 1,
+            "status": 200,
+            "durationMs": 2352,
+            "requestId": null,
+            "code": null
+          },
+          {
+            "round": 1,
+            "status": 200,
+            "durationMs": 2411,
+            "requestId": null,
+            "code": null
+          },
+          {
+            "round": 2,
+            "status": 200,
+            "durationMs": 2409,
+            "requestId": null,
+            "code": null
+          },
+          {
+            "round": 2,
+            "status": 200,
+            "durationMs": 2412,
+            "requestId": null,
+            "code": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "browser workflows produced no page errors",
+      "status": "pass",
+      "detail": {
+        "pageErrors": []
+      }
+    },
+    {
+      "name": "remove and verify all disposable messaging fixtures",
+      "status": "pass",
+      "detail": {
+        "removedAccounts": 2,
+        "removedBusinesses": 1,
+        "lockHeldMs": 9407
+      }
+    }
+  ],
+  "pageErrors": [],
+  "browserState": [
+    {
+      "width": 390,
+      "path": "/marketplace/conversations/8c75774e-9d35-57f8-a29a-0b8d32974e0f",
+      "activeRows": []
+    },
+    {
+      "width": 1280,
+      "path": "/marketplace/conversations/8c75774e-9d35-57f8-a29a-0b8d32974e0f",
+      "activeRows": [
+        "8c75774e-9d35-57f8-a29a-0b8d32974e0f"
+      ]
+    }
+  ],
+  "fixtures": {
+    "accountIds": [
+      "81d2aef3-47ee-4bb6-a89e-9a4f957167d2",
+      "3c57c387-2523-4ae3-ac33-2513283e41b6"
+    ],
+    "businessIds": [
+      "dcc730bb-c337-4f49-9ab4-76c4123f5f69"
+    ]
+  }
+}

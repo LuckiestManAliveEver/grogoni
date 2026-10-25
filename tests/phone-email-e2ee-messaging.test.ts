@@ -1,3 +1,4 @@
+import { signupPhone, signupWithBackupEmail } from "./fixtures/account-auth";
 import { webcrypto } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
@@ -20,6 +21,58 @@ import {
 } from "../apps/web/src/e2ee";
 
 describe("registered phone and email end-to-end messaging", () => {
+  it("does not resolve or notify an unverified backup email", async () => {
+    Object.defineProperty(globalThis, "crypto", { configurable: true, value: webcrypto });
+    const notifications: MessageEmailNotificationInput[] = [];
+    const store = createCp2Store({
+      messageEmailNotificationSender: async (input) => {
+        notifications.push(input);
+        return "sent";
+      }
+    });
+    const app = buildApi({ cp2: { store } });
+    const sender = await signupPhone(app, "unverified-email-sender");
+    const recipient = await signupPhone(app, "unverified-email-recipient");
+    const email = "unverified-recipient@example.test";
+    await postJson(app, "/auth/identity/email/start", { email }, recipient.cookie);
+    const unresolved = await postResponse(
+      app,
+      "/v1/conversations",
+      {
+        kind: "personal",
+        activeShopId: null,
+        recipient: email
+      },
+      sender.cookie
+    );
+    expect(unresolved.statusCode).toBe(404);
+    await registerEncryptionDevice(
+      app,
+      sender.cookie,
+      await createIdentity("unverified-sender-device")
+    );
+    await registerEncryptionDevice(
+      app,
+      recipient.cookie,
+      await createIdentity("unverified-recipient-device")
+    );
+    const conversation = await createConversation(
+      app,
+      sender.cookie,
+      recipient.phone,
+      "Phone only"
+    );
+    await sendEncryptedMessage({
+      app,
+      cookie: sender.cookie,
+      conversation,
+      message: "Private message"
+    });
+    await Promise.resolve();
+    expect(notifications).toEqual([]);
+    expect(store.snapshot().messageNotificationDeliveries).toEqual([]);
+    await app.close();
+  });
   it("signs up mock phone/email accounts and persists encrypted messages in both directions", async () => {
     Object.defineProperty(globalThis, "crypto", { configurable: true, value: webcrypto });
     const emailNotifications: MessageEmailNotificationInput[] = [];
@@ -92,6 +145,9 @@ describe("registered phone and email end-to-end messaging", () => {
       conversation: emailToPhoneConversation,
       message: emailToPhoneText
     });
+    // The email sender and the phone number are the same pair, so `createConversation` reuses the
+    // chat opened from the phone instead of starting a second one; this reads the recipient's own
+    // copy of that chat. Messages come back oldest first, so the reply is the last one.
     const receivedByPhone = await getJson<ConversationView>(
       app,
       `/v1/conversations/${emailToPhoneConversation.conversation.id}`,
@@ -100,7 +156,7 @@ describe("registered phone and email end-to-end messaging", () => {
     await expect(
       decryptDirectMessage({
         conversationId: emailToPhoneConversation.conversation.id,
-        content: encryptedContent(receivedByPhone.messages[0]),
+        content: encryptedContent(receivedByPhone.messages.at(-1)),
         identity: phoneIdentity
       })
     ).resolves.toEqual({ text: emailToPhoneText, attachments: [] });
@@ -223,17 +279,7 @@ async function createAccountSession(
     expect(response.statusCode).toBe(200);
     return extractSessionCookie(response.headers["set-cookie"]);
   }
-  const otp = await postJson<{ challengeId: string; devOtp: string }>(app, "/auth/otp/request", {
-    channel,
-    destination,
-    deliveryChannel: "email"
-  });
-  const response = await postResponse(app, "/auth/otp/verify", {
-    challengeId: otp.challengeId,
-    code: otp.devOtp
-  });
-  expect(response.statusCode).toBe(200);
-  return extractSessionCookie(response.headers["set-cookie"]);
+  return (await signupWithBackupEmail(app, destination)).cookie;
 }
 
 async function createConversation(

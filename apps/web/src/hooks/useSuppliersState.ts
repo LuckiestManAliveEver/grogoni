@@ -3,7 +3,12 @@ import { isExplicitOfflineMode, offlineModeEvent } from "../offline-runtime";
 import { apiFetch } from "../lib/api";
 import { reportBackgroundLoadError } from "../background-load-error";
 
-import { dataUrlPayload, getErrorMessage, readFileAsDataUrl } from "../chat-message-plumbing";
+import {
+  dataUrlPayload,
+  getErrorMessage,
+  readFileAsDataUrl,
+  extractChatAttachment
+} from "../chat-message-plumbing";
 import { deleteJson, getJson, patchJson, postJson } from "../api-helpers";
 import {
   emptySupplierForm,
@@ -306,7 +311,26 @@ export function useSuppliersState(deps: UseSuppliersStateDeps) {
           throw new Error("Receipt photos must be 10 MB or smaller.");
       }
       const requiresOCR = file.type.startsWith("image/") || file.type === "application/pdf";
-      const extractedText = requiresOCR ? "" : await file.text();
+      const reading =
+        !isExplicitOfflineMode() && file.type.startsWith("image/")
+          ? await extractChatAttachment(
+              {
+                id: crypto.randomUUID(),
+                name: file.name,
+                type: file.type,
+                size: file.size,
+                category: "image",
+                dataUrl: await readFileAsDataUrl(file)
+              },
+              deps.businessId
+            )
+          : null;
+      if (reading?.receiptJob) {
+        await loadReceiptOcrJobs();
+        deps.setStatusMessage("Luna filled the delivery fields. Review them before confirming.");
+        return reading.receiptJob;
+      }
+      const extractedText = reading?.text ?? (requiresOCR ? "" : await file.text());
       const contentBase64 = requiresOCR ? dataUrlPayload(await readFileAsDataUrl(file)) : undefined;
       const job = await postJson<ReceiptOCRJobSummary>(
         `/businesses/${deps.businessId}/receipt-ocr/jobs`,
@@ -314,6 +338,9 @@ export function useSuppliersState(deps: UseSuppliersStateDeps) {
           fileName: file.name,
           contentType: file.type || "application/octet-stream",
           extractedText,
+          ...(reading?.receiptFields
+            ? { structuredExtraction: reading.receiptFields, engine: "gpt-6-luna" }
+            : {}),
           ...(contentBase64 === undefined ? {} : { contentBase64 }),
           fileSizeBytes: file.size,
           fileSignature: await readFileSignature(file)
@@ -349,6 +376,7 @@ export function useSuppliersState(deps: UseSuppliersStateDeps) {
         {
           supplierId: job.matchedSupplierId,
           salesAgentId: job.matchedSalesAgentId,
+          receiveInventory: true,
           createSupplier: job.matchedSupplierId === null,
           createSalesAgent: job.matchedSalesAgentId === null && job.salesAgentName !== null
         }
@@ -357,7 +385,9 @@ export function useSuppliersState(deps: UseSuppliersStateDeps) {
       await deps.loadReports(deps.businessId);
       await loadPurchaseReceipts(deps.businessId);
       await loadReceiptOcrJobs();
-      deps.setStatusMessage("Receipt saved. Uploaded image was deleted after processing.");
+      deps.setStatusMessage(
+        "Delivery saved. The receipt links the wholesaler, sales agent and received products."
+      );
     } catch (error) {
       deps.setStatusMessage(getErrorMessage(error));
     }

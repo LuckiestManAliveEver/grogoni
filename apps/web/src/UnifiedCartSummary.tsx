@@ -27,6 +27,7 @@ export default function UnifiedCartSummary(props: {
     group.push(item);
     groups.set(key, group);
   }
+  const hasUnknownPrices = props.items.some((item) => item.price === null);
   const total = props.items.reduce((sum, item) => sum + (item.price ?? 0) * item.quantity, 0);
 
   return (
@@ -73,10 +74,14 @@ export default function UnifiedCartSummary(props: {
         </div>
       ))}
       <div className="cart-total-row">
-        <strong>Total</strong>
+        <strong>{hasUnknownPrices ? "Known total" : "Total"}</strong>
         <strong>KSh {total}</strong>
       </div>
-      <button type="button" disabled={props.isCheckingOut} onClick={props.onCheckout}>
+      <button
+        type="button"
+        disabled={props.isCheckingOut || props.items.length === 0}
+        onClick={props.onCheckout}
+      >
         {props.isCheckingOut ? "Checking out…" : "Checkout"}
       </button>
     </section>

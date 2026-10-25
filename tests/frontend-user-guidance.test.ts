@@ -146,8 +146,9 @@ describe("frontend user guidance", () => {
       "utf8"
     );
     expect(composerAttachmentWorkbench).toContain("OCR ready for scans and images");
-    // Images are read on the device; the server OCR route was retired (fcd42a35).
-    expect(chatMessagePlumbing).toContain("runLocalOcr");
+    // Online chat images are read by Luna; the legacy OCR endpoint remains retired.
+    expect(chatMessagePlumbing).toContain("/v1/chat/images/read");
+    expect(chatMessagePlumbing).not.toContain("runLocalOcr");
     expect(chatMessagePlumbing).not.toContain("/documents/ocr");
     expect(composerAttachmentWorkbench).toContain("Extract all readable text");
   });
@@ -474,7 +475,7 @@ describe("frontend user guidance", () => {
       "Account deactivated and deletion scheduled. You have been returned to startup."
     );
     expect(application).toContain("<PhoneFirstAuthentication");
-    expect(phoneFirst).toContain('role="tablist"');
+    expect(phoneFirst).toContain('const identifierType = "phone" as const');
     expect(phoneFirst).toContain("Use account PIN");
     expect(phoneFirst).not.toContain("legacy");
   });

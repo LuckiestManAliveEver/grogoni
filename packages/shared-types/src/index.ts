@@ -15,6 +15,7 @@ export * from "./staff.js";
 export * from "./store-links.js";
 export * from "./workload.js";
 
+import type { ConversationExecutionSummary } from "./daemon-lanes.js";
 import type { OrderSource, WeightStatus, WeightUnresolvedReason } from "./fulfillment.js";
 import type { GramsString } from "./grams.js";
 import type { PortableAgentManifest } from "./portable-agent.js";
@@ -228,6 +229,9 @@ export interface UserSummary {
   phoneUpdatedAt?: string | null;
   phoneSource?: "phone_login" | "shop_registration" | null;
   publicPhoneEnabled?: boolean;
+  /** Private account preferences, persisted in the existing user record. */
+  contactDiscoveryEnabled?: boolean;
+  blockedContactUserIds?: string[];
   emailAddress?: string | null;
   emailVerificationStatus?: "unverified" | "verified" | null;
 }
@@ -371,6 +375,8 @@ export type GrogoniMode = "marketplace" | "seller";
 
 export type GrogoniChatSurface =
   "conversation" | "storefront" | "catalogue" | "product" | "order" | "receipt" | "owner-controls";
+
+export type ConversationType = "DIRECT" | "DAEMON" | "BUSINESS";
 
 export type ConversationKind = "personal" | "storefront" | "order";
 
@@ -653,6 +659,9 @@ export interface ConversationParticipantSummary {
   businessId: string | null;
   agentId: string | null;
   externalIdentityId?: string | null;
+  /** Owner-scoped phonebook association in the caller's inbox projection only.
+   * Never persist or expose another participant's private contact node ID. */
+  networkNodeId?: string | null;
   displayName?: string | null;
   lastReadAt?: string | null;
   archivedAt?: string | null;
@@ -897,6 +906,15 @@ export interface ProviderUpdateReceiptSummary {
 }
 
 export interface ConversationSummary {
+  /** Derived by the server from durable identity and participants; legacy kind is preserved. */
+  conversationType?: ConversationType;
+  /** The account’s permanent daemon thread, independent of model selection. */
+  isPermanentDaemon?: boolean;
+  /** Owner-configured opt-in for explicit business agent requests. */
+  businessAgentEnabled?: boolean;
+  /** Server-owned permanent assistance thread; home is its parent. */
+  helpTopic?: string;
+  helpParentConversationId?: string;
   /** Internal task thread linked to its ordinary owner chat. */
   taskParentConversationId?: string;
   id: string;
@@ -941,6 +959,7 @@ export interface RecycleBinStatusSummary {
 }
 
 export interface ConversationMessageSummary {
+  execution?: ConversationExecutionSummary;
   id: string;
   conversationId: string;
   clientMessageId: string;
@@ -2061,15 +2080,24 @@ export interface StatusOrderSummary {
   updatedAt: string;
 }
 
+export interface UnifiedCheckoutReceiptItemSummary {
+  title: string;
+  quantity: number;
+  unitPrice: number | null;
+}
+
 export interface UnifiedCheckoutHandoffSummary {
   kind: "catalogue" | "contact";
   sourceLabel: string;
   orderId: string;
   status: HandoffOrderStatus;
+  /** Snapshot of the ordered items; optional for older persisted checkouts. */
+  items?: UnifiedCheckoutReceiptItemSummary[];
 }
 
 /** An item that could not be ordered at checkout - surfaced to the buyer, never silently dropped. */
 export interface UnifiedCheckoutFailureSummary {
+  checkoutItemIndex?: number;
   sourceLabel: string;
   title: string;
   reason: string;
@@ -2084,6 +2112,13 @@ export interface UnifiedCheckoutSummary {
   buyerAccountId: string;
   handoffs: UnifiedCheckoutHandoffSummary[];
   failures: UnifiedCheckoutFailureSummary[];
+  /** External retailer links awaiting completion; these are not placed orders. */
+  externalRequests?: Array<{
+    websiteUrl: string;
+    sourceLabel: string;
+    title: string;
+    quantity: number;
+  }>;
   createdAt: string;
   /** Durable idempotency key (durable-execution-plane.md "Idempotency"), scoped to `buyerAccountId`
    *  by `CommerceDomain.createUnifiedCheckout`. Null for a checkout created without one (e.g. the
@@ -2094,7 +2129,27 @@ export interface UnifiedCheckoutSummary {
   idempotencyKey?: string | null;
 }
 
+export interface BuyerShoppingTurnResult {
+  shoppingSessionId: string;
+  reply: string;
+  pendingCheckout: boolean;
+  checkoutId?: string;
+}
+
+export interface BuyerShoppingSession {
+  id: string;
+  accountId: string;
+  browserSessionIds: string[];
+  observedUrls: string[];
+  history: RuntimeModelConversationMessage[];
+  pendingCheckout: { id: string; items: BuyCheckoutItemInput[]; quote: string } | null;
+  turns: Array<{ requestId: string; result: BuyerShoppingTurnResult }>;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface BuyCheckoutItemInput {
+  websiteUrl?: string;
   sourceKind: BuyResultSourceKind;
   sourceId: string;
   sourceLabel: string;
@@ -2259,7 +2314,7 @@ export interface PurchaseReceiptSummary {
  * Generic OCR capability shared by receipt parsing, chat document extraction, and camera product
  * capture - not receipt-specific. See services/api/src/cp2/ocr-provider.ts.
  */
-export type OcrEngine = "paddleocr" | "tesseract";
+export type OcrEngine = "paddleocr" | "tesseract" | "gpt-6-luna";
 export type OcrProfile = "mobile" | "balanced" | "accurate";
 
 export type ReceiptOCRJobStatus =
@@ -2317,6 +2372,18 @@ export interface ReceiptMatchCandidateSummary {
 }
 
 export interface ReceiptStructuredExtractionSummary {
+  sourceDocument?: { sha256: string; fileName: string };
+  deliveryBinding?: {
+    purchaseReceiptId: string;
+    receivedAt: string;
+    products: Array<{
+      lineIndex: number;
+      receiptLineItemId: string;
+      productId: string;
+      movementId: string | null;
+    }>;
+  };
+
   supplier: {
     supplierName: string | null;
     tradingName: string | null;
@@ -3808,6 +3875,7 @@ export type RuntimeToolName =
   | "network.identity.reject"
   | "network.identity.unlink"
   | "network.identity.add"
+  | "commerce.website.open"
   | "commerce.search"
   | "commerce.checkout"
   | "product.create"
@@ -4198,6 +4266,7 @@ export interface RuntimeModelTrace {
 }
 
 export interface RuntimePlannedAction {
+  portableSkill?: { id: string; version: number; digest: string };
   id: string;
   toolName: RuntimeToolName;
   risk: "low" | "medium" | "high" | "critical";
@@ -4229,6 +4298,8 @@ export interface RuntimeTelemetryEvent {
   status: RuntimeTurnStatus | RuntimePlanStatus;
   metadata: Record<string, string | number | boolean | null>;
 }
+
+export const runtimeSessionTurnLimit = 20;
 
 export interface RuntimeSessionSummary {
   id: string;

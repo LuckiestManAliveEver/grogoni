@@ -1,0 +1,12 @@
+{
+  "function": "api",
+  "version": 99,
+  "status": "ACTIVE",
+  "checks": {
+    "live": 200,
+    "database": 200,
+    "ready": 200,
+    "publicRoute": 200
+  },
+  "frontendDeployed": false
+}

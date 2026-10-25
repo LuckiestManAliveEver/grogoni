@@ -115,4 +115,35 @@ describe("Edge scoped persistence", () => {
     expect(scope.withClause).not.toContain("OR true --");
     expect(scope.withClause).toContain("record->>'destination'");
   });
+  it("loads only the requested transaction's email proof for hosted MFA", async () => {
+    const transactionId = "00000000-0000-4000-8000-000000000001";
+    const query = vi.fn(async () => ({
+      rows: [
+        {
+          account_id: transactionId,
+          user_id: transactionId,
+          primary_auth_destination: "+254711111111"
+        }
+      ]
+    }));
+    const payload = Buffer.from(JSON.stringify({ transactionId, factor: "email", code: "123456" }));
+    const scope = await createEdgeSnapshotScope(
+      { query } as unknown as PoolClient,
+      new Request("https://grogoni.com/auth/mfa/verify", {
+        method: "POST",
+        headers: { "content-type": "application/json" }
+      }),
+      "/auth/mfa/verify",
+      payload
+    );
+    expect(scope.withClause).toContain(
+      "select record->>'providerChallengeId' from public.cp2_auth_transactions"
+    );
+    expect(scope.withClause).toContain(
+      "record->>'consumedAt' is null and (record->>'expiresAt')::timestamptz > now()"
+    );
+    expect(scope.predicate("otpChallenges")).toBe(
+      "entity_id in (select id::text from otp_challenges)"
+    );
+  });
 });
