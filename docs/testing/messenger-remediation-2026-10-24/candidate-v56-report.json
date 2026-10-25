@@ -233,11 +233,7 @@
       "name": "all three conversation identities restore in one inbox",
       "status": "pass",
       "detail": {
-        "types": [
-          "DAEMON",
-          "DIRECT",
-          "BUSINESS"
-        ]
+        "types": ["DAEMON", "DIRECT", "BUSINESS"]
       }
     },
     {

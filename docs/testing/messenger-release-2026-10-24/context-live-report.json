@@ -98,18 +98,11 @@
     {
       "width": 1280,
       "path": "/marketplace/conversations/8c75774e-9d35-57f8-a29a-0b8d32974e0f",
-      "activeRows": [
-        "8c75774e-9d35-57f8-a29a-0b8d32974e0f"
-      ]
+      "activeRows": ["8c75774e-9d35-57f8-a29a-0b8d32974e0f"]
     }
   ],
   "fixtures": {
-    "accountIds": [
-      "81d2aef3-47ee-4bb6-a89e-9a4f957167d2",
-      "3c57c387-2523-4ae3-ac33-2513283e41b6"
-    ],
-    "businessIds": [
-      "dcc730bb-c337-4f49-9ab4-76c4123f5f69"
-    ]
+    "accountIds": ["81d2aef3-47ee-4bb6-a89e-9a4f957167d2", "3c57c387-2523-4ae3-ac33-2513283e41b6"],
+    "businessIds": ["dcc730bb-c337-4f49-9ab4-76c4123f5f69"]
   }
 }
