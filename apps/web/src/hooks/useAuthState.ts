@@ -664,8 +664,12 @@ export function useAuthState(deps: UseAuthStateDeps) {
         context.shops.find((shop) => shop.business.id === context.activeShopId) ?? context.shops[0];
       const restoredMode =
         context.mode === "seller" && activeShop === undefined ? "marketplace" : context.mode;
+      // The server confirmed the conversation the URL asked for: its owning mode wins over the
+      // URL prefix (a seller thread reached through the buyer prefix restores into the workspace).
+      const confirmedRequestedConversation =
+        requestedConversationId !== undefined && context.conversationId === requestedConversationId;
       const place = resolveRestoredPlace({
-        deepLink,
+        deepLink: confirmedRequestedConversation ? null : deepLink,
         currentPath: window.location.pathname,
         hasShop: activeShop !== undefined,
         last: {
