@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
 import { AppIcon } from "./AppIcon";
 import { type BeforeInstallPromptEvent } from "./grogoni-application-shared";
+import {
+  loadAndroidRelease,
+  persistAndroidInstallDismissed,
+  readAndroidInstallDismissed,
+  type AndroidReleaseStatus
+} from "./android-release";
 
 const installHelp = [
   "Open Grogoni in Chrome, Edge, or another supported Android browser.",
@@ -8,9 +14,23 @@ const installHelp = [
   "Confirm the install prompt and wait for the app icon to appear on your home screen."
 ];
 
+interface AndroidNativeInstallState {
+  /** True only when the device is Android AND a verified release is published. */
+  offered: boolean;
+  /** The validated release metadata, when offered. */
+  release: Extract<AndroidReleaseStatus, { available: true }>["release"] | null;
+  /** The user dismissed the card; it stays hidden until they revisit /install and choose to. */
+  dismissed: boolean;
+}
+
 export default function InstallPage() {
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [installed, setInstalled] = useState<boolean>(false);
+  const [androidNative, setAndroidNative] = useState<AndroidNativeInstallState>({
+    offered: false,
+    release: null,
+    dismissed: readAndroidInstallDismissed()
+  });
 
   useEffect(() => {
     const handleBeforeInstallPrompt = (event: Event) => {
@@ -39,9 +59,36 @@ export default function InstallPage() {
     };
   }, []);
 
+  // Only an Android device can install the native APK. The release manifest is fetched so the card
+  // is offered *only* when a verified, signed release is actually published — never a placeholder.
+  useEffect(() => {
+    if (!/Android/i.test(navigator.userAgent)) {
+      return;
+    }
+    let cancelled = false;
+    void loadAndroidRelease().then((status) => {
+      if (cancelled) return;
+      setAndroidNative((current) => ({
+        offered: status.available,
+        release: status.available ? status.release : null,
+        dismissed: current.dismissed
+      }));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const isSupportedPlatform = /Android/i.test(navigator.userAgent);
   const canInstallPrompt = installPrompt !== null && !installed;
   const browserLabel = detectBrowser();
+  const showNativeInstall = androidNative.offered && androidNative.release !== null;
+  const showNativeCard = showNativeInstall && !androidNative.dismissed && !installed;
+
+  function dismissNativeInstall() {
+    persistAndroidInstallDismissed();
+    setAndroidNative((current) => ({ ...current, dismissed: true }));
+  }
 
   async function handleInstall() {
     if (installPrompt === null) return;
@@ -76,7 +123,45 @@ export default function InstallPage() {
           <span className="install-browser-pill">{browserLabel}</span>
         </div>
 
-        {canInstallPrompt ? (
+        {showNativeCard && androidNative.release !== null ? (
+          <div
+            className="install-android-native"
+            role="region"
+            aria-labelledby="install-native-header"
+          >
+            <div className="install-native-copy">
+              <h2 id="install-native-header">Get Grogoni for Android</h2>
+              <p>
+                Install the signed Android app (version{" "}
+                {androidNative.release.versionName || "latest"}, build{" "}
+                {androidNative.release.versionCode}). Android verifies the download and asks for
+                your approval before installing.
+              </p>
+            </div>
+            <div className="install-native-actions">
+              <a
+                className="install-primary-action"
+                href={androidNative.release.downloadUrl}
+                rel="noopener noreferrer"
+                download
+                aria-label={`Download the signed Grogoni Android app, version ${androidNative.release.versionName || "latest"}`}
+              >
+                Install Grogoni for Android
+              </a>
+              <button
+                type="button"
+                className="install-native-secondary"
+                onClick={dismissNativeInstall}
+              >
+                Not now
+              </button>
+            </div>
+            <p className="install-native-trust">
+              Downloaded over HTTPS from Grogoni. Android and Play Protect verify the signature; no
+              install proceeds without your explicit approval.
+            </p>
+          </div>
+        ) : canInstallPrompt ? (
           <button type="button" className="install-primary-action" onClick={handleInstall}>
             Install Grogoni
           </button>
@@ -121,9 +206,22 @@ export default function InstallPage() {
               Android signing key, verified by the app installer and Google Play Protect before
               launch.
             </p>
-            <a className="install-link" href="/" aria-label="Open the HTTPS download page">
-              Download Android APK
-            </a>
+            {showNativeInstall && androidNative.release !== null ? (
+              <a
+                className="install-link"
+                href={androidNative.release.downloadUrl}
+                rel="noopener noreferrer"
+                download
+                aria-label="Download the signed Grogoni Android APK"
+              >
+                Download Android APK
+              </a>
+            ) : (
+              <p className="install-note" role="note">
+                No signed Android release is published yet. The download link appears here only
+                after a tested, signed release is available.
+              </p>
+            )}
             <p className="install-note">
               Download links remain HTTPS-only and are shown only after the release is tested and
               signed.
