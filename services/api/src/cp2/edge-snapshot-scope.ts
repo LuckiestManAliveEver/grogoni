@@ -208,7 +208,46 @@ export async function createEdgeSnapshotScope(
           : []
       )
     : [];
+  const commerceDiscovery =
+    path === "/public/commerce-offers" ||
+    path === "/buy/search" ||
+    path === "/buy/assistant" ||
+    path.includes("/commerce-sources/distribution");
+  const values =
+    input.values && typeof input.values === "object"
+      ? (input.values as Record<string, unknown>)
+      : {};
+  const targetBusinesses = [values.targetBusinessId, values.principalBusinessId].filter(
+    (value): value is string => typeof value === "string" && uuid.test(value)
+  );
+  const offerIds = Array.isArray(input.items)
+    ? input.items.flatMap((item) =>
+        item &&
+        typeof item === "object" &&
+        item.sourceKind === "offer" &&
+        typeof item.sourceId === "string"
+          ? [item.sourceId]
+          : []
+      )
+    : [];
+  const commerceMetadata = `with recursive own_businesses as (
+    select business_id::text id from public.business_memberships where user_id = nullif(${actorUser}, '')::uuid
+    union select ${requestedBusiness} where ${requestedBusiness} <> ''
+    union select id::text from public.businesses where grogoni_id = ${storefront}
+  ), seed as (
+    select entity_id, record, business_id from public.cp2_unified_commerce_records where business_id in (select id from own_businesses)
+      or record->>'targetBusinessId' in (select id from own_businesses)
+      or record->>'principalBusinessId' in (select id from own_businesses)
+      or entity_id in (${sqlList(offerIds)})
+    union select entity_id, record, business_id from (select * from public.cp2_unified_commerce_records where ${commerceDiscovery ? "true" : "false"} and (record->>'kind'='offer' and record->>'status'='published' or record->>'kind'='representation' and record->>'status'='authorized') order by entity_id limit 500) public_commerce
+  ), linked as (
+    select entity_id, record, business_id, array[entity_id] path from seed
+    union all select parent.entity_id, parent.record, parent.business_id, linked.path || parent.entity_id
+      from linked join public.cp2_unified_commerce_records parent on parent.entity_id in (linked.record->>'upstreamOfferId', linked.record->>'sourceId', linked.record->>'representationId')
+      where not parent.entity_id = any(linked.path) and cardinality(linked.path) < 24
+  ) select distinct entity_id, record, business_id from linked`;
   const ctes: [string, string][] = [
+    ["edge_commerce_records", commerceMetadata],
     [
       "edge_recipient_node_ids",
       `select entity_id as id from public.cp2_network_nodes where record->>'grogoniUserId' = nullif(${actorUser}, '')`
@@ -225,6 +264,13 @@ export async function createEdgeSnapshotScope(
       union select id::text from public.businesses where id = nullif(${requestedBusiness}, '')::uuid
       union select business_id from public.cp2_staff_invitations where record->>'destination' = ${destination} and ${actorAccount} <> ''
       union select id::text from public.businesses where grogoni_id = ${storefront}
+      union select business_id::text from public.invoices where exists (
+        select 1 from jsonb_array_elements(offer_fulfillment) line
+        where line->'snapshot'->>'productBusinessId' in (select business_id::text from public.business_memberships where user_id = nullif(${actorUser}, '')::uuid))
+      union select business_id as id from edge_commerce_records
+      union select record->>'principalBusinessId' from edge_commerce_records where record->>'principalBusinessId' is not null
+      union select record->>'targetBusinessId' from edge_commerce_records where record->>'targetBusinessId' is not null
+      ${targetBusinesses.length ? `union select id::text from public.businesses where id::text in (${sqlList(targetBusinesses)})` : ""}
       ${webhookScope}
       ${path === "/buy/assistant" && typeof input.shoppingSessionId === "string" && uuid.test(input.shoppingSessionId) ? `union select b.id::text from public.businesses b join public.buyer_shopping_sessions shopping on shopping.account_id = ${actorAccount} and shopping.entity_id = ${escapeLiteral(input.shoppingSessionId)} cross join lateral jsonb_array_elements(coalesce(shopping.record->'pendingCheckout'->'items', '[]'::jsonb)) item where b.grogoni_id = item->>'sourceId' or b.id::text = item->>'sourceId'` : ""}
       ${checkoutShops.length ? `union select id::text from public.businesses where grogoni_id in (${checkoutShops.join(",")}) or id::text in (${checkoutShops.join(",")})` : ""}
@@ -411,6 +457,8 @@ export async function createEdgeSnapshotScope(
     accountId: actor?.account_id as string | undefined,
     withClause,
     predicate(key: keyof Cp2Snapshot) {
+      if (key === "unifiedCommerceRecords")
+        return "entity_id in (select entity_id from edge_commerce_records)";
       if (key === "agentSkills")
         return `record->>'kind' = 'publication' or record->>'scope' = 'SYSTEM'
         or (record->>'scope' = 'TENANT' and business_id in (select id from edge_business_ids))

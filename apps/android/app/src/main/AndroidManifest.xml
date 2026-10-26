@@ -38,6 +38,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.grogoni.com">
 
+        <activity android:name=".commerce.GalleryCommerceActivity" android:exported="false" />
         <activity
             android:name=".MainActivity"
             android:exported="true">

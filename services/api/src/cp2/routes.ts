@@ -1,3 +1,4 @@
+import { registerCommerceSourceRoutes } from "./domains/commerce-sources/routes.js";
 import { registerAgentSkillsRoutes } from "./domains/agent-skills/routes.js";
 import { registerOfflineRuntimeRoutes } from "./offline-runtime-routes.js";
 import { registerChatImageRoutes } from "./chat-image-routes.js";
@@ -1982,6 +1983,7 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
 
   registerSalesRoutes(app, store);
   registerCatalogueSharingRoutes(app, store);
+  registerCommerceSourceRoutes(app, store);
   registerStaffRoutes(app, store);
   registerOfflineRuntimeRoutes(app, store);
 

@@ -30,6 +30,12 @@ class NativeSmsApiClient(private val context: Context) {
         }
     }
 
+    fun uploadGalleryPhoto(businessId: String, fileName: String, contentBase64: String): JSONObject {
+        require(businessId == session.businessId) { "Select the business before uploading." }
+        return request("POST", "/businesses/$businessId/product-captures", JSONObject()
+            .put("fileName", fileName).put("contentType", "image/jpeg").put("contentBase64", contentBase64)).body
+    }
+
     fun logout() {
         request("POST", "/auth/logout", JSONObject())
     }

@@ -1,4 +1,9 @@
 import {
+  CommerceSourcesDomain,
+  type CommerceSourceRequest
+} from "./domains/commerce-sources/store.js";
+import type { UnifiedCommerceRecord, CommerceSource } from "@grogoni/shared-types";
+import {
   AgentSkillsDomain,
   type SkillRecord,
   type SkillRequest,
@@ -698,6 +703,7 @@ export interface RoleCheckResult {
 
 export interface Cp2Snapshot
   extends ModelTemplatesSnapshot, VocabularySnapshot, ComputerRuntimeSnapshot {
+  unifiedCommerceRecords?: UnifiedCommerceRecord[];
   agentSkills?: SkillRecord[];
   accounts: AccountSummary[];
   users: UserSummary[];
@@ -1020,6 +1026,7 @@ export class Cp2Store {
   private readonly inferencePlatform: InferencePlatform;
   /** The deployment's default runtime, with its engine resolved to one this deployment runs. */
   private readonly platformDefaultRuntime: PlatformDefaultRuntimePolicy;
+  private readonly commerceSources: CommerceSourcesDomain;
   private readonly agentSkills: AgentSkillsDomain;
   private readonly modelRuntimeAdapterResolver: Cp2StoreOptions["modelRuntimeAdapterResolver"];
   private readonly externalGrogoniIdTaken: Cp2StoreOptions["externalGrogoniIdTaken"];
@@ -1290,6 +1297,27 @@ export class Cp2Store {
         });
       }
     });
+    this.commerceSources = new CommerceSourcesDomain({
+      authorize: (input, permission) =>
+        this.requireAuthorizedActor(input.sessionId, input.businessId, permission, input.now).user
+          .id,
+      product: (businessId, productId) => this.salesDomain.requireProduct(businessId, productId),
+      products: (businessId) => this.salesDomain.productsForBusiness(businessId),
+      createProduct: (input, product) => this.salesDomain.createProduct({ ...input, product }),
+      businessName: (businessId) =>
+        this.quarantinedBusinessIds.has(businessId)
+          ? null
+          : (this.businesses.get(businessId)?.name ?? null),
+      audit: (actorId, record, operation) =>
+        this.recordAuditEvent({
+          type: `commerce.${operation}`,
+          aggregateType: "business",
+          aggregateId: record.businessId,
+          actorId,
+          occurredAt: record.updatedAt,
+          payload: { recordId: record.id, kind: record.kind }
+        })
+    });
     this.catalogueSharing = new CatalogueSharingDomain({
       requireAuthorizedSession: (sessionId, businessId, permission, now) =>
         this.requireAuthorizedActor(sessionId, businessId, permission, now),
@@ -1362,6 +1390,9 @@ export class Cp2Store {
         : { passkeyAuthenticationVerifier: this.options.passkeyAuthenticationVerifier })
     });
     this.commerce = new CommerceDomain({
+      resolveOffer: (id, now) => this.commerceSources.snapshotOffer(id, now),
+      publishedOffers: (query) => this.commerceSources.search({ query }),
+      buildOfferInvoice: (input) => this.salesDomain.buildOfferInvoice(input),
       requireAuthorizedSession: (sessionId, businessId, permission, now) =>
         this.requireAuthorizedActor(sessionId, businessId, permission, now),
       requirePinVerifiedSession: (sessionId, now) => this.requireAuthenticatedActor(sessionId, now),
@@ -1714,6 +1745,9 @@ export class Cp2Store {
       unlinkIdentity: (input) => this.networkDomain.unlinkIdentity(input),
       addManualIdentity: (input) => this.networkDomain.addManualIdentity(input),
       searchBuyFeed: (input) => this.commerce.searchBuyFeed(input),
+      sourceCommerce: (input) => this.executeSourceCommerce(input, input.operation, input.values),
+      listSourceCommerce: (input) => this.listCommerceSources(input),
+      discoverCommerceOffers: (input) => this.searchPublishedOffers(input),
       createUnifiedCheckout: (input) => this.commerce.createUnifiedCheckout(input),
       getProductFieldSchema: (input) => this.salesDomain.getProductFieldSchema(input),
       saveProductFieldSchema: (input) => this.salesDomain.saveProductFieldSchema(input),
@@ -1740,7 +1774,7 @@ export class Cp2Store {
       listDeliveryRouteHistory: (input) => this.commercialRecordsDomain.listRouteHistory(input),
       listReceiptOCRJobs: (input) => this.supplierDomain.listReceiptOCRJobs(input),
       createReceiptOCRJob: (input) => this.supplierDomain.createReceiptOCRJob(input),
-      confirmReceiptOCRJob: (input) => this.supplierDomain.confirmReceiptOCRJob(input),
+      confirmReceiptOCRJob: (input) => this.confirmReceiptOCRJob(input),
       correctReceiptOCRJob: (input) => this.supplierDomain.correctReceiptOCRJob(input),
       cancelReceiptOCRJob: (input) => this.supplierDomain.cancelReceiptOCRJob(input),
       confirmProductImport: (input) => this.confirmProductImport(input),
@@ -6013,7 +6047,26 @@ export class Cp2Store {
   confirmProductCaptureJob(
     ...args: Parameters<CommerceDomain["confirmProductCaptureJob"]>
   ): ReturnType<CommerceDomain["confirmProductCaptureJob"]> {
-    return this.commerce.confirmProductCaptureJob(...args);
+    const [input] = args;
+    const before = this.snapshot();
+    try {
+      const result = this.commerce.confirmProductCaptureJob(input);
+      const source = this.commerceSources.execute(input, "source.connect", {
+        type: "DEVICE_GALLERY",
+        reference: result.job.id,
+        label: result.job.sourceFileName
+      }) as CommerceSource;
+      this.commerceSources.execute(input, "product.bind", {
+        sourceId: source.id,
+        productId: result.product.id,
+        externalProductId: result.job.sourceChecksum || result.job.id,
+        confirmed: true
+      });
+      return result;
+    } catch (error) {
+      this.hydrateSnapshot(before);
+      throw error;
+    }
   }
 
   confirmProductCaptureItem(
@@ -6160,6 +6213,10 @@ export class Cp2Store {
         execute: async (tool, values, current) => {
           // Recheck authentication before every operation, including after a slow model call.
           this.requirePinVerifiedSession(input.sessionId, new Date());
+          if (tool === "commerce.discovery.search")
+            return this.searchPublishedOffers({
+              query: typeof values.query === "string" ? values.query : ""
+            });
           if (tool === "commerce.search") {
             const query = String(values.query ?? "");
             if (this.options.buyerShoppingSearch) {
@@ -6570,6 +6627,18 @@ export class Cp2Store {
             products: bindings
           }
         }
+      });
+      this.commerceSources.recordReceipt({
+        businessId: input.businessId,
+        receiptId: receipt.id,
+        actorId: this.requireAuthorizedActor(
+          input.sessionId,
+          input.businessId,
+          "import:write",
+          input.now
+        ).user.id,
+        bindings,
+        now: input.now ?? new Date()
       });
       return receipt;
     } catch (error) {
@@ -8316,7 +8385,30 @@ export class Cp2Store {
   confirmProductImport(
     ...args: Parameters<DocumentImportDomain["confirmProductImport"]>
   ): ReturnType<DocumentImportDomain["confirmProductImport"]> {
-    return this.documentImportDomain.confirmProductImport(...args);
+    const [input] = args;
+    const before = this.snapshot();
+    try {
+      const result = this.documentImportDomain.confirmProductImport(input);
+      const source = this.commerceSources.execute(input, "source.connect", {
+        type:
+          result.job.source.sourceLocator === "conversation:shop-description"
+            ? "CONVERSATION"
+            : "DOCUMENT_IMPORT",
+        reference: result.job.id,
+        label: result.job.source.fileName
+      }) as CommerceSource;
+      for (const product of result.products ?? [])
+        this.commerceSources.execute(input, "product.bind", {
+          sourceId: source.id,
+          productId: product.id,
+          externalProductId: product.sku ?? product.id,
+          confirmed: true
+        });
+      return result;
+    } catch (error) {
+      this.hydrateSnapshot(before);
+      throw error;
+    }
   }
 
   createRuntimeSession(
@@ -8843,8 +8935,201 @@ export class Cp2Store {
     return this.networkDomain.deleteNetworkSource(...args);
   }
 
+  describeCommerceCatalogue(input: CommerceSourceRequest, description: string) {
+    this.requireAuthorizedActor(input.sessionId, input.businessId, "import:write", input.now);
+    if (typeof description !== "string" || description.length > 4000)
+      throw new Cp2Error(
+        400,
+        "shop_description_invalid",
+        "Describe up to 100 products in 4000 characters."
+      );
+    const names = [
+      ...new Set(
+        description
+          .replace(/^\s*I sell\s+/i, "")
+          .replace(/[.!]$/, "")
+          .split(/[,;\n]|\s+and\s+/i)
+          .map((name) => name.trim().replace(/^and\s+/i, ""))
+          .filter(Boolean)
+      )
+    ];
+    if (!names.length || names.length > 100 || names.some((name) => name.length > 160))
+      throw new Cp2Error(400, "shop_description_invalid", "List between 1 and 100 product names.");
+    return this.createProductCatalogueImport({
+      ...input,
+      source: {
+        fileName: "shop-description.json",
+        contentType: "application/json",
+        sourceType: "paste",
+        sourceLocator: "conversation:shop-description",
+        content: JSON.stringify(names.map((name) => ({ name })))
+      }
+    });
+  }
+  listGalleryCaptures(input: CommerceSourceRequest) {
+    this.requireAuthorizedActor(input.sessionId, input.businessId, "product:read", input.now);
+    return structuredClone(
+      [...this.commerce.productCaptureJobsMap.values()]
+        .filter((j) => j.businessId === input.businessId && j.status !== "CANCELLED")
+        .slice(-100)
+    );
+  }
+  listCommerceSources(input: CommerceSourceRequest) {
+    return this.commerceSources.list(input);
+  }
+  executeSourceCommerce(
+    input: CommerceSourceRequest,
+    operation: string,
+    values: Record<string, unknown>
+  ) {
+    if (operation === "catalogue.describe")
+      return this.describeCommerceCatalogue(input, String(values.description ?? ""));
+    if (operation === "product.match") return this.matchCommerceProducts(input, values.identity);
+    if (operation === "source.import")
+      return this.importCommerceFeed(input, String(values.sourceId ?? ""), values.feed);
+    if (operation === "source.verify" || operation === "source.refresh")
+      return this.refreshCommerceSource(
+        input,
+        String(values.sourceId ?? ""),
+        operation === "source.verify" ? "verify" : "refresh"
+      );
+    if (operation === "distribution.discover") return this.commerceDistributionDirectory(input);
+    if (operation === "fulfillment.confirm" && values.confirmed === true)
+      return this.confirmSourceFulfillment(input, String(values.invoiceId ?? ""));
+    const before = this.snapshot();
+    try {
+      return this.commerceSources.execute(input, operation, values);
+    } catch (error) {
+      this.hydrateSnapshot(before);
+      throw error;
+    }
+  }
+  listSourceFulfillments(input: CommerceSourceRequest) {
+    this.requireAuthorizedActor(input.sessionId, input.businessId, "product:read", input.now);
+    return [...this.salesDomain.invoicesMap.values()].flatMap((invoice) =>
+      (invoice.offerFulfillment ?? [])
+        .filter(
+          (line) =>
+            line.snapshot.productBusinessId === input.businessId &&
+            invoice.businessId !== input.businessId
+        )
+        .map((line) => ({
+          invoiceId: invoice.id,
+          lineId: line.lineId,
+          sellerBusinessId: invoice.businessId,
+          productId: line.snapshot.productId,
+          quantity: invoice.items.find((item) => item.id === line.lineId)?.quantity,
+          fulfilledAt: line.fulfilledAt
+        }))
+    );
+  }
+  confirmSourceFulfillment(input: CommerceSourceRequest, invoiceId: string) {
+    const actor = this.requireAuthorizedActor(
+      input.sessionId,
+      input.businessId,
+      "inventory:adjust",
+      input.now
+    );
+    const invoice = this.salesDomain.invoicesMap.get(invoiceId);
+    const lines = invoice?.offerFulfillment?.filter(
+      (line) =>
+        line.snapshot.productBusinessId === input.businessId &&
+        invoice.businessId !== input.businessId
+    );
+    if (!invoice || !lines?.length)
+      throw new Cp2Error(404, "commerce_fulfillment_not_found", "Supplier fulfillment not found.");
+    const pending = lines.filter((line) => !line.fulfilledAt);
+    if (!pending.length) return { invoiceId, fulfilled: true };
+    const needed = new Map<string, number>();
+    for (const line of pending) {
+      const item = invoice.items.find((item) => item.id === line.lineId)!;
+      needed.set(item.productId, (needed.get(item.productId) ?? 0) + item.quantity);
+    }
+    for (const [id, quantity] of needed)
+      if (this.salesDomain.requireProduct(input.businessId, id).quantity < quantity)
+        throw new Cp2Error(
+          409,
+          "stock_insufficient",
+          "Receive the supplier's physical stock before confirming fulfillment."
+        );
+    const before = this.snapshot();
+    const now = input.now ?? new Date();
+    try {
+      for (const [id, quantity] of needed) {
+        const product = this.salesDomain.requireProduct(input.businessId, id);
+        this.adjustProductStock({
+          ...input,
+          productId: id,
+          adjustment: {
+            quantityAfter: product.quantity - quantity,
+            reason: `Source offer fulfillment ${invoiceId}`
+          }
+        });
+      }
+      this.salesDomain.invoicesMap.set(invoiceId, {
+        ...invoice,
+        offerFulfillment: invoice.offerFulfillment!.map((line) =>
+          pending.includes(line)
+            ? { ...line, fulfilledAt: now.toISOString(), fulfilledBy: actor.user.id }
+            : line
+        ),
+        updatedAt: now.toISOString()
+      });
+      this.recordAuditEvent({
+        type: "commerce.fulfillment.confirmed",
+        aggregateType: "business",
+        aggregateId: input.businessId,
+        actorId: actor.user.id,
+        occurredAt: now.toISOString(),
+        payload: { invoiceId, lineCount: pending.length }
+      });
+      return { invoiceId, fulfilled: true };
+    } catch (error) {
+      this.hydrateSnapshot(before);
+      throw error;
+    }
+  }
+  commerceDistributionDirectory(input: CommerceSourceRequest) {
+    this.requireAuthorizedActor(input.sessionId, input.businessId, "product:read", input.now);
+    return [...this.commerceSources.records.values()].flatMap((record) =>
+      record.kind === "representation" &&
+      record.status === "authorized" &&
+      this.commerceSources
+        .search({ ...(input.now ? { now: input.now } : {}) })
+        .some((offer) => offer.businessId === record.businessId)
+        ? [
+            {
+              representationId: record.id,
+              agentBusinessId: record.businessId,
+              agentName: this.businesses.get(record.businessId)?.name,
+              wholesalerBusinessId: record.principalBusinessId,
+              wholesalerName: this.businesses.get(record.principalBusinessId)?.name,
+              territory: record.territory
+            }
+          ]
+        : []
+    );
+  }
+  matchCommerceProducts(input: CommerceSourceRequest, identity: unknown) {
+    return this.commerceSources.match(input, identity);
+  }
+  refreshCommerceSource(
+    input: CommerceSourceRequest,
+    sourceId: string,
+    action: "verify" | "refresh"
+  ) {
+    return this.commerceSources.website(input, sourceId, action);
+  }
+  importCommerceFeed(input: CommerceSourceRequest, sourceId: string, feed: unknown) {
+    return this.commerceSources.stageFeed(input, sourceId, feed);
+  }
+  searchPublishedOffers(input: Parameters<CommerceSourcesDomain["search"]>[0]) {
+    return this.commerceSources.search(input);
+  }
+
   snapshot(): Cp2Snapshot {
     return {
+      unifiedCommerceRecords: [...this.commerceSources.records.values()],
       accounts: [...this.accounts.values()],
       users: [...this.users.values()],
       deviceAccountBootstraps: [...this.deviceBootstrapDomain.deviceAccountBootstrapsMap.values()],
@@ -9078,6 +9363,9 @@ export class Cp2Store {
   }
 
   hydrateSnapshot(snapshot: Cp2Snapshot): void {
+    this.commerceSources.records.clear();
+    for (const record of snapshot.unifiedCommerceRecords ?? [])
+      this.commerceSources.records.set(record.id, structuredClone(record));
     this.accounts.clear();
     this.accountByDestination.clear();
     this.users.clear();
@@ -13197,6 +13485,7 @@ export class Cp2Store {
       deletedRecordCount += deleteScopedMapRecords(this.sessions, scope);
       deletedRecordCount += deleteScopedMapRecords(this.passkeyDomain.passkeysMap, scope);
       deletedRecordCount += deleteScopedMapRecords(this.passkeyDomain.passkeyCeremoniesMap, scope);
+      deletedRecordCount += deleteScopedMapRecords(this.commerceSources.records, scope);
       deletedRecordCount += deleteScopedMapRecords(this.accountIdentities, scope);
       deletedRecordCount += deleteScopedMapRecords(this.passwordCredentials, scope);
       deletedRecordCount += deleteScopedMapRecords(this.authTransactions, scope);

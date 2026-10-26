@@ -109,11 +109,22 @@ export function validateRuntimeToolInput(
         return invalid("Quote availability and lead time must be bounded nonnegative integers.");
       return valid();
     }
+    case "commerce.sources.execute":
+      if (
+        typeof input.operation !== "string" ||
+        !input.values ||
+        typeof input.values !== "object" ||
+        Array.isArray(input.values)
+      )
+        return invalid("Provide a commerce operation and values object.");
+      return valid();
     case "products.list":
     case "invoices.list":
     case "reports.summary":
     case "notifications.list":
     case "compliance.review":
+    case "commerce.sources.list":
+    case "commerce.discovery.search":
     case "commerce.search":
     case "payments.debtors":
     case "receipt.review":
@@ -264,7 +275,9 @@ export function validateRuntimeToolInput(
           item !== null && typeof item === "object" ? (item as Record<string, unknown>) : null;
         if (
           record === null ||
-          !["catalogue", "contact", "marketplace_connector"].includes(String(record.sourceKind)) ||
+          !["catalogue", "contact", "marketplace_connector", "offer"].includes(
+            String(record.sourceKind)
+          ) ||
           typeof record.sourceId !== "string" ||
           record.sourceId.trim().length === 0 ||
           typeof record.sourceLabel !== "string" ||

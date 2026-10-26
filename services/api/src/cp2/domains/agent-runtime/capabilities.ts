@@ -48,6 +48,19 @@ export async function executeRuntimeCapability(
     now: Date;
   }
 ): Promise<unknown> {
+  if (input.action.toolName === "commerce.sources.list" && deps.listSourceCommerce)
+    return deps.listSourceCommerce(input);
+  if (input.action.toolName === "commerce.discovery.search" && deps.discoverCommerceOffers)
+    return deps.discoverCommerceOffers({
+      query: typeof input.action.input.query === "string" ? input.action.input.query : "",
+      now: input.now
+    });
+  if (input.action.toolName === "commerce.sources.execute" && deps.sourceCommerce)
+    return deps.sourceCommerce({
+      ...input,
+      operation: String(input.action.input.operation),
+      values: input.action.input.values as Record<string, unknown>
+    });
   if (input.action.toolName === "commerce.website.open") return openRetailerWebsite(deps, input);
   if (input.action.toolName.startsWith("computer.")) {
     if (deps.executeComputerCapability)

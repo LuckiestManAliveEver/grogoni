@@ -55,6 +55,7 @@ interface NormalizedCollection {
 }
 
 export const normalizedCollections: NormalizedCollection[] = [
+  { key: "unifiedCommerceRecords", tableName: "cp2_unified_commerce_records" },
   { key: "agentSkills", tableName: "cp2_agent_skills" },
   { key: "accounts", tableName: "cp2_accounts" },
   { key: "users", tableName: "cp2_users" },
@@ -228,6 +229,11 @@ export const normalizedCollections: NormalizedCollection[] = [
 // persistence round trip - and blocking the response on it via app.ts's runtime GET flush wait -
 // on every capability/status poll is not worth it.
 const mutatingMethodNames = new Set([
+  "executeSourceCommerce",
+  "describeCommerceCatalogue",
+  "refreshCommerceSource",
+  "importCommerceFeed",
+  "confirmSourceFulfillment",
   "draftAgentSkill",
   "generateAgentSkill",
   "updateAgentSkill",
@@ -2323,13 +2329,14 @@ async function loadRelationalCoreSnapshot(pool: Pool, snapshot: Cp2Snapshot): Pr
           source: string | null;
           source_message_channel: string | null;
           created_by_user_id: string | null;
+          offer_fulfillment: unknown[];
         }>(
           pool,
           "load invoices",
           `
               select id, business_id, invoice_number, status, customer_id, customer_name,
                      subtotal, tax_rate, tax_total, total, confirmed_at, created_at, updated_at,
-                     source, source_message_channel, created_by_user_id
+                     source, source_message_channel, created_by_user_id, offer_fulfillment
               from invoices
               order by business_id, created_at, id
             `
@@ -2401,7 +2408,8 @@ async function loadRelationalCoreSnapshot(pool: Pool, snapshot: Cp2Snapshot): Pr
           updatedAt: timestampToIso(row.updated_at),
           source: row.source,
           sourceMessageChannel: row.source_message_channel,
-          createdByUserId: row.created_by_user_id
+          createdByUserId: row.created_by_user_id,
+          ...(row.offer_fulfillment?.length ? { offerFulfillment: row.offer_fulfillment } : {})
         })) as unknown as Cp2Snapshot["invoices"];
       },
       async () => {
@@ -5124,13 +5132,14 @@ async function saveInvoicesAndItems(client: PoolClient, records: SnapshotRecord[
         insert into invoices (
           id, business_id, invoice_number, status, customer_id, customer_name,
           subtotal, tax_rate, tax_total, total, confirmed_at, created_at, updated_at,
-          source, source_message_channel, created_by_user_id
+          source, source_message_channel, created_by_user_id, offer_fulfillment
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17::jsonb)
         on conflict (id) do update set
           source = excluded.source,
           source_message_channel = excluded.source_message_channel,
           created_by_user_id = excluded.created_by_user_id,
+          offer_fulfillment = excluded.offer_fulfillment,
           status = excluded.status,
           customer_id = excluded.customer_id,
           customer_name = excluded.customer_name,
@@ -5140,7 +5149,7 @@ async function saveInvoicesAndItems(client: PoolClient, records: SnapshotRecord[
           total = excluded.total,
           confirmed_at = excluded.confirmed_at,
           updated_at = excluded.updated_at
-          where (invoices.source, invoices.source_message_channel, invoices.created_by_user_id, invoices.status, invoices.customer_id, invoices.customer_name, invoices.subtotal, invoices.tax_rate, invoices.tax_total, invoices.total, invoices.confirmed_at, invoices.updated_at) is distinct from (excluded.source, excluded.source_message_channel, excluded.created_by_user_id, excluded.status, excluded.customer_id, excluded.customer_name, excluded.subtotal, excluded.tax_rate, excluded.tax_total, excluded.total, excluded.confirmed_at, excluded.updated_at)
+          where (invoices.offer_fulfillment, invoices.source, invoices.source_message_channel, invoices.created_by_user_id, invoices.status, invoices.customer_id, invoices.customer_name, invoices.subtotal, invoices.tax_rate, invoices.tax_total, invoices.total, invoices.confirmed_at, invoices.updated_at) is distinct from (excluded.offer_fulfillment, excluded.source, excluded.source_message_channel, excluded.created_by_user_id, excluded.status, excluded.customer_id, excluded.customer_name, excluded.subtotal, excluded.tax_rate, excluded.tax_total, excluded.total, excluded.confirmed_at, excluded.updated_at)
       `,
       [
         requiredText(record, "id"),
@@ -5158,7 +5167,8 @@ async function saveInvoicesAndItems(client: PoolClient, records: SnapshotRecord[
         requiredText(record, "updatedAt"),
         firstText(record, ["source"]),
         firstText(record, ["sourceMessageChannel"]),
-        firstText(record, ["createdByUserId"])
+        firstText(record, ["createdByUserId"]),
+        JSON.stringify(record.offerFulfillment ?? [])
       ]
     );
   }

@@ -110,6 +110,7 @@ import type {
   RuntimeTurnSummary,
   ShopAgentRuntime
 } from "@grogoni/shared-types";
+import type { PublishedCommerceOffer } from "@grogoni/shared-types";
 import {
   defaultAgentDefinitionId,
   isModelExecutionTarget,
@@ -2007,6 +2008,17 @@ export class AgentRuntimeDomain {
       query,
       imageForProduct: (product) => this.deps.imageForProduct(product)
     });
+    const offers = this.deps.discoverCommerceOffers?.({ query, now: input.now }) as
+      PublishedCommerceOffer[] | undefined;
+    const publicOffers =
+      offers?.filter((offer) => offer.businessId === input.capability.businessId) ?? [];
+    const offerResponse = publicOffers
+      .map(
+        (offer) =>
+          `${offer.name}: ${offer.price} ${offer.currency}; availability ${offer.availability}; valid until ${offer.validUntil}. Offer ${offer.id}.`
+      )
+      .join("\n");
+    const resultWithOffers = publicOffers.length ? { ...result, offers: publicOffers } : result;
     const plan = createRuntimePlan({
       toolName: "products.list",
       input: { query },
@@ -2067,13 +2079,17 @@ export class AgentRuntimeDomain {
         plan,
         verification,
         model: null,
-        response: createRuntimeResponse({
-          plan,
-          proposalReason: proposal.reason,
-          toolResult: result,
-          verification
-        }),
-        toolResult: result,
+        response:
+          createRuntimeResponse({
+            plan,
+            proposalReason: proposal.reason,
+            toolResult: result,
+            verification
+          }) +
+          (offerResponse
+            ? `\nPublished offers (fulfillment requires confirmation):\n${offerResponse}`
+            : ""),
+        toolResult: resultWithOffers,
         telemetry,
         runtimeVersion: this.currentAgentProfile(input.capability.businessId, input.now)
           .runtimeVersion,

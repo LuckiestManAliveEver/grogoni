@@ -152,6 +152,13 @@ describe("delivery receipt field routing and document bindings", () => {
       const saved = await confirm();
       expect(saved.statusCode, saved.body).toBe(200);
       const receipt = saved.json();
+      const commerceRecords = store.snapshot().unifiedCommerceRecords ?? [];
+      expect(
+        commerceRecords.filter(
+          (r) => r.kind === "source" && r.type === "PURCHASE_RECEIPT" && r.reference === receipt.id
+        )
+      ).toHaveLength(1);
+      expect(commerceRecords.filter((r) => r.kind === "binding")).toHaveLength(2);
       const products = (await call("/products", undefined, "GET")).json();
       expect(products).toEqual(
         expect.arrayContaining([

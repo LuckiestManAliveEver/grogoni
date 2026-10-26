@@ -160,6 +160,10 @@ class MainActivity : ComponentActivity() {
             text = "Use selected business for incoming SMS"
             setOnClickListener { selectBusiness() }
         }.also(content::addView)
+        content.addView(Button(this).apply {
+            text = "Product gallery"
+            setOnClickListener { startActivity(Intent(this@MainActivity, market.grogoni.app.commerce.GalleryCommerceActivity::class.java)) }
+        })
         enableSms = Button(this).apply {
             text = "Enable native SMS"
             setOnClickListener { requestSmsRole() }

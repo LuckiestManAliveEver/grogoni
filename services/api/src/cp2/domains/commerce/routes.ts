@@ -634,7 +634,12 @@ function parseSystemOrderStatus(
 }
 
 function parseBuySourceKind(value: unknown): BuyResultSourceKind {
-  if (value === "contact" || value === "catalogue" || value === "marketplace_connector") {
+  if (
+    value === "contact" ||
+    value === "catalogue" ||
+    value === "marketplace_connector" ||
+    value === "offer"
+  ) {
     return value;
   }
   throw new Cp2Error(400, "buy_source_kind_invalid", "Checkout item source is invalid.");

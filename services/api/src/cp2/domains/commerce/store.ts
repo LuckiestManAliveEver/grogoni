@@ -42,7 +42,9 @@ import type {
   UnifiedCheckoutSummary,
   UserSummary,
   MessageChannel,
-  OrderSource
+  OrderSource,
+  CommerceOfferOrderSnapshot,
+  PublishedCommerceOffer
 } from "@grogoni/shared-types";
 import { Cp2Error } from "../../cp2-error.js";
 import type { ProductMediaRecord, PublicStorefrontSummary } from "../../store.js";
@@ -58,6 +60,14 @@ import {
 } from "./shared.js";
 
 export interface CommerceDomainDeps {
+  resolveOffer?: (id: string, now: Date) => CommerceOfferOrderSnapshot;
+  buildOfferInvoice?: (input: {
+    businessId: string;
+    customerName: string;
+    lines: { product: ProductSummary; quantity: number; snapshot: CommerceOfferOrderSnapshot }[];
+    now: Date;
+  }) => InvoiceSummary;
+  publishedOffers?: (query: string) => PublishedCommerceOffer[];
   requireAuthorizedSession: (
     sessionId: string | null,
     businessId: string,
@@ -170,6 +180,15 @@ export class CommerceDomain {
       "product:write",
       now
     );
+    if (input.sourceChecksum) {
+      const existing = [...this.productCaptureJobsMap.values()].find(
+        (job) =>
+          job.businessId === input.businessId &&
+          job.sourceChecksum === input.sourceChecksum &&
+          job.status !== "CANCELLED"
+      );
+      if (existing) return structuredClone(existing);
+    }
     const confidence =
       input.averageConfidence === null || input.averageConfidence === undefined
         ? null
@@ -984,7 +1003,22 @@ export class CommerceDomain {
       });
     }
 
-    const scored = [...catalogueResults, ...contactResults].map((result) => ({
+    const offerResults: BuyResultSummary[] = (this.deps.publishedOffers?.(query) ?? []).map(
+      (offer) => ({
+        id: `offer:${offer.id}`,
+        title: offer.name,
+        price: offer.price,
+        image: null,
+        sourceKind: "offer",
+        sourceLabel: offer.seller,
+        sourceId: offer.id,
+        agentId: null,
+        productId: offer.productId,
+        statusBroadcastId: null,
+        productCaptureItemId: null
+      })
+    );
+    const scored = [...catalogueResults, ...contactResults, ...offerResults].map((result) => ({
       result,
       score: buyTextRelevanceScore(result.title, query) + (result.sourceKind === "contact" ? 50 : 0)
     }));
@@ -1013,6 +1047,27 @@ export class CommerceDomain {
     const quantities = new Map<string, number>();
     const lines: string[] = [];
     const items = input.items.map((item) => {
+      if (item.sourceKind === "offer") {
+        const offer = this.deps.resolveOffer?.(item.sourceId, new Date());
+        if (
+          !offer ||
+          !Number.isInteger(item.quantity) ||
+          item.quantity < 1 ||
+          offer.availability === "unavailable"
+        )
+          throw new Cp2Error(409, "commerce_offer_unavailable", "Offer is unavailable.");
+        const product = this.deps.requireProduct(offer.productBusinessId, offer.productId);
+        lines.push(
+          `• ${product.name} × ${item.quantity} — ${offer.price} ${offer.currency}; fulfillment requires seller confirmation; price version ${offer.priceUpdatedAt}; valid until ${offer.validUntil}`
+        );
+        incomplete = true;
+        return {
+          ...item,
+          title: product.name,
+          productId: product.id,
+          sourceLabel: this.deps.businesses.get(offer.sellerBusinessId)?.name ?? "Seller"
+        };
+      }
       if (item.sourceKind === "marketplace_connector") {
         const url = new URL(item.websiteUrl!);
         if (url.protocol !== "https:" || url.username || url.password) {
@@ -1132,8 +1187,38 @@ export class CommerceDomain {
 
     const catalogueGroups = new Map<string, BuyCheckoutItemInput[]>();
     const contactGroups = new Map<string, BuyCheckoutItemInput[]>();
+    const offerGroups = new Map<
+      string,
+      {
+        item: BuyCheckoutItemInput;
+        product: ProductSummary;
+        snapshot: CommerceOfferOrderSnapshot;
+      }[]
+    >();
     for (const item of input.items) {
-      if (item.sourceKind === "catalogue") {
+      if (item.sourceKind === "offer") {
+        try {
+          const snapshot = this.deps.resolveOffer?.(item.sourceId, now);
+          if (
+            !snapshot ||
+            snapshot.availability === "unavailable" ||
+            !Number.isInteger(item.quantity) ||
+            item.quantity < 1
+          )
+            throw new Error("Offer unavailable.");
+          const product = this.deps.requireProduct(snapshot.productBusinessId, snapshot.productId);
+          const group = offerGroups.get(snapshot.sellerBusinessId) ?? [];
+          group.push({ item, product, snapshot });
+          offerGroups.set(snapshot.sellerBusinessId, group);
+        } catch {
+          failures.push({
+            checkoutItemIndex: input.items.indexOf(item),
+            sourceLabel: item.sourceLabel,
+            title: item.title,
+            reason: "Offer unavailable. Refresh the offer and review again."
+          });
+        }
+      } else if (item.sourceKind === "catalogue") {
         const group = catalogueGroups.get(item.sourceId) ?? [];
         group.push(item);
         catalogueGroups.set(item.sourceId, group);
@@ -1180,6 +1265,60 @@ export class CommerceDomain {
       }
     }
 
+    for (const [businessId, lines] of offerGroups) {
+      if (!this.deps.buildOfferInvoice)
+        throw new Cp2Error(
+          503,
+          "commerce_offer_checkout_unavailable",
+          "Offer checkout is unavailable."
+        );
+      if (new Set(lines.map((line) => line.snapshot.currency)).size !== 1)
+        throw new Cp2Error(
+          400,
+          "commerce_mixed_currency",
+          "Order one currency per seller at a time."
+        );
+      const invoice = this.deps.buildOfferInvoice({
+        businessId,
+        customerName: session.user.displayName,
+        lines: lines.map((line) => ({
+          product: line.product,
+          quantity: line.item.quantity,
+          snapshot: line.snapshot
+        })),
+        now
+      });
+      const order: BuyOrderSummary = {
+        id: randomUUID(),
+        businessId,
+        buyerAccountId: session.account.id,
+        invoiceId: invoice.id,
+        items: lines.map((line) => ({
+          productId: line.product.id,
+          productName: line.product.name,
+          unit: line.product.unit,
+          quantity: line.item.quantity,
+          unitPrice: line.snapshot.price,
+          offerSnapshot: structuredClone(line.snapshot)
+        })),
+        status: "requested",
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString()
+      };
+      this.deps.invoices.set(invoice.id, invoice);
+      this.buyOrders.set(order.id, order);
+      handoffs.push({
+        kind: "catalogue",
+        sourceLabel: this.deps.businesses.get(businessId)?.name ?? "Seller",
+        orderId: order.id,
+        status: "requested",
+        items: order.items.map((item) => ({
+          title: item.productName,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice
+        }))
+      });
+    }
     for (const [agentId, items] of catalogueGroups) {
       const business = this.deps.businesses.get(this.businessIdForAgentId(agentId) ?? "");
       if (business === undefined) {

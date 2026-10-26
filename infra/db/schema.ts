@@ -765,6 +765,9 @@ export const inventoryMovements = pgTable("inventory_movements", {
 });
 
 export const invoices = pgTable("invoices", {
+  offerFulfillment: jsonb("offer_fulfillment")
+    .notNull()
+    .default(sql`'[]'::jsonb`),
   id: uuid("id").primaryKey(),
   businessId: uuid("business_id")
     .notNull()
@@ -1100,6 +1103,16 @@ export const cp2VocabularyOccurrences = pgTable(
 export const cp2AgentSkills = pgTable("cp2_agent_skills", {
   entityId: text("entity_id").primaryKey(),
   businessId: text("business_id"),
+  accountId: text("account_id"),
+  userId: text("user_id"),
+  parentId: text("parent_id"),
+  record: jsonb("record").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+});
+
+export const cp2UnifiedCommerceRecords = pgTable("cp2_unified_commerce_records", {
+  entityId: text("entity_id").primaryKey(),
+  businessId: text("business_id").notNull(),
   accountId: text("account_id"),
   userId: text("user_id"),
   parentId: text("parent_id"),

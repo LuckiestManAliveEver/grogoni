@@ -39,6 +39,11 @@
       "status": "exempt",
       "reason": "Channel readiness diagnostics."
     },
+    "commerce-sources": {
+      "status": "tool",
+      "tools": ["commerce.sources.list", "commerce.sources.execute", "commerce.discovery.search"],
+      "note": "Shop description and gallery reuse reviewed import and product-capture services."
+    },
     "compliance": {
       "status": "tool",
       "tools": ["compliance.review"],

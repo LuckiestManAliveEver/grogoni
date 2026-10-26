@@ -28,6 +28,19 @@ import type { InvoiceInput, PaymentInput } from "@grogoni/business-core";
  * boundary; no behavior changes, this is the same flat dependency shape as before.
  */
 export interface AgentRuntimeCommerceDeps {
+  sourceCommerce?: (input: {
+    sessionId: string | null;
+    businessId: string;
+    operation: string;
+    values: Record<string, unknown>;
+    now?: Date;
+  }) => unknown;
+  listSourceCommerce?: (input: {
+    sessionId: string | null;
+    businessId: string;
+    now?: Date;
+  }) => unknown;
+  discoverCommerceOffers?: (input: { query?: string; now?: Date }) => unknown;
   imageForProduct: (product: ProductSummary) => string | null;
   importsForBusiness: (businessId: string) => DocumentImportJobSummary[];
   requireDocumentImport: (businessId: string, importJobId: string) => DocumentImportJobSummary;

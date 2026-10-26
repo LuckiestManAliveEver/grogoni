@@ -1,3 +1,8 @@
+import { lazy, Suspense } from "react";
+import { loadLazyModuleWithRecovery } from "./lazy-module-recovery";
+const CommerceSourcesPanel = lazy(() =>
+  loadLazyModuleWithRecovery("commerce-sources", () => import("./CommerceSourcesPanel"))
+);
 import { useEffect, useState } from "react";
 
 import type { ProductFieldDefinition, ProductFieldInputType } from "@grogoni/shared-types";
@@ -104,6 +109,11 @@ export function CatalogueNestedCard({
           </div>
           <span className="count-badge">{products.length}</span>
         </div>
+        {businessId ? (
+          <Suspense fallback={null}>
+            <CommerceSourcesPanel businessId={businessId} products={products} />
+          </Suspense>
+        ) : null}
         <div className="catalogue-action-grid" aria-label="Catalogue actions">
           <button className="success" type="button" onClick={onOpenAdd}>
             <span>+</span>
