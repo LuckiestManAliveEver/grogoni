@@ -703,7 +703,7 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
   );
 
   app.post(
-    "/auth/password/recover/passkey",
+    "/auth/password/recover/device",
     async (
       request: FastifyRequest<{ Body: { password?: string; passwordConfirmation?: string } }>,
       reply
@@ -712,7 +712,7 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
         const password = parseString(request.body.password, "password");
         if (password !== request.body.passwordConfirmation)
           throw new Cp2Error(400, "password_confirmation_invalid", "Passwords do not match.");
-        const result = store.recoverPasswordWithPasskey({
+        const result = store.recoverPasswordWithDevice({
           sessionId: readSessionCookie(request.headers.cookie),
           password
         });

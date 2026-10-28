@@ -160,9 +160,8 @@ export function useNavigationState(deps: UseNavigationStateDeps) {
     }
   }
 
-  function requireMessagingSignIn() {
-    openAuth();
-    setStatusMessage("Sign in to send end-to-end encrypted messages.");
+  async function requireMessagingSignIn() {
+    return deps.getContinueToGrogoni()();
   }
 
   function openAuth(intent: "signup" | "login" = "login") {

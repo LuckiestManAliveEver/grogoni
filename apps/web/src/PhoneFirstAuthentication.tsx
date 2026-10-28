@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { browserSupportsWebAuthn, startAuthentication } from "@simplewebauthn/browser";
+import { recoverDeviceAccount } from "./device-recovery";
 import type { AuthSessionView } from "@grogoni/shared-types";
 import { normalizePhoneInput, phoneNormalizationErrorMessage } from "@grogoni/shared-types";
 import { getCountryCallingCode, type CountryCode } from "libphonenumber-js";
@@ -20,7 +20,7 @@ type Stage =
 
 interface LoginMethods {
   preferred: "pin";
-  passkeyAvailable: boolean;
+  deviceAvailable: boolean;
   passwordFallback: boolean;
   recoveryAvailable: boolean;
   smsLogin: false;
@@ -65,7 +65,7 @@ export function PhoneFirstAuthentication({
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
   const [recoveryMfaCode, setRecoveryMfaCode] = useState("");
   const [recoveryEmail, setRecoveryEmail] = useState("");
-  const [recoveryMethod, setRecoveryMethod] = useState<"passkey" | "email">("passkey");
+  const [recoveryMethod, setRecoveryMethod] = useState<"device" | "email">("device");
   const [recoveryCredential, setRecoveryCredential] = useState<"pin" | "password">("pin");
   const [availableMfaFactors, setAvailableMfaFactors] = useState<string[]>([]);
   const [mfaFactor, setMfaFactor] = useState<"totp" | "recovery_code" | "email">("totp");
@@ -185,34 +185,16 @@ export function PhoneFirstAuthentication({
     onAuthenticated(session);
   }
 
-  // Prove ownership using an enrolled passkey or a verified backup email.
+  // Prove ownership using the device recovery key or a verified backup email.
   async function startRecovery() {
-    if (recoveryMethod === "passkey") {
-      if (!browserSupportsWebAuthn()) {
-        setMessage(
-          "Passkey recovery isn't available in this browser. Try Chrome, Safari, or Edge, or contact support."
-        );
-        return;
+    if (recoveryMethod === "device") {
+      const recoveredSession = await recoverDeviceAccount();
+      if (recoveredSession === null) {
+        throw new Error("Recovery is unavailable on this device. Use your verified backup email.");
       }
-      const challenge = await apiFetch<{
-        ceremonyId: string;
-        options: Parameters<typeof startAuthentication>[0]["optionsJSON"];
-      }>("/auth/passkeys/login/options", {
-        method: "POST",
-        body: { purpose: "pin_recovery" }
-      });
-      const response = await startAuthentication({ optionsJSON: challenge.options });
-      const recoveredSession = await apiFetch<AuthSessionView>("/auth/passkeys/login/verify", {
-        method: "POST",
-        body: { ceremonyId: challenge.ceremonyId, response }
-      });
       if (recoveredSession.account.primaryAuthDestination !== currentIdentifierBody().identifier) {
-        throw new Error("Choose a passkey registered to this mobile phone account.");
+        throw new Error("Use the device previously secured for this mobile phone account.");
       }
-      // The passkey response established a fresh, server-authoritative recovery session. Ask the
-      // server which credential mutation is valid instead of guessing from client state. Do not
-      // auto-refresh this status request: rotating the just-created session between proof and
-      // mutation would change the session id to which the one-time recovery grant is bound.
       const credentials = await apiFetch<{ hasPin: boolean; hasPassword: boolean }>(
         "/auth/credentials/status",
         { skipAuthRefresh: true }
@@ -222,7 +204,7 @@ export function PhoneFirstAuthentication({
       setStage(
         recoveryCredential === "password"
           ? "recovery-reset"
-          : passkeyPinRecoveryStage(credentials.hasPin)
+          : devicePinRecoveryStage(credentials.hasPin)
       );
       setMessage(
         recoveryCredential === "password"
@@ -250,10 +232,10 @@ export function PhoneFirstAuthentication({
     setMessage(result.message);
   }
 
-  // Passkey proof and email verification both precede password mutation.
+  // Device proof and email verification both precede password mutation.
   async function verifyAndResetPassword() {
-    if (recoveryMethod === "passkey") {
-      const session = await apiFetch<AuthSessionView>("/auth/password/recover/passkey", {
+    if (recoveryMethod === "device") {
+      const session = await apiFetch<AuthSessionView>("/auth/password/recover/device", {
         method: "POST",
         body: { password, passwordConfirmation },
         skipAuthRefresh: true
@@ -274,7 +256,7 @@ export function PhoneFirstAuthentication({
     onAuthenticated(session);
   }
 
-  // Step 2 of recovery for phone accounts: identity was already proven by the passkey in
+  // Step 2 of recovery for phone accounts: identity was already proven by the device key in
   // startRecovery, so this only sets the new PIN.
   async function finishPinRecovery() {
     if (!/^\d{4}$/u.test(password) || password !== passwordConfirmation) {
@@ -284,7 +266,7 @@ export function PhoneFirstAuthentication({
     if (stage !== "create-pin" && stage !== "recover-pin") {
       throw new Error("PIN recovery is not active.");
     }
-    const endpoint = passkeyPinMutationEndpoint(stage);
+    const endpoint = devicePinMutationEndpoint(stage);
     try {
       const session = await apiFetch<AuthSessionView>(endpoint, {
         method: "POST",
@@ -295,11 +277,14 @@ export function PhoneFirstAuthentication({
       setPasswordConfirmation("");
       onAuthenticated(session);
     } catch (error) {
-      if (error instanceof ApiRequestError && error.code === "passkey_pin_recovery_required") {
+      if (
+        error instanceof ApiRequestError &&
+        error.code === "device_credential_recovery_required"
+      ) {
         setPassword("");
         setPasswordConfirmation("");
         setStage("methods");
-        setMessage("Verify your passkey again before changing your PIN.");
+        setMessage("Verify this device again before changing your PIN.");
         return;
       }
       throw error;
@@ -510,10 +495,10 @@ export function PhoneFirstAuthentication({
                     <select
                       value={recoveryMethod}
                       onChange={(event) =>
-                        setRecoveryMethod(event.target.value as "passkey" | "email")
+                        setRecoveryMethod(event.target.value as "device" | "email")
                       }
                     >
-                      <option value="passkey">Passkey or device security</option>
+                      <option value="device">Device security</option>
                       <option value="email">Verified backup email</option>
                     </select>
                   </label>
@@ -530,8 +515,8 @@ export function PhoneFirstAuthentication({
                   ) : (
                     <>
                       <p>
-                        Use an enrolled passkey with fingerprint, Face ID, or your device PIN or
-                        password.
+                        Use the recovery key securely stored on this device. Keep this device
+                        protected with its screen lock.
                       </p>
                       <label>
                         Reset
@@ -709,7 +694,7 @@ export function PhoneFirstAuthentication({
             </button>
           </div>
           <button className="auth-guest-button" type="button" onClick={onCancel}>
-            Continue to marketplace as guest
+            Continue as guest
           </button>
         </div>
       </section>
@@ -717,14 +702,14 @@ export function PhoneFirstAuthentication({
   );
 }
 
-export function passkeyPinRecoveryStage(hasPin: boolean): "create-pin" | "recover-pin" {
+export function devicePinRecoveryStage(hasPin: boolean): "create-pin" | "recover-pin" {
   return hasPin ? "recover-pin" : "create-pin";
 }
 
-export function passkeyPinMutationEndpoint(
+export function devicePinMutationEndpoint(
   stage: "create-pin" | "recover-pin"
-): "/auth/pin/setup" | "/auth/pin/recover/passkey" {
-  return stage === "create-pin" ? "/auth/pin/setup" : "/auth/pin/recover/passkey";
+): "/auth/pin/setup" | "/auth/pin/recover/device" {
+  return stage === "create-pin" ? "/auth/pin/setup" : "/auth/pin/recover/device";
 }
 
 function PasswordFields(props: {

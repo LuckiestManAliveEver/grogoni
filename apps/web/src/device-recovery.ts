@@ -16,9 +16,11 @@ export interface PreparedDeviceCredential {
   publicKeyJwk: JsonWebKey;
 }
 
-export async function prepareDeviceRecoveryCredential(): Promise<PreparedDeviceCredential> {
+export async function prepareDeviceRecoveryCredential(
+  options: { replaceExisting?: boolean } = {}
+): Promise<PreparedDeviceCredential> {
   const existing = await readCredential();
-  if (existing !== null) return { publicKeyJwk: existing.publicKeyJwk };
+  if (existing !== null && !options.replaceExisting) return { publicKeyJwk: existing.publicKeyJwk };
 
   const generated = (await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, [
     "sign",
