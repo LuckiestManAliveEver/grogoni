@@ -23,8 +23,12 @@ const conversationChildren = new Set<keyof Cp2Snapshot>([
   "messageDeliveryAttempts",
   "messageNotificationDeliveries"
 ]);
+// Runtime task rows carry a taskId rather than tenant columns, so they load with the
+// conversations the caller works in. runtimeHandoffs is deliberately NOT here: its predicate is
+// narrower (checkpoint-retention.ts) and defined by its own branch below, which this generic
+// branch would otherwise shadow (dead retention code, every checkpoint of every conversation
+// loaded).
 const runtimeTaskCollections = new Set<keyof Cp2Snapshot>([
-  "runtimeHandoffs",
   "runtimeTaskHeads",
   "runtimeTaskInstances",
   "runtimeTransfers",
@@ -208,7 +212,66 @@ export async function createEdgeSnapshotScope(
           : []
       )
     : [];
+  const commerceDiscovery =
+    path === "/public/commerce-offers" ||
+    path === "/buy/search" ||
+    path === "/buy/assistant" ||
+    path.includes("/commerce-sources/distribution");
+  const values =
+    input.values && typeof input.values === "object"
+      ? (input.values as Record<string, unknown>)
+      : {};
+  const targetBusinesses = [values.targetBusinessId, values.principalBusinessId].filter(
+    (value): value is string => typeof value === "string" && uuid.test(value)
+  );
+  const offerIds = Array.isArray(input.items)
+    ? input.items.flatMap((item) =>
+        item &&
+        typeof item === "object" &&
+        item.sourceKind === "offer" &&
+        typeof item.sourceId === "string"
+          ? [item.sourceId]
+          : []
+      )
+    : [];
+  // The commerce graph (recursive over cp2_unified_commerce_records) is heavy: evaluating it costs
+  // far more than the rest of the scope, and the scope's WITH clause is prepended to every
+  // snapshot statement of a request. Only the routes that actually read commerce (offers,
+  // discovery, checkout, and anything carrying offer/target business ids) get the real CTE; every
+  // other request gets an empty relation, which the (unreferenced) downstream CTEs never scan.
+  const needsCommerce =
+    commerceDiscovery ||
+    offerIds.length > 0 ||
+    targetBusinesses.length > 0 ||
+    checkoutShops.length > 0 ||
+    path === "/public/commerce-offers" ||
+    path.startsWith("/public/commerce-offers/") ||
+    // Every /buy/* route (search, assistant, checkout) reads the commerce graph; so do the
+    // received-broadcast and shop-order routes, which can carry offer references.
+    path === "/buy" ||
+    path.startsWith("/buy/") ||
+    path === "/status-broadcasts/received" ||
+    path === "/v1/shop-system/orders";
+  const commerceMetadata = needsCommerce
+    ? `with recursive own_businesses as (
+    select business_id::text id from public.business_memberships where user_id = nullif(${actorUser}, '')::uuid
+    union select ${requestedBusiness} where ${requestedBusiness} <> ''
+    union select id::text from public.businesses where grogoni_id = ${storefront}
+  ), seed as (
+    select entity_id, record, business_id from public.cp2_unified_commerce_records where business_id in (select id from own_businesses)
+      or record->>'targetBusinessId' in (select id from own_businesses)
+      or record->>'principalBusinessId' in (select id from own_businesses)
+      or entity_id in (${sqlList(offerIds)})
+    union select entity_id, record, business_id from (select * from public.cp2_unified_commerce_records where ${commerceDiscovery ? "true" : "false"} and (record->>'kind'='offer' and record->>'status'='published' or record->>'kind'='representation' and record->>'status'='authorized') order by entity_id limit 500) public_commerce
+  ), linked as (
+    select entity_id, record, business_id, array[entity_id] path from seed
+    union all select parent.entity_id, parent.record, parent.business_id, linked.path || parent.entity_id
+      from linked join public.cp2_unified_commerce_records parent on parent.entity_id in (linked.record->>'upstreamOfferId', linked.record->>'sourceId', linked.record->>'representationId')
+      where not parent.entity_id = any(linked.path) and cardinality(linked.path) < 24
+  ) select distinct entity_id, record, business_id from linked`
+    : `select null::text as entity_id, null::jsonb as record, null::text as business_id where false`;
   const ctes: [string, string][] = [
+    ["edge_commerce_records", commerceMetadata],
     [
       "edge_recipient_node_ids",
       `select entity_id as id from public.cp2_network_nodes where record->>'grogoniUserId' = nullif(${actorUser}, '')`
@@ -225,6 +288,13 @@ export async function createEdgeSnapshotScope(
       union select id::text from public.businesses where id = nullif(${requestedBusiness}, '')::uuid
       union select business_id from public.cp2_staff_invitations where record->>'destination' = ${destination} and ${actorAccount} <> ''
       union select id::text from public.businesses where grogoni_id = ${storefront}
+      union select business_id::text from public.invoices where exists (
+        select 1 from jsonb_array_elements(offer_fulfillment) line
+        where line->'snapshot'->>'productBusinessId' in (select business_id::text from public.business_memberships where user_id = nullif(${actorUser}, '')::uuid))
+      union select business_id as id from edge_commerce_records
+      union select record->>'principalBusinessId' from edge_commerce_records where record->>'principalBusinessId' is not null
+      union select record->>'targetBusinessId' from edge_commerce_records where record->>'targetBusinessId' is not null
+      ${targetBusinesses.length ? `union select id::text from public.businesses where id::text in (${sqlList(targetBusinesses)})` : ""}
       ${webhookScope}
       ${path === "/buy/assistant" && typeof input.shoppingSessionId === "string" && uuid.test(input.shoppingSessionId) ? `union select b.id::text from public.businesses b join public.buyer_shopping_sessions shopping on shopping.account_id = ${actorAccount} and shopping.entity_id = ${escapeLiteral(input.shoppingSessionId)} cross join lateral jsonb_array_elements(coalesce(shopping.record->'pendingCheckout'->'items', '[]'::jsonb)) item where b.grogoni_id = item->>'sourceId' or b.id::text = item->>'sourceId'` : ""}
       ${checkoutShops.length ? `union select id::text from public.businesses where grogoni_id in (${checkoutShops.join(",")}) or id::text in (${checkoutShops.join(",")})` : ""}
@@ -411,6 +481,8 @@ export async function createEdgeSnapshotScope(
     accountId: actor?.account_id as string | undefined,
     withClause,
     predicate(key: keyof Cp2Snapshot) {
+      if (key === "unifiedCommerceRecords")
+        return "entity_id in (select entity_id from edge_commerce_records)";
       if (key === "agentSkills")
         return `record->>'kind' = 'publication' or record->>'scope' = 'SYSTEM'
         or (record->>'scope' = 'TENANT' and business_id in (select id from edge_business_ids))
@@ -419,7 +491,7 @@ export async function createEdgeSnapshotScope(
       // Runtime task records carry taskId rather than tenant columns. Omitting their
       // head resets checkpoint allocation to version 1 on the next Edge request.
       if (runtimeTaskCollections.has(key))
-        return "record->>'taskId' in (select id from edge_conversation_ids)";
+        return "record->>'taskId' in (select id from edge_task_conversation_ids)";
       if (key === "nativeRuntimeBindingModels")
         return "record->>'runtimeBindingId' in (select id from edge_runtime_binding_ids)";
       if (key === "nativeRuntimeModels")

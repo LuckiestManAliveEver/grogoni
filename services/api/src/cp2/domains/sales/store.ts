@@ -22,7 +22,8 @@ import type {
   PublicOrderSummary,
   PublicStorefrontMessageSummary,
   MessageChannel,
-  OrderSource
+  OrderSource,
+  CommerceOfferOrderSnapshot
 } from "@grogoni/shared-types";
 import {
   createInvoicePaymentSummary,
@@ -902,6 +903,16 @@ export class SalesDomain {
     const requiredQuantityByProduct = new Map<string, number>();
 
     for (const item of invoice.items) {
+      const fulfillment = invoice.offerFulfillment?.find((line) => line.lineId === item.id);
+      if (fulfillment && fulfillment.snapshot.productBusinessId !== input.businessId) {
+        if (!fulfillment.fulfilledAt)
+          throw new Cp2Error(
+            409,
+            "upstream_fulfillment_required",
+            "The stock-owning supplier must confirm fulfillment before this invoice can be confirmed."
+          );
+        continue;
+      }
       requiredQuantityByProduct.set(
         item.productId,
         (requiredQuantityByProduct.get(item.productId) ?? 0) + item.quantity
@@ -923,6 +934,12 @@ export class SalesDomain {
     const movements: InventoryMovementSummary[] = [];
 
     for (const item of invoice.items) {
+      if (
+        invoice.offerFulfillment?.some(
+          (line) => line.lineId === item.id && line.snapshot.productBusinessId !== input.businessId
+        )
+      )
+        continue;
       const product = this.requireProduct(input.businessId, item.productId);
       const updatedProduct: ProductSummary = {
         ...product,
@@ -950,7 +967,11 @@ export class SalesDomain {
     const weightedItems = invoice.items.map((item) => ({
       ...item,
       ...snapshotInvoiceLineWeight(
-        this.requireProduct(input.businessId, item.productId).unitWeightGrams,
+        invoice.offerFulfillment?.some(
+          (line) => line.lineId === item.id && line.snapshot.productBusinessId !== input.businessId
+        )
+          ? null
+          : this.requireProduct(input.businessId, item.productId).unitWeightGrams,
         item.quantity
       )
     }));
@@ -1371,6 +1392,49 @@ export class SalesDomain {
       products,
       customer
     });
+  }
+
+  buildOfferInvoice(input: {
+    businessId: string;
+    customerName: string;
+    lines: { product: ProductSummary; quantity: number; snapshot: CommerceOfferOrderSnapshot }[];
+    now: Date;
+  }): InvoiceSummary {
+    const invoiceInput: InvoiceInput = {
+      customerName: input.customerName,
+      taxRate: 0,
+      items: input.lines.map((line) => ({
+        productId: line.product.id,
+        quantity: line.quantity,
+        unitPrice: line.snapshot.price
+      }))
+    };
+    assertValid(validateInvoiceInput(invoiceInput));
+    const preview = createInvoicePreview({
+      businessId: input.businessId,
+      invoice: invoiceInput,
+      products: input.lines.map((line) => line.product)
+    });
+    const id = randomUUID();
+    const items = preview.items.map((item) => ({ ...item, id: randomUUID(), invoiceId: id }));
+    return {
+      ...preview,
+      id,
+      invoiceNumber: this.nextInvoiceNumber(input.businessId),
+      status: "draft",
+      items,
+      confirmedAt: null,
+      createdAt: input.now.toISOString(),
+      updatedAt: input.now.toISOString(),
+      source: "GROGONI_CHAT",
+      sourceMessageChannel: "grogoni",
+      offerFulfillment: items.map((item, index) => ({
+        lineId: item.id,
+        snapshot: structuredClone(input.lines[index]!.snapshot),
+        fulfilledAt: null,
+        fulfilledBy: null
+      }))
+    };
   }
 
   buildStoredInvoice(input: {

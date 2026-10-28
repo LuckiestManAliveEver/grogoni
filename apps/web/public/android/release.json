@@ -1,0 +1,5 @@
+{
+  "$schema": "./release.schema.json",
+  "note": "Static manifest describing the current verified Android release. When `release` is null the browser hides the native-install call-to-action entirely; publishing a release means replacing `release` with real, signed artifact metadata (never a placeholder). See docs/architecture/grogoni-native-android-audit.md.",
+  "release": null
+}

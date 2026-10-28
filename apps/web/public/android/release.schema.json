@@ -1,0 +1,54 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Grogoni Android release manifest",
+  "description": "Describes the currently published, signed Android release offered from the /install page. When `release` is null no native install is offered. See apps/web/src/android-release.ts for the runtime validation that mirrors this schema.",
+  "type": "object",
+  "required": ["release"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "note": { "type": "string" },
+    "release": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["packageName", "versionName", "versionCode", "downloadUrl", "sha256"],
+          "additionalProperties": false,
+          "properties": {
+            "packageName": {
+              "type": "string",
+              "const": "market.grogoni.app",
+              "description": "Must equal the production Android application id."
+            },
+            "versionName": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Human-readable version, matching package.json version."
+            },
+            "versionCode": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Positive integer Android versionCode."
+            },
+            "downloadUrl": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^https://",
+              "description": "Absolute HTTPS URL of the signed APK on the Grogoni origin."
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^([A-F0-9]{2}:){31}[A-F0-9]{2}$",
+              "description": "Colon-separated uppercase SHA-256 fingerprint of the APK artifact."
+            },
+            "minSdk": {
+              "type": "integer",
+              "minimum": 23,
+              "description": "Minimum supported Android API level, for guidance only."
+            }
+          }
+        }
+      ]
+    }
+  }
+}

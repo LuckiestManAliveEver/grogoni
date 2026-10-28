@@ -1,3 +1,8 @@
+import { lazy } from "react";
+import { loadLazyModuleWithRecovery } from "./lazy-module-recovery";
+const CommerceSourcesPanel = lazy(() =>
+  loadLazyModuleWithRecovery("commerce-sources", () => import("./CommerceSourcesPanel"))
+);
 import { Suspense, useState } from "react";
 
 import {
@@ -34,6 +39,9 @@ export function ProductSurface(props: ProductSurfaceProps) {
   const [isBrowsingCatalogues, setIsBrowsingCatalogues] = useState(false);
   return (
     <div className="records-surface product-business-card-surface">
+      <Suspense fallback={null}>
+        <CommerceSourcesPanel businessId={props.businessId} products={props.products} />
+      </Suspense>
       <Suspense fallback={<div className="inline-loading-card">Opening quick capture…</div>}>
         <ProductCapturePanel
           businessId={props.businessId}

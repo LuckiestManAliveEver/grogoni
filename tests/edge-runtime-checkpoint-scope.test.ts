@@ -421,6 +421,9 @@ describe.skipIf(!databaseUrl)("Edge runtime checkpoints on PostgreSQL", () => {
         agent: { businessId, message: text }
       });
       expect(response?.status, await response?.clone().text()).toBe(200);
+      // The agent reply (and so its checkpoint) runs in the background after the message's own
+      // request (agent_chat_turns). Wait for it, or the checkpoint assertions below race it.
+      await edge.settled();
     };
     const loadAs = (sessionId: string, path = "/v1/conversations") =>
       transaction(async (client) => {

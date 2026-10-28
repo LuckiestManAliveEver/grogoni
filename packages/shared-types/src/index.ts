@@ -1,3 +1,5 @@
+export * from "./commerce-sources.js";
+import type { PublishedCommerceOffer, CommerceOfferOrderSnapshot } from "./commerce-sources.js";
 export type RuntimeName = "api" | "sync" | "ai-runtime" | "web";
 
 export * from "./business-settings.js";
@@ -1721,6 +1723,7 @@ export interface ProductCaptureJobSummary {
 }
 
 export interface CatalogueQueryResult {
+  offers?: PublishedCommerceOffer[];
   query: string;
   products: CatalogueProductSummary[];
   total: number;
@@ -2000,7 +2003,7 @@ export interface StatusBroadcastCandidateSummary {
   defaultSelected: boolean;
 }
 
-export type BuyResultSourceKind = "contact" | "catalogue" | "marketplace_connector";
+export type BuyResultSourceKind = "contact" | "catalogue" | "marketplace_connector" | "offer";
 
 /**
  * One flattened, rankable buy result regardless of where it came from - a contact's active
@@ -2035,6 +2038,7 @@ export interface BuyFeedSummary {
 export type HandoffOrderStatus = "requested" | "accepted" | "rejected" | "completed" | "cancelled";
 
 export interface BuyOrderItemSummary {
+  offerSnapshot?: CommerceOfferOrderSnapshot;
   productId: string;
   productName: string;
   unit: string;
@@ -2558,6 +2562,12 @@ export interface InvoiceTotals {
 }
 
 export interface InvoiceSummary extends InvoiceTotals {
+  offerFulfillment?: {
+    lineId: string;
+    snapshot: CommerceOfferOrderSnapshot;
+    fulfilledAt: string | null;
+    fulfilledBy: string | null;
+  }[];
   id: string;
   businessId: string;
   invoiceNumber: string;
@@ -3878,6 +3888,9 @@ export type RuntimeToolName =
   | "network.identity.unlink"
   | "network.identity.add"
   | "commerce.website.open"
+  | "commerce.sources.list"
+  | "commerce.sources.execute"
+  | "commerce.discovery.search"
   | "commerce.search"
   | "commerce.checkout"
   | "product.create"

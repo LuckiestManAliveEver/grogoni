@@ -285,6 +285,53 @@ button:disabled {
   margin-top: 8px;
 }
 
+/* Native Android APK install card. Rendered only when /install detects Android AND a verified
+   release is published in public/android/release.json, so it never shows a dead/placeholder link. */
+.install-android-native {
+  background: #f1fbf4;
+  border: 1px solid rgba(17, 122, 79, 0.35);
+  border-radius: 18px;
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+  padding: 16px;
+}
+
+.install-android-native .install-native-copy h2 {
+  font-size: 1.15rem;
+  margin: 0 0 6px;
+}
+
+.install-android-native .install-native-copy p,
+.install-android-native .install-native-trust {
+  color: #2c4539;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.install-native-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.install-native-secondary {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid rgba(17, 122, 79, 0.35);
+  border-radius: 12px;
+  color: #0f5a3a;
+  display: inline-flex;
+  font-weight: 800;
+  justify-content: center;
+  min-height: 48px;
+  padding: 0 18px;
+}
+
+.install-native-trust {
+  font-size: 0.88rem;
+}
+
 @media (min-width: 720px) {
   .install-card {
     padding: 30px 28px 28px;

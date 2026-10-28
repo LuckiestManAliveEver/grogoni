@@ -79,6 +79,7 @@ INSERT INTO purge_table_plan (table_name, classification, delete_order, reason) 
   ('cp2_agent_context_sources', 'DELETE', 11, 'Business agent context and memory'),
   ('cp2_agent_evaluation_events', 'DELETE', 11, 'Business agent evaluation history'),
   ('cp2_agent_owner_corrections', 'DELETE', 11, 'Owner correction records'),
+  ('cp2_unified_commerce_records', 'DELETE', 11, 'Business source bindings, offers and distribution metadata'),
   ('cp2_agent_skills', 'DELETE', 11, 'Business and account agent skills (agent-skills)'),
   ('cp2_runtime_experiences', 'DELETE', 11, 'Structured experience/recall records (experience-memory)'),
   ('cp2_installed_agent_models', 'DELETE', 11, 'Account-installed private model metadata'),

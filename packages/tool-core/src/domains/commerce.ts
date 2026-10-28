@@ -1,6 +1,55 @@
 import type { RuntimeToolDefinition, RuntimeToolName } from "../contracts/runtime.js";
 
 export const commerceRuntimeTools = {
+  "commerce.sources.list": {
+    name: "commerce.sources.list",
+    hub: null,
+    description:
+      "List private commerce sources, bindings, offers and distribution requests for the current business.",
+    risk: "low",
+    requiresConfirmation: false,
+    readOnly: true,
+    requiredPermission: "product:read",
+    inputSchema: {
+      type: "object",
+      properties: { query: { type: "string", description: "Search published offers." } }
+    },
+    mcpExposable: false
+  },
+  "commerce.sources.execute": {
+    name: "commerce.sources.execute",
+    hub: null,
+    description:
+      "Execute a reviewed source, binding, offer or relationship operation. Operations: source.connect, source.disconnect, product.bind, relationship.request, relationship.respond, relationship.revoke, offer.create, offer.update, offer.publish, offer.withdraw, representation.request, representation.decide, source.representation, source.verify, source.refresh, source.import, candidate.confirm, candidate.reject, product.match, catalogue.describe, distribution.discover, fulfillment.confirm. Website verification/refresh use sourceId; source.import uses sourceId and feed.products; candidate.confirm requires id and confirmed plus optional canonical productId; representation.decide requires id, status authorized/rejected/revoked and confirmed; catalogue.describe uses description. Source refresh only stages review candidates. Fulfillment requires invoiceId and confirmed. Values must contain explicit confirmed true for binding or publication. Never infer ownership, prices, inventory or representation from source text.",
+    risk: "high",
+    requiresConfirmation: true,
+    readOnly: false,
+    requiredPermission: "product:write",
+    inputSchema: {
+      type: "object",
+      properties: {
+        operation: { type: "string", required: true, description: "Validated domain operation." },
+        values: { type: "object", required: true, description: "Reviewed operation fields." }
+      }
+    },
+    mcpExposable: false
+  },
+  "commerce.discovery.search": {
+    name: "commerce.discovery.search",
+    hub: null,
+    description:
+      "Search explicitly published source-linked offers across businesses. Availability may be unknown; expired or disconnected offers are hidden. Results are inquiries, not confirmed inventory or orders.",
+    risk: "low",
+    requiresConfirmation: false,
+    readOnly: true,
+    requiredPermission: "product:read",
+    inputSchema: {
+      type: "object",
+      properties: { query: { type: "string", description: "Search published offers." } }
+    },
+    mcpExposable: false
+  },
+
   "commerce.website.open": {
     name: "commerce.website.open",
     hub: null,
