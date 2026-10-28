@@ -1679,6 +1679,24 @@ export function OwnerApp() {
               </>
             ) : null}
           </header>
+          {!isAuthScreen && mode === "marketplace" && showsSignInEntry ? (
+            <nav className="customer-auth-actions" aria-label="Account access">
+              <button
+                className="header-auth-button secondary"
+                type="button"
+                onClick={() => openAuth("signup")}
+              >
+                Sign up
+              </button>
+              <button
+                className="header-auth-button"
+                type="button"
+                onClick={() => openAuth("login")}
+              >
+                Log in
+              </button>
+            </nav>
+          ) : null}
           {!isAuthScreen ? (
             <MenuDrawer
               open={isMenuDrawerOpen}
