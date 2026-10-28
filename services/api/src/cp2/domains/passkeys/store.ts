@@ -59,7 +59,6 @@ export interface PasskeyDomainDeps {
     reason: string,
     now: Date
   ) => void;
-  createRecoveryGrant: (sessionId: string, accountId: string, now: Date) => void;
   recoveryGrantExpiry: (sessionId: string) => string | undefined;
   consumeRecoveryGrant: (sessionId: string) => void;
   passkeyAuthenticationVerifier?: typeof verifyAuthenticationResponse;
@@ -89,8 +88,8 @@ export class PasskeyDomain {
     if (expiry === undefined || Date.parse(expiry) <= now.getTime()) {
       throw new Cp2Error(
         401,
-        "passkey_pin_recovery_required",
-        "Verify your passkey again before resetting credentials."
+        "device_credential_recovery_required",
+        "Verify this device again before resetting credentials."
       );
     }
   }
@@ -108,7 +107,7 @@ export class PasskeyDomain {
     }
   }
 
-  recoverPhoneAccountPinWithPasskey(input: {
+  recoverPhoneAccountPinWithDevice(input: {
     sessionId: string | null;
     pin: string;
     now?: Date;
@@ -121,8 +120,8 @@ export class PasskeyDomain {
     if (grantExpiresAt === undefined || Date.parse(grantExpiresAt) <= now.getTime()) {
       throw new Cp2Error(
         401,
-        "passkey_pin_recovery_required",
-        "Verify a passkey before resetting this phone account PIN."
+        "device_credential_recovery_required",
+        "Verify this device before resetting this phone account PIN."
       );
     }
 
@@ -130,7 +129,7 @@ export class PasskeyDomain {
       throw new Cp2Error(
         409,
         "phone_pin_recovery_not_applicable",
-        "Passkey PIN recovery is available only for phone accounts."
+        "Device PIN recovery is available only for phone accounts."
       );
     }
 
@@ -312,6 +311,9 @@ export class PasskeyDomain {
     ceremonyId: string;
     options: PublicKeyCredentialRequestOptionsJSON;
   }> {
+    if (input.purpose !== undefined && input.purpose !== "login") {
+      throw new Cp2Error(400, "passkey_purpose_invalid", "Use device security for recovery.");
+    }
     const now = input.now ?? new Date();
     this.prunePasskeyCeremonies(now);
     const options = await generateAuthenticationOptions({
@@ -392,9 +394,7 @@ export class PasskeyDomain {
     const user = this.deps.requireUser(passkey.userId);
     const createdSession = this.deps.createSession(account, user, now);
     this.deps.markSessionPinVerified(createdSession.id, now);
-    if (ceremony.purpose === "pin_recovery") {
-      this.deps.createRecoveryGrant(createdSession.id, account.id, now);
-    }
+
     this.deps.recordAuditEvent({
       type: "auth.passkey_login",
       aggregateType: "account",

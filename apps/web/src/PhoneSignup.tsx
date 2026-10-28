@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { browserSupportsWebAuthn, startRegistration } from "@simplewebauthn/browser";
+import { prepareDeviceRecoveryCredential, commitDeviceRecoveryCredential } from "./device-recovery";
 import type { AuthSessionView } from "@grogoni/shared-types";
 import { normalizePhoneInput, phoneNormalizationErrorMessage } from "@grogoni/shared-types";
 import { getCountryCallingCode, type CountryCode } from "libphonenumber-js";
@@ -8,7 +8,7 @@ import { ApiRequestError, apiFetch } from "./lib/api";
 import { authenticationPhoneCountries, PhoneNumberField } from "./PhoneNumberField";
 import { getUserFacingErrorMessage } from "./user-facing-error";
 
-type SignupStage = "phone" | "profile" | "passkey";
+type SignupStage = "phone" | "profile" | "device";
 
 interface SignupTransaction {
   transactionId: string;
@@ -23,7 +23,8 @@ interface Props {
 }
 
 export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Props) {
-  const passkeyAvailable = browserSupportsWebAuthn();
+  const deviceAvailable =
+    globalThis.crypto?.subtle !== undefined && globalThis.indexedDB !== undefined;
   const [stage, setStage] = useState<SignupStage>("phone");
   const [country, setCountry] = useState<CountryCode>("KE");
   const [phone, setPhone] = useState("");
@@ -121,30 +122,25 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
       skipAuthRefresh: true
     });
     setCreatedSession(session);
-    setStage("passkey");
-    setMessage("Your account is ready. You can also add a passkey as a backup way in.");
+    setStage("device");
+    setMessage("Your account is ready. Secure this device to recover your PIN or password.");
   }
 
-  async function createPasskey() {
+  async function createDevice() {
     if (createdSession === null) return;
-    if (!browserSupportsWebAuthn()) {
-      setMessage("Passkeys are unavailable in this browser. Your password still works.");
-      return;
-    }
-    const challenge = await apiFetch<{
-      ceremonyId: string;
-      options: Parameters<typeof startRegistration>[0]["optionsJSON"];
-    }>("/auth/passkeys/register/options", { method: "POST", body: {} });
-    const response = await startRegistration({ optionsJSON: challenge.options });
-    await apiFetch("/auth/passkeys/register/verify", {
+    const { publicKeyJwk } = await prepareDeviceRecoveryCredential({ replaceExisting: true });
+    const secured = await apiFetch<AuthSessionView>("/auth/continue", {
       method: "POST",
-      body: { ceremonyId: challenge.ceremonyId, label: "Signup device", response }
+      body: { devicePublicKeyJwk: publicKeyJwk }
     });
+    if (secured.deviceRecoveryCredentialId) {
+      await commitDeviceRecoveryCredential(secured.deviceRecoveryCredentialId);
+    }
     onAuthenticated(createdSession);
   }
 
   function goBack() {
-    if (stage === "passkey") {
+    if (stage === "device") {
       if (createdSession !== null) onAuthenticated(createdSession);
       return;
     }
@@ -178,7 +174,7 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
           >
             <span className="complete" />
             <span className={stage !== "phone" ? "complete" : ""} />
-            <span className={stage === "passkey" ? "complete" : ""} />
+            <span className={stage === "device" ? "complete" : ""} />
           </div>
 
           <div className="auth-onboarding-heading">
@@ -195,7 +191,7 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
                 ? "Your phone number becomes your Grogoni account identity. No SMS code is required."
                 : stage === "profile"
                   ? `Set up the account attached to ${normalizedPhone}.`
-                  : "Optionally add a passkey as a backup way in if you ever lose access to your password."}
+                  : "Save a secure recovery key on this device in case you forget your PIN or password."}
             </p>
           </div>
 
@@ -330,26 +326,26 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
               </button>
             </div>
           ) : (
-            <div className="auth-fields auth-passkey-enrollment">
+            <div className="auth-fields auth-device-enrollment">
               <div className="auth-security-summary">
-                <strong>Optional: add a passkey as a backup</strong>
+                <strong>Secure this device for recovery</strong>
                 <p>
-                  Recover your PIN or password using an enrolled passkey with fingerprint, Face ID,
-                  or your device PIN or password.
+                  Recover your PIN or password using a recovery key stored securely on this device.
+                  Protect your device with its screen lock.
                 </p>
               </div>
               <button
                 className="auth-primary-button"
                 type="button"
-                disabled={busy || !passkeyAvailable}
+                disabled={busy || !deviceAvailable}
                 aria-busy={busy}
-                onClick={() => void run(createPasskey)}
+                onClick={() => void run(createDevice)}
               >
                 {busy
-                  ? "Creating passkey…"
-                  : passkeyAvailable
-                    ? "Create a passkey"
-                    : "Passkeys unavailable"}
+                  ? "Securing device…"
+                  : deviceAvailable
+                    ? "Secure this device"
+                    : "Devices unavailable"}
               </button>
               {createdSession !== null ? (
                 <button

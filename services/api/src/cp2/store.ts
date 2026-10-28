@@ -1342,26 +1342,20 @@ export class Cp2Store {
       recordAuditEvent: (input) => this.recordAuditEvent(input)
     });
     this.passkeyDomain = new PasskeyDomain({
-      createRecoveryGrant: (sessionId, accountId, now) => {
-        this.createAuthTransaction("recovery", accountId, now, {
-          expiresAt: new Date(now.getTime() + 5 * 60 * 1000).toISOString(),
-          metadata: { passkeyRecoverySessionId: sessionId }
-        });
-      },
       recoveryGrantExpiry: (sessionId) =>
         [...this.authTransactions.values()].find(
           (record) =>
             record.purpose === "recovery" &&
-            record.metadata.passkeyRecoverySessionId === sessionId &&
+            record.metadata.deviceRecoverySessionId === sessionId &&
             record.consumedAt === null
         )?.expiresAt,
       consumeRecoveryGrant: (sessionId) => {
-        for (const [id, record] of this.authTransactions) {
+        for (const record of this.authTransactions.values()) {
           if (
             record.purpose === "recovery" &&
-            record.metadata.passkeyRecoverySessionId === sessionId
+            record.metadata.deviceRecoverySessionId === sessionId
           )
-            this.authTransactions.delete(id);
+            record.consumedAt = new Date().toISOString();
         }
       },
       requireAnySession: (sessionId, now) => this.requireAnySession(sessionId, now),
@@ -2242,7 +2236,25 @@ export class Cp2Store {
   recoverWithDeviceCredential(
     ...args: Parameters<DeviceBootstrapDomain["recoverWithDeviceCredential"]>
   ): ReturnType<DeviceBootstrapDomain["recoverWithDeviceCredential"]> {
-    return this.deviceBootstrapDomain.recoverWithDeviceCredential(...args);
+    const result = this.deviceBootstrapDomain.recoverWithDeviceCredential(...args);
+    const now = args[0].now ?? new Date();
+    const assertionKey = `${args[0].credentialId.trim()}:${args[0].issuedAt}:${args[0].nonce.trim()}`;
+    // A signed device assertion grants one credential reset for five minutes.
+    // Replayed assertions must not replenish a consumed grant.
+    if (
+      ![...this.authTransactions.values()].some(
+        (record) => record.metadata.deviceRecoveryAssertionKey === assertionKey
+      )
+    ) {
+      this.createAuthTransaction("recovery", result.account.id, now, {
+        expiresAt: new Date(now.getTime() + 5 * 60 * 1000).toISOString(),
+        metadata: {
+          deviceRecoverySessionId: result.session.id,
+          deviceRecoveryAssertionKey: assertionKey
+        }
+      });
+    }
+    return result;
   }
 
   requestOtp(...args: Parameters<OtpDomain["requestOtp"]>): ReturnType<OtpDomain["requestOtp"]> {
@@ -2926,10 +2938,10 @@ export class Cp2Store {
     return this.requireAnySession(input.sessionId, now);
   }
 
-  recoverPhoneAccountPinWithPasskey(
-    ...args: Parameters<PasskeyDomain["recoverPhoneAccountPinWithPasskey"]>
-  ): ReturnType<PasskeyDomain["recoverPhoneAccountPinWithPasskey"]> {
-    return this.passkeyDomain.recoverPhoneAccountPinWithPasskey(...args);
+  recoverPhoneAccountPinWithDevice(
+    ...args: Parameters<PasskeyDomain["recoverPhoneAccountPinWithDevice"]>
+  ): ReturnType<PasskeyDomain["recoverPhoneAccountPinWithDevice"]> {
+    return this.passkeyDomain.recoverPhoneAccountPinWithDevice(...args);
   }
   verifyAccountPin(input: { sessionId: string | null; pin: string; now?: Date }): AuthSessionView {
     const now = input.now ?? new Date();
@@ -10502,7 +10514,7 @@ export class Cp2Store {
     return this.requireAnySession(sessionRecord.id, now);
   }
 
-  recoverPasswordWithPasskey(input: {
+  recoverPasswordWithDevice(input: {
     sessionId: string | null;
     password: string;
     now?: Date;
@@ -10527,7 +10539,7 @@ export class Cp2Store {
       }
     }
     this.recordSecurityEvent("auth.password_reset", session.account.id, "success", now, {
-      method: "passkey"
+      method: "device"
     });
     return this.requireAnySession(session.session.id, now);
   }

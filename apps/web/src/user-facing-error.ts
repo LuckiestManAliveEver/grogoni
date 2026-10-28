@@ -31,7 +31,8 @@ export function getUserFacingErrorMessage(
 
 const authenticationErrorMessages: Record<string, string> = {
   pin_not_set: "This account doesn't have a PIN yet. Create one now.",
-  passkey_pin_recovery_required: "Verify your passkey again before changing your PIN.",
+  device_credential_recovery_required:
+    "Verify this device again before changing your PIN or password.",
   passkey_unknown: "That passkey is not linked to a Grogoni account.",
   passkey_authentication_invalid: "Grogoni could not verify that passkey. Try again.",
   auth_refresh_required: "Sign in to start a new session on this device.",

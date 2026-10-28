@@ -174,10 +174,10 @@ export function registerPasskeysRoutes(
   );
 
   app.post(
-    "/auth/pin/recover/passkey",
+    "/auth/pin/recover/device",
     async (request: FastifyRequest<{ Body: { pin?: string } }>, reply) => {
       try {
-        const result = store.recoverPhoneAccountPinWithPasskey({
+        const result = store.recoverPhoneAccountPinWithDevice({
           sessionId: readSessionCookie(request.headers.cookie),
           pin: parseString(request.body.pin, "pin")
         });
@@ -198,13 +198,9 @@ function parsePasskeyResponse<T>(value: unknown): T {
   return value as T;
 }
 
-function parsePasskeyAuthenticationPurpose(value: string | undefined): "login" | "pin_recovery" {
+function parsePasskeyAuthenticationPurpose(value: string | undefined): "login" {
   if (value === undefined || value === "login") {
     return "login";
-  }
-
-  if (value === "pin_recovery") {
-    return "pin_recovery";
   }
 
   throw new Cp2Error(400, "passkey_purpose_invalid", "Passkey purpose is invalid.");

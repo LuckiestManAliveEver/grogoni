@@ -13,15 +13,16 @@ during migration.
 
 `identifier → generic recovery response → channel verification → optional MFA → password reset → rotated session`
 
-`mobile phone → "Trouble logging in?" → enrolled passkey proves identity → new PIN or password`
+`mobile phone → "Trouble logging in?" → signed device recovery key proves identity → new PIN or password`
 
-Every account gets a real password at signup - `/auth/signup/complete` rejects a request with no
-`password`. Passkeys are optional and never load-bearing: creating one (at signup or later, in
-account security settings) only registers a backup credential for the "Trouble logging in?"
-recovery path on phone accounts, which proves identity with a passkey ceremony before letting the
-owner set a new PIN or password. Passkey login is not offered as a normal sign-in method - there is no
-device-hint fast path and no "Continue with a passkey" option on the methods screen; PIN is the
-primary method there, with password as a secondary option when the account has one.
+Phone signup requires a password. Signup optionally enables device recovery, and existing accounts
+can enable it in account security settings. The recovery flow never enrolls or authenticates a
+passkey. Existing passkeys remain available for account access, but cannot authorize credential
+resets. PIN is the primary method on the phone login screen, with password as a secondary option.
+
+Guests receive a cookie-backed device account through `/auth/continue`, without a login or signup
+form. Personal and direct conversations use the same messaging APIs throughout that account's
+lifetime. Missing sessions are restored with the device key or continued without opening login.
 
 Passkeys use discoverable WebAuthn credentials and resolve directly to the same account UUID.
 Access cookies last 15 minutes; HTTP-only refresh cookies last 30 days and rotate on use. Reuse
@@ -47,12 +48,17 @@ email enables email MFA after either PIN or password verification; enabled authe
 and recovery codes remain available. The MFA transaction and email challenge are bounded by
 expiry, attempt limits, and single use. No session cookie is issued before the second factor.
 
-Passkey enrollment uses WebAuthn with required user verification. The browser or operating system
-chooses the available device unlock (fingerprint, Face ID, device PIN, or password). A device unlock
-alone cannot recover an account without an enrolled passkey. Recovery proof lasts five minutes,
-is bound to the new session, persists in an internal recovery transaction across hosted requests,
-and is consumed by a successful PIN or password mutation. Password reset revokes other sessions.
-Email recovery remains available for a verified backup address.
+Device recovery uses an ECDSA P-256 key stored in IndexedDB with a non-exportable private key.
+The signed assertion is verified by `/auth/device/recover`; its resulting session receives a
+five-minute, single-use recovery grant. `/auth/pin/recover/device` and
+`/auth/password/recover/device` consume the grant and revoke other sessions. Replayed assertions
+cannot replenish a consumed grant. Recovery transactions persist across hosted requests.
+Passkey recovery endpoints are removed, and passkey recovery ceremonies are rejected.
+Verified backup email remains available for recovery.
+
+This browser implementation relies on device and browser storage protection. It does not invoke
+an operating-system biometric or screen-lock prompt. Users must keep their device protected;
+clearing browser storage removes the local recovery key.
 
 Existing email identities, OAuth records, and Grogoni storefront IDs remain stored for their
 non-login uses. Existing accounts need a linked phone number to use the mobile login flow.

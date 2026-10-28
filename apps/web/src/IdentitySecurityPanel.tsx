@@ -10,6 +10,7 @@ import type {
   PasskeySummary
 } from "@grogoni/shared-types";
 
+import { prepareDeviceRecoveryCredential, commitDeviceRecoveryCredential } from "./device-recovery";
 import { ConnectedSourcesPanel } from "./ConnectedSourcesPanel";
 import { normalizeOwnerPhoneInput } from "./phone-identity";
 import { formatDate } from "./formatters";
@@ -439,9 +440,7 @@ export function IdentitySecurityPanel({
         response: credential
       });
       await loadPasskeys();
-      setProfileMessage(
-        "Passkey added. You can use it to recover this account if you ever lose access to your PIN and password."
-      );
+      setProfileMessage("Passkey added.");
     } catch (error) {
       setProfileMessage(getErrorMessage(error));
     }
@@ -735,9 +734,8 @@ export function IdentitySecurityPanel({
         <p className="eyebrow">Account</p>
         <h3>Passkeys and login accounts</h3>
         <p>
-          Your PIN and password remain the normal way to sign in. Add a passkey here as a backup way
-          back into your account if you ever lose access to both - it uses your device unlock and
-          keeps biometric data on the device.
+          Recover your PIN or password with the recovery key stored on this device or your verified
+          backup email. Passkeys are available only for account access.
         </p>
         <p className="shell-note">Identity strength: {identityLevel.replace("_", " ")}</p>
       </div>
@@ -937,7 +935,27 @@ export function IdentitySecurityPanel({
         disabled={!browserSupportsWebAuthn() || pendingProfileAction !== null}
         onClick={() => void runProfileAction("passkey-register", registerPasskey)}
       >
-        {browserSupportsWebAuthn() ? "Secure this device with a passkey" : "Passkeys unavailable"}
+        {browserSupportsWebAuthn() ? "Add a passkey for account access" : "Passkeys unavailable"}
+      </button>
+      <button
+        type="button"
+        disabled={pendingProfileAction !== null}
+        onClick={() =>
+          void runProfileAction("device-recovery", async () => {
+            const { publicKeyJwk } = await prepareDeviceRecoveryCredential({
+              replaceExisting: true
+            });
+            const secured = await postJson<SessionResponse>("/auth/continue", {
+              devicePublicKeyJwk: publicKeyJwk
+            });
+            if (secured.deviceRecoveryCredentialId) {
+              await commitDeviceRecoveryCredential(secured.deviceRecoveryCredentialId);
+            }
+            setProfileMessage("Device recovery enabled. Protect this device with its screen lock.");
+          })
+        }
+      >
+        Enable device recovery
       </button>
       <div className="record-form" role="group" aria-label="Multi-factor authentication">
         <div className="section-heading">
