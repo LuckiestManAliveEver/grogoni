@@ -164,6 +164,9 @@ export async function createEdgeSnapshotScope(
        union all select account_id, user_id from mcp_access_tokens where token_hash = $2
          and revoked_at is null and expires_at > now()
        union all select p.account_id::uuid, u.id from cp2_passkeys p join users u on u.account_id = p.account_id::uuid where p.entity_id = $3
+       union all select d.account_id::uuid, u.id from cp2_device_recovery_credentials d
+         join users u on u.account_id = d.account_id::uuid
+         where d.entity_id = $7 and d.record->>'revokedAt' is null
        union all select s.account_id, s.user_id from cp2_edge_protocol_state p
          cross join lateral jsonb_array_elements(coalesce(p.record->'authorizationCodes', '[]'::jsonb)) code_grant
          join sessions s on s.id = (code_grant->1->>'sessionId')::uuid
@@ -193,6 +196,9 @@ export async function createEdgeSnapshotScope(
             input.type === "email" &&
             typeof input.identifier === "string"
               ? input.identifier.trim().toLowerCase()
+              : "",
+            path === "/auth/device/recover" && typeof input.credentialId === "string"
+              ? input.credentialId.trim().toLowerCase()
               : ""
           ]
         )

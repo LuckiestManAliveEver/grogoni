@@ -121,6 +121,51 @@ describe("Edge credential compatibility", () => {
       id
     ]);
   });
+  it("enrolls and returns a recovery credential for an existing authenticated account", async () => {
+    const publicKey = generateKeyPairSync("ec", { namedCurve: "prime256v1" }).publicKey.export({
+      format: "jwk"
+    });
+    const query = vi.fn(async (sql: string) => {
+      if (sql.includes("select s.* from sessions")) return { rows: [{ ...session }] };
+      if (sql.includes("from accounts a")) return { rows: [account] };
+      return { rows: [] };
+    });
+    const { routes } = setup(query);
+    const response = await routes(
+      request("/auth/continue", { devicePublicKeyJwk: publicKey }, `grogoni_session=${id}`),
+      "/auth/continue"
+    );
+    expect(response!.status).toBe(200);
+    expect(await response!.json()).toMatchObject({
+      deviceRecoveryCredentialId: expect.any(String),
+      isNewAccount: false
+    });
+    expect(
+      query.mock.calls.some(([sql]) => sql.includes("insert into cp2_device_recovery_credentials"))
+    ).toBe(true);
+    expect(query.mock.calls.some(([sql]) => sql.includes("insert into sessions"))).toBe(false);
+  });
+
+  it("does not bind another account's recovery key to the current account", async () => {
+    const publicKey = generateKeyPairSync("ec", { namedCurve: "prime256v1" }).publicKey.export({
+      format: "jwk"
+    });
+    const query = vi.fn(async (sql: string) => {
+      if (sql.includes("select s.* from sessions")) return { rows: [{ ...session }] };
+      if (sql.includes("from accounts a")) return { rows: [account] };
+      if (sql.includes("select record from cp2_device_recovery_credentials"))
+        return { rows: [{ record: { id, accountId: "other-account" } }] };
+      return { rows: [] };
+    });
+    const { routes } = setup(query);
+    const response = await routes(
+      request("/auth/continue", { devicePublicKeyJwk: publicKey }, `grogoni_session=${id}`),
+      "/auth/continue"
+    );
+    expect(response!.status).toBe(409);
+    expect(await response!.json()).toMatchObject({ code: "device_credential_in_use" });
+  });
+
   it.each([true, false])(
     "preserves scrypt formats and verifies secret and credential (PIN=%s)",
     (pin) => {

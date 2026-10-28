@@ -53,7 +53,10 @@ The signed assertion is verified by `/auth/device/recover`; its resulting sessio
 five-minute, single-use recovery grant. `/auth/pin/recover/device` and
 `/auth/password/recover/device` consume the grant and revoke other sessions. Replayed assertions
 cannot replenish a consumed grant. Recovery transactions persist across hosted requests.
-Passkey recovery endpoints are removed, and passkey recovery ceremonies are rejected.
+Passkey recovery endpoints are removed, and passkey recovery ceremonies are rejected. Native Edge signup and `/auth/continue` register the same public-key records,
+including enrollment from an existing authenticated session. Sessionless recovery scopes the
+account lookup to the credential owner before verifying the assertion. Signature verification uses
+WebCrypto's ECDSA format in both Node and Supabase Edge.
 Verified backup email remains available for recovery.
 
 This browser implementation relies on device and browser storage protection. It does not invoke

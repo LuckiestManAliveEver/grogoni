@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConversationView } from "@grogoni/shared-types";
 
 import { useChatRuntimeState } from "../apps/web/src/hooks/useChatRuntimeState";
-import { readDeviceOnlyMessages } from "../apps/web/src/chat-device-only-messages";
 import {
   guestExplainReply,
   parseMarketplaceBuyIntent,
@@ -13,12 +12,7 @@ import {
 } from "../apps/web/src/marketplace-search-reply";
 import type { SessionResponse } from "../apps/web/src/grogoni-application-shared";
 
-/**
- * Production journey: a guest's "hello" was searched as a product and answered "I searched the
- * marketplace", and the exchange vanished on the next 4-second refresh. A guest has no assistant
- * of its own, so the chat searches product-like text, explains itself for anything else, and never
- * intercepts a message meant for a person.
- */
+/** Product-search helper rules remain available, but personal chat always uses the model. */
 describe("guest message routing", () => {
   const route = (message: string) => {
     const routed = routeGuestMessage(message);
@@ -213,8 +207,19 @@ describe("guest chat send", () => {
     root = createRoot(host);
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => {
-        throw new TypeError("offline in test");
+      vi.fn(async (url: string, options?: RequestInit) => {
+        const payload = options?.body ? JSON.parse(String(options.body)) : {};
+        return new Response(
+          JSON.stringify(
+            url.endsWith("/v1/daemon/tasks")
+              ? { task: { id: "task-1", runAt: new Date().toISOString() } }
+              : { id: payload.clientMessageId, conversationId: payload.conversationId }
+          ),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" }
+          }
+        );
       })
     );
   });
@@ -281,19 +286,24 @@ describe("guest chat send", () => {
     return { searchBuyFeed, rendered };
   }
 
-  it("answers a greeting with what Grogoni does, kept local to this thread, without searching", async () => {
-    const { searchBuyFeed, rendered } = await send("hello there", null);
-    expect(searchBuyFeed).not.toHaveBeenCalled();
-    expect(rendered.map((message) => message.body)).toEqual(["hello there", guestExplainReply]);
-    expect(rendered.every((message) => message.deviceOnlyIn === "agent-thread-1")).toBe(true);
-  });
-
-  it("answers a guest's help request instead of sending it to an agent that is not there", async () => {
-    // "help …" is an agent command for an owner; a guest has no agent.
-    const { searchBuyFeed, rendered } = await send("Help me please", null);
-    expect(searchBuyFeed).not.toHaveBeenCalled();
-    expect(rendered.map((message) => message.body)).toEqual(["Help me please", guestExplainReply]);
-  });
+  it.each(["hello there", "Help me please", "Explain why a rainbow forms"])(
+    "sends %j to the conversational model without a structured reply",
+    async (message) => {
+      const { searchBuyFeed, rendered } = await send(message, null);
+      expect(searchBuyFeed).not.toHaveBeenCalled();
+      expect(rendered.map((item) => item.body)).toEqual([message]);
+      const requests = vi.mocked(fetch).mock.calls;
+      const task = requests.find(
+        ([url, options]) => String(url).endsWith("/v1/daemon/tasks") && options?.method === "POST"
+      );
+      expect(task).toBeDefined();
+      expect(JSON.parse(String(task![1]!.body))).toMatchObject({
+        message,
+        conversation: { id: "agent-thread-1", kind: "reply" }
+      });
+      expect(requests.some(([url]) => String(url).includes("/v1/guest/intent"))).toBe(false);
+    }
+  );
 
   it("never searches or explains a message addressed to another person", async () => {
     const direct = {
@@ -308,84 +318,5 @@ describe("guest chat send", () => {
     expect(rendered.map((message) => message.body)).not.toContain(guestExplainReply);
     const again = await send("do you have sugar?", direct);
     expect(again.searchBuyFeed).not.toHaveBeenCalled();
-  });
-
-  it("keeps an exchange for its own thread when the user switches thread during the search", async () => {
-    localStorage.clear();
-    let finishSearch: (feed: null) => void = () => undefined;
-    const searchBuyFeed = vi.fn(
-      () =>
-        new Promise<null>((resolve) => {
-          finishSearch = resolve;
-        })
-    );
-    const rendered: Array<{ body: string }> = [];
-    let sendChatDraft: ((draft?: string) => Promise<void>) | null = null;
-    function Harness({ conversationId }: { conversationId: string }) {
-      const api = useChatRuntimeState({
-        business: null,
-        mode: "marketplace",
-        session,
-        authBootstrapState: "authenticated",
-        ensureAuthenticatedSession: async () => session,
-        rejectDefinitiveAuthenticationFailure: () => false,
-        agentSettings: { model: "m", role: "shopkeeper", instructions: "", name: "S" } as never,
-        setStatusMessage: () => undefined,
-        navigateToView: () => undefined,
-        requireMessagingSignIn: () => undefined,
-        searchBuyFeed,
-        loadProducts: async () => undefined,
-        loadSuppliers: async () => undefined,
-        loadCustomers: async () => undefined,
-        loadInvoices: async () => undefined,
-        loadReports: async () => undefined,
-        loadNotifications: async () => undefined,
-        loadRuntimeSessions: async () => undefined,
-        createManagedRuntimeSession: async () => "r1",
-        ensureRuntimeSession: async () => "r1",
-        loadDocumentImports: async () => undefined,
-        chatMessages: [],
-        setChatMessages: (next) => {
-          // Applied to what is rendered, as React does: a guest's bubble and its reply arrive
-          // as two updates.
-          const resolved = typeof next === "function" ? next([...rendered]) : next;
-          rendered.splice(0, rendered.length, ...resolved);
-        },
-        chatDraft: "",
-        setChatDraft: () => undefined,
-        pendingAttachments: [],
-        setPendingAttachments: () => undefined,
-        runtimeSessionId: null,
-        setRuntimeSessionId: () => undefined,
-        replyToMessageId: null,
-        setReplyToMessageId: () => undefined,
-        activeConversationId: conversationId,
-        activeConversation: null,
-        loadMessagingInbox: async () => undefined,
-        registerReset: () => undefined
-      });
-      sendChatDraft = api.sendChatDraft;
-      return null;
-    }
-    await act(async () => root.render(<Harness conversationId="thread-1" />));
-    let sending: Promise<void> = Promise.resolve();
-    await act(async () => {
-      sending = sendChatDraft!("sugar");
-      await Promise.resolve();
-    });
-    await act(async () => root.render(<Harness conversationId="thread-2" />));
-    await act(async () => {
-      finishSearch(null);
-      await sending;
-    });
-    // The guest's bubble showed at once, while thread-1 was open. The reply, ready only after the
-    // switch, never flashes into thread-2: it waits in storage for its own thread.
-    expect(rendered.map((message) => message.body)).toEqual(["sugar"]);
-    expect(
-      readDeviceOnlyMessages("account-1").map((message) => [message.body, message.deviceOnlyIn])
-    ).toEqual([
-      ["sugar", "thread-1"],
-      [expect.stringMatching(/couldn't search/u), "thread-1"]
-    ]);
   });
 });

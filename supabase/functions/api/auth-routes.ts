@@ -494,6 +494,56 @@ export function createAuthRoutes({
       updatedAt: now
     });
   }
+  async function registerDeviceCredential(client: SqlClient, accountId: string, value: unknown) {
+    const jwk = value as Row | undefined;
+    if (
+      !jwk ||
+      jwk.kty !== "EC" ||
+      jwk.crv !== "P-256" ||
+      typeof jwk.x !== "string" ||
+      typeof jwk.y !== "string" ||
+      jwk.d !== undefined
+    ) {
+      throw new AuthError(400, "device_recovery_key_required", "A device public key is required.");
+    }
+    const publicKey = { kty: "EC", crv: "P-256", x: jwk.x, y: jwk.y };
+    try {
+      createPublicKey({ key: publicKey as JsonWebKey, format: "jwk" });
+    } catch {
+      throw new AuthError(400, "device_recovery_key_invalid", "The device public key is invalid.");
+    }
+    await lock(client, `device-key:${hash(JSON.stringify(publicKey))}`);
+    const existing = (
+      await client.query(
+        `select record from cp2_device_recovery_credentials
+       where record->'publicKeyJwk' = $1::jsonb and record->>'revokedAt' is null for update`,
+        [JSON.stringify(publicKey)]
+      )
+    ).rows[0]?.record as Row | undefined;
+    if (existing) {
+      if (existing.accountId !== accountId)
+        throw new AuthError(
+          409,
+          "device_credential_in_use",
+          "This device key belongs to another account."
+        );
+      return String(existing.id);
+    }
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    await mirror(client, "cp2_device_recovery_credentials", id, {
+      id,
+      accountId,
+      publicKeyJwk: publicKey,
+      createdAt: now,
+      updatedAt: now,
+      revokedAt: null,
+      lastAssertionHash: null,
+      lastAssertionAt: null,
+      lastSessionId: null
+    });
+    return id;
+  }
   async function makeSession(client: SqlClient, account: Row, request: Request, previous?: Row) {
     const now = new Date();
     const absolute = previous
@@ -700,7 +750,16 @@ export function createAuthRoutes({
             return Response.json({
               ...publicActor(account),
               session: sessionView(existing),
-              isNewAccount: false
+              isNewAccount: false,
+              ...(data.devicePublicKeyJwk === undefined
+                ? {}
+                : {
+                    deviceRecoveryCredentialId: await registerDeviceCredential(
+                      client,
+                      String(existing.account_id),
+                      data.devicePublicKeyJwk
+                    )
+                  })
             });
           }
           const key = request.headers.get("idempotency-key")?.trim() ?? "";
@@ -775,19 +834,12 @@ export function createAuthRoutes({
               accountId: account.account_id
             });
           }
-          const credentialId = String(prior?.credentialId ?? randomUUID());
+          const credentialId = await registerDeviceCredential(
+            client,
+            String(account.account_id),
+            publicKey
+          );
           const now = new Date().toISOString();
-          await mirror(client, "cp2_device_recovery_credentials", credentialId, {
-            id: credentialId,
-            accountId: account.account_id,
-            publicKeyJwk: publicKey,
-            createdAt: now,
-            updatedAt: now,
-            revokedAt: null,
-            lastAssertionHash: null,
-            lastAssertionAt: null,
-            lastSessionId: null
-          });
           const session = await makeSession(client, account, request);
           await client.query("update sessions set pin_verified_at = null where id = $1", [
             session.row.id

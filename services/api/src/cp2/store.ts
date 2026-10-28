@@ -2233,10 +2233,10 @@ export class Cp2Store {
   ): ReturnType<DeviceBootstrapDomain["continueWithDevice"]> {
     return this.deviceBootstrapDomain.continueWithDevice(...args);
   }
-  recoverWithDeviceCredential(
+  async recoverWithDeviceCredential(
     ...args: Parameters<DeviceBootstrapDomain["recoverWithDeviceCredential"]>
   ): ReturnType<DeviceBootstrapDomain["recoverWithDeviceCredential"]> {
-    const result = this.deviceBootstrapDomain.recoverWithDeviceCredential(...args);
+    const result = await this.deviceBootstrapDomain.recoverWithDeviceCredential(...args);
     const now = args[0].now ?? new Date();
     const assertionKey = `${args[0].credentialId.trim()}:${args[0].issuedAt}:${args[0].nonce.trim()}`;
     // A signed device assertion grants one credential reset for five minutes.

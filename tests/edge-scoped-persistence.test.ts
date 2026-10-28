@@ -41,6 +41,28 @@ describe("Edge scoped persistence", () => {
     ]);
   });
 
+  it("persists reset passwords to the native login credential table as well as the snapshot", async () => {
+    const previous = createCp2Store().snapshot();
+    const timestamp = new Date().toISOString();
+    const credential = {
+      accountId: "account",
+      passwordHash: "new-password-hash",
+      passwordChangedAt: timestamp,
+      createdAt: timestamp,
+      updatedAt: timestamp
+    };
+    const snapshot = { ...previous, passwordCredentials: [credential] };
+    const query = vi.fn(async () => ({ rows: [], rowCount: 1 }));
+    await saveTransactionalCp2Snapshot({ query } as unknown as PoolClient, snapshot, previous);
+    const native = query.mock.calls.find(([sql]) =>
+      sql.includes("insert into password_credentials")
+    );
+    expect(native?.[1]).toEqual(["account", "new-password-hash", timestamp, timestamp, timestamp]);
+    expect(
+      query.mock.calls.some(([sql]) => sql.includes("insert into cp2_password_credentials"))
+    ).toBe(true);
+  });
+
   it("does not delete rows outside the loaded baseline or rewrite unchanged records", async () => {
     const query = vi.fn(async () => ({ rows: [], rowCount: 1 }));
     const keep = { id: "keep", accountId: "owner", value: 1 };
@@ -101,6 +123,25 @@ describe("Edge scoped persistence", () => {
     expect(scope.predicate("passwordCredentials")).not.toBe("true");
     expect(scope.predicate("conversationMessages")).toContain("record->>'conversationId'");
     expect(scope.predicate("modelCatalog")).toBe("true");
+  });
+
+  it("scopes sessionless device recovery to the credential owner", async () => {
+    const credentialId = "00000000-0000-4000-8000-000000000001";
+    const query = vi.fn(async () => ({ rows: [] }));
+    await createEdgeSnapshotScope(
+      { query } as unknown as PoolClient,
+      new Request("https://grogoni.com/auth/device/recover", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ credentialId })
+      }),
+      "/auth/device/recover",
+      Buffer.from(JSON.stringify({ credentialId }))
+    );
+    const [sql, values] = query.mock.calls[0]!;
+    expect(sql).toContain("cp2_device_recovery_credentials");
+    expect(sql).toContain("d.record->>'revokedAt' is null");
+    expect(values[6]).toBe(credentialId);
   });
 
   it("escapes user-supplied lookup values and uses invitation destinations", async () => {

@@ -37,7 +37,7 @@
  * `Cp2Snapshot` fields - both hold plaintext refresh-token replay caches that should not survive
  * a restart, by design (confirmed unchanged from the pre-extraction monolith).
  */
-import { createHash, createPublicKey, verify as verifySignature } from "node:crypto";
+import { createHash, createPublicKey, webcrypto } from "node:crypto";
 import type { JsonWebKey as NodeJsonWebKey } from "node:crypto";
 import { Cp2Error } from "../../cp2-error.js";
 
@@ -132,18 +132,26 @@ export function deviceRecoveryAssertionPayload(
   return `grogoni-device-recovery:v1:${credentialId}:${issuedAt}:${nonce}`;
 }
 
-export function verifyDeviceRecoverySignature(
+export async function verifyDeviceRecoverySignature(
   publicKeyJwk: Record<string, unknown>,
   payload: string,
   signature: string
-): boolean {
+): Promise<boolean> {
   try {
-    const key = createPublicKey({ key: publicKeyJwk as NodeJsonWebKey, format: "jwk" });
-    return verifySignature(
-      "sha256",
-      Buffer.from(payload, "utf8"),
-      { key, dsaEncoding: "ieee-p1363" },
-      Buffer.from(signature, "base64url")
+    // WebCrypto uses the same raw P-256 signature format in browsers, Node and Edge.
+    // Node's synchronous verify compatibility layer does not preserve P1363 on Edge.
+    const key = await webcrypto.subtle.importKey(
+      "jwk",
+      publicKeyJwk,
+      { name: "ECDSA", namedCurve: "P-256" },
+      false,
+      ["verify"]
+    );
+    return await webcrypto.subtle.verify(
+      { name: "ECDSA", hash: "SHA-256" },
+      key,
+      Buffer.from(signature, "base64url"),
+      Buffer.from(payload, "utf8")
     );
   } catch {
     return false;

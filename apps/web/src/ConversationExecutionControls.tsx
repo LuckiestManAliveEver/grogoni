@@ -39,77 +39,6 @@ export function DaemonExecutionStatus({ execution }: { execution: ConversationEx
     </div>
   );
 }
-interface Selection {
-  selectedModelId: string | null;
-  available: boolean;
-  errorCode: string | null;
-  models: { id: string; label: string }[];
-}
-export function DaemonModelSelector({ conversationId }: { conversationId: string }) {
-  const [selection, setSelection] = useState<Selection | null>(null);
-  const [busy, setBusy] = useState(false),
-    [error, setError] = useState("");
-  useEffect(() => {
-    let stopped = false;
-    setSelection(null);
-    setError("");
-    void apiCloudFetch<Selection>(
-      `/v1/conversations/${encodeURIComponent(conversationId)}/model`
-    ).then(
-      (value) => {
-        if (!stopped) setSelection(value);
-      },
-      () => {
-        if (!stopped) setError("Daemon availability is temporarily unavailable.");
-      }
-    );
-    return () => {
-      stopped = true;
-    };
-  }, [conversationId]);
-  async function select(modelId: string) {
-    setBusy(true);
-    setError("");
-    try {
-      setSelection(
-        await apiCloudFetch<Selection>(
-          `/v1/conversations/${encodeURIComponent(conversationId)}/model`,
-          { method: "PUT", body: { modelId } }
-        )
-      );
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not switch model.");
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <div className="daemon-model-selector">
-      <label>
-        Daemon model{" "}
-        <select
-          aria-label="Daemon model"
-          value={selection?.selectedModelId ?? ""}
-          disabled={busy || !selection}
-          onChange={(event) => void select(event.target.value)}
-        >
-          <option value="" disabled>
-            {selection?.available === false ? "Unavailable" : "Choose model"}
-          </option>
-          {selection?.models.map((model) => (
-            <option key={model.id} value={model.id}>
-              {model.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      {busy ? <small role="status">Checking model…</small> : null}
-      {error || selection?.available === false ? (
-        <small role="status">{error || "Daemon unavailable. Your history is saved."}</small>
-      ) : null}
-    </div>
-  );
-}
 export function BusinessAgentControls({
   conversationId,
   businessId,
@@ -201,8 +130,7 @@ export function ConversationExecutionControls({
   conversation: ConversationSummary | undefined;
   businessId: string | null;
 }) {
-  if (conversation?.conversationType === "DAEMON")
-    return <DaemonModelSelector key={conversation.id} conversationId={conversation.id} />;
+  if (conversation?.conversationType === "DAEMON") return null;
   if (
     conversation?.conversationType === "BUSINESS" &&
     businessId &&

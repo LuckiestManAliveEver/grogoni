@@ -36,7 +36,6 @@ import {
   saveDeviceOnlyMessages
 } from "../chat-device-only-messages";
 import { describeMarketplaceSearch, parseMarketplaceBuyIntent } from "../marketplace-search-reply";
-import { sendGuestMessage } from "../guest-chat-send";
 import { parseReminderIntent, isDeliveryTrackingIntent } from "../chat-assistant-intents";
 import {
   daemonChatScope,
@@ -398,7 +397,10 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
         setChatDraft("");
     };
     const helpCommand = extractAgentHelpCommand(message);
-    const agentRequest = helpCommand === undefined || helpCommand === null ? message : helpCommand;
+    const agentRequest =
+      business === null || helpCommand === undefined || helpCommand === null
+        ? message
+        : helpCommand;
     let runtimeMessage = appendAttachmentSummary(agentRequest, attachments);
 
     if (message.length === 0 && attachments.length === 0) {
@@ -521,50 +523,14 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       (mode !== "seller" || business === null) && attachments.length === 0 && !hasHumanRecipient
         ? searchBuyFeed
         : undefined;
-    // Someone without a shop has no assistant of their own: product-like text is searched, and
-    // anything else gets an honest answer. The model-based classifier decides which, within a 5s
-    // budget, and the rules (routeGuestMessage) answer whenever it cannot (guest-intent-client.ts).
-    // A guest has no agent, so "help …" (an agent command for an owner) is routed like any other
-    // guest message instead of being sent to an agent that is not there. A message to a person
-    // never reaches the classifier: marketplaceSearch is undefined then.
-    const continuingCheckout =
-      buyerShoppingSessionIds.current.has(
-        `grogoni:buyer-shopping:${activeSession.account.id}:${assistantScope}`
-      ) || /^(confirm checkout|cancel checkout)$/iu.test(message.trim());
-    if (
-      business === null &&
-      // A conversation-less buyer send goes to the buyer assistant / daemon (it can search,
-      // quote and check out server-side); the guest classifier answers only inside a thread.
-      activeConversationId !== null &&
-      marketplaceSearch &&
-      !explicitCapability &&
-      reminder === null &&
-      !tracking &&
-      !continuingCheckout
-    ) {
-      await sendGuestMessage({
-        message,
-        accountId: activeSession.account.id,
-        mode,
-        activeConversationId,
-        chatMessages,
-        setChatMessages,
-        isOpen: () => currentConversationRef.current === activeConversationId,
-        searchBuyFeed: marketplaceSearch,
-        afterBubble: () => {
-          clearSentDraft();
-          setPendingAttachments([]);
-          setReplyToMessageId(null);
-        },
-        navigateToMarketplace: () => navigateToView("chat", { mode: "marketplace" }),
-        setStatusMessage
-      });
-      return;
-    }
+    // Personal assistant conversations always reach the conversational model. Marketplace
+    // classifiers provide search results, not a substitute for an assistant turn.
     if (
       !hasHumanRecipient &&
       (attachments.length === 0 || buyerAssistant) &&
-      (reminder !== null || tracking || (buyerAssistant && helpCommand === undefined))
+      (reminder !== null ||
+        tracking ||
+        (buyerAssistant && (business === null || helpCommand === undefined)))
     ) {
       const clientMessageId = createClientMessageId("message");
       const createdAt = new Date().toISOString();

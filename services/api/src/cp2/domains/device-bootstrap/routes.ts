@@ -99,7 +99,7 @@ export function registerDeviceBootstrapRoutes(
     ) => {
       try {
         enforceAuthIpRate(authAttemptsByIp, request, "device_recover", 10);
-        const result = store.recoverWithDeviceCredential({
+        const result = await store.recoverWithDeviceCredential({
           credentialId: parseString(request.body.credentialId, "credentialId"),
           nonce: parseString(request.body.nonce, "nonce"),
           issuedAt: request.body.issuedAt ?? Number.NaN,
