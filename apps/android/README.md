@@ -25,14 +25,16 @@ not a WebView bridge and the PWA never receives Android telephony privileges.
 
 ## Local build
 
-Use JDK 17 and an Android SDK with API 35. From this directory, run the project with a compatible
+Use a full JDK 17 (with `javac`; a JRE alone fails with "does not provide the required capabilities:
+[JAVA_COMPILER]"), Gradle 8.10.2, and an Android SDK with API 35. There is no committed Gradle
+wrapper. From this directory, run the project with that
 Gradle installation or import it into Android Studio. The default API origin is
 `https://grogoni.com/api`: production serves the API under `/api` (the `vercel.json` rewrite to the
 Supabase Edge function), and `https://grogoni.com` itself is the web app, which answers API paths
 with HTML or 405. Override the API origin for a development backend with:
 
 ```text
-./gradlew :app:assembleDebug -PGROGONI_API_ORIGIN=https://your-api.example
+gradle :app:assembleDebug -PGROGONI_API_ORIGIN=https://your-api.example
 ```
 
 The configured origin must use HTTPS for a device build. Emulator-only cleartext networking is not
@@ -64,7 +66,7 @@ export GROGONI_RELEASE_KEY_PASSWORD="your-key-password"
 A Play bundle can then be generated with:
 
 ```bash
-./gradlew :app:bundleRelease
+gradle :app:bundleRelease
 ```
 
 The generated `.aab` file is located under `app/build/outputs/bundle/release/` and is the artifact to
@@ -77,7 +79,7 @@ onto real phones by hosting a release APK directly from the production site. Bui
 
 ```bash
 cd apps/android
-./gradlew :app:assembleRelease
+gradle :app:assembleRelease
 # or from the repo root:
 pnpm android:release:apk
 ```
@@ -117,7 +119,8 @@ Play until that policy work is approved.
 
 ## Verification
 
-Local JVM contracts live under `app/src/test`. Keystore/SQLite durability tests live under
+Local JVM contracts live under `app/src/test`; run them and build the debug APK with
+`pnpm android:check` (the `android` CI job runs the same command). Keystore/SQLite durability tests live under
 `app/src/androidTest` and require an Android device or emulator. A real carrier send/receive test
 also requires a physical Android phone, an active SIM, Grogoni selected as the default SMS app, and a
 review-safe build.

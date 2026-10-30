@@ -41,7 +41,8 @@ object AndroidPermissionPolicy {
         permissions += Manifest.permission.SEND_SMS
         permissions += Manifest.permission.RECEIVE_SMS
         permissions += Manifest.permission.READ_SMS
-        permissions += Manifest.permission.WRITE_SMS
+        // No WRITE_SMS: it is not a public SDK permission and is never granted to apps. The default
+        // SMS role itself grants write access to the SMS provider.
 
         return permissions
     }

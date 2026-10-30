@@ -24,3 +24,5 @@ supabase/functions/api/domain-bundle.mjs
 supabase/functions/api/pdf-worker.mjs
 apps/android/*.keystore
 apps/android/keystore.properties
+apps/android/.gradle/
+apps/android/app/build/

@@ -427,6 +427,12 @@ does **not** exercise real telephony.
 send/receive, emulator startup, WorkManager background behavior, signing, and a fresh
 production-DB seed check. These remain **unverified** here.
 
+> **2026-10-30 emulator attempt:** the debug APK now compiles and its JVM tests pass (7/7). An API 30
+> x86_64 emulator was booted with `-accel off` on a ThinkPad P50 whose BIOS has VT-x disabled. It
+> reached `sys.boot_completed=1` after 630 s, then `system_server` crash-looped (single-threaded TCG
+> misses the framework watchdog), so the default-SMS role flow could not be exercised. Software
+> emulation is not a viable test bed; enable VT-x (KVM) or use a physical phone.
+
 ---
 
 ## Appendix A — Files that an implementer must not duplicate

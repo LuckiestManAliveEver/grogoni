@@ -32,4 +32,15 @@ class AndroidPermissionPolicyTest {
             assertTrue(permissions.contains(Manifest.permission.READ_EXTERNAL_STORAGE))
         }
     }
+
+    @Test
+    fun `permission policy requests only permissions an app can be granted`() {
+        val permissions = AndroidPermissionPolicy.permissionSetForSdk()
+
+        // WRITE_SMS is hidden from the public SDK and never granted to apps; requesting it kept
+        // "Grant native device permissions" enabled forever and broke compilation.
+        assertFalse(permissions.contains("android.permission.WRITE_SMS"))
+        assertTrue(permissions.contains(Manifest.permission.READ_SMS))
+        assertTrue(permissions.contains(Manifest.permission.RECEIVE_SMS))
+    }
 }

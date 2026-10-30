@@ -290,7 +290,6 @@ class MainActivity : ComponentActivity() {
             Manifest.permission.SEND_SMS,
             Manifest.permission.RECEIVE_SMS,
             Manifest.permission.READ_SMS,
-            Manifest.permission.WRITE_SMS,
         )
         val devicePermissions = AndroidPermissionPolicy.permissionSetForSdk().toTypedArray()
         val allPermissions = (smsPermissions + devicePermissions).distinct().toTypedArray()

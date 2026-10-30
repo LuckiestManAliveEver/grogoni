@@ -66,6 +66,17 @@ android {
         buildConfig = true
     }
 
+    // Pin Java and Kotlin to the same bytecode target. Without this, javac defaults to 1.8 while
+    // Kotlin follows the JDK running Gradle, and Kotlin 2.x fails the build on the mismatch.
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+
     testOptions {
         unitTests.isReturnDefaultValues = true
     }

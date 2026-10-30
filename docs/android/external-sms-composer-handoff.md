@@ -96,7 +96,8 @@ The **web** SMS handoff path (Mode A/browser fallback) adds no Android manifest 
 requests no SMS permissions: it only navigates an `sms:` URI.
 
 The native Android node in `apps/android` does request the restricted SMS permissions
-(`READ_SMS`, `RECEIVE_SMS`, `SEND_SMS`, `WRITE_SMS`) because it implements the default SMS-handler
+(`READ_SMS`, `RECEIVE_SMS`, `SEND_SMS`; write access to the SMS provider comes from the role itself,
+not from a runtime permission) because it implements the default SMS-handler
 role, along with the other device permissions it declares in
 `apps/android/app/src/main/AndroidManifest.xml`. Those permissions are gated behind the SMS role and
 are subject to Google Play default-SMS-handler policy review; they are granted at runtime only after
