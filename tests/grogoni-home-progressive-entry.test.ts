@@ -22,7 +22,7 @@ describe("Grogoni Home: zero-form entry (docs/authentication/progressive-identit
 
   it("auto-continues every non-deliberate cold boot, new visitor or returning one, instead of a login wall", () => {
     expect(useAuthState).toMatch(
-      /const isDeliberateAuthFlow =\s*initialAuthenticationTarget !== null \|\| accountDeletionIntent \|\| accountRestorationIntent;/u
+      /const isDeliberateAuthFlow =\s*\(initialAuthenticationTarget !== null &&\s*sessionStorage\.getItem\(guestBrowsingStorageKey\) !== "true"\) \|\|\s*accountDeletionIntent \|\|\s*accountRestorationIntent;/u
     );
     expect(useAuthState).toContain("if (!isDeliberateAuthFlow) {");
     expect(useAuthState).not.toContain("initialOwnerAuth === null &&");

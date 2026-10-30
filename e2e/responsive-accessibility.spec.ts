@@ -1321,8 +1321,8 @@ test("public account deletion resource reflows and passes accessibility", async 
 });
 
 for (const viewport of viewportMatrix) {
-  test(`${viewport.name}: model library reflows without clipped controls`, async ({ page }) => {
-    await openModelLibrary(page, viewport);
+  test(`${viewport.name}: agent settings reflow without model selection`, async ({ page }) => {
+    await openAgentSettings(page, viewport);
     await expectNoViewportOverflow(page);
     await expectInteractiveControlsInsideViewport(
       page,
@@ -1383,135 +1383,6 @@ for (const viewport of viewportMatrix) {
   });
 }
 
-test("activating a backend model preserves the previous model when activation fails", async ({
-  page
-}) => {
-  // Scoped to this test only, rather than added to the shared `modelCatalog` fixture: a second
-  // backend-configured entry changes which action buttons render per card (Test model / Use with
-  // agent / an inline activation-failure status), a combination the shared-catalog reflow tests
-  // below don't otherwise exercise.
-  const secondModelId = "responsive-second-backend-model";
-  await page.route("**/v1/ai-models", (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        models: [
-          modelCatalog[0],
-          {
-            id: secondModelId,
-            label: "Second Backend Model",
-            provider: "openai",
-            description: "A second backend-hosted model for activation-failure coverage.",
-            capabilities: ["chat"],
-            available: true,
-            source: "hosted",
-            format: "remote",
-            license: null,
-            licenseUrl: null,
-            modelCardUrl: null,
-            downloadUrl: null,
-            fileName: null,
-            fileSizeBytes: null,
-            minimumMemoryGb: null,
-            recommended: false,
-            contextWindow: 32_000,
-            runtimeAvailability: { backend: "configured" }
-          }
-        ]
-      })
-    })
-  );
-  await page.setExtraHTTPHeaders({
-    "x-grogoni-test-seed-active-model": "openai-fast",
-    "x-grogoni-test-failing-activation-model": secondModelId
-  });
-  await openModelLibrary(page, { width: 390, height: 844 });
-
-  await expect(page.locator(".agent-model-current h4")).toHaveText("OpenAI fast");
-
-  const secondModelCard = page
-    .locator(".ai-model-card")
-    .filter({ hasText: "Second Backend Model" });
-  await secondModelCard.getByRole("button", { name: "Use with agent" }).click();
-  // This model isn't the platform-included default, so it's merchant-funded - the activation
-  // request doesn't fire until this confirmation is accepted (see AgentModelPanel.tsx's
-  // requestActivateServerBackendModel).
-  await secondModelCard.getByRole("button", { name: "Confirm switch" }).click();
-
-  await expect(secondModelCard.getByRole("status")).toHaveText(
-    "Activation failed. The previous working model remains active - try again or pick a different model."
-  );
-  await expect(page.locator(".agent-model-current h4")).toHaveText("OpenAI fast");
-});
-
-test("a second backend-configured model does not clip the model library at 280px", async ({
-  page
-}) => {
-  // Regression coverage for a bug once tracked separately (a second backend-configured entry was
-  // suspected of clipping the model library card at the narrowest supported viewport). Re-audited:
-  // does not reproduce against today's `.model-lab-grid` (styles.css), whose
-  // `grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr))` already collapses to a
-  // single fluid column at 280px. This test pins that fixed state so a future regression is caught
-  // instead of silently reintroduced.
-  const secondModelId = "responsive-second-backend-model";
-  await page.route("**/v1/ai-models", (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        models: [
-          modelCatalog[0],
-          {
-            id: secondModelId,
-            label: "Second Backend Model",
-            provider: "openai",
-            description: "A second backend-hosted model for activation-failure coverage.",
-            capabilities: ["chat"],
-            available: true,
-            source: "hosted",
-            format: "remote",
-            license: null,
-            licenseUrl: null,
-            modelCardUrl: null,
-            downloadUrl: null,
-            fileName: null,
-            fileSizeBytes: null,
-            minimumMemoryGb: null,
-            recommended: false,
-            contextWindow: 32_000,
-            runtimeAvailability: { backend: "configured" }
-          }
-        ]
-      })
-    })
-  );
-  await page.setExtraHTTPHeaders({
-    "x-grogoni-test-seed-active-model": "openai-fast",
-    "x-grogoni-test-failing-activation-model": secondModelId
-  });
-  await openModelLibrary(page, { width: 280, height: 653 });
-
-  await expect(page.locator(".agent-model-current h4")).toHaveText("OpenAI fast");
-  const secondModelCard = page
-    .locator(".ai-model-card")
-    .filter({ hasText: "Second Backend Model" });
-  await secondModelCard.getByRole("button", { name: "Use with agent" }).click();
-  // This model isn't the platform-included default, so it's merchant-funded - the activation
-  // request doesn't fire until this confirmation is accepted (see AgentModelPanel.tsx's
-  // requestActivateServerBackendModel).
-  await secondModelCard.getByRole("button", { name: "Confirm switch" }).click();
-  await expect(secondModelCard.getByRole("status")).toHaveText(
-    "Activation failed. The previous working model remains active - try again or pick a different model."
-  );
-
-  await expectNoViewportOverflow(page);
-  await expectInteractiveControlsInsideViewport(
-    page,
-    page.getByRole("dialog", { name: "Account and agent settings" })
-  );
-});
-
 test("WCAG 2.2 A/AA automated accessibility scan", async ({ page }) => {
   test.setTimeout(120_000);
   for (const viewport of [
@@ -1520,7 +1391,7 @@ test("WCAG 2.2 A/AA automated accessibility scan", async ({ page }) => {
     { width: 768, height: 1024 },
     { width: 1440, height: 900 }
   ]) {
-    await openModelLibrary(page, viewport);
+    await openAgentSettings(page, viewport);
     const results = await new AxeBuilder({ page })
       .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
       .analyze();
@@ -1529,7 +1400,7 @@ test("WCAG 2.2 A/AA automated accessibility scan", async ({ page }) => {
 });
 
 test("200% text size and WCAG text spacing preserve reflow", async ({ page }) => {
-  await openModelLibrary(page, { width: 640, height: 720 });
+  await openAgentSettings(page, { width: 640, height: 720 });
   await page.addStyleTag({
     content: `
       html { font-size: 200% !important; }
@@ -1545,7 +1416,7 @@ test("200% text size and WCAG text spacing preserve reflow", async ({ page }) =>
 });
 
 test("keyboard navigation exposes a visible focus indicator", async ({ page }) => {
-  await openModelLibrary(page, { width: 390, height: 844 });
+  await openAgentSettings(page, { width: 390, height: 844 });
   for (let index = 0; index < 8; index += 1) {
     await page.keyboard.press("Tab");
     const focus = await page.evaluate(() => {
@@ -1566,7 +1437,7 @@ test("keyboard navigation exposes a visible focus indicator", async ({ page }) =
 });
 
 test("touch controls satisfy the WCAG 2.2 minimum target size", async ({ page }) => {
-  await openModelLibrary(page, { width: 360, height: 800 });
+  await openAgentSettings(page, { width: 360, height: 800 });
   const undersized = await page
     .getByRole("dialog", { name: "Account and agent settings" })
     .locator("button, a[href], input, select, textarea")
@@ -1607,13 +1478,12 @@ test("the status notice never covers the customer home's header buttons", async 
 
 test("reduced-motion and forced-color preferences keep the page operable", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce", forcedColors: "active" });
-  await openModelLibrary(page, { width: 390, height: 844 });
+  await openAgentSettings(page, { width: 390, height: 844 });
   await expectNoViewportOverflow(page);
-  await expect(page.getByRole("heading", { name: "Model library", exact: true })).toBeVisible();
-  await expect(page.getByPlaceholder("Search models, e.g. SmolLM")).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Account and agent settings" })).toBeVisible();
 });
 
-async function openModelLibrary(
+async function openAgentSettings(
   page: Page,
   viewport: { width: number; height: number }
 ): Promise<void> {
@@ -1622,12 +1492,8 @@ async function openModelLibrary(
   await page.getByRole("button", { name: "Account and agent settings" }).click();
   await expect(page.getByRole("dialog", { name: "Account and agent settings" })).toBeVisible();
   await expect(page).toHaveURL(/\/$/);
-  await page.locator(".settings-group-title", { hasText: "Model & inference" }).click();
-  await expect(page.getByRole("heading", { name: "Model library", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Open model library" }).click();
-  await expect(page.getByPlaceholder("Search models, e.g. SmolLM")).toBeVisible({
-    timeout: 15_000
-  });
+  await expect(page.getByRole("button", { name: "Open model library" })).toHaveCount(0);
+  await expect(page.getByLabel("Agent and model", { exact: true })).toHaveCount(0);
 }
 
 async function expectNoViewportOverflow(page: Page): Promise<void> {

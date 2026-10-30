@@ -36,6 +36,8 @@ import {
   saveDeviceOnlyMessages
 } from "../chat-device-only-messages";
 import { describeMarketplaceSearch, parseMarketplaceBuyIntent } from "../marketplace-search-reply";
+import { askGuestModel } from "../guest-model-send";
+import { sendGuestMessage } from "../guest-chat-send";
 import { parseReminderIntent, isDeliveryTrackingIntent } from "../chat-assistant-intents";
 import {
   daemonChatScope,
@@ -523,8 +525,57 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       (mode !== "seller" || business === null) && attachments.length === 0 && !hasHumanRecipient
         ? searchBuyFeed
         : undefined;
-    // Personal assistant conversations always reach the conversational model. Marketplace
-    // classifiers provide search results, not a substitute for an assistant turn.
+    // Classify a guest's first message for product search; conversational replies use the daemon.
+    const continuingGuestConversation =
+      buyerShoppingSessionIds.current.has(
+        `grogoni:buyer-shopping:${activeSession.account.id}:${assistantScope}`
+      ) ||
+      /^(confirm checkout|cancel checkout)$/iu.test(message.trim()) ||
+      chatMessages.some(
+        (item) =>
+          item.id !== "welcome" && (item.author === "merchant" || item.author === "grogoniclaw")
+      );
+    if (
+      business === null &&
+      // A conversation-less buyer send goes to the buyer assistant / daemon (it can search,
+      // quote and check out server-side); the guest classifier answers only inside a thread.
+      activeConversationId !== null &&
+      marketplaceSearch &&
+      !explicitCapability &&
+      reminder === null &&
+      !tracking &&
+      !continuingGuestConversation
+    ) {
+      await sendGuestMessage({
+        message,
+        accountId: activeSession.account.id,
+        mode,
+        activeConversationId,
+        chatMessages,
+        setChatMessages,
+        isOpen: () => currentConversationRef.current === activeConversationId,
+        searchBuyFeed: marketplaceSearch,
+        askModel: (question, clientMessageId) =>
+          askGuestModel({
+            message: question,
+            clientMessageId,
+            accountId: activeSession.account.id,
+            scope: assistantScope,
+            conversationId: activeConversationId,
+            history: chatMessages
+          }),
+        afterBubble: () => {
+          clearSentDraft();
+          setPendingAttachments([]);
+          setReplyToMessageId(null);
+        },
+        navigateToMarketplace: () => navigateToView("chat", { mode: "marketplace" }),
+        setStatusMessage
+      });
+      return;
+    }
+    // A guest's follow-up, and every other message that needs a real answer, reaches the
+    // conversational model through the daemon task below.
     if (
       !hasHumanRecipient &&
       (attachments.length === 0 || buyerAssistant) &&

@@ -40,10 +40,10 @@ describe("frontend user guidance", () => {
     ).toBe("This account doesn't have a PIN yet. Create one now.");
     expect(
       getUserFacingErrorMessage({
-        code: "passkey_pin_recovery_required",
+        code: "device_credential_recovery_required",
         message: "internal recovery state"
       })
-    ).toBe("Verify your passkey again before changing your PIN.");
+    ).toBe("Verify this device again before changing your PIN or password.");
     expect(
       getUserFacingErrorMessage({
         code: "ACCOUNT_SYNC_INITIALIZATION_FAILED",
@@ -153,18 +153,14 @@ describe("frontend user guidance", () => {
     expect(composerAttachmentWorkbench).toContain("Extract all readable text");
   });
 
-  it("keeps model activation entirely backend-hosted with no device install step", () => {
-    // The private on-device model architecture (predownload, device install, offline starter,
-    // "activate on this device") was retired - see apps/web/src/ai-model-manager.ts's deletion.
-    // Every model this app can run is backend-hosted; activation is a real test-then-activate
-    // round trip against /api/agents/:agentId/models/:modelId/{test,activate}, never a download.
-    const agentModelPanel = readFileSync("apps/web/src/AgentModelPanel.tsx", "utf8");
-    expect(agentModelPanel).toContain("Test model");
-    expect(agentModelPanel).toContain("Use with agent");
-    expect(agentModelPanel).not.toContain("Predownload & install");
-    expect(agentModelPanel).not.toContain("Activate on this device");
-    expect(agentModelPanel).not.toContain("Install offline starter");
-    expect(existsSync("apps/web/src/ai-model-manager.ts")).toBe(false);
+  it("keeps model selection out of account and agent settings", () => {
+    const profile = readFileSync("apps/web/src/AgentProfileSurface.tsx", "utf8");
+    const composer = readFileSync("apps/web/src/ChatComposer.tsx", "utf8");
+    expect(profile).not.toContain("QuickRuntimeSwitcher");
+    expect(profile).not.toContain("AgentModelPanel");
+    expect(profile).not.toContain('title="Model & inference"');
+    expect(profile).toContain("ModelTemplateWorkbenchPanel");
+    expect(composer).not.toContain("ComposerModelSwitcher");
   });
 
   it("keeps primary seller destinations reachable through the Shop Hub and changes modes without animation delay", () => {
@@ -309,8 +305,9 @@ describe("frontend user guidance", () => {
     expect(phoneFirst).toContain('"/auth/recovery/reset-password"');
     expect(phoneFirst).not.toContain("Continue with a passkey");
     expect(phoneFirst).toContain("Save new PIN");
-    expect(phoneFirst).toContain('"/auth/pin/recover/passkey"');
-    expect(phoneFirst).toContain('purpose: "pin_recovery"');
+    expect(phoneFirst).toContain("await recoverDeviceAccount()");
+    const deviceRecovery = readFileSync("apps/web/src/device-recovery.ts", "utf8");
+    expect(deviceRecovery).toContain("/auth/device/recover");
     expect(phoneFirst).not.toContain("Phone account recovery code");
     expect(phoneFirst).not.toContain("Replacement recovery code");
     expect(phoneFirst).not.toContain("Send SMS code");
@@ -453,7 +450,7 @@ describe("frontend user guidance", () => {
     );
     expect(marketplaceModeCard).toContain("routes.publicAgent(storefront.agentId)");
     expect(application).toContain("marketplaceShortcutOpen={isMarketplaceShortcutOpen}");
-    expect(phoneFirst).toContain("Continue to marketplace as guest");
+    expect(phoneFirst).toContain("Continue as guest");
     expect(apiRoutes).toContain('"/public/storefronts"');
   });
 

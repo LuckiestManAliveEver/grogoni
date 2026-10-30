@@ -23,7 +23,6 @@ import { DeleteAccountPanel } from "./DeleteAccountPanel";
 import { NotificationsSessionsPanel } from "./NotificationsSessionsPanel";
 import { ProtectedContextFilesPanel } from "./ProtectedContextFilesPanel";
 import { PublicStorefrontPanel } from "./PublicStorefrontPanel";
-import { QuickRuntimeSwitcher } from "./QuickRuntimeSwitcher";
 import { ModelTemplateReportCardPanel } from "./ModelTemplateReportCardPanel";
 import { ModelTemplateWorkbenchPanel } from "./ModelTemplateWorkbenchPanel";
 import { ModelTemplateGovernancePanel } from "./ModelTemplateGovernancePanel";
@@ -41,12 +40,10 @@ const AiProvidersPanel = lazy(() =>
 );
 
 import {
-  AgentModelPanel,
   IdentitySecurityPanel,
   activeBusinessStorageKey,
   type ActiveBusiness,
   type AgentSettings,
-  type AiModelSummary,
   type BusinessAgentProfileSummary,
   type OAuthProviderSummary,
   type SessionResponse
@@ -150,8 +147,6 @@ export function AgentProfileSurface({
   const [contextSourceCustomerVisible, setContextSourceCustomerVisible] = useState(false);
   const [runtimeDetailsLoading, setRuntimeDetailsLoading] = useState(false);
   const [pendingProfileAction, setPendingProfileAction] = useState<string | null>(null);
-  const [aiModels, setAiModels] = useState<AiModelSummary[]>([]);
-  const [activeAiModelId, setActiveAiModelId] = useState(agent.model);
 
   useEffect(() => {
     if (!isEditing) {
@@ -349,7 +344,6 @@ export function AgentProfileSurface({
     }
   }
 
-  const activeAiModel = aiModels.find((model) => model.id === activeAiModelId);
   const hasUnsavedRuntimeChanges = JSON.stringify(draftAgent) !== JSON.stringify(agent);
 
   return (
@@ -495,8 +489,8 @@ export function AgentProfileSurface({
             draftAgent={draftAgent}
             isEditing={isEditing}
             updateAgent={updateAgent}
-            activeAiModelId={activeAiModelId}
-            activeAiModel={activeAiModel}
+            activeAiModelId={agent.model}
+            activeAiModel={undefined}
             // Agent-runtime readiness describes Grogoni's bounded prompt/tool runtime. It does not
             // prove that arbitrary repository source has a configured isolated backend adapter.
             backendAvailable={false}
@@ -554,42 +548,10 @@ export function AgentProfileSurface({
           />
         </SettingsGroup>
 
-        <SettingsGroup
-          title="Model & inference"
-          description="Which model runs this agent, and where"
-        >
-          <QuickRuntimeSwitcher
-            business={business}
-            agent={agent}
-            updateAgent={updateAgent}
-            onAgentChange={onAgentChange}
-          />
-
+        <SettingsGroup title="Model templates" description="Reports, workbench, and governance">
           <ModelTemplateReportCardPanel businessId={business.id} />
-
           <ModelTemplateWorkbenchPanel businessId={business.id} />
-
           <ModelTemplateGovernancePanel businessId={business.id} />
-
-          <Suspense fallback={<div className="inline-loading-card">Opening model settings…</div>}>
-            <AgentModelPanel
-              accountId={accountId}
-              business={business}
-              agent={agent}
-              isEditing={isEditing}
-              updateAgent={updateAgent}
-              onAgentChange={onAgentChange}
-              profileMessage={profileMessage}
-              setProfileMessage={setProfileMessage}
-              pendingProfileAction={pendingProfileAction}
-              runProfileAction={runProfileAction}
-              copyStorefrontValue={copyStorefrontValue}
-              aiModels={aiModels}
-              setAiModels={setAiModels}
-              activeAiModelId={activeAiModelId}
-              setActiveAiModelId={setActiveAiModelId}
-            />
-          </Suspense>
         </SettingsGroup>
 
         <SettingsGroup

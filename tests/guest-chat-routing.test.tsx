@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConversationView } from "@grogoni/shared-types";
 
 import { useChatRuntimeState } from "../apps/web/src/hooks/useChatRuntimeState";
+import { clearGuestIntentCache } from "../apps/web/src/guest-intent-client";
 import {
   guestExplainReply,
   parseMarketplaceBuyIntent,
@@ -202,6 +203,7 @@ describe("guest chat send", () => {
     (
       globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
     ).IS_REACT_ACT_ENVIRONMENT = true;
+    clearGuestIntentCache();
     host = document.createElement("div");
     document.body.append(host);
     root = createRoot(host);
@@ -287,9 +289,10 @@ describe("guest chat send", () => {
   }
 
   it.each(["hello there", "Help me please", "Explain why a rainbow forms"])(
-    "sends %j to the conversational model without a structured reply",
+    "sends %j to the conversational model instead of answering it with app copy",
     async (message) => {
       const { searchBuyFeed, rendered } = await send(message, null);
+      // Not a product: the catalogue is not searched, and no fixed reply is placed in the thread.
       expect(searchBuyFeed).not.toHaveBeenCalled();
       expect(rendered.map((item) => item.body)).toEqual([message]);
       const requests = vi.mocked(fetch).mock.calls;
@@ -297,11 +300,11 @@ describe("guest chat send", () => {
         ([url, options]) => String(url).endsWith("/v1/daemon/tasks") && options?.method === "POST"
       );
       expect(task).toBeDefined();
+      // The message itself reaches the model, in its thread, with its conversation history.
       expect(JSON.parse(String(task![1]!.body))).toMatchObject({
         message,
         conversation: { id: "agent-thread-1", kind: "reply" }
       });
-      expect(requests.some(([url]) => String(url).includes("/v1/guest/intent"))).toBe(false);
     }
   );
 
