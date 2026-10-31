@@ -13,7 +13,7 @@ import androidx.core.content.ContextCompat
 import market.grogoni.app.MainActivity
 
 object LocalSmsNotifications {
-    fun show(context: Context, messageId: String) {
+    fun show(context: Context, messageId: String, unsupportedMms: Boolean = false) {
         if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(
             context, Manifest.permission.POST_NOTIFICATIONS,
         ) != PackageManager.PERMISSION_GRANTED) return
@@ -30,8 +30,8 @@ object LocalSmsNotifications {
         // Keep sender and message content off the lock screen and out of notification history.
         manager.notify(messageId.hashCode(), NotificationCompat.Builder(context, "carrier-sms")
             .setSmallIcon(android.R.drawable.sym_action_chat)
-            .setContentTitle("New SMS")
-            .setContentText("Open Grogoni to read and reply.")
+            .setContentTitle(if (unsupportedMms) "MMS could not be downloaded" else "New SMS")
+            .setContentText(if (unsupportedMms) "Choose an MMS-capable default app to receive multimedia messages." else "Open Grogoni to read and reply.")
             .setContentIntent(open)
             .setAutoCancel(true)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)

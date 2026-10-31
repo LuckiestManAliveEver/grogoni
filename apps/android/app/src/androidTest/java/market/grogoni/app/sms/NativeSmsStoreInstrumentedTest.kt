@@ -17,6 +17,7 @@ class NativeSmsStoreInstrumentedTest {
 
     @Before
     fun setUp() {
+        GrogoniSessionStore(context).clear()
         context.deleteDatabase("grogoni-native-sms.db")
         store = NativeSmsStore(context)
     }
@@ -94,6 +95,8 @@ class NativeSmsStoreInstrumentedTest {
     fun upgradingPendingResultsPreservesUnreportedReceipts() {
         store.close()
         context.openOrCreateDatabase("grogoni-native-sms.db", 0, null).use { db ->
+            db.execSQL("create table inbound_events (event_id text primary key)")
+            db.execSQL("create table executed_commands (command_id text primary key)")
             db.execSQL("create table pending_results (command_id text primary key, status text not null, result_code text not null, carrier_reference text)")
             db.execSQL("insert into pending_results values ('old-command', 'sent', 'SMS_SENT', null)")
             db.version = 3
@@ -104,4 +107,24 @@ class NativeSmsStoreInstrumentedTest {
         store.deletePendingResult(receipt)
         assertTrue(store.pendingResults().isEmpty())
     }
+    @Test
+    fun accountSwitchQuarantinesOtherAccountsQueuedSmsAndDeliveryCallbacks() {
+        val session = GrogoniSessionStore(context)
+        session.saveAuthenticatedSession("account-a", "+15550000001", "grogoni_session=a")
+        session.businessId = "business-a"
+        val inbound = LocalInboundSms("account-a-event", "business-a", "sms-a", "+15550000001", "Private to account A", "2026-10-31T12:00:00Z")
+        store.enqueueInbound(inbound)
+        store.claimCommand("remote-account-a")
+        session.saveAuthenticatedSession("account-b", "+15550000002", "grogoni_session=b")
+        assertEquals(null, session.businessId)
+        assertTrue(store.unsyncedInbound().isEmpty())
+        // A late carrier callback must retain the command's original account ownership.
+        store.enqueueResult(PendingSmsResult("remote-account-a", "sent", "SMS_SENT", null))
+        assertTrue(store.pendingResults().isEmpty())
+        session.saveAuthenticatedSession("account-a", "+15550000001", "grogoni_session=a2")
+        assertEquals(listOf(inbound), store.unsyncedInbound())
+        assertEquals("remote-account-a", store.pendingResults().single().commandId)
+        session.clear()
+    }
+
 }

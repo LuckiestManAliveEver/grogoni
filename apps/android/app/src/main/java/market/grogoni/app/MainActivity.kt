@@ -1,6 +1,5 @@
 package market.grogoni.app
 
-import android.Manifest
 import android.app.role.RoleManager
 import android.content.Intent
 import android.database.ContentObserver
@@ -10,8 +9,6 @@ import android.app.AlertDialog
 import android.os.Build
 import android.os.Bundle
 import android.provider.Telephony
-import android.telephony.SubscriptionManager
-import android.telephony.TelephonyManager
 import android.text.InputType
 import android.view.View
 import android.widget.ArrayAdapter
@@ -24,6 +21,7 @@ import android.widget.Spinner
 import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
+import market.grogoni.app.sms.SmsSubscription
 import market.grogoni.app.sms.AndroidSmsSender
 import market.grogoni.app.sms.NativePhoneNormalizer
 import market.grogoni.app.sms.NativeSmsApiClient
@@ -43,8 +41,6 @@ class MainActivity : ComponentActivity() {
     private lateinit var status: TextView
     private lateinit var businessSpinner: Spinner
     private lateinit var chooseBusiness: Button
-    private lateinit var phone: EditText
-    private lateinit var pin: EditText
     private lateinit var login: Button
     private lateinit var logout: Button
     private lateinit var enableSms: Button
@@ -62,6 +58,9 @@ class MainActivity : ComponentActivity() {
     }
     private var businesses: List<Pair<String, String>> = emptyList()
 
+    private val accountRequest = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        refreshAndRegister()
+    }
     private val roleRequest = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) { requestRestrictedPermissionsAfterRole() }
@@ -70,7 +69,10 @@ class MainActivity : ComponentActivity() {
     ) { refreshAndRegister() }
 
     private fun requestExplicitAndroidPermissions() {
-        val permissions = AndroidPermissionPolicy.permissionSetForSdk().toTypedArray()
+        val granted = AndroidPermissionPolicy.grantedPermissions(this)
+        val permissions = AndroidPermissionPolicy.requestablePermissions(
+            NativeSmsCapability.inspect(this).roleGranted,
+        ).filterNot { it in granted }.toTypedArray()
         if (permissions.isNotEmpty()) {
             permissionRequest.launch(permissions)
         }
@@ -81,7 +83,6 @@ class MainActivity : ComponentActivity() {
         setContentView(buildScreen())
         prefillSendToIntent(intent)
         refreshAndRegister()
-        requestExplicitAndroidPermissions()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -132,6 +133,9 @@ class MainActivity : ComponentActivity() {
             it.setPadding(0, 28, 0, 20)
             content.addView(it)
         }
+        content.addView(TextView(this).apply {
+            text = "SMS only: MMS attachments and group MMS are not supported. Use an MMS-capable default app if you need MMS."
+        })
         localOnly = CheckBox(this).apply {
             text = "SMS only — pause Grogoni sync and agent processing"
             isChecked = !GrogoniSessionStore(this@MainActivity).syncEnabled
@@ -142,14 +146,9 @@ class MainActivity : ComponentActivity() {
                 renderCapability()
             }
         }.also(content::addView)
-        phone = field("Grogoni phone number (+country code)").also(content::addView)
-        pin = field("Grogoni PIN").also {
-            it.inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
-            content.addView(it)
-        }
         login = Button(this).apply {
-            text = "Sign in to Grogoni"
-            setOnClickListener { login() }
+            text = "Account · sign in or recover PIN/password"
+            setOnClickListener { accountRequest.launch(Intent(this@MainActivity, market.grogoni.app.auth.AccountActivity::class.java)) }
         }.also(content::addView)
         logout = Button(this).apply {
             text = "Sign out and stop Grogoni SMS sync"
@@ -203,34 +202,6 @@ class MainActivity : ComponentActivity() {
         inputType = InputType.TYPE_CLASS_TEXT
     }
 
-    private fun login() {
-        val country = getSystemService(TelephonyManager::class.java)?.networkCountryIso
-        val normalized = runCatching {
-            NativePhoneNormalizer.normalize(phone.text.toString(), country)
-        }.getOrElse {
-            status.text = it.message
-            return
-        }
-        setBusy(true)
-        Thread {
-            runCatching { NativeSmsApiClient(this).login(normalized, pin.text.toString()) }
-                .onSuccess { loaded -> runOnUiThread {
-                    businesses = loaded
-                    showBusinesses()
-                    status.text = if (loaded.isEmpty()) {
-                        "Signed in, but this account has no business to receive SMS."
-                    } else {
-                        "Signed in. Choose the business that should receive new carrier SMS."
-                    }
-                    setBusy(false)
-                } }
-                .onFailure { error -> runOnUiThread {
-                    status.text = error.message ?: "Grogoni sign-in failed."
-                    setBusy(false)
-                } }
-        }.start()
-    }
-
     private fun logout() {
         setBusy(true)
         Thread {
@@ -238,6 +209,7 @@ class MainActivity : ComponentActivity() {
             GrogoniSessionStore(this).clear()
             NativeSmsWork.cancel(this)
             runOnUiThread {
+                if (isDestroyed || isFinishing) return@runOnUiThread
                 businesses = emptyList()
                 showBusinesses()
                 status.text = "Signed out. Remote SMS commands and Grogoni synchronization are stopped."
@@ -269,6 +241,15 @@ class MainActivity : ComponentActivity() {
 
     private fun requestSmsRole() {
         status.text = "Android will ask you to make Grogoni the default SMS handler before requesting restricted SMS permissions."
+        val state = NativeSmsCapability.inspect(this)
+        if (!state.roleAvailable) {
+            status.text = "This device does not support the SMS role."
+            return
+        }
+        if (state.roleGranted) {
+            requestRestrictedPermissionsAfterRole()
+            return
+        }
         val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             getSystemService(RoleManager::class.java).createRequestRoleIntent(RoleManager.ROLE_SMS)
         } else {
@@ -277,7 +258,9 @@ class MainActivity : ComponentActivity() {
                 packageName,
             )
         }
-        roleRequest.launch(intent)
+        runCatching { roleRequest.launch(intent) }.onFailure {
+            status.text = "Android could not open SMS setup. Check your device's default-app settings."
+        }
     }
 
     private fun requestRestrictedPermissionsAfterRole() {
@@ -286,35 +269,35 @@ class MainActivity : ComponentActivity() {
             return
         }
 
-        val smsPermissions = arrayOf(
-            Manifest.permission.SEND_SMS,
-            Manifest.permission.RECEIVE_SMS,
-            Manifest.permission.READ_SMS,
-        )
-        val devicePermissions = AndroidPermissionPolicy.permissionSetForSdk().toTypedArray()
-        val allPermissions = (smsPermissions + devicePermissions).distinct().toTypedArray()
-        permissionRequest.launch(allPermissions)
+        requestExplicitAndroidPermissions()
     }
 
     private fun refreshAndRegister() {
         renderCapability()
         refreshLocalInbox()
-        if (GrogoniSessionStore(this).cookieHeader != null) {
+        val session = GrogoniSessionStore(this)
+        val expectedAccount = session.accountId
+        if (session.cookieHeader != null) {
             Thread {
                 runCatching { NativeSmsApiClient(this).businesses() }.onSuccess { loaded ->
                     runOnUiThread {
+                        if (isDestroyed || isFinishing || session.accountId != expectedAccount || session.cookieHeader == null) return@runOnUiThread
                         businesses = loaded
                         showBusinesses()
                     }
                 }
             }.start()
             NativeSmsWork.schedule(this)
+        } else {
+            businesses = emptyList()
+            showBusinesses()
         }
     }
 
     private fun renderCapability() {
         val state = NativeSmsCapability.inspect(this)
-        val missingNativePermissions = AndroidPermissionPolicy.missingPermissions(this)
+        val missingNativePermissions = AndroidPermissionPolicy.requestablePermissions(state.roleGranted) -
+            AndroidPermissionPolicy.grantedPermissions(this)
         status.text = when {
             !state.roleAvailable -> "Native SMS unavailable: this device has no supported SMS role."
             !state.roleGranted -> "Setup required: make Grogoni the default SMS app."
@@ -326,6 +309,7 @@ class MainActivity : ComponentActivity() {
             GrogoniSessionStore(this).businessId == null -> "SMS ready. Select a Grogoni business for inbound messages."
             else -> "Native SMS ready · SIM active · synchronization enabled"
         }
+        enableSms.isEnabled = state.roleAvailable
         enableSms.text = if (state.ready) "Review SMS setup" else "Continue SMS setup"
         requestNativePermissions.isEnabled = missingNativePermissions.isNotEmpty()
         send.isEnabled = state.ready
@@ -407,9 +391,7 @@ class MainActivity : ComponentActivity() {
                         commandId,
                         normalized,
                         text,
-                        SubscriptionManager.getDefaultSmsSubscriptionId().takeIf {
-                            it != SubscriptionManager.INVALID_SUBSCRIPTION_ID
-                        },
+                        SmsSubscription.defaultId(),
                         reportToGrogoni = false,
                     ),
                 )
@@ -422,15 +404,27 @@ class MainActivity : ComponentActivity() {
 
     private fun prefillSendToIntent(intent: Intent?) {
         if (intent?.action != Intent.ACTION_SENDTO) return
-        recipient.setText(intent.data?.schemeSpecificPart?.substringBefore(',').orEmpty())
-        body.setText(intent.getStringExtra("sms_body") ?: intent.getStringExtra(Intent.EXTRA_TEXT).orEmpty())
+        val data = intent.data ?: return
+        runCatching {
+            market.grogoni.app.sms.SmsComposeRequest.parse(data.scheme, data.encodedSchemeSpecificPart.orEmpty(),
+                intent.getStringExtra("sms_body") ?: intent.getStringExtra(Intent.EXTRA_TEXT))
+        }.onSuccess { request ->
+            recipient.setText(request.recipient)
+            body.setText(request.body)
+        }.onFailure { error ->
+            recipient.setText(""); body.setText("")
+            AlertDialog.Builder(this).setTitle("Unsupported message")
+                .setMessage(error.message).setPositiveButton("OK", null).show()
+        }
     }
 
     private fun setBusy(busy: Boolean) {
         login.isEnabled = !busy
         logout.isEnabled = !busy
         enableSms.isEnabled = !busy
-        requestNativePermissions.isEnabled = !busy
+        requestNativePermissions.isEnabled = !busy &&
+            (AndroidPermissionPolicy.requestablePermissions(NativeSmsCapability.inspect(this).roleGranted) -
+                AndroidPermissionPolicy.grantedPermissions(this)).isNotEmpty()
         chooseBusiness.isEnabled = !busy
     }
 }

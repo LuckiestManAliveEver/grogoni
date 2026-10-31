@@ -15,6 +15,20 @@ class GrogoniSessionStore(context: Context) {
     val cookieHeader: String?
         get() = preferences.getString("auth_cookie", null)?.let(secretBox::decrypt)
 
+    val accountId: String?
+        get() = preferences.getString("account_id", null)
+
+    val accountPhone: String?
+        get() = preferences.getString("account_phone", null)
+
+    fun saveAuthenticatedSession(accountId: String, phone: String, cookie: String) {
+        val editor = preferences.edit()
+        // A newly authenticated account must never inherit another account's selected business.
+        if (this.accountId != accountId) editor.remove("business_id")
+        editor.putString("account_id", accountId).putString("account_phone", phone)
+            .putString("auth_cookie", secretBox.encrypt(cookie)).commit()
+    }
+
     var businessId: String?
         get() = preferences.getString("business_id", null)
         set(value) = preferences.edit().putString("business_id", value).apply()
@@ -32,7 +46,7 @@ class GrogoniSessionStore(context: Context) {
     }
 
     fun clear() {
-        preferences.edit().remove("auth_cookie").remove("business_id").apply()
+        preferences.edit().remove("auth_cookie").remove("business_id").remove("account_id").remove("account_phone").commit()
     }
 
 }

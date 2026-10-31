@@ -92,5 +92,5 @@ jobs:
         with:
           gradle-version: "8.10.2"
 
-      - name: Unit tests and debug APK
-        run: gradle --console=plain :app:testDebugUnitTest :app:assembleDebug
+      - name: Unit tests, debug APK and Android API compatibility
+        run: gradle --console=plain :app:testDebugUnitTest :app:assembleDebug :app:lintDebug

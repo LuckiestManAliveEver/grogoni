@@ -52,5 +52,9 @@ class DefaultSmsRoleChangedReceiver : BroadcastReceiver() {
 
 /** MMS is outside this feature. The receiver is declared only to satisfy Android SMS-role shape. */
 class MmsRoleReceiver : BroadcastReceiver() {
-    override fun onReceive(context: Context, intent: Intent) = Unit
+    override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action == Telephony.Sms.Intents.WAP_PUSH_DELIVER_ACTION) {
+            runCatching { LocalSmsNotifications.show(context, "unsupported-mms", unsupportedMms = true) }
+        }
+    }
 }

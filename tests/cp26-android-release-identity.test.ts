@@ -65,7 +65,7 @@ describe("CP26 Android release identity", () => {
     expect(identity.android).toMatchObject({
       applicationId: "market.grogoni.app",
       applicationIdStatus: "proposed",
-      wrapper: "trusted-web-activity",
+      wrapper: "native-kotlin",
       firstTrack: "internal",
       versionName: rootPackage.version,
       versionCode: 1,

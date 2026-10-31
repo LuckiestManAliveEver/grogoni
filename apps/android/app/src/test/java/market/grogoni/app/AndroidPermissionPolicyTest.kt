@@ -15,7 +15,11 @@ class AndroidPermissionPolicyTest {
         assertTrue(permissions.contains(Manifest.permission.RECORD_AUDIO))
         assertTrue(permissions.contains(Manifest.permission.ACCESS_COARSE_LOCATION))
         assertTrue(permissions.contains(Manifest.permission.ACCESS_FINE_LOCATION))
-        assertTrue(permissions.contains(Manifest.permission.FOREGROUND_SERVICE))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            assertTrue(permissions.contains(Manifest.permission.FOREGROUND_SERVICE))
+        } else {
+            assertFalse(permissions.contains(Manifest.permission.FOREGROUND_SERVICE))
+        }
         assertTrue(permissions.contains(Manifest.permission.READ_CONTACTS))
         assertTrue(permissions.contains(Manifest.permission.READ_PHONE_STATE))
         assertTrue(permissions.contains(Manifest.permission.CALL_PHONE))
@@ -43,4 +47,34 @@ class AndroidPermissionPolicyTest {
         assertTrue(permissions.contains(Manifest.permission.READ_SMS))
         assertTrue(permissions.contains(Manifest.permission.RECEIVE_SMS))
     }
+    @Test
+    fun `restricted permissions are excluded until the SMS role is granted`() {
+        val beforeRole = AndroidPermissionPolicy.requestablePermissions(false)
+        val afterRole = AndroidPermissionPolicy.requestablePermissions(true)
+        for (permission in setOf(
+            Manifest.permission.SEND_SMS,
+            Manifest.permission.RECEIVE_SMS,
+            Manifest.permission.READ_SMS,
+            Manifest.permission.READ_CALL_LOG,
+            Manifest.permission.WRITE_CALL_LOG,
+        )) {
+            assertFalse(beforeRole.contains(permission))
+            assertTrue(afterRole.contains(permission))
+        }
+        assertTrue(beforeRole.contains(Manifest.permission.CAMERA))
+        assertTrue(beforeRole.contains(Manifest.permission.READ_CONTACTS))
+    }
+
+    @Test
+    fun `permissions match API 23 28 30 33 and 34 capabilities`() {
+        for (sdk in listOf(23, 28, 30, 33, 34)) {
+            val permissions = AndroidPermissionPolicy.permissionSetForSdk(sdk)
+            org.junit.Assert.assertEquals(sdk >= 28, Manifest.permission.FOREGROUND_SERVICE in permissions)
+            org.junit.Assert.assertEquals(sdk >= 33, Manifest.permission.POST_NOTIFICATIONS in permissions)
+            org.junit.Assert.assertEquals(sdk >= 34, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED in permissions)
+            org.junit.Assert.assertEquals(sdk < 33, Manifest.permission.READ_EXTERNAL_STORAGE in permissions)
+            org.junit.Assert.assertEquals(sdk < 29, Manifest.permission.WRITE_EXTERNAL_STORAGE in permissions)
+        }
+    }
+
 }

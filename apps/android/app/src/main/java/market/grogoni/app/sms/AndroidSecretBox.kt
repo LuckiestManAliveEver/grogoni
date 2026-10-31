@@ -33,10 +33,10 @@ class AndroidSecretBox {
 
     fun isEncrypted(value: String): Boolean = value.startsWith("$PREFIX:")
 
-    private fun key(): SecretKey {
+    private fun key(): SecretKey = synchronized(KEY_LOCK) {
         val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-        (keyStore.getKey(KEY_ALIAS, null) as? SecretKey)?.let { return it }
-        return KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore").run {
+        (keyStore.getKey(KEY_ALIAS, null) as? SecretKey)?.let { return@synchronized it }
+        KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore").run {
             init(
                 KeyGenParameterSpec.Builder(
                     KEY_ALIAS,
@@ -51,6 +51,7 @@ class AndroidSecretBox {
     }
 
     private companion object {
+        val KEY_LOCK = Any()
         const val KEY_ALIAS = "grogoni-native-sms-secrets-v1"
         const val PREFIX = "grogonienc1"
         const val TRANSFORMATION = "AES/GCM/NoPadding"

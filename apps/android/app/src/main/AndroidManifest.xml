@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <uses-feature android:name="android.hardware.telephony.messaging" android:required="true" />
+    <uses-feature android:name="android.hardware.telephony" android:required="true" />
 
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
@@ -37,6 +37,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.grogoni.com">
 
+        <activity android:name=".auth.AccountActivity" android:exported="false" />
         <activity android:name=".commerce.GalleryCommerceActivity" android:exported="false" />
         <activity
             android:name=".MainActivity"

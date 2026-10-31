@@ -26,3 +26,6 @@ apps/android/*.keystore
 apps/android/keystore.properties
 apps/android/.gradle/
 apps/android/app/build/
+
+# Kotlin incremental build state
+apps/android/.kotlin/
