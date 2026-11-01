@@ -94,6 +94,9 @@ export interface AgentTool<TInput extends Record<string, unknown>, TOutput> {
 }
 
 export type RuntimeToolName =
+  | "catalogue.marketplace.search"
+  | "catalogue.marketplace.products"
+  | "catalogue.marketplace.import"
   | "products.list"
   | "invoices.list"
   | "reports.summary"

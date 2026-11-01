@@ -1,6 +1,64 @@
 import type { RuntimeToolDefinition, RuntimeToolName } from "../contracts/runtime.js";
 
 export const productsRuntimeTools = {
+  "catalogue.marketplace.search": {
+    name: "catalogue.marketplace.search",
+    hub: null,
+    description:
+      "Find market catalogues shared by other shops to prepopulate inventory. Search matches shop names or Grogoni IDs.",
+    risk: "low",
+    requiresConfirmation: false,
+    readOnly: true,
+    requiredPermission: "product:read",
+    inputSchema: {
+      type: "object",
+      properties: { search: { type: "string", description: "Optional shop name or Grogoni ID." } }
+    },
+    mcpExposable: false
+  },
+  "catalogue.marketplace.products": {
+    name: "catalogue.marketplace.products",
+    hub: null,
+    description: "Read products in a shared market catalogue before selecting items to import.",
+    risk: "low",
+    requiresConfirmation: false,
+    readOnly: true,
+    requiredPermission: "product:read",
+    inputSchema: {
+      type: "object",
+      properties: {
+        sourceBusinessId: {
+          type: "string",
+          required: true,
+          description: "Source shop ID returned by catalogue.marketplace.search."
+        }
+      }
+    },
+    mcpExposable: false
+  },
+  "catalogue.marketplace.import": {
+    name: "catalogue.marketplace.import",
+    hub: null,
+    description:
+      "Prepopulate inventory with 1–50 selected market catalogue products. Creates products with zero stock and no buying cost; copies source selling prices as starting values. Ask the owner to review selections and prices. Never invent source IDs.",
+    risk: "high",
+    requiresConfirmation: true,
+    readOnly: false,
+    requiredPermission: "product:write",
+    inputSchema: {
+      type: "object",
+      properties: {
+        sourceBusinessId: { type: "string", required: true, description: "Source shop ID." },
+        productIds: {
+          type: "array",
+          required: true,
+          description: "1–50 product IDs returned by catalogue.marketplace.products."
+        }
+      }
+    },
+    mcpExposable: false
+  },
+
   "product.create": {
     name: "product.create",
     hub: { module: "catalog", label: { en: "Add a product", sw: "Ongeza bidhaa" } },

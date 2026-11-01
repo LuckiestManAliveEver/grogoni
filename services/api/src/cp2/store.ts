@@ -1740,6 +1740,22 @@ export class Cp2Store {
       addManualIdentity: (input) => this.networkDomain.addManualIdentity(input),
       searchBuyFeed: (input) => this.commerce.searchBuyFeed(input),
       sourceCommerce: (input) => this.executeSourceCommerce(input, input.operation, input.values),
+      marketCatalogue: ({ sessionId, businessId, action, now }) => {
+        const context = { sessionId, viewerBusinessId: businessId, now };
+        if (action.toolName === "catalogue.marketplace.search")
+          return this.listShareableCatalogues({
+            ...context,
+            ...(typeof action.input.search === "string" ? { search: action.input.search } : {})
+          });
+        const sourceBusinessId = String(action.input.sourceBusinessId);
+        if (action.toolName === "catalogue.marketplace.products")
+          return this.listShareableCatalogueProducts({ ...context, sourceBusinessId });
+        return this.duplicateCatalogueProducts({
+          ...context,
+          sourceBusinessId,
+          productIds: action.input.productIds as string[]
+        });
+      },
       listSourceCommerce: (input) => this.listCommerceSources(input),
       discoverCommerceOffers: (input) => this.searchPublishedOffers(input),
       createUnifiedCheckout: (input) => this.commerce.createUnifiedCheckout(input),

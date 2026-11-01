@@ -17,6 +17,25 @@ export function validateRuntimeToolInput(
     return invalid("Choose a computer session first. Use #computer.session.create to open one.");
   }
   switch (toolName) {
+    case "catalogue.marketplace.search":
+      return input.search === undefined || typeof input.search === "string"
+        ? valid()
+        : invalid("Search must be text.");
+    case "catalogue.marketplace.products":
+    case "catalogue.marketplace.import": {
+      if (typeof input.sourceBusinessId !== "string" || !input.sourceBusinessId.trim())
+        return invalid("Choose a source shop from market catalogue search results.");
+      if (
+        toolName === "catalogue.marketplace.import" &&
+        (!Array.isArray(input.productIds) ||
+          input.productIds.length < 1 ||
+          input.productIds.length > 50 ||
+          input.productIds.some((id) => typeof id !== "string" || !id.trim()))
+      )
+        return invalid("Select between 1 and 50 market catalogue product IDs.");
+      return valid();
+    }
+
     case "procurement.submit": {
       const allowed = [
         "draftId",
