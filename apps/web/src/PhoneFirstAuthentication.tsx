@@ -69,6 +69,7 @@ export function PhoneFirstAuthentication({
   const [recoveryCredential, setRecoveryCredential] = useState<"pin" | "password">("pin");
   const [availableMfaFactors, setAvailableMfaFactors] = useState<string[]>([]);
   const [mfaFactor, setMfaFactor] = useState<"totp" | "recovery_code" | "email">("totp");
+  const [mfaReturnStage, setMfaReturnStage] = useState<"pin" | "password">("pin");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState(
     startsWithRemembered ? "Choose a secure way to return to this account." : ""
@@ -144,6 +145,8 @@ export function PhoneFirstAuthentication({
         setTransactionId(result.transactionId);
         setAvailableMfaFactors(result.factors);
         setMfaFactor(result.factors.includes("email") ? "email" : "totp");
+        setMfaReturnStage("pin");
+        setCode("");
         setStage("mfa");
         setMessage("Enter your second factor.");
       } else onAuthenticated(result);
@@ -169,6 +172,7 @@ export function PhoneFirstAuthentication({
       setTransactionId(result.transactionId);
       setAvailableMfaFactors(result.factors);
       setMfaFactor(result.factors.includes("email") ? "email" : "totp");
+      setMfaReturnStage("password");
       setStage("mfa");
       setCode("");
       setMessage("Enter your second factor.");
@@ -298,7 +302,7 @@ export function PhoneFirstAuthentication({
       return;
     }
     if (stage === "mfa") {
-      setStage("password");
+      setStage(mfaReturnStage);
       return;
     }
     if (stage === "methods") {
@@ -314,6 +318,11 @@ export function PhoneFirstAuthentication({
     !identifier.trim() ||
     (stage === "password" && !password) ||
     (stage === "pin" && pin.length !== 4);
+  const passwordResetBlocked =
+    busy ||
+    (recoveryMethod === "email" && !code.trim()) ||
+    password.length < 10 ||
+    password !== passwordConfirmation;
   const stepNumber = stage === "entry" ? 1 : 2;
   const stepTotal = 2;
   const heading =
@@ -337,7 +346,13 @@ export function PhoneFirstAuthentication({
     <main className="auth-onboarding" aria-busy={busy}>
       <section className="auth-onboarding-card" aria-labelledby="auth-onboarding-title">
         <header className="auth-onboarding-header">
-          <button className="auth-back-button" type="button" onClick={goBack} aria-label="Back">
+          <button
+            className="auth-back-button"
+            type="button"
+            onClick={goBack}
+            disabled={busy}
+            aria-label="Back"
+          >
             <span aria-hidden="true">←</span>
           </button>
           <div className="auth-wordmark">
@@ -451,7 +466,7 @@ export function PhoneFirstAuthentication({
                     className="auth-text-button"
                     type="button"
                     disabled={!identifier.trim()}
-                    onClick={() => void run(startRecovery)}
+                    onClick={() => void run(continueIdentifier)}
                   >
                     Trouble logging in?
                   </button>
@@ -536,7 +551,7 @@ export function PhoneFirstAuthentication({
                   <button
                     className="auth-text-button"
                     type="button"
-                    disabled={busy}
+                    disabled={busy || (recoveryMethod === "email" && !recoveryEmail.trim())}
                     onClick={() => void run(startRecovery)}
                   >
                     Trouble logging in?
@@ -547,7 +562,13 @@ export function PhoneFirstAuthentication({
           ) : null}
 
           {stage === "recovery-reset" ? (
-            <div className="auth-fields">
+            <form
+              className="auth-fields"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (!passwordResetBlocked) void run(verifyAndResetPassword);
+              }}
+            >
               {recoveryMethod === "email" ? (
                 <label>
                   Verification code
@@ -575,22 +596,22 @@ export function PhoneFirstAuthentication({
               </label>
               <button
                 className="auth-primary-button"
-                type="button"
-                disabled={
-                  busy ||
-                  (recoveryMethod === "email" && !code.trim()) ||
-                  password.length < 10 ||
-                  password !== passwordConfirmation
-                }
+                type="submit"
+                disabled={passwordResetBlocked}
                 aria-busy={busy}
-                onClick={() => void run(verifyAndResetPassword)}
               >
                 {busy ? "Working…" : "Reset password"}
               </button>
-            </div>
+            </form>
           ) : null}
           {stage === "create-pin" || stage === "recover-pin" ? (
-            <div className="auth-fields">
+            <form
+              className="auth-fields"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void run(finishPinRecovery);
+              }}
+            >
               <label>
                 New 4-digit PIN
                 <input
@@ -617,14 +638,13 @@ export function PhoneFirstAuthentication({
               </label>
               <button
                 className="auth-primary-button"
-                type="button"
+                type="submit"
                 disabled={busy || !/^\d{4}$/u.test(password) || password !== passwordConfirmation}
                 aria-busy={busy}
-                onClick={() => void run(finishPinRecovery)}
               >
                 {busy ? "Working…" : stage === "create-pin" ? "Create PIN" : "Save new PIN"}
               </button>
-            </div>
+            </form>
           ) : null}
           {stage === "mfa" ? (
             <div className="auth-fields">
@@ -693,7 +713,7 @@ export function PhoneFirstAuthentication({
               Create an account
             </button>
           </div>
-          <button className="auth-guest-button" type="button" onClick={onCancel}>
+          <button className="auth-guest-button" type="button" disabled={busy} onClick={onCancel}>
             Continue as guest
           </button>
         </div>
