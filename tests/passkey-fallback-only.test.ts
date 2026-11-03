@@ -36,13 +36,13 @@ describe("passkey is fallback-only, not a main-flow login method", () => {
     expect(methodsBlock).toContain("Use account PIN");
   });
 
-  it("uses device proof without a passkey ceremony for recovery", () => {
+  it("uses a verified passkey ceremony only for recovery", () => {
     const recoveryBlock = source.slice(
       source.indexOf("async function startRecovery()"),
       source.indexOf("async function verifyAndResetPassword()")
     );
-    expect(recoveryBlock).toContain("await recoverDeviceAccount()");
-    expect(recoveryBlock).not.toContain("/auth/passkeys/");
+    expect(recoveryBlock).toContain("await recoverWithPasskey(currentIdentifierBody().identifier)");
+    expect(recoveryBlock).not.toContain("recoverDeviceAccount");
 
     expect(source).toContain("Trouble logging in?");
   });

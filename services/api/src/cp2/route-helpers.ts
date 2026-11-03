@@ -7,6 +7,7 @@
  * ~250 of the file's 307 route handlers); every future domain route file imports from here
  * instead of from routes.ts, avoiding a circular import back into the file being split apart.
  */
+import type { EmailProvider } from "./email-provider.js";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type { AuthChannel } from "@grogoni/shared-types";
 import { Cp2Error } from "./cp2-error.js";
@@ -241,5 +242,30 @@ export function enforceAuthIpRate(
   if (authAttemptsByIp.size > 10_000) {
     const oldest = authAttemptsByIp.keys().next().value;
     if (oldest !== undefined) authAttemptsByIp.delete(oldest);
+  }
+}
+
+/** Delivery failure must never report a successful credential mutation as failed or replay it. */
+export async function notifyAccountRecovery(
+  store: Cp2Store,
+  provider: EmailProvider,
+  request: FastifyRequest,
+  sessionId: string,
+  credential: "PIN" | "password"
+): Promise<void> {
+  try {
+    const to = store.getRecoveryNotificationRecipient(sessionId);
+    if (!to) return;
+    const outcome = await provider.sendRecoveryNotification?.({ to, sessionId, credential });
+    if (outcome !== "sent")
+      request.log.warn(
+        { event: "auth.recovery_notification_failed", sessionId },
+        "Recovery notification was not delivered."
+      );
+  } catch {
+    request.log.warn(
+      { event: "auth.recovery_notification_failed", sessionId },
+      "Recovery notification was not delivered."
+    );
   }
 }

@@ -31,15 +31,19 @@ A successful login opens account controls; choose **Return to SMS** and select y
 Account creation and backup-email management are available through the linked website.
 
 While signed in, choose **Secure this device for recovery**. This registers an account-specific,
-non-exportable P-256 key in Android Keystore. The private key never leaves the device; PINs and
+non-exportable, authentication-bound P-256 key in Android Keystore. A screen lock is required. The private key never leaves the device; PINs and
 passwords are not stored. Keep your device screen lock enabled. Sign-out preserves the recovery
 key; **Forget recovery key on this device** removes it locally. Uninstalling/clearing app data
 requires another recovery method. Browser recovery keys and native-app keys are separate.
 
 If you forget your PIN/password, enter the same phone number and choose the corresponding
 **Recover … with this device** action. Device proof must succeed before a reset is offered; the
-server permits a single credential mutation per recovery grant. Expired grants require another
-verification and are never automatically replayed through session refresh.
+server permits a single credential mutation per recovery grant. A system BiometricPrompt or
+screen-lock confirmation must unlock the key before it signs a short-lived server challenge.
+Android 11+ accepts strong biometrics with device credential fallback; older devices use the
+system screen-lock fallback when needed. Expired grants require another verification and are
+never automatically replayed through session refresh. Legacy unrestricted keys need explicit
+re-enrollment after sign-in. See [device security recovery](../../docs/authentication/device-security-recovery.md).
 
 Without the device key, use **Send email recovery code** with a previously verified backup email,
 verify the code, and set a new password (including an authenticator code if required). You can now

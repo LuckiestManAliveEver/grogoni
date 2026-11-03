@@ -34,18 +34,32 @@ class NativeAuthClient(
     fun secureDevice(): String {
         val accountId = requireNotNull(session.accountId) { "Sign in before securing this device." }
         val phone = requireNotNull(session.accountPhone) { "A phone account is required." }
-        val response = api.request("POST", "/auth/continue", JSONObject().put("devicePublicKeyJwk", keys.publicJwk(accountId)),
+        val response = api.request("POST", "/auth/continue", JSONObject().put("devicePublicKeyJwk", keys.publicJwk(accountId)).put("deviceSecurity", true),
             allowRefresh = false)
         require(response.body.getJSONObject("account").getString("id") == accountId) { "Account changed. Sign in again." }
         keys.commit(accountId, phone, response.body.getString("deviceRecoveryCredentialId"))
         return "This device is secured for PIN and password recovery. Keep your screen lock enabled."
     }
 
+    fun revokeDevice(phone: String) {
+        val credentialId = keys.credentialId(phone)
+        api.request("DELETE", "/auth/device/credentials/$credentialId", allowRefresh = false)
+        keys.forget(phone)
+    }
+
     fun recoverDevice(phone: String): JSONObject {
         val expectedAccount = keys.account(phone)
             ?: error("No recovery key for this account on this device. Use verified backup email.")
+        val credentialId = keys.credentialId(phone)
+        val challenge = api.request("POST", "/auth/device/recover/options", JSONObject()
+            .put("credentialId", credentialId).put("identifier", phone), authenticated = false).body
         val response = try {
-            api.request("POST", "/auth/device/recover", keys.assertion(phone), authenticated = false)
+            api.request("POST", "/auth/device/recover", keys.assertion(phone, challenge), authenticated = false)
+        } catch (error: android.security.keystore.UserNotAuthenticatedException) {
+            throw IllegalStateException("Device unlock expired. Unlock with device security again.", error)
+        } catch (error: android.security.keystore.KeyPermanentlyInvalidatedException) {
+            keys.forget(phone)
+            throw IllegalStateException("Device recovery key is no longer usable. Use verified backup email, then secure this device again.", error)
         } catch (error: NativeApiException) {
             if (error.status == 401 || error.status == 404) keys.forget(phone)
             throw error

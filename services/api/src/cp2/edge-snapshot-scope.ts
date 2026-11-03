@@ -197,7 +197,7 @@ export async function createEdgeSnapshotScope(
             typeof input.identifier === "string"
               ? input.identifier.trim().toLowerCase()
               : "",
-            path === "/auth/device/recover" && typeof input.credentialId === "string"
+            path.startsWith("/auth/device/recover") && typeof input.credentialId === "string"
               ? input.credentialId.trim().toLowerCase()
               : ""
           ]
@@ -537,6 +537,8 @@ export async function createEdgeSnapshotScope(
         return `account_id = ${actorAccount} and ${actorAccount} <> ''
           and record->>'createdAt' >= ${runtimeOperationDedupCutoffSql}
           ${dedupTask === null ? "" : `and task_id = ${escapeLiteral(dedupTask)}`}`;
+      if (key === "authTransactions" && typeof input.challengeId === "string")
+        return `entity_id = ${escapeLiteral(input.challengeId)} or account_id = nullif(${actorAccount}, '')`;
       if (key === "passkeyCeremonies")
         return `entity_id = ${escapeLiteral(ceremony)} or account_id = nullif(${actorAccount}, '')`;
       return `${key === "nativeRuntimeAgents" || key === "nativeRuntimeBindings" ? "(account_id is null and business_id is null and user_id is null) or " : key === "nativeExecutionHosts" ? "entity_id in (select id from edge_runtime_host_ids) or " : ""}(account_id = ${actorAccount} and ${actorAccount} <> '')

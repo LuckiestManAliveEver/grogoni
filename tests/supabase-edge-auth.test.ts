@@ -430,12 +430,11 @@ describe("native Edge authentication routes", () => {
       expect(query).not.toHaveBeenCalled();
     }
   );
-  it("requires an authenticated session for PIN setup", async () => {
+  it("delegates PIN setup to the shared recovery-aware authentication store", async () => {
     const query = vi.fn();
     const { routes } = setup(query);
-    expect(
-      (await routes(request("/auth/pin/setup", { pin: "1234" }), "/auth/pin/setup"))!.status
-    ).toBe(401);
+    // PIN setup delegates to the shared store so recovery grants cannot be bypassed on Edge.
+    expect(await routes(request("/auth/pin/setup", { pin: "1234" }), "/auth/pin/setup")).toBeNull();
     expect(query).not.toHaveBeenCalled();
   });
 });

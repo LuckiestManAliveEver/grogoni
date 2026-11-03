@@ -187,6 +187,7 @@ import {
 } from "./domains/otp/shared.js";
 import { DeviceBootstrapDomain } from "./domains/device-bootstrap/store.js";
 import {
+  normalizeDeviceRecoveryCredentialId,
   type DeviceAccountBootstrapRecord,
   type DeviceRecoveryCredentialRecord
 } from "./domains/device-bootstrap/shared.js";
@@ -1342,13 +1343,17 @@ export class Cp2Store {
       recordAuditEvent: (input) => this.recordAuditEvent(input)
     });
     this.passkeyDomain = new PasskeyDomain({
-      recoveryGrantExpiry: (sessionId) =>
-        [...this.authTransactions.values()].find(
-          (record) =>
-            record.purpose === "recovery" &&
-            record.metadata.deviceRecoverySessionId === sessionId &&
-            record.consumedAt === null
-        )?.expiresAt,
+      issueRecoveryGrant: (sessionId, accountId, credentialId, now) => {
+        this.createAuthTransaction("recovery", accountId, now, {
+          expiresAt: new Date(now.getTime() + 5 * 60_000).toISOString(),
+          metadata: { deviceRecoverySessionId: sessionId, recoveryCredentialId: credentialId }
+        });
+      },
+      revokeRecoveryGrants: (credentialId, now) =>
+        this.revokeCredentialRecoveryGrants(credentialId, now),
+      notifyCredentialRecovery: (accountId, credential, now) =>
+        this.notifyCredentialRecovery(accountId, credential, now),
+      recoveryGrantExpiry: (sessionId) => this.credentialRecoveryGrant(sessionId)?.expiresAt,
       consumeRecoveryGrant: (sessionId) => {
         for (const record of this.authTransactions.values()) {
           if (
@@ -1360,7 +1365,7 @@ export class Cp2Store {
       },
       requireAnySession: (sessionId, now) => this.requireAnySession(sessionId, now),
       requireRecentlyAuthenticatedSession: (sessionId, now) =>
-        this.requireRecentlyAuthenticatedSession(sessionId, now),
+        this.requireRecoveryEnrollmentSession(sessionId, now),
       requirePinVerifiedSession: (sessionId, now) => this.requirePinVerifiedSession(sessionId, now),
       markSessionPinVerified: (sessionId, now) => this.markSessionPinVerified(sessionId, now),
       getSession: (sessionId, now) => this.getSession(sessionId, now),
@@ -2245,19 +2250,108 @@ export class Cp2Store {
   private readonly auditEvents: BusinessEvent[] = [];
 
   continueWithDevice(
-    ...args: Parameters<DeviceBootstrapDomain["continueWithDevice"]>
+    input: Parameters<DeviceBootstrapDomain["continueWithDevice"]>[0] & { deviceSecurity?: boolean }
   ): ReturnType<DeviceBootstrapDomain["continueWithDevice"]> {
-    return this.deviceBootstrapDomain.continueWithDevice(...args);
+    if (input.deviceSecurity)
+      this.requireRecoveryEnrollmentSession(input.sessionId, input.now ?? new Date());
+    const result = this.deviceBootstrapDomain.continueWithDevice(input);
+    if (input.deviceSecurity && result.deviceRecoveryCredentialId) {
+      this.deviceBootstrapDomain.deviceRecoveryCredentialsMap.get(
+        result.deviceRecoveryCredentialId
+      )!.requiresServerChallenge = true;
+    }
+    return result;
   }
+  beginDeviceRecovery(input: { credentialId: string; identifier: string; now?: Date }) {
+    const now = input.now ?? new Date();
+    normalizeDeviceRecoveryCredentialId(input.credentialId);
+    if (!/^\+[1-9]\d{6,14}$/u.test(input.identifier))
+      throw new Cp2Error(
+        400,
+        "recovery_identifier_required",
+        "Enter your international phone number."
+      );
+    const challenges = [...this.authTransactions.values()].filter(
+      (record) => record.metadata.deviceChallengeCredentialId !== undefined
+    );
+    for (const record of challenges) {
+      if (Date.parse(record.expiresAt) <= now.getTime()) this.authTransactions.delete(record.id);
+    }
+    const pending = challenges.filter((record) => this.authTransactions.has(record.id));
+    if (pending.length >= 1_000) {
+      const oldest = pending.sort((left, right) =>
+        left.createdAt.localeCompare(right.createdAt)
+      )[0]!;
+      this.authTransactions.delete(oldest.id);
+    }
+
+    const credential = this.deviceBootstrapDomain.deviceRecoveryCredentialsMap.get(
+      input.credentialId
+    );
+    const nonce = randomBytes(24).toString("base64url");
+    const transaction = this.createAuthTransaction("recovery", credential?.accountId ?? null, now, {
+      expiresAt: new Date(now.getTime() + 2 * 60_000).toISOString(),
+      metadata: {
+        deviceChallengeCredentialId: input.credentialId,
+        deviceChallengeIdentifier: input.identifier,
+        deviceChallengeNonce: nonce,
+        deviceChallengeIssuedAt: String(now.getTime())
+      }
+    });
+    return {
+      challengeId: transaction.id,
+      nonce,
+      issuedAt: now.getTime(),
+      expiresAt: transaction.expiresAt
+    };
+  }
+
   async recoverWithDeviceCredential(
-    ...args: Parameters<DeviceBootstrapDomain["recoverWithDeviceCredential"]>
+    input: Parameters<DeviceBootstrapDomain["recoverWithDeviceCredential"]>[0] & {
+      challengeId?: string;
+    }
   ): ReturnType<DeviceBootstrapDomain["recoverWithDeviceCredential"]> {
+    const args = [input] as const;
+    if (
+      this.deviceBootstrapDomain.deviceRecoveryCredentialsMap.get(input.credentialId)
+        ?.requiresServerChallenge &&
+      !input.challengeId
+    ) {
+      throw new Cp2Error(
+        401,
+        "device_recovery_challenge_required",
+        "Unlock device security using a fresh recovery challenge."
+      );
+    }
+    if (input.challengeId !== undefined) {
+      const now = input.now ?? new Date();
+      const transaction = this.requireAuthTransaction(input.challengeId, "recovery", now);
+      // Consume before signature verification: every challenge permits exactly one attempt.
+      transaction.consumedAt = now.toISOString();
+      const credential = this.deviceBootstrapDomain.deviceRecoveryCredentialsMap.get(
+        input.credentialId
+      );
+      const account = credential ? this.requireAccount(credential.accountId) : undefined;
+      if (
+        transaction.metadata.deviceChallengeCredentialId !== input.credentialId ||
+        transaction.metadata.deviceChallengeNonce !== input.nonce ||
+        transaction.metadata.deviceChallengeIssuedAt !== String(input.issuedAt) ||
+        account?.primaryAuthChannel !== "phone" ||
+        account.primaryAuthDestination !== transaction.metadata.deviceChallengeIdentifier ||
+        credential?.revokedAt !== null
+      ) {
+        throw new Cp2Error(401, "device_recovery_invalid", "Device recovery failed.");
+      }
+    }
     const result = await this.deviceBootstrapDomain.recoverWithDeviceCredential(...args);
     const now = args[0].now ?? new Date();
     const assertionKey = `${args[0].credentialId.trim()}:${args[0].issuedAt}:${args[0].nonce.trim()}`;
     // A signed device assertion grants one credential reset for five minutes.
     // Replayed assertions must not replenish a consumed grant.
     if (
+      input.challengeId !== undefined &&
+      this.deviceBootstrapDomain.deviceRecoveryCredentialsMap.get(input.credentialId)
+        ?.requiresServerChallenge === true &&
       ![...this.authTransactions.values()].some(
         (record) => record.metadata.deviceRecoveryAssertionKey === assertionKey
       )
@@ -2266,7 +2360,8 @@ export class Cp2Store {
         expiresAt: new Date(now.getTime() + 5 * 60 * 1000).toISOString(),
         metadata: {
           deviceRecoverySessionId: result.session.id,
-          deviceRecoveryAssertionKey: assertionKey
+          deviceRecoveryAssertionKey: assertionKey,
+          recoveryCredentialId: input.credentialId
         }
       });
     }
@@ -2637,11 +2732,22 @@ export class Cp2Store {
     now?: Date;
   }): AuthSessionView {
     const now = input.now ?? new Date();
-    const session = this.requireRecentlyAuthenticatedSession(input.sessionId, now);
+    const session = this.hasCredentialRecoveryGrant(input.sessionId, now)
+      ? this.requireAnySession(input.sessionId, now)
+      : this.requireRecoveryEnrollmentSession(input.sessionId, now);
     if (this.accountPinHashes.has(session.account.id)) {
       throw new Cp2Error(409, "pin_already_set", "A login PIN is already set for this account.");
     }
-    this.verifyMfaForCredentialChange(session.account.id, input.mfaCode, now);
+    const recovering = this.hasCredentialRecoveryGrant(session.session.id, now);
+    if (
+      !recovering &&
+      [...this.authTransactions.values()].some(
+        (record) => record.metadata.deviceRecoverySessionId === session.session.id
+      )
+    ) {
+      this.passkeyDomain.requireCredentialRecoveryGrant(session.session.id, now);
+    }
+    if (!recovering) this.verifyMfaForCredentialChange(session.account.id, input.mfaCode, now);
     const pin = normalizePin(input.pin);
     const pinHash = hashPin(session.account.id, pin);
     this.accountPinHashes.set(session.account.id, pinHash);
@@ -2649,6 +2755,15 @@ export class Cp2Store {
     // Clear the grant only after every setup precondition and credential write has succeeded. This
     // is a no-op for ordinary recently authenticated password/PIN sessions.
     this.passkeyDomain.consumePinRecoveryGrant(session.session.id);
+    if (recovering) {
+      this.revokeOtherSessionsForAccount(
+        session.account.id,
+        session.session.id,
+        "pin_recovery",
+        now
+      );
+      this.notifyCredentialRecovery(session.account.id, "PIN", now);
+    }
     this.markSessionPinVerified(session.session.id, now);
     this.promoteAccountIdentityLevel(session.account.id, "strong");
 
@@ -10557,7 +10672,104 @@ export class Cp2Store {
     this.recordSecurityEvent("auth.password_reset", session.account.id, "success", now, {
       method: "device"
     });
+    this.notifyCredentialRecovery(session.account.id, "password", now);
+    this.markSessionPinVerified(session.session.id, now);
     return this.requireAnySession(session.session.id, now);
+  }
+
+  private credentialRecoveryGrant(sessionId: string) {
+    return [...this.authTransactions.values()].find((record) => {
+      const credentialId = record.metadata.recoveryCredentialId;
+      return (
+        record.purpose === "recovery" &&
+        record.metadata.deviceRecoverySessionId === sessionId &&
+        record.consumedAt === null &&
+        typeof credentialId === "string" &&
+        (this.passkeyDomain.passkeysMap.has(credentialId) ||
+          (this.deviceBootstrapDomain.deviceRecoveryCredentialsMap.get(credentialId)
+            ?.requiresServerChallenge === true &&
+            this.deviceBootstrapDomain.deviceRecoveryCredentialsMap.get(credentialId)?.revokedAt ===
+              null))
+      );
+    });
+  }
+
+  hasCredentialRecoveryGrant(sessionId: string | null, now = new Date()): boolean {
+    const grant = sessionId === null ? undefined : this.credentialRecoveryGrant(sessionId);
+    return grant !== undefined && Date.parse(grant.expiresAt) > now.getTime();
+  }
+
+  getRecoveryNotificationRecipient(sessionId: string): string | undefined {
+    const session = this.requireAnySession(sessionId, new Date());
+    return this.verifiedBackupEmail(session.account.id);
+  }
+
+  private revokeCredentialRecoveryGrants(credentialId: string, now: Date): void {
+    for (const record of this.authTransactions.values()) {
+      if (record.metadata.recoveryCredentialId === credentialId && record.consumedAt === null) {
+        record.consumedAt = now.toISOString();
+      }
+    }
+  }
+
+  listDeviceRecoveryCredentials(input: { sessionId: string | null; now?: Date }) {
+    const session = this.requireRecoveryEnrollmentSession(input.sessionId, input.now ?? new Date());
+    return [...this.deviceBootstrapDomain.deviceRecoveryCredentialsMap.values()]
+      .filter(
+        (credential) => credential.accountId === session.account.id && credential.revokedAt === null
+      )
+      .map(({ id, createdAt, lastAssertionAt }) => ({
+        id,
+        createdAt,
+        lastUsedAt: lastAssertionAt
+      }));
+  }
+
+  revokeDeviceRecoveryCredential(input: {
+    sessionId: string | null;
+    credentialId: string;
+    now?: Date;
+  }) {
+    const now = input.now ?? new Date();
+    const session = this.requireRecoveryEnrollmentSession(input.sessionId, now);
+    const credential = this.deviceBootstrapDomain.deviceRecoveryCredentialsMap.get(
+      input.credentialId
+    );
+    if (!credential || credential.accountId !== session.account.id)
+      throw new Cp2Error(404, "device_credential_not_found", "Recovery credential was not found.");
+    credential.revokedAt = now.toISOString();
+    credential.updatedAt = now.toISOString();
+    this.revokeCredentialRecoveryGrants(credential.id, now);
+    this.recordSecurityEvent("auth.device_credential_revoked", session.account.id, "success", now, {
+      credentialId: credential.id
+    });
+    return { revoked: true };
+  }
+
+  private notifyCredentialRecovery(
+    accountId: string,
+    credential: "PIN" | "password",
+    now: Date
+  ): void {
+    for (const business of this.businesses.values()) {
+      if (
+        ![...this.memberships.values()].some(
+          (membership) =>
+            membership.businessId === business.id &&
+            membership.userId === this.userByAccount.get(accountId) &&
+            membership.role === "owner"
+        )
+      )
+        continue;
+      this.notificationsDomain.recordSecurityNotification({
+        businessId: business.id,
+        type: "security_event",
+        title: `Account ${credential} recovered`,
+        body: `Your Grogoni ${credential} was reset using a registered recovery credential. Other sessions were signed out. If this was not you, review your trusted devices and revoke them.`,
+        sourceId: randomUUID(),
+        now
+      });
+    }
   }
 
   private verifiedBackupEmail(accountId: string): string | undefined {
@@ -11541,6 +11753,21 @@ export class Cp2Store {
       throw new Cp2Error(401, "auth_required", "Authentication is required.");
     }
 
+    return session;
+  }
+
+  private requireRecoveryEnrollmentSession(sessionId: string | null, now: Date): AuthSessionView {
+    const session = this.requireRecentlyAuthenticatedSession(sessionId, now);
+    if (
+      session.account.primaryAuthChannel !== "device" &&
+      this.sessions.get(session.session.id)?.pinVerifiedAt == null
+    ) {
+      throw new Cp2Error(
+        401,
+        "recent_authentication_required",
+        "Sign in with your PIN, password or passkey before enrolling recovery credentials."
+      );
+    }
     return session;
   }
 

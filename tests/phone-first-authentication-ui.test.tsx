@@ -201,4 +201,48 @@ describe("PhoneFirstAuthentication login methods", () => {
     });
     expect(mockedApiFetch.mock.calls.map(([path]) => path)).not.toContain("/auth/login/password");
   });
+  it("keeps email verification valid when retrying a password reset after an MFA error", async () => {
+    let resets = 0;
+    const completedSession = { account: { id: "recovered" } };
+    mockedApiFetch.mockImplementation(async (path) => {
+      if (path === "/auth/login/methods")
+        return { recoveryAvailable: true, passwordFallback: true };
+      if (path === "/auth/recovery/start")
+        return {
+          transactionId: "email-recovery",
+          developmentCode: "123456",
+          message: "Check your email."
+        };
+      if (path === "/auth/recovery/verify") return { verified: true };
+      if (path === "/auth/recovery/reset-password") {
+        if (++resets === 1)
+          throw new ApiRequestError(401, "Check your authenticator code.", {
+            code: "mfa_code_invalid"
+          });
+        return completedSession;
+      }
+      throw new Error(`Unexpected request to ${path}`);
+    });
+    renderLogin();
+    await change(inputByLabel("Phone number"), "0712345678");
+    await click(buttonByText("Trouble logging in?"));
+    const select = document.querySelector("select")!;
+    await act(async () => {
+      select.value = "email";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await change(inputByLabel("Backup email"), "backup@example.test");
+    await click(buttonByText("Send email recovery code"));
+    await change(inputByLabel("Password"), "secure new password");
+    await change(inputByLabel("Confirm password"), "secure new password");
+    await change(inputByLabel("MFA code"), "111111");
+    await click(buttonByText("Reset password"));
+    expect(onAuthenticated).not.toHaveBeenCalled();
+    await change(inputByLabel("MFA code"), "222222");
+    await click(buttonByText("Reset password"));
+    expect(onAuthenticated).toHaveBeenCalledWith(completedSession);
+    expect(
+      mockedApiFetch.mock.calls.filter(([path]) => path === "/auth/recovery/verify")
+    ).toHaveLength(1);
+  });
 });

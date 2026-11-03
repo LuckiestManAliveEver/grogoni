@@ -20,7 +20,9 @@ describe("phone device PIN recovery frontend", () => {
       source.indexOf("async function startRecovery()"),
       source.indexOf("async function verifyAndResetPassword()")
     );
-    const verifyIndex = flow.indexOf("await recoverDeviceAccount()");
+    const verifyIndex = flow.indexOf(
+      "await recoverWithPasskey(currentIdentifierBody().identifier)"
+    );
     const statusIndex = flow.indexOf('"/auth/credentials/status"');
     const stageIndex = flow.indexOf("devicePinRecoveryStage(credentials.hasPin)");
 

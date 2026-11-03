@@ -36,7 +36,6 @@ const postPaths = new Set([
   "/auth/pin/continue",
   "/auth/signup/start",
   "/auth/signup/complete",
-  "/auth/pin/setup",
   "/auth/mfa/challenge",
   "/auth/mfa/verify",
   "/auth/session/refresh",
@@ -494,7 +493,12 @@ export function createAuthRoutes({
       updatedAt: now
     });
   }
-  async function registerDeviceCredential(client: SqlClient, accountId: string, value: unknown) {
+  async function registerDeviceCredential(
+    client: SqlClient,
+    accountId: string,
+    value: unknown,
+    requiresServerChallenge = false
+  ) {
     const jwk = value as Row | undefined;
     if (
       !jwk ||
@@ -527,6 +531,12 @@ export function createAuthRoutes({
           "device_credential_in_use",
           "This device key belongs to another account."
         );
+      if (requiresServerChallenge && existing.requiresServerChallenge !== true) {
+        await mirror(client, "cp2_device_recovery_credentials", String(existing.id), {
+          ...existing,
+          requiresServerChallenge: true
+        });
+      }
       return String(existing.id);
     }
     const id = randomUUID();
@@ -535,6 +545,7 @@ export function createAuthRoutes({
       id,
       accountId,
       publicKeyJwk: publicKey,
+      requiresServerChallenge,
       createdAt: now,
       updatedAt: now,
       revokedAt: null,
@@ -743,6 +754,19 @@ export function createAuthRoutes({
         if (path === "/auth/mfa/verify" && data.factor === "email") return null;
         return await transaction(async (client) => {
           const existing = await activeSession(client, request);
+          if (
+            data.deviceSecurity === true &&
+            (!existing ||
+              !existing.pin_verified_at ||
+              Date.now() - Date.parse(iso(existing.pin_verified_at ?? existing.authenticated_at)) >
+                15 * 60_000)
+          ) {
+            return error(
+              401,
+              "recent_authentication_required",
+              "Sign in again before enrolling device recovery."
+            );
+          }
           if (existing) {
             const account = (
               await client.query(`${accountSelect} where a.id = $1`, [existing.account_id])
@@ -757,7 +781,8 @@ export function createAuthRoutes({
                     deviceRecoveryCredentialId: await registerDeviceCredential(
                       client,
                       String(existing.account_id),
-                      data.devicePublicKeyJwk
+                      data.devicePublicKeyJwk,
+                      data.deviceSecurity === true
                     )
                   })
             });
@@ -934,79 +959,6 @@ export function createAuthRoutes({
           passwordFallback: passwordEnabled,
           recoveryAvailable: true,
           smsLogin: false
-        });
-      }
-      if (path === "/auth/pin/setup") {
-        const value = pin(data.pin);
-        if (data.pinConfirmation !== undefined && value !== data.pinConfirmation)
-          throw new AuthError(400, "pin_confirmation_invalid", "PINs do not match.");
-        return await transaction(async (client) => {
-          const session = await activeSession(client, request);
-          if (!session) return error(401, "auth_required", "Authentication is required.");
-          await client.query("select id from accounts where id = $1 for update", [
-            session.account_id
-          ]);
-          if (Date.now() - Date.parse(iso(session.authenticated_at)) > 15 * 60000)
-            return error(
-              401,
-              "auth_reauthentication_required",
-              "Sign in again before changing credentials."
-            );
-          if (
-            (
-              await client.query(
-                "select account_id from account_pin_hashes where account_id = $1",
-                [session.account_id]
-              )
-            ).rows.length
-          )
-            return error(409, "pin_already_set", "A login PIN is already set for this account.");
-          if (
-            (
-              await client.query(
-                "select id from mfa_factors where account_id = $1 and verified_at is not null and disabled_at is null",
-                [session.account_id]
-              )
-            ).rows.length
-          ) {
-            if (data.mfaCode === undefined)
-              return error(401, "mfa_required", "Enter your second factor.");
-            const code = text(data.mfaCode, "mfaCode", 100);
-            const key = correlation(`mfa:${session.account_id}`, secrets.audit);
-            if (await limited(client, key))
-              return error(
-                429,
-                "mfa_rate_limited",
-                "Too many verification attempts. Try again later."
-              );
-            if (
-              !(await verifySecondFactor(
-                client,
-                String(session.account_id),
-                /^\d{6}$/.test(code) ? "totp" : "recovery_code",
-                code
-              ))
-            ) {
-              await audit(client, "auth.edge.login_failure", key);
-              return error(401, "mfa_code_invalid", "The verification code is invalid.");
-            }
-            await audit(client, "auth.edge.login_success", key);
-          }
-          await setPin(client, String(session.account_id), value);
-          await client.query("update sessions set pin_verified_at = now() where id = $1", [
-            session.id
-          ]);
-          await client.query(
-            "update cp2_sessions set record = record || jsonb_build_object('pinVerifiedAt', now()::text), updated_at = now() where entity_id = $1",
-            [session.id]
-          );
-          const account = (
-            await client.query(`${accountSelect} where a.id = $1 and u.id = $2`, [
-              session.account_id,
-              session.user_id
-            ])
-          ).rows[0];
-          return Response.json({ ...publicActor(account), session: sessionView(session) });
         });
       }
       if (path === "/auth/signup/complete") {

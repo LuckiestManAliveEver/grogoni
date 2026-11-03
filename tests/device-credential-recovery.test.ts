@@ -1,4 +1,4 @@
-import { generateKeyPairSync, randomBytes, sign } from "node:crypto";
+import { generateKeyPairSync, sign } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { buildApi } from "../services/api/src/app";
 import { createCp2Store } from "../services/api/src/cp2/store";
@@ -19,7 +19,7 @@ describe("device credential recovery", () => {
         method: "POST",
         url: "/auth/continue",
         headers: { cookie },
-        payload: { devicePublicKeyJwk: publicKey.export({ format: "jwk" }) }
+        payload: { devicePublicKeyJwk: publicKey.export({ format: "jwk" }), deviceSecurity: true }
       });
       expect(bound.statusCode).toBe(200);
       const denied = await app.inject({
@@ -30,14 +30,19 @@ describe("device credential recovery", () => {
       });
       expect(denied.statusCode).toBe(401);
       const credentialId = bound.json().deviceRecoveryCredentialId;
-      const issuedAt = Date.now();
-      const nonce = randomBytes(24).toString("base64url");
+      const options = await app.inject({
+        method: "POST",
+        url: "/auth/device/recover/options",
+        payload: { credentialId, identifier: "+254712345699" }
+      });
+      expect(options.statusCode).toBe(200);
+      const { issuedAt, nonce, challengeId } = options.json();
       const signature = sign(
         "sha256",
         Buffer.from(`grogoni-device-recovery:v1:${credentialId}:${issuedAt}:${nonce}`),
         { key: privateKey, dsaEncoding: "ieee-p1363" }
       ).toString("base64url");
-      const payload = { credentialId, issuedAt, nonce, signature };
+      const payload = { credentialId, issuedAt, nonce, signature, challengeId };
       const proof = await app.inject({ method: "POST", url: "/auth/device/recover", payload });
       expect(proof.statusCode).toBe(200);
       const recoveredCookie = proof.cookies.map((c) => `${c.name}=${c.value}`).join("; ");
@@ -49,7 +54,7 @@ describe("device credential recovery", () => {
       });
       expect(reset.statusCode).toBe(200);
       const replay = await app.inject({ method: "POST", url: "/auth/device/recover", payload });
-      expect(replay.statusCode).toBe(200);
+      expect(replay.statusCode).toBe(400);
       const repeated = await app.inject({
         method: "POST",
         url: "/auth/password/recover/device",

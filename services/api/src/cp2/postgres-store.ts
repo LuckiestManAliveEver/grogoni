@@ -273,6 +273,8 @@ const mutatingMethodNames = new Set([
   "completePhoneSignup",
   "continueWithDevice",
   "recoverWithDeviceCredential",
+  "beginDeviceRecovery",
+  "revokeDeviceRecoveryCredential",
   "continueWithChannelPin",
   "loginWithPassword",
   "mergeCurrentDeviceAccountWithPin",

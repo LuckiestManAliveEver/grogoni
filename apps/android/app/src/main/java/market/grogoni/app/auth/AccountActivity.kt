@@ -1,5 +1,11 @@
 package market.grogoni.app.auth
 
+import android.app.KeyguardManager
+import android.hardware.biometrics.BiometricPrompt
+import android.hardware.biometrics.BiometricManager.Authenticators
+import android.os.Build
+import android.os.CancellationSignal
+import androidx.activity.result.contract.ActivityResultContracts
 import android.app.Activity
 import android.os.Bundle
 import android.text.InputType
@@ -29,6 +35,15 @@ class AccountActivity : ComponentActivity() {
     private lateinit var status: TextView
     private val executor = Executors.newSingleThreadExecutor()
     private val client by lazy { NativeAuthClient(this) }
+    private var unlockCancellation: CancellationSignal? = null
+    private var unlockedAction: (() -> Unit)? = null
+    private val screenLock = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val action = unlockedAction
+        unlockedAction = null
+        busy = false; setEnabled(content, true)
+        if (result.resultCode == Activity.RESULT_OK) action?.invoke()
+        else status.text = "Device unlock cancelled. Try again or use verified backup email."
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -78,7 +93,7 @@ class AccountActivity : ComponentActivity() {
                 onUi { phoneValue = normalized; loginResult(result) }
             }
         }
-        text("Forgot your PIN or password? Use a recovery key previously secured on this Android app, or your verified backup email. SMS recovery is unavailable.")
+        text("Recover using device security. Use your fingerprint, face unlock, or phone screen lock to unlock a recovery key previously registered to this account. If device recovery is not set up, use your verified backup email.")
         button("Recover PIN with this device") { beginDeviceRecovery(phone.text.toString(), false) }
         button("Recover password with this device") { beginDeviceRecovery(phone.text.toString(), true) }
         val email = field("Verified backup email", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS)
@@ -126,14 +141,71 @@ class AccountActivity : ComponentActivity() {
 
     private fun beginDeviceRecovery(rawPhone: String, password: Boolean) {
         val normalized = normalize(rawPhone) ?: return
-        runAction {
-            val credentials = client.recoverDevice(normalized)
-            onUi {
-                phoneValue = normalized; resetPassword = password; hasPin = credentials.getBoolean("hasPin")
-                stage = Stage.DEVICE_RESET
-                message = "Device verified. Choose a new ${if (password) "password" else "4-digit PIN"}."; render()
+        if (!DeviceRecoveryKey(this).hasCredential(normalized)) {
+            status.text = "Device recovery is not set up. Use your verified backup email or another registered recovery method."
+            return
+        }
+        unlockDevice {
+            runAction {
+                val credentials = client.recoverDevice(normalized)
+                onUi {
+                    phoneValue = normalized; resetPassword = password; hasPin = credentials.getBoolean("hasPin")
+                    stage = Stage.DEVICE_RESET
+                    message = "Device verified. Choose a new ${if (password) "password" else "4-digit PIN"}."; render()
+                }
             }
         }
+    }
+
+    /** Local authentication unlocks an auth-bound key; only its server-verified signature proves ownership. */
+    private fun unlockDevice(action: () -> Unit) {
+        val keyguard = getSystemService(KeyguardManager::class.java)
+        if (!keyguard.isDeviceSecure) {
+            status.text = "Set a phone screen lock before using device security. Use verified backup email to recover this account."
+            return
+        }
+        busy = true; setEnabled(content, false)
+        fun useScreenLock() {
+            busy = true; setEnabled(content, false)
+            @Suppress("DEPRECATION")
+            val intent = keyguard.createConfirmDeviceCredentialIntent("Recover Grogoni account", "Unlock your registered recovery key")
+            if (intent == null) {
+                busy = false; setEnabled(content, true)
+                status.text = "Device screen lock is unavailable. Use verified backup email."
+            } else {
+                unlockedAction = action
+                screenLock.launch(intent)
+            }
+        }
+        if (Build.VERSION.SDK_INT < 28) { useScreenLock(); return }
+        val cancellation = CancellationSignal().also { unlockCancellation = it }
+        val builder = BiometricPrompt.Builder(this)
+            .setTitle("Unlock with device security")
+            .setSubtitle("Recover your Grogoni account using its registered key")
+        if (Build.VERSION.SDK_INT >= 30) {
+            builder.setAllowedAuthenticators(Authenticators.BIOMETRIC_STRONG or Authenticators.DEVICE_CREDENTIAL)
+        } else {
+            builder.setNegativeButton("Use screen lock", mainExecutor) { _, _ -> useScreenLock() }
+        }
+        builder.build().authenticate(cancellation, mainExecutor, object : BiometricPrompt.AuthenticationCallback() {
+            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                unlockCancellation = null
+                busy = false; setEnabled(content, true)
+                action()
+            }
+            override fun onAuthenticationError(code: Int, error: CharSequence) {
+                unlockCancellation = null
+                if (unlockedAction != null) return
+                // On Android 9/10, use screen lock when strong biometrics are unavailable.
+                if (Build.VERSION.SDK_INT < 30 && code != BiometricPrompt.BIOMETRIC_ERROR_USER_CANCELED &&
+                    code != BiometricPrompt.BIOMETRIC_ERROR_CANCELED) {
+                    useScreenLock()
+                } else {
+                    busy = false; setEnabled(content, true)
+                    status.text = "Device unlock cancelled or unavailable. Try again or use verified backup email."
+                }
+            }
+        })
     }
 
     private fun emailCodeForm() {
@@ -174,6 +246,9 @@ class AccountActivity : ComponentActivity() {
         }
         button("Reset PIN using this device") { beginDeviceRecovery(session.accountPhone.orEmpty(), false) }
         button("Reset password using this device") { beginDeviceRecovery(session.accountPhone.orEmpty(), true) }
+        button("Revoke this device recovery key") {
+            runAction { client.revokeDevice(session.accountPhone.orEmpty()); onUi { status.text = "Device recovery revoked. Use your PIN/password or verified backup email to sign in." } }
+        }
         button("Forget recovery key on this device") {
             android.app.AlertDialog.Builder(this).setMessage("Remove this device's recovery key? Use your PIN/password or verified email to sign in afterward.")
                 .setNegativeButton("Cancel", null).setPositiveButton("Forget key") { _, _ ->
@@ -223,7 +298,7 @@ class AccountActivity : ComponentActivity() {
     }.also(content::addView)
     private fun secret(label: String, pin: Boolean) = field(label, if (pin) PIN_INPUT else PASSWORD_INPUT)
     private fun button(label: String, action: () -> Unit) = Button(this).apply { text = label; setOnClickListener { if (!busy) action() } }.also(content::addView)
-    override fun onDestroy() { executor.shutdown(); super.onDestroy() }
+    override fun onDestroy() { unlockCancellation?.cancel(); unlockedAction = null; executor.shutdown(); super.onDestroy() }
     companion object {
         private const val PASSWORD_INPUT = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
         private const val PIN_INPUT = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD

@@ -122,7 +122,7 @@ describe("passkey authentication", () => {
     await restoredApp.close();
   });
 
-  it("does not authorize PIN or password recovery with passkey proof", async () => {
+  it("does not authorize PIN or password recovery with an ordinary passkey login", async () => {
     const sourceStore = createCp2Store();
     sourceStore.signupWithPhonePin({ destination: "+254700000099", pin: "2468" });
     const snapshot = sourceStore.snapshot();

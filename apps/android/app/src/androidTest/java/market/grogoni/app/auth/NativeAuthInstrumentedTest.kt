@@ -1,5 +1,15 @@
 package market.grogoni.app.auth
 
+import android.app.KeyguardManager
+import android.security.keystore.KeyInfo
+import java.security.KeyFactory
+import java.security.KeyStore
+import androidx.test.core.app.ActivityScenario
+import androidx.test.platform.app.InstrumentationRegistry
+import org.junit.Assume.assumeTrue
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import android.view.accessibility.AccessibilityNodeInfo
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -54,6 +64,7 @@ class NativeAuthInstrumentedTest {
     }
 
     @Test fun deviceEnrollmentRecoveryAndSingleUsePinResetUseTheActualKeystore() {
+        assumeTrue("Requires a screen-lock configured test emulator", context.getSystemService(KeyguardManager::class.java).isDeviceSecure)
         session.saveAuthenticatedSession(account, phone, "grogoni_session=initial")
         handler = { path, body, cookie ->
             when (path) {
@@ -63,6 +74,11 @@ class NativeAuthInstrumentedTest {
                     assertEquals("P-256", jwk.getString("crv"))
                     assertFalse(jwk.has("d"))
                     NativeApiResponse(200, authenticated().body.put("deviceRecoveryCredentialId", "credential-test"))
+                }
+                "/auth/device/recover/options" -> {
+                    assertNull(cookie)
+                    assertEquals(phone, body!!.getString("identifier"))
+                    NativeApiResponse(200, challenge())
                 }
                 "/auth/device/recover" -> {
                     assertNull(cookie)
@@ -80,8 +96,13 @@ class NativeAuthInstrumentedTest {
         }
         client.secureDevice()
         assertTrue(keys.hasCredential(phone))
-        val first = keys.assertion(phone); val second = keys.assertion(phone)
-        assertNotEquals(first.getString("nonce"), second.getString("nonce"))
+        val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        val keyAlias = keyStore.aliases().toList().first { it.startsWith("grogoni-recovery-v2-") }
+        val privateKey = keyStore.getKey(keyAlias, null) as java.security.PrivateKey
+        val info = KeyFactory.getInstance(privateKey.algorithm, "AndroidKeyStore").getKeySpec(privateKey, KeyInfo::class.java)
+        assertTrue(info.isUserAuthenticationRequired)
+        assertNull(privateKey.encoded)
+        unlockWithScreenLock()
         session.clear()
         assertTrue(client.recoverDevice(phone).getBoolean("hasPin"))
         client.resetDeviceSecret("1234", "1234", false, true)
@@ -116,16 +137,62 @@ class NativeAuthInstrumentedTest {
     }
 
     @Test fun expiredDeviceProofIsClearedAndCrossAccountResponsesAreRejected() {
+        assumeTrue(context.getSystemService(KeyguardManager::class.java).isDeviceSecure)
         session.saveAuthenticatedSession(account, phone, "grogoni_session=test")
         handler = { _, _, _ -> NativeApiResponse(200, authenticated().body.put("deviceRecoveryCredentialId", "credential-test")) }
         client.secureDevice()
         session.clear()
-        handler = { _, _, _ -> NativeApiResponse(200, JSONObject().put("account", JSONObject().put("id", "other-account").put("primaryAuthDestination", phone)), "grogoni_session=other") }
+        unlockWithScreenLock()
+        handler = { path, _, _ -> if (path.endsWith("/options")) NativeApiResponse(200, challenge()) else NativeApiResponse(200, JSONObject().put("account", JSONObject().put("id", "other-account").put("primaryAuthDestination", phone)), "grogoni_session=other") }
         assertThrows(IllegalArgumentException::class.java) { client.recoverDevice(phone) }
         assertNull(session.cookieHeader)
-        handler = { _, _, _ -> NativeApiResponse(401, JSONObject().put("message", "Device revoked")) }
+        handler = { path, _, _ -> if (path.endsWith("/options")) NativeApiResponse(200, challenge()) else NativeApiResponse(401, JSONObject().put("message", "Device revoked")) }
         assertThrows(NativeApiException::class.java) { client.recoverDevice(phone) }
         assertFalse(keys.hasCredential(phone))
+    }
+
+    @Test fun refusesRecoveryEnrollmentWithoutADeviceScreenLock() {
+        assumeTrue(!context.getSystemService(KeyguardManager::class.java).isDeviceSecure)
+        session.saveAuthenticatedSession(account, phone, "grogoni_session=test")
+        assertThrows(IllegalStateException::class.java) { client.secureDevice() }
+        assertTrue(requests.isEmpty())
+    }
+
+    @Test fun unregisteredDeviceCannotStartRecoveryOrSendNetworkRequests() {
+        assertThrows(IllegalStateException::class.java) { client.recoverDevice(phone) }
+        assertTrue(requests.isEmpty())
+    }
+
+    private fun challenge() = JSONObject().put("challengeId", "test-server-challenge")
+        .put("issuedAt", System.currentTimeMillis()).put("nonce", "server-issued-nonce-for-test-00001")
+
+    /** Exercises the actual system credential prompt; opt in only on a disposable test emulator. */
+    private fun unlockWithScreenLock() {
+        val pin = InstrumentationRegistry.getArguments().getString("deviceSecurityTestPin")
+        assumeTrue("Pass deviceSecurityTestPin for interactive device authentication tests", !pin.isNullOrBlank())
+        val completed = CountDownLatch(1)
+        ActivityScenario.launch(AccountActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                val unlock = AccountActivity::class.java.getDeclaredMethod("unlockDevice", kotlin.jvm.functions.Function0::class.java)
+                unlock.isAccessible = true
+                unlock.invoke(activity, { completed.countDown(); Unit })
+            }
+            val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+            val deadline = System.currentTimeMillis() + 10_000
+            fun editable(node: AccessibilityNodeInfo?): Boolean {
+                if (node == null) return false
+                if (node.className?.toString()?.contains("EditText") == true) return true
+                return (0 until node.childCount).any { editable(node.getChild(it)) }
+            }
+            while (!editable(automation.rootInActiveWindow) && System.currentTimeMillis() < deadline) {
+                automation.rootInActiveWindow?.findAccessibilityNodeInfosByText("Use PIN")?.firstOrNull()
+                    ?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                Thread.sleep(100)
+            }
+            automation.executeShellCommand("input text $pin").use { android.os.ParcelFileDescriptor.AutoCloseInputStream(it).readBytes() }
+            automation.executeShellCommand("input keyevent 66").use { android.os.ParcelFileDescriptor.AutoCloseInputStream(it).readBytes() }
+            assertTrue("System screen-lock authentication must complete", completed.await(15, TimeUnit.SECONDS))
+        }
     }
 
     @Test fun sessionRefreshMergesCookiesButNeverRetriesAsAnotherAccount() {
@@ -174,7 +241,7 @@ class NativeAuthInstrumentedTest {
                 androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().waitForIdleSync()
                 scenario.onActivity { activity ->
                     fun contains(view: android.view.View): Boolean =
-                        (view is android.widget.TextView && view.text.toString().contains("No recovery key")) ||
+                        (view is android.widget.TextView && view.text.toString().contains("Device recovery is not set up") && view.text.toString().contains("verified backup email")) ||
                         (view is android.view.ViewGroup && (0 until view.childCount).any { contains(view.getChildAt(it)) })
                     guidanceVisible = contains(activity.window.decorView)
                 }

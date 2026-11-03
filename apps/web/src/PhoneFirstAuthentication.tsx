@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { recoverDeviceAccount } from "./device-recovery";
+import { useEffect, useState } from "react";
+import { deviceSecurityCapability, recoverWithPasskey } from "./passkey-recovery";
 import type { AuthSessionView } from "@grogoni/shared-types";
 import { normalizePhoneInput, phoneNormalizationErrorMessage } from "@grogoni/shared-types";
 import { getCountryCallingCode, type CountryCode } from "libphonenumber-js";
@@ -65,6 +65,21 @@ export function PhoneFirstAuthentication({
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
   const [recoveryMfaCode, setRecoveryMfaCode] = useState("");
   const [recoveryEmail, setRecoveryEmail] = useState("");
+  const [recoveryEmailVerified, setRecoveryEmailVerified] = useState(false);
+  const [deviceAvailable, setDeviceAvailable] = useState<boolean | null>(null);
+  const [platformAvailable, setPlatformAvailable] = useState(false);
+  useEffect(() => {
+    let active = true;
+    void deviceSecurityCapability().then((capability) => {
+      if (active) {
+        setDeviceAvailable(capability.supported);
+        setPlatformAvailable(capability.platform);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
   const [recoveryMethod, setRecoveryMethod] = useState<"device" | "email">("device");
   const [recoveryCredential, setRecoveryCredential] = useState<"pin" | "password">("pin");
   const [availableMfaFactors, setAvailableMfaFactors] = useState<string[]>([]);
@@ -189,13 +204,14 @@ export function PhoneFirstAuthentication({
     onAuthenticated(session);
   }
 
-  // Prove ownership using the device recovery key or a verified backup email.
+  // Prove ownership with a user-verified registered passkey or verified backup email.
   async function startRecovery() {
     if (recoveryMethod === "device") {
-      const recoveredSession = await recoverDeviceAccount();
-      if (recoveredSession === null) {
-        throw new Error("Recovery is unavailable on this device. Use your verified backup email.");
-      }
+      if (!deviceAvailable)
+        throw new Error(
+          "Device security is unavailable in this browser. Use your verified backup email."
+        );
+      const recoveredSession = await recoverWithPasskey(currentIdentifierBody().identifier);
       if (recoveredSession.account.primaryAuthDestination !== currentIdentifierBody().identifier) {
         throw new Error("Use the device previously secured for this mobile phone account.");
       }
@@ -232,6 +248,7 @@ export function PhoneFirstAuthentication({
     setPassword("");
     setPasswordConfirmation("");
     setRecoveryMfaCode("");
+    setRecoveryEmailVerified(false);
     setStage("recovery-reset");
     setMessage(result.message);
   }
@@ -239,15 +256,36 @@ export function PhoneFirstAuthentication({
   // Device proof and email verification both precede password mutation.
   async function verifyAndResetPassword() {
     if (recoveryMethod === "device") {
-      const session = await apiFetch<AuthSessionView>("/auth/password/recover/device", {
-        method: "POST",
-        body: { password, passwordConfirmation },
-        skipAuthRefresh: true
-      });
-      onAuthenticated(session);
+      try {
+        const session = await apiFetch<AuthSessionView>("/auth/password/recover/device", {
+          method: "POST",
+          body: { password, passwordConfirmation },
+          skipAuthRefresh: true
+        });
+        onAuthenticated(session);
+      } catch (error) {
+        if (
+          error instanceof ApiRequestError &&
+          error.code === "device_credential_recovery_required"
+        ) {
+          setPassword("");
+          setPasswordConfirmation("");
+          setStage("methods");
+          setMessage("Verify this device again before changing your password.");
+          return;
+        }
+        throw error;
+      }
       return;
     }
-    await apiFetch("/auth/recovery/verify", { method: "POST", body: { transactionId, code } });
+    if (!recoveryEmailVerified) {
+      await apiFetch("/auth/recovery/verify", {
+        method: "POST",
+        body: { transactionId, code },
+        skipAuthRefresh: true
+      });
+      setRecoveryEmailVerified(true);
+    }
     const session = await apiFetch<AuthSessionView>("/auth/recovery/reset-password", {
       method: "POST",
       body: {
@@ -260,7 +298,7 @@ export function PhoneFirstAuthentication({
     onAuthenticated(session);
   }
 
-  // Step 2 of recovery for phone accounts: identity was already proven by the device key in
+  // Step 2 of recovery for phone accounts: identity was already proven by WebAuthn in
   // startRecovery, so this only sets the new PIN.
   async function finishPinRecovery() {
     if (!/^\d{4}$/u.test(password) || password !== passwordConfirmation) {
@@ -529,10 +567,36 @@ export function PhoneFirstAuthentication({
                     </label>
                   ) : (
                     <>
-                      <p>
-                        Use the recovery key securely stored on this device. Keep this device
-                        protected with its screen lock.
-                      </p>
+                      <div className="auth-security-summary">
+                        <strong>Recover using device security</strong>
+                        <p>
+                          Use your fingerprint, face unlock, or phone screen lock to securely
+                          recover your Grogoni account.
+                        </p>
+                        <p>
+                          {deviceAvailable === null
+                            ? "Checking device security…"
+                            : deviceAvailable
+                              ? "Requires a passkey previously registered to your Grogoni account. Choose it when your device asks."
+                              : "Device security is unavailable in this browser. Use your verified backup email."}
+                        </p>
+                        {deviceAvailable && !platformAvailable ? (
+                          <p>
+                            This browser has no built-in device authenticator. Use a registered
+                            passkey from a security key, password manager, or another trusted
+                            device.
+                          </p>
+                        ) : null}
+                        <details>
+                          <summary>Device recovery is not set up?</summary>
+                          <p>
+                            This device cannot recover your account yet. Use your verified backup
+                            email or another registered recovery method. You can also use a
+                            registered passkey from your password manager or another trusted device
+                            when supported.
+                          </p>
+                        </details>
+                      </div>
                       <label>
                         Reset
                         <select
@@ -549,12 +613,23 @@ export function PhoneFirstAuthentication({
                   )}
 
                   <button
-                    className="auth-text-button"
+                    className={
+                      recoveryMethod === "device" ? "auth-primary-button" : "auth-text-button"
+                    }
                     type="button"
-                    disabled={busy || (recoveryMethod === "email" && !recoveryEmail.trim())}
+                    disabled={
+                      busy ||
+                      (recoveryMethod === "email"
+                        ? !recoveryEmail.trim()
+                        : deviceAvailable !== true)
+                    }
                     onClick={() => void run(startRecovery)}
                   >
-                    Trouble logging in?
+                    {busy
+                      ? "Please wait…"
+                      : recoveryMethod === "device"
+                        ? "Unlock with device security"
+                        : "Send email recovery code"}
                   </button>
                 </>
               ) : null}
@@ -575,6 +650,7 @@ export function PhoneFirstAuthentication({
                   <input
                     inputMode="numeric"
                     autoComplete="one-time-code"
+                    disabled={busy || recoveryEmailVerified}
                     value={code}
                     onChange={(event) => setCode(event.target.value)}
                   />
@@ -586,14 +662,16 @@ export function PhoneFirstAuthentication({
                 setPassword={setPassword}
                 setConfirmation={setPasswordConfirmation}
               />
-              <label>
-                MFA code (if enabled)
-                <input
-                  autoComplete="one-time-code"
-                  value={recoveryMfaCode}
-                  onChange={(event) => setRecoveryMfaCode(event.target.value)}
-                />
-              </label>
+              {recoveryMethod === "email" ? (
+                <label>
+                  MFA code (if enabled)
+                  <input
+                    autoComplete="one-time-code"
+                    value={recoveryMfaCode}
+                    onChange={(event) => setRecoveryMfaCode(event.target.value)}
+                  />
+                </label>
+              ) : null}
               <button
                 className="auth-primary-button"
                 type="submit"

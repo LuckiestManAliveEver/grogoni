@@ -52,6 +52,7 @@ export interface DeviceAccountBootstrapRecord {
 }
 
 export interface DeviceRecoveryCredentialRecord {
+  requiresServerChallenge?: boolean;
   id: string;
   accountId: string;
   publicKeyJwk: Record<string, unknown>;

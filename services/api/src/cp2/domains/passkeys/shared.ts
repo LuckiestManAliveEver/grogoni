@@ -45,6 +45,9 @@ export interface PasskeyCeremonyRecord {
   id: string;
   kind: "registration" | "authentication";
   purpose?: "login" | "pin_recovery";
+  recoveryIdentifier?: string;
+  rpId?: string;
+  origin?: string;
   accountId: string | null;
   challenge: string;
   webauthnUserId: string | null;
