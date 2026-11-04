@@ -25,10 +25,13 @@ class NativeApiClient(
         authenticated: Boolean = true,
         allowRefresh: Boolean = true,
     ): NativeApiResponse {
+        if (authenticated) session.readLinkedWebCookie()
         val account = session.accountId
         val cookie = if (authenticated) requireNotNull(session.cookieHeader) { "Sign in to Grogoni first." } else null
         var result = transport.execute(method, path, body, cookie)
-        if (result.status == 401 && authenticated && allowRefresh) {
+        // A linked web session has one refresh owner: the shared web application. Never race
+        // its refresh-token rotation from a background native worker.
+        if (result.status == 401 && authenticated && allowRefresh && !session.webSessionLinked) {
             synchronized(SESSION_LOCK) {
                 if (session.accountId == account && session.cookieHeader == cookie) {
                     val refreshed = transport.execute("POST", "/auth/session/refresh", JSONObject(), cookie)

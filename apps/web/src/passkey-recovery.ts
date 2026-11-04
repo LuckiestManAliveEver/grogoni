@@ -6,11 +6,22 @@ import {
 } from "@simplewebauthn/browser";
 import type { AuthSessionView, PasskeySummary } from "@grogoni/shared-types";
 import { apiFetch, ApiRequestError } from "./lib/api";
+import { deviceMessagingAdapter, isNativeDeviceHost } from "./device-messaging";
 
 export async function deviceSecurityCapability(): Promise<{
   supported: boolean;
   platform: boolean;
 }> {
+  if (isNativeDeviceHost()) {
+    try {
+      const capability = await deviceMessagingAdapter.call<{ screenLock: boolean }>(
+        "deviceSecurity"
+      );
+      return { supported: true, platform: capability.screenLock };
+    } catch {
+      return { supported: false, platform: false };
+    }
+  }
   if (!browserSupportsWebAuthn() || !globalThis.isSecureContext)
     return { supported: false, platform: false };
   try {
@@ -25,7 +36,26 @@ export async function deviceSecurityAvailable(): Promise<boolean> {
 }
 
 /** Called only by an explicit enrollment action after authentication. WebAuthn holds the key. */
-export async function enrollRecoveryPasskey(): Promise<PasskeySummary> {
+export async function enrollRecoveryPasskey(): Promise<PasskeySummary | null> {
+  if (isNativeDeviceHost()) {
+    const key = await deviceMessagingAdapter.call<{ publicKeyJwk: JsonWebKey; accountId: string }>(
+      "prepareRecoveryKey"
+    );
+    const enrolled = await apiFetch<AuthSessionView & { deviceRecoveryCredentialId: string }>(
+      "/auth/continue",
+      {
+        method: "POST",
+        body: { devicePublicKeyJwk: key.publicKeyJwk, deviceSecurity: true },
+        skipAuthRefresh: true
+      }
+    );
+    if (enrolled.account.id !== key.accountId)
+      throw new Error("Account changed. Sign in again before securing this device.");
+    await deviceMessagingAdapter.call("commitRecoveryKey", {
+      credentialId: enrolled.deviceRecoveryCredentialId
+    });
+    return null;
+  }
   const challenge = await apiFetch<{
     ceremonyId: string;
     options: Parameters<typeof startRegistration>[0]["optionsJSON"];
@@ -40,6 +70,32 @@ export async function enrollRecoveryPasskey(): Promise<PasskeySummary> {
 
 /** Discoverable credentials avoid disclosing whether a supplied phone account exists. */
 export async function recoverWithPasskey(identifier: string): Promise<AuthSessionView> {
+  if (isNativeDeviceHost()) {
+    const key = await deviceMessagingAdapter.call<{ accountId: string; credentialId: string }>(
+      "recoveryCredential",
+      { identifier }
+    );
+    const challenge = await apiFetch<Record<string, unknown>>("/auth/device/recover/options", {
+      method: "POST",
+      body: { credentialId: key.credentialId, identifier },
+      skipAuthRefresh: true
+    });
+    const assertion = await deviceMessagingAdapter.call<Record<string, unknown>>(
+      "signRecoveryChallenge",
+      { identifier, challenge }
+    );
+    const recovered = await apiFetch<AuthSessionView>("/auth/device/recover", {
+      method: "POST",
+      body: assertion,
+      skipAuthRefresh: true
+    });
+    if (
+      recovered.account.id !== key.accountId ||
+      recovered.account.primaryAuthDestination !== identifier
+    )
+      throw new Error("Use the device previously secured for this phone account.");
+    return recovered;
+  }
   try {
     const challenge = await apiFetch<{
       ceremonyId: string;

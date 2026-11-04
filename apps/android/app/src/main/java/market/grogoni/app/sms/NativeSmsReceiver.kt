@@ -1,7 +1,6 @@
 package market.grogoni.app.sms
 
 import android.content.BroadcastReceiver
-import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.provider.Telephony
@@ -9,52 +8,58 @@ import android.provider.Telephony
 class NativeSmsReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Telephony.Sms.Intents.SMS_DELIVER_ACTION) return
+        if (Telephony.Sms.getDefaultSmsPackage(context) != context.packageName) return
         val sms = MultipartSmsAssembler.fromIntent(intent) ?: return
-        persistForDefaultSmsRole(context, sms)
-        runCatching { LocalSmsNotifications.show(context, sms.id) }
-        val session = GrogoniSessionStore(context)
-        if (!session.syncEnabled) return
-        val businessId = session.businessId ?: return
-        val sender = runCatching {
-            NativePhoneNormalizer.normalize(sms.sender, session.networkCountryIso)
-        }.getOrNull() ?: return
-        val event = LocalInboundSms(
-            eventId = "${session.deviceId}:${sms.id}",
-            businessId = businessId,
-            externalMessageId = sms.id,
-            senderE164 = sender,
-            text = sms.text,
-            occurredAt = MultipartSmsAssembler.occurredAt(sms.timestampMillis),
-        )
-        if (NativeSmsStore(context).enqueueInbound(event)) NativeSmsWork.schedule(context)
+        val pending = goAsync()
+        executor.execute {
+            try {
+                IncomingSmsJournal(context).use { journal ->
+                    journal.record(sms)
+                    IncomingSmsJournal.schedule(context)
+                    journal.recover(context)
+                }
+                LocalSmsNotifications.show(context, sms.id)
+                // Personal messages are never automatically forwarded to a business or agent.
+            } catch (error: Exception) {
+                android.util.Log.e("GrogoniSms", "Incoming SMS storage needs recovery: ${error.javaClass.simpleName}")
+                runCatching { IncomingSmsJournal.schedule(context) }
+                runCatching { LocalSmsNotifications.show(context, sms.id, storageFailure = true) }
+            } finally { pending.finish() }
+        }
     }
 
-    private fun persistForDefaultSmsRole(context: Context, sms: MultipartSmsAssembler.Assembled) {
-        val values = ContentValues().apply {
-            put(Telephony.Sms.ADDRESS, sms.sender)
-            put(Telephony.Sms.BODY, sms.text)
-            put(Telephony.Sms.DATE, sms.timestampMillis)
-            put(Telephony.Sms.READ, 0)
-            put(Telephony.Sms.SEEN, 0)
-            put(Telephony.Sms.TYPE, Telephony.Sms.MESSAGE_TYPE_INBOX)
-        }
-        runCatching { context.contentResolver.insert(Telephony.Sms.Inbox.CONTENT_URI, values) }
-    }
+    companion object { private val executor = java.util.concurrent.Executors.newSingleThreadExecutor() }
+
 }
 
 class DefaultSmsRoleChangedReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == Telephony.Sms.Intents.ACTION_DEFAULT_SMS_PACKAGE_CHANGED) {
+            if (Telephony.Sms.getDefaultSmsPackage(context) == context.packageName) IncomingSmsJournal.schedule(context)
             NativeSmsWork.schedule(context)
         }
     }
 }
 
-/** MMS is outside this feature. The receiver is declared only to satisfy Android SMS-role shape. */
+/** Persist carrier notifications locally; downloads require explicit user consent. */
 class MmsRoleReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action == Telephony.Sms.Intents.WAP_PUSH_DELIVER_ACTION) {
-            runCatching { LocalSmsNotifications.show(context, "unsupported-mms", unsupportedMms = true) }
-        }
+        if (intent.action != Telephony.Sms.Intents.WAP_PUSH_DELIVER_ACTION ||
+            Telephony.Sms.getDefaultSmsPackage(context) != context.packageName) return
+        val data = intent.getByteArrayExtra("data") ?: return
+        val subscription = intent.getIntExtra("subscription", SmsSubscription.defaultId() ?: -1)
+        val pending = goAsync()
+        Thread {
+            try {
+                IncomingSmsJournal(context).use {
+                    it.recordMms(data, subscription)
+                    IncomingSmsJournal.schedule(context)
+                    it.recover(context)
+                }
+                LocalSmsNotifications.show(context, "incoming-mms", mms = true)
+            } catch (_: Exception) {
+                runCatching { LocalSmsNotifications.show(context, "mms-storage-failed", storageFailure = true, mms = true) }
+            } finally { pending.finish() }
+        }.start()
     }
 }

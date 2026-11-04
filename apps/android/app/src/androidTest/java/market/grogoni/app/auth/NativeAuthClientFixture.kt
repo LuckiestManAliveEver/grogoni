@@ -7,7 +7,7 @@ import market.grogoni.app.sms.NativeApiException
 import market.grogoni.app.sms.NativeApiResponse
 import org.json.JSONObject
 
-/** Uses the same server proof, MFA and single-use reset contracts as the web client. */
+/** Instrumentation fixture for platform key/session protocol checks. Production workflows live in apps/web. */
 class NativeAuthClient(
     context: Context,
     private val session: GrogoniSessionStore = GrogoniSessionStore(context),

@@ -17,6 +17,9 @@
     }
   },
   "scripts": {
+    "android:web:bundle": "node scripts/bundle-android-web.mjs",
+    "android:direct:build": "python3 scripts/build-direct-android-release.py",
+    "android:direct:prepare": "node scripts/prepare-direct-android-release.mjs",
     "eval:inventory:hosted": "INVENTORY_BENCHMARK_PROVIDER=openrouter node --env-file-if-exists=.env.openrouter --import tsx services/api/src/benchmarks/run-inventory-benchmark.ts --require-model-pass",
     "eval:guest-intent": "node --env-file-if-exists=.env --env-file-if-exists=.env.openrouter --import tsx scripts/eval-guest-intent.ts",
     "eval:inventory": "node --import tsx services/api/src/benchmarks/run-inventory-benchmark.ts",
@@ -35,8 +38,8 @@
     "android:identity:verify": "node scripts/verify-android-release-identity.mjs",
     "android:legal:gate": "node scripts/verify-play-legal-readiness.mjs --require-approved",
     "android:legal:verify": "node scripts/verify-play-legal-readiness.mjs",
-    "android:release:apk": "cd apps/android && gradle :app:assembleRelease",
-    "android:check": "cd apps/android && gradle :app:testDebugUnitTest :app:assembleDebug :app:lintDebug",
+    "android:release:apk": "pnpm android:web:bundle && cd apps/android && gradle :app:assembleRelease",
+    "android:check": "pnpm android:web:bundle && cd apps/android && gradle :app:testDebugUnitTest :app:assembleDebug :app:lintDebug",
     "android:release:assetlinks": "node scripts/generate-android-assetlinks.mjs",
     "build": "pnpm -r --if-present build",
     "build:production": "pnpm check:esm-relative-imports && pnpm build:production:workspace && pnpm check:production-imports && pnpm check:retired-runtime-references && pnpm check:retired-device-model-references && pnpm check:render-inference-boundaries",

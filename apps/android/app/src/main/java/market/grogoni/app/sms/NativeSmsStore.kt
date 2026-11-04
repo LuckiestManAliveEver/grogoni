@@ -5,7 +5,7 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 
-class NativeSmsStore(context: Context) : SQLiteOpenHelper(context, "grogoni-native-sms.db", null, 5) {
+class NativeSmsStore(context: Context) : SQLiteOpenHelper(context, "grogoni-native-sms.db", null, 6) {
     private val session = GrogoniSessionStore(context)
     private val secretBox = AndroidSecretBox()
 
@@ -26,6 +26,7 @@ class NativeSmsStore(context: Context) : SQLiteOpenHelper(context, "grogoni-nati
               body text not null,
               occurred_at text not null,
               synced integer not null default 0
+              , user_shared integer not null default 0
             )
             """.trimIndent(),
         )
@@ -78,6 +79,8 @@ class NativeSmsStore(context: Context) : SQLiteOpenHelper(context, "grogoni-nati
                 db.execSQL("alter table $table add column owner_account_id text")
             }
         }
+        // Old automatically copied messages are quarantined, never uploaded under new consent.
+        if (oldVersion < 6) db.execSQL("alter table inbound_events add column user_shared integer not null default 0")
     }
 
     fun enqueueInbound(event: LocalInboundSms): Boolean {
@@ -90,6 +93,7 @@ class NativeSmsStore(context: Context) : SQLiteOpenHelper(context, "grogoni-nati
             put("body", secretBox.encrypt(event.text))
             put("occurred_at", event.occurredAt)
             put("synced", 0)
+            put("user_shared", 1)
         }
         return writableDatabase.insertWithOnConflict(
             "inbound_events", null, values, SQLiteDatabase.CONFLICT_IGNORE,
@@ -105,7 +109,7 @@ class NativeSmsStore(context: Context) : SQLiteOpenHelper(context, "grogoni-nati
                 "event_id", "business_id", "external_message_id", "sender_e164", "body",
                 "occurred_at",
             ),
-            "synced = 0 and " + if (account == null) "owner_account_id is null" else "owner_account_id = ?",
+            "synced = 0 and user_shared = 1 and " + if (account == null) "owner_account_id is null" else "owner_account_id = ?",
             account?.let { arrayOf(it) },
             null,
             null,

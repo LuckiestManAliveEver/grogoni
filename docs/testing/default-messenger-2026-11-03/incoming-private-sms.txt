@@ -1,0 +1,8 @@
+
+market.grogoni.app.sms.MessengerReadinessInstrumentedTest:.
+
+Time: 0.057
+
+OK (1 test)
+
+

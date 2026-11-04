@@ -1,3 +1,4 @@
+import { isNativeDeviceHost } from "./device-messaging";
 import { Suspense, useEffect, useState } from "react";
 import { browserSupportsWebAuthn, startRegistration } from "@simplewebauthn/browser";
 
@@ -952,7 +953,9 @@ export function IdentitySecurityPanel({
       </button>
       <button
         type="button"
-        disabled={!browserSupportsWebAuthn() || pendingProfileAction !== null}
+        disabled={
+          (!browserSupportsWebAuthn() && !isNativeDeviceHost()) || pendingProfileAction !== null
+        }
         onClick={() =>
           void runProfileAction("device-recovery", async () => {
             await enrollRecoveryPasskey();

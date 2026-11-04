@@ -220,34 +220,23 @@ class NativeAuthInstrumentedTest {
         assertThrows(NativeApiException::class.java) { api.request("GET", "/test") }
         assertEquals(listOf("/test"), requests)
     }
-    @Test fun nativeAccountScreenProtectsSecretsAndProvidesMissingKeyRecoveryGuidance() {
-        androidx.test.core.app.ActivityScenario.launch(AccountActivity::class.java).use { scenario ->
+    @Test fun sharedAccountScreenProtectsSecretsWithoutDuplicatingNativeForms() {
+        ActivityScenario.launch(AccountActivity::class.java).use { scenario ->
+            var loaded = false
+            val deadline = android.os.SystemClock.elapsedRealtime() + 10_000
+            while (!loaded && android.os.SystemClock.elapsedRealtime() < deadline) {
+                scenario.onActivity { loaded = it.webView.url == "https://grogoni.com/login" }
+                if (!loaded) Thread.sleep(100)
+            }
+            assertTrue("Shared account route must load", loaded)
             scenario.onActivity { activity ->
                 assertTrue(activity.window.attributes.flags and android.view.WindowManager.LayoutParams.FLAG_SECURE != 0)
+                assertFalse(activity.webView.isSaveEnabled)
+                assertEquals("https://grogoni.com/login", activity.webView.url)
                 fun descendants(view: android.view.View): List<android.view.View> = listOf(view) +
                     if (view is android.view.ViewGroup) (0 until view.childCount).flatMap { descendants(view.getChildAt(it)) } else emptyList()
-                val views = descendants(activity.window.decorView)
-                val phoneInput = views.filterIsInstance<android.widget.EditText>().first { it.hint.toString().startsWith("Phone number") }
-                phoneInput.setText(phone)
-                val secret = views.filterIsInstance<android.widget.EditText>().first { it.hint.toString().startsWith("PIN") }
-                assertFalse(secret.isSaveEnabled)
-                secret.setText("1234")
-                views.filterIsInstance<android.widget.CheckBox>().single().performClick()
-                assertEquals("", secret.text.toString())
-                views.filterIsInstance<android.widget.Button>().first { it.text.toString() == "Recover PIN with this device" }.performClick()
+                assertTrue(descendants(activity.window.decorView).filterIsInstance<android.widget.EditText>().isEmpty())
             }
-            var guidanceVisible = false
-            repeat(30) {
-                androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().waitForIdleSync()
-                scenario.onActivity { activity ->
-                    fun contains(view: android.view.View): Boolean =
-                        (view is android.widget.TextView && view.text.toString().contains("Device recovery is not set up") && view.text.toString().contains("verified backup email")) ||
-                        (view is android.view.ViewGroup && (0 until view.childCount).any { contains(view.getChildAt(it)) })
-                    guidanceVisible = contains(activity.window.decorView)
-                }
-                if (!guidanceVisible) Thread.sleep(100)
-            }
-            assertTrue("Missing recovery key must offer verified-email fallback", guidanceVisible)
         }
     }
 

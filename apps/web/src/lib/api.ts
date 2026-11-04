@@ -192,6 +192,14 @@ export async function apiCloudFetch<T>(
   const base = readApiBaseUrl();
   const url = pathOrUrl.startsWith("http") ? pathOrUrl : `${base}${pathOrUrl}`;
   const method = options?.method ?? "GET";
+  if (
+    changesSignedInAccount(pathOrUrl, method.toUpperCase()) &&
+    typeof document !== "undefined" &&
+    document.querySelector('meta[name="grogoni-native-channel"]')
+  ) {
+    const { deviceMessagingAdapter } = await import("../device-messaging");
+    await deviceMessagingAdapter.call("disconnect").catch(() => undefined);
+  }
   const requestId = options?.requestId ?? createRequestId();
   const headers = {
     ...deviceSessionHeaders(),

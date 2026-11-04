@@ -30,6 +30,45 @@ class MemoryStorage implements MessagingOutboxStorage {
 }
 
 describe("messaging outbox", () => {
+  it("replays browser storage journals, removes private payloads, and preserves new messages after clear", () => {
+    class BrowserStorage extends MemoryStorage {
+      get length() {
+        return this.values.size;
+      }
+      key(index: number) {
+        return [...this.values.keys()][index] ?? null;
+      }
+    }
+    const storage = new BrowserStorage();
+    storage.setItem(
+      "grogoni.messaging-outbox.v2:a",
+      JSON.stringify([
+        { accountId: "a", clientMessageId: "legacy", payload: { text: "legacy-secret" } }
+      ])
+    );
+    queueMessagingOutbox(
+      { accountId: "a", clientMessageId: "new", payload: { text: "journal-secret" } },
+      storage
+    );
+    expect(readMessagingOutbox("a", storage)).toHaveLength(2);
+    removeMessagingOutboxEntry("a", "legacy", storage);
+    removeMessagingOutboxEntry("a", "new", storage);
+    expect(readMessagingOutbox("a", storage)).toEqual([]);
+    expect([...storage.values.values()].join("")).not.toContain("legacy-secret");
+    expect([...storage.values.values()].join("")).not.toContain("journal-secret");
+    queueMessagingOutbox(
+      { accountId: "a", clientMessageId: "before-clear", payload: { text: "clear-secret" } },
+      storage
+    );
+    clearMessagingOutbox("a", storage);
+    expect([...storage.values.values()].join("")).not.toContain("clear-secret");
+    queueMessagingOutbox({ accountId: "a", clientMessageId: "after-clear", payload: {} }, storage);
+    expect(readMessagingOutbox("a", storage).map((entry) => entry.clientMessageId)).toEqual([
+      "after-clear"
+    ]);
+    expect(countMessagingOutbox("a", undefined, storage)).toBe(1);
+    expect(readMessagingOutbox("other", storage)).toEqual([]);
+  });
   it("isolates queued messages by account and removes unsafe legacy entries", () => {
     const storage = new MemoryStorage();
     storage.setItem(

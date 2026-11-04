@@ -6,6 +6,7 @@ import {
   subscribeToBrowserNavigation
 } from "./browser-navigation";
 import InstallPage from "./InstallPage";
+const DeviceMessagingPage = lazy(() => import("./DeviceMessagingPage"));
 import { appRouteModuleKeys, loadLazyModuleWithRecovery } from "./lazy-module-recovery";
 import { LazyModuleErrorBoundary } from "./LazyModuleErrorBoundary";
 import { recordComponentRender, recordRouteRender } from "./performance";
@@ -66,6 +67,14 @@ export function AppRouter() {
   );
   useEffect(() => installBrowserLinkInterceptor(), []);
   const storefrontRoute = readStorefrontRoute();
+
+  if (window.location.pathname === "/device-messages") {
+    return (
+      <Suspense fallback={<p>Opening messages…</p>}>
+        <DeviceMessagingPage />
+      </Suspense>
+    );
+  }
 
   if (storefrontRoute !== null) {
     return (

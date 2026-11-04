@@ -15,7 +15,7 @@ class RespondViaMessageService : Service() {
                 intent.getStringExtra(Intent.EXTRA_TEXT))
             if (request.recipient.isBlank() || request.body.isBlank()) return@runCatching
             val session = GrogoniSessionStore(this)
-            val normalized = NativePhoneNormalizer.normalize(request.recipient, session.networkCountryIso)
+            val normalized = SmsDestination.normalize(request.recipient, session.networkCountryIso)
             val commandId = "local:${UUID.randomUUID()}"
             NativeSmsStore(this).use { store ->
                 if (store.claimCommand(commandId)) {

@@ -105,3 +105,12 @@ val validateReleaseSigning by tasks.registering {
 tasks.matching { it.name == "preReleaseBuild" }.configureEach {
     dependsOn(validateReleaseSigning)
 }
+
+val verifySharedWebBundle by tasks.registering {
+    doLast {
+        require(file("src/main/assets/web/index.html").isFile && file("src/main/assets/web-bundle.json").isFile) {
+            "Run pnpm android:web:bundle before building Android. Android hosts the shared web application."
+        }
+    }
+}
+tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(verifySharedWebBundle) }

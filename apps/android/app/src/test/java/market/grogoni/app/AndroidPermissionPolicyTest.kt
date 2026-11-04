@@ -26,6 +26,8 @@ class AndroidPermissionPolicyTest {
         assertTrue(permissions.contains(Manifest.permission.SEND_SMS))
 
         assertFalse(permissions.contains(Manifest.permission.ACCESS_BACKGROUND_LOCATION))
+        assertFalse(permissions.contains("android.permission.READ_CALL_LOG"))
+        assertFalse(permissions.contains("android.permission.WRITE_CALL_LOG"))
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             assertTrue(permissions.contains(Manifest.permission.POST_NOTIFICATIONS))
@@ -54,9 +56,9 @@ class AndroidPermissionPolicyTest {
         for (permission in setOf(
             Manifest.permission.SEND_SMS,
             Manifest.permission.RECEIVE_SMS,
+            Manifest.permission.RECEIVE_MMS,
+            Manifest.permission.RECEIVE_WAP_PUSH,
             Manifest.permission.READ_SMS,
-            Manifest.permission.READ_CALL_LOG,
-            Manifest.permission.WRITE_CALL_LOG,
         )) {
             assertFalse(beforeRole.contains(permission))
             assertTrue(afterRole.contains(permission))

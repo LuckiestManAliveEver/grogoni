@@ -1,24 +1,28 @@
 # Full Grogoni default SMS client
 
-Status: basic local SMS reading, manual sending/replying, notifications, and optional business
-synchronization are implemented in `apps/android`. See `apps/android/README.md` for the current
-contract. The full client requirements below, including MMS and full conversation management,
-remain future work.
+Status (2026-11-03): native SMS history now supports pagination, search, conversation filtering,
+and deletion. SMS synchronization defaults to off and incoming messages require per-message
+sharing. Incoming provider writes have an encrypted recovery journal. SMS/MMS inboxes and composers use the shared React application, with Android carrier transport,
+bounded attachments and manual downloads behind OS adapters.
+See `apps/android/README.md` for supported content limits and the emulator test command.
+These implementations do not establish physical carrier interoperability or release approval.
+The requirements below remain the acceptance checklist; untested requirements are not implied
+to have passed.
 
 ## Product and policy gate
 
-Mode B must be a separate, explicitly approved Android project. Before requesting restricted SMS
-permissions, Grogoni must explain the feature, obtain an affirmative user choice, request the Android
-SMS role through supported role APIs, and verify that Grogoni is the selected default SMS handler.
-Google Play restricted-permission eligibility, declarations, privacy policy, Data safety answers,
-and review must be completed before release.
+The application UI and authentication workflows are shared in `apps/web`; Android hosts that
+packaged build and supplies OS adapters. Before requesting SMS permissions, explain the feature,
+obtain an affirmative user choice, request the Android SMS role and verify default-handler status.
+The selected distribution path is a signed APK downloaded from the website. Play-specific review
+records apply only if a Play release is later selected; they do not approve a direct APK.
 
 Losing the default-handler role must immediately disable privileged SMS operations. Generic Grogoni
 onboarding must never request SMS permissions.
 
 ## Android application components
 
-The future native design should include only the components required by the Android default-SMS
+The platform adapter should include only the components required by the Android default-SMS
 contract:
 
 - activities for composing and viewing conversations;

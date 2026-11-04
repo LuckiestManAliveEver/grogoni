@@ -56,6 +56,8 @@ export interface MessagingOutboxStorage {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
   removeItem(key: string): void;
+  readonly length?: number;
+  key?(index: number): string | null;
 }
 
 export function readMessagingOutbox(
@@ -85,6 +87,10 @@ export function countMessagingOutbox(
 ): number {
   try {
     const operations = pendingOutbox(storage, accountId)?.operations ?? [];
+    if (hasJournalStorage(storage))
+      return applyOutboxOperations(readStoredOutbox(accountId, storage), operations).filter(
+        (entry) => conversationId === undefined || entry.payload.conversationId === conversationId
+      ).length;
     const key = `${storageKey(accountId)}#${conversationId === undefined ? "*" : conversationId}`;
     const raw = storage.getItem(storageKey(accountId));
     if (
@@ -157,10 +163,10 @@ export function clearMessagingOutbox(
  * failure fires `messagingOutboxSaveFailedEvent`, which the chat shows
  * (messaging/useMessagingOutboxSaveFailure.ts), since the caller no longer gets the error thrown at it.
  *
- * Without navigator.locks (every current browser has it) there is no cross-tab lock: each change
- * is one synchronous read-modify-write, as before, and a storage error is thrown to the caller.
- * Two such tabs writing at the same moment can still lose a change;
- * tests/messaging-outbox-cross-tab.test.ts measures how often.
+ * Browser Storage uses an append-only operation journal: each mutation has its own key, so
+ * independent tabs cannot overwrite each other's queued messages, even without Web Locks or
+ * during pagehide. Minimal injected storage adapters without key enumeration still use the
+ * locked list format. Journal compaction must never use an unlocked read-modify-write.
  */
 export const messagingOutboxSaveFailedEvent = "grogoni:messaging-outbox-save-failed";
 export const messagingOutboxSaveFailureMessage =
@@ -309,6 +315,47 @@ function writeOutbox(
   storage: MessagingOutboxStorage,
   operations: OutboxOperation[]
 ): void {
+  if (hasJournalStorage(storage)) {
+    for (const operation of operations) {
+      const prefix = journalPrefix(accountId);
+      // Lamport ordering preserves this write's relationship to all observed earlier writes.
+      const clock = journalRecords(accountId, storage).reduce(
+        (latest, row) => Math.max(latest, row.clock + 1),
+        Date.now()
+      );
+      const id = globalThis.crypto.randomUUID();
+      storage.setItem(`${prefix}${id}`, JSON.stringify({ clock, id, operation }));
+      if (operation.kind === "remove" || operation.kind === "clear") {
+        // Keep ordering metadata, but never retain sent/deleted message content in the journal.
+        for (const row of journalRecords(accountId, storage)) {
+          if (
+            row.clock > clock ||
+            (row.clock === clock && row.id.localeCompare(id) >= 0) ||
+            row.operation.kind !== "put"
+          )
+            continue;
+          if (
+            operation.kind === "remove" &&
+            row.operation.entry.clientMessageId !== operation.clientMessageId
+          )
+            continue;
+          storage.setItem(
+            `${prefix}${row.id}`,
+            JSON.stringify({
+              ...row,
+              operation: { kind: "put", entry: { ...row.operation.entry, payload: {} } }
+            })
+          );
+        }
+        const legacy = readLegacyOutbox(accountId, storage).filter(
+          (entry) =>
+            operation.kind === "remove" && entry.clientMessageId !== operation.clientMessageId
+        );
+        storage.setItem(storageKey(accountId), JSON.stringify(legacy));
+      }
+    }
+    return;
+  }
   const cleared = operations.some((operation) => operation.kind === "clear");
   const entries = applyOutboxOperations(readStoredOutbox(accountId, storage), operations);
   if (cleared && entries.length === 0) storage.removeItem(storageKey(accountId));
@@ -348,10 +395,22 @@ function readStoredOutbox(
   accountId: string,
   storage: Pick<MessagingOutboxStorage, "getItem">
 ): MessagingOutboxEntry[] {
+  const entries = readLegacyOutbox(accountId, storage);
+  return hasJournalStorage(storage)
+    ? applyOutboxOperations(
+        entries,
+        journalRecords(accountId, storage).map((row) => row.operation)
+      )
+    : entries;
+}
+
+function readLegacyOutbox(
+  accountId: string,
+  storage: Pick<MessagingOutboxStorage, "getItem">
+): MessagingOutboxEntry[] {
   try {
     const stored = JSON.parse(storage.getItem(storageKey(accountId)) ?? "[]") as unknown;
-    if (!Array.isArray(stored)) return [];
-    return stored.filter(
+    const entries = (Array.isArray(stored) ? stored : []).filter(
       (entry): entry is MessagingOutboxEntry =>
         typeof entry === "object" &&
         entry !== null &&
@@ -361,9 +420,47 @@ function readStoredOutbox(
         (entry as { payload?: unknown }).payload !== null &&
         !Array.isArray((entry as { payload?: unknown }).payload)
     );
+    return entries;
   } catch {
     return [];
   }
+}
+
+type JournalStorage = MessagingOutboxStorage & {
+  readonly length: number;
+  key(index: number): string | null;
+};
+function hasJournalStorage(storage: object): storage is JournalStorage {
+  return (
+    typeof (storage as MessagingOutboxStorage).key === "function" &&
+    typeof (storage as MessagingOutboxStorage).length === "number"
+  );
+}
+function journalPrefix(accountId: string): string {
+  return `grogoni.messaging-outbox.journal.v1:${encodeURIComponent(accountId)}:`;
+}
+function journalRecords(
+  accountId: string,
+  storage: JournalStorage
+): { clock: number; id: string; operation: OutboxOperation }[] {
+  const prefix = journalPrefix(accountId);
+  const records: { clock: number; id: string; operation: OutboxOperation }[] = [];
+  const length = storage.length;
+  for (let index = 0; index < length; index += 1) {
+    const key = storage.key(index);
+    if (key === null || !key.startsWith(prefix)) continue;
+    const raw = storage.getItem(key);
+    if (raw === null) continue;
+    const row = JSON.parse(raw) as { clock: number; id: string; operation: OutboxOperation };
+    if (
+      !Number.isSafeInteger(row.clock) ||
+      typeof row.id !== "string" ||
+      !["put", "remove", "attempt", "clear"].includes(row.operation?.kind)
+    )
+      throw new Error("Invalid messaging outbox journal entry.");
+    records.push(row);
+  }
+  return records.sort((a, b) => a.clock - b.clock || a.id.localeCompare(b.id));
 }
 
 // A tab that closes while a write still waits for the lock writes it at once (without the lock)

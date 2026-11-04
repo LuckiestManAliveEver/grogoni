@@ -36,9 +36,9 @@ object AndroidPermissionPolicy {
         permissions += Manifest.permission.WRITE_CONTACTS
         permissions += Manifest.permission.READ_PHONE_STATE
         permissions += Manifest.permission.CALL_PHONE
-        permissions += Manifest.permission.READ_CALL_LOG
-        permissions += Manifest.permission.WRITE_CALL_LOG
         permissions += Manifest.permission.SEND_SMS
+        permissions += Manifest.permission.RECEIVE_MMS
+        permissions += Manifest.permission.RECEIVE_WAP_PUSH
         permissions += Manifest.permission.RECEIVE_SMS
         permissions += Manifest.permission.READ_SMS
         // No WRITE_SMS: it is not a public SDK permission and is never granted to apps. The default
@@ -53,9 +53,9 @@ object AndroidPermissionPolicy {
         val restricted = setOf(
             Manifest.permission.SEND_SMS,
             Manifest.permission.RECEIVE_SMS,
+            Manifest.permission.RECEIVE_MMS,
+            Manifest.permission.RECEIVE_WAP_PUSH,
             Manifest.permission.READ_SMS,
-            Manifest.permission.READ_CALL_LOG,
-            Manifest.permission.WRITE_CALL_LOG,
         )
         return permissionSetForSdk().filter { smsRoleGranted || it !in restricted }.toSet()
     }
