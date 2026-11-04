@@ -89,11 +89,17 @@ export interface DaemonTaskStore {
   }): Promise<DaemonTask>;
   pendingConversationDeliveries(limit: number): Promise<DaemonTask[]>;
   markConversationDelivered(task: DaemonTask): Promise<void>;
+  /** `runtime` replaces an agent task's model and engine, so a retry runs the conversation's
+   *  current choice rather than the one that failed. */
   retryOwned(
     ownerUserId: string,
     id: string,
-    maxActive: number
+    maxActive: number,
+    runtime?: { modelId: string; agentAdapterId: "grogoni" | "pi" }
   ): Promise<"queued" | "limited" | "conflict">;
+  /** Stores a running task's payload while `lease_token` still holds an unexpired claim; false
+   *  when the lease is gone (nothing written). */
+  updateLeasedPayload(task: DaemonTask): Promise<boolean>;
   get(id: string): Promise<DaemonTask | null>;
   list(): Promise<DaemonTask[]>;
   retry(id: string): Promise<boolean>;
@@ -239,7 +245,7 @@ export function createPostgresDaemonTaskStore(
         [task.id, task.updated_at, task.status, task.attempts, task.executions]
       );
     },
-    async retryOwned(ownerUserId, id, maxActive) {
+    async retryOwned(ownerUserId, id, maxActive, runtime) {
       const client = await pool.connect();
       try {
         await client.query("begin");
@@ -267,9 +273,10 @@ export function createPostgresDaemonTaskStore(
         }
         const updated = await client.query(
           `update grogoni_daemon_tasks set status='queued',attempts=0,result=null,
-          run_at=now(),error_code=null,lease_token=null,lease_until=null,conversation_delivered_at=null,updated_at=now()
+          run_at=now(),error_code=null,lease_token=null,lease_until=null,conversation_delivered_at=null,updated_at=now(),
+          payload = case when $3::jsonb is not null and payload->>'kind' = 'agent' then payload || $3::jsonb else payload end
           where id=$1 and owner_user_id=$2 and status in ('failed','cancelled') and (lease_until is null or lease_until <= now())`,
-          [id, ownerUserId]
+          [id, ownerUserId, runtime === undefined ? null : JSON.stringify(runtime)]
         );
         await client.query("commit");
         return updated.rowCount === 1 ? "queued" : "conflict";
@@ -305,6 +312,16 @@ export function createPostgresDaemonTaskStore(
         returning id`
         )
       ).rows.map((row) => row.id);
+    },
+    async updateLeasedPayload(task) {
+      return (
+        (
+          await pool.query(
+            "update grogoni_daemon_tasks set payload=$3::jsonb,updated_at=now() where id=$1 and lease_token=$2 and status='running' and lease_until > now()",
+            [task.id, task.lease_token, JSON.stringify(task.payload)]
+          )
+        ).rowCount === 1
+      );
     },
     async claim(leaseMs) {
       // $4: takeover delay. A user task's server due time is its due time plus that delay.

@@ -4,7 +4,14 @@ import { apiCloudFetch } from "./lib/api";
 import { daemonTaskUpdatedEvent } from "./daemon-chat";
 import { daemonLaneWakeEvent } from "./hooks/useDaemonLane";
 
-export function DaemonExecutionStatus({ execution }: { execution: ConversationExecutionSummary }) {
+export function DaemonExecutionStatus({
+  execution,
+  label
+}: {
+  execution: ConversationExecutionSummary;
+  /** Who ran it: "My Assistant" in the permanent conversation, a neutral word elsewhere. */
+  label: string;
+}) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   async function retry() {
@@ -27,7 +34,7 @@ export function DaemonExecutionStatus({ execution }: { execution: ConversationEx
   return (
     <div className="conversation-execution" role="status">
       <small>
-        Daemon: {execution.status}
+        {label}: {execution.status}
         {execution.errorCode ? ` · ${execution.errorCode}` : ""}
       </small>
       {execution.retryable ? (

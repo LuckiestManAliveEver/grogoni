@@ -428,6 +428,8 @@ const mutatingMethodNames = new Set([
   "finalizeShopDeletion",
   "activateAiModel",
   "activateAgentModel",
+  // My Assistant's agent/model switch: without this it reached Postgres only with some later write.
+  "selectConversationModel",
   "activateGlobalDefaultModel",
   "removeAgentModelBinding",
   "authenticateMcpAccessToken",

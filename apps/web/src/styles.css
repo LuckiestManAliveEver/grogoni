@@ -9204,3 +9204,49 @@ body {
   font-size: 12px;
   text-align: left;
 }
+
+/* My Assistant details: ID, agent and model for the permanent daemon conversation. */
+.assistant-details-list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+}
+
+.assistant-details-list > div {
+  display: grid;
+  gap: 4px;
+}
+
+.assistant-details-list dt {
+  color: var(--grogoni-ink-faint);
+  font-family: var(--grogoni-mono-font);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.assistant-details-list dd {
+  margin: 0;
+}
+
+.assistant-details-list code {
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.assistant-details-list select {
+  background: var(--grogoni-paper-dim);
+  border: 1px solid var(--grogoni-line-strong);
+  border-radius: 8px;
+  color: var(--grogoni-ink);
+  font: inherit;
+  min-height: 40px;
+  padding: 6px 10px;
+  width: 100%;
+}
+
+/* The pinned assistant's Details action stays visible: touch screens have no hover to reveal it. */
+.pinned-agent .conversation-actions {
+  max-height: 40px;
+  opacity: 1;
+}

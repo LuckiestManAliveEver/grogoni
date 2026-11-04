@@ -1,7 +1,12 @@
 import { HelpConversations } from "./HelpConversations";
+import {
+  conversationTitle,
+  conversationTypeBadge,
+  isAssistantConversation
+} from "./conversation-title";
 import type { Dispatch, SetStateAction } from "react";
 
-import type { ConversationInboxItem } from "@grogoni/shared-types";
+import { permanentDaemonDisplayName, type ConversationInboxItem } from "@grogoni/shared-types";
 
 import { conversationMessageText } from "./chat-message-plumbing";
 import { formatMessageTime } from "./formatters";
@@ -13,7 +18,8 @@ export interface ConversationListPanelProps {
   // "Chats"/"Messages" title in its own heading bar (see ChatSurface).
   showHeading: boolean;
   pinnedAgent?: ConversationInboxItem | undefined;
-  agentName?: string;
+  /** Opens ID, agent and model details for the permanent daemon conversation ("My Assistant"). */
+  onOpenAssistantDetails?: (conversationId: string) => void;
   isSessionListView: boolean;
   isAuthenticated: boolean;
   inboxSearch: string;
@@ -57,7 +63,7 @@ export interface ConversationListPanelProps {
 export function ConversationListPanel({
   showHeading,
   pinnedAgent,
-  agentName = "Grogoni agent",
+  onOpenAssistantDetails,
   isSessionListView,
   isAuthenticated,
   inboxSearch,
@@ -90,6 +96,12 @@ export function ConversationListPanel({
   setDeletingConversationId,
   onDeleteConversation
 }: ConversationListPanelProps) {
+  // Before sign-in (no pinned chat yet) the row is the way into My Assistant. A fallback agent
+  // chat (the permanent one missing from the inbox) keeps its own name.
+  const pinnedTitle =
+    pinnedAgent === undefined || isAssistantConversation(pinnedAgent)
+      ? permanentDaemonDisplayName
+      : conversationDisplayTitle(pinnedAgent, devicePhonebook ?? []);
   return (
     <>
       <div className="messenger-inbox-heading">
@@ -229,14 +241,21 @@ export function ConversationListPanel({
             }}
           >
             <span className="conversation-avatar chat" aria-hidden="true">
-              {agentName.slice(0, 1)}
+              {pinnedTitle.slice(0, 1)}
             </span>
             <span className="conversation-copy">
-              <strong>{agentName}</strong>
-              <small>Pinned agent</small>
-              {pinnedAgent ? <span className="session-badge">DAEMON</span> : null}
+              <strong>{pinnedTitle}</strong>
+              <small>Pinned</small>
+              {pinnedAgent ? <span className="session-badge">ASSISTANT</span> : null}
             </span>
           </button>
+          {pinnedAgent && isAssistantConversation(pinnedAgent) && onOpenAssistantDetails ? (
+            <div className="conversation-actions" role="group" aria-label="My Assistant actions">
+              <button type="button" onClick={() => onOpenAssistantDetails(pinnedAgent.id)}>
+                Details
+              </button>
+            </div>
+          ) : null}
         </article>
         {visibleConversations
           .filter((conversation) => conversation.helpTopic === "home")
@@ -307,8 +326,8 @@ export function ConversationListPanel({
                       : "chat"
                   }`}
                 >
-                  {conversation.conversationType ??
-                    (conversation.kind === "personal" ? "DAEMON" : "BUSINESS")}
+                  {conversationTypeBadge(conversation.conversationType) ??
+                    (conversation.kind === "personal" ? "ASSISTANT" : "BUSINESS")}
                 </span>
                 {conversation.unreadCount > 0 ? (
                   <b aria-label={`${conversation.unreadCount} unread`}>
@@ -442,7 +461,7 @@ function conversationDisplayTitle(
     : null;
   return (
     savedName ??
-    conversation.title ??
+    conversationTitle(conversation) ??
     (conversation.hasHumanRecipient ? "Contact" : "Grogoni agent")
   );
 }

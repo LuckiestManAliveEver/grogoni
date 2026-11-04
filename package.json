@@ -21,6 +21,7 @@
     "android:direct:build": "python3 scripts/build-direct-android-release.py",
     "android:direct:prepare": "node scripts/prepare-direct-android-release.mjs",
     "eval:inventory:hosted": "INVENTORY_BENCHMARK_PROVIDER=openrouter node --env-file-if-exists=.env.openrouter --import tsx services/api/src/benchmarks/run-inventory-benchmark.ts --require-model-pass",
+    "eval:my-assistant-runtime": "node --env-file-if-exists=.env --env-file-if-exists=.env.openrouter --import tsx scripts/eval-my-assistant-runtime.ts",
     "eval:guest-intent": "node --env-file-if-exists=.env --env-file-if-exists=.env.openrouter --import tsx scripts/eval-guest-intent.ts",
     "eval:inventory": "node --import tsx services/api/src/benchmarks/run-inventory-benchmark.ts",
     "daemon:dev": "pnpm --filter @grogoni/api daemon:dev",

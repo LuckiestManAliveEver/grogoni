@@ -39,7 +39,8 @@ export async function submitBuyerShoppingChat(input: {
     {
       shoppingSessionId,
       requestId: crypto.randomUUID(),
-      message
+      message,
+      conversationId
     },
     { timeoutMs: 60000 }
   );

@@ -25,6 +25,7 @@ import type {
 } from "@grogoni/shared-types";
 import {
   isModelExecutionTarget,
+  permanentDaemonDisplayName,
   repositoryDefaultRuntimePolicy,
   resolveRuntimeModel
 } from "@grogoni/shared-types";
@@ -174,6 +175,8 @@ export class NativeRuntimeBindingStore {
     conversationId: string;
     model: AiModelSummary;
     executionTarget: ModelExecutionTarget;
+    /** Registered agent runtime adapter that executes this conversation's turns. */
+    agentAdapterId: string;
     checkedAt: string;
     updatedBy: string;
   }): NativeRuntimeBindingSummary {
@@ -184,7 +187,10 @@ export class NativeRuntimeBindingStore {
       id: agentId,
       accountId: input.accountId,
       businessId: input.businessId,
-      name: "Your daemon",
+      name: permanentDaemonDisplayName,
+      provider: agentProviderFor(input.agentAdapterId),
+      packageRef: agentPackageRefFor(input.agentAdapterId),
+      configuration: { ...original.configuration, runtimeAdapterId: input.agentAdapterId },
       createdAt: input.checkedAt,
       updatedAt: input.checkedAt
     });

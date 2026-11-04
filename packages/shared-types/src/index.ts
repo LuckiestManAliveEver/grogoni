@@ -909,6 +909,30 @@ export interface ProviderUpdateReceiptSummary {
   processedAt: string | null;
 }
 
+/** User-facing name of the account's permanent daemon conversation and its agent. */
+export const permanentDaemonDisplayName = "My Assistant";
+
+/** Agent engines the permanent daemon conversation can run on; each is a registered adapter id. */
+export type DaemonAgentId = "grogoni" | "pi";
+export const daemonAgentOptions: ReadonlyArray<{ id: DaemonAgentId; label: string }> = [
+  { id: "grogoni", label: "Grogoni agent" },
+  { id: "pi", label: "Pi agent" }
+];
+export function isDaemonAgentId(value: unknown): value is DaemonAgentId {
+  return daemonAgentOptions.some((option) => option.id === value);
+}
+
+/** GET/PUT /v1/conversations/:conversationId/model for the permanent daemon conversation. */
+export interface ConversationRuntimeSelection {
+  conversationId: string;
+  selectedAgentId: DaemonAgentId | null;
+  agents: Array<{ id: DaemonAgentId; label: string }>;
+  selectedModelId: string | null;
+  models: Array<{ id: string; label: string }>;
+  available: boolean;
+  errorCode: string | null;
+}
+
 export interface ConversationSummary {
   /** Derived by the server from durable identity and participants; legacy kind is preserved. */
   conversationType?: ConversationType;

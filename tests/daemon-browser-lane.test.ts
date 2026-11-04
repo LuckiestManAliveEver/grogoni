@@ -111,6 +111,38 @@ describe("browser daemon lane: one task", () => {
     expect(generate).not.toHaveBeenCalled();
     expect(server.paths()).toContain("/v1/daemon/claims/skill-task/execute");
   });
+  it("runs a conversation task on the device only for its chosen model on the default engine", async () => {
+    const conversation = {
+      id: "22222222-2222-4222-8222-222222222222",
+      clientMessageId: "origin",
+      scope: "test",
+      kind: "reply" as const
+    };
+    for (const [agentAdapterId, deviceModel, onDevice] of [
+      ["grogoni", "gpt-6-luna", true],
+      ["pi", "gpt-6-luna", false],
+      ["grogoni", "other-model", false]
+    ] as const) {
+      const claim = claimFor(`conv-${agentAdapterId}-${deviceModel}`);
+      claim.task.payload = {
+        kind: "agent",
+        message: "hello",
+        modelId: "gpt-6-luna",
+        agentAdapterId,
+        conversation
+      };
+      const server = api({ "/claims": () => ({ claim }), "/execute": done, "/settle": done });
+      const generate = vi.fn(async () => "device reply");
+      await runNextBrowserTask({
+        request: server.request,
+        device: () => ({ modelId: deviceModel, generate })
+      });
+      expect(generate).toHaveBeenCalledTimes(onDevice ? 1 : 0);
+      expect(server.paths()).toContain(
+        `/v1/daemon/claims/${claim.task.id}/${onDevice ? "settle" : "execute"}`
+      );
+    }
+  });
   it("asks the server to run the claim, with the server's timeout, when there is no model", async () => {
     const { request, calls, paths } = api({
       "/claims": () => ({ claim: claimFor("t2"), nextDueInMs: null }),

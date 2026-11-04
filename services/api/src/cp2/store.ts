@@ -16,7 +16,13 @@ import type {
   BuyerShoppingTurnResult
 } from "@grogoni/shared-types";
 import { withRuntimeDeadline } from "./runtime-deadline.js";
-import { isLocalRuntimeHost, isModelExecutionTarget } from "@grogoni/shared-types";
+import {
+  daemonAgentOptions,
+  isDaemonAgentId,
+  isLocalRuntimeHost,
+  isModelExecutionTarget,
+  type ConversationRuntimeSelection
+} from "@grogoni/shared-types";
 import {
   calculateOrderFulfillmentWeight,
   isValidIanaTimeZone,
@@ -1849,7 +1855,9 @@ export class Cp2Store {
         for (const [conversationId, conversation] of this.messagingDomain.conversationsMap) {
           if (
             conversation.accountId === input.accountId &&
-            (conversation.activeShopId === input.businessId || conversation.activeShopId === null)
+            (conversation.activeShopId === input.businessId ||
+              conversation.activeShopId === null) &&
+            !this.keepsSelectedRuntime(conversation)
           ) {
             this.messagingDomain.conversationsMap.set(conversationId, {
               ...conversation,
@@ -1897,7 +1905,10 @@ export class Cp2Store {
           );
         }
         const result = this.nativeRuntimeBindings.ensureDefaultRuntimeBinding(input);
-        if (conversation.runtimeBindingId !== result.binding.id) {
+        if (
+          conversation.runtimeBindingId !== result.binding.id &&
+          !this.keepsSelectedRuntime(conversation)
+        ) {
           this.messagingDomain.conversationsMap.set(conversation.id, {
             ...this.messagingDomain.conversationsMap.get(conversation.id)!,
             runtimeBindingId: result.binding.id,
@@ -4692,27 +4703,47 @@ export class Cp2Store {
     return this.agentRuntimeDomain.activateAiModel(...args);
   }
 
-  getConversationModelSelection(sessionId: string | null, conversationId: string) {
+  // The permanent daemon conversation ("My Assistant") is the only conversation whose agent engine
+  // and model the owner switches directly. Only engines this deployment has registered and models
+  // with a configured backend are offered, so every listed choice can actually execute.
+  getConversationModelSelection(
+    sessionId: string | null,
+    conversationId: string
+  ): ConversationRuntimeSelection {
     const actor = this.requirePinVerifiedSession(sessionId, new Date());
     const view = this.messagingDomain.getConversation({ sessionId, conversationId });
-    if (
-      view.conversation.accountId !== actor.account.id ||
-      view.conversation.conversationType !== "DAEMON"
-    )
+    // Only the permanent conversation: every one-person agent chat is conversationType "DAEMON",
+    // and all of them would otherwise rewrite the one shared account agent record below.
+    if (view.conversation.accountId !== actor.account.id || !view.conversation.isPermanentDaemon)
       throw new Cp2Error(404, "conversation_not_found", "Conversation was not found.");
-    const models = this.listAiModels()
-      .filter((m) => m.available && m.runtimeAvailability?.backend === "configured")
-      .map((m) => ({ id: m.id, label: m.label }));
+    const models = this.selectableConversationModels().map((m) => ({ id: m.id, label: m.label }));
+    const agents = this.selectableDaemonAgents();
     try {
       const runtime = this.resolveRuntimeBinding(conversationId);
+      const agentId = runtimeAdapterIdForAgent(runtime.agent);
+      const selectedModelId = runtime.selected.model.id;
+      // A model that is no longer configured still resolves from stored state; say so, so the
+      // panel asks for a new one instead of failing on the next agent switch.
+      const modelSelectable = models.some((model) => model.id === selectedModelId);
       return {
-        selectedModelId: runtime.selected.model.id,
+        conversationId,
+        selectedAgentId: isDaemonAgentId(agentId) ? agentId : null,
+        agents,
+        selectedModelId,
         models,
-        available: true,
-        errorCode: null
+        available: modelSelectable,
+        errorCode: modelSelectable ? null : "model_unavailable"
       };
     } catch (error) {
+      // The engine is still the account agent's, so picking a new model keeps it.
+      const accountAgent = this.nativeRuntimeBindings.agentsMap.get(
+        `account-${actor.account.id}-agent`
+      );
+      const agentId = accountAgent ? runtimeAdapterIdForAgent(accountAgent) : null;
       return {
+        conversationId,
+        selectedAgentId: isDaemonAgentId(agentId) ? agentId : null,
+        agents,
         selectedModelId: null,
         models,
         available: false,
@@ -4721,17 +4752,33 @@ export class Cp2Store {
     }
   }
 
-  async selectConversationModel(sessionId: string | null, conversationId: string, modelId: string) {
-    this.getConversationModelSelection(sessionId, conversationId);
+  async selectConversationModel(
+    sessionId: string | null,
+    conversationId: string,
+    selection: { modelId?: string; agentId?: string }
+  ): Promise<ConversationRuntimeSelection> {
+    const current = this.getConversationModelSelection(sessionId, conversationId);
     const actor = this.requirePinVerifiedSession(sessionId, new Date());
     const conversation = this.messagingDomain.requireAccountConversation(
       conversationId,
       actor.account.id
     );
     if (conversation.activeShopId) this.requireMembership(conversation.activeShopId, actor.user.id);
-    const model = this.listAiModels().find(
-      (m) => m.id === modelId && m.available && m.runtimeAvailability?.backend === "configured"
-    );
+    if (selection.modelId === undefined && selection.agentId === undefined)
+      throw new Cp2Error(400, "runtime_selection_empty", "Choose an agent or a model.");
+    // An engine this deployment no longer runs is replaced by the first one it does, so picking a
+    // working model is always a way out; an engine named in the request must itself be offered.
+    const keptAgent = (agentId: string | null) =>
+      current.agents.some((agent) => agent.id === agentId)
+        ? agentId!
+        : (current.agents[0]?.id ?? "grogoni");
+    const agentId = selection.agentId ?? keptAgent(current.selectedAgentId);
+    if (!current.agents.some((agent) => agent.id === agentId))
+      throw new Cp2Error(400, "agent_unavailable", "Choose an available agent.");
+    const modelId = selection.modelId ?? current.selectedModelId;
+    if (modelId === null)
+      throw new Cp2Error(400, "model_unavailable", "Choose a configured model.");
+    const model = this.selectableConversationModels().find((m) => m.id === modelId);
     if (!model || !model.hostedExecutionTarget)
       throw new Cp2Error(400, "model_unavailable", "Choose a configured model.");
     const adapter = this.modelRuntimeAdapterResolver?.({
@@ -4756,20 +4803,76 @@ export class Cp2Store {
         health.errorCode ?? "model_unavailable",
         "The selected model is unavailable."
       );
+    // The health check can take seconds. Whatever this request did not set is re-read now, so a
+    // concurrent switch of the other half (another tab) is kept instead of overwritten.
+    const latest = this.getConversationModelSelection(sessionId, conversationId);
+    const finalAgentId =
+      selection.agentId ??
+      (latest.selectedAgentId === null ? agentId : keptAgent(latest.selectedAgentId));
+    const finalModel =
+      selection.modelId === undefined && latest.selectedModelId !== null
+        ? (this.selectableConversationModels().find((m) => m.id === latest.selectedModelId) ??
+          model)
+        : model;
+    if (!finalModel.hostedExecutionTarget)
+      throw new Cp2Error(400, "model_unavailable", "Choose a configured model.");
     const binding = this.nativeRuntimeBindings.selectConversationModel({
       accountId: actor.account.id,
       businessId: conversation.activeShopId,
       conversationId,
-      model,
-      executionTarget: model.hostedExecutionTarget,
+      model: finalModel,
+      executionTarget: finalModel.hostedExecutionTarget,
+      agentAdapterId: finalAgentId,
       checkedAt: new Date().toISOString(),
       updatedBy: actor.user.id
     });
     this.messagingDomain.conversationsMap.set(conversationId, {
-      ...conversation,
+      ...this.messagingDomain.requireAccountConversation(conversationId, actor.account.id),
       runtimeBindingId: binding.id
     });
+    // The trace for every switch: which engine and model My Assistant moved from and to.
+    this.recordAuditEvent({
+      type: "conversation.runtime_selected",
+      aggregateType: "conversation",
+      aggregateId: conversationId,
+      actorId: actor.user.id,
+      occurredAt: new Date().toISOString(),
+      payload: {
+        previousAgentId: latest.selectedAgentId,
+        agentId: finalAgentId,
+        previousModelId: latest.selectedModelId,
+        modelId: finalModel.id
+      }
+    });
     return this.getConversationModelSelection(sessionId, conversationId);
+  }
+
+  // My Assistant with an agent and model chosen in its details keeps them: activating a shop
+  // model or provisioning a default runtime for a turn must not silently replace the owner's
+  // choice. A My Assistant that never had a choice follows those defaults as before.
+  private keepsSelectedRuntime(conversation: ConversationSummary): boolean {
+    if (!conversation.isPermanentDaemon || !conversation.runtimeBindingId) return false;
+    const binding = this.nativeRuntimeBindings.bindingsMap.get(conversation.runtimeBindingId);
+    return (
+      binding?.status === "active" && binding.configuration.source === "conversation-selection"
+    );
+  }
+
+  private selectableConversationModels(): AiModelSummary[] {
+    return this.listAiModels().filter(
+      (m) => m.available && m.runtimeAvailability?.backend === "configured"
+    );
+  }
+
+  // Same precedence as ordinary chat turns: an injected resolver (tests) replaces the registry.
+  // In production nothing is injected and this is the registry the daemon executor also uses.
+  private selectableDaemonAgents(): ConversationRuntimeSelection["agents"] {
+    const resolve =
+      this.options.agentRuntimeAdapterResolver ??
+      ((adapterId: string) => this.defaultAgentRuntimeAdapters.resolve(adapterId));
+    return daemonAgentOptions
+      .filter((option) => resolve(option.id) !== undefined)
+      .map((option) => ({ ...option }));
   }
 
   /** In-process, state-only resolver. It never performs a network probe. */
@@ -6278,11 +6381,42 @@ export class Cp2Store {
     return this.commerce.createUnifiedCheckout(...args);
   }
 
+  // The shopping tool loop has its own harness, so My Assistant's agent engine does not apply
+  // to it, but its selected model does. Any other chat, or a runtime that does not resolve,
+  // keeps the platform default model.
+  private buyerShoppingModel(
+    accountId: string,
+    conversationId: string | undefined
+  ): { modelId: string; executionTarget: ModelExecutionTarget } {
+    const fallback = {
+      modelId: this.platformDefaultRuntime.modelId,
+      executionTarget: this.platformDefaultRuntime.executionTarget
+    };
+    const conversation =
+      conversationId === undefined
+        ? undefined
+        : this.messagingDomain.conversationsMap.get(conversationId);
+    if (conversation?.accountId !== accountId || !conversation.isPermanentDaemon) return fallback;
+    try {
+      const model = this.selectableConversationModels().find(
+        (m) => m.id === this.resolveRuntimeBinding(conversation.id).selected.model.id
+      );
+      return model?.hostedExecutionTarget
+        ? { modelId: model.id, executionTarget: model.hostedExecutionTarget }
+        : fallback;
+    } catch (error) {
+      if (error instanceof Cp2Error) return fallback;
+      throw error;
+    }
+  }
+
   async createBuyerShoppingTurn(input: {
     sessionId: string | null;
     shoppingSessionId: string;
     requestId: string;
     message: string;
+    /** The chat the request was typed in; My Assistant's selected model then answers it. */
+    conversationId?: string;
     signal?: AbortSignal;
   }): Promise<BuyerShoppingTurnResult> {
     const actor = this.requirePinVerifiedSession(input.sessionId, new Date());
@@ -6290,11 +6424,14 @@ export class Cp2Store {
     if (shopping && shopping.accountId !== actor.account.id) {
       throw new Cp2Error(404, "buyer_shopping_session_not_found", "Shopping chat was not found.");
     }
-    const modelId = this.platformDefaultRuntime.modelId;
+    const { modelId, executionTarget } = this.buyerShoppingModel(
+      actor.account.id,
+      input.conversationId
+    );
     const agentId = `buyer-assistant:${actor.account.id}`;
     const adapter = this.modelRuntimeAdapterResolver?.({
       modelId,
-      executionTarget: this.platformDefaultRuntime.executionTarget,
+      executionTarget,
       agentId,
       shopId: ""
     });

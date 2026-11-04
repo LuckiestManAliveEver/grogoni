@@ -255,8 +255,8 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       await loadMessagingInbox(entry.conversationId);
       setStatusMessage(
         task.status === "failed"
-          ? "Daemon task failed. You can retry it here."
-          : "Daemon task updated."
+          ? "Background task failed. You can retry it here."
+          : "Background task updated."
       );
       return;
     }
