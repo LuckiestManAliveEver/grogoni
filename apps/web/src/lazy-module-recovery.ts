@@ -60,7 +60,8 @@ export const appRouteModuleKeys = {
   publicStorefront: "public-storefront",
   termsOfService: "terms-of-service",
   privacyPolicy: "privacy-policy",
-  accountDeletion: "account-deletion"
+  accountDeletion: "account-deletion",
+  deviceMessaging: "device-messaging-page"
 } as const;
 
 export interface BuildMeta {

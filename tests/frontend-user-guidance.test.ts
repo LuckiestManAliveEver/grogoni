@@ -305,9 +305,11 @@ describe("frontend user guidance", () => {
     expect(phoneFirst).toContain('"/auth/recovery/reset-password"');
     expect(phoneFirst).not.toContain("Continue with a passkey");
     expect(phoneFirst).toContain("Save new PIN");
-    expect(phoneFirst).toContain("await recoverDeviceAccount()");
-    const deviceRecovery = readFileSync("apps/web/src/device-recovery.ts", "utf8");
-    expect(deviceRecovery).toContain("/auth/device/recover");
+    // Recovery signs in with this device's passkey (or native device key) through the helper.
+    expect(phoneFirst).toContain("await recoverWithPasskey(");
+    const passkeyRecovery = readFileSync("apps/web/src/passkey-recovery.ts", "utf8");
+    expect(passkeyRecovery).toContain('"/auth/device/recover"');
+    expect(passkeyRecovery).toContain('"/auth/passkeys/login/verify"');
     expect(phoneFirst).not.toContain("Phone account recovery code");
     expect(phoneFirst).not.toContain("Replacement recovery code");
     expect(phoneFirst).not.toContain("Send SMS code");

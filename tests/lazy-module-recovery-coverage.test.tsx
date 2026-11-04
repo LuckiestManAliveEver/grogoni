@@ -42,7 +42,10 @@ const nonUiDynamicImports: Record<string, string[]> = {
   "inference/agent-turn-preview.ts": ["./agent-turn-companion"],
   "inference/agent-turn-companion.ts": ["../device-model-engine"],
   // A failed import fails that task's device run; the daemon lane then has the server run it.
-  "hooks/useDaemonLane.ts": ["../device-model-engine"]
+  "hooks/useDaemonLane.ts": ["../device-model-engine"],
+  // The native-channel disconnect before an account change is best effort; a failed import is
+  // ignored so it never blocks signing in or out.
+  "lib/api.ts": ["../device-messaging"]
 };
 
 function sourceFiles(directory: string): string[] {

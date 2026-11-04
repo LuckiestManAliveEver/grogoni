@@ -11022,7 +11022,7 @@ export class Cp2Store {
       }
       this.verifyAccountPinForSession(session, input.currentPin, now);
     } else {
-      this.requireRecentlyAuthenticatedSession(input.sessionId, now);
+      this.requireRecoveryEnrollmentSession(input.sessionId, now);
     }
 
     this.verifyMfaForCredentialChange(session.account.id, input.mfaCode, now);
@@ -11895,10 +11895,14 @@ export class Cp2Store {
 
   private requireRecoveryEnrollmentSession(sessionId: string | null, now: Date): AuthSessionView {
     const session = this.requireRecentlyAuthenticatedSession(sessionId, now);
-    if (
-      session.account.primaryAuthChannel !== "device" &&
-      this.sessions.get(session.session.id)?.pinVerifiedAt == null
-    ) {
+    const accountId = session.account.id;
+    const hasCredential =
+      this.accountPinHashes.has(accountId) ||
+      this.passwordCredentials.has(accountId) ||
+      [...this.passkeyDomain.passkeysMap.values()].some(
+        (credential) => credential.accountId === accountId
+      );
+    if (hasCredential && this.sessions.get(session.session.id)?.pinVerifiedAt == null) {
       throw new Cp2Error(
         401,
         "recent_authentication_required",
