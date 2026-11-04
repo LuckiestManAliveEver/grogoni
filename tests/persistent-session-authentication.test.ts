@@ -280,15 +280,18 @@ describe("persistent session authentication", () => {
     const login = readFileSync("apps/web/src/PhoneFirstAuthentication.tsx", "utf8");
     expect(signup).toContain('"/auth/signup/start"');
     expect(signup).toContain('"/auth/signup/complete"');
-    expect(signup).toContain('"/auth/passkeys/register/options"');
-    expect(signup).toContain('"/auth/passkeys/register/verify"');
+    // Signup enrolls the device passkey after the account exists, through the shared helper.
+    expect(signup).toContain("await enrollRecoveryPasskey()");
+    const passkeyRecovery = readFileSync("apps/web/src/passkey-recovery.ts", "utf8");
+    expect(passkeyRecovery).toContain('"/auth/passkeys/register/options"');
+    expect(passkeyRecovery).toContain('"/auth/passkeys/register/verify"');
     expect(login).toContain('"/auth/login/methods"');
     expect(login).toContain('"/auth/pin/login"');
     expect(signup).not.toContain('"/auth/pin/continue"');
     expect(signup).not.toContain('"/auth/identify"');
     expect(signup).not.toContain('"/auth/signup/verify-phone"');
     expect(signup).not.toContain('"verify-phone"');
-    expect(signup).toContain("Create a passkey");
+    expect(signup).toContain("Secure this device");
     expect(signup).toContain("Do this later");
   });
 

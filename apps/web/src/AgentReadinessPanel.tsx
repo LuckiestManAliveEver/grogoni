@@ -60,7 +60,7 @@ export function AgentReadinessPanel({
           {issue.message}
         </p>
       ))}
-      <div className="runtime-version-list" aria-label="Agent runtime version history">
+      <div className="runtime-version-list" role="group" aria-label="Agent runtime version history">
         {runtimeVersions.slice(0, 5).map((version) => (
           <article key={version.id}>
             <div>

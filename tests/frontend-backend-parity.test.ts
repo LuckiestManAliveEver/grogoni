@@ -23,8 +23,11 @@ describe("frontend coverage for backend-owned lifecycles", () => {
     expect(phoneSignup).toContain("password.length < 10");
     expect(phoneSignup).toContain("termsAccepted");
     expect(phoneSignup).toContain("privacyAccepted");
-    expect(phoneSignup).toContain('"/auth/passkeys/register/options"');
-    expect(phoneSignup).toContain('"/auth/passkeys/register/verify"');
+    // Signup enrolls the device passkey after the account exists, through the shared helper.
+    expect(phoneSignup).toContain("await enrollRecoveryPasskey()");
+    const passkeyRecovery = readFileSync("apps/web/src/passkey-recovery.ts", "utf8");
+    expect(passkeyRecovery).toContain('"/auth/passkeys/register/options"');
+    expect(passkeyRecovery).toContain('"/auth/passkeys/register/verify"');
     expect(phoneSignup).toContain("createdSession !== null");
     expect(phoneSignup).not.toContain("addPassword");
   });

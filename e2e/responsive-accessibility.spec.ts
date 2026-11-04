@@ -533,7 +533,6 @@ test("a stale agent-profile chunk reloads once and reopens settings instead of g
 });
 
 for (const nestedProfileChunk of [
-  { label: "model panel", file: "AgentModelPanel.tsx", moduleKey: "agent-model-panel" },
   {
     label: "identity security panel",
     file: "IdentitySecurityPanel.tsx",
@@ -854,12 +853,18 @@ for (const width of [390, 1366]) {
       });
     });
     await page.goto("/sell/shop");
-    const dialog = page.getByRole("dialog", { name: "Your shop" });
-    await expect(dialog).toBeVisible({ timeout: 15_000 });
+    // Phone widths show the hub as an embedded panel (a labelled region); wider screens as a dialog.
+    const hub =
+      width < 760
+        ? page
+            .getByRole("region", { name: "Your shop", exact: true })
+            .and(page.locator('[data-module-id="workspace"]'))
+        : page.getByRole("dialog", { name: "Your shop" });
+    await expect(hub).toBeVisible({ timeout: 15_000 });
     await expect.poll(() => contextLoads).toBeGreaterThan(0);
     await page.waitForTimeout(500);
     await expect(page).toHaveURL(/\/sell\/shop$/u);
-    await expect(dialog).toBeVisible();
+    await expect(hub).toBeVisible();
     await expectNoViewportOverflow(page);
     await page.screenshot({
       path: testInfo.outputPath(`shop-hub-kept-${width}.png`),

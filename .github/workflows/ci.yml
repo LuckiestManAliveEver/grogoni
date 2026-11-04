@@ -92,5 +92,27 @@ jobs:
         with:
           gradle-version: "8.10.2"
 
+      # The app hosts the shared web application (verifySharedWebBundle fails the build without it).
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.2
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+          cache: pnpm
+
+      - name: Install
+        working-directory: .
+        run: pnpm install --frozen-lockfile
+
+      - name: Bundle the shared web application into the app
+        working-directory: .
+        run: |
+          pnpm -r --filter "./packages/**" --if-present build
+          pnpm android:web:bundle
+
       - name: Unit tests, debug APK and Android API compatibility
         run: gradle --console=plain :app:testDebugUnitTest :app:assembleDebug :app:lintDebug

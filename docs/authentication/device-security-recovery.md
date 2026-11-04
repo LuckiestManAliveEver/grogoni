@@ -38,8 +38,9 @@ IP-address RP IDs do not.
 The old IndexedDB recovery keys remain for existing bootstrap/session-restore behavior. The
 interactive PIN/password recovery screen never uses those unverified JavaScript signatures.
 Legacy assertions cannot issue reset grants, and pre-upgrade grants without verified-credential
-metadata are rejected. Legacy restored phone sessions cannot enroll new recovery credentials
-without first authenticating with a PIN, password, passkey, or verified fallback.
+metadata are rejected. Accounts with an existing PIN, password, or passkey must verify a credential before enrolling
+another credential. Accounts with none may set their first credential within 15 minutes of
+sign-in. A legacy device-key session restore does not count as a recent sign-in.
 Owners with only a legacy key must sign in through an existing credential/fallback, then explicitly
 register a passkey. A new passkey is never created by the unauthenticated recovery screen.
 
