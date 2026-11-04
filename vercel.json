@@ -4,6 +4,13 @@
   "buildCommand": "pnpm -r --filter @grogoni/web... --if-present build",
   "outputDirectory": "apps/web/dist",
   "installCommand": "pnpm install --frozen-lockfile",
+  "redirects": [
+    {
+      "source": "/android/grogoni-0.1.0-2.apk",
+      "destination": "https://github.com/LuckiestManAliveEver/grogoni/releases/download/android-0.1.0-2/grogoni-0.1.0-2.apk",
+      "permanent": false
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/:path*",
