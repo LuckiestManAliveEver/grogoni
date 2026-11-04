@@ -10,7 +10,7 @@ vi.mock("../apps/web/src/lib/api", async (original) => ({
 }));
 const { apiFetch } = await import("../apps/web/src/lib/api");
 const { deviceMessagingAdapter } = await import("../apps/web/src/device-messaging");
-const { enrollRecoveryPasskey, recoverWithPasskey } =
+const { enrollDeviceRecovery, recoverWithDeviceSecurity } =
   await import("../apps/web/src/passkey-recovery");
 const account = { id: "account-a", primaryAuthDestination: "+15551234567" };
 beforeEach(() => vi.resetAllMocks());
@@ -23,7 +23,7 @@ describe("native recovery through the shared authentication workflow", () => {
       account,
       deviceRecoveryCredentialId: "credential-a"
     });
-    await enrollRecoveryPasskey();
+    await enrollDeviceRecovery();
     expect(apiFetch).toHaveBeenCalledWith("/auth/continue", {
       method: "POST",
       body: { devicePublicKeyJwk: { kty: "EC" }, deviceSecurity: true },
@@ -42,7 +42,7 @@ describe("native recovery through the shared authentication workflow", () => {
       account: { ...account, id: "other" },
       deviceRecoveryCredentialId: "credential-a"
     });
-    await expect(enrollRecoveryPasskey()).rejects.toThrow("Account changed");
+    await expect(enrollDeviceRecovery()).rejects.toThrow("Account changed");
     expect(deviceMessagingAdapter.call).toHaveBeenCalledTimes(1);
   });
   it("requires the OS-verified signature before submitting recovery proof", async () => {
@@ -52,7 +52,9 @@ describe("native recovery through the shared authentication workflow", () => {
       .mockResolvedValueOnce({ accountId: account.id, credentialId: "credential-a" })
       .mockResolvedValueOnce(assertion);
     vi.mocked(apiFetch).mockResolvedValueOnce(challenge).mockResolvedValueOnce({ account });
-    await expect(recoverWithPasskey(account.primaryAuthDestination)).resolves.toEqual({ account });
+    await expect(recoverWithDeviceSecurity(account.primaryAuthDestination)).resolves.toEqual({
+      account
+    });
     expect(deviceMessagingAdapter.call).toHaveBeenLastCalledWith("signRecoveryChallenge", {
       identifier: account.primaryAuthDestination,
       challenge
@@ -72,7 +74,9 @@ describe("native recovery through the shared authentication workflow", () => {
       issuedAt: 123,
       nonce: "nonce"
     });
-    await expect(recoverWithPasskey(account.primaryAuthDestination)).rejects.toThrow("cancelled");
+    await expect(recoverWithDeviceSecurity(account.primaryAuthDestination)).rejects.toThrow(
+      "cancelled"
+    );
     expect(apiFetch).toHaveBeenCalledTimes(1);
   });
   it("rejects a successful response for a different account", async () => {
@@ -82,7 +86,7 @@ describe("native recovery through the shared authentication workflow", () => {
     vi.mocked(apiFetch)
       .mockResolvedValueOnce({})
       .mockResolvedValueOnce({ account: { ...account, id: "other" } });
-    await expect(recoverWithPasskey(account.primaryAuthDestination)).rejects.toThrow(
+    await expect(recoverWithDeviceSecurity(account.primaryAuthDestination)).rejects.toThrow(
       "previously secured"
     );
   });

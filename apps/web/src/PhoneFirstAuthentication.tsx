@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { deviceSecurityCapability, recoverWithPasskey } from "./passkey-recovery";
+import { deviceSecurityCapability, recoverWithDeviceSecurity } from "./passkey-recovery";
 import type { AuthSessionView } from "@grogoni/shared-types";
 import { normalizePhoneInput, phoneNormalizationErrorMessage } from "@grogoni/shared-types";
 import { getCountryCallingCode, type CountryCode } from "libphonenumber-js";
@@ -67,13 +67,12 @@ export function PhoneFirstAuthentication({
   const [recoveryEmail, setRecoveryEmail] = useState("");
   const [recoveryEmailVerified, setRecoveryEmailVerified] = useState(false);
   const [deviceAvailable, setDeviceAvailable] = useState<boolean | null>(null);
-  const [platformAvailable, setPlatformAvailable] = useState(false);
+
   useEffect(() => {
     let active = true;
     void deviceSecurityCapability().then((capability) => {
       if (active) {
         setDeviceAvailable(capability.supported);
-        setPlatformAvailable(capability.platform);
       }
     });
     return () => {
@@ -209,9 +208,9 @@ export function PhoneFirstAuthentication({
     if (recoveryMethod === "device") {
       if (!deviceAvailable)
         throw new Error(
-          "Device security is unavailable in this browser. Use your verified backup email."
+          "Use the Android app for device screen-lock recovery, or use your verified backup email."
         );
-      const recoveredSession = await recoverWithPasskey(currentIdentifierBody().identifier);
+      const recoveredSession = await recoverWithDeviceSecurity(currentIdentifierBody().identifier);
       if (recoveredSession.account.primaryAuthDestination !== currentIdentifierBody().identifier) {
         throw new Error("Use the device previously secured for this mobile phone account.");
       }
@@ -577,23 +576,15 @@ export function PhoneFirstAuthentication({
                           {deviceAvailable === null
                             ? "Checking device security…"
                             : deviceAvailable
-                              ? "Requires a passkey previously registered to your Grogoni account. Choose it when your device asks."
-                              : "Device security is unavailable in this browser. Use your verified backup email."}
+                              ? "Use the screen lock already set on this phone. This device must have been secured for your Grogoni account."
+                              : "Use the Android app for device screen-lock recovery, or use your verified backup email."}
                         </p>
-                        {deviceAvailable && !platformAvailable ? (
-                          <p>
-                            This browser has no built-in device authenticator. Use a registered
-                            passkey from a security key, password manager, or another trusted
-                            device.
-                          </p>
-                        ) : null}
                         <details>
                           <summary>Device recovery is not set up?</summary>
                           <p>
                             This device cannot recover your account yet. Use your verified backup
-                            email or another registered recovery method. You can also use a
-                            registered passkey from your password manager or another trusted device
-                            when supported.
+                            email. After signing in to the Android app, enable device recovery to
+                            use this phone’s existing screen lock next time.
                           </p>
                         </details>
                       </div>

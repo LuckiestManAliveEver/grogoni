@@ -41,7 +41,9 @@ describe("passkey is fallback-only, not a main-flow login method", () => {
       source.indexOf("async function startRecovery()"),
       source.indexOf("async function verifyAndResetPassword()")
     );
-    expect(recoveryBlock).toContain("await recoverWithPasskey(currentIdentifierBody().identifier)");
+    expect(recoveryBlock).toContain(
+      "await recoverWithDeviceSecurity(currentIdentifierBody().identifier)"
+    );
     expect(recoveryBlock).not.toContain("recoverDeviceAccount");
 
     expect(source).toContain("Trouble logging in?");

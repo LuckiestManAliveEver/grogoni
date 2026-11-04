@@ -1,11 +1,5 @@
-import {
-  browserSupportsWebAuthn,
-  platformAuthenticatorIsAvailable,
-  startAuthentication,
-  startRegistration
-} from "@simplewebauthn/browser";
-import type { AuthSessionView, PasskeySummary } from "@grogoni/shared-types";
-import { apiFetch, ApiRequestError } from "./lib/api";
+import type { AuthSessionView } from "@grogoni/shared-types";
+import { apiFetch } from "./lib/api";
 import { deviceMessagingAdapter, isNativeDeviceHost } from "./device-messaging";
 
 export async function deviceSecurityCapability(): Promise<{
@@ -17,26 +11,20 @@ export async function deviceSecurityCapability(): Promise<{
       const capability = await deviceMessagingAdapter.call<{ screenLock: boolean }>(
         "deviceSecurity"
       );
-      return { supported: true, platform: capability.screenLock };
+      return { supported: capability.screenLock, platform: capability.screenLock };
     } catch {
       return { supported: false, platform: false };
     }
   }
-  if (!browserSupportsWebAuthn() || !globalThis.isSecureContext)
-    return { supported: false, platform: false };
-  try {
-    return { supported: true, platform: await platformAuthenticatorIsAvailable() };
-  } catch {
-    return { supported: true, platform: false };
-  }
+  return { supported: false, platform: false };
 }
 
 export async function deviceSecurityAvailable(): Promise<boolean> {
   return (await deviceSecurityCapability()).supported;
 }
 
-/** Called only by an explicit enrollment action after authentication. WebAuthn holds the key. */
-export async function enrollRecoveryPasskey(): Promise<PasskeySummary | null> {
+/** Enroll an account-bound native key protected by the existing device screen lock. */
+export async function enrollDeviceRecovery(): Promise<null> {
   if (isNativeDeviceHost()) {
     const key = await deviceMessagingAdapter.call<{ publicKeyJwk: JsonWebKey; accountId: string }>(
       "prepareRecoveryKey"
@@ -56,20 +44,13 @@ export async function enrollRecoveryPasskey(): Promise<PasskeySummary | null> {
     });
     return null;
   }
-  const challenge = await apiFetch<{
-    ceremonyId: string;
-    options: Parameters<typeof startRegistration>[0]["optionsJSON"];
-  }>("/auth/passkeys/register/options", { method: "POST", body: {}, skipAuthRefresh: true });
-  const response = await startRegistration({ optionsJSON: challenge.options });
-  return apiFetch<PasskeySummary>("/auth/passkeys/register/verify", {
-    method: "POST",
-    body: { ceremonyId: challenge.ceremonyId, response, label: "Device security recovery" },
-    skipAuthRefresh: true
-  });
+  throw new Error(
+    "Enable device recovery in the Android app. Use verified backup email in a browser."
+  );
 }
 
-/** Discoverable credentials avoid disclosing whether a supplied phone account exists. */
-export async function recoverWithPasskey(identifier: string): Promise<AuthSessionView> {
+/** Require an OS-verified signature from the previously secured device. */
+export async function recoverWithDeviceSecurity(identifier: string): Promise<AuthSessionView> {
   if (isNativeDeviceHost()) {
     const key = await deviceMessagingAdapter.call<{ accountId: string; credentialId: string }>(
       "recoveryCredential",
@@ -96,35 +77,7 @@ export async function recoverWithPasskey(identifier: string): Promise<AuthSessio
       throw new Error("Use the device previously secured for this phone account.");
     return recovered;
   }
-  try {
-    const challenge = await apiFetch<{
-      ceremonyId: string;
-      options: Parameters<typeof startAuthentication>[0]["optionsJSON"];
-    }>("/auth/passkeys/login/options", {
-      method: "POST",
-      body: { purpose: "pin_recovery", identifier },
-      skipAuthRefresh: true
-    });
-    const response = await startAuthentication({ optionsJSON: challenge.options });
-    return await apiFetch<AuthSessionView>("/auth/passkeys/login/verify", {
-      method: "POST",
-      body: { ceremonyId: challenge.ceremonyId, response },
-      skipAuthRefresh: true
-    });
-  } catch (error) {
-    if (error instanceof ApiRequestError && error.code === "passkey_unknown") {
-      throw new Error(
-        "Device recovery is not set up. Use your verified backup email or another registered recovery method."
-      );
-    }
-    if (
-      error instanceof Error &&
-      (error.name === "NotAllowedError" || error.name === "WebAuthnError")
-    ) {
-      throw new Error(
-        "Device unlock was cancelled or no registered passkey was available. Try again or use your verified backup email."
-      );
-    }
-    throw error;
-  }
+  throw new Error(
+    "Device unlock recovery is available in the Android app. Use your verified backup email."
+  );
 }

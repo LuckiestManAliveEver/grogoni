@@ -11,7 +11,7 @@ import type {
   PasskeySummary
 } from "@grogoni/shared-types";
 
-import { enrollRecoveryPasskey } from "./passkey-recovery";
+import { enrollDeviceRecovery } from "./passkey-recovery";
 import { ConnectedSourcesPanel } from "./ConnectedSourcesPanel";
 import { normalizeOwnerPhoneInput } from "./phone-identity";
 import { formatDate } from "./formatters";
@@ -953,12 +953,10 @@ export function IdentitySecurityPanel({
       </button>
       <button
         type="button"
-        disabled={
-          (!browserSupportsWebAuthn() && !isNativeDeviceHost()) || pendingProfileAction !== null
-        }
+        disabled={!isNativeDeviceHost() || pendingProfileAction !== null}
         onClick={() =>
           void runProfileAction("device-recovery", async () => {
-            await enrollRecoveryPasskey();
+            await enrollDeviceRecovery();
             await loadPasskeys();
             setProfileMessage("Device security enabled for PIN and password recovery.");
           })

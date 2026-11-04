@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { deviceSecurityAvailable, enrollRecoveryPasskey } from "./passkey-recovery";
+import { deviceSecurityAvailable, enrollDeviceRecovery } from "./passkey-recovery";
 import type { AuthSessionView } from "@grogoni/shared-types";
 import { normalizePhoneInput, phoneNormalizationErrorMessage } from "@grogoni/shared-types";
 import { getCountryCallingCode, type CountryCode } from "libphonenumber-js";
@@ -136,7 +136,7 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
 
   async function createDevice() {
     if (createdSession === null) return;
-    await enrollRecoveryPasskey();
+    await enrollDeviceRecovery();
     onAuthenticated(createdSession);
   }
 
@@ -331,8 +331,8 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
               <div className="auth-security-summary">
                 <strong>Secure this device for recovery</strong>
                 <p>
-                  Register a passkey to recover your PIN or password with your fingerprint, face
-                  unlock, or device screen lock. Your device keeps the private credential secure.
+                  Use your existing fingerprint, face unlock, or device screen lock to recover your
+                  PIN or password. Enable recovery on this phone before you need it.
                 </p>
               </div>
               <button
