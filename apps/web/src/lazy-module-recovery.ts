@@ -257,7 +257,7 @@ export function currentDeploymentBuildId(
 }
 
 /**
- * Wraps a lazy `import()` (or a module-warming promise, e.g. `initialAgentModelPanelModule`) with
+ * Wraps a lazy `import()` (or a module-warming promise, e.g. `initialIdentitySecurityPanelModule`) with
  * deployment-safe recovery. On a confirmed stale-build chunk failure, while online, and only once
  * per build transition, this flushes recoverable state, marks the panel to reopen after reload,
  * and performs exactly one `reload()` - see docs/architecture/frontend-deployment-recovery.md.
