@@ -75,4 +75,13 @@ class NativeSmsContractTest {
         // A disconnected acknowledgement has not invoked the modem and is safe to resume.
         assertEquals(CommandReplayDecision.EXECUTE, commandReplayDecision(false, "claimed"))
     }
+    @Test
+    fun `inbound timestamps use UTC independently of device timezone`() {
+        val previous = java.util.TimeZone.getDefault()
+        try {
+            java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("Pacific/Auckland"))
+            assertEquals("1970-01-01T00:00:00.123Z", MultipartSmsAssembler.occurredAt(123))
+        } finally { java.util.TimeZone.setDefault(previous) }
+    }
+
 }

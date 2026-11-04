@@ -9,7 +9,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
  */
 const outboxUrl = new URL("../apps/web/src/messaging/outbox.ts", import.meta.url).href;
 const workerUrl = new URL("./support/outbox-tab-worker.mjs", import.meta.url);
-const count = 150;
+// Journal mutations exercise many more independently atomic Storage calls per message.
+const count = 45;
 
 function expectedFor(tab: string) {
   const ids: string[] = [];
@@ -52,10 +53,20 @@ async function raceTwoTabs(locks: boolean) {
   const stored = JSON.parse(
     new TextDecoder().decode(new Uint8Array(buffer, 16).slice(0, length))
   ) as Record<string, string>;
-  const entries = JSON.parse(stored["grogoni.messaging-outbox.v2:account-shared"] ?? "[]") as {
-    clientMessageId: string;
-    attempts?: number;
-  }[];
+  const { readMessagingOutbox } = await import("../apps/web/src/messaging/outbox");
+  const entries = readMessagingOutbox("account-shared", {
+    get length() {
+      return Object.keys(stored).length;
+    },
+    key: (index) => Object.keys(stored)[index] ?? null,
+    getItem: (key) => stored[key] ?? null,
+    setItem: (key, value) => {
+      stored[key] = value;
+    },
+    removeItem: (key) => {
+      delete stored[key];
+    }
+  });
   return { entries, views };
 }
 
@@ -132,9 +143,8 @@ const entry = (clientMessageId: string) => ({
 });
 
 describe("messaging outbox without navigator.locks", () => {
-  it("measures what the unlocked fallback loses when two tabs write at once", async () => {
-    // There is no cross-tab lock in this mode (documented in outbox.ts). This records how much
-    // it loses instead of asserting it loses nothing; the stored list stays well formed.
+  it("preserves every message and retry without Web Locks", async () => {
+    // Exercise real concurrent writes through independently atomic Storage operations.
     const expected = [...expectedFor("tab-a"), ...expectedFor("tab-b")];
     let lost = 0;
     for (let round = 0; round < 3; round += 1) {
@@ -143,14 +153,7 @@ describe("messaging outbox without navigator.locks", () => {
       for (const entry of entries) expect(typeof entry.clientMessageId).toBe("string");
       lost += expected.filter((id) => !ids.has(id)).length;
     }
-    console.info(
-      JSON.stringify({
-        event: "outbox_fallback_race",
-        rounds: 3,
-        expectedPerRound: expected.length,
-        lost
-      })
-    );
+    expect(lost).toBe(0);
   }, 60_000);
 });
 

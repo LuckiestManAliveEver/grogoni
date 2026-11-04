@@ -45,7 +45,9 @@ export function registerDeviceBootstrapRoutes(
   app.post(
     "/auth/continue",
     async (
-      request: FastifyRequest<{ Body: { devicePublicKeyJwk?: unknown } | undefined }>,
+      request: FastifyRequest<{
+        Body: { devicePublicKeyJwk?: unknown; deviceSecurity?: boolean } | undefined;
+      }>,
       reply
     ) => {
       try {
@@ -53,7 +55,8 @@ export function registerDeviceBootstrapRoutes(
         const result = store.continueWithDevice({
           sessionId: readSessionCookie(request.headers.cookie),
           idempotencyKey: readHeader(request, "idempotency-key"),
-          devicePublicKeyJwk: request.body?.devicePublicKeyJwk
+          devicePublicKeyJwk: request.body?.devicePublicKeyJwk,
+          deviceSecurity: request.body?.deviceSecurity === true
         });
         const { refreshToken, ...session } = result;
         if (refreshToken !== null) {
@@ -89,21 +92,73 @@ export function registerDeviceBootstrapRoutes(
     }
   );
 
+  app.get("/auth/device/credentials", async (request, reply) => {
+    try {
+      return {
+        credentials: store.listDeviceRecoveryCredentials({
+          sessionId: readSessionCookie(request.headers.cookie)
+        })
+      };
+    } catch (error) {
+      return sendCp2Error(reply, error);
+    }
+  });
+  app.delete(
+    "/auth/device/credentials/:credentialId",
+    async (request: FastifyRequest<{ Params: { credentialId: string } }>, reply) => {
+      try {
+        return store.revokeDeviceRecoveryCredential({
+          sessionId: readSessionCookie(request.headers.cookie),
+          credentialId: parseString(request.params.credentialId, "credentialId")
+        });
+      } catch (error) {
+        return sendCp2Error(reply, error);
+      }
+    }
+  );
+
+  app.post(
+    "/auth/device/recover/options",
+    async (
+      request: FastifyRequest<{ Body: { credentialId?: string; identifier?: string } }>,
+      reply
+    ) => {
+      try {
+        enforceAuthIpRate(authAttemptsByIp, request, "device_recovery_options", 10);
+        return store.beginDeviceRecovery({
+          credentialId: parseString(request.body.credentialId, "credentialId"),
+          identifier: parseString(request.body.identifier, "identifier")
+        });
+      } catch (error) {
+        return sendCp2Error(reply, error);
+      }
+    }
+  );
+
   app.post(
     "/auth/device/recover",
     async (
       request: FastifyRequest<{
-        Body: { credentialId?: string; nonce?: string; issuedAt?: number; signature?: string };
+        Body: {
+          credentialId?: string;
+          nonce?: string;
+          issuedAt?: number;
+          signature?: string;
+          challengeId?: string;
+        };
       }>,
       reply
     ) => {
       try {
         enforceAuthIpRate(authAttemptsByIp, request, "device_recover", 10);
-        const result = store.recoverWithDeviceCredential({
+        const result = await store.recoverWithDeviceCredential({
           credentialId: parseString(request.body.credentialId, "credentialId"),
           nonce: parseString(request.body.nonce, "nonce"),
           issuedAt: request.body.issuedAt ?? Number.NaN,
-          signature: parseString(request.body.signature, "signature")
+          signature: parseString(request.body.signature, "signature"),
+          ...(request.body.challengeId === undefined
+            ? {}
+            : { challengeId: parseString(request.body.challengeId, "challengeId") })
         });
         const { refreshToken, ...session } = result;
         store.prepareDeviceSession(session.session.id, readDeviceSessionMetadata(request));

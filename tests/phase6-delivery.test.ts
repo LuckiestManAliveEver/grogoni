@@ -54,6 +54,50 @@ function fixture() {
   return { store, actor, task, conversationId, sent };
 }
 describe("Phase 6 durable daemon message projection", () => {
+  it("words a failed task neutrally in an agent session that is not My Assistant", () => {
+    const { store, actor, task } = fixture();
+    const session = store.createConversation({
+      sessionId: actor.session.id,
+      kind: "personal",
+      activeShopId: null,
+      title: "Restock maize"
+    }).conversation;
+    store.createConversationMessage({
+      sessionId: actor.session.id,
+      conversationId: session.id,
+      clientMessageId: "session-origin",
+      content: { type: "text", text: "Check stock." }
+    });
+    store.deliverDaemonTask(
+      {
+        ...task,
+        status: "failed",
+        result: null,
+        errorCode: "PROVIDER_UNAVAILABLE",
+        executions: 0,
+        payload: {
+          ...task.payload,
+          conversation: {
+            id: session.id,
+            clientMessageId: "session-origin",
+            scope: "test",
+            kind: "reply"
+          }
+        } as PublicDaemonTask["payload"]
+      },
+      actor.user.id
+    );
+    const messages = store.getConversation({
+      sessionId: actor.session.id,
+      conversationId: session.id
+    }).messages;
+    expect(messages.find((message) => message.author === "agent")!.content).toEqual({
+      type: "text",
+      text: "This background task could not finish. You can retry it here."
+    });
+    for (const message of messages)
+      if (message.content.type === "text") expect(message.content.text).not.toMatch(/daemon/iu);
+  });
   it("delivers into the existing history exactly once without an authenticated browser", () => {
     const { store, actor, task, conversationId } = fixture();
     store.deliverDaemonTask(task, actor.user.id);
@@ -90,6 +134,11 @@ describe("Phase 6 durable daemon message projection", () => {
       status: "failed",
       retryable: true,
       errorCode: "PROVIDER_UNAVAILABLE"
+    });
+    // The permanent conversation is "My Assistant" in every reply, never "the daemon".
+    expect(view.messages[1]!.content).toEqual({
+      type: "text",
+      text: "My Assistant could not finish this task. You can retry it here."
     });
     expect(view.messages[0]!.execution?.status).toBe("completed");
     store.deliverDaemonTask(

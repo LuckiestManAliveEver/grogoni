@@ -93,7 +93,7 @@ for (const mode of ["buyer", "seller"] as const) {
     const contacts = page.getByRole("region", { name: "Contacts", exact: true });
     await expect(contacts).toBeVisible();
     await expect(contacts.locator(".conversation-list > article").first()).toContainText(
-      "Pinned agent"
+      "My Assistant"
     );
     await expect(textbox).toBeVisible();
     await expect(textbox).toBeEnabled();

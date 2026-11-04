@@ -45,6 +45,7 @@ import {
   parseString,
   readDeviceSessionMetadata,
   sendCp2Error,
+  notifyAccountRecovery,
   setAuthSessionCookies,
   type BusinessParams,
   type StorefrontParams
@@ -717,6 +718,7 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
           password
         });
         setAuthSessionCookies(reply, request, store, result.session.id);
+        await notifyAccountRecovery(store, emailProvider, request, result.session.id, "password");
         return result;
       } catch (error) {
         return sendCp2Error(reply, error);
@@ -846,6 +848,7 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
           ...(request.body.mfaCode === undefined ? {} : { mfaCode: request.body.mfaCode })
         });
         setAuthSessionCookies(reply, request, store, result.session.id);
+        await notifyAccountRecovery(store, emailProvider, request, result.session.id, "password");
         return result;
       } catch (error) {
         return sendCp2Error(reply, error);
@@ -931,7 +934,7 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
 
   registerOtpRoutes(app, store, emailProvider);
 
-  registerPasskeysRoutes(app, store, authRuntime);
+  registerPasskeysRoutes(app, store, authRuntime, authAttemptsByIp, emailProvider);
 
   registerOAuthRoutes(app, store, oauthAllowedRedirectOrigins);
 
@@ -946,12 +949,17 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
       if (request.body.pinConfirmation !== undefined && pin !== request.body.pinConfirmation) {
         throw new Cp2Error(400, "pin_confirmation_invalid", "PINs do not match.");
       }
+      const recovering = store.hasCredentialRecoveryGrant(
+        readSessionCookie(request.headers.cookie)
+      );
       const result = store.setAccountPin({
         sessionId: readSessionCookie(request.headers.cookie),
         pin,
         ...(request.body.mfaCode === undefined ? {} : { mfaCode: request.body.mfaCode })
       });
       setAuthSessionCookies(reply, request, store, result.session.id);
+      if (recovering)
+        await notifyAccountRecovery(store, emailProvider, request, result.session.id, "PIN");
       return result;
     } catch (error) {
       return sendCp2Error(reply, error);

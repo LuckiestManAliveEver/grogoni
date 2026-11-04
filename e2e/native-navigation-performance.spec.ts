@@ -65,7 +65,7 @@ test("primary navigation remains local while data refreshes slowly", async ({ pa
   console.log("[GROGONI_NAV_BENCH]", JSON.stringify(timings));
 });
 
-test("workspace and model settings do not replace the authenticated shell", async ({ page }) => {
+test("workspace and agent settings do not replace the authenticated shell", async ({ page }) => {
   await page.goto("/sell");
   const shellId = await page.locator(".app-frame").getAttribute("data-shell-instance");
 
@@ -75,75 +75,11 @@ test("workspace and model settings do not replace the authenticated shell", asyn
   await page.getByRole("button", { name: "Account and agent settings" }).click();
   await expect(page.getByRole("dialog", { name: "Account and agent settings" })).toBeVisible();
   await expect(page).toHaveURL(/\/sell$/);
-  await page.locator(".settings-group-title", { hasText: "Model & inference" }).click();
-  await page.getByRole("button", { name: "Open model library" }).click();
-  await expect(page.getByRole("heading", { name: "Model library", exact: true })).toBeVisible({
-    timeout: 30_000
-  });
-  await expect(page.getByLabel("Grogoni local models", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Open model library" })).toHaveCount(0);
+  await expect(page.getByLabel("Agent and model", { exact: true })).toHaveCount(0);
 
   expect(await page.locator(".app-frame").getAttribute("data-shell-instance")).toBe(shellId);
 });
-
-test("backend model activation survives reload and can be removed", async ({ page }) => {
-  test.setTimeout(60_000);
-  await page.route("http://127.0.0.1:4000/v1/ai-models", (route) =>
-    route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({ models: [configuredBackendModel] })
-    })
-  );
-  await page.goto("/sell");
-  await page.getByRole("button", { name: "Account and agent settings" }).click();
-  await expect(page.getByRole("dialog", { name: "Account and agent settings" })).toBeVisible();
-  await expect(page).toHaveURL(/\/sell$/u);
-  await page.locator(".settings-group-title", { hasText: "Model & inference" }).click();
-  await page.getByRole("button", { name: "Open model library" }).click();
-  const backendModels = page.getByLabel("Grogoni local models", { exact: true });
-  await expect(backendModels).toBeVisible();
-
-  await backendModels.getByRole("button", { name: "Use with agent", exact: true }).click();
-  // Any model other than the platform default asks for an explicit merchant confirmation first.
-  await backendModels.getByRole("button", { name: "Confirm switch", exact: true }).click();
-  await expect(
-    backendModels.getByRole("button", { name: "Remove from agent", exact: true })
-  ).toBeVisible();
-
-  await page.reload();
-  await page.getByRole("button", { name: "Account and agent settings" }).click();
-  await expect(page.getByRole("dialog", { name: "Account and agent settings" })).toBeVisible();
-  await page.locator(".settings-group-title", { hasText: "Model & inference" }).click();
-  await page.getByRole("button", { name: "Open model library" }).click();
-  await expect(
-    backendModels.getByRole("button", { name: "Remove from agent", exact: true })
-  ).toBeVisible();
-
-  await backendModels.getByRole("button", { name: "Remove from agent", exact: true }).click();
-  await expect(
-    backendModels.getByRole("button", { name: "Use with agent", exact: true })
-  ).toBeVisible();
-});
-
-const configuredBackendModel = {
-  id: "qwen2.5-0.5b-android",
-  label: "Qwen2.5 0.5B (Android recommended)",
-  provider: "local",
-  description: "Configured backend model fixture.",
-  capabilities: ["chat", "tool-routing", "multilingual"],
-  available: true,
-  source: "huggingface",
-  format: "GGUF",
-  license: "Apache-2.0",
-  licenseUrl: null,
-  modelCardUrl: null,
-  downloadUrl: null,
-  fileName: null,
-  fileSizeBytes: null,
-  minimumMemoryGb: null,
-  recommended: true,
-  contextWindow: 32_768,
-  runtimeAvailability: { backend: "configured" }
-};
 
 async function clickToSecondPaint(page: Page, label: string): Promise<number> {
   return page.getByRole("button", { name: label, exact: true }).evaluate(async (button) => {

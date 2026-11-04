@@ -516,6 +516,10 @@ export function registerCommerceRoutes(
       const shoppingSessionId = parseString(body.shoppingSessionId, "shoppingSessionId");
       const requestId = parseString(body.requestId, "requestId");
       const message = parseString(body.message, "message");
+      const conversationId =
+        body.conversationId === undefined || body.conversationId === null
+          ? undefined
+          : parseString(body.conversationId, "conversationId");
       const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
       if (!uuid.test(shoppingSessionId) || !uuid.test(requestId) || message.length > 16000) {
         throw new Cp2Error(
@@ -529,6 +533,7 @@ export function registerCommerceRoutes(
         shoppingSessionId,
         requestId,
         message,
+        ...(conversationId === undefined ? {} : { conversationId }),
         signal: AbortSignal.timeout(55000)
       });
     } catch (error) {

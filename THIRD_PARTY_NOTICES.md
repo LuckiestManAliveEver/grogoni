@@ -33,3 +33,10 @@ storage. The weights are not distributed in this repository or uploaded to Grogo
 
 The in-app catalog links to each upstream model card and license. Custom models are user-supplied;
 their licenses and commercial-use terms remain the user's responsibility.
+
+## Android MMS PDU codec
+
+The Android application vendors the AOSP ApiDemos MMS PDU codec under
+`apps/android/app/src/main/java/com/example/android/mmslib`. Copyright (C) 2007–2008
+Esmertec AG and The Android Open Source Project. Licensed under Apache License 2.0;
+original source headers, the license and pinned provenance are included in that directory.

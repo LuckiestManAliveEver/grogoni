@@ -1,3 +1,4 @@
+import { isNativeDeviceHost } from "./device-messaging";
 import { Suspense, useEffect, useState } from "react";
 import { browserSupportsWebAuthn, startRegistration } from "@simplewebauthn/browser";
 
@@ -10,7 +11,7 @@ import type {
   PasskeySummary
 } from "@grogoni/shared-types";
 
-import { prepareDeviceRecoveryCredential, commitDeviceRecoveryCredential } from "./device-recovery";
+import { enrollRecoveryPasskey } from "./passkey-recovery";
 import { ConnectedSourcesPanel } from "./ConnectedSourcesPanel";
 import { normalizeOwnerPhoneInput } from "./phone-identity";
 import { formatDate } from "./formatters";
@@ -85,6 +86,17 @@ export function IdentitySecurityPanel({
     ConnectedSocialAccountSummary[]
   >([]);
   const [passkeys, setPasskeys] = useState<PasskeySummary[]>([]);
+  const [recoveryDevices, setRecoveryDevices] = useState<Array<{
+    id: string;
+    createdAt: string;
+    lastUsedAt: string | null;
+  }> | null>(null);
+  async function loadRecoveryDevices() {
+    const response = await getJson<{
+      credentials: Array<{ id: string; createdAt: string; lastUsedAt: string | null }>;
+    }>("/auth/device/credentials");
+    setRecoveryDevices(response.credentials);
+  }
   const [passkeyLabels, setPasskeyLabels] = useState<Record<string, string>>({});
   const [mfaFactors, setMfaFactors] = useState<
     Array<{ id: string; type: "totp"; createdAt: string }>
@@ -734,8 +746,8 @@ export function IdentitySecurityPanel({
         <p className="eyebrow">Account</p>
         <h3>Passkeys and login accounts</h3>
         <p>
-          Recover your PIN or password with the recovery key stored on this device or your verified
-          backup email. Passkeys are available only for account access.
+          Recover your PIN or password with a registered passkey, trusted Android device, or
+          verified backup email. Enroll device security before you need recovery.
         </p>
         <p className="shell-note">Identity strength: {identityLevel.replace("_", " ")}</p>
       </div>
@@ -935,28 +947,63 @@ export function IdentitySecurityPanel({
         disabled={!browserSupportsWebAuthn() || pendingProfileAction !== null}
         onClick={() => void runProfileAction("passkey-register", registerPasskey)}
       >
-        {browserSupportsWebAuthn() ? "Add a passkey for account access" : "Passkeys unavailable"}
+        {browserSupportsWebAuthn()
+          ? "Add a passkey for account access and recovery"
+          : "Passkeys unavailable"}
       </button>
       <button
         type="button"
-        disabled={pendingProfileAction !== null}
+        disabled={
+          (!browserSupportsWebAuthn() && !isNativeDeviceHost()) || pendingProfileAction !== null
+        }
         onClick={() =>
           void runProfileAction("device-recovery", async () => {
-            const { publicKeyJwk } = await prepareDeviceRecoveryCredential({
-              replaceExisting: true
-            });
-            const secured = await postJson<SessionResponse>("/auth/continue", {
-              devicePublicKeyJwk: publicKeyJwk
-            });
-            if (secured.deviceRecoveryCredentialId) {
-              await commitDeviceRecoveryCredential(secured.deviceRecoveryCredentialId);
-            }
-            setProfileMessage("Device recovery enabled. Protect this device with its screen lock.");
+            await enrollRecoveryPasskey();
+            await loadPasskeys();
+            setProfileMessage("Device security enabled for PIN and password recovery.");
           })
         }
       >
         Enable device recovery
       </button>
+      <button
+        type="button"
+        disabled={pendingProfileAction !== null}
+        onClick={() => void runProfileAction("recovery-devices", loadRecoveryDevices)}
+      >
+        Manage trusted recovery devices
+      </button>
+      {recoveryDevices !== null ? (
+        <div role="group" aria-label="Trusted recovery devices">
+          {recoveryDevices.length === 0 ? (
+            <p>No device recovery keys are registered. Registered passkeys are listed above.</p>
+          ) : null}
+          {recoveryDevices.map((device, index) => (
+            <article className="connected-social-card" key={device.id}>
+              <strong>Recovery device {index + 1}</strong>
+              <p>
+                Added: {formatDate(device.createdAt)}. Last used:{" "}
+                {device.lastUsedAt === null ? "Never" : formatDate(device.lastUsedAt)}.
+              </p>
+              <button
+                type="button"
+                disabled={pendingProfileAction !== null}
+                onClick={() =>
+                  void runProfileAction("recovery-device-revoke", async () => {
+                    await deleteJson(`/auth/device/credentials/${encodeURIComponent(device.id)}`);
+                    await loadRecoveryDevices();
+                    setProfileMessage(
+                      "Device recovery revoked. That device can no longer recover your account."
+                    );
+                  })
+                }
+              >
+                Revoke recovery device
+              </button>
+            </article>
+          ))}
+        </div>
+      ) : null}
       <div className="record-form" role="group" aria-label="Multi-factor authentication">
         <div className="section-heading">
           <p className="eyebrow">Multi-factor authentication</p>

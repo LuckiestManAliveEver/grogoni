@@ -59,6 +59,14 @@ export interface PasskeyDomainDeps {
     reason: string,
     now: Date
   ) => void;
+  issueRecoveryGrant: (
+    sessionId: string,
+    accountId: string,
+    credentialId: string,
+    now: Date
+  ) => void;
+  revokeRecoveryGrants: (credentialId: string, now: Date) => void;
+  notifyCredentialRecovery: (accountId: string, credential: "PIN" | "password", now: Date) => void;
   recoveryGrantExpiry: (sessionId: string) => string | undefined;
   consumeRecoveryGrant: (sessionId: string) => void;
   passkeyAuthenticationVerifier?: typeof verifyAuthenticationResponse;
@@ -158,10 +166,11 @@ export class PasskeyDomain {
       actorId: session.user.id,
       occurredAt: now.toISOString(),
       payload: {
-        method: "passkey"
+        method: "device_security"
       }
     });
 
+    this.deps.notifyCredentialRecovery(session.account.id, "PIN", now);
     return this.deps.requireAnySession(session.session.id, now);
   }
 
@@ -183,6 +192,7 @@ export class PasskeyDomain {
   async beginPasskeyRegistration(input: {
     sessionId: string | null;
     rpId: string;
+    origin?: string;
     now?: Date;
   }): Promise<{
     ceremonyId: string;
@@ -216,6 +226,8 @@ export class PasskeyDomain {
     const ceremony: PasskeyCeremonyRecord = {
       id: randomUUID(),
       kind: "registration",
+      rpId: input.rpId,
+      ...(input.origin ? { origin: input.origin } : {}),
       accountId: session.account.id,
       challenge: options.challenge,
       webauthnUserId: options.user.id,
@@ -243,7 +255,12 @@ export class PasskeyDomain {
     const session = this.deps.requireRecentlyAuthenticatedSession(input.sessionId, now);
     const ceremony = this.takePasskeyCeremony(input.ceremonyId, "registration", now);
 
-    if (ceremony.accountId !== session.account.id || ceremony.webauthnUserId === null) {
+    if (
+      ceremony.accountId !== session.account.id ||
+      ceremony.webauthnUserId === null ||
+      (ceremony.rpId !== undefined && ceremony.rpId !== input.rpId) ||
+      (ceremony.origin !== undefined && ceremony.origin !== input.origin)
+    ) {
       throw new Cp2Error(403, "passkey_ceremony_invalid", "Passkey registration is invalid.");
     }
 
@@ -306,13 +323,22 @@ export class PasskeyDomain {
   async beginPasskeyAuthentication(input: {
     rpId: string;
     purpose?: "login" | "pin_recovery";
+    recoveryIdentifier?: string;
+    origin?: string;
     now?: Date;
   }): Promise<{
     ceremonyId: string;
     options: PublicKeyCredentialRequestOptionsJSON;
   }> {
-    if (input.purpose !== undefined && input.purpose !== "login") {
-      throw new Cp2Error(400, "passkey_purpose_invalid", "Use device security for recovery.");
+    if (
+      input.purpose === "pin_recovery" &&
+      !/^\+[1-9]\d{6,14}$/u.test(input.recoveryIdentifier ?? "")
+    ) {
+      throw new Cp2Error(
+        400,
+        "recovery_identifier_required",
+        "Enter your phone number before recovering your account."
+      );
     }
     const now = input.now ?? new Date();
     this.prunePasskeyCeremonies(now);
@@ -323,6 +349,11 @@ export class PasskeyDomain {
     const ceremony: PasskeyCeremonyRecord = {
       id: randomUUID(),
       kind: "authentication",
+      rpId: input.rpId,
+      ...(input.origin ? { origin: input.origin } : {}),
+      ...(input.purpose === "pin_recovery"
+        ? { recoveryIdentifier: input.recoveryIdentifier! }
+        : {}),
       purpose: input.purpose ?? "login",
       accountId: null,
       challenge: options.challenge,
@@ -349,6 +380,12 @@ export class PasskeyDomain {
     const ceremony = this.takePasskeyCeremony(input.ceremonyId, "authentication", now);
     const passkey = this.passkeys.get(input.response.id);
 
+    if (
+      (ceremony.rpId !== undefined && ceremony.rpId !== input.rpId) ||
+      (ceremony.origin !== undefined && ceremony.origin !== input.origin)
+    ) {
+      throw new Cp2Error(401, "passkey_authentication_invalid", "Passkey verification failed.");
+    }
     if (passkey === undefined) {
       throw new Cp2Error(401, "passkey_unknown", "Passkey sign-in failed.");
     }
@@ -381,22 +418,40 @@ export class PasskeyDomain {
       throw new Cp2Error(401, "passkey_authentication_invalid", "Passkey sign-in failed.");
     }
 
-    if (!verification.verified) {
+    if (
+      !verification.verified ||
+      !verification.authenticationInfo.userVerified ||
+      this.passkeys.get(passkey.id) !== passkey
+    ) {
       throw new Cp2Error(401, "passkey_authentication_invalid", "Passkey sign-in failed.");
+    }
+    const account = this.deps.requireAccount(passkey.accountId);
+    if (
+      ceremony.purpose === "pin_recovery" &&
+      (account.primaryAuthChannel !== "phone" ||
+        account.primaryAuthDestination !== ceremony.recoveryIdentifier)
+    ) {
+      throw new Cp2Error(
+        401,
+        "passkey_account_mismatch",
+        "Use a passkey registered for this phone account."
+      );
     }
 
     passkey.counter = verification.authenticationInfo.newCounter;
     passkey.backedUp = verification.authenticationInfo.credentialBackedUp;
     passkey.deviceType = verification.authenticationInfo.credentialDeviceType;
     passkey.lastUsedAt = now.toISOString();
-    const account = this.deps.requireAccount(passkey.accountId);
     this.deps.requireAccountAuthenticationAllowed(account);
     const user = this.deps.requireUser(passkey.userId);
     const createdSession = this.deps.createSession(account, user, now);
     this.deps.markSessionPinVerified(createdSession.id, now);
+    if (ceremony.purpose === "pin_recovery") {
+      this.deps.issueRecoveryGrant(createdSession.id, account.id, passkey.id, now);
+    }
 
     this.deps.recordAuditEvent({
-      type: "auth.passkey_login",
+      type: ceremony.purpose === "pin_recovery" ? "auth.device_recovered" : "auth.passkey_login",
       aggregateType: "account",
       aggregateId: account.id,
       actorId: user.id,
@@ -446,6 +501,7 @@ export class PasskeyDomain {
     }
 
     this.passkeys.delete(passkey.id);
+    this.deps.revokeRecoveryGrants(passkey.id, now);
     this.deps.recordAuditEvent({
       type: "auth.passkey_revoked",
       aggregateType: "account",

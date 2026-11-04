@@ -14,10 +14,17 @@ export interface EncryptedMessageEmailInput {
   to: string;
 }
 
+export interface RecoveryNotificationInput {
+  to: string;
+  sessionId: string;
+  credential: "PIN" | "password";
+}
+
 export interface EmailProvider {
   readonly name: string;
   readonly exposesDevOtp: boolean;
   sendOtp(input: EmailOtpInput): Promise<void>;
+  sendRecoveryNotification?(input: RecoveryNotificationInput): Promise<"sent" | "failed">;
   sendEncryptedMessageNotification(input: EncryptedMessageEmailInput): Promise<"sent" | "failed">;
 }
 
@@ -29,6 +36,11 @@ interface ResendEmailConfiguration {
 class LocalEmailProvider implements EmailProvider {
   readonly name = "local";
   readonly exposesDevOtp = true;
+
+  async sendRecoveryNotification(input: RecoveryNotificationInput): Promise<"sent" | "failed"> {
+    void input;
+    return "sent";
+  }
 
   async sendOtp(input: EmailOtpInput): Promise<void> {
     void input;
@@ -43,6 +55,11 @@ class LocalEmailProvider implements EmailProvider {
 }
 
 class UnconfiguredEmailProvider implements EmailProvider {
+  async sendRecoveryNotification(input: RecoveryNotificationInput): Promise<"sent" | "failed"> {
+    void input;
+    return "failed";
+  }
+
   readonly name = "email_unconfigured";
   readonly exposesDevOtp = false;
 
@@ -91,6 +108,20 @@ class ResendEmailProvider implements EmailProvider {
           "You have a new end-to-end encrypted Grogoni message. " +
           "For your privacy, the message text is not included in this email.\n\n" +
           `Open Grogoni to decrypt it: ${input.openUrl}`,
+        to: input.to
+      });
+      return "sent";
+    } catch {
+      return "failed";
+    }
+  }
+
+  async sendRecoveryNotification(input: RecoveryNotificationInput): Promise<"sent" | "failed"> {
+    try {
+      await this.send({
+        idempotencyKey: `recovery-${input.sessionId}`,
+        subject: `Your Grogoni account ${input.credential} was reset`,
+        text: `Your Grogoni ${input.credential} was reset using an enrolled recovery method. Other sessions were signed out. If this was not you, open https://grogoni.com and review your trusted devices and passkeys.`,
         to: input.to
       });
       return "sent";

@@ -5,7 +5,8 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 
-class NativeSmsStore(context: Context) : SQLiteOpenHelper(context, "grogoni-native-sms.db", null, 4) {
+class NativeSmsStore(context: Context) : SQLiteOpenHelper(context, "grogoni-native-sms.db", null, 6) {
+    private val session = GrogoniSessionStore(context)
     private val secretBox = AndroidSecretBox()
 
     override fun onConfigure(db: SQLiteDatabase) {
@@ -18,12 +19,14 @@ class NativeSmsStore(context: Context) : SQLiteOpenHelper(context, "grogoni-nati
             """
             create table inbound_events (
               event_id text primary key,
+              owner_account_id text,
               business_id text not null,
               external_message_id text not null,
               sender_e164 text not null,
               body text not null,
               occurred_at text not null,
               synced integer not null default 0
+              , user_shared integer not null default 0
             )
             """.trimIndent(),
         )
@@ -31,6 +34,7 @@ class NativeSmsStore(context: Context) : SQLiteOpenHelper(context, "grogoni-nati
             """
             create table executed_commands (
               command_id text primary key,
+              owner_account_id text,
               state text not null,
               result_code text,
               local_message_uri text,
@@ -42,6 +46,7 @@ class NativeSmsStore(context: Context) : SQLiteOpenHelper(context, "grogoni-nati
             """
             create table pending_results (
               command_id text primary key,
+              owner_account_id text,
               status text not null,
               result_code text not null,
               carrier_reference text,
@@ -67,10 +72,20 @@ class NativeSmsStore(context: Context) : SQLiteOpenHelper(context, "grogoni-nati
         if (oldVersion < 2) encryptLegacySmsFields(db)
         if (oldVersion < 3) db.execSQL("alter table executed_commands add column local_message_uri text")
         if (oldVersion < 4) db.execSQL("alter table pending_results add column revision text not null default 'legacy'")
+        if (oldVersion < 5) {
+            // Ownership of legacy queues cannot be proven. Keep them quarantined, never
+            // silently attach them to whichever account next signs in on this device.
+            for (table in listOf("inbound_events", "executed_commands", "pending_results")) {
+                db.execSQL("alter table $table add column owner_account_id text")
+            }
+        }
+        // Old automatically copied messages are quarantined, never uploaded under new consent.
+        if (oldVersion < 6) db.execSQL("alter table inbound_events add column user_shared integer not null default 0")
     }
 
     fun enqueueInbound(event: LocalInboundSms): Boolean {
         val values = ContentValues().apply {
+            put("owner_account_id", session.accountId)
             put("event_id", event.eventId)
             put("business_id", event.businessId)
             put("external_message_id", event.externalMessageId)
@@ -78,6 +93,7 @@ class NativeSmsStore(context: Context) : SQLiteOpenHelper(context, "grogoni-nati
             put("body", secretBox.encrypt(event.text))
             put("occurred_at", event.occurredAt)
             put("synced", 0)
+            put("user_shared", 1)
         }
         return writableDatabase.insertWithOnConflict(
             "inbound_events", null, values, SQLiteDatabase.CONFLICT_IGNORE,
@@ -85,6 +101,7 @@ class NativeSmsStore(context: Context) : SQLiteOpenHelper(context, "grogoni-nati
     }
 
     fun unsyncedInbound(limit: Int = 50): List<LocalInboundSms> {
+        val account = session.accountId
         val records = mutableListOf<LocalInboundSms>()
         readableDatabase.query(
             "inbound_events",
@@ -92,8 +109,8 @@ class NativeSmsStore(context: Context) : SQLiteOpenHelper(context, "grogoni-nati
                 "event_id", "business_id", "external_message_id", "sender_e164", "body",
                 "occurred_at",
             ),
-            "synced = 0",
-            null,
+            "synced = 0 and user_shared = 1 and " + if (account == null) "owner_account_id is null" else "owner_account_id = ?",
+            account?.let { arrayOf(it) },
             null,
             null,
             "occurred_at asc",
@@ -124,9 +141,10 @@ class NativeSmsStore(context: Context) : SQLiteOpenHelper(context, "grogoni-nati
      * A claim is safe to resume until execution_started is persisted. Only that later state
      * can represent an uncertain carrier send. Sync workers serialize execution in this process.
      */
-    fun claimCommand(commandId: String): Boolean {
+    fun claimCommand(commandId: String, ownerAccountId: String? = session.accountId): Boolean {
         val values = ContentValues().apply {
             put("command_id", commandId)
+            put("owner_account_id", ownerAccountId)
             put("state", "claimed")
             put("updated_at", System.currentTimeMillis())
         }
@@ -231,6 +249,10 @@ class NativeSmsStore(context: Context) : SQLiteOpenHelper(context, "grogoni-nati
             null,
             ContentValues().apply {
                 put("command_id", result.commandId)
+                put("owner_account_id", readableDatabase.query(
+                    "executed_commands", arrayOf("owner_account_id"), "command_id = ?",
+                    arrayOf(result.commandId), null, null, null,
+                ).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else session.accountId })
                 put("status", result.status)
                 put("result_code", result.resultCode)
                 put("revision", result.revision)
@@ -244,9 +266,12 @@ class NativeSmsStore(context: Context) : SQLiteOpenHelper(context, "grogoni-nati
     }
 
     fun pendingResults(): List<PendingSmsResult> {
+        val account = session.accountId
         val results = mutableListOf<PendingSmsResult>()
         readableDatabase.query(
-            "pending_results", null, null, null, null, null, "rowid asc", "50",
+            "pending_results", null,
+            if (account == null) "owner_account_id is null" else "owner_account_id = ?",
+            account?.let { arrayOf(it) }, null, null, "rowid asc", "50",
         ).use { cursor ->
             while (cursor.moveToNext()) {
                 results += PendingSmsResult(

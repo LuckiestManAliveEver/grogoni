@@ -36,6 +36,7 @@ import {
   saveDeviceOnlyMessages
 } from "../chat-device-only-messages";
 import { describeMarketplaceSearch, parseMarketplaceBuyIntent } from "../marketplace-search-reply";
+import { askGuestModel } from "../guest-model-send";
 import { sendGuestMessage } from "../guest-chat-send";
 import { parseReminderIntent, isDeliveryTrackingIntent } from "../chat-assistant-intents";
 import {
@@ -254,8 +255,8 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       await loadMessagingInbox(entry.conversationId);
       setStatusMessage(
         task.status === "failed"
-          ? "Daemon task failed. You can retry it here."
-          : "Daemon task updated."
+          ? "Background task failed. You can retry it here."
+          : "Background task updated."
       );
       return;
     }
@@ -398,7 +399,10 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
         setChatDraft("");
     };
     const helpCommand = extractAgentHelpCommand(message);
-    const agentRequest = helpCommand === undefined || helpCommand === null ? message : helpCommand;
+    const agentRequest =
+      business === null || helpCommand === undefined || helpCommand === null
+        ? message
+        : helpCommand;
     let runtimeMessage = appendAttachmentSummary(agentRequest, attachments);
 
     if (message.length === 0 && attachments.length === 0) {
@@ -521,16 +525,16 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       (mode !== "seller" || business === null) && attachments.length === 0 && !hasHumanRecipient
         ? searchBuyFeed
         : undefined;
-    // Someone without a shop has no assistant of their own: product-like text is searched, and
-    // anything else gets an honest answer. The model-based classifier decides which, within a 5s
-    // budget, and the rules (routeGuestMessage) answer whenever it cannot (guest-intent-client.ts).
-    // A guest has no agent, so "help …" (an agent command for an owner) is routed like any other
-    // guest message instead of being sent to an agent that is not there. A message to a person
-    // never reaches the classifier: marketplaceSearch is undefined then.
-    const continuingCheckout =
+    // Classify a guest's first message for product search; conversational replies use the daemon.
+    const continuingGuestConversation =
       buyerShoppingSessionIds.current.has(
         `grogoni:buyer-shopping:${activeSession.account.id}:${assistantScope}`
-      ) || /^(confirm checkout|cancel checkout)$/iu.test(message.trim());
+      ) ||
+      /^(confirm checkout|cancel checkout)$/iu.test(message.trim()) ||
+      chatMessages.some(
+        (item) =>
+          item.id !== "welcome" && (item.author === "merchant" || item.author === "grogoniclaw")
+      );
     if (
       business === null &&
       // A conversation-less buyer send goes to the buyer assistant / daemon (it can search,
@@ -540,7 +544,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       !explicitCapability &&
       reminder === null &&
       !tracking &&
-      !continuingCheckout
+      !continuingGuestConversation
     ) {
       await sendGuestMessage({
         message,
@@ -551,6 +555,15 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
         setChatMessages,
         isOpen: () => currentConversationRef.current === activeConversationId,
         searchBuyFeed: marketplaceSearch,
+        askModel: (question, clientMessageId) =>
+          askGuestModel({
+            message: question,
+            clientMessageId,
+            accountId: activeSession.account.id,
+            scope: assistantScope,
+            conversationId: activeConversationId,
+            history: chatMessages
+          }),
         afterBubble: () => {
           clearSentDraft();
           setPendingAttachments([]);
@@ -561,10 +574,14 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       });
       return;
     }
+    // A guest's follow-up, and every other message that needs a real answer, reaches the
+    // conversational model through the daemon task below.
     if (
       !hasHumanRecipient &&
       (attachments.length === 0 || buyerAssistant) &&
-      (reminder !== null || tracking || (buyerAssistant && helpCommand === undefined))
+      (reminder !== null ||
+        tracking ||
+        (buyerAssistant && (business === null || helpCommand === undefined)))
     ) {
       const clientMessageId = createClientMessageId("message");
       const createdAt = new Date().toISOString();

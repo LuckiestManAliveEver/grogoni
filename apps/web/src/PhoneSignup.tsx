@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { prepareDeviceRecoveryCredential, commitDeviceRecoveryCredential } from "./device-recovery";
+import { useEffect, useState } from "react";
+import { deviceSecurityAvailable, enrollRecoveryPasskey } from "./passkey-recovery";
 import type { AuthSessionView } from "@grogoni/shared-types";
 import { normalizePhoneInput, phoneNormalizationErrorMessage } from "@grogoni/shared-types";
 import { getCountryCallingCode, type CountryCode } from "libphonenumber-js";
@@ -23,8 +23,16 @@ interface Props {
 }
 
 export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Props) {
-  const deviceAvailable =
-    globalThis.crypto?.subtle !== undefined && globalThis.indexedDB !== undefined;
+  const [deviceAvailable, setDeviceAvailable] = useState(false);
+  useEffect(() => {
+    let active = true;
+    void deviceSecurityAvailable().then((available) => {
+      if (active) setDeviceAvailable(available);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
   const [stage, setStage] = useState<SignupStage>("phone");
   const [country, setCountry] = useState<CountryCode>("KE");
   const [phone, setPhone] = useState("");
@@ -128,14 +136,7 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
 
   async function createDevice() {
     if (createdSession === null) return;
-    const { publicKeyJwk } = await prepareDeviceRecoveryCredential({ replaceExisting: true });
-    const secured = await apiFetch<AuthSessionView>("/auth/continue", {
-      method: "POST",
-      body: { devicePublicKeyJwk: publicKeyJwk }
-    });
-    if (secured.deviceRecoveryCredentialId) {
-      await commitDeviceRecoveryCredential(secured.deviceRecoveryCredentialId);
-    }
+    await enrollRecoveryPasskey();
     onAuthenticated(createdSession);
   }
 
@@ -330,8 +331,8 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
               <div className="auth-security-summary">
                 <strong>Secure this device for recovery</strong>
                 <p>
-                  Recover your PIN or password using a recovery key stored securely on this device.
-                  Protect your device with its screen lock.
+                  Register a passkey to recover your PIN or password with your fingerprint, face
+                  unlock, or device screen lock. Your device keeps the private credential secure.
                 </p>
               </div>
               <button
@@ -345,7 +346,7 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
                   ? "Securing device…"
                   : deviceAvailable
                     ? "Secure this device"
-                    : "Devices unavailable"}
+                    : "Device security unavailable"}
               </button>
               {createdSession !== null ? (
                 <button

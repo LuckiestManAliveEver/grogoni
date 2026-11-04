@@ -13,12 +13,15 @@ during migration.
 
 `identifier → generic recovery response → channel verification → optional MFA → password reset → rotated session`
 
-`mobile phone → "Trouble logging in?" → signed device recovery key proves identity → new PIN or password`
+`mobile phone → "Trouble logging in?" → Device security → user-verified passkey or Android Keystore proof → new PIN or password`
 
-Phone signup requires a password. Signup optionally enables device recovery, and existing accounts
-can enable it in account security settings. The recovery flow never enrolls or authenticates a
-passkey. Existing passkeys remain available for account access, but cannot authorize credential
-resets. PIN is the primary method on the phone login screen, with password as a secondary option.
+Phone signup requires a password and then offers explicit device-security recovery enrollment.
+Existing accounts can enroll in account security settings. Browser recovery requires a previously
+registered WebAuthn passkey with user verification; ordinary passkey login cannot authorize
+credential resets. Native Android recovery requires authentication to unlock an enrolled Keystore
+key and a fresh server challenge. PIN remains the primary login method, with password secondary.
+See [Device security recovery](device-security-recovery.md) for the protocol, compatibility,
+revocation, notification policy and testing details.
 
 Guests receive a cookie-backed device account through `/auth/continue`, without a login or signup
 form. Personal and direct conversations use the same messaging APIs throughout that account's
@@ -48,17 +51,15 @@ email enables email MFA after either PIN or password verification; enabled authe
 and recovery codes remain available. The MFA transaction and email challenge are bounded by
 expiry, attempt limits, and single use. No session cookie is issued before the second factor.
 
-Device recovery uses an ECDSA P-256 key stored in IndexedDB with a non-exportable private key.
-The signed assertion is verified by `/auth/device/recover`; its resulting session receives a
-five-minute, single-use recovery grant. `/auth/pin/recover/device` and
-`/auth/password/recover/device` consume the grant and revoke other sessions. Replayed assertions
-cannot replenish a consumed grant. Recovery transactions persist across hosted requests.
-Passkey recovery endpoints are removed, and passkey recovery ceremonies are rejected.
-Verified backup email remains available for recovery.
+Interactive browser recovery uses server-generated WebAuthn challenges bound to the supplied
+phone account, origin, RP ID and recovery purpose. Native recovery signs a server challenge with
+an authentication-bound P-256 Android Keystore key. Both issue five-minute, single-use recovery
+grants for the existing PIN/password reset endpoints. Recovery transactions persist across hosted
+requests. Verified backup email remains available when no enrolled credential can be used.
 
-This browser implementation relies on device and browser storage protection. It does not invoke
-an operating-system biometric or screen-lock prompt. Users must keep their device protected;
-clearing browser storage removes the local recovery key.
+Legacy IndexedDB keys still support device-account session restoration; they are not used by the
+interactive browser PIN/password recovery screen. Passkey enrollment requires an authenticated,
+explicit user action. Legacy native keys require re-enrollment to gain device authentication.
 
 Existing email identities, OAuth records, and Grogoni storefront IDs remain stored for their
 non-login uses. Existing accounts need a linked phone number to use the mobile login flow.

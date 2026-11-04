@@ -9,6 +9,9 @@ import { registerAppServiceWorker } from "./service-worker";
 import { captureJoinLink } from "./staff-join-link";
 import "./styles.css";
 import "./home-reference.css";
+// Install the native channel listener before Android's page-load handshake, even when the
+// carrier-message route itself is lazy loaded. This is the same bundle on every platform.
+import "./device-messaging";
 
 function App() {
   useEffect(() => {

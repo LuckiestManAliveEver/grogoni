@@ -9,7 +9,7 @@ import { Fragment, Suspense, lazy, useEffect, useRef, useState } from "react";
 import type { CountryCode } from "libphonenumber-js";
 import type { Scope } from "@grogoni/offline-runtime";
 
-import type { ConversationMessageContent } from "@grogoni/shared-types";
+import { permanentDaemonDisplayName, type ConversationMessageContent } from "@grogoni/shared-types";
 
 import { readStableDeviceId } from "./lib/api";
 
@@ -22,6 +22,8 @@ import { useOwnerCore } from "./hooks/OwnerCoreContext";
 import { useChatComposerState } from "./hooks/useChatComposerState";
 import { useCompactViewport } from "./hooks/useCompactViewport";
 import { ChatParticipantsPanel } from "./ChatParticipantsPanel";
+import { AssistantDetailsPanel } from "./AssistantDetailsPanel";
+import { conversationTitle, isAssistantConversation } from "./conversation-title";
 
 import { ChatComposer } from "./ChatComposer";
 import { readCurrentOwnerRoute } from "./browser-navigation";
@@ -231,6 +233,9 @@ export function ChatSurface({
   const defaultMessageWindow = useRef(detectCapabilitySettings().messageWindowSize).current;
   const [messageWindowSize, setMessageWindowSize] = useState(defaultMessageWindow);
   const [participantsOpen, setParticipantsOpen] = useState(false);
+  const [assistantDetailsId, setAssistantDetailsId] = useState<string | null>(null);
+  // The details belong to the chat they were opened from: close them on navigation or sign-out.
+  useEffect(() => setAssistantDetailsId(null), [activeConversationId, isAuthenticated]);
   const [inboxSearch, setInboxSearch] = useState("");
   const [editingTopic, setEditingTopic] = useState<string | null>(null);
   const [isNewConversationOpen, setIsNewConversationOpen] = useState(false);
@@ -280,6 +285,10 @@ export function ChatSurface({
   const selectedConversation = conversations.find(
     (conversation) => conversation.id === activeConversationId
   );
+  const selectedTitle = conversationTitle(selectedConversation);
+  const isAssistantSelected = isAssistantConversation(selectedConversation);
+  // Replies in the permanent daemon conversation come from "My Assistant", not the shop agent.
+  const threadAgentName = isAssistantSelected ? permanentDaemonDisplayName : agent.name;
   const isHumanConversation =
     selectedConversation !== undefined &&
     (selectedConversation.hasHumanRecipient ||
@@ -321,7 +330,7 @@ export function ChatSurface({
         const query = inboxSearch.trim().toLowerCase();
         if (!query || conversation.helpTopic) return true;
         return (
-          (conversation.title ?? "Grogoni agent").toLowerCase().includes(query) ||
+          (conversationTitle(conversation) ?? "Grogoni agent").toLowerCase().includes(query) ||
           (conversation.lastMessage === null
             ? false
             : conversationMessageText(conversation.lastMessage).toLowerCase().includes(query))
@@ -387,10 +396,12 @@ export function ChatSurface({
   }, [activeConversationId, messages.length, showMessageThread, workspaceCardView]);
 
   const conversationListPanelProps = {
-    agentName: agent.name,
-    pinnedAgent: conversations.find(
-      (conversation) => !conversation.hasHumanRecipient && !conversation.helpTopic
-    ),
+    onOpenAssistantDetails: setAssistantDetailsId,
+    pinnedAgent:
+      conversations.find((conversation) => isAssistantConversation(conversation)) ??
+      conversations.find(
+        (conversation) => !conversation.hasHumanRecipient && !conversation.helpTopic
+      ),
     isSessionListView,
     isAuthenticated,
     // Lets the inbox name a chat started from Phone Contacts by the owner's saved contact name.
@@ -469,7 +480,7 @@ export function ChatSurface({
       ) : null}
       <section
         className="messenger-thread"
-        aria-label={showBlankSessionState ? "New chat" : (selectedConversation?.title ?? "Chat")}
+        aria-label={showBlankSessionState ? "New chat" : (selectedTitle ?? "Chat")}
       >
         {showMessageThread && !isHomeEmpty ? (
           <header className="messenger-thread-header">
@@ -477,7 +488,7 @@ export function ChatSurface({
               className={`thread-avatar ${mode === "seller" ? "sell" : "buy"}`}
               aria-hidden="true"
             >
-              {(showBlankSessionState ? "New chat" : (selectedConversation?.title ?? agent.name))
+              {(showBlankSessionState ? "New chat" : (selectedTitle ?? agent.name))
                 .trim()
                 .slice(0, 1)
                 .toUpperCase()}
@@ -515,11 +526,19 @@ export function ChatSurface({
                   className="thread-topic-button"
                   disabled={selectedConversation === undefined || !!selectedConversation.helpTopic}
                   aria-label={
-                    selectedConversation?.helpTopic ? "Help topic" : "Edit conversation topic"
+                    isAssistantSelected
+                      ? "Open My Assistant details"
+                      : selectedConversation?.helpTopic
+                        ? "Help topic"
+                        : "Edit conversation topic"
                   }
-                  onClick={() => setEditingTopic(selectedConversation?.title ?? agent.name)}
+                  onClick={() =>
+                    isAssistantSelected && activeConversationId !== null
+                      ? setAssistantDetailsId(activeConversationId)
+                      : setEditingTopic(selectedTitle ?? agent.name)
+                  }
                 >
-                  <strong>{selectedConversation?.title ?? agent.name}</strong>
+                  <strong>{selectedTitle ?? agent.name}</strong>
                 </button>
               )}
               <DiscussionMembersButton
@@ -538,6 +557,16 @@ export function ChatSurface({
             </div>
             {!showBlankSessionState ? (
               <WaitingMessagesButton count={queuedMessageCount} onSend={onRetryMessages} />
+            ) : null}
+            {isAssistantSelected && activeConversationId !== null ? (
+              <button
+                type="button"
+                className="assistant-details-button"
+                aria-label="My Assistant details"
+                onClick={() => setAssistantDetailsId(activeConversationId)}
+              >
+                Details
+              </button>
             ) : null}
             <ConversationExecutionControls
               conversation={selectedConversation}
@@ -599,15 +628,20 @@ export function ChatSurface({
                     (message.authorLabel ?? "Contact")
                   ) : (
                     <>
-                      <button
-                        className="message-author-link"
-                        type="button"
-                        onClick={onOpenAgentProfile}
-                        disabled={!hasBusiness}
-                        aria-label={hasBusiness ? `Open ${agent.name} profile` : undefined}
-                      >
-                        {agent.name}
-                      </button>
+                      {isAssistantSelected ? (
+                        // My Assistant is the account's own agent, not the shop's profile.
+                        permanentDaemonDisplayName
+                      ) : (
+                        <button
+                          className="message-author-link"
+                          type="button"
+                          onClick={onOpenAgentProfile}
+                          disabled={!hasBusiness}
+                          aria-label={hasBusiness ? `Open ${agent.name} profile` : undefined}
+                        >
+                          {agent.name}
+                        </button>
+                      )}
                       {mode === "seller" && hasBusiness ? (
                         <ShopPresenceButtons
                           activeStatus={shopPresenceStatus}
@@ -628,7 +662,12 @@ export function ChatSurface({
                     message.body
                   )}
                 </p>
-                {message.execution ? <DaemonExecutionStatus execution={message.execution} /> : null}
+                {message.execution ? (
+                  <DaemonExecutionStatus
+                    execution={message.execution}
+                    label={isAssistantSelected ? permanentDaemonDisplayName : "Background task"}
+                  />
+                ) : null}
                 {message.author === "grogoniclaw" &&
                 capabilityTraceLabel(message.content) !== null ? (
                   <span className="capability-trace" aria-hidden="true">
@@ -809,7 +848,7 @@ export function ChatSurface({
                             setForwardingMessageId(null);
                           }}
                         >
-                          {conversation.title ?? "Grogoni agent"}
+                          {conversationTitle(conversation) ?? "Grogoni agent"}
                         </button>
                       ))}
                     <button type="button" onClick={() => setForwardingMessageId(null)}>
@@ -828,7 +867,7 @@ export function ChatSurface({
               </article>
             </Fragment>
           ))}
-          <GuestTypingIndicator thread={activeConversationId} name={agent.name} />
+          <GuestTypingIndicator thread={activeConversationId} name={threadAgentName} />
         </div>
         <StackedModule
           moduleId="owner-management"
@@ -1014,6 +1053,13 @@ export function ChatSurface({
         visibleMessages.filter((message) => message.id !== "welcome").length === 0 ? (
           <HomeSuggestionChips onSelect={commitDraft} />
         ) : null}
+        {assistantDetailsId !== null ? (
+          <AssistantDetailsPanel
+            key={assistantDetailsId}
+            conversationId={assistantDetailsId}
+            onClose={() => setAssistantDetailsId(null)}
+          />
+        ) : null}
         {participantsOpen ? (
           <ChatParticipantsPanel
             key={activeConversationId}
@@ -1050,7 +1096,7 @@ export function ChatSurface({
           mode={mode}
           pendingAttachments={pendingAttachments}
           replyToMessageId={replyToMessageId}
-          selectedConversationTitle={selectedConversation?.title ?? ""}
+          selectedConversationTitle={selectedTitle ?? ""}
           selectedEmailCustomerId={selectedEmailCustomerId}
           onAgentChange={setAgentSettings}
           onAttachmentChange={onAttachmentChange}

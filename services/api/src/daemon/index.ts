@@ -10,6 +10,10 @@ import { buildPgPoolConfig } from "../db-pool-config.js";
 import { connectedAgentRuntimeAdapterId } from "../agent-harness/retired-agent-runtimes.js";
 import { createPostgresDaemonTaskStore, defaultUserTakeoverMs } from "./task-store.js";
 import { createDaemonExecutor, readDaemonCapabilities } from "./executor.js";
+import {
+  executeOnConversationRuntime,
+  loadConversationTaskRuntime
+} from "./conversation-runtime.js";
 import { DEFAULT_DATABASE_STARTUP_RETRY, retryDatabaseStartup } from "../db-startup-retry.js";
 import { pause, runDaemonWorker, type DaemonEvent } from "./worker.js";
 import { daemonRetentionMsFromEnv, runDaemonRetention } from "./retention.js";
@@ -123,6 +127,29 @@ const execute = createDaemonExecutor(process.env, {
     }
   }
 });
+// Same rule as the Edge lane: a conversation task runs on its conversation's current model and
+// engine (My Assistant's details), unless this server cannot run that runtime.
+const executeOnCurrentRuntime = executeOnConversationRuntime(
+  execute,
+  (task) =>
+    task.owner_user_id && task.payload.kind === "agent" && task.payload.conversation
+      ? loadConversationTaskRuntime({ pool }, task.owner_user_id, task.payload.conversation.id)
+      : Promise.resolve(null),
+  (payload) => capabilities.refusal(payload),
+  (task, error) =>
+    console.log(
+      JSON.stringify({
+        type: "conversation_runtime_unavailable",
+        taskId: task.id,
+        // Same field as the Edge lane. A Postgres code (e.g. 42501 when the role lacks the
+        // execute grant), never row data.
+        errorCode:
+          typeof error === "object" && error !== null && "code" in error
+            ? String((error as { code: unknown }).code)
+            : "LOOKUP_FAILED"
+      })
+    )
+);
 // Repeated signals are absorbed so a second Ctrl-C or SIGTERM cannot cut the grace period short
 // and strand a claimed task; systemd's SIGKILL after TimeoutStopSec remains the hard stop.
 const shutdown = () => {
@@ -182,7 +209,14 @@ try {
     })
   );
   await Promise.all([
-    runDaemonWorker({ store, execute, signal: controller.signal, pollMs, shutdownGraceMs, report }),
+    runDaemonWorker({
+      store,
+      execute: executeOnCurrentRuntime,
+      signal: controller.signal,
+      pollMs,
+      shutdownGraceMs,
+      report
+    }),
     retentionMs === null
       ? undefined
       : runDaemonRetention({ store, retentionMs, signal: controller.signal, report })

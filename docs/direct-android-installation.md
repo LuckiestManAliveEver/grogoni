@@ -1,27 +1,67 @@
-# Direct Android installation and app links
+# Direct website installation
 
-## Gap report
+The selected distribution path is **direct installation from grogoni.com**, with the PWA as the
+shared web application and an Android package for operating-system SMS/MMS capabilities. Google
+Play submission, Play app signing, and Play track approvals are not prerequisites for this path.
+The CP26/CP27 Play records remain historical/store-specific; they are not evidence that a direct
+APK is ready or blocked.
 
-The repository already contains the two building blocks needed for direct installation:
+The web messenger code remains in `apps/web`. Android's default SMS role, carrier transport,
+provider storage and recovery require the native adapter in `apps/android`. A browser/PWA by
+itself cannot acquire those telephony privileges. The carrier inbox/composer, account screens, authentication workflows and catalogue use the same
+React application in `apps/web` on every platform. Android packages that build for offline loading
+and supplies a narrowly scoped message-channel adapter for operating-system capabilities. There
+is no second native messenger interface.
 
-- The web app ships a PWA manifest and service worker in [apps/web/public/manifest.webmanifest](../apps/web/public/manifest.webmanifest) and [apps/web/public/sw.js](../apps/web/public/sw.js).
-- The Android project already exists at [apps/android](../apps/android) and is configured with a secure package id, SDK targets, and release-signing support in [apps/android/app/build.gradle.kts](../apps/android/app/build.gradle.kts).
+## Build and prepare
 
-The missing pieces are the user-facing install route, the Android App Links file, and the direct-download release flow tied to a tested signing identity:
+Keep the release signing key and its password configuration outside version control. Local
+signing configuration is an owner-readable JSON file (mode 0600), selected by
+`GROGONI_RELEASE_SIGNING_CONFIG`. Its keys are the four `GROGONI_RELEASE_*` settings documented in
+`apps/android/README.md`. Back up both the key and configuration securely; the same key must be
+retained for future updates to this Android package.
 
-1. There is no dedicated `/install` route in the web router.
-2. The repo does not publish a `.well-known/assetlinks.json` file for `market.grogoni.app`.
-3. The release pipeline documents APK generation but not a reproducible, tested, signed distribution flow for the public website.
-4. The production signing certificate fingerprint is not yet recorded because the real release key has not been created and approved.
+```bash
+# Requires Android SDK 35, Gradle 8.10.2 and a full JDK 17.
+pnpm android:direct:build
+pnpm android:direct:prepare --apk apps/android/app/build/outputs/apk/release/app-release.apk \
+  --out /tmp/grogoni-direct-download \
+  --build-tools "$ANDROID_HOME/build-tools/35.0.0"
+```
 
-## Implementation plan
+`GROGONI_GRADLE_BIN` and `GROGONI_ANDROID_BUILD_DIR` select a Gradle binary and prepared Android
+source snapshot when needed. Some SDK installations also require their native runtime directory
+in `LD_LIBRARY_PATH` for `aapt`.
 
-1. Add a route and mobile-first page that explains the PWA and APK installation options and listens for `beforeinstallprompt` without forcing install.
-2. Keep the existing web App Shell and service worker intact while ensuring the `/install` page remains outside of the high-risk auth flow.
-3. Generate a template Android App Links document that follows the Android required structure and is regenerated from the production keystore before public release.
-4. Add a script to generate the asset links file from the real release certificate and add a release build command that fails when release signing metadata is missing.
-5. Document the compliance boundary clearly: the repo can produce a signed APK and a PWA install route, but the production package identity and certificate must be verified before it is claimed as production-published or Play-ready.
+Preparation verifies the APK signature, rejects debuggable builds and the Android debug signing
+identity, reads package/version/SDK metadata from the artifact, checks every packaged shared-web asset
+against its bundle manifest, hashes the actual bytes, and emits:
 
-## Current verification boundary
+- `android/grogoni-<version>-<code>.apk`;
+- `android/release.json` and its schema;
+- `.well-known/assetlinks.json` generated from the actual signer certificate;
+- `verification.json`, explicitly marked `published: false`.
 
-This repository is not allowed to claim Play verification or a production app-signing certificate until the Google account, developer identity, and release key are created and approved by the responsible owner. The app link and release script are prepared for that step, but they remain pending the actual production certificate and app registration.
+This command prepares files for review; it does not publish them. Host the verified APK and its
+metadata together on the production origin, with the APK present before enabling the install
+manifest. Verify the public download bytes and certificate before treating the release as live.
+The checked-in public release manifest stays null until an actual release is published.
+
+## Installation boundary
+
+Users install the PWA through their browser, or download the signed APK and approve installation
+from that source in Android. The Android app separately requests the default SMS role and the SMS
+permissions. Website installation does not grant those permissions automatically.
+
+Direct distribution still follows the target device's installation controls. Android documents
+its outside-Play developer-verification and advanced-flow behavior in the
+[official verification FAQ](https://developer.android.com/developer-verification/guides/faq).
+Emulator installation through ADB does not prove the public installer experience on all devices.
+
+## Verification
+
+Build the debug and instrumentation APKs and run
+`bash scripts/test-default-messenger-emulator.sh emulator-5554` on a dedicated emulator. See the
+[readiness review](audits/default-messenger-review-2026-11-03.md) and its follow-up for results and
+remaining physical-carrier acceptance. Never infer real carrier delivery or update compatibility
+from codec/storage tests alone.

@@ -47,11 +47,16 @@ describe.skipIf(!url)("daemon lanes inside the Edge API", () => {
   const admin = new Pool({ connectionString: url ?? "" });
   const pool = new Pool({ connectionString: url ?? "", options: `-c search_path=${schema}` });
   const calls: string[] = [];
+  const executedRuntimes: string[] = [];
+  const reports: Array<{ type: string; errorCode?: string }> = [];
+  // What the conversation is on now (My Assistant's details); null = leave the task's own.
+  let liveRuntime: { modelId: string; agentAdapterId: "grogoni" | "pi" } | null | "hang" = null;
   let behavior: (message: string, signal: AbortSignal) => Promise<unknown> = async (message) =>
     agentResult(`done: ${message}`);
   const execute: DaemonExecutor = async (task, signal) => {
     if (task.payload.kind !== "agent") return { maintenance: task.payload.job };
     calls.push(task.payload.message);
+    executedRuntimes.push(`${task.payload.modelId}/${task.payload.agentAdapterId}`);
     return behavior(task.payload.message, signal);
   };
   const users = new Map([
@@ -73,8 +78,11 @@ describe.skipIf(!url)("daemon lanes inside the Edge API", () => {
       authorizeConversation: async (_request, id) => {
         if (id !== "11111111-1111-4111-8111-111111111111")
           throw new DaemonHttpError(404, "conversation_not_found", "Conversation not found.");
-        return { modelId: "gpt-6-luna" };
+        return conversationRuntime;
       },
+      report: (event) => reports.push(event),
+      currentConversationRuntime: () =>
+        liveRuntime === "hang" ? new Promise(() => undefined) : Promise.resolve(liveRuntime),
       deliverConversationTask: async (task) => {
         if (deliveryFailure) throw new Error("Messaging database unavailable");
         delivered.push(`${task.id}:${task.status}`);
@@ -82,6 +90,10 @@ describe.skipIf(!url)("daemon lanes inside the Edge API", () => {
       environment: env,
       execute
     });
+  let conversationRuntime: { modelId: string; agentAdapterId: "grogoni" | "pi" } = {
+    modelId: "gpt-6-luna",
+    agentAdapterId: "pi"
+  };
   let deliveryFailure = false;
   const delivered: string[] = [];
   let daemon: EdgeDaemon;
@@ -120,6 +132,9 @@ describe.skipIf(!url)("daemon lanes inside the Edge API", () => {
       );
   });
   beforeEach(async () => {
+    conversationRuntime = { modelId: "gpt-6-luna", agentAdapterId: "pi" };
+    liveRuntime = null;
+    executedRuntimes.length = 0;
     deliveryFailure = false;
     delivered.length = 0;
     calls.length = 0;
@@ -184,6 +199,160 @@ describe.skipIf(!url)("daemon lanes inside the Edge API", () => {
       ).json.task.status
     ).toBe("completed");
   });
+  it("runs a queued conversation task on the runtime its conversation switched to after creation", async () => {
+    const conversation = {
+      id: "11111111-1111-4111-8111-111111111111",
+      clientMessageId: "origin-switch",
+      scope: "test",
+      kind: "reply"
+    };
+    await call("session-a", "POST", "/v1/daemon/tasks", {
+      key: "switch-device",
+      message: "on device",
+      conversation
+    });
+    // Switched to Grogoni after the task was queued on Pi: the device sees it at claim.
+    liveRuntime = { modelId: "gpt-6-luna", agentAdapterId: "grogoni" };
+    const claim = (await call("session-a", "POST", "/v1/daemon/claims")).json.claim;
+    expect(claim.task.payload).toMatchObject({ modelId: "gpt-6-luna", agentAdapterId: "grogoni" });
+    expect((await daemon.store.get(claim.task.id))?.payload).toMatchObject({
+      agentAdapterId: "grogoni"
+    });
+    // Switched back before the server ran it: /execute uses the newest choice.
+    liveRuntime = { modelId: "gpt-6-luna", agentAdapterId: "pi" };
+    await call("session-a", "POST", `/v1/daemon/claims/${claim.task.id}/execute`, {
+      leaseToken: claim.leaseToken
+    });
+    expect(executedRuntimes).toEqual(["gpt-6-luna/pi"]);
+    // A lookup that never answers is abandoned at its deadline; the claim still goes out.
+    liveRuntime = "hang";
+    await call("session-a", "POST", "/v1/daemon/tasks", {
+      key: "switch-hang",
+      message: "slow database",
+      conversation: { ...conversation, clientMessageId: "origin-hang" }
+    });
+    const started = Date.now();
+    const slow = (await call("session-a", "POST", "/v1/daemon/claims")).json.claim;
+    expect(Date.now() - started).toBeLessThan(4_000);
+    expect(slow.task.payload).toMatchObject({ modelId: "gpt-6-luna", agentAdapterId: "pi" });
+    expect(reports).toContainEqual({
+      type: "conversation_runtime_unavailable",
+      taskId: slow.task.id,
+      errorCode: "LOOKUP_FAILED"
+    });
+    await call("session-a", "POST", `/v1/daemon/claims/${slow.task.id}/release`, {
+      leaseToken: slow.leaseToken
+    });
+    // A conversation whose runtime cannot be read keeps the task's own runtime.
+    liveRuntime = null;
+    await call("session-a", "POST", "/v1/daemon/tasks", {
+      key: "switch-unknown",
+      message: "keep",
+      conversation: { ...conversation, clientMessageId: "origin-keep" }
+    });
+    const kept = (await call("session-a", "POST", "/v1/daemon/claims")).json.claim;
+    expect(kept.task.payload).toMatchObject({ modelId: "gpt-6-luna", agentAdapterId: "pi" });
+  });
+  it("refreshes on the server worker path, keeps a runtime it cannot run, and survives a failed save", async () => {
+    const conversation = {
+      id: "11111111-1111-4111-8111-111111111111",
+      clientMessageId: "origin-worker",
+      scope: "test",
+      kind: "reply"
+    };
+    const queue = async (key: string) =>
+      (
+        await call("session-a", "POST", "/v1/daemon/tasks", {
+          key,
+          message: key,
+          conversation: { ...conversation, clientMessageId: key }
+        })
+      ).json.task.id as string;
+    const due = (id: string) =>
+      pool.query(
+        "update grogoni_daemon_tasks set run_at = now() - interval '1 day' where id = $1",
+        [id]
+      );
+    // Worker path: the cron lane runs it on the runtime switched to after creation.
+    const switched = await queue("worker-switched");
+    await due(switched);
+    liveRuntime = { modelId: "gpt-6-luna", agentAdapterId: "grogoni" };
+    await daemon.runWorker();
+    expect(executedRuntimes).toEqual(["gpt-6-luna/grogoni"]);
+    expect((await daemon.store.get(switched))?.payload).toMatchObject({
+      agentAdapterId: "grogoni"
+    });
+
+    // A runtime this server cannot run (model since removed) keeps the task's own.
+    executedRuntimes.length = 0;
+    const kept = await queue("worker-refused");
+    await due(kept);
+    liveRuntime = { modelId: "unmapped-model", agentAdapterId: "grogoni" };
+    await daemon.runWorker();
+    expect(executedRuntimes).toEqual(["gpt-6-luna/pi"]);
+    expect((await daemon.store.get(kept))?.payload).toMatchObject({ modelId: "gpt-6-luna" });
+
+    // A failed save is not a failed task: it still runs on the new runtime.
+    executedRuntimes.length = 0;
+    const unsaved = await queue("worker-unsaved");
+    await due(unsaved);
+    liveRuntime = { modelId: "gpt-6-luna", agentAdapterId: "grogoni" };
+    const save = daemon.store.updateLeasedPayload;
+    daemon.store.updateLeasedPayload = async () => {
+      throw new Error("connection reset");
+    };
+    try {
+      await daemon.runWorker();
+    } finally {
+      daemon.store.updateLeasedPayload = save;
+    }
+    expect(executedRuntimes).toEqual(["gpt-6-luna/grogoni"]);
+    expect((await daemon.store.get(unsaved))?.status).toBe("completed");
+  });
+  it("retries a failed conversation task on the conversation's current model and engine", async () => {
+    const created = await call("session-a", "POST", "/v1/daemon/tasks", {
+      key: "conversation-retry-runtime",
+      message: "hello",
+      conversation: {
+        id: "11111111-1111-4111-8111-111111111111",
+        clientMessageId: "origin-retry",
+        scope: "test",
+        kind: "reply"
+      }
+    });
+    const first = (await call("session-a", "POST", "/v1/daemon/claims")).json.claim;
+    expect(first.task.payload).toMatchObject({ modelId: "gpt-6-luna", agentAdapterId: "pi" });
+    await call("session-a", "POST", `/v1/daemon/claims/${created.json.task.id}/settle`, {
+      leaseToken: first.leaseToken,
+      outcome: { errorCode: "PROVIDER_UNAVAILABLE", retryable: false }
+    });
+    // A model this server cannot run is refused up front, and the task stays failed.
+    conversationRuntime = { modelId: "unmapped-model", agentAdapterId: "grogoni" };
+    const refused = await call(
+      "session-a",
+      "POST",
+      `/v1/daemon/tasks/${created.json.task.id}/retry`,
+      {}
+    );
+    expect(refused.status).toBe(503);
+    expect((await daemon.store.get(created.json.task.id))?.status).toBe("failed");
+    // The owner picks a working engine in My Assistant's details, then retries.
+    conversationRuntime = { modelId: "gpt-6-luna", agentAdapterId: "grogoni" };
+    const retried = await call(
+      "session-a",
+      "POST",
+      `/v1/daemon/tasks/${created.json.task.id}/retry`,
+      {}
+    );
+    expect(retried.status).toBe(200);
+    expect((await daemon.store.get(created.json.task.id))?.payload).toMatchObject({
+      kind: "agent",
+      message: "hello",
+      modelId: "gpt-6-luna",
+      agentAdapterId: "grogoni",
+      conversation: { id: "11111111-1111-4111-8111-111111111111" }
+    });
+  });
   it("retries terminal conversation delivery independently of the latest-50 task list", async () => {
     deliveryFailure = true;
     const created = await call("session-a", "POST", "/v1/daemon/tasks", {
@@ -198,6 +367,8 @@ describe.skipIf(!url)("daemon lanes inside the Edge API", () => {
     });
     expect(created.status).toBe(201);
     const claim = (await call("session-a", "POST", "/v1/daemon/claims")).json.claim;
+    // The conversation's chosen agent engine, not a hard-coded default, runs the task.
+    expect(claim.task.payload).toMatchObject({ modelId: "gpt-6-luna", agentAdapterId: "pi" });
     await call("session-a", "POST", `/v1/daemon/claims/${claim.task.id}/execute`, {
       leaseToken: claim.leaseToken
     });

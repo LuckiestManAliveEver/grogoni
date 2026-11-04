@@ -794,14 +794,9 @@ export function OwnerApp() {
   // references refreshSession by name at hook-call time) - same TDZ-avoidance reasoning as every
   // other domain hook ordering decision in this effort.
   const authBootstrapPending = isAuthBootstrapPending(authBootstrapState);
-  // Device-only identities are cookie-backed but still need explicit signup/login.
-  // Auth completion upgrades this temporary session, as it does a fresh session.
+  // Device accounts can use chat immediately; account sign-in remains optional.
   const isSignedOut = session === null || session.account.identityLevel === "device";
-  useDaemonLane(
-    session && (!isSignedOut || activeConversation?.conversation.helpTopic)
-      ? session.account.id
-      : null
-  );
+  useDaemonLane(session?.account.id ?? null);
   const shouldShowAuth = !authBootstrapPending && isAuthOpen && isSignedOut;
   // Log in / Sign up entry points (menu drawer, seller header). A device account can already own a
   // shop; offering it a login that replaces that account would strand the shop, so a shop owner's

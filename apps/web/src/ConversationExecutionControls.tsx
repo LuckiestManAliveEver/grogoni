@@ -4,7 +4,14 @@ import { apiCloudFetch } from "./lib/api";
 import { daemonTaskUpdatedEvent } from "./daemon-chat";
 import { daemonLaneWakeEvent } from "./hooks/useDaemonLane";
 
-export function DaemonExecutionStatus({ execution }: { execution: ConversationExecutionSummary }) {
+export function DaemonExecutionStatus({
+  execution,
+  label
+}: {
+  execution: ConversationExecutionSummary;
+  /** Who ran it: "My Assistant" in the permanent conversation, a neutral word elsewhere. */
+  label: string;
+}) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   async function retry() {
@@ -27,7 +34,7 @@ export function DaemonExecutionStatus({ execution }: { execution: ConversationEx
   return (
     <div className="conversation-execution" role="status">
       <small>
-        Daemon: {execution.status}
+        {label}: {execution.status}
         {execution.errorCode ? ` · ${execution.errorCode}` : ""}
       </small>
       {execution.retryable ? (
@@ -36,77 +43,6 @@ export function DaemonExecutionStatus({ execution }: { execution: ConversationEx
         </button>
       ) : null}
       {error ? <small role="alert">{error}</small> : null}
-    </div>
-  );
-}
-interface Selection {
-  selectedModelId: string | null;
-  available: boolean;
-  errorCode: string | null;
-  models: { id: string; label: string }[];
-}
-export function DaemonModelSelector({ conversationId }: { conversationId: string }) {
-  const [selection, setSelection] = useState<Selection | null>(null);
-  const [busy, setBusy] = useState(false),
-    [error, setError] = useState("");
-  useEffect(() => {
-    let stopped = false;
-    setSelection(null);
-    setError("");
-    void apiCloudFetch<Selection>(
-      `/v1/conversations/${encodeURIComponent(conversationId)}/model`
-    ).then(
-      (value) => {
-        if (!stopped) setSelection(value);
-      },
-      () => {
-        if (!stopped) setError("Daemon availability is temporarily unavailable.");
-      }
-    );
-    return () => {
-      stopped = true;
-    };
-  }, [conversationId]);
-  async function select(modelId: string) {
-    setBusy(true);
-    setError("");
-    try {
-      setSelection(
-        await apiCloudFetch<Selection>(
-          `/v1/conversations/${encodeURIComponent(conversationId)}/model`,
-          { method: "PUT", body: { modelId } }
-        )
-      );
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not switch model.");
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <div className="daemon-model-selector">
-      <label>
-        Daemon model{" "}
-        <select
-          aria-label="Daemon model"
-          value={selection?.selectedModelId ?? ""}
-          disabled={busy || !selection}
-          onChange={(event) => void select(event.target.value)}
-        >
-          <option value="" disabled>
-            {selection?.available === false ? "Unavailable" : "Choose model"}
-          </option>
-          {selection?.models.map((model) => (
-            <option key={model.id} value={model.id}>
-              {model.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      {busy ? <small role="status">Checking model…</small> : null}
-      {error || selection?.available === false ? (
-        <small role="status">{error || "Daemon unavailable. Your history is saved."}</small>
-      ) : null}
     </div>
   );
 }
@@ -201,8 +137,7 @@ export function ConversationExecutionControls({
   conversation: ConversationSummary | undefined;
   businessId: string | null;
 }) {
-  if (conversation?.conversationType === "DAEMON")
-    return <DaemonModelSelector key={conversation.id} conversationId={conversation.id} />;
+  if (conversation?.conversationType === "DAEMON") return null;
   if (
     conversation?.conversationType === "BUSINESS" &&
     businessId &&

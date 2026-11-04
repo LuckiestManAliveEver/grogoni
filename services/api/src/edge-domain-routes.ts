@@ -1,4 +1,8 @@
 import { executeDaemonBusinessSkill } from "./daemon/business-skills.js";
+import {
+  daemonConversationRuntime,
+  loadConversationTaskRuntime
+} from "./daemon/conversation-runtime.js";
 import { loadDaemonConversationHistory } from "./daemon/conversation-history.js";
 import { readWebPushConfiguration } from "./cp2/push.js";
 import { registerCommerceRoutes } from "./cp2/domains/commerce/routes.js";
@@ -1041,6 +1045,16 @@ export async function createEdgeDomainRoutes(
             throw new DaemonHttpError(401, "auth_required", "Authentication is required.");
           return user;
         },
+        // The runtime the task's conversation is on now, so a scheduled, recurring or queued
+        // task follows a switch made in My Assistant's details after it was created.
+        currentConversationRuntime: (task) =>
+          task.owner_user_id && task.payload.kind === "agent" && task.payload.conversation
+            ? loadConversationTaskRuntime(
+                { pool: daemonDatabase.queue },
+                task.owner_user_id,
+                task.payload.conversation.id
+              )
+            : Promise.resolve(null),
         deliverConversationTask: async (task) => {
           if (!task.owner_user_id || task.payload.kind !== "agent" || !task.payload.conversation)
             return;
@@ -1130,11 +1144,10 @@ export async function createEdgeDomainRoutes(
               throw new DaemonHttpError(
                 403,
                 "task_conversation_invalid",
-                "Background assistant tasks require your daemon conversation."
+                "Background assistant tasks require one of your assistant conversations."
               );
             try {
-              const runtime = store.resolveRuntimeBinding(conversationId);
-              return { modelId: runtime.selected.model.id };
+              return daemonConversationRuntime(store, conversationId);
             } catch {
               throw new DaemonHttpError(
                 503,

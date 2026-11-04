@@ -6,6 +6,7 @@ import type {
   ConversationView,
   E2eeDeviceSummary
 } from "@grogoni/shared-types";
+import { permanentDaemonDisplayName } from "@grogoni/shared-types";
 import { type ChatAttachment, type ChatMessage } from "./app-shell";
 import { parseInventoryTaskObjective } from "@grogoni/tool-core";
 
@@ -58,6 +59,7 @@ export function logClientEvent(event: string, metadata: Record<string, unknown> 
 }
 
 export function conversationTitle(view: ConversationView, accountId: string): string {
+  if (view.conversation.isPermanentDaemon) return permanentDaemonDisplayName;
   if (view.conversation.title?.trim()) return view.conversation.title;
   return (
     view.participants.find(

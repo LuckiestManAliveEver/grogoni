@@ -305,14 +305,20 @@ export function registerMessagingRoutes(
       }
     }
   );
-  app.put<{ Params: ConversationParams; Body: { modelId?: string } }>(
+  app.put<{ Params: ConversationParams; Body: { modelId?: unknown; agentId?: unknown } | null }>(
     "/v1/conversations/:conversationId/model",
     async (request, reply) => {
       try {
+        const body = request.body ?? {};
         return await store.selectConversationModel(
           readSessionCookie(request.headers.cookie),
           parseString(request.params.conversationId, "conversationId"),
-          parseString(request.body.modelId, "modelId")
+          {
+            ...(body.modelId === undefined
+              ? {}
+              : { modelId: parseString(body.modelId, "modelId") }),
+            ...(body.agentId === undefined ? {} : { agentId: parseString(body.agentId, "agentId") })
+          }
         );
       } catch (error) {
         return sendCp2Error(reply, error);

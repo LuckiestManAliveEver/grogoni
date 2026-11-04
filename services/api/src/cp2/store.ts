@@ -16,7 +16,13 @@ import type {
   BuyerShoppingTurnResult
 } from "@grogoni/shared-types";
 import { withRuntimeDeadline } from "./runtime-deadline.js";
-import { isLocalRuntimeHost, isModelExecutionTarget } from "@grogoni/shared-types";
+import {
+  daemonAgentOptions,
+  isDaemonAgentId,
+  isLocalRuntimeHost,
+  isModelExecutionTarget,
+  type ConversationRuntimeSelection
+} from "@grogoni/shared-types";
 import {
   calculateOrderFulfillmentWeight,
   isValidIanaTimeZone,
@@ -187,6 +193,7 @@ import {
 } from "./domains/otp/shared.js";
 import { DeviceBootstrapDomain } from "./domains/device-bootstrap/store.js";
 import {
+  normalizeDeviceRecoveryCredentialId,
   type DeviceAccountBootstrapRecord,
   type DeviceRecoveryCredentialRecord
 } from "./domains/device-bootstrap/shared.js";
@@ -1342,13 +1349,17 @@ export class Cp2Store {
       recordAuditEvent: (input) => this.recordAuditEvent(input)
     });
     this.passkeyDomain = new PasskeyDomain({
-      recoveryGrantExpiry: (sessionId) =>
-        [...this.authTransactions.values()].find(
-          (record) =>
-            record.purpose === "recovery" &&
-            record.metadata.deviceRecoverySessionId === sessionId &&
-            record.consumedAt === null
-        )?.expiresAt,
+      issueRecoveryGrant: (sessionId, accountId, credentialId, now) => {
+        this.createAuthTransaction("recovery", accountId, now, {
+          expiresAt: new Date(now.getTime() + 5 * 60_000).toISOString(),
+          metadata: { deviceRecoverySessionId: sessionId, recoveryCredentialId: credentialId }
+        });
+      },
+      revokeRecoveryGrants: (credentialId, now) =>
+        this.revokeCredentialRecoveryGrants(credentialId, now),
+      notifyCredentialRecovery: (accountId, credential, now) =>
+        this.notifyCredentialRecovery(accountId, credential, now),
+      recoveryGrantExpiry: (sessionId) => this.credentialRecoveryGrant(sessionId)?.expiresAt,
       consumeRecoveryGrant: (sessionId) => {
         for (const record of this.authTransactions.values()) {
           if (
@@ -1360,7 +1371,7 @@ export class Cp2Store {
       },
       requireAnySession: (sessionId, now) => this.requireAnySession(sessionId, now),
       requireRecentlyAuthenticatedSession: (sessionId, now) =>
-        this.requireRecentlyAuthenticatedSession(sessionId, now),
+        this.requireRecoveryEnrollmentSession(sessionId, now),
       requirePinVerifiedSession: (sessionId, now) => this.requirePinVerifiedSession(sessionId, now),
       markSessionPinVerified: (sessionId, now) => this.markSessionPinVerified(sessionId, now),
       getSession: (sessionId, now) => this.getSession(sessionId, now),
@@ -1740,6 +1751,22 @@ export class Cp2Store {
       addManualIdentity: (input) => this.networkDomain.addManualIdentity(input),
       searchBuyFeed: (input) => this.commerce.searchBuyFeed(input),
       sourceCommerce: (input) => this.executeSourceCommerce(input, input.operation, input.values),
+      marketCatalogue: ({ sessionId, businessId, action, now }) => {
+        const context = { sessionId, viewerBusinessId: businessId, now };
+        if (action.toolName === "catalogue.marketplace.search")
+          return this.listShareableCatalogues({
+            ...context,
+            ...(typeof action.input.search === "string" ? { search: action.input.search } : {})
+          });
+        const sourceBusinessId = String(action.input.sourceBusinessId);
+        if (action.toolName === "catalogue.marketplace.products")
+          return this.listShareableCatalogueProducts({ ...context, sourceBusinessId });
+        return this.duplicateCatalogueProducts({
+          ...context,
+          sourceBusinessId,
+          productIds: action.input.productIds as string[]
+        });
+      },
       listSourceCommerce: (input) => this.listCommerceSources(input),
       discoverCommerceOffers: (input) => this.searchPublishedOffers(input),
       createUnifiedCheckout: (input) => this.commerce.createUnifiedCheckout(input),
@@ -1828,7 +1855,9 @@ export class Cp2Store {
         for (const [conversationId, conversation] of this.messagingDomain.conversationsMap) {
           if (
             conversation.accountId === input.accountId &&
-            (conversation.activeShopId === input.businessId || conversation.activeShopId === null)
+            (conversation.activeShopId === input.businessId ||
+              conversation.activeShopId === null) &&
+            !this.keepsSelectedRuntime(conversation)
           ) {
             this.messagingDomain.conversationsMap.set(conversationId, {
               ...conversation,
@@ -1876,7 +1905,10 @@ export class Cp2Store {
           );
         }
         const result = this.nativeRuntimeBindings.ensureDefaultRuntimeBinding(input);
-        if (conversation.runtimeBindingId !== result.binding.id) {
+        if (
+          conversation.runtimeBindingId !== result.binding.id &&
+          !this.keepsSelectedRuntime(conversation)
+        ) {
           this.messagingDomain.conversationsMap.set(conversation.id, {
             ...this.messagingDomain.conversationsMap.get(conversation.id)!,
             runtimeBindingId: result.binding.id,
@@ -2229,19 +2261,108 @@ export class Cp2Store {
   private readonly auditEvents: BusinessEvent[] = [];
 
   continueWithDevice(
-    ...args: Parameters<DeviceBootstrapDomain["continueWithDevice"]>
+    input: Parameters<DeviceBootstrapDomain["continueWithDevice"]>[0] & { deviceSecurity?: boolean }
   ): ReturnType<DeviceBootstrapDomain["continueWithDevice"]> {
-    return this.deviceBootstrapDomain.continueWithDevice(...args);
+    if (input.deviceSecurity)
+      this.requireRecoveryEnrollmentSession(input.sessionId, input.now ?? new Date());
+    const result = this.deviceBootstrapDomain.continueWithDevice(input);
+    if (input.deviceSecurity && result.deviceRecoveryCredentialId) {
+      this.deviceBootstrapDomain.deviceRecoveryCredentialsMap.get(
+        result.deviceRecoveryCredentialId
+      )!.requiresServerChallenge = true;
+    }
+    return result;
   }
-  recoverWithDeviceCredential(
-    ...args: Parameters<DeviceBootstrapDomain["recoverWithDeviceCredential"]>
+  beginDeviceRecovery(input: { credentialId: string; identifier: string; now?: Date }) {
+    const now = input.now ?? new Date();
+    normalizeDeviceRecoveryCredentialId(input.credentialId);
+    if (!/^\+[1-9]\d{6,14}$/u.test(input.identifier))
+      throw new Cp2Error(
+        400,
+        "recovery_identifier_required",
+        "Enter your international phone number."
+      );
+    const challenges = [...this.authTransactions.values()].filter(
+      (record) => record.metadata.deviceChallengeCredentialId !== undefined
+    );
+    for (const record of challenges) {
+      if (Date.parse(record.expiresAt) <= now.getTime()) this.authTransactions.delete(record.id);
+    }
+    const pending = challenges.filter((record) => this.authTransactions.has(record.id));
+    if (pending.length >= 1_000) {
+      const oldest = pending.sort((left, right) =>
+        left.createdAt.localeCompare(right.createdAt)
+      )[0]!;
+      this.authTransactions.delete(oldest.id);
+    }
+
+    const credential = this.deviceBootstrapDomain.deviceRecoveryCredentialsMap.get(
+      input.credentialId
+    );
+    const nonce = randomBytes(24).toString("base64url");
+    const transaction = this.createAuthTransaction("recovery", credential?.accountId ?? null, now, {
+      expiresAt: new Date(now.getTime() + 2 * 60_000).toISOString(),
+      metadata: {
+        deviceChallengeCredentialId: input.credentialId,
+        deviceChallengeIdentifier: input.identifier,
+        deviceChallengeNonce: nonce,
+        deviceChallengeIssuedAt: String(now.getTime())
+      }
+    });
+    return {
+      challengeId: transaction.id,
+      nonce,
+      issuedAt: now.getTime(),
+      expiresAt: transaction.expiresAt
+    };
+  }
+
+  async recoverWithDeviceCredential(
+    input: Parameters<DeviceBootstrapDomain["recoverWithDeviceCredential"]>[0] & {
+      challengeId?: string;
+    }
   ): ReturnType<DeviceBootstrapDomain["recoverWithDeviceCredential"]> {
-    const result = this.deviceBootstrapDomain.recoverWithDeviceCredential(...args);
+    const args = [input] as const;
+    if (
+      this.deviceBootstrapDomain.deviceRecoveryCredentialsMap.get(input.credentialId)
+        ?.requiresServerChallenge &&
+      !input.challengeId
+    ) {
+      throw new Cp2Error(
+        401,
+        "device_recovery_challenge_required",
+        "Unlock device security using a fresh recovery challenge."
+      );
+    }
+    if (input.challengeId !== undefined) {
+      const now = input.now ?? new Date();
+      const transaction = this.requireAuthTransaction(input.challengeId, "recovery", now);
+      // Consume before signature verification: every challenge permits exactly one attempt.
+      transaction.consumedAt = now.toISOString();
+      const credential = this.deviceBootstrapDomain.deviceRecoveryCredentialsMap.get(
+        input.credentialId
+      );
+      const account = credential ? this.requireAccount(credential.accountId) : undefined;
+      if (
+        transaction.metadata.deviceChallengeCredentialId !== input.credentialId ||
+        transaction.metadata.deviceChallengeNonce !== input.nonce ||
+        transaction.metadata.deviceChallengeIssuedAt !== String(input.issuedAt) ||
+        account?.primaryAuthChannel !== "phone" ||
+        account.primaryAuthDestination !== transaction.metadata.deviceChallengeIdentifier ||
+        credential?.revokedAt !== null
+      ) {
+        throw new Cp2Error(401, "device_recovery_invalid", "Device recovery failed.");
+      }
+    }
+    const result = await this.deviceBootstrapDomain.recoverWithDeviceCredential(...args);
     const now = args[0].now ?? new Date();
     const assertionKey = `${args[0].credentialId.trim()}:${args[0].issuedAt}:${args[0].nonce.trim()}`;
     // A signed device assertion grants one credential reset for five minutes.
     // Replayed assertions must not replenish a consumed grant.
     if (
+      input.challengeId !== undefined &&
+      this.deviceBootstrapDomain.deviceRecoveryCredentialsMap.get(input.credentialId)
+        ?.requiresServerChallenge === true &&
       ![...this.authTransactions.values()].some(
         (record) => record.metadata.deviceRecoveryAssertionKey === assertionKey
       )
@@ -2250,7 +2371,8 @@ export class Cp2Store {
         expiresAt: new Date(now.getTime() + 5 * 60 * 1000).toISOString(),
         metadata: {
           deviceRecoverySessionId: result.session.id,
-          deviceRecoveryAssertionKey: assertionKey
+          deviceRecoveryAssertionKey: assertionKey,
+          recoveryCredentialId: input.credentialId
         }
       });
     }
@@ -2621,11 +2743,22 @@ export class Cp2Store {
     now?: Date;
   }): AuthSessionView {
     const now = input.now ?? new Date();
-    const session = this.requireRecentlyAuthenticatedSession(input.sessionId, now);
+    const session = this.hasCredentialRecoveryGrant(input.sessionId, now)
+      ? this.requireAnySession(input.sessionId, now)
+      : this.requireRecoveryEnrollmentSession(input.sessionId, now);
     if (this.accountPinHashes.has(session.account.id)) {
       throw new Cp2Error(409, "pin_already_set", "A login PIN is already set for this account.");
     }
-    this.verifyMfaForCredentialChange(session.account.id, input.mfaCode, now);
+    const recovering = this.hasCredentialRecoveryGrant(session.session.id, now);
+    if (
+      !recovering &&
+      [...this.authTransactions.values()].some(
+        (record) => record.metadata.deviceRecoverySessionId === session.session.id
+      )
+    ) {
+      this.passkeyDomain.requireCredentialRecoveryGrant(session.session.id, now);
+    }
+    if (!recovering) this.verifyMfaForCredentialChange(session.account.id, input.mfaCode, now);
     const pin = normalizePin(input.pin);
     const pinHash = hashPin(session.account.id, pin);
     this.accountPinHashes.set(session.account.id, pinHash);
@@ -2633,6 +2766,15 @@ export class Cp2Store {
     // Clear the grant only after every setup precondition and credential write has succeeded. This
     // is a no-op for ordinary recently authenticated password/PIN sessions.
     this.passkeyDomain.consumePinRecoveryGrant(session.session.id);
+    if (recovering) {
+      this.revokeOtherSessionsForAccount(
+        session.account.id,
+        session.session.id,
+        "pin_recovery",
+        now
+      );
+      this.notifyCredentialRecovery(session.account.id, "PIN", now);
+    }
     this.markSessionPinVerified(session.session.id, now);
     this.promoteAccountIdentityLevel(session.account.id, "strong");
 
@@ -4561,27 +4703,47 @@ export class Cp2Store {
     return this.agentRuntimeDomain.activateAiModel(...args);
   }
 
-  getConversationModelSelection(sessionId: string | null, conversationId: string) {
+  // The permanent daemon conversation ("My Assistant") is the only conversation whose agent engine
+  // and model the owner switches directly. Only engines this deployment has registered and models
+  // with a configured backend are offered, so every listed choice can actually execute.
+  getConversationModelSelection(
+    sessionId: string | null,
+    conversationId: string
+  ): ConversationRuntimeSelection {
     const actor = this.requirePinVerifiedSession(sessionId, new Date());
     const view = this.messagingDomain.getConversation({ sessionId, conversationId });
-    if (
-      view.conversation.accountId !== actor.account.id ||
-      view.conversation.conversationType !== "DAEMON"
-    )
+    // Only the permanent conversation: every one-person agent chat is conversationType "DAEMON",
+    // and all of them would otherwise rewrite the one shared account agent record below.
+    if (view.conversation.accountId !== actor.account.id || !view.conversation.isPermanentDaemon)
       throw new Cp2Error(404, "conversation_not_found", "Conversation was not found.");
-    const models = this.listAiModels()
-      .filter((m) => m.available && m.runtimeAvailability?.backend === "configured")
-      .map((m) => ({ id: m.id, label: m.label }));
+    const models = this.selectableConversationModels().map((m) => ({ id: m.id, label: m.label }));
+    const agents = this.selectableDaemonAgents();
     try {
       const runtime = this.resolveRuntimeBinding(conversationId);
+      const agentId = runtimeAdapterIdForAgent(runtime.agent);
+      const selectedModelId = runtime.selected.model.id;
+      // A model that is no longer configured still resolves from stored state; say so, so the
+      // panel asks for a new one instead of failing on the next agent switch.
+      const modelSelectable = models.some((model) => model.id === selectedModelId);
       return {
-        selectedModelId: runtime.selected.model.id,
+        conversationId,
+        selectedAgentId: isDaemonAgentId(agentId) ? agentId : null,
+        agents,
+        selectedModelId,
         models,
-        available: true,
-        errorCode: null
+        available: modelSelectable,
+        errorCode: modelSelectable ? null : "model_unavailable"
       };
     } catch (error) {
+      // The engine is still the account agent's, so picking a new model keeps it.
+      const accountAgent = this.nativeRuntimeBindings.agentsMap.get(
+        `account-${actor.account.id}-agent`
+      );
+      const agentId = accountAgent ? runtimeAdapterIdForAgent(accountAgent) : null;
       return {
+        conversationId,
+        selectedAgentId: isDaemonAgentId(agentId) ? agentId : null,
+        agents,
         selectedModelId: null,
         models,
         available: false,
@@ -4590,17 +4752,33 @@ export class Cp2Store {
     }
   }
 
-  async selectConversationModel(sessionId: string | null, conversationId: string, modelId: string) {
-    this.getConversationModelSelection(sessionId, conversationId);
+  async selectConversationModel(
+    sessionId: string | null,
+    conversationId: string,
+    selection: { modelId?: string; agentId?: string }
+  ): Promise<ConversationRuntimeSelection> {
+    const current = this.getConversationModelSelection(sessionId, conversationId);
     const actor = this.requirePinVerifiedSession(sessionId, new Date());
     const conversation = this.messagingDomain.requireAccountConversation(
       conversationId,
       actor.account.id
     );
     if (conversation.activeShopId) this.requireMembership(conversation.activeShopId, actor.user.id);
-    const model = this.listAiModels().find(
-      (m) => m.id === modelId && m.available && m.runtimeAvailability?.backend === "configured"
-    );
+    if (selection.modelId === undefined && selection.agentId === undefined)
+      throw new Cp2Error(400, "runtime_selection_empty", "Choose an agent or a model.");
+    // An engine this deployment no longer runs is replaced by the first one it does, so picking a
+    // working model is always a way out; an engine named in the request must itself be offered.
+    const keptAgent = (agentId: string | null) =>
+      current.agents.some((agent) => agent.id === agentId)
+        ? agentId!
+        : (current.agents[0]?.id ?? "grogoni");
+    const agentId = selection.agentId ?? keptAgent(current.selectedAgentId);
+    if (!current.agents.some((agent) => agent.id === agentId))
+      throw new Cp2Error(400, "agent_unavailable", "Choose an available agent.");
+    const modelId = selection.modelId ?? current.selectedModelId;
+    if (modelId === null)
+      throw new Cp2Error(400, "model_unavailable", "Choose a configured model.");
+    const model = this.selectableConversationModels().find((m) => m.id === modelId);
     if (!model || !model.hostedExecutionTarget)
       throw new Cp2Error(400, "model_unavailable", "Choose a configured model.");
     const adapter = this.modelRuntimeAdapterResolver?.({
@@ -4625,20 +4803,76 @@ export class Cp2Store {
         health.errorCode ?? "model_unavailable",
         "The selected model is unavailable."
       );
+    // The health check can take seconds. Whatever this request did not set is re-read now, so a
+    // concurrent switch of the other half (another tab) is kept instead of overwritten.
+    const latest = this.getConversationModelSelection(sessionId, conversationId);
+    const finalAgentId =
+      selection.agentId ??
+      (latest.selectedAgentId === null ? agentId : keptAgent(latest.selectedAgentId));
+    const finalModel =
+      selection.modelId === undefined && latest.selectedModelId !== null
+        ? (this.selectableConversationModels().find((m) => m.id === latest.selectedModelId) ??
+          model)
+        : model;
+    if (!finalModel.hostedExecutionTarget)
+      throw new Cp2Error(400, "model_unavailable", "Choose a configured model.");
     const binding = this.nativeRuntimeBindings.selectConversationModel({
       accountId: actor.account.id,
       businessId: conversation.activeShopId,
       conversationId,
-      model,
-      executionTarget: model.hostedExecutionTarget,
+      model: finalModel,
+      executionTarget: finalModel.hostedExecutionTarget,
+      agentAdapterId: finalAgentId,
       checkedAt: new Date().toISOString(),
       updatedBy: actor.user.id
     });
     this.messagingDomain.conversationsMap.set(conversationId, {
-      ...conversation,
+      ...this.messagingDomain.requireAccountConversation(conversationId, actor.account.id),
       runtimeBindingId: binding.id
     });
+    // The trace for every switch: which engine and model My Assistant moved from and to.
+    this.recordAuditEvent({
+      type: "conversation.runtime_selected",
+      aggregateType: "conversation",
+      aggregateId: conversationId,
+      actorId: actor.user.id,
+      occurredAt: new Date().toISOString(),
+      payload: {
+        previousAgentId: latest.selectedAgentId,
+        agentId: finalAgentId,
+        previousModelId: latest.selectedModelId,
+        modelId: finalModel.id
+      }
+    });
     return this.getConversationModelSelection(sessionId, conversationId);
+  }
+
+  // My Assistant with an agent and model chosen in its details keeps them: activating a shop
+  // model or provisioning a default runtime for a turn must not silently replace the owner's
+  // choice. A My Assistant that never had a choice follows those defaults as before.
+  private keepsSelectedRuntime(conversation: ConversationSummary): boolean {
+    if (!conversation.isPermanentDaemon || !conversation.runtimeBindingId) return false;
+    const binding = this.nativeRuntimeBindings.bindingsMap.get(conversation.runtimeBindingId);
+    return (
+      binding?.status === "active" && binding.configuration.source === "conversation-selection"
+    );
+  }
+
+  private selectableConversationModels(): AiModelSummary[] {
+    return this.listAiModels().filter(
+      (m) => m.available && m.runtimeAvailability?.backend === "configured"
+    );
+  }
+
+  // Same precedence as ordinary chat turns: an injected resolver (tests) replaces the registry.
+  // In production nothing is injected and this is the registry the daemon executor also uses.
+  private selectableDaemonAgents(): ConversationRuntimeSelection["agents"] {
+    const resolve =
+      this.options.agentRuntimeAdapterResolver ??
+      ((adapterId: string) => this.defaultAgentRuntimeAdapters.resolve(adapterId));
+    return daemonAgentOptions
+      .filter((option) => resolve(option.id) !== undefined)
+      .map((option) => ({ ...option }));
   }
 
   /** In-process, state-only resolver. It never performs a network probe. */
@@ -6147,11 +6381,42 @@ export class Cp2Store {
     return this.commerce.createUnifiedCheckout(...args);
   }
 
+  // The shopping tool loop has its own harness, so My Assistant's agent engine does not apply
+  // to it, but its selected model does. Any other chat, or a runtime that does not resolve,
+  // keeps the platform default model.
+  private buyerShoppingModel(
+    accountId: string,
+    conversationId: string | undefined
+  ): { modelId: string; executionTarget: ModelExecutionTarget } {
+    const fallback = {
+      modelId: this.platformDefaultRuntime.modelId,
+      executionTarget: this.platformDefaultRuntime.executionTarget
+    };
+    const conversation =
+      conversationId === undefined
+        ? undefined
+        : this.messagingDomain.conversationsMap.get(conversationId);
+    if (conversation?.accountId !== accountId || !conversation.isPermanentDaemon) return fallback;
+    try {
+      const model = this.selectableConversationModels().find(
+        (m) => m.id === this.resolveRuntimeBinding(conversation.id).selected.model.id
+      );
+      return model?.hostedExecutionTarget
+        ? { modelId: model.id, executionTarget: model.hostedExecutionTarget }
+        : fallback;
+    } catch (error) {
+      if (error instanceof Cp2Error) return fallback;
+      throw error;
+    }
+  }
+
   async createBuyerShoppingTurn(input: {
     sessionId: string | null;
     shoppingSessionId: string;
     requestId: string;
     message: string;
+    /** The chat the request was typed in; My Assistant's selected model then answers it. */
+    conversationId?: string;
     signal?: AbortSignal;
   }): Promise<BuyerShoppingTurnResult> {
     const actor = this.requirePinVerifiedSession(input.sessionId, new Date());
@@ -6159,11 +6424,14 @@ export class Cp2Store {
     if (shopping && shopping.accountId !== actor.account.id) {
       throw new Cp2Error(404, "buyer_shopping_session_not_found", "Shopping chat was not found.");
     }
-    const modelId = this.platformDefaultRuntime.modelId;
+    const { modelId, executionTarget } = this.buyerShoppingModel(
+      actor.account.id,
+      input.conversationId
+    );
     const agentId = `buyer-assistant:${actor.account.id}`;
     const adapter = this.modelRuntimeAdapterResolver?.({
       modelId,
-      executionTarget: this.platformDefaultRuntime.executionTarget,
+      executionTarget,
       agentId,
       shopId: ""
     });
@@ -10541,7 +10809,104 @@ export class Cp2Store {
     this.recordSecurityEvent("auth.password_reset", session.account.id, "success", now, {
       method: "device"
     });
+    this.notifyCredentialRecovery(session.account.id, "password", now);
+    this.markSessionPinVerified(session.session.id, now);
     return this.requireAnySession(session.session.id, now);
+  }
+
+  private credentialRecoveryGrant(sessionId: string) {
+    return [...this.authTransactions.values()].find((record) => {
+      const credentialId = record.metadata.recoveryCredentialId;
+      return (
+        record.purpose === "recovery" &&
+        record.metadata.deviceRecoverySessionId === sessionId &&
+        record.consumedAt === null &&
+        typeof credentialId === "string" &&
+        (this.passkeyDomain.passkeysMap.has(credentialId) ||
+          (this.deviceBootstrapDomain.deviceRecoveryCredentialsMap.get(credentialId)
+            ?.requiresServerChallenge === true &&
+            this.deviceBootstrapDomain.deviceRecoveryCredentialsMap.get(credentialId)?.revokedAt ===
+              null))
+      );
+    });
+  }
+
+  hasCredentialRecoveryGrant(sessionId: string | null, now = new Date()): boolean {
+    const grant = sessionId === null ? undefined : this.credentialRecoveryGrant(sessionId);
+    return grant !== undefined && Date.parse(grant.expiresAt) > now.getTime();
+  }
+
+  getRecoveryNotificationRecipient(sessionId: string): string | undefined {
+    const session = this.requireAnySession(sessionId, new Date());
+    return this.verifiedBackupEmail(session.account.id);
+  }
+
+  private revokeCredentialRecoveryGrants(credentialId: string, now: Date): void {
+    for (const record of this.authTransactions.values()) {
+      if (record.metadata.recoveryCredentialId === credentialId && record.consumedAt === null) {
+        record.consumedAt = now.toISOString();
+      }
+    }
+  }
+
+  listDeviceRecoveryCredentials(input: { sessionId: string | null; now?: Date }) {
+    const session = this.requireRecoveryEnrollmentSession(input.sessionId, input.now ?? new Date());
+    return [...this.deviceBootstrapDomain.deviceRecoveryCredentialsMap.values()]
+      .filter(
+        (credential) => credential.accountId === session.account.id && credential.revokedAt === null
+      )
+      .map(({ id, createdAt, lastAssertionAt }) => ({
+        id,
+        createdAt,
+        lastUsedAt: lastAssertionAt
+      }));
+  }
+
+  revokeDeviceRecoveryCredential(input: {
+    sessionId: string | null;
+    credentialId: string;
+    now?: Date;
+  }) {
+    const now = input.now ?? new Date();
+    const session = this.requireRecoveryEnrollmentSession(input.sessionId, now);
+    const credential = this.deviceBootstrapDomain.deviceRecoveryCredentialsMap.get(
+      input.credentialId
+    );
+    if (!credential || credential.accountId !== session.account.id)
+      throw new Cp2Error(404, "device_credential_not_found", "Recovery credential was not found.");
+    credential.revokedAt = now.toISOString();
+    credential.updatedAt = now.toISOString();
+    this.revokeCredentialRecoveryGrants(credential.id, now);
+    this.recordSecurityEvent("auth.device_credential_revoked", session.account.id, "success", now, {
+      credentialId: credential.id
+    });
+    return { revoked: true };
+  }
+
+  private notifyCredentialRecovery(
+    accountId: string,
+    credential: "PIN" | "password",
+    now: Date
+  ): void {
+    for (const business of this.businesses.values()) {
+      if (
+        ![...this.memberships.values()].some(
+          (membership) =>
+            membership.businessId === business.id &&
+            membership.userId === this.userByAccount.get(accountId) &&
+            membership.role === "owner"
+        )
+      )
+        continue;
+      this.notificationsDomain.recordSecurityNotification({
+        businessId: business.id,
+        type: "security_event",
+        title: `Account ${credential} recovered`,
+        body: `Your Grogoni ${credential} was reset using a registered recovery credential. Other sessions were signed out. If this was not you, review your trusted devices and revoke them.`,
+        sourceId: randomUUID(),
+        now
+      });
+    }
   }
 
   private verifiedBackupEmail(accountId: string): string | undefined {
@@ -11525,6 +11890,21 @@ export class Cp2Store {
       throw new Cp2Error(401, "auth_required", "Authentication is required.");
     }
 
+    return session;
+  }
+
+  private requireRecoveryEnrollmentSession(sessionId: string | null, now: Date): AuthSessionView {
+    const session = this.requireRecentlyAuthenticatedSession(sessionId, now);
+    if (
+      session.account.primaryAuthChannel !== "device" &&
+      this.sessions.get(session.session.id)?.pinVerifiedAt == null
+    ) {
+      throw new Cp2Error(
+        401,
+        "recent_authentication_required",
+        "Sign in with your PIN, password or passkey before enrolling recovery credentials."
+      );
+    }
     return session;
   }
 

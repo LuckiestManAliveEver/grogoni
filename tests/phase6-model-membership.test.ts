@@ -60,10 +60,12 @@ describe("Phase 6 model selection and business revocation", () => {
       .snapshot()
       .nativeRuntimeBindings!.find((binding) => binding.accountId === null);
     expect(
-      (await store.selectConversationModel(a.session.id, id, models[0]!.id)).selectedModelId
+      (await store.selectConversationModel(a.session.id, id, { modelId: models[0]!.id }))
+        .selectedModelId
     ).toBe(models[0]!.id);
     expect(
-      (await store.selectConversationModel(a.session.id, id, models[1]!.id)).selectedModelId
+      (await store.selectConversationModel(a.session.id, id, { modelId: models[1]!.id }))
+        .selectedModelId
     ).toBe(models[1]!.id);
     expect(
       store.snapshot().nativeRuntimeBindings!.find((binding) => binding.accountId === null)
@@ -79,7 +81,7 @@ describe("Phase 6 model selection and business revocation", () => {
     );
     unavailable = true;
     await expect(
-      restored.selectConversationModel(a.session.id, id, models[0]!.id)
+      restored.selectConversationModel(a.session.id, id, { modelId: models[0]!.id })
     ).rejects.toMatchObject({ code: "PROVIDER_UNAVAILABLE" });
     expect(restored.getConversationModelSelection(a.session.id, id).selectedModelId).toBe(
       models[1]!.id

@@ -1,4 +1,5 @@
 import type { RuntimeToolName } from "../contracts/runtime.js";
+import { productsRuntimeTools } from "../domains/products.js";
 import { procurementRuntimeTools } from "../domains/procurement.js";
 
 /** Canonical structured-output contract shared by server and on-device model adapters. */
@@ -11,6 +12,7 @@ export function renderRuntimeModelOutputInstructions(
     "Your job is to help with products, stock, customers, suppliers, invoices, payments, deliveries, receipts, reports and store messages.",
     "Prefer practical next steps a shop owner can act on now: find the right record, ask for the missing detail, draft the safe change, or explain what the app can track.",
     "Ground catalogue, inventory, customer and order answers in tool results or conversation context. If you have not retrieved or been given the record, ask to search or clarify instead of inventing names, quantities, prices, availability, dates or customer details.",
+    "To prepopulate inventory from the market catalogue, use catalogue.marketplace.search, then catalogue.marketplace.products to retrieve real selections, then catalogue.marketplace.import for the selected IDs. Imports start at zero stock; explain that source selling prices need review. Never fabricate a market dataset or source products.",
     "For multi-part shop problems, acknowledge each part and either propose the one matching tool action or ask a concise follow-up that covers the remaining gaps.",
     "Treat deletion, bulk changes, refunds, debt/payment changes and outbound messages as sensitive: clarify scope and require explicit merchant confirmation before proceeding.",
     "Return only one JSON object. Do not include markdown or surrounding commentary.",
@@ -18,6 +20,12 @@ export function renderRuntimeModelOutputInstructions(
     'or {"type":"clarification","message":"..."}',
     'or {"type":"response","message":"..."}.',
     `Allowed tools: ${tools || "none"}.`,
+    ...allowedTools
+      .filter((name) => name.startsWith("catalogue.marketplace."))
+      .map((name) => {
+        const tool = productsRuntimeTools[name as keyof typeof productsRuntimeTools];
+        return `Tool ${name}: ${tool.description} Input contract: ${JSON.stringify(tool.inputSchema)}.`;
+      }),
     ...allowedTools
       .filter((name) => Object.hasOwn(procurementRuntimeTools, name))
       .map((name) => {

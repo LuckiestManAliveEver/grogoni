@@ -68,6 +68,31 @@ describe.skipIf(!url)("durable native daemon queue", () => {
     expect(await store.settle(next, { result: { fresh: true } })).toBe(true);
     expect((await store.get(next.id))!.result).toEqual({ fresh: true });
   });
+  it("stores a refreshed payload only for the claim that still holds the lease", async () => {
+    await enqueue();
+    const first = (await store.claim(30_000))!;
+    await pool.query("update grogoni_daemon_tasks set lease_until=now()-interval '1 second'");
+    const next = (await store.claim(30_000))!;
+    const payload = (model: string) =>
+      ({ kind: "agent", message: "hello", modelId: model, agentAdapterId: "pi" }) as const;
+    expect(await store.updateLeasedPayload({ ...first, payload: payload("stale-model") })).toBe(
+      false
+    );
+    expect((await store.get(next.id))!.payload).toMatchObject({
+      modelId: "gpt-6-luna",
+      agentAdapterId: "grogoni"
+    });
+    expect(await store.updateLeasedPayload({ ...next, payload: payload("fresh-model") })).toBe(
+      true
+    );
+    expect((await store.get(next.id))!.payload).toMatchObject({ modelId: "fresh-model" });
+    // An expired lease that nobody has reclaimed yet writes nothing either.
+    await pool.query("update grogoni_daemon_tasks set lease_until=now()-interval '1 second'");
+    expect(await store.updateLeasedPayload({ ...next, payload: payload("late-model") })).toBe(
+      false
+    );
+    expect((await store.get(next.id))!.payload).toMatchObject({ modelId: "fresh-model" });
+  });
   it("cancels running work and rejects late completion", async () => {
     const item = await enqueue();
     const claim = (await store.claim(30_000))!;

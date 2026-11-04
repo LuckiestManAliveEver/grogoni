@@ -1,0 +1,8 @@
+
+market.grogoni.app.sms.SharedMessengerUiInstrumentedTest:.
+
+Time: 4.26
+
+OK (1 test)
+
+

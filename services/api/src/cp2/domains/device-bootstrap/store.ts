@@ -267,13 +267,13 @@ export class DeviceBootstrapDomain {
     };
   }
 
-  recoverWithDeviceCredential(input: {
+  async recoverWithDeviceCredential(input: {
     credentialId: string;
     nonce: string;
     issuedAt: number;
     signature: string;
     now?: Date;
-  }): AuthSessionView & { refreshToken: string } {
+  }): Promise<AuthSessionView & { refreshToken: string }> {
     const now = input.now ?? new Date();
     const credentialId = normalizeDeviceRecoveryCredentialId(input.credentialId);
     const nonce = input.nonce.trim();
@@ -297,10 +297,16 @@ export class DeviceBootstrapDomain {
       .update(`${payload}.${signature}`)
       .digest("base64url");
     const isReplay = credential.lastAssertionHash === assertionHash;
-    if (!isReplay && !verifyDeviceRecoverySignature(credential.publicKeyJwk, payload, signature)) {
+    if (
+      !isReplay &&
+      !(await verifyDeviceRecoverySignature(credential.publicKeyJwk, payload, signature))
+    ) {
       throw new Cp2Error(401, "device_recovery_invalid", "Device recovery failed.");
     }
 
+    if (credential.revokedAt !== null) {
+      throw new Cp2Error(401, "device_recovery_invalid", "Device recovery failed.");
+    }
     const account = this.deps.requireAccount(credential.accountId);
     this.deps.requireAccountAuthenticationAllowed(account);
     const user = this.deps.requireUser(this.deps.userByAccount.get(account.id));

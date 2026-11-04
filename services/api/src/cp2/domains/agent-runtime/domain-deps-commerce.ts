@@ -14,6 +14,7 @@ import type {
   ProductSummary,
   PurchaseReceiptSummary,
   ReceiptOCRJobSummary,
+  RuntimePlannedAction,
   SecurityReviewSummary,
   SupplierSummary,
   TrustedMessageAttachmentReference,
@@ -28,6 +29,13 @@ import type { InvoiceInput, PaymentInput } from "@grogoni/business-core";
  * boundary; no behavior changes, this is the same flat dependency shape as before.
  */
 export interface AgentRuntimeCommerceDeps {
+  marketCatalogue?: (input: {
+    sessionId: string | null;
+    businessId: string;
+    action: RuntimePlannedAction;
+    now: Date;
+  }) => unknown;
+
   sourceCommerce?: (input: {
     sessionId: string | null;
     businessId: string;

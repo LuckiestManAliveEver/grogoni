@@ -1,0 +1,15 @@
+# Android MMS PDU codec
+
+Source: Android Open Source Project, platform/development,
+`samples/ApiDemos/src/com/example/android/mmslib`, main revision
+`88f7870b2c652922dc2afb01c076737e8bc50130` (retrieved 2026-11-03).
+
+Archive SHA-256: `b32a73ddff131741e1986fb202acb5fcab8bd473c84644767c0381f70fc50797`.
+
+https://android.googlesource.com/platform/development/+/88f7870b2c652922dc2afb01c076737e8bc50130/samples/ApiDemos/src/com/example/android/mmslib/
+
+The Java source files retain their Apache-2.0 copyright and license headers.
+Only the codec is included; carrier networking uses Android SmsManager.
+
+Local parser hardening: maximum 8 nested multipart bodies, maximum 30 parts,
+input-bound part lengths, null nested-body handling, bounded header skipping, checked unsigned lengths, and parser-instance multipart state.

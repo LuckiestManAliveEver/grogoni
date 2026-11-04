@@ -164,6 +164,9 @@ export async function createEdgeSnapshotScope(
        union all select account_id, user_id from mcp_access_tokens where token_hash = $2
          and revoked_at is null and expires_at > now()
        union all select p.account_id::uuid, u.id from cp2_passkeys p join users u on u.account_id = p.account_id::uuid where p.entity_id = $3
+       union all select d.account_id::uuid, u.id from cp2_device_recovery_credentials d
+         join users u on u.account_id = d.account_id::uuid
+         where d.entity_id = $7 and d.record->>'revokedAt' is null
        union all select s.account_id, s.user_id from cp2_edge_protocol_state p
          cross join lateral jsonb_array_elements(coalesce(p.record->'authorizationCodes', '[]'::jsonb)) code_grant
          join sessions s on s.id = (code_grant->1->>'sessionId')::uuid
@@ -193,6 +196,9 @@ export async function createEdgeSnapshotScope(
             input.type === "email" &&
             typeof input.identifier === "string"
               ? input.identifier.trim().toLowerCase()
+              : "",
+            path.startsWith("/auth/device/recover") && typeof input.credentialId === "string"
+              ? input.credentialId.trim().toLowerCase()
               : ""
           ]
         )
@@ -531,6 +537,8 @@ export async function createEdgeSnapshotScope(
         return `account_id = ${actorAccount} and ${actorAccount} <> ''
           and record->>'createdAt' >= ${runtimeOperationDedupCutoffSql}
           ${dedupTask === null ? "" : `and task_id = ${escapeLiteral(dedupTask)}`}`;
+      if (key === "authTransactions" && typeof input.challengeId === "string")
+        return `entity_id = ${escapeLiteral(input.challengeId)} or account_id = nullif(${actorAccount}, '')`;
       if (key === "passkeyCeremonies")
         return `entity_id = ${escapeLiteral(ceremony)} or account_id = nullif(${actorAccount}, '')`;
       return `${key === "nativeRuntimeAgents" || key === "nativeRuntimeBindings" ? "(account_id is null and business_id is null and user_id is null) or " : key === "nativeExecutionHosts" ? "entity_id in (select id from edge_runtime_host_ids) or " : ""}(account_id = ${actorAccount} and ${actorAccount} <> '')

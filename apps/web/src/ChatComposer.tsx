@@ -16,10 +16,7 @@ import {
 import { DeferredChatChannelPicker as ChatChannelPicker } from "./chat-composer-lazy-panels";
 import { DeferredChatComposerActions as ChatComposerActions } from "./chat-composer-lazy-panels";
 
-import { ComposerModelSwitcher } from "./ComposerModelSwitcher";
-
 export function ChatComposer({
-  agent,
   business,
   channelEndpoints,
   composer,
@@ -36,11 +33,9 @@ export function ChatComposer({
   replyToMessageId,
   selectedConversationTitle,
   selectedEmailCustomerId,
-  onAgentChange,
   onAttachmentChange,
   onCancelGeneration,
   onCancelReply,
-  onOpenAgentProfile,
   onAddParticipants,
   onRemoveAttachment,
   onRequireSignIn,
@@ -241,15 +236,6 @@ export function ChatComposer({
             <span className="attach-icon" aria-hidden="true" />
             <span className="visually-hidden">More</span>
           </button>
-          {agentControlsAvailable ? (
-            <ComposerModelSwitcher
-              agent={agent}
-              business={business}
-              onAgentChange={onAgentChange}
-              onOpenAgentProfile={onOpenAgentProfile}
-              onBeforeOpen={() => messageInputRef.current?.blur()}
-            />
-          ) : null}
           <div className="composer-bottom-row-trailing">
             {isBrowserGenerating ? (
               <button

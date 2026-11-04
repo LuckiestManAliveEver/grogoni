@@ -140,6 +140,7 @@ import type {
   UserSummary,
   WorkspaceDeliverResult
 } from "@grogoni/shared-types";
+import { permanentDaemonDisplayName } from "@grogoni/shared-types";
 import type { BusinessPermission } from "@grogoni/business-core";
 import {
   ChannelGatewayError,
@@ -3672,7 +3673,9 @@ export class MessagingDomain {
           : result.text
         : task.status === "cancelled"
           ? "This task was cancelled."
-          : "The daemon could not finish this task. You can retry it here.";
+          : this.conversations.get(origin.id)?.isPermanentDaemon
+            ? `${permanentDaemonDisplayName} could not finish this task. You can retry it here.`
+            : "This background task could not finish. You can retry it here.";
     // Failed attempts and a later successful retry must not share the same response key.
     const message = this.createMessageForActor(
       {
@@ -4255,7 +4258,7 @@ export class MessagingDomain {
       throw new Cp2Error(
         400,
         "daemon_conversation_permanent",
-        "Your daemon remains available in the messenger."
+        "My Assistant remains available in the messenger."
       );
     if (
       conversation.helpTopic &&
@@ -4349,11 +4352,7 @@ export class MessagingDomain {
     const session = this.deps.requirePinVerifiedSession(input.sessionId, now);
     const conversation = this.requireAccountConversation(input.conversationId, session.account.id);
     if (conversation.isPermanentDaemon)
-      throw new Cp2Error(
-        400,
-        "daemon_conversation_permanent",
-        "Your daemon conversation cannot be deleted."
-      );
+      throw new Cp2Error(400, "daemon_conversation_permanent", "My Assistant cannot be deleted.");
     if (conversation.helpTopic)
       throw new Cp2Error(
         400,
@@ -5309,7 +5308,9 @@ export class MessagingDomain {
         accountId: null,
         businessId: null,
         agentId: `account-${input.accountId}-agent`,
-        displayName: "Grogoni agent",
+        displayName: input.identityKey?.startsWith("daemon:")
+          ? permanentDaemonDisplayName
+          : "Grogoni agent",
         createdAt: input.now.toISOString()
       }
     ];
@@ -5388,7 +5389,7 @@ export class MessagingDomain {
         kind: "personal",
         activeShopId: null,
         identityKey: `daemon:${input.accountId}`,
-        title: "Your daemon"
+        title: permanentDaemonDisplayName
       });
     if (conversation.isPermanentDaemon) return conversation;
     const permanent = { ...conversation, isPermanentDaemon: true };

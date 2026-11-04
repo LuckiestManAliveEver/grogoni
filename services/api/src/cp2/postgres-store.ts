@@ -273,6 +273,8 @@ const mutatingMethodNames = new Set([
   "completePhoneSignup",
   "continueWithDevice",
   "recoverWithDeviceCredential",
+  "beginDeviceRecovery",
+  "revokeDeviceRecoveryCredential",
   "continueWithChannelPin",
   "loginWithPassword",
   "mergeCurrentDeviceAccountWithPin",
@@ -426,6 +428,8 @@ const mutatingMethodNames = new Set([
   "finalizeShopDeletion",
   "activateAiModel",
   "activateAgentModel",
+  // My Assistant's agent/model switch: without this it reached Postgres only with some later write.
+  "selectConversationModel",
   "activateGlobalDefaultModel",
   "removeAgentModelBinding",
   "authenticateMcpAccessToken",
@@ -4650,6 +4654,30 @@ async function savePhase1AuthSecurityRecords(
 ): Promise<void> {
   const changed = relationalChangeSelector(snapshot, previous, stats);
   await saveIdentityProviders(client, snapshot);
+
+  // Native Edge login reads the relational credentials, while domain recovery updates the
+  // compatibility snapshot. Persist both within this transaction so a reset is usable at login.
+  for (const record of changed("passwordCredentials")) {
+    await client.query(
+      `insert into password_credentials
+        (account_id, password_hash, password_changed_at, created_at, updated_at)
+       values ($1, $2, $3, $4, $5)
+       on conflict (account_id) do update set
+         password_hash = excluded.password_hash,
+         password_changed_at = excluded.password_changed_at,
+         updated_at = excluded.updated_at
+       where (password_credentials.password_hash, password_credentials.password_changed_at,
+              password_credentials.updated_at) is distinct from
+             (excluded.password_hash, excluded.password_changed_at, excluded.updated_at)`,
+      [
+        requiredText(record, "accountId"),
+        requiredText(record, "passwordHash"),
+        requiredText(record, "passwordChangedAt"),
+        requiredText(record, "createdAt"),
+        requiredText(record, "updatedAt")
+      ]
+    );
+  }
 
   for (const record of changed("otpChallenges")) {
     await client.query(
