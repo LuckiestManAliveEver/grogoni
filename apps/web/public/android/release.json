@@ -1,12 +1,12 @@
 {
   "$schema": "./release.schema.json",
-  "note": "Signed Android update published for existing users. Signature, packaged web assets and public download checksum verified.",
+  "note": "Direct website distribution. Metadata comes from a verified, non-debuggable signed APK.",
   "release": {
     "packageName": "market.grogoni.app",
     "versionName": "0.1.0",
-    "versionCode": 3,
-    "downloadUrl": "https://grogoni.com/android/grogoni-0.1.0-3.apk",
-    "sha256": "57:9A:C1:87:C0:A0:FC:2E:E3:F7:83:59:E3:C4:12:5C:5C:AD:6D:9D:ED:ED:2C:89:C1:AD:83:16:4B:8E:40:E7",
+    "versionCode": 4,
+    "downloadUrl": "https://grogoni.com/android/grogoni-0.1.0-4.apk",
+    "sha256": "F9:5A:C8:03:6C:08:47:71:37:E4:F7:D0:09:4C:88:C8:1E:18:35:67:BE:9D:EE:31:63:AB:65:64:BD:A4:C4:21",
     "minSdk": 23
   }
 }
