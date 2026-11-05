@@ -28,6 +28,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.grogoni.com">
 
+        <meta-data android:name="asset_statements" android:resource="@string/asset_statements" />
         <activity android:name=".auth.AccountActivity" android:exported="false" />
         <receiver android:name=".sms.MmsResultReceiver" android:exported="false" />
         <provider android:name="androidx.core.content.FileProvider"

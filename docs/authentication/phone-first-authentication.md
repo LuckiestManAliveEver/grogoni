@@ -73,3 +73,8 @@ terminal logout before the rotating refresh cookie is tried, especially when sta
 state is involved. The existing client already sent credentials and coalesced refresh attempts; this
 rollout preserves that behavior, retains only non-secret cached session display data, and extends
 network-only/no-store handling to every new auth and session route alias.
+
+Android enables WebAuthn through AndroidX WebKit when the installed WebView supports it,
+using Credential Manager and the production Digital Asset Links association. Unsupported
+WebViews retain the previously registered Android screen-lock key as the native fallback.
+The PWA never uses that native fallback. See [Android's WebView integration guide](https://developer.android.com/identity/sign-in/credential-manager-webview).

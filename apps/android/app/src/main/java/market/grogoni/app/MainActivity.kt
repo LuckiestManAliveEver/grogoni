@@ -10,6 +10,8 @@ import android.provider.Settings
 import android.webkit.GeolocationPermissions
 import android.provider.Telephony
 import android.webkit.*
+import androidx.webkit.WebSettingsCompat
+import androidx.webkit.WebViewFeature
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.ActivityResultLauncher
@@ -108,6 +110,13 @@ open class MainActivity : ComponentActivity() {
             mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
             javaScriptCanOpenWindowsAutomatically = false
             setSupportMultipleWindows(false)
+        }
+        // Let the shared login screen use passkeys on supported Android WebViews.
+        // Older WebViews keep the registered screen-lock fallback.
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_AUTHENTICATION)) {
+            WebSettingsCompat.setWebAuthenticationSupport(
+                webView.settings, WebSettingsCompat.WEB_AUTHENTICATION_SUPPORT_FOR_APP
+            )
         }
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, false)
         WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
