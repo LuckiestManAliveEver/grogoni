@@ -2532,6 +2532,8 @@ export class AgentRuntimeDomain {
       : [];
     const modelRoute = willCallModel
       ? await this.createRuntimeModelRoute({
+          toolAllowed: (tool) =>
+            (this.deps.assistantPermissionErrors?.(input.sessionId, tool).length ?? 0) === 0,
           message: input.message,
           accountId: auth.account.id,
           ...(input.conversationId === undefined ? {} : { conversationId: input.conversationId }),
@@ -2681,6 +2683,7 @@ export class AgentRuntimeDomain {
         shopRuntime.agentId
       );
     const policyErrors = runtimeActionPolicyErrors(this.deps, {
+      sessionId: input.sessionId,
       runtime: shopRuntime,
       businessId: input.businessId,
       toolName: proposal.toolName,
@@ -2976,6 +2979,7 @@ export class AgentRuntimeDomain {
         ...(roleAllowed ? [] : ["Actor role cannot use the confirmed runtime tool."]),
         ...validateRuntimeToolInput(action.toolName as RuntimeToolName, action.input).errors,
         ...runtimeActionPolicyErrors(this.deps, {
+          sessionId: input.authenticatedSessionId,
           runtime: input.runtime,
           businessId: input.businessId,
           toolName: action.toolName as RuntimeToolName,
@@ -3631,6 +3635,7 @@ export class AgentRuntimeDomain {
   }
 
   private async createRuntimeModelRoute(input: {
+    toolAllowed?: (tool: RuntimeToolName) => boolean;
     portableCatalog?: string;
     portableSkill?: { context: string; grants: RuntimeToolName[] };
     accountId: string;

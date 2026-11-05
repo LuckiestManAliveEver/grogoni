@@ -79,6 +79,39 @@ async function prove(
 }
 
 describe("device security passkey recovery", () => {
+  it("binds passkey-first login to the entered account without granting credential reset", async () => {
+    const { store } = fixture();
+    const challenge = await store.beginPasskeyAuthentication({
+      rpId: "localhost",
+      origin,
+      purpose: "login",
+      recoveryIdentifier: phone
+    });
+    const loggedIn = await store.completePasskeyAuthentication({
+      ceremonyId: challenge.ceremonyId,
+      rpId: "localhost",
+      origin,
+      response: assertion
+    });
+    expect(loggedIn.account.primaryAuthDestination).toBe(phone);
+    expect(() =>
+      store.recoverPhoneAccountPinWithDevice({ sessionId: loggedIn.session.id, pin: "5678" })
+    ).toThrow(/Verify this device/iu);
+    const wrong = await store.beginPasskeyAuthentication({
+      rpId: "localhost",
+      origin,
+      purpose: "login",
+      recoveryIdentifier: "+254712345600"
+    });
+    await expect(
+      store.completePasskeyAuthentication({
+        ceremonyId: wrong.ceremonyId,
+        rpId: "localhost",
+        origin,
+        response: assertion
+      })
+    ).rejects.toMatchObject({ code: "passkey_account_mismatch" });
+  });
   it.each(["pin", "password", "passkey"] as const)(
     "allows first %s after recent sign-in, rejects stale sign-in and existing unverified credentials",
     async (kind) => {

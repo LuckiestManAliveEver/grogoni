@@ -379,7 +379,7 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
         // for known and unknown accounts to avoid an account-enumeration oracle.
         requirePhoneLogin(readIdentifier(request.body).channel);
         return {
-          preferred: "pin",
+          preferred: authRuntime.passkeysEnabled ? "passkey" : "pin",
           passkeyAvailable: authRuntime.passkeysEnabled,
           passwordFallback: authRuntime.passwordFallbackEnabled,
           recoveryAvailable: true,

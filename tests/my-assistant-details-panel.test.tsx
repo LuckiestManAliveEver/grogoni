@@ -4,6 +4,9 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConversationRuntimeSelection } from "@grogoni/shared-types";
 import type * as HelpersModule from "../apps/web/src/api-helpers";
+vi.mock("../apps/web/src/AssistantPermissionsChecklist", () => ({
+  AssistantPermissionsChecklist: () => null
+}));
 
 vi.mock("../apps/web/src/api-helpers", async () => {
   const actual = await vi.importActual<typeof HelpersModule>("../apps/web/src/api-helpers");

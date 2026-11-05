@@ -72,6 +72,10 @@ function harness() {
     destination: "+254700000722",
     pin: "1234"
   });
+  const assistantId = store.getGrogoniSessionContext({
+    sessionId: buyer.session.id
+  }).conversationId;
+  store.updateAssistantPermissions(buyer.session.id, assistantId, { buy: true, execute: true });
   const shoppingSessionId = randomUUID();
   const app = buildApi({ cp2: { store } });
   const send = async (message: string, sessionId = buyer.session.id, requestId = randomUUID()) => {
@@ -100,6 +104,21 @@ function harness() {
 }
 
 describe("customer shopping assistant", () => {
+  it("does not expose or execute ordering or computer actions without a grant", async () => {
+    const h = harness();
+    const id = h.store.getGrogoniSessionContext({ sessionId: h.buyer.session.id }).conversationId;
+    h.store.updateAssistantPermissions(h.buyer.session.id, id, { buy: false, execute: false });
+    h.outputs.push(
+      tool("computer.navigate", { sessionId: "forged", url: "https://example.com" }),
+      response("That action needs your permission.")
+    );
+    const result = await h.send("Browse a retailer for me");
+    expect(result.statusCode).toBe(200);
+    expect(h.prompts[0]!.allowedTools).not.toContain("commerce.checkout");
+    expect(h.prompts[0]!.allowedTools).not.toContain("computer.navigate");
+    expect(h.navigate).not.toHaveBeenCalled();
+    await h.app.close();
+  });
   it("lets a customer with no business browse retailers and confirms a mixed checkout exactly once", async () => {
     const h = harness();
     const business = h.store.createBusiness({

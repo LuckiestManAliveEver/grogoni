@@ -305,6 +305,33 @@ export function registerMessagingRoutes(
       }
     }
   );
+  app.get<{ Params: ConversationParams }>(
+    "/v1/conversations/:conversationId/permissions",
+    async (request, reply) => {
+      try {
+        return store.getAssistantPermissions(
+          readSessionCookie(request.headers.cookie),
+          parseString(request.params.conversationId, "conversationId")
+        );
+      } catch (error) {
+        return sendCp2Error(reply, error);
+      }
+    }
+  );
+  app.put<{ Params: ConversationParams; Body: unknown }>(
+    "/v1/conversations/:conversationId/permissions",
+    async (request, reply) => {
+      try {
+        return store.updateAssistantPermissions(
+          readSessionCookie(request.headers.cookie),
+          parseString(request.params.conversationId, "conversationId"),
+          request.body
+        );
+      } catch (error) {
+        return sendCp2Error(reply, error);
+      }
+    }
+  );
   app.put<{ Params: ConversationParams; Body: { modelId?: unknown; agentId?: unknown } | null }>(
     "/v1/conversations/:conversationId/model",
     async (request, reply) => {

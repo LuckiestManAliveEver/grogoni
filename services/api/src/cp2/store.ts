@@ -10,6 +10,15 @@ import {
   type SkillInput
 } from "./domains/agent-skills/store.js";
 import { runBuyerAssistant } from "./domains/commerce/buyer-assistant.js";
+import {
+  assistantActions,
+  assistantToolAction,
+  assistantToolAllowed,
+  assistantToolIsStoreRelated,
+  normalizeAssistantPermissions,
+  type AssistantPermissionsView,
+  type AssistantPermissions
+} from "@grogoni/shared-types";
 import type {
   BuyFeedSummary,
   BuyerShoppingSession,
@@ -1616,6 +1625,8 @@ export class Cp2Store {
       return member && participant ? { ...conversation, accountId: input.accountId } : conversation;
     };
     this.agentRuntimeDomain = new AgentRuntimeDomain({
+      assistantPermissionErrors: (sessionId, tool) =>
+        this.assistantPermissionErrors(sessionId, tool),
       assertPortableSkillAction: (input, ref, tool, agentId) =>
         this.agentSkills.assertAction(input, ref, tool, agentId),
       ...(options.businessTaskEvaluations === undefined
@@ -3595,6 +3606,7 @@ export class Cp2Store {
   }): CreateBusinessResult {
     const now = input.now ?? new Date();
     const session = this.requirePinVerifiedSession(input.sessionId, now);
+    this.requireStoreAccount(session);
 
     const name = input.name.trim();
 
@@ -4203,6 +4215,7 @@ export class Cp2Store {
     const activeShopId =
       input.activeShopId === undefined ? current.activeShopId : input.activeShopId;
     const activeSurface = input.activeSurface ?? current.activeSurface;
+    if (mode === "seller" || activeShopId !== null) this.requireStoreAccount(session);
 
     if (
       input.expectedSessionVersion !== undefined &&
@@ -4787,6 +4800,115 @@ export class Cp2Store {
     ...args: Parameters<AgentRuntimeDomain["activateAiModel"]>
   ): ReturnType<AgentRuntimeDomain["activateAiModel"]> {
     return this.agentRuntimeDomain.activateAiModel(...args);
+  }
+
+  private storeAccountAllowed(session: AuthSessionView): boolean {
+    return (
+      this.sessions.get(session.session.id)?.pinVerifiedAt != null ||
+      (session.account.primaryAuthChannel !== "device" &&
+        session.account.identityLevel !== "device")
+    );
+  }
+
+  private requireStoreAccount(session: AuthSessionView): void {
+    if (!this.storeAccountAllowed(session))
+      throw new Cp2Error(
+        403,
+        "store_account_required",
+        "Sign up or log in before setting up or managing a store. You can keep browsing and buying as a guest."
+      );
+  }
+
+  private accountAssistantPermissions(accountId: string): AssistantPermissions {
+    return normalizeAssistantPermissions(
+      this.nativeRuntimeBindings.agentsMap.get(`account-${accountId}-agent`)?.configuration
+        .assistantPermissions
+    );
+  }
+
+  assistantPermissionErrors(sessionId: string | null, tool: string): string[] {
+    const actor = this.requireMcpAwareSession(sessionId, new Date());
+    return assistantToolAllowed(
+      this.accountAssistantPermissions(actor.account.id),
+      tool,
+      this.storeAccountAllowed(actor)
+    )
+      ? []
+      : [`Assistant permission denied for ${tool}. Review My Assistant details.`];
+  }
+
+  getAssistantPermissions(
+    sessionId: string | null,
+    conversationId: string
+  ): AssistantPermissionsView {
+    const actor = this.requirePinVerifiedSession(sessionId, new Date());
+    const view = this.messagingDomain.getConversation({ sessionId, conversationId });
+    if (view.conversation.accountId !== actor.account.id || !view.conversation.isPermanentDaemon)
+      throw new Cp2Error(404, "conversation_not_found", "Conversation was not found.");
+    return {
+      conversationId,
+      permissions: this.accountAssistantPermissions(actor.account.id),
+      storeAllowed: this.storeAccountAllowed(actor),
+      functions: Object.entries(runtimeToolRegistry).map(([id, tool]) => ({
+        id,
+        action: assistantToolAction(id) ?? "execute",
+        label: tool.hub?.label.en ?? tool.description,
+        storeRelated: assistantToolIsStoreRelated(id)
+      }))
+    };
+  }
+
+  updateAssistantPermissions(
+    sessionId: string | null,
+    conversationId: string,
+    input: unknown
+  ): AssistantPermissionsView {
+    const current = this.getAssistantPermissions(sessionId, conversationId);
+    const actor = this.requirePinVerifiedSession(sessionId, new Date());
+    if (!input || typeof input !== "object" || Array.isArray(input))
+      throw new Cp2Error(
+        400,
+        "assistant_permissions_invalid",
+        "Choose valid assistant permissions."
+      );
+    const permissions = { ...current.permissions };
+    for (const [key, value] of Object.entries(input)) {
+      if (!assistantActions.some((action) => action.id === key) || typeof value !== "boolean")
+        throw new Cp2Error(
+          400,
+          "assistant_permissions_invalid",
+          "Choose valid assistant permissions."
+        );
+      if (key === "store" && value && !current.storeAllowed)
+        throw new Cp2Error(
+          403,
+          "store_account_required",
+          "Sign up or log in to enable store activities."
+        );
+      permissions[key as keyof AssistantPermissions] = value;
+    }
+    const id = `account-${actor.account.id}-agent`;
+    const existingAgent = this.nativeRuntimeBindings.agentsMap.get(id);
+    const base =
+      existingAgent ??
+      this.nativeRuntimeBindings.agentsMap.get(repositoryDefaultRuntimePolicy.agentId)!;
+    this.nativeRuntimeBindings.agentsMap.set(id, {
+      ...base,
+      id,
+      accountId: actor.account.id,
+      businessId: existingAgent?.businessId ?? null,
+      configuration: { ...base.configuration, assistantPermissions: permissions },
+      updatedAt: new Date().toISOString()
+    });
+    this.recordAuditEvent({
+      type: "assistant.permissions_updated",
+      aggregateType: "account",
+      aggregateId: actor.account.id,
+      actorId: actor.user.id,
+      occurredAt: new Date().toISOString(),
+      payload: { permissions }
+    });
+    return this.getAssistantPermissions(sessionId, conversationId);
   }
 
   // The permanent daemon conversation ("My Assistant") is the only conversation whose agent engine
@@ -5908,6 +6030,9 @@ export class Cp2Store {
   acceptStaffInvitation(
     ...args: Parameters<StaffDomain["acceptStaffInvitation"]>
   ): ReturnType<StaffDomain["acceptStaffInvitation"]> {
+    this.requireStoreAccount(
+      this.requireMcpAwareSession(args[0].sessionId, args[0].now ?? new Date())
+    );
     return this.staffDomain.acceptStaffInvitation(...args);
   }
 
@@ -6569,14 +6694,24 @@ export class Cp2Store {
     try {
       return await runBuyerAssistant(shopping, input, {
         provider,
+        toolAllowed: (tool) => this.assistantPermissionErrors(input.sessionId, tool).length === 0,
+        assertPermission: (tool) => {
+          const errors = this.assistantPermissionErrors(input.sessionId, tool);
+          if (errors.length) throw new Cp2Error(403, "assistant_permission_denied", errors[0]!);
+        },
         quote: (items) => this.commerce.quoteBuyerCheckout({ sessionId: input.sessionId, items }),
-        checkout: (items, idempotencyKey) =>
-          this.commerce.createUnifiedCheckout({
+        checkout: (items, idempotencyKey) => {
+          const errors = this.assistantPermissionErrors(input.sessionId, "commerce.checkout");
+          if (errors.length) throw new Cp2Error(403, "assistant_permission_denied", errors[0]!);
+          return this.commerce.createUnifiedCheckout({
             sessionId: input.sessionId,
             items,
             idempotencyKey
-          }).id,
+          }).id;
+        },
         execute: async (tool, values, current) => {
+          const errors = this.assistantPermissionErrors(input.sessionId, tool);
+          if (errors.length) throw new Cp2Error(403, "assistant_permission_denied", errors[0]!);
           // Recheck authentication before every operation, including after a slow model call.
           this.requirePinVerifiedSession(input.sessionId, new Date());
           if (tool === "commerce.discovery.search")
@@ -12213,6 +12348,12 @@ export class Cp2Store {
       throw new Cp2Error(401, "mcp_token_invalid", "MCP access token is invalid or expired.");
     }
     this.requireAccountNotPendingDeletion(account.id, now);
+    if (account.primaryAuthChannel === "device" && !this.accountCanSignIn(account))
+      throw new Cp2Error(
+        403,
+        "store_account_required",
+        "Sign up or log in before managing a store."
+      );
     if (principal.shopId !== null && principal.shopId !== businessId) {
       throw new Cp2Error(403, "mcp_shop_forbidden", "MCP token is bound to another shop.");
     }
@@ -12280,6 +12421,7 @@ export class Cp2Store {
     now = new Date()
   ): AuthSessionView {
     const session = this.requirePinVerifiedSession(sessionId, now);
+    this.requireStoreAccount(session);
 
     this.requireAccountNotPendingDeletion(session.account.id, now);
 

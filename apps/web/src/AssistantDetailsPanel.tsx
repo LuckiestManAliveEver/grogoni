@@ -6,6 +6,7 @@ import {
 import { fetchFreshJson, putJson } from "./api-helpers";
 import { getErrorMessage } from "./chat-message-plumbing";
 import { StackedModule } from "./StackedModule";
+import { AssistantPermissionsChecklist } from "./AssistantPermissionsChecklist";
 
 /**
  * Details for the permanent daemon conversation ("My Assistant"): its ID, plus the agent engine
@@ -157,6 +158,7 @@ export function AssistantDetailsPanel({
           </dd>
         </div>
       </dl>
+      <AssistantPermissionsChecklist conversationId={conversationId} />
       {/* One live region that stays mounted, so screen readers announce each change. */}
       <p role="status" className="assistant-details-status">
         {selection === null && !error

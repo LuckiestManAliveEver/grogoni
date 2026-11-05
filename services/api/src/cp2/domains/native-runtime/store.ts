@@ -940,7 +940,16 @@ export class NativeRuntimeBindingStore {
 
   private upsertAgent(agent: NativeRuntimeAgentSummary): NativeRuntimeAgentSummary {
     const existing = this.agents.get(agent.id);
-    const next = { ...agent, createdAt: existing?.createdAt ?? agent.createdAt };
+    const next = {
+      ...agent,
+      configuration: {
+        ...agent.configuration,
+        ...(existing?.configuration.assistantPermissions === undefined
+          ? {}
+          : { assistantPermissions: existing.configuration.assistantPermissions })
+      },
+      createdAt: existing?.createdAt ?? agent.createdAt
+    };
     this.agents.set(next.id, next);
     return next;
   }

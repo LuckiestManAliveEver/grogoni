@@ -41,6 +41,7 @@ import type { InventoryProcurementStore } from "./inventory-procurement-store.js
 import type { BusinessTaskEvaluationReader } from "./business-task-evaluation-reader.js";
 
 export interface AgentRuntimeDomainDeps extends AgentRuntimeCommerceDeps {
+  assistantPermissionErrors?: (sessionId: string | null, tool: string) => string[];
   assertPortableSkillAction?: (
     input: { sessionId: string | null; businessId: string },
     ref: { id: string; version: number; digest: string },

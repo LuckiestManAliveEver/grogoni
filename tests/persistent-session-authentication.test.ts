@@ -59,7 +59,7 @@ describe("persistent session authentication", () => {
     });
     expect(known.json()).toEqual(unknown.json());
     expect(known.json()).toEqual({
-      preferred: "pin",
+      preferred: "passkey",
       passkeyAvailable: true,
       passwordFallback: true,
       recoveryAvailable: true,

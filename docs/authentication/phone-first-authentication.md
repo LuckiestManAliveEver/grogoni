@@ -9,7 +9,7 @@ during migration.
 
 `mobile phone → signup transaction → profile/password (required) → session`
 
-`mobile phone → methods (PIN primary, password secondary) → PIN or password → MFA when configured → session`
+`user chooses login → mobile phone → registered passkey first → PIN/password alternatives (or enrolled native Android device key) → session`
 
 `identifier → generic recovery response → channel verification → optional MFA → password reset → rotated session`
 
@@ -19,13 +19,15 @@ Phone signup requires a password and then offers explicit device-security recove
 Existing accounts can enroll in account security settings. Browser recovery requires a previously
 registered WebAuthn passkey with user verification; ordinary passkey login cannot authorize
 credential resets. Native Android recovery requires authentication to unlock an enrolled Keystore
-key and a fresh server challenge. PIN remains the primary login method, with password secondary.
+key and a fresh server challenge. Passkey login is preferred when enabled, with PIN/password alternatives.
 See [Device security recovery](device-security-recovery.md) for the protocol, compatibility,
 revocation, notification policy and testing details.
 
 Guests receive a cookie-backed device account through `/auth/continue`, without a login or signup
 form. Personal and direct conversations use the same messaging APIs throughout that account's
 lifetime. Missing sessions are restored with the device key or continued without opening login.
+Guests can browse, buy and use personal app functions without enrolling a PIN or passkey. Store
+setup and store-management APIs require a signed-in account as well as ordinary membership checks.
 
 Passkeys use discoverable WebAuthn credentials and resolve directly to the same account UUID.
 Access cookies last 15 minutes; HTTP-only refresh cookies last 30 days and rotate on use. Reuse

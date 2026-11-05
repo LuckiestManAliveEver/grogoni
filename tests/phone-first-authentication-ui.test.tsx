@@ -7,6 +7,7 @@ import { ApiRequestError } from "../apps/web/src/lib/api";
 import type * as ApiModule from "../apps/web/src/lib/api";
 vi.mock("../apps/web/src/browser-passkeys", () => ({
   browserSupportsWebAuthn: vi.fn(() => false),
+  loginWithBrowserPasskey: vi.fn(),
   recoverWithBrowserPasskey: vi.fn()
 }));
 
@@ -24,7 +25,7 @@ const { apiFetch } = await import("../apps/web/src/lib/api");
 const { isNativeDeviceHost, deviceMessagingAdapter } =
   await import("../apps/web/src/device-messaging");
 const { PhoneFirstAuthentication } = await import("../apps/web/src/PhoneFirstAuthentication");
-const { browserSupportsWebAuthn, recoverWithBrowserPasskey } =
+const { browserSupportsWebAuthn, recoverWithBrowserPasskey, loginWithBrowserPasskey } =
   await import("../apps/web/src/browser-passkeys");
 
 const mockedApiFetch = vi.mocked(apiFetch);
@@ -89,6 +90,7 @@ beforeEach(() => {
   mockedApiFetch.mockReset();
   vi.mocked(browserSupportsWebAuthn).mockReturnValue(false);
   vi.mocked(recoverWithBrowserPasskey).mockReset();
+  vi.mocked(loginWithBrowserPasskey).mockReset();
   vi.mocked(isNativeDeviceHost).mockReturnValue(false);
   vi.mocked(deviceMessagingAdapter.call).mockReset();
   onAuthenticated.mockReset();
@@ -107,6 +109,46 @@ afterEach(() => {
 });
 
 describe("PhoneFirstAuthentication login methods", () => {
+  it("waits for login to begin, then tries the passkey before PIN", async () => {
+    vi.mocked(browserSupportsWebAuthn).mockReturnValue(true);
+    const completed = { account: { primaryAuthDestination: "+254712345678" } };
+    vi.mocked(loginWithBrowserPasskey).mockResolvedValue(completed as never);
+    mockedApiFetch.mockResolvedValue({
+      preferred: "passkey",
+      passkeyAvailable: true,
+      passwordFallback: true,
+      recoveryAvailable: true
+    });
+    renderLogin();
+    expect(loginWithBrowserPasskey).not.toHaveBeenCalled();
+    await change(inputByLabel("Phone number"), "0712345678");
+    await click(buttonByText("Continue to log in"));
+    expect(loginWithBrowserPasskey).toHaveBeenCalledWith("+254712345678");
+    expect(onAuthenticated).toHaveBeenCalledWith(completed);
+    expect(deviceMessagingAdapter.call).not.toHaveBeenCalled();
+  });
+
+  it("falls back to native device security when browser passkeys are unsupported", async () => {
+    vi.mocked(isNativeDeviceHost).mockReturnValue(true);
+    vi.mocked(deviceMessagingAdapter.call)
+      .mockResolvedValueOnce({ screenLock: true })
+      .mockResolvedValueOnce({ screenLock: true })
+      .mockResolvedValueOnce({ accountId: "native", credentialId: "key" })
+      .mockResolvedValueOnce({ signature: "proof" });
+    const completed = { account: { id: "native", primaryAuthDestination: "+254712345678" } };
+    mockedApiFetch.mockImplementation(async (path) => {
+      if (path === "/auth/login/methods") return { preferred: "passkey", passkeyAvailable: true };
+      if (path === "/auth/device/recover/options") return { challenge: "nonce" };
+      if (path === "/auth/device/recover") return completed;
+      throw new Error(`Unexpected ${path}`);
+    });
+    renderLogin();
+    await change(inputByLabel("Phone number"), "0712345678");
+    await click(buttonByText("Continue to log in"));
+    expect(loginWithBrowserPasskey).not.toHaveBeenCalled();
+    expect(onAuthenticated).toHaveBeenCalledWith(completed);
+  });
+
   it("lets Android retry a failed capability check and reports a missing screen lock", async () => {
     vi.mocked(isNativeDeviceHost).mockReturnValue(true);
     vi.mocked(deviceMessagingAdapter.call)

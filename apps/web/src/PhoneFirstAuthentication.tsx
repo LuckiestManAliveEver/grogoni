@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 import { deviceSecurityCapability, recoverWithDeviceSecurity } from "./passkey-recovery";
 import { isNativeDeviceHost } from "./device-messaging";
-import { browserSupportsWebAuthn, recoverWithBrowserPasskey } from "./browser-passkeys";
+import {
+  browserSupportsWebAuthn,
+  recoverWithBrowserPasskey,
+  loginWithBrowserPasskey
+} from "./browser-passkeys";
 import type { AuthSessionView } from "@grogoni/shared-types";
 import { normalizePhoneInput, phoneNormalizationErrorMessage } from "@grogoni/shared-types";
 import { getCountryCallingCode, type CountryCode } from "libphonenumber-js";
@@ -21,7 +25,8 @@ type Stage =
   | "recover-pin";
 
 interface LoginMethods {
-  preferred: "pin";
+  preferred: "passkey" | "pin";
+  passkeyAvailable?: boolean;
   deviceAvailable: boolean;
   passwordFallback: boolean;
   recoveryAvailable: boolean;
@@ -86,7 +91,7 @@ export function PhoneFirstAuthentication({
     };
   }, [nativeDevice]);
   const [recoveryMethod, setRecoveryMethod] = useState<"device" | "passkey" | "email">(
-    nativeDevice ? "device" : "passkey"
+    nativeDevice && !browserSupportsWebAuthn() ? "device" : "passkey"
   );
   const [recoveryCredential, setRecoveryCredential] = useState<"pin" | "password">("pin");
   const [availableMfaFactors, setAvailableMfaFactors] = useState<string[]>([]);
@@ -135,7 +140,7 @@ export function PhoneFirstAuthentication({
     }
   }
 
-  async function continueIdentifier() {
+  async function continueIdentifier(attemptPasskey = true) {
     const methods = await apiFetch<LoginMethods>("/auth/login/methods", {
       method: "POST",
       body: currentIdentifierBody(),
@@ -144,6 +149,34 @@ export function PhoneFirstAuthentication({
     setLoginMethods(methods);
     setStage("methods");
     setMessage("Choose how you'd like to sign in.");
+    if (attemptPasskey && methods.preferred === "passkey") await signInPasskeyFirst();
+  }
+
+  async function signInPasskeyFirst() {
+    const identifier = currentIdentifierBody().identifier;
+    if (browserSupportsWebAuthn()) {
+      try {
+        onAuthenticated(await loginWithBrowserPasskey(identifier));
+        return;
+      } catch (error) {
+        setMessage(getUserFacingErrorMessage(error));
+      }
+    }
+    if (nativeDevice) {
+      const capability = await deviceSecurityCapability();
+      if (capability.supported) {
+        try {
+          onAuthenticated(await recoverWithDeviceSecurity(identifier));
+          return;
+        } catch (error) {
+          setMessage(getUserFacingErrorMessage(error));
+        }
+      }
+    } else {
+      setMessage(
+        "Use a registered passkey, or choose your PIN, password or verified backup email. You can also keep browsing as a guest."
+      );
+    }
   }
 
   async function submitPin() {
@@ -532,7 +565,7 @@ export function PhoneFirstAuthentication({
                     className="auth-text-button"
                     type="button"
                     disabled={!identifier.trim()}
-                    onClick={() => void run(continueIdentifier)}
+                    onClick={() => void run(() => continueIdentifier(false))}
                   >
                     Trouble logging in?
                   </button>
@@ -543,6 +576,32 @@ export function PhoneFirstAuthentication({
 
           {stage === "methods" ? (
             <div className="auth-fields auth-login-methods" aria-label="Available login methods">
+              {loginMethods?.passkeyAvailable && browserSupportsWebAuthn() ? (
+                <button
+                  className="auth-primary-button"
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void run(signInPasskeyFirst)}
+                >
+                  Log in with passkey
+                </button>
+              ) : null}
+              {nativeDevice ? (
+                <button
+                  className="secondary"
+                  type="button"
+                  disabled={busy}
+                  onClick={() =>
+                    void run(async () => {
+                      onAuthenticated(
+                        await recoverWithDeviceSecurity(currentIdentifierBody().identifier)
+                      );
+                    })
+                  }
+                >
+                  Log in with device security
+                </button>
+              ) : null}
               <button
                 className="auth-primary-button"
                 type="button"
@@ -579,11 +638,8 @@ export function PhoneFirstAuthentication({
                         setRecoveryMethod(event.target.value as "device" | "passkey" | "email")
                       }
                     >
-                      {nativeDevice ? (
-                        <option value="device">Device security</option>
-                      ) : (
-                        <option value="passkey">Registered passkey</option>
-                      )}
+                      <option value="passkey">Registered passkey</option>
+                      {nativeDevice ? <option value="device">Device security</option> : null}
                       <option value="email">Verified backup email</option>
                     </select>
                   </label>
@@ -601,16 +657,16 @@ export function PhoneFirstAuthentication({
                     <>
                       <div className="auth-security-summary">
                         <strong>
-                          {nativeDevice
+                          {recoveryMethod === "device"
                             ? "Recover using device security"
                             : "Recover using a passkey"}
                         </strong>
                         <p>
-                          {nativeDevice
+                          {recoveryMethod === "device"
                             ? "Use your fingerprint, face unlock, or phone screen lock to securely recover your Grogoni account."
                             : "Use a passkey you previously registered for this Grogoni account. Your browser or password manager will ask you to verify it."}
                         </p>
-                        {nativeDevice ? (
+                        {recoveryMethod === "device" ? (
                           <>
                             <p>
                               {deviceAvailable === null

@@ -99,6 +99,16 @@ describe("runtime capability execution", () => {
     const store = createCp2Store({ runtimeModelProvider: provider });
     const app = buildApi({ cp2: { store } });
     const { businessId, cookie } = await createOwnerBusiness(app);
+    const sessionId = cookie.slice(cookie.indexOf("=") + 1);
+    const assistantId = store.getGrogoniSessionContext({ sessionId }).conversationId;
+    store.updateAssistantPermissions(sessionId, assistantId, {
+      create: true,
+      delete: true,
+      send: true,
+      buy: true,
+      pay: true,
+      execute: true
+    });
     let requestNumber = 0;
 
     const executeConfirmed = async (

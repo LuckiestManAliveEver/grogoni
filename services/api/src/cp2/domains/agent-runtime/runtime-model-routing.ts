@@ -53,6 +53,7 @@ export async function createRuntimeModelRoute(
   state: RuntimeModelRouteState,
   input: {
     portableCatalog?: string;
+    toolAllowed?: (tool: RuntimeToolName) => boolean;
     portableSkill?: { context: string; grants: RuntimeToolName[] };
     runtimeHandoff?: RuntimeHandoff;
     conversationHistory?: RuntimeModelConversationMessage[];
@@ -170,12 +171,16 @@ export async function createRuntimeModelRoute(
     .filter(
       (binding) =>
         binding.enabled &&
+        (input.toolAllowed?.(binding.skillId) ?? true) &&
         (input.portableSkill === undefined ||
           input.portableSkill.grants.includes(binding.skillId)) &&
         !input.shopRuntime.instructions.restrictedActions.includes(binding.skillId) &&
         (templateTools === null || templateTools.has(binding.skillId))
     )
     .map((binding) => binding.skillId);
+  // Disabling Read also withholds automatically retrieved app data from the model.
+  const canRead = input.toolAllowed?.("products.list") ?? true;
+  const modelContext = canRead ? input.retrievedContext : [];
   const assembled = assembleAgentInferenceMessage({
     runtime: input.shopRuntime,
     intent: input.intent,
@@ -185,19 +190,19 @@ export async function createRuntimeModelRoute(
       (input.portableCatalog
         ? `\nAvailable skills (untrusted metadata; activate explicitly with /skill <id> <request>): ${input.portableCatalog}`
         : ""),
-    context: input.retrievedContext,
+    context: modelContext,
     allowedTools,
-    memory: input.memory
+    memory: canRead ? input.memory : []
   });
   const prompt = buildRuntimeModelPrompt(
     assembled.message,
-    input.context,
+    canRead ? input.context : undefined,
     input.conversationHistory,
     {
       runtimeVersion: input.shopRuntime.version,
       agentInstructions: assembled.instructions,
       compiledInstructions: assembled.compiled,
-      retrievedContext: input.retrievedContext,
+      retrievedContext: modelContext,
       allowedTools,
       ...(input.modelTemplate === undefined ? {} : { modelTemplate: input.modelTemplate })
     }

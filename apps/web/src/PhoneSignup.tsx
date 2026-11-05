@@ -27,6 +27,7 @@ interface Props {
 
 export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Props) {
   const nativeDevice = isNativeDeviceHost();
+  const supportsPasskey = browserSupportsWebAuthn();
   const [deviceAvailable, setDeviceAvailable] = useState(false);
   useEffect(() => {
     if (!nativeDevice) return;
@@ -362,23 +363,33 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
                 disabled={
                   busy ||
                   enrollment.busy ||
-                  (nativeDevice ? !deviceAvailable : !browserSupportsWebAuthn())
+                  (supportsPasskey ? false : nativeDevice ? !deviceAvailable : true)
                 }
                 aria-busy={busy || enrollment.busy}
-                onClick={() => void (nativeDevice ? run(createDevice) : enrollment.enroll())}
+                onClick={() => void (supportsPasskey ? enrollment.enroll() : run(createDevice))}
               >
                 {busy || enrollment.busy
-                  ? nativeDevice
-                    ? "Securing device…"
-                    : "Creating passkey…"
-                  : !nativeDevice
-                    ? browserSupportsWebAuthn()
-                      ? "Create passkey"
-                      : "Passkeys unavailable in this browser"
-                    : deviceAvailable
-                      ? "Secure this device"
-                      : "Device security unavailable"}
+                  ? supportsPasskey
+                    ? "Creating passkey…"
+                    : "Securing device…"
+                  : supportsPasskey
+                    ? "Create passkey"
+                    : !nativeDevice
+                      ? "Passkeys unavailable in this browser"
+                      : deviceAvailable
+                        ? "Secure this device"
+                        : "Device security unavailable"}
               </button>
+              {nativeDevice && supportsPasskey ? (
+                <button
+                  className="secondary"
+                  type="button"
+                  disabled={busy || enrollment.busy || !deviceAvailable}
+                  onClick={() => void run(createDevice)}
+                >
+                  Use Android screen-lock recovery instead
+                </button>
+              ) : null}
               {enrollment.stepUpForm}
               {createdSession !== null ? (
                 <button

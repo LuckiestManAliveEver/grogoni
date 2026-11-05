@@ -90,6 +90,8 @@ describe("My Assistant runtime selection", () => {
     expect(first.models.map((m) => m.id)).toEqual(expect.arrayContaining(models.map((m) => m.id)));
     expect(first.models.find((m) => m.id === models[0]!.id)?.label).toBe(`Label ${models[0]!.id}`);
 
+    store.updateAssistantPermissions(owner.session.id, id, { send: true, read: false });
+
     // Agent only: the model stays, the engine executing turns changes.
     const agentSwitched = await store.selectConversationModel(owner.session.id, id, {
       agentId: "pi"
@@ -97,6 +99,10 @@ describe("My Assistant runtime selection", () => {
     expect(agentSwitched.selectedAgentId).toBe("pi");
     expect(agentSwitched.selectedModelId).toBe(models[0]!.id);
     expect(engineOf(store, id)).toBe("pi");
+    expect(store.getAssistantPermissions(owner.session.id, id).permissions).toMatchObject({
+      send: true,
+      read: false
+    });
     expect(
       store
         .snapshot()
@@ -119,6 +125,10 @@ describe("My Assistant runtime selection", () => {
     expect(modelSwitched.selectedAgentId).toBe("pi");
     expect(modelSwitched.selectedModelId).toBe(models[1]!.id);
     expect(engineOf(store, id)).toBe("pi");
+    expect(store.getAssistantPermissions(owner.session.id, id).permissions).toMatchObject({
+      send: true,
+      read: false
+    });
 
     // Both survive a snapshot round trip (what every Edge request does).
     const restored = createCp2Store(options);

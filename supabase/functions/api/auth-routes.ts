@@ -1023,7 +1023,7 @@ export function createAuthRoutes({
             "Use the enumeration-safe login method endpoint."
           );
         return Response.json({
-          preferred: "pin",
+          preferred: passkeysEnabled() ? "passkey" : "pin",
           passkeyAvailable: passkeysEnabled(),
           passwordFallback: passwordEnabled,
           recoveryAvailable: true,

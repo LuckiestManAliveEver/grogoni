@@ -351,7 +351,7 @@ export class PasskeyDomain {
       kind: "authentication",
       rpId: input.rpId,
       ...(input.origin ? { origin: input.origin } : {}),
-      ...(input.purpose === "pin_recovery"
+      ...(input.recoveryIdentifier !== undefined
         ? { recoveryIdentifier: input.recoveryIdentifier! }
         : {}),
       purpose: input.purpose ?? "login",
@@ -427,7 +427,7 @@ export class PasskeyDomain {
     }
     const account = this.deps.requireAccount(passkey.accountId);
     if (
-      ceremony.purpose === "pin_recovery" &&
+      ceremony.recoveryIdentifier !== undefined &&
       (account.primaryAuthChannel !== "phone" ||
         account.primaryAuthDestination !== ceremony.recoveryIdentifier)
     ) {

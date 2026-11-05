@@ -98,41 +98,16 @@ test("signup includes a real passkey step", async ({ page }) => {
   await expect.poll(() => registered).toEqual(["registration-ceremony"]);
 });
 
-test("an old session proves its password, then creates a real passkey", async ({ page }) => {
+test("browsing with an existing session does not prompt for credentials", async ({ page }) => {
   await useVirtualAuthenticator(page);
-  let verified = false;
-  let registered = false;
+  const credentialRequests: string[] = [];
   await page.route("http://127.0.0.1:4000/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
+    if (path.startsWith("/auth/passkeys") || path === "/auth/credentials/status") {
+      credentialRequests.push(path);
+      return json(route, { passkeys: [] });
+    }
     if (path === "/session" || path === "/auth/bootstrap") return json(route, signedIn);
-    if (path === "/auth/passkeys") return json(route, { passkeys: registered ? [{}] : [] });
-    if (path === "/auth/passkeys/register/options") {
-      if (!verified) {
-        return json(
-          route,
-          {
-            code: "recent_authentication_required",
-            message: "Your session has expired. Sign in again."
-          },
-          401
-        );
-      }
-      return json(route, registrationOptions);
-    }
-    if (path === "/auth/session/refresh") return json(route, signedIn);
-    if (path === "/auth/credentials/status") {
-      return json(route, { hasPin: false, hasPassword: true });
-    }
-    if (path === "/auth/password/verify") {
-      expect(route.request().postDataJSON()).toEqual({ password: "secure first password" });
-      verified = true;
-      return json(route, signedIn);
-    }
-    if (path === "/auth/passkeys/register/verify") {
-      expect(route.request().postDataJSON().ceremonyId).toBe("registration-ceremony");
-      registered = true;
-      return json(route, { id: "passkey-1", label: "Phone" });
-    }
     if (path === "/auth/oauth/providers") return json(route, { providers: [] });
     if (path === "/roles/check") return json(route, { allowed: true });
     if (path === "/v1/marketplace-intro") {
@@ -141,12 +116,9 @@ test("an old session proves its password, then creates a real passkey", async ({
     if (path === "/v1/conversations") return json(route, { conversations: [] });
     return json(route, { message: `The test does not provide ${path}.` }, 404);
   });
-
   await page.goto("http://localhost:5173/");
-  const prompt = page.getByRole("region", { name: "Set up account passkey" });
-  await prompt.getByRole("button", { name: "Create passkey", exact: true }).click();
-  await prompt.getByLabel("Enter your password to continue").fill("secure first password");
-  await prompt.getByRole("button", { name: "Continue", exact: true }).click();
-  await expect(prompt).toHaveCount(0);
-  expect(registered).toBe(true);
+  await expect(page.getByRole("region", { name: "Set up account passkey" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Create your passkey" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Open menu", exact: true })).toBeVisible();
+  expect(credentialRequests).toEqual([]);
 });

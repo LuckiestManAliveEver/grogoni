@@ -35,7 +35,18 @@ export async function createBrowserPasskey(
   return passkey;
 }
 
+export async function loginWithBrowserPasskey(identifier: string): Promise<AuthSessionView> {
+  return authenticateBrowserPasskey(identifier, "login");
+}
+
 export async function recoverWithBrowserPasskey(identifier: string): Promise<AuthSessionView> {
+  return authenticateBrowserPasskey(identifier, "pin_recovery");
+}
+
+async function authenticateBrowserPasskey(
+  identifier: string,
+  purpose: "login" | "pin_recovery"
+): Promise<AuthSessionView> {
   if (!browserSupportsWebAuthn())
     throw new Error("Passkeys are not supported in this browser. Use your verified backup email.");
   const challenge = await apiFetch<{
@@ -43,7 +54,7 @@ export async function recoverWithBrowserPasskey(identifier: string): Promise<Aut
     options: PublicKeyCredentialRequestOptionsJSON;
   }>("/auth/passkeys/login/options", {
     method: "POST",
-    body: { purpose: "pin_recovery", identifier },
+    body: { purpose, identifier },
     skipAuthRefresh: true
   });
   const response = await startAuthentication({ optionsJSON: challenge.options });

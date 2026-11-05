@@ -431,6 +431,7 @@ const mutatingMethodNames = new Set([
   "activateAgentModel",
   // My Assistant's agent/model switch: without this it reached Postgres only with some later write.
   "selectConversationModel",
+  "updateAssistantPermissions",
   "activateGlobalDefaultModel",
   "removeAgentModelBinding",
   "authenticateMcpAccessToken",

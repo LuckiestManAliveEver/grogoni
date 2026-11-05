@@ -1,11 +1,14 @@
 # PWA passkeys
 
 Browser/PWA signup includes a passkey step after the account is created. The browser or password
-manager owns the credential prompt. Users can finish later if they cancel, and the prompt below then
-appears. A browser without WebAuthn skips passkeys; the password remains available.
+manager owns the credential prompt. Users can finish later if they cancel. A browser without
+WebAuthn skips passkeys; the password remains available.
 
-Existing signed-in accounts without passkeys, other than guests at the `device` level, receive a
-Create passkey prompt in the application, including accounts without a shop. Account security also retains passkey enrollment and management.
+Passkey prompts do not appear automatically while browsing or using a guest session. Account
+security retains explicit passkey enrollment and management. Login method discovery prefers
+passkeys and attempts a registered passkey only after the user continues the login form. Native
+Android can fall back to an enrolled screen-lock recovery key when passkeys are unavailable;
+the PWA retains PIN/password and verified-email alternatives and never uses native device security.
 Enrollment requires a credential proven within 15 minutes, which protects against an old stolen
 session. An older session is asked for its PIN or password in place (`/auth/pin/verify`,
 `/auth/password/verify`), then enrollment continues. Those routes run in `auth-routes.ts`, because

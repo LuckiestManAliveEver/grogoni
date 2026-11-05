@@ -3,6 +3,7 @@ import type { PublishedCommerceOffer, CommerceOfferOrderSnapshot } from "./comme
 export type RuntimeName = "api" | "sync" | "ai-runtime" | "web";
 
 export * from "./business-settings.js";
+export * from "./assistant-permissions.js";
 export * from "./commerce-address.js";
 export * from "./daemon-lanes.js";
 export * from "./purchase-orders.js";
