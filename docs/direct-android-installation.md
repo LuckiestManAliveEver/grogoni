@@ -47,11 +47,29 @@ metadata together on the production origin, with the APK present before enabling
 manifest. Verify the public download bytes and certificate before treating the release as live.
 The checked-in public release manifest stays null until an actual release is published.
 
-## Current tester release (unlisted)
+## Current Android update
 
-Version 0.1.0 (code 2), built from `main` at 7201d248 with this version bump, is available to
-testers only. The public install button stays hidden: `apps/web/public/android/release.json` is
-still `null`, so grogoni.com does not advertise it.
+Version 0.1.0 (code 3), built from `main` at `ec6d9d5a`, fixes retrying Android device-security checks.
+The verified release is published in `apps/web/public/android/release.json`. Android browser and
+PWA visitors see an update download notice when they open Grogoni, even if they dismissed an
+earlier install prompt. Dismissal applies only to that release code. The notice checks again when
+the browser regains focus, becomes visible, or remains open for 15 minutes. Browsers cannot reliably
+detect the older APK installation or its version, so the notice asks whether the visitor already
+has the Android app rather than claiming to have detected it. Native WebView hosts skip this notice.
+
+- Download: https://grogoni.com/android/grogoni-0.1.0-3.apk
+- Release: https://github.com/LuckiestManAliveEver/grogoni/releases/tag/android-0.1.0-3
+- APK SHA-256: `57:9A:C1:87:C0:A0:FC:2E:E3:F7:83:59:E3:C4:12:5C:5C:AD:6D:9D:ED:ED:2C:89:C1:AD:83:16:4B:8E:40:E7`
+- Signing certificate SHA-256: `C0:AA:FB:59:8D:E5:87:49:DD:50:89:90:6E:F3:B0:8C:77:76:D3:0A:02:A5:D6:AD:61:C4:DE:98:D6:7F:DD:CD`
+
+The release signature, all 95 packaged web assets, and the public download checksum were verified.
+Physical-device recovery was not verified in this session. Install over the existing app to keep
+its enrolled recovery keys and data; Android still asks the user to approve installation.
+
+## Previous tester release (unlisted)
+
+Version 0.1.0 (code 2), built from `main` at 7201d248 with its version bump, was available to
+testers only with the public release manifest left null.
 
 - Download: https://grogoni.com/android/grogoni-0.1.0-2.apk (redirects to the
   [GitHub pre-release `android-0.1.0-2`](https://github.com/LuckiestManAliveEver/grogoni/releases/tag/android-0.1.0-2),
@@ -68,8 +86,7 @@ SMS app; messages stay in the phone's shared SMS store.
 
 Status: emulator-verified only (Android 11; see Verification). Real carrier SMS/MMS, dual SIM,
 roaming and power management are untested, so testers should keep their previous messaging app
-installed. To make this release public later, replace the checked-in `release.json` with the
-prepared one (its `downloadUrl` already matches the redirect) after physical-phone testing passes.
+installed. Code 3 supersedes this tester release.
 
 ## Installation boundary
 

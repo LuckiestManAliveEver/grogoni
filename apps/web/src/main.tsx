@@ -2,6 +2,7 @@ import { StrictMode, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { AppRouter } from "./AppRouter";
 import { ConnectivityIndicator } from "./ConnectivityIndicator";
+import { AndroidUpdateNotice } from "./AndroidUpdateNotice";
 import { runDeploymentRecoveryStartupChecks } from "./lazy-module-recovery";
 import { PerformancePanel } from "./PerformancePanel";
 import { recordReadiness, startPerformanceMonitoring } from "./performance";
@@ -24,6 +25,7 @@ function App() {
   return (
     <>
       <AppRouter />
+      <AndroidUpdateNotice />
       <ConnectivityIndicator />
       <PerformancePanel />
     </>

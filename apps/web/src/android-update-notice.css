@@ -1,0 +1,33 @@
+.android-update-notice {
+  position: fixed;
+  z-index: 1200;
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  left: max(1rem, env(safe-area-inset-left));
+  max-width: 34rem;
+  max-height: 45dvh;
+  overflow: auto;
+  margin-inline: auto;
+  padding: 1rem;
+  border: 1px solid #117a4f;
+  border-radius: 1rem;
+  background: #fff;
+  color: #172b24;
+  box-shadow: 0 8px 32px #0003;
+}
+
+.android-update-notice p {
+  margin: 0.5rem 0 1rem;
+}
+
+.android-update-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.android-update-actions a {
+  text-align: center;
+  white-space: normal;
+}
