@@ -1,6 +1,6 @@
 import { isNativeDeviceHost } from "./device-messaging";
 import { Suspense, useEffect, useState } from "react";
-import { browserSupportsWebAuthn, startRegistration } from "@simplewebauthn/browser";
+import { browserSupportsWebAuthn } from "@simplewebauthn/browser";
 
 import type {
   ConnectedMailboxOAuthStartSummary,
@@ -12,6 +12,8 @@ import type {
 } from "@grogoni/shared-types";
 
 import { enrollDeviceRecovery } from "./passkey-recovery";
+import { AuthenticationActionMessage } from "./AuthenticationActionMessage";
+import { usePasskeyEnrollment } from "./usePasskeyEnrollment";
 import { ConnectedSourcesPanel } from "./ConnectedSourcesPanel";
 import { normalizeOwnerPhoneInput } from "./phone-identity";
 import { formatDate } from "./formatters";
@@ -19,7 +21,6 @@ import { PhoneNumberField } from "./PhoneNumberField";
 import { deleteJson, getJson, patchJson, postJson, putJson } from "./api-helpers";
 import { ApiRequestError } from "./lib/api";
 import { recordOnboardingEvent } from "./performance";
-import { AuthenticationActionMessage } from "./AuthenticationActionMessage";
 import { routes } from "./routes";
 import {
   getCountryDialCode,
@@ -36,7 +37,6 @@ import {
   type OAuthProviderSummary,
   type OAuthStartResponse,
   type PasskeyListResponse,
-  type PasskeyRegistrationOptionsResponse,
   type SessionResponse,
   type SocialSignupProvider,
   pendingOAuthStorageKey,
@@ -432,31 +432,13 @@ export function IdentitySecurityPanel({
     );
   }
 
-  async function registerPasskey() {
-    if (!browserSupportsWebAuthn()) {
-      setProfileMessage("Passkeys are not supported in this browser.");
-      return;
-    }
-
-    try {
-      const challenge = await postJson<PasskeyRegistrationOptionsResponse>(
-        "/auth/passkeys/register/options",
-        {}
-      );
-      const credential = await startRegistration({
-        optionsJSON: challenge.options
-      });
-      await postJson<PasskeySummary>("/auth/passkeys/register/verify", {
-        ceremonyId: challenge.ceremonyId,
-        label: passkeyDeviceLabel(),
-        response: credential
-      });
+  const passkeyEnrollment = usePasskeyEnrollment({
+    label: passkeyDeviceLabel(),
+    onCreated: async () => {
       await loadPasskeys();
       setProfileMessage("Passkey added.");
-    } catch (error) {
-      setProfileMessage(getErrorMessage(error));
     }
-  }
+  });
 
   async function revokePasskey(credentialId: string) {
     try {
@@ -741,7 +723,7 @@ export function IdentitySecurityPanel({
   }, [accountId, business.id]);
 
   return (
-    <div className="record-form shop-profile-card">
+    <div className="record-form shop-profile-card identity-security-panel">
       <div className="section-heading">
         <p className="eyebrow">Account</p>
         <h3>Passkeys and login accounts</h3>
@@ -946,12 +928,14 @@ export function IdentitySecurityPanel({
       <button
         type="button"
         disabled={!browserSupportsWebAuthn() || pendingProfileAction !== null}
-        onClick={() => void runProfileAction("passkey-register", registerPasskey)}
+        onClick={() => void runProfileAction("passkey-register", passkeyEnrollment.enroll)}
       >
         {browserSupportsWebAuthn()
           ? "Add a passkey for account access and recovery"
           : "Passkeys unavailable"}
       </button>
+      {passkeyEnrollment.stepUpForm}
+      {passkeyEnrollment.message ? <p role="alert">{passkeyEnrollment.message}</p> : null}
       {isNativeDeviceHost() ? (
         <>
           <button

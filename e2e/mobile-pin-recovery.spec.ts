@@ -2,7 +2,7 @@ import { generateKeyPairSync } from "node:crypto";
 import { expect, test } from "@playwright/test";
 
 for (const hasPin of [true, false]) {
-  test(`recovers a device account ${hasPin ? "with" : "without"} an existing PIN`, async ({
+  test(`recovers an account with a passkey ${hasPin ? "with" : "without"} an existing PIN`, async ({
     page
   }) => {
     const phone = "+254712345678";
@@ -104,8 +104,9 @@ for (const hasPin of [true, false]) {
     await expect(
       page.getByRole("button", { name: "Send email recovery code", exact: true })
     ).toBeDisabled();
-    await page.getByLabel("Recover with").selectOption("device");
-    await page.getByRole("button", { name: "Unlock with device security", exact: true }).click();
+    await page.getByLabel("Recover with").selectOption("passkey");
+    await expect(page.getByRole("option", { name: "Device security" })).toHaveCount(0);
+    await page.getByRole("button", { name: "Recover with passkey", exact: true }).click();
     await expect(
       page.getByRole("heading", { name: hasPin ? "Choose a new PIN" : "Create a PIN", exact: true })
     ).toBeVisible();
@@ -121,7 +122,7 @@ for (const hasPin of [true, false]) {
     if (hasPin) await submit.click();
     else await page.getByLabel("Confirm new PIN", { exact: true }).press("Enter");
     await expect(
-      page.getByText("Verify this device again before changing your PIN.")
+      page.getByText("Verify your passkey again before changing your PIN.")
     ).toBeVisible();
     expect(mutations).toEqual([hasPin ? "/auth/pin/recover/device" : "/auth/pin/setup"]);
   });

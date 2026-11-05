@@ -11,7 +11,9 @@ import { invalidateApiCacheForMutation } from "./api-request-cache";
 
 export { browserSupportsWebAuthn };
 
-export async function createBrowserPasskey(): Promise<PasskeySummary> {
+export async function createBrowserPasskey(
+  label = `${navigator.platform || "This browser"} passkey`
+): Promise<PasskeySummary> {
   if (!browserSupportsWebAuthn())
     throw new Error(
       "Passkeys are not supported in this browser. Use your password or verified backup email."
@@ -25,7 +27,7 @@ export async function createBrowserPasskey(): Promise<PasskeySummary> {
     method: "POST",
     body: {
       ceremonyId: challenge.ceremonyId,
-      label: `${navigator.platform || "This browser"} passkey`,
+      label,
       response
     }
   });

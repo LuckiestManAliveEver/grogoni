@@ -362,6 +362,7 @@ function isAuthenticationEntryPoint(pathOrUrl: string): boolean {
       pathname === "/auth/mfa/challenge" ||
       pathname === "/auth/mfa/verify" ||
       pathname.startsWith("/auth/pin/") ||
+      pathname === "/auth/password/verify" ||
       pathname.startsWith("/auth/otp/") ||
       pathname.startsWith("/auth/passkeys/login/") ||
       pathname.startsWith("/auth/oauth/")

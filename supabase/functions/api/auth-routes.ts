@@ -38,6 +38,8 @@ const postPaths = new Set([
   "/auth/signup/complete",
   "/auth/mfa/challenge",
   "/auth/mfa/verify",
+  "/auth/pin/verify",
+  "/auth/password/verify",
   "/auth/session/refresh",
   "/session/refresh"
 ]);
@@ -229,13 +231,17 @@ export function createAuthRoutes({
       throw new AuthError(400, "INVALID_PHONE_NUMBER", "Enter a valid phone number.");
     }
   }
+  // A guest's added phone lives on the user, not in account_identities. It must log in here, or
+  // refusing the browser device key would lock them out. The column is unique and always current,
+  // so its holder wins over an older account that still lists the number as its primary.
   async function findAccount(client: SqlClient, type: string, value: string, anyIdentity = false) {
     const result = await client.query(
       `${accountSelect} where
       (a.primary_auth_channel = $1 and a.primary_auth_destination = $2) or exists
       (select 1 from account_identities i where i.account_id = a.id and i.type = $1
         and i.normalized_value = $2 and ($3::boolean or i.type = 'phone' or i.verified_at is not null))
-      order by u.created_at, u.id limit 1`,
+      or ($1 = 'phone' and u.phone_number_e164 = $2)
+      order by (u.phone_number_e164 = $2) is true desc, u.created_at, u.id limit 1`,
       [type, value, anyIdentity]
     );
     return result.rows[0];
@@ -263,6 +269,63 @@ export function createAuthRoutes({
       [key, signup ? "auth.edge.signup_attempt" : "auth.edge.login_failure"]
     );
     return Number(result.rows[0]?.attempts ?? 0) >= (signup ? 10 : 5);
+  }
+  /**
+   * Step-up for an existing session, needed before sensitive changes such as adding a passkey.
+   * Handled here, not in the domain store, because that store is rebuilt per request and its
+   * attempt counter would reset on every guess. This limit is durable and spans PIN and password.
+   */
+  async function verifySessionCredential(request: Request, usePassword: boolean, value: string) {
+    return transaction(async (client) => {
+      const session = await activeSession(client, request);
+      if (!session) return error(401, "auth_required", "Authentication is required.");
+      const accountId = String(session.account_id);
+      const key = correlation(`verify:${accountId}`, secrets.audit);
+      if (await limited(client, key))
+        return error(429, "pin_rate_limited", "Too many attempts. Try again later.");
+      const credential = (
+        await client.query(
+          usePassword
+            ? "select password_hash as credential from password_credentials where account_id = $1"
+            : "select pin_hash as credential from account_pin_hashes where account_id = $1",
+          [accountId]
+        )
+      ).rows[0]?.credential;
+      if (!credential)
+        return usePassword
+          ? error(404, "password_not_set", "This account has no password.")
+          : error(404, "pin_not_set", "Login PIN has not been set.");
+      const valid = verifyCredential(
+        accountId,
+        value,
+        String(credential),
+        usePassword ? secrets.password : secrets.pin,
+        !usePassword
+      );
+      if (valid === "invalid") {
+        await audit(client, "auth.edge.login_failure", key, session);
+        return usePassword
+          ? error(401, "password_incorrect", "That password is not correct.")
+          : error(401, "pin_invalid", "Login PIN is invalid.");
+      }
+      if (valid === "legacy" && !usePassword) await setPin(client, accountId, value);
+      const verifiedAt = new Date().toISOString();
+      await client.query("update sessions set pin_verified_at = $2 where id = $1", [
+        session.id,
+        verifiedAt
+      ]);
+      await client.query(
+        `update cp2_sessions set record = record || $2::jsonb, updated_at = now()
+        where entity_id = $1`,
+        [session.id, JSON.stringify({ pinVerifiedAt: verifiedAt })]
+      );
+      await audit(client, "auth.edge.login_success", key, session);
+      const account = (await client.query(`${accountSelect} where a.id = $1`, [accountId])).rows[0];
+      return Response.json({
+        ...publicActor(account),
+        session: sessionView({ ...session, pin_verified_at: verifiedAt })
+      });
+    });
   }
   async function setPin(client: SqlClient, accountId: string, value: string) {
     const pinHash = credentialHash(accountId, value, secrets.pin, true);
@@ -945,6 +1008,12 @@ export function createAuthRoutes({
         return await transaction((client) =>
           verifyMfa(client, request, data, path === "/auth/mfa/challenge")
         );
+      if (path === "/auth/pin/verify")
+        return await verifySessionCredential(request, false, pin(data.pin));
+      if (path === "/auth/password/verify" && !passwordEnabled)
+        return error(403, "password_fallback_disabled", "Password fallback is disabled.");
+      if (path === "/auth/password/verify")
+        return await verifySessionCredential(request, true, text(data.password, "password"));
       if (path === "/auth/login/methods" || path === "/auth/identify") {
         identifier(data);
         if (path === "/auth/identify")

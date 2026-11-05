@@ -144,6 +144,30 @@ describe("Edge scoped persistence", () => {
     expect(values[6]).toBe(credentialId);
   });
 
+  it("loads the owner's sign-in records for device recovery, so the refusal cannot fail open", async () => {
+    const credentialId = "00000000-0000-4000-8000-000000000001";
+    const owner = "00000000-0000-4000-8000-0000000000aa";
+    const query = vi.fn(async () => ({
+      rows: [{ account_id: owner, user_id: owner, primary_auth_destination: "+254700123456" }]
+    }));
+    const scope = await createEdgeSnapshotScope(
+      { query } as unknown as PoolClient,
+      new Request("https://grogoni.com/auth/device/recover", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ credentialId })
+      }),
+      "/auth/device/recover",
+      Buffer.from(JSON.stringify({ credentialId }))
+    );
+    for (const key of ["passkeys", "passwordCredentials", "accountIdentities"] as const) {
+      expect(scope.predicate(key)).toContain(owner);
+    }
+    expect(scope.withClause).toMatch(
+      /public\.account_pin_hashes where account_id = nullif\('[^']*-0000000000aa'/u
+    );
+  });
+
   it("escapes user-supplied lookup values and uses invitation destinations", async () => {
     const query = vi.fn(async () => ({
       rows: [{ account_id: "account", user_id: "user", primary_auth_destination: "+442079460123" }]

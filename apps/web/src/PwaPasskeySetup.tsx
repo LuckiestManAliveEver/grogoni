@@ -1,16 +1,15 @@
 import { useEffect, useState } from "react";
-import { browserSupportsWebAuthn, createBrowserPasskey } from "./browser-passkeys";
+import { browserSupportsWebAuthn } from "./browser-passkeys";
 import { isNativeDeviceHost } from "./device-messaging";
 import { apiFetch } from "./lib/api";
-import { getUserFacingErrorMessage } from "./user-facing-error";
+import { usePasskeyEnrollment } from "./usePasskeyEnrollment";
 import "./pwa-passkey-setup.css";
 
 /** Existing accounts can enroll without creating a shop or entering business settings. */
 export function PwaPasskeySetup({ accountId }: { accountId: string }) {
   const [needed, setNeeded] = useState(false);
   const [dismissed, setDismissed] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
+  const enrollment = usePasskeyEnrollment({ onCreated: () => setNeeded(false) });
   useEffect(() => {
     if (isNativeDeviceHost() || !browserSupportsWebAuthn()) return;
     let active = true;
@@ -27,19 +26,6 @@ export function PwaPasskeySetup({ accountId }: { accountId: string }) {
   }, [accountId]);
 
   if (!needed || dismissed) return null;
-  async function create() {
-    if (busy) return;
-    setBusy(true);
-    setMessage("");
-    try {
-      await createBrowserPasskey();
-      setNeeded(false);
-    } catch (error) {
-      setMessage(getUserFacingErrorMessage(error));
-    } finally {
-      setBusy(false);
-    }
-  }
   return (
     <section className="record-form pwa-passkey-setup" aria-label="Set up account passkey">
       <strong>Create a passkey for your account</strong>
@@ -47,19 +33,20 @@ export function PwaPasskeySetup({ accountId }: { accountId: string }) {
         Save a passkey with your browser or password manager to recover your PIN or password later.
       </p>
       <div className="row-actions">
-        <button type="button" disabled={busy} onClick={() => void create()}>
-          {busy ? "Creating passkey…" : "Create passkey"}
+        <button type="button" disabled={enrollment.busy} onClick={() => void enrollment.enroll()}>
+          {enrollment.busy ? "Creating passkey…" : "Create passkey"}
         </button>
         <button
           type="button"
           className="secondary"
-          disabled={busy}
+          disabled={enrollment.busy}
           onClick={() => setDismissed(true)}
         >
           Not now
         </button>
       </div>
-      {message ? <p role="alert">{message}</p> : null}
+      {enrollment.stepUpForm}
+      {enrollment.message ? <p role="alert">{enrollment.message}</p> : null}
     </section>
   );
 }

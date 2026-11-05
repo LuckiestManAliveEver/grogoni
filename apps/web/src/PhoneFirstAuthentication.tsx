@@ -229,7 +229,11 @@ export function PhoneFirstAuthentication({
           ? await recoverWithBrowserPasskey(currentIdentifierBody().identifier)
           : await recoverWithDeviceSecurity(currentIdentifierBody().identifier);
       if (recoveredSession.account.primaryAuthDestination !== currentIdentifierBody().identifier) {
-        throw new Error("Use the device previously secured for this mobile phone account.");
+        throw new Error(
+          recoveryMethod === "passkey"
+            ? "Use a passkey registered for this mobile phone account."
+            : "Use the device previously secured for this mobile phone account."
+        );
       }
       const credentials = await apiFetch<{ hasPin: boolean; hasPassword: boolean }>(
         "/auth/credentials/status",
@@ -346,7 +350,11 @@ export function PhoneFirstAuthentication({
         setPassword("");
         setPasswordConfirmation("");
         setStage("methods");
-        setMessage("Verify this device again before changing your PIN.");
+        setMessage(
+          recoveryMethod === "passkey"
+            ? "Verify your passkey again before changing your PIN."
+            : "Verify this device again before changing your PIN."
+        );
         return;
       }
       throw error;

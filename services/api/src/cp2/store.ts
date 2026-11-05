@@ -2273,9 +2273,12 @@ export class Cp2Store {
     }
     return result;
   }
-  beginDeviceRecovery(input: { credentialId: string; identifier: string; now?: Date }) {
-    const now = input.now ?? new Date();
-    normalizeDeviceRecoveryCredentialId(input.credentialId);
+  beginDeviceRecovery(rawInput: { credentialId: string; identifier: string; now?: Date }) {
+    const now = rawInput.now ?? new Date();
+    const input = {
+      ...rawInput,
+      credentialId: normalizeDeviceRecoveryCredentialId(rawInput.credentialId)
+    };
     if (!/^\+[1-9]\d{6,14}$/u.test(input.identifier))
       throw new Cp2Error(
         400,
@@ -2318,10 +2321,15 @@ export class Cp2Store {
   }
 
   async recoverWithDeviceCredential(
-    input: Parameters<DeviceBootstrapDomain["recoverWithDeviceCredential"]>[0] & {
+    rawInput: Parameters<DeviceBootstrapDomain["recoverWithDeviceCredential"]>[0] & {
       challengeId?: string;
     }
   ): ReturnType<DeviceBootstrapDomain["recoverWithDeviceCredential"]> {
+    // Every check below looks the credential up by id, so they must see the form the domain uses.
+    const input = {
+      ...rawInput,
+      credentialId: normalizeDeviceRecoveryCredentialId(rawInput.credentialId)
+    };
     const args = [input] as const;
     if (
       this.deviceBootstrapDomain.deviceRecoveryCredentialsMap.get(input.credentialId)
@@ -2354,6 +2362,7 @@ export class Cp2Store {
         throw new Cp2Error(401, "device_recovery_invalid", "Device recovery failed.");
       }
     }
+    this.requireDeviceKeyMayRestoreAccount(input.credentialId, input.now ?? new Date());
     const result = await this.deviceBootstrapDomain.recoverWithDeviceCredential(...args);
     const now = args[0].now ?? new Date();
     const assertionKey = `${args[0].credentialId.trim()}:${args[0].issuedAt}:${args[0].nonce.trim()}`;
@@ -2377,6 +2386,42 @@ export class Cp2Store {
       });
     }
     return result;
+  }
+
+  /**
+   * A browser's stored key involves no user verification, so it is refused once the account can
+   * sign in another way. It keeps working until then, because refusing it would lock the user out.
+   * The Android screen-lock credential is the only key marked requiresServerChallenge.
+   */
+  private requireDeviceKeyMayRestoreAccount(credentialId: string, now: Date): void {
+    const credential = this.deviceBootstrapDomain.deviceRecoveryCredentialsMap.get(credentialId);
+    if (credential === undefined || credential.requiresServerChallenge === true) return;
+    if (!this.accountCanSignIn(this.requireAccount(credential.accountId))) return;
+    this.recordSecurityEvent(
+      "auth.device_recovery_refused",
+      credential.accountId,
+      "failure",
+      now,
+      {}
+    );
+    throw new Cp2Error(401, "device_recovery_invalid", "Device recovery failed.");
+  }
+
+  /** Mirrors the login screen: a phone number plus a PIN, a password, or (phone-primary) a passkey. */
+  private accountCanSignIn(account: AccountSummary): boolean {
+    const phonePrimary = account.primaryAuthChannel === "phone";
+    const phone = this.users.get(this.userByAccount.get(account.id) ?? "")?.phoneNumberE164;
+    const hasPhone = phonePrimary || (typeof phone === "string" && phone.length > 0);
+    if (!hasPhone) return false;
+    if (this.accountPinHashes.has(account.id) || this.passwordCredentials.has(account.id)) {
+      return true;
+    }
+    return (
+      phonePrimary &&
+      [...this.passkeyDomain.passkeysMap.values()].some(
+        (passkey) => passkey.accountId === account.id
+      )
+    );
   }
 
   requestOtp(...args: Parameters<OtpDomain["requestOtp"]>): ReturnType<OtpDomain["requestOtp"]> {
@@ -3106,6 +3151,47 @@ export class Cp2Store {
     this.markSessionPinVerified(session.session.id, now);
     this.recordAuditEvent({
       type: "auth.pin_verified",
+      aggregateType: "account",
+      aggregateId: session.account.id,
+      actorId: session.user.id,
+      occurredAt: now.toISOString(),
+      payload: {}
+    });
+
+    return this.requireAnySession(input.sessionId, now);
+  }
+
+  /** Step-up for accounts without a PIN: password signup creates only a password. */
+  verifyAccountPassword(input: {
+    sessionId: string | null;
+    password: string;
+    now?: Date;
+  }): AuthSessionView {
+    const now = input.now ?? new Date();
+    const session = this.requireAnySession(input.sessionId, now);
+    const credential = this.passwordCredentials.get(session.account.id);
+    const attemptKey = `verify:${session.account.id}`;
+
+    if (credential === undefined) {
+      throw new Cp2Error(404, "password_not_set", "This account has no password.");
+    }
+
+    try {
+      this.requirePinAttemptAllowed(attemptKey, now);
+    } catch {
+      throw new Cp2Error(429, "pin_rate_limited", "Too many attempts. Try again later.");
+    }
+    if (
+      verifyPasswordHash(session.account.id, input.password, credential.passwordHash) === "invalid"
+    ) {
+      this.recordFailedPinAttempt(attemptKey, now);
+      throw new Cp2Error(401, "password_incorrect", "That password is not correct.");
+    }
+
+    this.failedPinAttempts.delete(attemptKey);
+    this.markSessionPinVerified(session.session.id, now);
+    this.recordAuditEvent({
+      type: "auth.password_verified",
       aggregateType: "account",
       aggregateId: session.account.id,
       actorId: session.user.id,

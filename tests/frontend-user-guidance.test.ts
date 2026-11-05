@@ -43,7 +43,7 @@ describe("frontend user guidance", () => {
         code: "device_credential_recovery_required",
         message: "internal recovery state"
       })
-    ).toBe("Verify this device again before changing your PIN or password.");
+    ).toBe("Verify again before changing your PIN or password.");
     expect(
       getUserFacingErrorMessage({
         code: "ACCOUNT_SYNC_INITIALIZATION_FAILED",

@@ -31,8 +31,8 @@ export function getUserFacingErrorMessage(
 
 const authenticationErrorMessages: Record<string, string> = {
   pin_not_set: "This account doesn't have a PIN yet. Create one now.",
-  device_credential_recovery_required:
-    "Verify this device again before changing your PIN or password.",
+  device_credential_recovery_required: "Verify again before changing your PIN or password.",
+  password_incorrect: "That password is not correct.",
   passkey_unknown: "That passkey is not linked to a Grogoni account.",
   passkey_authentication_invalid: "Grogoni could not verify that passkey. Try again.",
   auth_refresh_required: "Sign in to start a new session on this device.",
@@ -44,7 +44,7 @@ const authenticationErrorMessages: Record<string, string> = {
     "We couldn't finish signing you in because account data could not be saved. Try again.",
   pin_invalid: "The PIN you entered is incorrect.",
   pin_locked: "PIN attempts are temporarily locked. Wait a moment and try again.",
-  pin_rate_limited: "PIN attempts are temporarily locked. Wait a moment and try again."
+  pin_rate_limited: "Too many attempts. Wait 15 minutes and try again."
 };
 
 export type AuthenticationPromptTarget = "login" | "signup";

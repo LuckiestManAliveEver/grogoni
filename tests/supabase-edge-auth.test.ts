@@ -430,6 +430,101 @@ describe("native Edge authentication routes", () => {
       expect(query).not.toHaveBeenCalled();
     }
   );
+  describe("session step-up", () => {
+    const cookie = `grogoni_session=${id}`;
+    const stepUp = (attempts: number) => {
+      const statements: Array<[string, unknown[]]> = [];
+      const query = vi.fn(async (sql: string, values: unknown[] = []) => {
+        statements.push([sql, values]);
+        if (sql.includes("from sessions s join accounts"))
+          return { rows: [{ ...session, pin_verified_at: null }] };
+        if (sql.includes("count(*)::int as attempts")) return { rows: [{ attempts }] };
+        if (sql.includes("password_credentials"))
+          return {
+            rows: [{ credential: credentialHash(id, "secure password", secrets.password, false) }]
+          };
+        if (sql.includes("account_pin_hashes"))
+          return { rows: [{ credential: credentialHash(id, "1234", secrets.pin, true) }] };
+        if (sql.includes("where a.id = $1")) return { rows: [account] };
+        return { rows: [] };
+      }) as unknown as SqlClient["query"];
+      return { routes: setup(query).routes, statements };
+    };
+
+    it.each([
+      ["/auth/password/verify", { password: "secure password" }],
+      ["/auth/pin/verify", { pin: "1234" }]
+    ])("%s records the proof in both session stores", async (path, body) => {
+      const { routes, statements } = stepUp(0);
+      const response = await routes(request(path, body, cookie), path);
+      expect(response?.status).toBe(200);
+      expect(
+        statements.some(([sql]) => sql.startsWith("update sessions set pin_verified_at"))
+      ).toBe(true);
+      const mirrored = statements.find(([sql]) => sql.includes("update cp2_sessions"));
+      expect(String(mirrored?.[1][1])).toContain("pinVerifiedAt");
+    });
+
+    it("audits a wrong answer so the limit survives across requests", async () => {
+      const { routes, statements } = stepUp(0);
+      const response = await routes(
+        request("/auth/password/verify", { password: "wrong password" }, cookie),
+        "/auth/password/verify"
+      );
+      expect(response?.status).toBe(401);
+      expect(await response?.json()).toMatchObject({ code: "password_incorrect" });
+      expect(statements.some(([, values]) => values.includes("auth.edge.login_failure"))).toBe(
+        true
+      );
+      expect(statements.some(([sql]) => sql.startsWith("update sessions"))).toBe(false);
+    });
+
+    it("refuses even the right answer once the durable limit is reached", async () => {
+      const { routes, statements } = stepUp(5);
+      const response = await routes(
+        request("/auth/pin/verify", { pin: "1234" }, cookie),
+        "/auth/pin/verify"
+      );
+      expect(response?.status).toBe(429);
+      expect(statements.some(([sql]) => sql.startsWith("update sessions"))).toBe(false);
+    });
+
+    it("rejects password step-up when password login is off", async () => {
+      const { routes } = setup(vi.fn() as unknown as SqlClient["query"], false);
+      const response = await routes(
+        request("/auth/password/verify", { password: "secure password" }, cookie),
+        "/auth/password/verify"
+      );
+      expect(response?.status).toBe(403);
+    });
+
+    it("needs a session", async () => {
+      const { routes } = stepUp(0);
+      const response = await routes(
+        request("/auth/pin/verify", { pin: "1234" }),
+        "/auth/pin/verify"
+      );
+      expect(response?.status).toBe(401);
+    });
+  });
+
+  it("finds a guest's added phone by the current, unique user phone only", async () => {
+    const statements: string[] = [];
+    const query = loginQuery(credentialHash(id, "1234", secrets.pin, true));
+    const spy = vi.fn(async (sql: string) => {
+      statements.push(sql);
+      return query(sql);
+    }) as unknown as SqlClient["query"];
+    await setup(spy).routes(
+      request("/auth/pin/login", { method: "phone", contact: "+254712345678", pin: "1234" }),
+      "/auth/pin/login"
+    );
+    const lookup = statements.find((sql) => sql.includes("from accounts a"));
+    expect(lookup).toContain("u.phone_number_e164 = $2");
+    expect(lookup).not.toContain("cp2_account_identities");
+    expect(lookup).toContain("order by (u.phone_number_e164 = $2) is true desc");
+  });
+
   it("delegates PIN setup to the shared recovery-aware authentication store", async () => {
     const query = vi.fn();
     const { routes } = setup(query);

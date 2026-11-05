@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
 import PhoneSignup from "../apps/web/src/PhoneSignup";
 import { PwaPasskeySetup } from "../apps/web/src/PwaPasskeySetup";
-import { apiFetch } from "../apps/web/src/lib/api";
+import { ApiRequestError, apiFetch } from "../apps/web/src/lib/api";
 import type * as ApiModule from "../apps/web/src/lib/api";
 import { createBrowserPasskey } from "../apps/web/src/browser-passkeys";
 vi.mock("../apps/web/src/browser-passkeys", () => ({
@@ -94,6 +94,91 @@ it("lets existing accounts without passkeys create one without a shop", async ()
   await act(async () => root.render(<PwaPasskeySetup accountId="existing" />));
   await click("Create passkey");
   expect(createBrowserPasskey).toHaveBeenCalledOnce();
+  expect(host.textContent).toBe("");
+});
+function staleSession() {
+  return new ApiRequestError(401, "Your session has expired. Sign in again.", {
+    code: "recent_authentication_required"
+  });
+}
+function mockAccount(status: { hasPin: boolean; hasPassword: boolean }) {
+  vi.mocked(apiFetch).mockImplementation(async (path: string) => {
+    if (path === "/auth/passkeys") return { passkeys: [] };
+    if (path === "/auth/credentials/status") return status;
+    if (path === "/auth/password/verify" || path === "/auth/pin/verify") return session;
+    throw new Error(`Unexpected ${path}`);
+  });
+}
+it("asks an old session for its password, then creates the passkey", async () => {
+  mockAccount({ hasPin: false, hasPassword: true });
+  vi.mocked(createBrowserPasskey)
+    .mockRejectedValueOnce(staleSession())
+    .mockResolvedValueOnce({ id: "passkey" } as never);
+  await act(async () => root.render(<PwaPasskeySetup accountId="existing" />));
+  await click("Create passkey");
+  expect(host.textContent).not.toContain("expired");
+  await fill("Enter your password", "secure password");
+  await click("Continue");
+  expect(apiFetch).toHaveBeenCalledWith("/auth/password/verify", {
+    method: "POST",
+    body: { password: "secure password" }
+  });
+  expect(createBrowserPasskey).toHaveBeenCalledTimes(2);
+  expect(host.textContent).toBe("");
+});
+it("prefers the PIN and can switch to the password", async () => {
+  mockAccount({ hasPin: true, hasPassword: true });
+  vi.mocked(createBrowserPasskey)
+    .mockRejectedValueOnce(staleSession())
+    .mockResolvedValueOnce({ id: "passkey" } as never);
+  await act(async () => root.render(<PwaPasskeySetup accountId="existing" />));
+  await click("Create passkey");
+  expect(host.textContent).toContain("Enter your PIN");
+  await click("Use your password instead");
+  await fill("Enter your password", "secure password");
+  await click("Continue");
+  expect(apiFetch).toHaveBeenCalledWith("/auth/password/verify", expect.anything());
+});
+it("keeps the form and shows the error when the password is wrong", async () => {
+  mockAccount({ hasPin: false, hasPassword: true });
+  vi.mocked(createBrowserPasskey).mockRejectedValueOnce(staleSession());
+  await act(async () => root.render(<PwaPasskeySetup accountId="existing" />));
+  await click("Create passkey");
+  vi.mocked(apiFetch)
+    .mockResolvedValueOnce({ hasPin: false, hasPassword: true })
+    .mockRejectedValueOnce(new Error("That password is not correct."));
+  await fill("Enter your password", "wrong password");
+  await click("Continue");
+  expect(host.querySelector('[role="alert"]')?.textContent).toContain("not correct");
+  expect(host.textContent).toContain("Enter your password");
+  expect(createBrowserPasskey).toHaveBeenCalledOnce();
+});
+it("never sends an account with no PIN or password to sign out", async () => {
+  mockAccount({ hasPin: false, hasPassword: false });
+  vi.mocked(createBrowserPasskey).mockRejectedValueOnce(staleSession());
+  await act(async () => root.render(<PwaPasskeySetup accountId="existing" />));
+  await click("Create passkey");
+  expect(host.querySelector('[role="alert"]')?.textContent).toBe(
+    "You can add a passkey within 15 minutes of signing in."
+  );
+  expect(host.textContent).not.toMatch(/sign out|log out/iu);
+  expect(host.querySelector("a")).toBeNull();
+});
+it("asks for the PIN when a session was never PIN-verified", async () => {
+  mockAccount({ hasPin: true, hasPassword: false });
+  vi.mocked(createBrowserPasskey)
+    .mockRejectedValueOnce(
+      new ApiRequestError(401, "Login PIN verification is required.", { code: "pin_required" })
+    )
+    .mockResolvedValueOnce({ id: "passkey" } as never);
+  await act(async () => root.render(<PwaPasskeySetup accountId="existing" />));
+  await click("Create passkey");
+  await fill("Enter your PIN", "1234");
+  await click("Continue");
+  expect(apiFetch).toHaveBeenCalledWith("/auth/pin/verify", {
+    method: "POST",
+    body: { pin: "1234" }
+  });
   expect(host.textContent).toBe("");
 });
 it("does not prompt existing accounts that already have a passkey", async () => {

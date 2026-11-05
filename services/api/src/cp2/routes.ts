@@ -1089,6 +1089,20 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
     }
   });
 
+  app.post(
+    "/auth/password/verify",
+    async (request: FastifyRequest<{ Body: { password?: string } }>, reply) => {
+      try {
+        return store.verifyAccountPassword({
+          sessionId: readSessionCookie(request.headers.cookie),
+          password: parseString(request.body.password, "password")
+        });
+      } catch (error) {
+        return sendCp2Error(reply, error);
+      }
+    }
+  );
+
   app.post("/auth/pin/login", async (request: FastifyRequest<{ Body: PinLoginBody }>, reply) => {
     try {
       enforceAuthIpRate(authAttemptsByIp, request, "pin_login", 30);

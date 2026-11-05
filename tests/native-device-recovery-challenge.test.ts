@@ -19,11 +19,12 @@ function fixture(deviceSecurity = true) {
 function assertion(
   credentialId: string,
   privateKey: ReturnType<typeof generateKeyPairSync>["privateKey"],
-  challenge: { challengeId: string; nonce: string; issuedAt: number }
+  { challengeId, ...challenge }: { challengeId: string; nonce: string; issuedAt: number }
 ) {
   return {
     credentialId,
     ...challenge,
+    ...(challengeId ? { challengeId } : {}),
     signature: sign(
       "sha256",
       Buffer.from(
@@ -108,25 +109,101 @@ describe("native device recovery challenges", () => {
       store.recoverWithDeviceCredential(assertion(credentialId, privateKey, next))
     ).rejects.toMatchObject({ code: "device_recovery_invalid" });
   });
-  it("keeps legacy recovery keys usable for session restoration without authorizing credential resets", async () => {
-    const { store, credentialId, privateKey } = fixture(false);
-    const challenge = store.beginDeviceRecovery({ credentialId, identifier: phone });
-    const restored = await store.recoverWithDeviceCredential(
-      assertion(credentialId, privateKey, challenge)
+  it("requires the challenge for an enrolled key whatever the id's case", async () => {
+    const { store, credentialId, privateKey } = fixture();
+    const challenge = store.beginDeviceRecovery({
+      credentialId: credentialId.toUpperCase(),
+      identifier: phone
+    });
+    const { challengeId: _challengeId, ...payload } = assertion(
+      credentialId,
+      privateKey,
+      challenge
     );
-    expect(store.getSession(restored.session.id)).not.toBeNull();
-    const snapshot = store.snapshot();
-    snapshot.accountPinHashes = [];
-    store.hydrateSnapshot(snapshot);
-    expect(() => store.setAccountPin({ sessionId: restored.session.id, pin: "5678" })).toThrow(
-      /Sign in/u
-    );
-
-    expect(() =>
-      store.recoverPhoneAccountPinWithDevice({ sessionId: restored.session.id, pin: "5678" })
-    ).toThrow(/Verify this device/u);
+    void _challengeId;
     await expect(
-      store.beginPasskeyRegistration({ sessionId: restored.session.id, rpId: "localhost" })
-    ).rejects.toHaveProperty("code");
+      store.recoverWithDeviceCredential({
+        ...payload,
+        credentialId: credentialId.toUpperCase()
+      })
+    ).rejects.toMatchObject({ code: "device_recovery_challenge_required" });
+  });
+  describe("which accounts a plain browser key can restore", () => {
+    async function guest() {
+      const store = createCp2Store();
+      const { publicKey, privateKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+      const created = store.continueWithDevice({
+        sessionId: null,
+        idempotencyKey: "plain-key-rule-idempotency-key-000000000001",
+        devicePublicKeyJwk: publicKey.export({ format: "jwk" })
+      });
+      const restore = async () => {
+        const credentialId = created.deviceRecoveryCredentialId!;
+        const nonce = "plain-key-rule-nonce-0000000000000001";
+        const issuedAt = Date.now();
+        return store.recoverWithDeviceCredential(
+          assertion(credentialId, privateKey, { challengeId: "", nonce, issuedAt })
+        );
+      };
+      const addPasskey = () => {
+        const snapshot = store.snapshot();
+        snapshot.passkeys = [
+          { id: "passkey", accountId: created.account.id } as (typeof snapshot.passkeys)[number]
+        ];
+        store.hydrateSnapshot(snapshot);
+      };
+      const addPhoneIdentity = () => {
+        store.updateOwnerPhone({
+          sessionId: created.session.id,
+          phoneNumber: "+254 700 123 456",
+          country: "KE"
+        });
+      };
+      return { store, created, restore, addPasskey, addPhoneIdentity };
+    }
+
+    it("refuses a guest with a phone and only a password", async () => {
+      const { store, created, restore, addPhoneIdentity } = await guest();
+      addPhoneIdentity();
+      store.createPassword({ sessionId: created.session.id, password: "secure first password" });
+      await expect(restore()).rejects.toMatchObject({ code: "device_recovery_invalid" });
+    });
+
+    it("refuses a phone-primary account with only a passkey", async () => {
+      const { store, restore, addPasskey, created } = await guest();
+      const snapshot = store.snapshot();
+      const account = snapshot.accounts.find((item) => item.id === created.account.id)!;
+      account.primaryAuthChannel = "phone";
+      store.hydrateSnapshot(snapshot);
+      addPasskey();
+      await expect(restore()).rejects.toMatchObject({ code: "device_recovery_invalid" });
+    });
+
+    it("ignores a phone the guest has replaced", async () => {
+      const { store, created, restore, addPhoneIdentity } = await guest();
+      addPhoneIdentity();
+      store.createPassword({ sessionId: created.session.id, password: "secure first password" });
+      const snapshot = store.snapshot();
+      snapshot.users.find((user) => user.id === created.user.id)!.phoneNumberE164 = null;
+      store.hydrateSnapshot(snapshot);
+      await expect(restore()).resolves.toHaveProperty("session");
+    });
+
+    it("keeps restoring a guest whose passkey cannot sign in", async () => {
+      const { restore, addPasskey, addPhoneIdentity } = await guest();
+      addPhoneIdentity();
+      addPasskey();
+      await expect(restore()).resolves.toHaveProperty("session");
+    });
+  });
+
+  it("refuses a key without screen-lock enrollment for a real account", async () => {
+    const { store, credentialId, privateKey } = fixture(false);
+    const sessions = store.snapshot().sessions.length;
+    const challenge = store.beginDeviceRecovery({ credentialId, identifier: phone });
+    await expect(
+      store.recoverWithDeviceCredential(assertion(credentialId, privateKey, challenge))
+    ).rejects.toMatchObject({ code: "device_recovery_invalid" });
+    expect(store.snapshot().sessions).toHaveLength(sessions);
   });
 });

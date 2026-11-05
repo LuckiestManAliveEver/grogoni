@@ -27,8 +27,13 @@ describe("frontend coverage for backend-owned lifecycles", () => {
     expect(phoneSignup).toContain("enrollDeviceRecovery");
     expect(phoneSignup).not.toContain('"/auth/passkeys/register/options"');
     const identitySecurity = readFileSync("apps/web/src/IdentitySecurityPanel.tsx", "utf8");
-    expect(identitySecurity).toContain('"/auth/passkeys/register/options"');
-    expect(identitySecurity).toContain('"/auth/passkeys/register/verify"');
+    expect(identitySecurity).toContain("usePasskeyEnrollment");
+    expect(readFileSync("apps/web/src/browser-passkeys.ts", "utf8")).toContain(
+      '"/auth/passkeys/register/options"'
+    );
+    expect(readFileSync("apps/web/src/browser-passkeys.ts", "utf8")).toContain(
+      '"/auth/passkeys/register/verify"'
+    );
     expect(phoneSignup).toContain("createdSession !== null");
     expect(phoneSignup).not.toContain("addPassword");
   });

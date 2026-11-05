@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { deviceSecurityAvailable, enrollDeviceRecovery } from "./passkey-recovery";
 import { isNativeDeviceHost } from "./device-messaging";
-import { browserSupportsWebAuthn, createBrowserPasskey } from "./browser-passkeys";
+import { browserSupportsWebAuthn } from "./browser-passkeys";
+import { usePasskeyEnrollment } from "./usePasskeyEnrollment";
 import type { AuthSessionView } from "@grogoni/shared-types";
 import { normalizePhoneInput, phoneNormalizationErrorMessage } from "@grogoni/shared-types";
 import { getCountryCallingCode, type CountryCode } from "libphonenumber-js";
@@ -52,6 +53,11 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
   const [message, setMessage] = useState("");
   const [accountExists, setAccountExists] = useState(false);
   const [createdSession, setCreatedSession] = useState<AuthSessionView | null>(null);
+  const enrollment = usePasskeyEnrollment({
+    onCreated: () => {
+      if (createdSession !== null) onAuthenticated(createdSession);
+    }
+  });
 
   async function run(action: () => Promise<void>) {
     if (busy) return;
@@ -144,8 +150,7 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
 
   async function createDevice() {
     if (createdSession === null) return;
-    if (nativeDevice) await enrollDeviceRecovery();
-    else await createBrowserPasskey();
+    await enrollDeviceRecovery();
     onAuthenticated(createdSession);
   }
 
@@ -354,11 +359,15 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
               <button
                 className="auth-primary-button"
                 type="button"
-                disabled={busy || (nativeDevice ? !deviceAvailable : !browserSupportsWebAuthn())}
-                aria-busy={busy}
-                onClick={() => void run(createDevice)}
+                disabled={
+                  busy ||
+                  enrollment.busy ||
+                  (nativeDevice ? !deviceAvailable : !browserSupportsWebAuthn())
+                }
+                aria-busy={busy || enrollment.busy}
+                onClick={() => void (nativeDevice ? run(createDevice) : enrollment.enroll())}
               >
-                {busy
+                {busy || enrollment.busy
                   ? nativeDevice
                     ? "Securing device…"
                     : "Creating passkey…"
@@ -370,11 +379,12 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
                       ? "Secure this device"
                       : "Device security unavailable"}
               </button>
+              {enrollment.stepUpForm}
               {createdSession !== null ? (
                 <button
                   className="auth-guest-button"
                   type="button"
-                  disabled={busy}
+                  disabled={busy || enrollment.busy}
                   onClick={() => onAuthenticated(createdSession)}
                 >
                   Do this later
@@ -383,9 +393,9 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
             </div>
           )}
 
-          {message ? (
+          {message || enrollment.message ? (
             <div className="auth-feedback" role="alert">
-              <p>{message}</p>
+              <p>{enrollment.message || message}</p>
               {accountExists ? (
                 <button className="auth-text-button" type="button" onClick={onLogIn}>
                   Log in to this account
