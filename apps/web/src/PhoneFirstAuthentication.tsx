@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { deviceSecurityCapability, recoverWithDeviceSecurity } from "./passkey-recovery";
 import { isNativeDeviceHost } from "./device-messaging";
+import { browserSupportsWebAuthn, recoverWithBrowserPasskey } from "./browser-passkeys";
 import type { AuthSessionView } from "@grogoni/shared-types";
 import { normalizePhoneInput, phoneNormalizationErrorMessage } from "@grogoni/shared-types";
 import { getCountryCallingCode, type CountryCode } from "libphonenumber-js";
@@ -72,6 +73,7 @@ export function PhoneFirstAuthentication({
   const nativeDevice = isNativeDeviceHost();
 
   useEffect(() => {
+    if (!nativeDevice) return;
     let active = true;
     void deviceSecurityCapability().then((capability) => {
       if (active) {
@@ -82,8 +84,10 @@ export function PhoneFirstAuthentication({
     return () => {
       active = false;
     };
-  }, []);
-  const [recoveryMethod, setRecoveryMethod] = useState<"device" | "email">("device");
+  }, [nativeDevice]);
+  const [recoveryMethod, setRecoveryMethod] = useState<"device" | "passkey" | "email">(
+    nativeDevice ? "device" : "passkey"
+  );
   const [recoveryCredential, setRecoveryCredential] = useState<"pin" | "password">("pin");
   const [availableMfaFactors, setAvailableMfaFactors] = useState<string[]>([]);
   const [mfaFactor, setMfaFactor] = useState<"totp" | "recovery_code" | "email">("totp");
@@ -209,16 +213,21 @@ export function PhoneFirstAuthentication({
 
   // Prove ownership with a user-verified registered passkey or verified backup email.
   async function startRecovery() {
-    if (recoveryMethod === "device") {
-      const capability = await deviceSecurityCapability();
-      setDeviceAvailable(capability.supported);
-      setDeviceSecurityReason(capability.reason ?? "");
-      if (!capability.supported)
-        throw new Error(
-          capability.reason ??
-            "Use the Android app for device screen-lock recovery, or use your verified backup email."
-        );
-      const recoveredSession = await recoverWithDeviceSecurity(currentIdentifierBody().identifier);
+    if (recoveryMethod !== "email") {
+      if (recoveryMethod === "device") {
+        const capability = await deviceSecurityCapability();
+        setDeviceAvailable(capability.supported);
+        setDeviceSecurityReason(capability.reason ?? "");
+        if (!capability.supported)
+          throw new Error(
+            capability.reason ??
+              "Use the Android app for device screen-lock recovery, or use your verified backup email."
+          );
+      }
+      const recoveredSession =
+        recoveryMethod === "passkey"
+          ? await recoverWithBrowserPasskey(currentIdentifierBody().identifier)
+          : await recoverWithDeviceSecurity(currentIdentifierBody().identifier);
       if (recoveredSession.account.primaryAuthDestination !== currentIdentifierBody().identifier) {
         throw new Error("Use the device previously secured for this mobile phone account.");
       }
@@ -262,7 +271,7 @@ export function PhoneFirstAuthentication({
 
   // Device proof and email verification both precede password mutation.
   async function verifyAndResetPassword() {
-    if (recoveryMethod === "device") {
+    if (recoveryMethod !== "email") {
       try {
         const session = await apiFetch<AuthSessionView>("/auth/password/recover/device", {
           method: "POST",
@@ -278,7 +287,11 @@ export function PhoneFirstAuthentication({
           setPassword("");
           setPasswordConfirmation("");
           setStage("methods");
-          setMessage("Verify this device again before changing your password.");
+          setMessage(
+            recoveryMethod === "passkey"
+              ? "Verify your passkey again before changing your password."
+              : "Verify this device again before changing your password."
+          );
           return;
         }
         throw error;
@@ -555,10 +568,14 @@ export function PhoneFirstAuthentication({
                     <select
                       value={recoveryMethod}
                       onChange={(event) =>
-                        setRecoveryMethod(event.target.value as "device" | "email")
+                        setRecoveryMethod(event.target.value as "device" | "passkey" | "email")
                       }
                     >
-                      <option value="device">Device security</option>
+                      {nativeDevice ? (
+                        <option value="device">Device security</option>
+                      ) : (
+                        <option value="passkey">Registered passkey</option>
+                      )}
                       <option value="email">Verified backup email</option>
                     </select>
                   </label>
@@ -575,27 +592,41 @@ export function PhoneFirstAuthentication({
                   ) : (
                     <>
                       <div className="auth-security-summary">
-                        <strong>Recover using device security</strong>
+                        <strong>
+                          {nativeDevice
+                            ? "Recover using device security"
+                            : "Recover using a passkey"}
+                        </strong>
                         <p>
-                          Use your fingerprint, face unlock, or phone screen lock to securely
-                          recover your Grogoni account.
+                          {nativeDevice
+                            ? "Use your fingerprint, face unlock, or phone screen lock to securely recover your Grogoni account."
+                            : "Use a passkey you previously registered for this Grogoni account. Your browser or password manager will ask you to verify it."}
                         </p>
-                        <p>
-                          {deviceAvailable === null
-                            ? "Checking device security…"
-                            : deviceAvailable
-                              ? "Use the screen lock already set on this phone. This device must have been secured for your Grogoni account."
-                              : deviceSecurityReason ||
-                                "Use the Android app for device screen-lock recovery, or use your verified backup email."}
-                        </p>
-                        <details>
-                          <summary>Device recovery is not set up?</summary>
+                        {nativeDevice ? (
+                          <>
+                            <p>
+                              {deviceAvailable === null
+                                ? "Checking device security…"
+                                : deviceAvailable
+                                  ? "Use the screen lock already set on this phone. This device must have been secured for your Grogoni account."
+                                  : deviceSecurityReason ||
+                                    "Use the Android app for device screen-lock recovery, or use your verified backup email."}
+                            </p>
+                            <details>
+                              <summary>Device recovery is not set up?</summary>
+                              <p>
+                                This device cannot recover your account yet. Use your verified
+                                backup email. After signing in to the Android app, enable device
+                                recovery to use this phone’s existing screen lock next time.
+                              </p>
+                            </details>
+                          </>
+                        ) : (
                           <p>
-                            This device cannot recover your account yet. Use your verified backup
-                            email. After signing in to the Android app, enable device recovery to
-                            use this phone’s existing screen lock next time.
+                            If you have not created a passkey, use your verified backup email. After
+                            signing in, choose Create passkey to set one up.
                           </p>
-                        </details>
+                        )}
                       </div>
                       <label>
                         Reset
@@ -614,28 +645,32 @@ export function PhoneFirstAuthentication({
 
                   <button
                     className={
-                      recoveryMethod === "device" ? "auth-primary-button" : "auth-text-button"
+                      recoveryMethod !== "email" ? "auth-primary-button" : "auth-text-button"
                     }
                     type="button"
                     disabled={
                       busy ||
                       (recoveryMethod === "email"
                         ? !recoveryEmail.trim()
-                        : !nativeDevice && deviceAvailable !== true)
+                        : recoveryMethod === "passkey" && !browserSupportsWebAuthn())
                     }
                     onClick={() => void run(startRecovery)}
                   >
                     {busy
                       ? "Please wait…"
-                      : recoveryMethod === "device"
-                        ? nativeDevice && deviceAvailable === false
-                          ? "Try device security again"
-                          : deviceAvailable === null
-                            ? "Checking device security…"
-                            : deviceAvailable
-                              ? "Unlock with device security"
-                              : "Device security unavailable"
-                        : "Send email recovery code"}
+                      : recoveryMethod === "passkey"
+                        ? browserSupportsWebAuthn()
+                          ? "Recover with passkey"
+                          : "Passkeys unavailable in this browser"
+                        : recoveryMethod === "device"
+                          ? nativeDevice && deviceAvailable === false
+                            ? "Try device security again"
+                            : deviceAvailable === null
+                              ? "Checking device security…"
+                              : deviceAvailable
+                                ? "Unlock with device security"
+                                : "Device security unavailable"
+                          : "Send email recovery code"}
                   </button>
                 </>
               ) : null}

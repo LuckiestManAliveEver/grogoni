@@ -1,5 +1,6 @@
 import { useInboxRefresh } from "./hooks/useInboxRefresh";
 import { OfflineRuntimeNotice } from "./OfflineRuntimeNotice";
+import { PwaPasskeySetup } from "./PwaPasskeySetup";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 
 import { Surface } from "@grogoni/ui";
@@ -1853,6 +1854,9 @@ export function OwnerApp() {
             signedOut={!isAuthScreen && !authBootstrapPending && session === null}
             onJoinedShop={(shop) => joinStaffShop(shop, setActiveConversationId)}
           />
+          {!isAuthScreen && session !== null && session.account.identityLevel !== "device" ? (
+            <PwaPasskeySetup key={session.account.id} accountId={session.account.id} />
+          ) : null}
           {authBootstrapPending ? (
             <NativeLaunchScreen
               message={bootstrapProgressMessage(

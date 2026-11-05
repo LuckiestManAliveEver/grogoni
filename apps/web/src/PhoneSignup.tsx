@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { deviceSecurityAvailable, enrollDeviceRecovery } from "./passkey-recovery";
+import { isNativeDeviceHost } from "./device-messaging";
+import { browserSupportsWebAuthn, createBrowserPasskey } from "./browser-passkeys";
 import type { AuthSessionView } from "@grogoni/shared-types";
 import { normalizePhoneInput, phoneNormalizationErrorMessage } from "@grogoni/shared-types";
 import { getCountryCallingCode, type CountryCode } from "libphonenumber-js";
@@ -23,8 +25,10 @@ interface Props {
 }
 
 export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Props) {
+  const nativeDevice = isNativeDeviceHost();
   const [deviceAvailable, setDeviceAvailable] = useState(false);
   useEffect(() => {
+    if (!nativeDevice) return;
     let active = true;
     void deviceSecurityAvailable().then((available) => {
       if (active) setDeviceAvailable(available);
@@ -32,7 +36,7 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
     return () => {
       active = false;
     };
-  }, []);
+  }, [nativeDevice]);
   const [stage, setStage] = useState<SignupStage>("phone");
   const [country, setCountry] = useState<CountryCode>("KE");
   const [phone, setPhone] = useState("");
@@ -131,12 +135,17 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
     });
     setCreatedSession(session);
     setStage("device");
-    setMessage("Your account is ready. Secure this device to recover your PIN or password.");
+    setMessage(
+      nativeDevice
+        ? "Your account is ready. Secure this device to recover your PIN or password."
+        : "Your account is ready. Create a passkey for account access and recovery."
+    );
   }
 
   async function createDevice() {
     if (createdSession === null) return;
-    await enrollDeviceRecovery();
+    if (nativeDevice) await enrollDeviceRecovery();
+    else await createBrowserPasskey();
     onAuthenticated(createdSession);
   }
 
@@ -185,14 +194,18 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
                 ? "Connect with your market"
                 : stage === "profile"
                   ? "Finish your profile"
-                  : "Secure your account"}
+                  : nativeDevice
+                    ? "Secure your account"
+                    : "Create your passkey"}
             </h1>
             <p>
               {stage === "phone"
                 ? "Your phone number becomes your Grogoni account identity. No SMS code is required."
                 : stage === "profile"
                   ? `Set up the account attached to ${normalizedPhone}.`
-                  : "Save a secure recovery key on this device in case you forget your PIN or password."}
+                  : nativeDevice
+                    ? "Save a secure recovery key on this device in case you forget your PIN or password."
+                    : "Save a passkey with your browser or password manager for account access and recovery."}
             </p>
           </div>
 
@@ -329,24 +342,33 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
           ) : (
             <div className="auth-fields auth-device-enrollment">
               <div className="auth-security-summary">
-                <strong>Secure this device for recovery</strong>
+                <strong>
+                  {nativeDevice ? "Secure this device for recovery" : "Add a passkey"}
+                </strong>
                 <p>
-                  Use your existing fingerprint, face unlock, or device screen lock to recover your
-                  PIN or password. Enable recovery on this phone before you need it.
+                  {nativeDevice
+                    ? "Use your existing fingerprint, face unlock, or device screen lock to recover your PIN or password. Enable recovery on this phone before you need it."
+                    : "Your browser will help you create a passkey and may ask for your fingerprint, face, or screen lock. Register it now so you can recover your account later."}
                 </p>
               </div>
               <button
                 className="auth-primary-button"
                 type="button"
-                disabled={busy || !deviceAvailable}
+                disabled={busy || (nativeDevice ? !deviceAvailable : !browserSupportsWebAuthn())}
                 aria-busy={busy}
                 onClick={() => void run(createDevice)}
               >
                 {busy
-                  ? "Securing device…"
-                  : deviceAvailable
-                    ? "Secure this device"
-                    : "Device security unavailable"}
+                  ? nativeDevice
+                    ? "Securing device…"
+                    : "Creating passkey…"
+                  : !nativeDevice
+                    ? browserSupportsWebAuthn()
+                      ? "Create passkey"
+                      : "Passkeys unavailable in this browser"
+                    : deviceAvailable
+                      ? "Secure this device"
+                      : "Device security unavailable"}
               </button>
               {createdSession !== null ? (
                 <button
