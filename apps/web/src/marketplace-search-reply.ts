@@ -152,7 +152,8 @@ function request(message: string): string {
 }
 
 export type GuestRoute =
-  { kind: "search"; query: string } | { kind: "reply"; reply: string; status: string };
+  | { kind: "search"; query: string }
+  | { kind: "reply"; reply: string; status: string; selling?: true };
 
 export const guestExplainReply =
   'I find products and shops on Grogoni. Tell me what you need, like "sugar" or "I want to buy maize flour", and I\'ll show you who sells it.';
@@ -171,10 +172,13 @@ const orderHelpReply = reply(
   "I can't look up orders or deliveries from here. Message the shop you ordered from to track, change or cancel an order, or to ask where they deliver.",
   "Orders are handled by the shop."
 );
-const sellReply = reply(
-  "To sell on Grogoni, tap the shop button at the top of the screen and set up your shop. It takes about a minute.",
-  "Set up a shop to sell."
-);
+const sellReply: GuestRoute = {
+  kind: "reply",
+  reply:
+    "To sell on Grogoni, tap the shop button at the top of the screen and set up your shop. It takes about a minute.",
+  status: "Set up a shop to sell.",
+  selling: true
+};
 
 /**
  * The answer for an intent the guest intent classifier picked (guest-intent-client.ts). The copy

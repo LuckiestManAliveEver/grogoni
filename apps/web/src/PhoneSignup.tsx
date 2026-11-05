@@ -74,7 +74,14 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
     }
   }
 
+  // The guest's access cookie lasts 15 minutes. Signup must arrive with a live one, or it would
+  // create a separate account instead of upgrading the guest's own.
+  async function refreshGuestSession() {
+    await apiFetch("/auth/bootstrap").catch(() => null);
+  }
+
   async function startSignup() {
+    await refreshGuestSession();
     const normalized = normalizePhoneInput({
       rawInput: phone,
       selectedCountry: country,
@@ -127,6 +134,7 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
       return;
     }
 
+    await refreshGuestSession();
     const session = await apiFetch<AuthSessionView>("/auth/signup/complete", {
       method: "POST",
       body: {

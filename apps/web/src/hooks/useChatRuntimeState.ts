@@ -6,6 +6,12 @@ import { currentOfflineScope, isExplicitOfflineMode } from "../offline-runtime";
 import { runtimeHandoffController, runtimeTransition } from "../runtime-handoff";
 import { readCurrentOwnerRoute } from "../browser-navigation";
 
+import {
+  continueShopRegistration,
+  isShopRegistrationRequest,
+  startShopRegistration,
+  type ShopRegistrationStep
+} from "../shop-registration-chat";
 import type { RuntimeToolName } from "@grogoni/tool-core";
 import { renderRuntimeModelOutputInstructions, runtimeToolRegistry } from "@grogoni/tool-core";
 import type {
@@ -109,6 +115,7 @@ import {
 } from "../grogoni-application-shared";
 
 interface UseChatRuntimeStateDeps {
+  registerShopFromChat: (input: { name: string; phoneNumber: string | null }) => Promise<string>;
   business: ActiveBusiness | null;
   mode: GrogoniMode;
   session: SessionResponse | null;
@@ -194,6 +201,12 @@ function customerIdFromToolResult(toolResult: unknown): string | undefined {
 
 export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
   const [isBrowserGenerating, setIsBrowserGenerating] = useState(false);
+  // A flow belongs to one account and one thread: a reply elsewhere is not an answer to it.
+  const shopRegistrationRef = useRef<{
+    accountId: string;
+    threadId: string | null;
+    step: ShopRegistrationStep;
+  } | null>(null);
   const activeClientInferenceCancelRef = useRef<(() => void) | null>(null);
 
   const {
@@ -207,6 +220,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
     setStatusMessage,
     navigateToView,
     searchBuyFeed,
+    registerShopFromChat,
     loadProducts,
     loadSuppliers,
     loadCustomers,
@@ -518,6 +532,76 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       !hasHumanRecipient && attachments.length === 0 ? parseReminderIntent(message) : null;
     // Explicit capabilities must reach the authorized runtime, including from buyer mode.
     const explicitCapability = message.startsWith("#");
+    const pendingShop = shopRegistrationRef.current;
+    const shopRegistration =
+      pendingShop?.accountId === activeSession.account.id &&
+      pendingShop.threadId === activeConversationId
+        ? pendingShop.step
+        : null;
+    // A reminder changes the subject: a later "ok" answers it, not "create this shop?".
+    if (shopRegistration === null || reminder !== null) shopRegistrationRef.current = null;
+    if (
+      business === null &&
+      !explicitCapability &&
+      !hasHumanRecipient &&
+      attachments.length === 0 &&
+      reminder === null &&
+      (shopRegistration !== null || isShopRegistrationRequest(message))
+    ) {
+      const thread = mode === "marketplace" ? activeConversationId : null;
+      const deviceOnlyAfter = deviceOnlyAnchor(chatMessages);
+      const place = (author: "merchant" | "grogoniclaw", body: string) => {
+        const placed: ChatMessage = {
+          id: createClientMessageId(author === "merchant" ? "buyer" : "agent"),
+          author,
+          body,
+          createdAt: new Date().toISOString(),
+          deviceOnlyIn: thread,
+          deviceOnlyAfter
+        };
+        saveDeviceOnlyMessages(activeSession.account.id, [placed]);
+        setChatMessages((messages) => [...messages, placed]);
+      };
+      place("merchant", message);
+      clearSentDraft();
+      setReplyToMessageId(null);
+      const turn =
+        shopRegistration === null
+          ? startShopRegistration()
+          : continueShopRegistration(
+              shopRegistration,
+              message,
+              activeSession.user.phoneNumberE164 ?? null
+            );
+      const remember = (step: ShopRegistrationStep | null) => {
+        shopRegistrationRef.current =
+          step === null
+            ? null
+            : {
+                accountId: activeSession.account.id,
+                threadId: activeConversationId,
+                step
+              };
+      };
+      if (turn.kind !== "register") {
+        remember(turn.kind === "ask" ? turn.next : null);
+        place("grogoniclaw", turn.reply);
+        return;
+      }
+      remember(null);
+      try {
+        setStatusMessage(await registerShopFromChat(turn));
+      } catch (error) {
+        if (turn.phoneNumber !== null) remember({ step: "phone", name: turn.name });
+        place(
+          "grogoniclaw",
+          `I could not register the shop. ${getErrorMessage(error)}${
+            turn.phoneNumber === null ? "" : " Send the phone number again, or say cancel."
+          }`
+        );
+      }
+      return;
+    }
     const buyerAssistant = !explicitCapability && (mode !== "seller" || business === null);
     const tracking =
       buyerAssistant && attachments.length === 0 && isDeliveryTrackingIntent(message);
@@ -555,6 +639,15 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
         setChatMessages,
         isOpen: () => currentConversationRef.current === activeConversationId,
         searchBuyFeed: marketplaceSearch,
+        startShopRegistration: () => {
+          const turn = startShopRegistration();
+          shopRegistrationRef.current = {
+            accountId: activeSession.account.id,
+            threadId: activeConversationId,
+            step: turn.next
+          };
+          return turn.reply;
+        },
         askModel: (question, clientMessageId) =>
           askGuestModel({
             message: question,

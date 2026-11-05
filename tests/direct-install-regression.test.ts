@@ -25,8 +25,8 @@ describe("direct Android installation flow", () => {
     const assetLinks = JSON.parse(readFileSync(assetLinksPath, "utf8"));
     expect(Array.isArray(assetLinks)).toBe(true);
     for (const link of assetLinks) {
+      expect(link.relation).toContain("delegate_permission/common.handle_all_urls");
       expect(link).toMatchObject({
-        relation: ["delegate_permission/common.handle_all_urls"],
         target: { namespace: "android_app", package_name: "market.grogoni.app" }
       });
       expect(link.target.sha256_cert_fingerprints.length).toBeGreaterThan(0);

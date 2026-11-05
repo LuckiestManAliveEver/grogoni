@@ -54,28 +54,33 @@ export type AssistantPermissions = Record<AssistantAction, boolean>;
 export interface AssistantPermissionsView {
   conversationId: string;
   permissions: AssistantPermissions;
-  storeAllowed: boolean;
   functions: Array<{ id: string; action: AssistantAction; label: string; storeRelated: boolean }>;
 }
+/** Every action starts allowed; the account owner turns off what they do not want. */
 export function defaultAssistantPermissions(): AssistantPermissions {
   return {
     read: true,
     edit: true,
-    create: false,
-    delete: false,
-    send: false,
-    buy: false,
-    pay: false,
-    execute: false,
-    store: false
+    create: true,
+    delete: true,
+    send: true,
+    buy: true,
+    pay: true,
+    execute: true,
+    store: true
   };
 }
+/** Saves before this version wrote every old default, so their "off" was not the user's choice. */
+export const assistantPermissionsVersion = 2;
+
 export function normalizeAssistantPermissions(value: unknown): AssistantPermissions {
   const defaults = defaultAssistantPermissions();
   if (!value || typeof value !== "object") return defaults;
   const source = value as Record<string, unknown>;
+  const chosen = source.version === assistantPermissionsVersion;
   for (const { id } of assistantActions)
-    if (typeof source[id] === "boolean") defaults[id] = source[id] as boolean;
+    if (typeof source[id] === "boolean" && (chosen || id === "read" || id === "edit"))
+      defaults[id] = source[id] as boolean;
   return defaults;
 }
 
@@ -175,13 +180,11 @@ export function assistantToolIsStoreRelated(tool: string): boolean {
     tool
   );
 }
-export function assistantToolAllowed(
-  permissions: AssistantPermissions,
-  tool: string,
-  storeAllowed: boolean
-): boolean {
+export function assistantToolAllowed(permissions: AssistantPermissions, tool: string): boolean {
   const action = assistantToolAction(tool);
   return (
-    action !== null && permissions[action] && (!assistantToolIsStoreRelated(tool) || storeAllowed)
+    action !== null &&
+    permissions[action] &&
+    (!assistantToolIsStoreRelated(tool) || permissions.store)
   );
 }

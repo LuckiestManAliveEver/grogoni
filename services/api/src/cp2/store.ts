@@ -14,6 +14,7 @@ import {
   assistantActions,
   assistantToolAction,
   assistantToolAllowed,
+  assistantPermissionsVersion,
   assistantToolIsStoreRelated,
   normalizeAssistantPermissions,
   type AssistantPermissionsView,
@@ -3280,13 +3281,16 @@ export class Cp2Store {
     };
   }
 
-  beginPhoneSignup(input: { phoneE164: string; now?: Date }): {
+  beginPhoneSignup(input: { phoneE164: string; sessionId?: string | null; now?: Date }): {
     transactionId: string;
     expiresAt: string;
   } {
     const now = input.now ?? new Date();
     const phoneE164 = normalizeDestination("phone", input.phoneE164);
-    if (this.resolveIdentityAccount("phone", phoneE164) !== undefined) {
+    if (
+      this.resolveIdentityAccount("phone", phoneE164) !== undefined &&
+      !this.isCurrentGuestPhone(input.sessionId ?? null, phoneE164, now)
+    ) {
       throw new Cp2Error(409, "account_exists", "Continue to sign in.");
     }
     const transaction: AuthTransactionRecord = {
@@ -3319,6 +3323,8 @@ export class Cp2Store {
   }
 
   completePhoneSignup(input: {
+    /** A guest signing up keeps their account, so their chats, orders and any shop stay theirs. */
+    sessionId?: string | null;
     transactionId: string;
     displayName: string;
     password?: string;
@@ -3341,7 +3347,9 @@ export class Cp2Store {
       throw new Cp2Error(400, "display_name_invalid", "Enter your display name.");
     }
     const phone = transaction.identifierValue!;
-    if (this.resolveIdentityAccount("phone", phone) !== undefined) {
+    const guest = this.guestAccountForSession(input.sessionId ?? null, now);
+    const phoneHolder = this.resolveIdentityAccount("phone", phone);
+    if (phoneHolder !== undefined && phoneHolder !== guest?.id) {
       throw new Cp2Error(409, "account_exists", "Continue to sign in.");
     }
     if (input.password !== undefined) validatePassword(input.password);
@@ -3357,15 +3365,33 @@ export class Cp2Store {
       throw new Cp2Error(409, "identity_in_use", "That email cannot be linked to this account.");
     }
 
-    const account = this.createAccount("phone", phone, now);
+    const account = guest ?? this.createAccount("phone", phone, now);
     const user = this.requireUser(this.userByAccount.get(account.id));
     const normalizedPhone = normalizeInternationalOwnerPhoneNumber(phone);
+    if (guest !== null) {
+      this.accountByDestination.delete(
+        destinationAccountKey(guest.primaryAuthChannel, guest.primaryAuthDestination)
+      );
+      Object.assign(guest, { primaryAuthChannel: "phone", primaryAuthDestination: phone });
+      this.accountByDestination.set(destinationAccountKey("phone", phone), guest.id);
+      this.promoteAccountIdentityLevel(guest.id, "strong");
+      for (const [id, identity] of this.accountIdentities) {
+        if (identity.accountId === guest.id && identity.type === "phone") {
+          this.identityAccountByValue.delete(
+            destinationAccountKey("phone", identity.normalizedValue)
+          );
+          this.accountIdentities.delete(id);
+        }
+      }
+    }
     Object.assign(user, {
       displayName,
       phoneNumberE164: phone,
       phoneCountryCode: normalizedPhone.country,
       phoneNationalNumber: normalizedPhone.nationalNumber,
       phoneVerificationStatus: "unverified" as const,
+      phoneAddedAt: user.phoneAddedAt ?? now.toISOString(),
+      phoneSource: "phone_login" as const,
       phoneUpdatedAt: now.toISOString()
     });
     this.addAccountIdentity(account, user, "phone", phone, true, now, false);
@@ -3379,6 +3405,10 @@ export class Cp2Store {
     }
     transaction.accountId = account.id;
     transaction.consumedAt = now.toISOString();
+    const guestSession = guest === null ? undefined : this.sessions.get(input.sessionId ?? "");
+    if (guestSession !== undefined) {
+      this.revokeSessionFamily(guestSession.sessionFamilyId, "signup_upgrade", now);
+    }
     const session = this.createSession(account, user, now);
     this.markSessionPinVerified(session.id, now);
     this.recordSecurityEvent("auth.signup_completed", account.id, "success", now, {
@@ -3386,6 +3416,18 @@ export class Cp2Store {
       phoneVerified: false
     });
     return this.requireAnySession(session.id, now);
+  }
+
+  /** A guest may sign up with the phone they already saved; it is not someone else's account. */
+  isCurrentGuestPhone(sessionId: string | null, phone: string, now = new Date()): boolean {
+    const guest = this.guestAccountForSession(sessionId, now);
+    return guest !== null && this.resolveIdentityAccount("phone", phone) === guest.id;
+  }
+
+  private guestAccountForSession(sessionId: string | null, now: Date): AccountSummary | null {
+    const session = this.getSession(sessionId, now);
+    if (session === null || session.account.primaryAuthChannel !== "device") return null;
+    return this.accounts.get(session.account.id) ?? null;
   }
 
   loginWithPassword(input: {
@@ -3602,11 +3644,19 @@ export class Cp2Store {
     language: SupportedLanguage;
     phoneNumber?: string;
     phoneCountry?: string;
+    /** The marketplace agent asked for this shop, so its Store setup permission applies. */
+    viaAssistant?: boolean;
     now?: Date;
   }): CreateBusinessResult {
     const now = input.now ?? new Date();
     const session = this.requirePinVerifiedSession(input.sessionId, now);
-    this.requireStoreAccount(session);
+    if (input.viaAssistant && !this.accountAssistantPermissions(session.account.id).store) {
+      throw new Cp2Error(
+        403,
+        "assistant_permission_denied",
+        "Turn on Set up a store in My Assistant details, or use the Set up your shop button."
+      );
+    }
 
     const name = input.name.trim();
 
@@ -3640,7 +3690,7 @@ export class Cp2Store {
         throw new Cp2Error(400, "phone_number_required", "Enter your phone number to continue.");
       }
     } else {
-      this.requireRecentlyAuthenticatedSession(input.sessionId, now);
+      this.requireOwnerPhoneSession(input.sessionId, now);
       this.applyOwnerPhoneIdentity({
         session,
         phoneNumber: input.phoneNumber,
@@ -3737,7 +3787,7 @@ export class Cp2Store {
     now?: Date;
   }): OwnerPhoneIdentityResult {
     const now = input.now ?? new Date();
-    const session = this.requireRecentlyAuthenticatedSession(input.sessionId, now);
+    const session = this.requireOwnerPhoneSession(input.sessionId, now);
     this.enforcePhoneUpdateRateLimit(session.account.id, now);
 
     return {
@@ -4215,7 +4265,6 @@ export class Cp2Store {
     const activeShopId =
       input.activeShopId === undefined ? current.activeShopId : input.activeShopId;
     const activeSurface = input.activeSurface ?? current.activeSurface;
-    if (mode === "seller" || activeShopId !== null) this.requireStoreAccount(session);
 
     if (
       input.expectedSessionVersion !== undefined &&
@@ -4802,23 +4851,6 @@ export class Cp2Store {
     return this.agentRuntimeDomain.activateAiModel(...args);
   }
 
-  private storeAccountAllowed(session: AuthSessionView): boolean {
-    return (
-      this.sessions.get(session.session.id)?.pinVerifiedAt != null ||
-      (session.account.primaryAuthChannel !== "device" &&
-        session.account.identityLevel !== "device")
-    );
-  }
-
-  private requireStoreAccount(session: AuthSessionView): void {
-    if (!this.storeAccountAllowed(session))
-      throw new Cp2Error(
-        403,
-        "store_account_required",
-        "Sign up or log in before setting up or managing a store. You can keep browsing and buying as a guest."
-      );
-  }
-
   private accountAssistantPermissions(accountId: string): AssistantPermissions {
     return normalizeAssistantPermissions(
       this.nativeRuntimeBindings.agentsMap.get(`account-${accountId}-agent`)?.configuration
@@ -4828,11 +4860,7 @@ export class Cp2Store {
 
   assistantPermissionErrors(sessionId: string | null, tool: string): string[] {
     const actor = this.requireMcpAwareSession(sessionId, new Date());
-    return assistantToolAllowed(
-      this.accountAssistantPermissions(actor.account.id),
-      tool,
-      this.storeAccountAllowed(actor)
-    )
+    return assistantToolAllowed(this.accountAssistantPermissions(actor.account.id), tool)
       ? []
       : [`Assistant permission denied for ${tool}. Review My Assistant details.`];
   }
@@ -4848,7 +4876,6 @@ export class Cp2Store {
     return {
       conversationId,
       permissions: this.accountAssistantPermissions(actor.account.id),
-      storeAllowed: this.storeAccountAllowed(actor),
       functions: Object.entries(runtimeToolRegistry).map(([id, tool]) => ({
         id,
         action: assistantToolAction(id) ?? "execute",
@@ -4879,12 +4906,6 @@ export class Cp2Store {
           "assistant_permissions_invalid",
           "Choose valid assistant permissions."
         );
-      if (key === "store" && value && !current.storeAllowed)
-        throw new Cp2Error(
-          403,
-          "store_account_required",
-          "Sign up or log in to enable store activities."
-        );
       permissions[key as keyof AssistantPermissions] = value;
     }
     const id = `account-${actor.account.id}-agent`;
@@ -4897,7 +4918,10 @@ export class Cp2Store {
       id,
       accountId: actor.account.id,
       businessId: existingAgent?.businessId ?? null,
-      configuration: { ...base.configuration, assistantPermissions: permissions },
+      configuration: {
+        ...base.configuration,
+        assistantPermissions: { ...permissions, version: assistantPermissionsVersion }
+      },
       updatedAt: new Date().toISOString()
     });
     this.recordAuditEvent({
@@ -6030,9 +6054,6 @@ export class Cp2Store {
   acceptStaffInvitation(
     ...args: Parameters<StaffDomain["acceptStaffInvitation"]>
   ): ReturnType<StaffDomain["acceptStaffInvitation"]> {
-    this.requireStoreAccount(
-      this.requireMcpAwareSession(args[0].sessionId, args[0].now ?? new Date())
-    );
     return this.staffDomain.acceptStaffInvitation(...args);
   }
 
@@ -12133,6 +12154,18 @@ export class Cp2Store {
     return session;
   }
 
+  /**
+   * Changing a phone needs a recently proven credential. A guest who cannot sign in has nothing to
+   * prove it with, so an old guest session must still be able to add the phone a shop needs.
+   */
+  private requireOwnerPhoneSession(sessionId: string | null, now: Date): AuthSessionView {
+    const session = this.requirePinVerifiedSession(sessionId, now);
+    return session.account.primaryAuthChannel === "device" &&
+      !this.accountCanSignIn(session.account)
+      ? session
+      : this.requireRecentlyAuthenticatedSession(sessionId, now);
+  }
+
   private requireRecentlyAuthenticatedSession(
     sessionId: string | null,
     now: Date
@@ -12348,12 +12381,6 @@ export class Cp2Store {
       throw new Cp2Error(401, "mcp_token_invalid", "MCP access token is invalid or expired.");
     }
     this.requireAccountNotPendingDeletion(account.id, now);
-    if (account.primaryAuthChannel === "device" && !this.accountCanSignIn(account))
-      throw new Cp2Error(
-        403,
-        "store_account_required",
-        "Sign up or log in before managing a store."
-      );
     if (principal.shopId !== null && principal.shopId !== businessId) {
       throw new Cp2Error(403, "mcp_shop_forbidden", "MCP token is bound to another shop.");
     }
@@ -12421,7 +12448,6 @@ export class Cp2Store {
     now = new Date()
   ): AuthSessionView {
     const session = this.requirePinVerifiedSession(sessionId, now);
-    this.requireStoreAccount(session);
 
     this.requireAccountNotPendingDeletion(session.account.id, now);
 

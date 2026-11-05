@@ -13,7 +13,6 @@ it("shows the defaults and saves a grant only after the server accepts it", asyn
   const view = {
     conversationId: "assistant",
     permissions: defaultAssistantPermissions(),
-    storeAllowed: false,
     functions: [
       { id: "commerce.checkout", action: "buy", label: "Marketplace checkout", storeRelated: false }
     ]
@@ -21,7 +20,7 @@ it("shows the defaults and saves a grant only after the server accepts it", asyn
   vi.mocked(fetchFreshJson).mockResolvedValue(view);
   vi.mocked(putJson).mockResolvedValue({
     ...view,
-    permissions: { ...view.permissions, buy: true }
+    permissions: { ...view.permissions, buy: false }
   });
   const host = document.createElement("div");
   document.body.append(host);
@@ -35,13 +34,11 @@ it("shows the defaults and saves a grant only after the server accepts it", asyn
       labels
         .find((label) => label.querySelector("strong")?.textContent === name)!
         .querySelector("input")!;
-    expect(checkbox("Read").checked).toBe(true);
-    expect(checkbox("Edit").checked).toBe(true);
-    expect(checkbox("Buy and order").checked).toBe(false);
-    expect(checkbox("Set up a store").disabled).toBe(true);
+    for (const name of ["Read", "Edit", "Buy and order", "Set up a store"])
+      expect(checkbox(name).checked).toBe(true);
     await act(async () => checkbox("Buy and order").click());
-    expect(putJson).toHaveBeenCalledWith("/v1/conversations/assistant/permissions", { buy: true });
-    expect(checkbox("Buy and order").checked).toBe(true);
+    expect(putJson).toHaveBeenCalledWith("/v1/conversations/assistant/permissions", { buy: false });
+    expect(checkbox("Buy and order").checked).toBe(false);
     expect(host.textContent).toContain("Marketplace checkout");
   } finally {
     act(() => root.unmount());

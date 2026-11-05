@@ -59,7 +59,6 @@ export function AssistantPermissionsChecklist({ conversationId }: { conversation
                 <input
                   type="checkbox"
                   checked={view.permissions[action.id]}
-                  disabled={action.id === "store" && !view.storeAllowed}
                   onChange={(event) => void change(action.id, event.target.checked)}
                 />
                 <span>

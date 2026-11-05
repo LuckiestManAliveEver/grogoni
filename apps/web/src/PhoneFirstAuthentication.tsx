@@ -12,6 +12,7 @@ import { getCountryCallingCode, type CountryCode } from "libphonenumber-js";
 import { ApiRequestError, apiFetch } from "./lib/api";
 import { AppIcon } from "./AppIcon";
 import { PhoneNumberField, authenticationPhoneCountries } from "./PhoneNumberField";
+import { usePasskeyEnrollment } from "./usePasskeyEnrollment";
 import { getUserFacingErrorMessage } from "./user-facing-error";
 
 type Stage =
@@ -21,6 +22,7 @@ type Stage =
   | "password"
   | "mfa"
   | "recovery-reset"
+  | "offer-passkey"
   | "create-pin"
   | "recover-pin";
 
@@ -76,6 +78,12 @@ export function PhoneFirstAuthentication({
   const [deviceAvailable, setDeviceAvailable] = useState<boolean | null>(null);
   const [deviceSecurityReason, setDeviceSecurityReason] = useState("");
   const nativeDevice = isNativeDeviceHost();
+  const [pendingSession, setPendingSession] = useState<AuthSessionView | null>(null);
+  const passkeyEnrollment = usePasskeyEnrollment({
+    onCreated: () => {
+      if (pendingSession !== null) onAuthenticated(pendingSession);
+    }
+  });
 
   useEffect(() => {
     if (!nativeDevice) return;
@@ -159,7 +167,8 @@ export function PhoneFirstAuthentication({
         onAuthenticated(await loginWithBrowserPasskey(identifier));
         return;
       } catch (error) {
-        setMessage(getUserFacingErrorMessage(error));
+        // No passkey here, or the prompt was dismissed: the other sign-in options are on screen.
+        if (!passkeyWasDeclined(error)) setMessage(getUserFacingErrorMessage(error));
       }
     }
     if (nativeDevice) {
@@ -172,11 +181,21 @@ export function PhoneFirstAuthentication({
           setMessage(getUserFacingErrorMessage(error));
         }
       }
-    } else {
-      setMessage(
-        "Use a registered passkey, or choose your PIN, password or verified backup email. You can also keep browsing as a guest."
-      );
     }
+  }
+
+  /** A person who signs in without a passkey is offered one here, and only here. */
+  async function finishLogin(session: AuthSessionView) {
+    if (browserSupportsWebAuthn()) {
+      const list = await apiFetch<{ passkeys: unknown[] }>("/auth/passkeys").catch(() => null);
+      if (list !== null && list.passkeys.length === 0) {
+        setPendingSession(session);
+        setMessage("");
+        setStage("offer-passkey");
+        return;
+      }
+    }
+    onAuthenticated(session);
   }
 
   async function submitPin() {
@@ -204,7 +223,7 @@ export function PhoneFirstAuthentication({
         setCode("");
         setStage("mfa");
         setMessage("Enter your second factor.");
-      } else onAuthenticated(result);
+      } else await finishLogin(result);
     } catch (error) {
       if (error instanceof ApiRequestError && error.code === "auth_credentials_invalid") {
         setMessage(
@@ -232,7 +251,7 @@ export function PhoneFirstAuthentication({
       setCode("");
       setMessage("Enter your second factor.");
     } else {
-      onAuthenticated(result as AuthSessionView);
+      await finishLogin(result as AuthSessionView);
     }
   }
 
@@ -241,7 +260,7 @@ export function PhoneFirstAuthentication({
       method: "POST",
       body: { transactionId, factor: mfaFactor, code }
     });
-    onAuthenticated(session);
+    await finishLogin(session);
   }
 
   // Prove ownership with a user-verified registered passkey or verified backup email.
@@ -400,6 +419,11 @@ export function PhoneFirstAuthentication({
       onCancel();
       return;
     }
+    if (stage === "offer-passkey") {
+      // Already logged in: the only way back is forward into the account.
+      if (pendingSession !== null) onAuthenticated(pendingSession);
+      return;
+    }
     if (stage === "mfa") {
       setStage(mfaReturnStage);
       return;
@@ -435,11 +459,13 @@ export function PhoneFirstAuthentication({
             ? "Log in with password"
             : stage === "mfa"
               ? "Security check"
-              : stage === "create-pin"
-                ? "Create a PIN"
-                : stage === "recover-pin"
-                  ? "Choose a new PIN"
-                  : "Recover your account";
+              : stage === "offer-passkey"
+                ? "Add a passkey"
+                : stage === "create-pin"
+                  ? "Create a PIN"
+                  : stage === "recover-pin"
+                    ? "Choose a new PIN"
+                    : "Recover your account";
 
   return (
     <main className="auth-onboarding" aria-busy={busy}>
@@ -787,6 +813,31 @@ export function PhoneFirstAuthentication({
               </button>
             </form>
           ) : null}
+          {stage === "offer-passkey" ? (
+            <div className="auth-fields">
+              <p>Next time, log in with your fingerprint, face or screen lock.</p>
+              <button
+                className="auth-primary-button"
+                type="button"
+                disabled={passkeyEnrollment.busy}
+                onClick={() => void passkeyEnrollment.enroll()}
+              >
+                {passkeyEnrollment.busy ? "Creating passkey…" : "Create passkey"}
+              </button>
+              {passkeyEnrollment.stepUpForm}
+              <button
+                className="auth-guest-button"
+                type="button"
+                disabled={passkeyEnrollment.busy}
+                onClick={() => {
+                  if (pendingSession !== null) onAuthenticated(pendingSession);
+                }}
+              >
+                Not now
+              </button>
+              {passkeyEnrollment.message ? <p role="alert">{passkeyEnrollment.message}</p> : null}
+            </div>
+          ) : null}
           {stage === "create-pin" || stage === "recover-pin" ? (
             <form
               className="auth-fields"
@@ -902,6 +953,14 @@ export function PhoneFirstAuthentication({
         </div>
       </section>
     </main>
+  );
+}
+
+function passkeyWasDeclined(error: unknown): boolean {
+  return (
+    (error instanceof Error && error.name === "NotAllowedError") ||
+    (error instanceof ApiRequestError &&
+      (error.code === "passkey_unknown" || error.code === "passkey_account_mismatch"))
   );
 }
 

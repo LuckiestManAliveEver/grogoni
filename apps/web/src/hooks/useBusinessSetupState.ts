@@ -149,41 +149,64 @@ export function useBusinessSetupState(deps: UseBusinessSetupStateDeps) {
 
     try {
       const selectedPhoneCountry = getCountryDialCode(shopPhoneCountryCode);
-      const normalizedPhone = normalizeOwnerPhoneInput(
-        shopPhoneNumber,
-        selectedPhoneCountry.countryCode
-      );
-      let response: BusinessResponse;
-      try {
-        response = await postJson<BusinessResponse>("/businesses", {
+      deps.setStatusMessage(
+        await registerBusiness({
           name: businessName.trim(),
           language,
-          phoneNumber: normalizedPhone,
+          phoneNumber: normalizeOwnerPhoneInput(shopPhoneNumber, selectedPhoneCountry.countryCode),
           phoneCountry: selectedPhoneCountry.countryCode
-        });
-      } catch (error) {
-        if ((error as { code?: unknown } | null)?.code !== "store_already_registered") throw error;
-        // This account already owns a shop (made on another device, or the first create's reply
-        // was lost). Open that shop instead of leaving the person on an error.
-        const shops = await getJson<{ shops: AccountShopSummary[] }>("/v1/shops").catch(() => null);
-        if (shops === null) {
-          setIsBusinessSetupOpen(false);
-          deps.setStatusMessage(
-            "This account already has a shop, but it could not be opened just now. Check your connection, then tap Sell again."
-          );
-          return;
-        }
-        const existing = ownedShop(shops.shops);
-        if (existing === null) throw error;
-        await openCreatedBusiness(existing, false);
-        deps.setStatusMessage(`You already have a shop, ${existing.name}. Opened it.`);
-        return;
-      }
-      await openCreatedBusiness({ ...response.business, role: response.membership.role }, true);
-      deps.setStatusMessage("Business ready. Seller controls are now active.");
+        })
+      );
     } catch (error) {
       deps.setStatusMessage(getErrorMessage(error));
     }
+  }
+
+  /** The same registration the setup form runs, for the marketplace agent's chat. */
+  async function registerShopFromChat(input: { name: string; phoneNumber: string | null }) {
+    const selectedPhoneCountry = getCountryDialCode(shopPhoneCountryCode);
+    return registerBusiness({
+      name: input.name,
+      language,
+      viaAssistant: true,
+      ...(input.phoneNumber === null
+        ? {}
+        : {
+            phoneNumber: normalizeOwnerPhoneInput(
+              input.phoneNumber,
+              selectedPhoneCountry.countryCode
+            ),
+            phoneCountry: selectedPhoneCountry.countryCode
+          })
+    });
+  }
+
+  async function registerBusiness(body: {
+    name: string;
+    language: string;
+    phoneNumber?: string;
+    phoneCountry?: string;
+    viaAssistant?: boolean;
+  }): Promise<string> {
+    let response: BusinessResponse;
+    try {
+      response = await postJson<BusinessResponse>("/businesses", body);
+    } catch (error) {
+      if ((error as { code?: unknown } | null)?.code !== "store_already_registered") throw error;
+      // This account already owns a shop (made on another device, or the first create's reply
+      // was lost). Open that shop instead of leaving the person on an error.
+      const shops = await getJson<{ shops: AccountShopSummary[] }>("/v1/shops").catch(() => null);
+      if (shops === null) {
+        setIsBusinessSetupOpen(false);
+        return "This account already has a shop, but it could not be opened just now. Check your connection, then tap Sell again.";
+      }
+      const existing = ownedShop(shops.shops);
+      if (existing === null) throw error;
+      await openCreatedBusiness(existing, false);
+      return `You already have a shop, ${existing.name}. Opened it.`;
+    }
+    await openCreatedBusiness({ ...response.business, role: response.membership.role }, true);
+    return "Business ready. Seller controls are now active.";
   }
 
   async function openCreatedBusiness(nextBusiness: ActiveBusiness, isNew: boolean) {
@@ -230,6 +253,7 @@ export function useBusinessSetupState(deps: UseBusinessSetupStateDeps) {
     setIsBusinessSetupOpen,
     saveOwnerPhoneForShop,
     createBusiness,
+    registerShopFromChat,
     createInitialOwnerControlsMessage
   };
 }

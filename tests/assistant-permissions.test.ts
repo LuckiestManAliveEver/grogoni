@@ -5,7 +5,9 @@ import {
   assistantActions,
   assistantToolAction,
   assistantToolAllowed,
-  defaultAssistantPermissions
+  assistantPermissionsVersion,
+  defaultAssistantPermissions,
+  normalizeAssistantPermissions
 } from "../packages/shared-types/src";
 import { runtimeToolRegistry } from "../packages/tool-core/src";
 import { createCp2Store } from "../services/api/src/cp2/store";
@@ -80,26 +82,27 @@ describe("assistant action permissions", () => {
     expect(
       Object.keys(runtimeToolRegistry).filter((tool) => assistantToolAction(tool) === null)
     ).toEqual([]);
+    expect(assistantActions.every((action) => defaultAssistantPermissions()[action.id])).toBe(true);
+    for (const tool of ["commerce.search", "product.update", "messaging.send", "commerce.checkout"])
+      expect(assistantToolAllowed(defaultAssistantPermissions(), tool)).toBe(true);
+    expect(assistantToolAllowed(defaultAssistantPermissions(), "new.unknown")).toBe(false);
     expect(
-      assistantActions
-        .filter((action) => defaultAssistantPermissions()[action.id])
-        .map((action) => action.id)
-    ).toEqual(["read", "edit"]);
-    expect(assistantToolAllowed(defaultAssistantPermissions(), "commerce.search", false)).toBe(
-      true
-    );
-    expect(assistantToolAllowed(defaultAssistantPermissions(), "product.update", true)).toBe(true);
-    for (const tool of [
-      "messaging.send",
-      "product.delete",
-      "commerce.checkout",
-      "computer.click",
-      "new.unknown"
-    ])
-      expect(assistantToolAllowed(defaultAssistantPermissions(), tool, true)).toBe(false);
-    expect(assistantToolAllowed(defaultAssistantPermissions(), "product.update", false)).toBe(
-      false
-    );
+      assistantToolAllowed({ ...defaultAssistantPermissions(), store: false }, "product.update")
+    ).toBe(false);
+    expect(
+      assistantToolAllowed({ ...defaultAssistantPermissions(), buy: false }, "commerce.checkout")
+    ).toBe(false);
+  });
+  it("ignores old saves that wrote the former defaults, but keeps new choices", () => {
+    const old = { read: true, edit: false, create: false, store: false };
+    expect(normalizeAssistantPermissions(old)).toMatchObject({
+      edit: false,
+      create: true,
+      store: true
+    });
+    expect(
+      normalizeAssistantPermissions({ ...old, version: assistantPermissionsVersion })
+    ).toMatchObject({ create: false, store: false });
   });
   it("persists account permissions and refuses access from another account", () => {
     const store = createCp2Store();
@@ -122,7 +125,7 @@ describe("assistant action permissions", () => {
       store.updateAssistantPermissions(owner.session.id, id, { arbitrary: true })
     ).toThrow(/valid assistant permissions/iu);
   });
-  it("keeps guests as guests, allows buyer features, and refuses store setup and store grants", () => {
+  it("lets guests buy with no credential, and honours a permission turned off", () => {
     const store = createCp2Store();
     const session = guest(store);
     const id = store.getGrogoniSessionContext({ sessionId: session.session.id }).conversationId;
@@ -157,16 +160,10 @@ describe("assistant action permissions", () => {
     expect(checkout.failures).toHaveLength(0);
     expect(checkout.handoffs).toHaveLength(1);
     expect(store.assistantPermissionErrors(session.session.id, "commerce.search")).toEqual([]);
-    expect(store.getAssistantPermissions(session.session.id, id).storeAllowed).toBe(false);
-    expect(() =>
-      store.createBusiness({ sessionId: session.session.id, name: "Guest shop", language: "en" })
-    ).toThrow(/Sign up or log in/iu);
-    expect(() => store.updateAssistantPermissions(session.session.id, id, { store: true })).toThrow(
-      /Sign up or log in/iu
+    store.updateAssistantPermissions(session.session.id, id, { buy: false });
+    expect(store.assistantPermissionErrors(session.session.id, "commerce.checkout")).not.toEqual(
+      []
     );
-    store.updateAssistantPermissions(session.session.id, id, { buy: true, create: true });
-    expect(store.assistantPermissionErrors(session.session.id, "commerce.checkout")).toEqual([]);
-    expect(store.assistantPermissionErrors(session.session.id, "product.create")).not.toEqual([]);
     expect(store.getSession(session.session.id)?.account.identityLevel).toBe("device");
     expect(
       store.snapshot().accountPinHashes.some((record) => record.accountId === session.account.id)

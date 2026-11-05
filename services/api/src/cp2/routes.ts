@@ -181,6 +181,7 @@ interface CreateBusinessBody {
   language?: string;
   phoneCountry?: string;
   phoneNumber?: string;
+  viaAssistant?: boolean;
 }
 
 interface OwnerPhoneBody {
@@ -399,11 +400,13 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
         requirePhoneLogin(parseAuthChannel(request.body.type ?? "phone"));
         const identifier = readIdentifier({ ...request.body, type: "phone" });
         if (
+          !store.isCurrentGuestPhone(readSessionCookie(request.headers.cookie), identifier.value) &&
           store.identifyAccount({ channel: "phone", identifier: identifier.value }).next === "login"
         ) {
           throw new Cp2Error(409, "account_exists", "Continue to sign in.");
         }
         const transaction = store.beginPhoneSignup({
+          sessionId: readSessionCookie(request.headers.cookie),
           phoneE164: identifier.value
         });
         return {
@@ -445,6 +448,7 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
         if (password !== passwordConfirmation)
           throw new Cp2Error(400, "password_confirmation_invalid", "Passwords do not match.");
         const result = store.completePhoneSignup({
+          sessionId: readSessionCookie(request.headers.cookie),
           transactionId: parseString(request.body.transactionId, "transactionId"),
           displayName: parseString(request.body.displayName, "displayName"),
           password,
@@ -1714,7 +1718,8 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
           : { phoneNumber: request.body.phoneNumber }),
         ...(request.body.phoneCountry === undefined
           ? {}
-          : { phoneCountry: request.body.phoneCountry })
+          : { phoneCountry: request.body.phoneCountry }),
+        ...(request.body.viaAssistant === true ? { viaAssistant: true } : {})
       });
     } catch (error) {
       return sendCp2Error(reply, error);

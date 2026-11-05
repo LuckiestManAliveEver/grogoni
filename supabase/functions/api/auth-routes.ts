@@ -528,6 +528,53 @@ export function createAuthRoutes({
     if (id.type !== "device") await addIdentity(client, row, id.type, id.value, true);
     return row;
   }
+  /** The signed-in guest, whose signup upgrades their own account so nothing they made is lost. */
+  async function guestAccount(client: SqlClient, request: Request) {
+    const session = await activeSession(client, request);
+    if (!session) return null;
+    const account = (await client.query(`${accountSelect} where a.id = $1`, [session.account_id]))
+      .rows[0];
+    return account?.primary_auth_channel === "device" ? account : null;
+  }
+  async function upgradeGuestAccount(
+    client: SqlClient,
+    guest: Row,
+    id: { type: string; value: string; phone: PhoneIdentity | null },
+    displayName: string
+  ) {
+    const accountId = String(guest.account_id);
+    const now = new Date().toISOString();
+    await client.query(
+      `update accounts set primary_auth_channel = $2, primary_auth_destination = $3,
+      identity_level = 'strong' where id = $1`,
+      [accountId, id.type, id.value]
+    );
+    await client.query(
+      `update users set display_name = $2, phone_number_e164 = $3, phone_country_code = $4,
+      phone_national_number = $5, phone_verification_status = 'unverified',
+      phone_added_at = coalesce(phone_added_at, $6), phone_updated_at = $6, phone_source = 'phone_login'
+      where id = $1`,
+      [guest.user_id, displayName, id.phone?.e164, id.phone?.country, id.phone?.nationalNumber, now]
+    );
+    // A phone the guest saved earlier is a non-primary mirror row, even when it differs from this
+    // one; addIdentity writes the primary, so no stale number stays attached to the account.
+    await client.query(
+      `delete from cp2_account_identities where account_id = $1 and record->>'type' = $2`,
+      [accountId, id.type]
+    );
+    const row = (await client.query(`${accountSelect} where a.id = $1`, [accountId])).rows[0];
+    const actor = publicActor(row);
+    await client.query(
+      "update cp2_accounts set record = record || $2::jsonb, updated_at = now() where entity_id = $1",
+      [accountId, JSON.stringify(actor.account)]
+    );
+    await client.query(
+      "update cp2_users set record = record || $2::jsonb, updated_at = now() where entity_id = $1",
+      [guest.user_id, JSON.stringify(actor.user)]
+    );
+    await addIdentity(client, row, id.type, id.value, true);
+    return row;
+  }
   async function addIdentity(
     client: SqlClient,
     row: Row,
@@ -1072,11 +1119,16 @@ export function createAuthRoutes({
           const metadata = row.metadata as Row;
           const id = identifier({ type: "phone", identifier: metadata.identifierValue });
           await lock(client, `signup:${id.type}:${id.value}`);
-          if (await findAccount(client, id.type, id.value, true))
+          const guest = await guestAccount(client, request);
+          const guestSession = guest ? await activeSession(client, request) : null;
+          const holder = await findAccount(client, id.type, id.value, true);
+          if (holder && holder.account_id !== guest?.account_id)
             return error(409, "account_exists", "Continue to sign in.");
           if (extraEmail && (await findAccount(client, "email", extraEmail, true)))
             return error(409, "identity_in_use", "That email cannot be linked to this account.");
-          const account = await newAccount(client, id, displayName);
+          const account = guest
+            ? await upgradeGuestAccount(client, guest, id, displayName)
+            : await newAccount(client, id, displayName);
           if (extraEmail) await addIdentity(client, account, "email", extraEmail, false);
           const passwordHash = credentialHash(
             String(account.account_id),
@@ -1087,7 +1139,9 @@ export function createAuthRoutes({
           const now = new Date().toISOString();
           await client.query(
             `insert into password_credentials (account_id, password_hash, password_changed_at, created_at, updated_at)
-            values ($1,$2,$3,$3,$3)`,
+            values ($1,$2,$3,$3,$3)
+            on conflict (account_id) do update set password_hash = excluded.password_hash,
+              password_changed_at = excluded.password_changed_at, updated_at = excluded.updated_at`,
             [account.account_id, passwordHash, now]
           );
           await mirror(client, "cp2_password_credentials", String(account.account_id), {
@@ -1109,6 +1163,7 @@ export function createAuthRoutes({
               JSON.stringify({ accountId: account.account_id, consumedAt: now })
             ]
           );
+          if (guestSession) await revokeFamily(client, guestSession, "signup_upgrade");
           const session = await makeSession(client, account, request);
           return sessionResponse(account, session.row, session.refresh);
         });
@@ -1172,7 +1227,9 @@ export function createAuthRoutes({
           );
         if (signup) await audit(client, "auth.edge.signup_attempt", key);
         if (path === "/auth/signup/start") {
-          if (account) return error(409, "account_exists", "Continue to sign in.");
+          const guest = account ? await guestAccount(client, request) : null;
+          if (account && account.account_id !== guest?.account_id)
+            return error(409, "account_exists", "Continue to sign in.");
           const transactionId = randomUUID();
           const now = new Date().toISOString();
           const expiresAt = new Date(Date.now() + 15 * 60000).toISOString();

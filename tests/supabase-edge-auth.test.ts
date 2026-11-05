@@ -525,6 +525,47 @@ describe("native Edge authentication routes", () => {
     expect(lookup).toContain("order by (u.phone_number_e164 = $2) is true desc");
   });
 
+  it("upgrades a guest in place at signup instead of creating an account", async () => {
+    const statements: string[] = [];
+    const guest = {
+      ...account,
+      primary_auth_channel: "device",
+      primary_auth_destination: "device:abc",
+      identity_level: "device"
+    };
+    const query = vi.fn(async (sql: string) => {
+      statements.push(sql);
+      if (sql.includes("from auth_transactions"))
+        return {
+          rows: [{ id, metadata: { identifierValue: "+254712345678" } }]
+        };
+      if (sql.includes("from sessions s join accounts")) return { rows: [session] };
+      if (sql.includes("where a.id = $1")) return { rows: [guest] };
+      if (sql.includes("insert into sessions")) return { rows: [session] };
+      return { rows: [] };
+    }) as unknown as SqlClient["query"];
+    const response = await setup(query).routes(
+      request(
+        "/auth/signup/complete",
+        {
+          transactionId: id,
+          displayName: "Jane",
+          password: "secure first password",
+          passwordConfirmation: "secure first password",
+          termsAccepted: true,
+          privacyAccepted: true
+        },
+        `grogoni_session=${id}`
+      ),
+      "/auth/signup/complete"
+    );
+    expect(response?.status).toBe(200);
+    expect(
+      statements.some((sql) => sql.startsWith("update accounts set primary_auth_channel"))
+    ).toBe(true);
+    expect(statements.some((sql) => sql.startsWith("insert into accounts"))).toBe(false);
+  });
+
   it("delegates PIN setup to the shared recovery-aware authentication store", async () => {
     const query = vi.fn();
     const { routes } = setup(query);

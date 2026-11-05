@@ -26,8 +26,9 @@ revocation, notification policy and testing details.
 Guests receive a cookie-backed device account through `/auth/continue`, without a login or signup
 form. Personal and direct conversations use the same messaging APIs throughout that account's
 lifetime. Missing sessions are restored with the device key or continued without opening login.
-Guests can browse, buy and use personal app functions without enrolling a PIN or passkey. Store
-setup and store-management APIs require a signed-in account as well as ordinary membership checks.
+Guests can browse, buy, use personal app functions and register a shop without enrolling a PIN or
+passkey. Store APIs use ordinary membership checks. Signing up from a guest session upgrades that
+same account, so its chats, orders and any shop stay with it.
 
 Passkeys use discoverable WebAuthn credentials and resolve directly to the same account UUID.
 Access cookies last 15 minutes; HTTP-only refresh cookies last 30 days and rotate on use. Reuse

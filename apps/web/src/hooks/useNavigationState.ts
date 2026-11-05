@@ -231,7 +231,7 @@ export function useNavigationState(deps: UseNavigationStateDeps) {
 
   function switchMode(nextMode: GrogoniMode) {
     const { setIsBusinessSetupOpen, setBusinessSetupStep } = deps.getBusinessSetupSetters();
-    if (nextMode === "seller" && (session === null || session.account.identityLevel === "device")) {
+    if (nextMode === "seller" && session === null) {
       openAuth("signup");
       return;
     }

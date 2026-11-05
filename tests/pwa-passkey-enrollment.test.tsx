@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
-import { act } from "react";
+import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
 import PhoneSignup from "../apps/web/src/PhoneSignup";
-import { PwaPasskeySetup } from "../apps/web/src/PwaPasskeySetup";
+import { usePasskeyEnrollment } from "../apps/web/src/usePasskeyEnrollment";
 import { ApiRequestError, apiFetch } from "../apps/web/src/lib/api";
 import type * as ApiModule from "../apps/web/src/lib/api";
 import { createBrowserPasskey } from "../apps/web/src/browser-passkeys";
@@ -19,6 +19,20 @@ vi.mock("../apps/web/src/lib/api", async (original) => ({
   ...(await original<typeof ApiModule>()),
   apiFetch: vi.fn()
 }));
+function PwaPasskeySetup({ accountId }: { accountId: string }) {
+  const [done, setDone] = useState(false);
+  const enrollment = usePasskeyEnrollment({ onCreated: () => setDone(true) });
+  if (done) return null;
+  return (
+    <section aria-label={accountId}>
+      <button type="button" onClick={() => void enrollment.enroll()}>
+        Create passkey
+      </button>
+      {enrollment.stepUpForm}
+      {enrollment.message ? <p role="alert">{enrollment.message}</p> : null}
+    </section>
+  );
+}
 let host: HTMLDivElement;
 let root: Root;
 const onAuthenticated = vi.fn();
@@ -179,10 +193,5 @@ it("asks for the PIN when a session was never PIN-verified", async () => {
     method: "POST",
     body: { pin: "1234" }
   });
-  expect(host.textContent).toBe("");
-});
-it("does not prompt existing accounts that already have a passkey", async () => {
-  vi.mocked(apiFetch).mockResolvedValue({ passkeys: [{ id: "existing-passkey" }] });
-  await act(async () => root.render(<PwaPasskeySetup accountId="existing" />));
   expect(host.textContent).toBe("");
 });

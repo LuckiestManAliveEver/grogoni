@@ -338,7 +338,7 @@ describe("frontend user guidance", () => {
     expect(shopSetup).toContain("Add your phone number");
     expect(shopSetup).toContain("shop identity, account recovery, and last-resort customer");
     expect(shopSetup).toContain("Your phone number is required to register and recover your shop.");
-    expect(shopSetup).toContain("Back to login options");
+    expect(shopSetup).not.toContain("Back to login options");
     expect(shopSetup).toContain('"Saving…" : "Continue"');
     expect(shopSetup).toContain("Create your shop once using your signed-in account");
     expect(shopSetup).not.toContain("OTP");

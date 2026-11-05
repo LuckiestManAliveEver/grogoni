@@ -4,7 +4,9 @@ Browser/PWA signup includes a passkey step after the account is created. The bro
 manager owns the credential prompt. Users can finish later if they cancel. A browser without
 WebAuthn skips passkeys; the password remains available.
 
-Passkey prompts do not appear automatically while browsing or using a guest session. Account
+Passkey prompts do not appear automatically while browsing or using a guest session. A user who
+logs in with a PIN or password and has no passkey is offered one during that login, each time
+until they have one. Account
 security retains explicit passkey enrollment and management. Login method discovery prefers
 passkeys and attempts a registered passkey only after the user continues the login form. Native
 Android can fall back to an enrolled screen-lock recovery key when passkeys are unavailable;

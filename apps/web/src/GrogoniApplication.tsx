@@ -752,6 +752,8 @@ export function OwnerApp() {
     rejectRuntimeAction,
     cancelGeneration
   } = useChatRuntimeState({
+    // Declared below; called only when a chat message registers a shop.
+    registerShopFromChat: (input) => registerShopFromChat(input),
     business,
     mode,
     session,
@@ -818,7 +820,8 @@ export function OwnerApp() {
     isBusinessSetupOpen,
     setIsBusinessSetupOpen,
     saveOwnerPhoneForShop,
-    createBusiness
+    createBusiness,
+    registerShopFromChat
   } = useBusinessSetupState({
     business,
     setBusiness,
@@ -1906,10 +1909,6 @@ export function OwnerApp() {
                 )
               }
               onEditPhone={() => setBusinessSetupStep("phone")}
-              onBackToLoginOptions={() => {
-                setIsBusinessSetupOpen(false);
-                openAuth();
-              }}
               onCancel={() => {
                 setIsBusinessSetupOpen(false);
                 setStatusMessage(

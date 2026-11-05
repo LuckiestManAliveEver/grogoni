@@ -41,6 +41,8 @@ export async function sendGuestMessage(input: {
     message: string,
     clientMessageId: string
   ) => Promise<{ text: string } | { note: string } | null>;
+  /** Starts the agent's shop registration and returns its first question. */
+  startShopRegistration?: () => string;
   /** The composer, attachments and reply target are cleared once the bubble is shown. */
   afterBubble: () => void;
   navigateToMarketplace: () => void;
@@ -66,7 +68,16 @@ export async function sendGuestMessage(input: {
   let answer: { reply: string; status: string };
   try {
     const classified = await classifyGuestMessage(input.message);
-    if (classified.route.kind === "search") {
+    if (
+      classified.route.kind === "reply" &&
+      classified.route.selling &&
+      input.startShopRegistration
+    ) {
+      answer = {
+        reply: input.startShopRegistration(),
+        status: "Tell Grogoni about your shop."
+      };
+    } else if (classified.route.kind === "search") {
       // A marketplace chat answers a product lookup itself - that is the one thing it does without
       // the model. The classifier's query is used when a model decided it (it was validated
       // against the message). A rules answer may only search the bare product name it is sure of:
