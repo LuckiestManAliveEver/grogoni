@@ -30,8 +30,16 @@ export interface DeviceAttachment {
   name: string;
   type: string;
 }
+export interface DeviceCallOptions {
+  /** Defaults to 120 s. Flows that wait on several Android dialogs pass a longer budget. */
+  timeoutMs?: number;
+}
 export interface DeviceMessagingAdapter {
-  call<T>(method: string, params?: Record<string, unknown>): Promise<T>;
+  call<T>(
+    method: string,
+    params?: Record<string, unknown>,
+    options?: DeviceCallOptions
+  ): Promise<T>;
 }
 export function isNativeDeviceHost(): boolean {
   return (
@@ -89,7 +97,11 @@ if (typeof window !== "undefined")
   });
 
 export const deviceMessagingAdapter: DeviceMessagingAdapter = {
-  async call<T>(method: string, params: Record<string, unknown> = {}): Promise<T> {
+  async call<T>(
+    method: string,
+    params: Record<string, unknown> = {},
+    options: DeviceCallOptions = {}
+  ): Promise<T> {
     if (!isNativeDeviceHost()) {
       if (method === "capabilities")
         return {
@@ -119,9 +131,13 @@ export const deviceMessagingAdapter: DeviceMessagingAdapter = {
       const timer = setTimeout(() => {
         waiting.delete(id);
         reject(
-          new Error("The device operation timed out. Check message status before retrying a send.")
+          new Error(
+            options.timeoutMs === undefined
+              ? "The device operation timed out. Check message status before retrying a send."
+              : "Android did not answer in time. Close any open Android prompt and try again."
+          )
         );
-      }, 120_000);
+      }, options.timeoutMs ?? 120_000);
       waiting.set(id, { resolve: (value) => resolve(value as T), reject, timer });
       try {
         port!.postMessage(JSON.stringify({ id, method, params }));

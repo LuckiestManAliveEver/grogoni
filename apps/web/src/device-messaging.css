@@ -4,7 +4,13 @@
   padding: max(18px, env(safe-area-inset-top)) 18px max(28px, env(safe-area-inset-bottom));
   color: #17352a;
   background: #f6f8f4;
-  min-height: 100dvh;
+  /* styles.css locks body scrolling for the app shell; this standalone route scrolls itself. */
+  box-sizing: border-box;
+  /* vh first: Android WebView before Chrome 108 drops dvh, which left the page unscrollable. */
+  height: 100vh;
+  height: 100dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .device-messenger-header,
 .device-messenger-tabs,
@@ -114,4 +120,78 @@
   padding: 12px;
   border-radius: 10px;
   background: #e0eee5;
+}
+.device-permissions-progress {
+  font-weight: 700;
+  color: #176b57;
+}
+.device-messenger .device-permissions-primary {
+  color: white;
+  background: #176b57;
+  border-color: #176b57;
+}
+.device-permissions-list {
+  list-style: none;
+  margin: 12px 0;
+  padding: 0;
+}
+.device-permissions-list li {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  gap: 12px;
+  align-items: start;
+  padding: 14px 0;
+  border-top: 1px solid #d7e4dc;
+}
+.device-permissions-list h3 {
+  font-size: 16px;
+  margin: 2px 0 4px;
+}
+.device-permissions-tag {
+  font-weight: 600;
+  color: #51685a;
+}
+.device-permissions-list p {
+  margin: 0;
+}
+.device-permissions-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: 2px solid #aec9ba;
+  color: white;
+  font-weight: 800;
+}
+[data-status="granted"] .device-permissions-mark {
+  background: #176b57;
+  border-color: #176b57;
+}
+.device-permissions-state {
+  font-size: 13px;
+  color: #51685a;
+}
+[data-status="blocked"] .device-permissions-state,
+[data-status="denied"] .device-permissions-state {
+  color: #8a3b12;
+}
+.device-permissions-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+.device-contact-suggestions {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+}
+.device-messenger .device-contact-suggestions button {
+  display: block;
+  width: 100%;
+  margin: 4px 0;
+  text-align: left;
+}
+.device-contact-suggestions small {
+  color: #51685a;
 }

@@ -67,7 +67,7 @@ class IncomingSmsJournal(context: Context) : SQLiteOpenHelper(context, "incoming
 
     /** Provider writes and our SQLite update cannot share a transaction. Reconcile first. */
     fun recover(context: Context, provider: IncomingSmsProvider = AndroidIncomingSmsProvider(context)): Boolean = synchronized(LOCK) {
-        if (Telephony.Sms.getDefaultSmsPackage(context) != context.packageName) return@synchronized false
+        if (!DefaultSmsRole.held(context)) return@synchronized false
         for (sms in pending()) {
             val uri = provider.find(sms) ?: requireNotNull(provider.insert(sms)) { "Android could not store incoming SMS." }
             check(writableDatabase.update("incoming", ContentValues().apply {

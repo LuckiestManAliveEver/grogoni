@@ -33,3 +33,4 @@ apps/android/app/src/main/assets/web-bundle.json
 
 # Kotlin incremental build state
 apps/android/.kotlin/
+apps/android/build/

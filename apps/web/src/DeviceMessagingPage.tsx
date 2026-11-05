@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   deviceMessagingAdapter,
   mmsStatus,
@@ -10,6 +10,20 @@ import {
   type DeviceMessagingAdapter,
   type DeviceMms
 } from "./device-messaging";
+import DevicePermissionChecklist from "./DevicePermissionChecklist";
+import {
+  applySuggestion,
+  buildContactIndex,
+  contactLabel,
+  parseDevicePhonebook,
+  replyDestination,
+  suggestContacts,
+  type DevicePhonebook
+} from "./device-contacts";
+import {
+  parseDevicePermissionChecklist,
+  type DevicePermissionChecklist as PermissionChecklist
+} from "./device-permissions";
 import "./device-messaging.css";
 
 export default function DeviceMessagingPage({
@@ -40,6 +54,64 @@ export default function DeviceMessagingPage({
   >(null);
   const [settings, setSettings] = useState(false);
   const [businesses, setBusinesses] = useState<{ id: string; name: string }[]>([]);
+  // First launch shows the device access checklist before the inbox. Bridge failures never block it.
+  const [permissionGate, setPermissionGate] = useState<"checking" | "ready">("checking");
+  const [checklist, setChecklist] = useState<PermissionChecklist | null>(null);
+  const [checklistSupported, setChecklistSupported] = useState(false);
+  useEffect(() => {
+    let current = true;
+    adapter
+      .call("permissionChecklist", {}, { timeoutMs: 5_000 })
+      .then(
+        (value) => {
+          const parsed = parseDevicePermissionChecklist(value);
+          if (current && parsed) setChecklistSupported(true);
+          if (current && parsed && !parsed.completed) setChecklist(parsed);
+        },
+        () => undefined
+      )
+      .finally(() => {
+        if (current) setPermissionGate("ready");
+      });
+    return () => {
+      current = false;
+    };
+  }, [adapter]);
+  // Phonebook names, once the checklist is out of the way. Without access the inbox shows numbers.
+  const [phonebook, setPhonebook] = useState<DevicePhonebook>({ contacts: [], country: null });
+  const inbox = permissionGate === "ready" && checklist === null;
+  useEffect(() => {
+    if (!inbox) return;
+    let current = true;
+    const load = () => {
+      if (document.visibilityState !== "visible") return;
+      adapter.call("listContacts").then(
+        (value) => {
+          if (current) setPhonebook(parseDevicePhonebook(value));
+        },
+        () => undefined
+      );
+    };
+    load();
+    // Access can change in Android Settings, and contacts in the phone's own app.
+    document.addEventListener("visibilitychange", load);
+    return () => {
+      current = false;
+      document.removeEventListener("visibilitychange", load);
+    };
+  }, [adapter, inbox]);
+  const suggestions = useMemo(
+    () => suggestContacts(phonebook.contacts, recipient, phonebook.country),
+    [phonebook, recipient]
+  );
+  // The keyboard covers the lower half of small phones; keep the first match reachable.
+  const suggestionList = useRef<HTMLUListElement>(null);
+  const hasSuggestions = suggestions.length > 0;
+  useEffect(() => {
+    if (hasSuggestions) suggestionList.current?.scrollIntoView?.({ block: "nearest" });
+  }, [hasSuggestions]);
+  const contactIndex = useMemo(() => buildContactIndex(phonebook), [phonebook]);
+  const label = (value: string) => contactLabel(value, contactIndex, phonebook.country);
 
   const viewKey = JSON.stringify([channel, filter, address]);
   const activeView = useRef(viewKey);
@@ -115,6 +187,14 @@ export default function DeviceMessagingPage({
       setBusy(false);
     }
   }
+  // This route scrolls inside .device-messenger; the window itself cannot scroll.
+  const showComposer = () => document.querySelector(".device-messenger")?.scrollTo?.(0, 0);
+  const reviewPermissions = () =>
+    operation(async () => {
+      const parsed = parseDevicePermissionChecklist(await adapter.call("permissionChecklist"));
+      if (!parsed) throw new Error("Update the Android app to review permissions.");
+      setChecklist(parsed);
+    });
   async function loadOlder() {
     await operation(async () => {
       if (channel === "sms") {
@@ -187,6 +267,28 @@ export default function DeviceMessagingPage({
     });
   }
 
+  if (permissionGate === "checking")
+    return (
+      <main className="device-messenger" data-testid="device-messenger">
+        <p role="status">Checking device access…</p>
+      </main>
+    );
+  if (checklist)
+    return (
+      <main className="device-messenger" data-testid="device-messenger">
+        <DevicePermissionChecklist
+          adapter={adapter}
+          initial={checklist}
+          onDone={() => {
+            setChecklist(null);
+            void refresh().catch((error: unknown) =>
+              setNotice(error instanceof Error ? error.message : String(error))
+            );
+          }}
+        />
+      </main>
+    );
+
   return (
     <main className="device-messenger" data-testid="device-messenger">
       <header className="device-messenger-header">
@@ -212,6 +314,11 @@ export default function DeviceMessagingPage({
           </p>
           <a href="/install">Install Android app</a>
           <a href="/marketplace">Open internet conversations</a>
+          {checklistSupported && (
+            <button type="button" disabled={busy} onClick={() => void reviewPermissions()}>
+              Review app permissions
+            </button>
+          )}
         </section>
       ) : (
         <>
@@ -276,6 +383,9 @@ export default function DeviceMessagingPage({
                 }
               >
                 Review Android SMS permissions
+              </button>
+              <button type="button" disabled={busy} onClick={() => void reviewPermissions()}>
+                Review app permissions
               </button>
               <button
                 type="button"
@@ -379,6 +489,24 @@ export default function DeviceMessagingPage({
                 autoComplete="tel"
               />
             </label>
+            {suggestions.length > 0 && (
+              <ul
+                ref={suggestionList}
+                className="device-contact-suggestions"
+                aria-label="Phonebook suggestions"
+              >
+                {suggestions.map((contact) => (
+                  <li key={contact.destination}>
+                    <button
+                      type="button"
+                      onClick={() => setRecipient(applySuggestion(recipient, contact.destination))}
+                    >
+                      {contact.name} <small>{contact.destination}</small>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
             <label>
               Message
               <textarea value={body} onChange={(event) => setBody(event.target.value)} rows={3} />
@@ -446,7 +574,9 @@ export default function DeviceMessagingPage({
             </form>
           )}
           <section aria-label="Message history" className="device-messenger-history">
-            <h2>{address ? `Conversation with ${address}` : `${channel.toUpperCase()} history`}</h2>
+            <h2>
+              {address ? `Conversation with ${label(address)}` : `${channel.toUpperCase()} history`}
+            </h2>
             <button type="button" disabled={busy} onClick={() => void operation(refresh)}>
               Refresh messages
             </button>
@@ -466,7 +596,7 @@ export default function DeviceMessagingPage({
                     onClick={() => void open(message)}
                   >
                     <span>
-                      <strong>{message.address}</strong>
+                      <strong>{label(message.address)}</strong>
                       <small>
                         {smsStatus(message.type)}
                         {message.type === 1 && !message.read ? " · unread" : ""}
@@ -499,7 +629,7 @@ export default function DeviceMessagingPage({
                       })
                     }
                   >
-                    <strong>{message.addresses.join(", ") || "MMS"}</strong>
+                    <strong>{message.addresses.map(label).join(", ") || "MMS"}</strong>
                     <p>{mmsStatus(message)}</p>
                     <time>{new Date(message.date).toLocaleString()}</time>
                   </button>
@@ -523,14 +653,14 @@ export default function DeviceMessagingPage({
           aria-modal="true"
           aria-label="SMS message"
         >
-          <h2>{opened.address}</h2>
+          <h2>{label(opened.address)}</h2>
           <p>{opened.body}</p>
           <button
             type="button"
             onClick={() => {
-              setRecipient(opened.address);
+              setRecipient(replyDestination(opened.address, phonebook.country));
               setOpened(null);
-              window.scrollTo(0, 0);
+              showComposer();
             }}
           >
             Reply
@@ -591,7 +721,7 @@ export default function DeviceMessagingPage({
           aria-modal="true"
           aria-label="MMS message"
         >
-          <h2>{openedMms.addresses.join(", ") || "MMS"}</h2>
+          <h2>{openedMms.addresses.map(label).join(", ") || "MMS"}</h2>
           <p>{openedMms.body}</p>
           {openedMms.attachments.map((item) => (
             <button
@@ -609,11 +739,15 @@ export default function DeviceMessagingPage({
           <button
             type="button"
             onClick={() => {
-              setRecipient(openedMms.addresses.join(", "));
+              setRecipient(
+                openedMms.addresses
+                  .map((value) => replyDestination(value, phonebook.country))
+                  .join(", ")
+              );
               setBody(openedMms.box === 3 ? openedMms.body : "");
               setAttachment(openedMms.box === 3 ? (openedMms.attachments[0] ?? null) : null);
               setOpenedMms(null);
-              window.scrollTo(0, 0);
+              showComposer();
             }}
           >
             Reply / retry

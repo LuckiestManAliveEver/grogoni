@@ -8,7 +8,7 @@ import android.provider.Telephony
 class NativeSmsReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Telephony.Sms.Intents.SMS_DELIVER_ACTION) return
-        if (Telephony.Sms.getDefaultSmsPackage(context) != context.packageName) return
+        if (!DefaultSmsRole.held(context)) return
         val sms = MultipartSmsAssembler.fromIntent(intent) ?: return
         val pending = goAsync()
         executor.execute {
@@ -35,7 +35,7 @@ class NativeSmsReceiver : BroadcastReceiver() {
 class DefaultSmsRoleChangedReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == Telephony.Sms.Intents.ACTION_DEFAULT_SMS_PACKAGE_CHANGED) {
-            if (Telephony.Sms.getDefaultSmsPackage(context) == context.packageName) IncomingSmsJournal.schedule(context)
+            if (DefaultSmsRole.held(context)) IncomingSmsJournal.schedule(context)
             NativeSmsWork.schedule(context)
         }
     }
@@ -45,7 +45,7 @@ class DefaultSmsRoleChangedReceiver : BroadcastReceiver() {
 class MmsRoleReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Telephony.Sms.Intents.WAP_PUSH_DELIVER_ACTION ||
-            Telephony.Sms.getDefaultSmsPackage(context) != context.packageName) return
+            !DefaultSmsRole.held(context)) return
         val data = intent.getByteArrayExtra("data") ?: return
         val subscription = intent.getIntExtra("subscription", SmsSubscription.defaultId() ?: -1)
         val pending = goAsync()

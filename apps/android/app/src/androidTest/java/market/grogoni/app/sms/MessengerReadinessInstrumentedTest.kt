@@ -16,7 +16,7 @@ class MessengerReadinessInstrumentedTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
 
     @Test fun emulatedSmsBroadcastIsStoredLocallyWithoutBackendCopy() {
-        assertEquals(context.packageName, Telephony.Sms.getDefaultSmsPackage(context))
+        assertTrue(DefaultSmsRole.held(context))
         val text = "grogoni-emulator-private-sms-20261103"
         if (androidx.test.platform.app.InstrumentationRegistry.getArguments().getString("stage") == "prepare") {
             contentResolver().delete(Telephony.Sms.CONTENT_URI, "body = ?", arrayOf(text))
@@ -71,7 +71,7 @@ class MessengerReadinessInstrumentedTest {
     }
 
     @Test fun virtualModemSendUpdatesProviderFromCarrierCallbackWithoutBackendResult() {
-        assertEquals(context.packageName, Telephony.Sms.getDefaultSmsPackage(context))
+        assertTrue(DefaultSmsRole.held(context))
         val id = "local:emulator-${UUID.randomUUID()}"
         val subscription = requireNotNull(SmsSubscription.defaultId())
         var uri: Uri? = null
@@ -93,7 +93,7 @@ class MessengerReadinessInstrumentedTest {
     }
 
     @Test fun failedProviderWriteSurvivesReopenAndDuplicateRecovery() {
-        assertEquals("Dedicated emulator must hold SMS role", context.packageName, Telephony.Sms.getDefaultSmsPackage(context))
+        assertTrue("Dedicated emulator must hold SMS role", DefaultSmsRole.held(context))
         val sms = message("durable-${UUID.randomUUID()}")
         IncomingSmsJournal(context).use { journal ->
             journal.record(sms)
@@ -122,7 +122,7 @@ class MessengerReadinessInstrumentedTest {
     }
 
     @Test fun crashAfterProviderInsertReconcilesWithoutDuplicate() {
-        assertEquals(context.packageName, Telephony.Sms.getDefaultSmsPackage(context))
+        assertTrue(DefaultSmsRole.held(context))
         val sms = message("reconcile-${UUID.randomUUID()}")
         val provider = AndroidIncomingSmsProvider(context)
         val uri = requireNotNull(provider.insert(sms))
@@ -136,7 +136,7 @@ class MessengerReadinessInstrumentedTest {
     }
 
     @Test fun paginationAndSearchReachMessagesBeyondFirstHundredWithoutSkippingTies() {
-        assertEquals(context.packageName, Telephony.Sms.getDefaultSmsPackage(context))
+        assertTrue(DefaultSmsRole.held(context))
         val tag = "history-${UUID.randomUUID()}"
         val provider = AndroidIncomingSmsProvider(context)
         val uris = mutableListOf<Uri>()

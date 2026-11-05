@@ -24,7 +24,7 @@ class MmsTransport(private val context: Context) {
     }
 
     private fun manager(subscription: Int): SmsManager {
-        check(Telephony.Sms.getDefaultSmsPackage(context) == context.packageName) { "Make Grogoni the default SMS app first." }
+        check(DefaultSmsRole.held(context)) { "Make Grogoni the default SMS app first." }
         check(SmsSubscription.defaultId() == subscription) { "The selected SIM changed. Review the SMS SIM before retrying." }
         @Suppress("DEPRECATION")
         return SmsManager.getSmsManagerForSubscriptionId(subscription)

@@ -46,6 +46,7 @@ class DeviceMessagingAdapter(private val context: Context) {
         }
         "signRecoveryChallenge" -> market.grogoni.app.auth.DeviceRecoveryKey(context).assertion(params.getString("identifier"), params.getJSONObject("challenge"))
         "capabilities" -> capabilities()
+        "listContacts" -> listContacts()
         "listSms" -> {
             requireRole()
             val pending = IncomingSmsJournal(context).use { journal ->
@@ -165,7 +166,31 @@ class DeviceMessagingAdapter(private val context: Context) {
         UUID.fromString(id)
         return Uri.parse(requireNotNull(context.getSharedPreferences("device-attachments", Context.MODE_PRIVATE).getString(id, null)) { "Select the attachment again." })
     }
-    private fun requireRole() { check(Telephony.Sms.getDefaultSmsPackage(context) == context.packageName) { "Make Grogoni the default SMS app first." } }
+    /** Phonebook names and numbers for display and recipient suggestions. Read only; nothing leaves the phone. */
+    private fun listContacts(): JSONObject {
+        check(androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_CONTACTS) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED) { "Allow Phonebook access first." }
+        val contacts = JSONArray()
+        context.contentResolver.query(android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+            arrayOf(android.provider.ContactsContract.Contacts.DISPLAY_NAME_PRIMARY, android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER,
+                android.provider.ContactsContract.CommonDataKinds.Phone.NORMALIZED_NUMBER),
+            null, null, "${android.provider.ContactsContract.Contacts.DISPLAY_NAME_PRIMARY} COLLATE NOCASE ASC")?.use {
+            while (contacts.length() < MAX_CONTACTS && it.moveToNext()) {
+                val name = it.getString(0)?.trim().orEmpty(); val number = it.getString(1)?.trim().orEmpty()
+                // NORMALIZED_NUMBER was fixed when the contact was saved, so a later SIM swap cannot re-read it.
+                if (name.isNotEmpty() && number.isNotEmpty()) contacts.put(JSONObject().put("name", name).put("phone", number)
+                    .put("normalized", it.getString(2) ?: JSONObject.NULL))
+            }
+        }
+        // The SIM that sends: on dual SIM the default subscription may be a different country.
+        val telephony = context.getSystemService(android.telephony.TelephonyManager::class.java)?.let { manager ->
+            val subscription = SmsSubscription.defaultId()
+            if (subscription != null && android.os.Build.VERSION.SDK_INT >= 24) manager.createForSubscriptionId(subscription) else manager
+        }
+        val country = NativePhoneNormalizer.homeCountry(telephony?.simCountryIso)
+        return JSONObject().put("contacts", contacts).put("country", country ?: JSONObject.NULL)
+    }
+    private fun requireRole() { check(DefaultSmsRole.held(context)) { "Make Grogoni the default SMS app first." } }
     private fun validId(id: Long) = id.also { require(it > 0) { "Invalid message ID." } }
     private fun smsJson(message: LocalSmsMessage) = JSONObject().put("id", message.id).put("address", message.address).put("body", message.body)
         .put("date", message.date).put("type", message.type).put("read", message.read)
@@ -222,4 +247,5 @@ class DeviceMessagingAdapter(private val context: Context) {
         val shared = FileProvider.getUriForFile(context, "${context.packageName}.mms-files", file)
         context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(shared, type).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK))
     }
+    private companion object { const val MAX_CONTACTS = 5_000 }
 }

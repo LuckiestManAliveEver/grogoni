@@ -12,6 +12,10 @@ import java.util.concurrent.TimeUnit
 @RunWith(AndroidJUnit4::class)
 class SharedMessengerUiInstrumentedTest {
     @Test fun signedBundleRendersSharedReactScreenAndReadsTheActualSmsProvider() {
+        // This exercises the inbox of an onboarded install; the first-run checklist has its own test.
+        androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext
+            .getSharedPreferences("permission-checklist", android.content.Context.MODE_PRIVATE)
+            .edit().putBoolean("completed", true).commit()
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             val deadline = android.os.SystemClock.elapsedRealtime() + 45_000
             var text = ""

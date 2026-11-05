@@ -9,6 +9,19 @@ import android.provider.Telephony
 import android.telephony.TelephonyManager
 import androidx.core.content.ContextCompat
 
+/**
+ * Whether Grogoni is the default SMS app. On Android 10+ the role is the source of truth: on the
+ * API 35 emulator Telephony.Sms.getDefaultSmsPackage returned null while the role was held and
+ * every SMS permission was granted.
+ */
+object DefaultSmsRole {
+    fun held(context: Context): Boolean = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        context.getSystemService(RoleManager::class.java)?.isRoleHeld(RoleManager.ROLE_SMS) == true
+    } else {
+        Telephony.Sms.getDefaultSmsPackage(context) == context.packageName
+    }
+}
+
 object NativeSmsCapability {
     fun inspect(context: Context): SmsCapabilityState {
         val roleManager = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -34,11 +47,7 @@ object NativeSmsCapability {
         } else {
             hasTelephony
         }
-        val roleGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            roleManager?.isRoleHeld(RoleManager.ROLE_SMS) == true
-        } else {
-            Telephony.Sms.getDefaultSmsPackage(context) == context.packageName
-        }
+        val roleGranted = DefaultSmsRole.held(context)
         val subscriptionId = if (hasTelephony) {
             SmsSubscription.defaultId()
         } else {

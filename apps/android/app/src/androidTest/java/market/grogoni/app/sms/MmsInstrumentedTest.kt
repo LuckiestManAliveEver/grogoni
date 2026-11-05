@@ -15,7 +15,7 @@ class MmsInstrumentedTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
 
     @Test fun mmsNotificationIsDurableIdempotentAndNeverAutoDownloads() {
-        assertEquals(context.packageName, Telephony.Sms.getDefaultSmsPackage(context))
+        assertTrue(DefaultSmsRole.held(context))
         val id = "emulator-${java.util.UUID.randomUUID()}"
         val sender = "+15551234567".toByteArray()
         val out = java.io.ByteArrayOutputStream()
@@ -53,7 +53,7 @@ class MmsInstrumentedTest {
     }
 
     @Test fun groupMmsCodecPersistsTextAndImageInRealProvider() {
-        assertEquals(context.packageName, Telephony.Sms.getDefaultSmsPackage(context))
+        assertTrue(DefaultSmsRole.held(context))
         val transport = MmsTransport(context)
         val bytes = transport.compose(listOf("+15551234567", "+15557654321"), "Hello 世界", null)
         val sent = PduParser(bytes, true).parse() as SendReq
@@ -89,7 +89,7 @@ class MmsInstrumentedTest {
     }
 
     @Test fun downloadedPduCanBeRecoveredAndStoredWithoutCarrierNetwork() {
-        assertEquals(context.packageName, Telephony.Sms.getDefaultSmsPackage(context))
+        assertTrue(DefaultSmsRole.held(context))
         val transport = MmsTransport(context)
         val bytes = transport.compose(listOf("+15551234567"), "Downloaded MMS fixture", null)
         // M-Retrieve.conf shares the multimedia body/header encoding with M-Send.req.

@@ -83,7 +83,13 @@ describe("shared carrier-message interface", () => {
     );
     await act(async () => root.render(<DeviceMessagingPage adapter={adapterWith(call)} />));
     expect(container.textContent).toContain("Private OTP 123456");
-    expect(call.mock.calls.map(([method]) => method)).toEqual(["capabilities", "listSms"]);
+    // Reading checklist state and the on-device phonebook are the only extra calls; nothing is uploaded.
+    expect(call.mock.calls.map(([method]) => method).sort()).toEqual([
+      "capabilities",
+      "listContacts",
+      "listSms",
+      "permissionChecklist"
+    ]);
     await act(async () => container.querySelector<HTMLButtonElement>(".device-message")!.click());
     expect(call).toHaveBeenCalledWith("markRead", { id: 1 });
     vi.mocked(window.confirm).mockReturnValue(false);

@@ -33,7 +33,7 @@ class AndroidSmsSender(private val context: Context) {
 
     @Suppress("DEPRECATION")
     private fun sendChecked(command: NativeSmsCommand) {
-        if (Telephony.Sms.getDefaultSmsPackage(context) != context.packageName) {
+        if (!DefaultSmsRole.held(context)) {
             throw NativeSmsSendException(NativeSmsErrorCode.SMS_ROLE_REQUIRED)
         }
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.SEND_SMS) !=

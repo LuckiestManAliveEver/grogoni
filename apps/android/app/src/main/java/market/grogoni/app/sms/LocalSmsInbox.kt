@@ -24,7 +24,7 @@ class LocalSmsInbox(private val context: Context) {
     }
 
     fun page(limit: Int = 100, before: LocalSmsMessage? = null, query: String = "", address: String? = null): List<LocalSmsMessage> {
-        check(Telephony.Sms.getDefaultSmsPackage(context) == context.packageName) {
+        check(DefaultSmsRole.held(context)) {
             "Make Grogoni the default SMS app to view messages."
         }
         check(ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED) {
@@ -58,7 +58,7 @@ class LocalSmsInbox(private val context: Context) {
     }
 
     fun markRead(message: LocalSmsMessage) {
-        if (Telephony.Sms.getDefaultSmsPackage(context) != context.packageName) return
+        if (!DefaultSmsRole.held(context)) return
         context.contentResolver.update(
             ContentUris.withAppendedId(Telephony.Sms.CONTENT_URI, message.id),
             ContentValues().apply { put(Telephony.Sms.READ, 1); put(Telephony.Sms.SEEN, 1) },

@@ -38,7 +38,7 @@ for attempt in {1..20}; do
   sleep 1
 done
 instrument incoming-private-sms -e class "$fixture"
-instrument messenger -e class market.grogoni.app.sms.MessengerReadinessInstrumentedTest,market.grogoni.app.sms.MmsInstrumentedTest,market.grogoni.app.sms.SharedMessengerUiInstrumentedTest
+instrument messenger -e class market.grogoni.app.PermissionChecklistInstrumentedTest,market.grogoni.app.sms.MessengerReadinessInstrumentedTest,market.grogoni.app.sms.MmsInstrumentedTest,market.grogoni.app.sms.SharedMessengerUiInstrumentedTest
 instrument existing-native -e class market.grogoni.app.sms.LocalSmsInboxInstrumentedTest,market.grogoni.app.sms.NativeSmsStoreInstrumentedTest,market.grogoni.app.auth.NativeAuthInstrumentedTest
 "$adb_bin" -s "$serial" shell am start -n market.grogoni.app/.MainActivity
 echo "Emulator verification passed. Reports: $report_dir"

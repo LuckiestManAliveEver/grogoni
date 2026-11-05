@@ -158,7 +158,50 @@ Google Play restricts SMS permissions to apps that qualify for the default SMS-h
 requires the associated permissions declaration/review. A build should not be distributed through
 Play until that policy work is approved.
 
-The app does not request permissions at startup. SMS permissions are requested only after the SMS role is held. Call-log permissions are not requested. Telephony detection uses the legacy telephony
+## First-run device access checklist
+
+A new install opens a checklist before the inbox, listing the phone features the messenger uses.
+The checklist is the shared web screen `apps/web/src/DevicePermissionChecklist.tsx`; Android reports
+item ids and statuses only. Every item is backed by code that uses it:
+
+| Item                           | Android access                        | Used by                                                                                                                                                                                                                           |
+| ------------------------------ | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Messages (needed for messages) | Default SMS role, SMS/MMS permissions | Local SMS/MMS inbox and sending                                                                                                                                                                                                   |
+| Phonebook                      | READ_CONTACTS                         | `listContacts`: contact names in conversations, recipient suggestions. Numbers are compared as full E.164. Android's `NORMALIZED_NUMBER` wins; a local number with none is read in the SIM's country, never the roaming network's |
+| Notifications (API 33+ only)   | POST_NOTIFICATIONS                    | New-message alerts (never the message text)                                                                                                                                                                                       |
+| Camera                         | CAMERA                                | `<input capture>` photo fields open the camera (`TakePicture`)                                                                                                                                                                    |
+| Location                       | Coarse/fine location                  | WebView geolocation for the pinned origin (shop location)                                                                                                                                                                         |
+
+Declared permissions that are not asked, and why, are listed under `notAsked` in
+`contracts/device-permission-checklist.json` (for example CALL_PHONE: `tel:` links open the dialer;
+media: attachments use the system picker). `PermissionChecklistPolicyTest` reads
+`src/main/AndroidManifest.xml` and fails if a permission there is neither asked nor explained.
+Background location is not declared.
+
+- Nothing is requested until the user taps **Allow** on an item or **Allow all**. Allow all walks
+  the items one Android dialog at a time and may take up to 15 minutes before the page times out.
+  The Messages item asks for the default SMS role first, then any SMS permissions the role did not
+  grant; if the role is refused its permissions are skipped.
+- Statuses: `granted`, `not_requested`, `denied` (refused or dismissed; Android will ask again),
+  `blocked` (Android stopped showing the dialog; the item offers **Open settings**) and
+  `unavailable` (no SMS role on this device). Android has no "permanently denied" flag: a refusal
+  counts as blocked when the rationale flag flips from true to false, or when Android answers in
+  under 400 ms without showing a dialog. A dismissed dialog is never blocked. A slow silent refusal
+  cannot be detected, so `denied` items offer **Settings** next to **Allow**. Notifications switched
+  off in Android while the permission is held also count as `blocked`.
+- The user can always **Continue with limited access**, also when the bridge fails. Continuing
+  stops a running Allow all. Completion is stored natively (`permission-checklist` preferences),
+  so the checklist appears once per install, including once for existing installs after this
+  update, and can be reopened from messenger **Settings > Review app permissions**. Completion
+  logs `GrogoniPermissions: checklist completed granted=N/M`.
+- Item ids and order are the contract in `contracts/device-permission-checklist.json`; both
+  `PermissionChecklistPolicyTest` (Kotlin) and `tests/device-permission-checklist.test.tsx` check it.
+
+Instrumented coverage runs on API 30 and API 35 emulators through `scripts/test-default-messenger-emulator.sh`. It checks snapshots, grants, phonebook reads and insets; Android dialogs and the queue were driven by hand on those emulators, and `ChecklistRequestQueueTest` covers the queue rules.
+The host pads the WebView by the system bar, cutout and keyboard insets because target SDK 35 draws edge to edge. Default SMS
+status always goes through `DefaultSmsRole.held`: on API 29+ the role is the source of truth.
+
+Call-log permissions are not requested. Telephony detection uses the legacy telephony
 feature below API 33 and the messaging-specific feature on API 33 and later.
 
 App Links remain unconfigured (`assetlinks.json` is an empty array) until a real release certificate
