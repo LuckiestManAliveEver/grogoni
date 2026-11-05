@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { deviceSecurityCapability, recoverWithDeviceSecurity } from "./passkey-recovery";
+import { isNativeDeviceHost } from "./device-messaging";
 import type { AuthSessionView } from "@grogoni/shared-types";
 import { normalizePhoneInput, phoneNormalizationErrorMessage } from "@grogoni/shared-types";
 import { getCountryCallingCode, type CountryCode } from "libphonenumber-js";
@@ -67,12 +68,15 @@ export function PhoneFirstAuthentication({
   const [recoveryEmail, setRecoveryEmail] = useState("");
   const [recoveryEmailVerified, setRecoveryEmailVerified] = useState(false);
   const [deviceAvailable, setDeviceAvailable] = useState<boolean | null>(null);
+  const [deviceSecurityReason, setDeviceSecurityReason] = useState("");
+  const nativeDevice = isNativeDeviceHost();
 
   useEffect(() => {
     let active = true;
     void deviceSecurityCapability().then((capability) => {
       if (active) {
         setDeviceAvailable(capability.supported);
+        setDeviceSecurityReason(capability.reason ?? "");
       }
     });
     return () => {
@@ -206,9 +210,13 @@ export function PhoneFirstAuthentication({
   // Prove ownership with a user-verified registered passkey or verified backup email.
   async function startRecovery() {
     if (recoveryMethod === "device") {
-      if (!deviceAvailable)
+      const capability = await deviceSecurityCapability();
+      setDeviceAvailable(capability.supported);
+      setDeviceSecurityReason(capability.reason ?? "");
+      if (!capability.supported)
         throw new Error(
-          "Use the Android app for device screen-lock recovery, or use your verified backup email."
+          capability.reason ??
+            "Use the Android app for device screen-lock recovery, or use your verified backup email."
         );
       const recoveredSession = await recoverWithDeviceSecurity(currentIdentifierBody().identifier);
       if (recoveredSession.account.primaryAuthDestination !== currentIdentifierBody().identifier) {
@@ -577,7 +585,8 @@ export function PhoneFirstAuthentication({
                             ? "Checking device security…"
                             : deviceAvailable
                               ? "Use the screen lock already set on this phone. This device must have been secured for your Grogoni account."
-                              : "Use the Android app for device screen-lock recovery, or use your verified backup email."}
+                              : deviceSecurityReason ||
+                                "Use the Android app for device screen-lock recovery, or use your verified backup email."}
                         </p>
                         <details>
                           <summary>Device recovery is not set up?</summary>
@@ -612,14 +621,20 @@ export function PhoneFirstAuthentication({
                       busy ||
                       (recoveryMethod === "email"
                         ? !recoveryEmail.trim()
-                        : deviceAvailable !== true)
+                        : !nativeDevice && deviceAvailable !== true)
                     }
                     onClick={() => void run(startRecovery)}
                   >
                     {busy
                       ? "Please wait…"
                       : recoveryMethod === "device"
-                        ? "Unlock with device security"
+                        ? nativeDevice && deviceAvailable === false
+                          ? "Try device security again"
+                          : deviceAvailable === null
+                            ? "Checking device security…"
+                            : deviceAvailable
+                              ? "Unlock with device security"
+                              : "Device security unavailable"
                         : "Send email recovery code"}
                   </button>
                 </>

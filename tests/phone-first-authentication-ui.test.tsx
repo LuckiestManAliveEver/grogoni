@@ -6,12 +6,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiRequestError } from "../apps/web/src/lib/api";
 import type * as ApiModule from "../apps/web/src/lib/api";
 
+vi.mock("../apps/web/src/device-messaging", () => ({
+  isNativeDeviceHost: vi.fn(() => false),
+  deviceMessagingAdapter: { call: vi.fn() }
+}));
+
 vi.mock("../apps/web/src/lib/api", async () => {
   const actual = await vi.importActual<typeof ApiModule>("../apps/web/src/lib/api");
   return { ...actual, apiFetch: vi.fn() };
 });
 
 const { apiFetch } = await import("../apps/web/src/lib/api");
+const { isNativeDeviceHost, deviceMessagingAdapter } =
+  await import("../apps/web/src/device-messaging");
 const { PhoneFirstAuthentication } = await import("../apps/web/src/PhoneFirstAuthentication");
 
 const mockedApiFetch = vi.mocked(apiFetch);
@@ -74,6 +81,8 @@ beforeEach(() => {
     globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
   ).IS_REACT_ACT_ENVIRONMENT = true;
   mockedApiFetch.mockReset();
+  vi.mocked(isNativeDeviceHost).mockReturnValue(false);
+  vi.mocked(deviceMessagingAdapter.call).mockReset();
   onAuthenticated.mockReset();
   onSignUp.mockReset();
   onForgetRemembered.mockReset();
@@ -90,6 +99,50 @@ afterEach(() => {
 });
 
 describe("PhoneFirstAuthentication login methods", () => {
+  it("lets Android retry a failed capability check and reports a missing screen lock", async () => {
+    vi.mocked(isNativeDeviceHost).mockReturnValue(true);
+    vi.mocked(deviceMessagingAdapter.call)
+      .mockRejectedValueOnce(new Error("The device adapter did not start. Reopen the app."))
+      .mockResolvedValueOnce({ screenLock: false })
+      .mockResolvedValueOnce({ screenLock: true })
+      .mockRejectedValueOnce(new Error("Device recovery is not set up."));
+    mockedApiFetch.mockResolvedValue({ recoveryAvailable: true, passwordFallback: true });
+    renderLogin();
+    await change(inputByLabel("Phone number"), "0712345678");
+    await click(buttonByText("Trouble logging in?"));
+    expect(document.body.textContent).toContain("The device adapter did not start.");
+    expect(buttonByText("Try device security again").disabled).toBe(false);
+    await click(buttonByText("Try device security again"));
+    expect(document.body.textContent).toContain("Set a screen lock in Android Settings");
+    await click(buttonByText("Try device security again"));
+    expect(deviceMessagingAdapter.call).toHaveBeenLastCalledWith("recoveryCredential", {
+      identifier: "+254712345678"
+    });
+    expect(document.body.textContent).toContain("Device recovery is not set up.");
+    expect(buttonByText("Unlock with device security").disabled).toBe(false);
+    expect(onAuthenticated).not.toHaveBeenCalled();
+  });
+
+  it("explains that device unlock is unavailable in a browser instead of offering an unlock button", async () => {
+    mockedApiFetch.mockResolvedValue({ recoveryAvailable: true, passwordFallback: true });
+    renderLogin();
+    await change(inputByLabel("Phone number"), "0712345678");
+    await click(buttonByText("Trouble logging in?"));
+
+    expect(buttonByText("Device security unavailable").disabled).toBe(true);
+    expect(document.body.textContent).toContain(
+      "Use the Android app for device screen-lock recovery"
+    );
+    expect(document.body.textContent).not.toContain("Unlock with device security");
+    const select = document.querySelector("select")!;
+    await act(async () => {
+      select.value = "email";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await change(inputByLabel("Backup email"), "backup@example.test");
+    expect(buttonByText("Send email recovery code").disabled).toBe(false);
+  });
+
   it("offers a direct recovery action from the main login screen", async () => {
     renderLogin();
     await change(inputByLabel("Phone number"), "0712345678");

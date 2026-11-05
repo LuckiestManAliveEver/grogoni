@@ -5,15 +5,29 @@ import { deviceMessagingAdapter, isNativeDeviceHost } from "./device-messaging";
 export async function deviceSecurityCapability(): Promise<{
   supported: boolean;
   platform: boolean;
+  reason?: string;
 }> {
   if (isNativeDeviceHost()) {
     try {
       const capability = await deviceMessagingAdapter.call<{ screenLock: boolean }>(
         "deviceSecurity"
       );
-      return { supported: capability.screenLock, platform: capability.screenLock };
-    } catch {
-      return { supported: false, platform: false };
+      return capability.screenLock
+        ? { supported: true, platform: true }
+        : {
+            supported: false,
+            platform: false,
+            reason: "Set a screen lock in Android Settings, then try device security again."
+          };
+    } catch (error) {
+      return {
+        supported: false,
+        platform: false,
+        reason:
+          error instanceof Error
+            ? error.message
+            : "Device security could not be checked. Try again."
+      };
     }
   }
   return { supported: false, platform: false };
