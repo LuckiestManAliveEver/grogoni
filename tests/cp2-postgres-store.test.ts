@@ -253,7 +253,8 @@ describePostgres("CP2 Postgres store", () => {
 
       const result = await store.beginPasskeyAuthentication({
         rpId: "localhost",
-        purpose: "pin_recovery"
+        purpose: "pin_recovery",
+        recoveryIdentifier: "+254700000001"
       });
       ceremonyId = result.ceremonyId;
       await store.flush();
@@ -3508,7 +3509,11 @@ describePostgres("CP2 Postgres store", () => {
       await expect(store.flush()).rejects.toThrow("injected relational failure");
       querySpy.mockRestore();
 
-      await store.beginPasskeyAuthentication({ rpId: "localhost", purpose: "pin_recovery" });
+      await store.beginPasskeyAuthentication({
+        rpId: "localhost",
+        purpose: "pin_recovery",
+        recoveryIdentifier: added.account.primaryAuthDestination
+      });
       await expect(store.flush()).rejects.toThrow("injected relational failure");
 
       await store.close();

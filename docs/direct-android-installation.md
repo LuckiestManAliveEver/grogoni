@@ -47,6 +47,30 @@ metadata together on the production origin, with the APK present before enabling
 manifest. Verify the public download bytes and certificate before treating the release as live.
 The checked-in public release manifest stays null until an actual release is published.
 
+## Current tester release (unlisted)
+
+Version 0.1.0 (code 2), built from `main` at 7201d248 with this version bump, is available to
+testers only. The public install button stays hidden: `apps/web/public/android/release.json` is
+still `null`, so grogoni.com does not advertise it.
+
+- Download: https://grogoni.com/android/grogoni-0.1.0-2.apk (redirects to the
+  [GitHub pre-release `android-0.1.0-2`](https://github.com/LuckiestManAliveEver/grogoni/releases/tag/android-0.1.0-2),
+  which also carries `verification.json`).
+- APK SHA-256: `78:63:AB:1C:5C:43:7F:09:E9:53:3E:C5:90:13:2F:4B:19:9E:D3:B0:87:73:63:24:C7:1B:7B:C0:10:85:65:30`
+- Signing certificate SHA-256: `C0:AA:FB:59:8D:E5:87:49:DD:50:89:90:6E:F3:B0:8C:77:76:D3:0A:02:A5:D6:AD:61:C4:DE:98:D6:7F:DD:CD`
+  (the same key as the earlier 0.1.0 (code 1) candidate, so later releases install as updates).
+
+Before installing, check the download: `sha256sum grogoni-0.1.0-2.apk` must match the APK hash,
+and `apksigner verify --print-certs grogoni-0.1.0-2.apk` must show the certificate above. On the
+phone, allow installs from the browser when Android asks, open Grogoni, and accept its request to
+become the default SMS app. To go back, choose another app under Settings > Apps > Default apps >
+SMS app; messages stay in the phone's shared SMS store.
+
+Status: emulator-verified only (Android 11; see Verification). Real carrier SMS/MMS, dual SIM,
+roaming and power management are untested, so testers should keep their previous messaging app
+installed. To make this release public later, replace the checked-in `release.json` with the
+prepared one (its `downloadUrl` already matches the redirect) after physical-phone testing passes.
+
 ## Installation boundary
 
 Users install the PWA through their browser, or download the signed APK and approve installation

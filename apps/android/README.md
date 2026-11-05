@@ -229,8 +229,9 @@ For a dedicated API 30 emulator, build the debug app and instrumentation APK, th
 ANDROID_HOME=/path/to/android-sdk bash scripts/test-default-messenger-emulator.sh emulator-5554
 ```
 
-Run the script from the repository root. `GROGONI_ANDROID_BUILD_DIR` selects another prepared
-Android build directory. The script grants the SMS role, injects an emulator SMS with business
+Run the script from the repository root. The `android-device` CI job runs it on every push and
+pull request, on an API 30 x86_64 emulator, and keeps the reports as a build artifact.
+`GROGONI_ANDROID_BUILD_DIR` selects another prepared Android build directory. The script grants the SMS role, injects an emulator SMS with business
 features enabled, verifies it stays local, and runs the SMS/MMS and existing native suites.
 Physical carrier SMS/MMS, roaming and real dual-SIM acceptance remain required before a daily-use
 recommendation. See [the remediation report](../../docs/audits/default-messenger-remediation-2026-11-03.md)

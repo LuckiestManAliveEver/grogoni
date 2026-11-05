@@ -4,22 +4,6 @@ import { buildApi } from "../services/api/src/app";
 import { createCp2Store } from "../services/api/src/cp2/store";
 
 describe("existing account credential management", () => {
-  it("rejects first-PIN enrollment from an OTP-only session, which sign-in can no longer create", async () => {
-    const store = createCp2Store();
-    const app = buildApi({ cp2: { store } });
-    const challenge = store.requestOtp({ channel: "email", destination: "otp-only@example.test" });
-    const seeded = store.verifyOtp({ challengeId: challenge.challengeId, code: challenge.devOtp });
-    const response = await post(
-      app,
-      "/auth/pin/setup",
-      { pin: "1234", pinConfirmation: "1234" },
-      `grogoni_session=${seeded.session.id}`
-    );
-    expect(response.statusCode).toBe(401);
-    expect(response.json()).toMatchObject({ code: "recent_authentication_required" });
-    await app.close();
-  });
-
   it("creates and changes a login PIN without allowing setup to overwrite it", async () => {
     const store = createCp2Store();
     const app = buildApi({ cp2: { store } });

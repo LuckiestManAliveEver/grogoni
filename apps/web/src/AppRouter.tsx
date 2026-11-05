@@ -6,7 +6,6 @@ import {
   subscribeToBrowserNavigation
 } from "./browser-navigation";
 import InstallPage from "./InstallPage";
-const DeviceMessagingPage = lazy(() => import("./DeviceMessagingPage"));
 import { appRouteModuleKeys, loadLazyModuleWithRecovery } from "./lazy-module-recovery";
 import { LazyModuleErrorBoundary } from "./LazyModuleErrorBoundary";
 import { recordComponentRender, recordRouteRender } from "./performance";
@@ -23,6 +22,13 @@ const initialGrogoniApplicationModule = shouldWarmOwnerRoute(initialPathname)
   ? loadLazyModuleWithRecovery(appRouteModuleKeys.ownerApp, () => import("./GrogoniApplication"))
   : null;
 
+// Recovers from a stale chunk after a deploy, like every other route.
+const DeviceMessagingPage = lazy(() =>
+  loadLazyModuleWithRecovery(
+    appRouteModuleKeys.deviceMessaging,
+    () => import("./DeviceMessagingPage")
+  )
+);
 const TermsOfServicePage = lazy(() =>
   loadLazyModuleWithRecovery(
     appRouteModuleKeys.termsOfService,

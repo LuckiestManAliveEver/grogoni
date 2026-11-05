@@ -329,6 +329,9 @@ export class DeviceBootstrapDomain {
     }
 
     const session = this.deps.createSession(account, user, now);
+    // Restoring a session is not a fresh sign-in. Credential recovery uses its separate,
+    // purpose-bound grant; enrollment must wait for PIN/password/passkey verification.
+    this.deps.sessions.get(session.id)!.authenticatedAt = new Date(0).toISOString();
     const refreshToken = this.deps.consumeSessionRefreshToken(session.id);
     credential.lastAssertionHash = assertionHash;
     credential.lastAssertionAt = now.toISOString();

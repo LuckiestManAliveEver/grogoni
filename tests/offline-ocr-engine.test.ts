@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
 import { ocrAssetFiles, ocrManifestVersion } from "../apps/web/src/offline-ocr-assets";
 
@@ -19,15 +19,23 @@ const manifest = {
   }))
 };
 const input = { fileName: "receipt.png", contentType: "image/png", contentBase64: "Zm9v" };
+// The first dynamic import transforms the OCR module (about a second, far more on a loaded CI
+// runner); do it once here so no test's own time budget pays for it.
+beforeAll(async () => {
+  await import("../apps/web/src/offline-ocr");
+}, 60_000);
 beforeEach(() => {
-  stored = new Map();
+  // Each test's cache is its own map: work a previous test left running writes into that test's
+  // map, never into this one.
+  const cache = new Map<string, Response>();
+  stored = cache;
   vi.stubGlobal("caches", {
     open: async () => ({
-      match: async (key: string) => stored.get(key)?.clone(),
+      match: async (key: string) => cache.get(key)?.clone(),
       put: async (key: string, value: Response) => {
-        stored.set(key, value);
+        cache.set(key, value);
       },
-      delete: async (key: string) => stored.delete(key)
+      delete: async (key: string) => cache.delete(key)
     })
   });
   vi.stubGlobal("navigator", {
@@ -50,9 +58,7 @@ afterEach(() => {
   vi.resetModules();
 });
 
-// vi.resetModules means every test re-imports offline-ocr, which takes over 5 s on a busy machine.
-// A timed-out test keeps running and writes into the next test's cache stub, so allow for the import.
-describe("Offline OCR installation and worker", { timeout: 60_000 }, () => {
+describe("Offline OCR installation and worker", () => {
   it("installs verified executable assets and checks readiness without network activity", async () => {
     const ocr = await import("../apps/web/src/offline-ocr");
     expect(await ocr.isOcrEngineCached()).toBe(false);

@@ -9,7 +9,9 @@ import { describe, expect, it } from "vitest";
  * shell is too large to render in a test, so this pins the order in its source.
  */
 describe("logout and the daemon lane", () => {
-  it("runs for every cookie-backed account, including a guest device account", () => {
+  // Device-identity accounts own My Assistant too, and its replies run as daemon tasks, so the lane
+  // runs for every session (the server authenticates each daemon route) and for none without one.
+  it("runs the lane for any session, device identities included, and never without one", () => {
     const file = "apps/web/src/GrogoniApplication.tsx";
     const source = ts.createSourceFile(
       file,
@@ -24,14 +26,21 @@ describe("logout and the daemon lane", () => {
       ts.forEachChild(node, visit);
     };
     visit(source);
-    if (!argument) throw new Error("Missing daemon lane call.");
+    if (!argument) throw new Error("useDaemonLane is not called.");
     const expression = argument.getText();
-    for (const [session, expected] of [
-      [null, null],
-      [{ account: { id: "owner", identityLevel: "strong" } }, "owner"],
-      [{ account: { id: "guest", identityLevel: "device" } }, "guest"]
+    for (const [session, isSignedOut, helpTopic, expected] of [
+      [null, true, undefined, null],
+      [{ account: { id: "owner" } }, false, undefined, "owner"],
+      [{ account: { id: "device-owner" } }, true, undefined, "device-owner"],
+      [{ account: { id: "device-owner" } }, true, "tools", "device-owner"]
     ] as const) {
-      expect(runInNewContext(expression, { session })).toBe(expected);
+      expect(
+        runInNewContext(expression, {
+          session,
+          isSignedOut,
+          activeConversation: { conversation: { helpTopic } }
+        })
+      ).toBe(expected);
     }
   });
 

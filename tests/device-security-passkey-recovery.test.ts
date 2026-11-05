@@ -79,6 +79,48 @@ async function prove(
 }
 
 describe("device security passkey recovery", () => {
+  it.each(["pin", "password", "passkey"] as const)(
+    "allows first %s after recent sign-in, rejects stale sign-in and existing unverified credentials",
+    async (kind) => {
+      const now = new Date();
+      const seed = createCp2Store();
+      const original = seed.signupWithPhonePin({ destination: phone, pin: "1234", now });
+      const snapshot = seed.snapshot();
+      snapshot.accountPinHashes = [];
+      const record = snapshot.sessions.find((session) => session.id === original.session.id)!;
+      record.pinVerifiedAt = null;
+      record.authenticatedAt = now.toISOString();
+      record.expiresAt = new Date(now.getTime() + 60 * 60_000).toISOString();
+      const store = createCp2Store();
+      store.hydrateSnapshot(snapshot);
+      const enroll = (at: Date) => {
+        const input = { sessionId: original.session.id, now: at };
+        if (kind === "pin") return store.setAccountPin({ ...input, pin: "5678" });
+        if (kind === "password")
+          return store.createPassword({ ...input, password: "secure first password" });
+        return store.beginPasskeyRegistration({ ...input, rpId: "localhost", origin });
+      };
+      await expect(async () => enroll(new Date(now.getTime() + 16 * 60_000))).rejects.toMatchObject(
+        { code: "recent_authentication_required" }
+      );
+      expect(await enroll(now)).toBeDefined();
+
+      const existing = fixture().store.snapshot();
+      existing.accountPinHashes = [];
+      const session = existing.sessions[0]!;
+      session.pinVerifiedAt = null;
+      session.authenticatedAt = now.toISOString();
+      store.hydrateSnapshot(existing);
+      const input = { sessionId: session.id, now };
+      await expect(async () => {
+        if (kind === "pin") return store.setAccountPin({ ...input, pin: "5678" });
+        if (kind === "password")
+          return store.createPassword({ ...input, password: "secure first password" });
+        return store.beginPasskeyRegistration({ ...input, rpId: "localhost", origin });
+      }).rejects.toMatchObject({ code: "recent_authentication_required" });
+    }
+  );
+
   it("issues account-bound single-use proof, persists it, resets PIN and revokes older sessions", async () => {
     const { store, original, verifier } = fixture();
     const { session, challenge } = await prove(store);

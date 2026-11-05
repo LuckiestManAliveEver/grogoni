@@ -197,8 +197,10 @@ export async function apiCloudFetch<T>(
     typeof document !== "undefined" &&
     document.querySelector('meta[name="grogoni-native-channel"]')
   ) {
-    const { deviceMessagingAdapter } = await import("../device-messaging");
-    await deviceMessagingAdapter.call("disconnect").catch(() => undefined);
+    // Best effort: a stale or missing chunk must not block signing in or out.
+    await import("../device-messaging")
+      .then(({ deviceMessagingAdapter }) => deviceMessagingAdapter.call("disconnect"))
+      .catch(() => undefined);
   }
   const requestId = options?.requestId ?? createRequestId();
   const headers = {
