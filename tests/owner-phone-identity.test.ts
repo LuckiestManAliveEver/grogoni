@@ -1,4 +1,4 @@
-import { seedLegacyEmailAccount } from "./fixtures/account-auth";
+import { markStrongSignIn, seedLegacyEmailAccount } from "./fixtures/account-auth";
 import type { Cp2Store } from "../services/api/src/cp2/store";
 import { describe, expect, it } from "vitest";
 import { buildApi } from "../services/api/src/app";
@@ -148,6 +148,7 @@ describe("compulsory owner phone identity", () => {
       code: challenge.devOtp,
       now: authenticatedAt
     });
+    markStrongSignIn(store, session.session.id, authenticatedAt);
     store.setAccountPin({ sessionId: session.session.id, pin: "1234", now: authenticatedAt });
 
     expect(() =>

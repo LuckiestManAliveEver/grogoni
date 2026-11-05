@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildApi } from "../services/api/src/app";
 import { encryptOAuthToken } from "../services/api/src/cp2/oauth";
 import { Cp2Error, createCp2Store } from "../services/api/src/cp2/store";
+import { markStrongSignIn } from "./fixtures/account-auth";
 
 describe("security hardening", () => {
   afterEach(() => {
@@ -209,6 +210,7 @@ describe("security hardening", () => {
       code: signupOtp.devOtp,
       now
     });
+    markStrongSignIn(store, signup.session.id, now);
     store.setAccountPin({ sessionId: signup.session.id, pin: "7531", now });
     store.createBusiness({
       sessionId: signup.session.id,

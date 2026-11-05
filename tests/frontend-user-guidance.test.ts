@@ -305,9 +305,10 @@ describe("frontend user guidance", () => {
     expect(phoneFirst).toContain('"/auth/recovery/reset-password"');
     expect(phoneFirst).not.toContain("Continue with a passkey");
     expect(phoneFirst).toContain("Save new PIN");
-    expect(phoneFirst).toContain("await recoverDeviceAccount()");
+    expect(phoneFirst).toContain("await recoverWithDeviceSecurity(");
     const deviceRecovery = readFileSync("apps/web/src/device-recovery.ts", "utf8");
     expect(deviceRecovery).toContain("/auth/device/recover");
+    expect(authState).toContain("await recoverDeviceAccount()");
     expect(phoneFirst).not.toContain("Phone account recovery code");
     expect(phoneFirst).not.toContain("Replacement recovery code");
     expect(phoneFirst).not.toContain("Send SMS code");

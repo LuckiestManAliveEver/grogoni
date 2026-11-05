@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
  * shell is too large to render in a test, so this pins the order in its source.
  */
 describe("logout and the daemon lane", () => {
-  it("requires a session and permits device-only identities only in Help", () => {
+  it("runs for every cookie-backed account, including a guest device account", () => {
     const file = "apps/web/src/GrogoniApplication.tsx";
     const source = ts.createSourceFile(
       file,
@@ -24,23 +24,14 @@ describe("logout and the daemon lane", () => {
       ts.forEachChild(node, visit);
     };
     visit(source);
-    expect(argument && ts.isConditionalExpression(argument)).toBe(true);
-    if (!argument || !ts.isConditionalExpression(argument))
-      throw new Error("Missing session guard.");
+    if (!argument) throw new Error("Missing daemon lane call.");
     const expression = argument.getText();
-    for (const [session, isSignedOut, helpTopic, expected] of [
-      [null, true, undefined, null],
-      [{ account: { id: "owner" } }, false, undefined, "owner"],
-      [{ account: { id: "visitor" } }, true, undefined, null],
-      [{ account: { id: "visitor" } }, true, "tools", "visitor"]
+    for (const [session, expected] of [
+      [null, null],
+      [{ account: { id: "owner", identityLevel: "strong" } }, "owner"],
+      [{ account: { id: "guest", identityLevel: "device" } }, "guest"]
     ] as const) {
-      expect(
-        runInNewContext(expression, {
-          session,
-          isSignedOut,
-          activeConversation: { conversation: { helpTopic } }
-        })
-      ).toBe(expected);
+      expect(runInNewContext(expression, { session })).toBe(expected);
     }
   });
 

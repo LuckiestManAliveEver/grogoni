@@ -280,15 +280,15 @@ describe("persistent session authentication", () => {
     const login = readFileSync("apps/web/src/PhoneFirstAuthentication.tsx", "utf8");
     expect(signup).toContain('"/auth/signup/start"');
     expect(signup).toContain('"/auth/signup/complete"');
-    expect(signup).toContain('"/auth/passkeys/register/options"');
-    expect(signup).toContain('"/auth/passkeys/register/verify"');
+    expect(signup).toContain("enrollDeviceRecovery");
+    expect(signup).not.toContain('"/auth/passkeys/register/options"');
     expect(login).toContain('"/auth/login/methods"');
     expect(login).toContain('"/auth/pin/login"');
     expect(signup).not.toContain('"/auth/pin/continue"');
     expect(signup).not.toContain('"/auth/identify"');
     expect(signup).not.toContain('"/auth/signup/verify-phone"');
     expect(signup).not.toContain('"verify-phone"');
-    expect(signup).toContain("Create a passkey");
+    expect(signup).toContain("Secure this device");
     expect(signup).toContain("Do this later");
   });
 

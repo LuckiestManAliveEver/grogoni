@@ -45,10 +45,23 @@ export async function signupWithBackupEmail(app: FastifyInstance, email: string)
   return account;
 }
 
+/**
+ * HTTP OTP sign-in is disabled, so the store's OTP call is only a way to seed an account. A real
+ * owner reaches account settings through a PIN, password or passkey sign-in; this marks the
+ * seeded session the same way, because recovery enrollment rejects anything weaker.
+ */
+export function markStrongSignIn(store: Cp2Store, sessionId: string, now = new Date()) {
+  (
+    store as unknown as { markSessionPinVerified(sessionId: string, now: Date): void }
+  ).markSessionPinVerified(sessionId, now);
+}
+
 /** Migrated email-only accounts still exist in snapshots, but cannot sign up via HTTP OTP. */
 export function seedLegacyEmailAccount(store: Cp2Store, email: string) {
   const challenge = store.requestOtp({ channel: "email", destination: email });
-  return store.verifyOtp({ challengeId: challenge.challengeId, code: challenge.devOtp });
+  const verified = store.verifyOtp({ challengeId: challenge.challengeId, code: challenge.devOtp });
+  markStrongSignIn(store, verified.session.id);
+  return verified;
 }
 
 export async function completeEmailMfa(app: FastifyInstance, transactionId: string) {

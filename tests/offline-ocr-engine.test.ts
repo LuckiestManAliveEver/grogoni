@@ -50,7 +50,9 @@ afterEach(() => {
   vi.resetModules();
 });
 
-describe("Offline OCR installation and worker", () => {
+// vi.resetModules means every test re-imports offline-ocr, which takes over 5 s on a busy machine.
+// A timed-out test keeps running and writes into the next test's cache stub, so allow for the import.
+describe("Offline OCR installation and worker", { timeout: 60_000 }, () => {
   it("installs verified executable assets and checks readiness without network activity", async () => {
     const ocr = await import("../apps/web/src/offline-ocr");
     expect(await ocr.isOcrEngineCached()).toBe(false);
