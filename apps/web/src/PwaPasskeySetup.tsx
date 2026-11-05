@@ -3,6 +3,7 @@ import { browserSupportsWebAuthn, createBrowserPasskey } from "./browser-passkey
 import { isNativeDeviceHost } from "./device-messaging";
 import { apiFetch } from "./lib/api";
 import { getUserFacingErrorMessage } from "./user-facing-error";
+import "./pwa-passkey-setup.css";
 
 /** Existing accounts can enroll without creating a shop or entering business settings. */
 export function PwaPasskeySetup({ accountId }: { accountId: string }) {
@@ -40,7 +41,7 @@ export function PwaPasskeySetup({ accountId }: { accountId: string }) {
     }
   }
   return (
-    <section className="record-form" aria-label="Set up account passkey">
+    <section className="record-form pwa-passkey-setup" aria-label="Set up account passkey">
       <strong>Create a passkey for your account</strong>
       <p>
         Save a passkey with your browser or password manager to recover your PIN or password later.
