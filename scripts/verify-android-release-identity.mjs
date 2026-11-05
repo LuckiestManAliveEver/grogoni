@@ -40,7 +40,7 @@ check(identity.android?.versionName === rootPackage.version, "versionName must m
 check(Number.isInteger(identity.android?.versionCode), "versionCode must be an integer");
 check(identity.android?.versionCode > 0, "versionCode must be positive");
 check(identity.android?.minSdk >= 23, "minSdk must be at least 23");
-check(identity.android?.targetSdk >= 35, "targetSdk must be at least 35");
+check(identity.android?.targetSdk >= 36, "targetSdk must be at least 36");
 check(
   identity.android?.compileSdk >= identity.android?.targetSdk,
   "compileSdk must not be lower than targetSdk"

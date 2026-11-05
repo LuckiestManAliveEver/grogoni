@@ -5,6 +5,7 @@ import {
   installBrowserLinkInterceptor,
   subscribeToBrowserNavigation
 } from "./browser-navigation";
+import { isNativeDeviceHost } from "./device-messaging";
 import InstallPage from "./InstallPage";
 import { appRouteModuleKeys, loadLazyModuleWithRecovery } from "./lazy-module-recovery";
 import { LazyModuleErrorBoundary } from "./LazyModuleErrorBoundary";
@@ -97,7 +98,7 @@ export function AppRouter() {
     );
   }
 
-  if (window.location.pathname === routes.install) {
+  if (window.location.pathname === routes.install && !isNativeDeviceHost()) {
     return <InstallPage />;
   }
 

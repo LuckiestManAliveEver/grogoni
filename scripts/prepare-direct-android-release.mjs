@@ -15,7 +15,7 @@ const output = argument("--out");
 const tools = argument("--build-tools");
 if (!apk || !output || !tools)
   throw new Error(
-    "Usage: node scripts/prepare-direct-android-release.mjs --apk signed.apk --out directory --build-tools android-sdk/build-tools/35.0.0"
+    "Usage: node scripts/prepare-direct-android-release.mjs --apk signed.apk --out directory --build-tools android-sdk/build-tools/36.0.0"
   );
 const artifact = resolve(apk);
 const badging = execFileSync(join(tools, "aapt"), ["dump", "badging", artifact], {

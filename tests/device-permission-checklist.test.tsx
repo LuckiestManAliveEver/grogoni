@@ -75,7 +75,9 @@ describe("device permission checklist contract", () => {
       expect(permission).toMatch(/^android\.permission\.[A-Z_]+$/);
       expect(reason.length).toBeGreaterThan(10);
     }
-    expect(Object.keys(contract.notAsked)).toContain("android.permission.CALL_PHONE");
+    // Play rejects declared permissions with no use, so unused ones leave the manifest, not get excuses.
+    expect(Object.keys(contract.notAsked)).not.toContain("android.permission.CALL_PHONE");
+    expect(Object.keys(contract.notAsked)).not.toContain("android.permission.READ_MEDIA_IMAGES");
   });
 
   it("copy contains no em dashes", () => {

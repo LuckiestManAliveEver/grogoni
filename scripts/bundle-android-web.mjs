@@ -18,10 +18,20 @@ if (!process.argv.includes("--from-dist"))
   execFileSync(process.execPath, [join(root, "node_modules/vite/bin/vite.js"), "build"], {
     cwd: join(root, "apps/web"),
     stdio: "inherit",
-    env: { ...process.env, VITE_API_BASE_URL: "https://grogoni.com/api" }
+    // NODE_ENV is forced: Vite otherwise takes it from .env.local, and a development value ships
+    // development React and local file paths inside the release.
+    env: { ...process.env, NODE_ENV: "production", VITE_API_BASE_URL: "https://grogoni.com/api" }
   });
 const source = join(root, "apps/web/dist");
 if (!existsSync(join(source, "index.html"))) throw new Error("Build the shared web app first.");
+for (const entry of readdirSync(join(source, "assets"))) {
+  if (
+    entry.endsWith(".js") &&
+    readFileSync(join(source, "assets", entry), "utf8").includes("jsxDEV")
+  ) {
+    throw new Error(`${entry} is a development build; Android must package a production build.`);
+  }
+}
 const destination = join(root, "apps/android/app/src/main/assets/web");
 // This directory contains generated copies only; it is never a second source tree.
 rmSync(destination, { recursive: true, force: true });

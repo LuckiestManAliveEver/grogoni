@@ -15,6 +15,9 @@ is no second native messenger interface.
 
 ## Build and prepare
 
+The installed app never offers an APK, so one build can serve Play and the website. Users update by
+opening grogoni.com in their browser, where the update notice appears.
+
 Keep the release signing key and its password configuration outside version control. Local
 signing configuration is an owner-readable JSON file (mode 0600), selected by
 `GROGONI_RELEASE_SIGNING_CONFIG`. Its keys are the four `GROGONI_RELEASE_*` settings documented in
@@ -22,11 +25,11 @@ signing configuration is an owner-readable JSON file (mode 0600), selected by
 retained for future updates to this Android package.
 
 ```bash
-# Requires Android SDK 35, Gradle 8.10.2 and a full JDK 17.
+# Requires Android SDK 36, Gradle 8.11.1 and a full JDK 17.
 pnpm android:direct:build
 pnpm android:direct:prepare --apk apps/android/app/build/outputs/apk/release/app-release.apk \
   --out /tmp/grogoni-direct-download \
-  --build-tools "$ANDROID_HOME/build-tools/35.0.0"
+  --build-tools "$ANDROID_HOME/build-tools/36.0.0"
 ```
 
 `GROGONI_GRADLE_BIN` and `GROGONI_ANDROID_BUILD_DIR` select a Gradle binary and prepared Android

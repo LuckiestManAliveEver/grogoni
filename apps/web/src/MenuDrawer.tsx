@@ -1,6 +1,7 @@
 import { StackedModule } from "./StackedModule";
 import { parseAndroidRelease, defaultReleaseManifestUrl } from "./android-release";
 import androidReleaseManifest from "../public/android/release.json";
+import { isNativeDeviceHost } from "./device-messaging";
 import "./menu-download.css";
 
 const androidRelease = parseAndroidRelease(androidReleaseManifest, defaultReleaseManifestUrl);
@@ -132,7 +133,8 @@ export function MenuDrawer({
           Set up your shop
         </button>
       )}
-      {androidRelease.available ? (
+      {/* Play forbids a store app updating outside Play, so the installed app never links the APK. */}
+      {androidRelease.available && !isNativeDeviceHost() ? (
         <div className="menu-download-footer">
           <a
             className="menu-download-button"

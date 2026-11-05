@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 interface AndroidReleaseIdentity {
@@ -68,11 +69,13 @@ describe("CP26 Android release identity", () => {
       wrapper: "native-kotlin",
       firstTrack: "internal",
       versionName: rootPackage.version,
-      versionCode: 2,
       minSdk: 23,
-      targetSdk: 35,
-      compileSdk: 35
+      targetSdk: 36,
+      compileSdk: 36
     });
+    expect(`versionCode = ${identity.android.versionCode}`).toBe(
+      /versionCode = \d+/.exec(readFileSync("apps/android/app/build.gradle.kts", "utf8"))?.[0]
+    );
     expect(identity.web).toEqual({
       origin: "https://grogoni.com",
       startUrl: "https://grogoni.com/",

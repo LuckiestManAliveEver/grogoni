@@ -1,0 +1,30 @@
+{
+  "description": "Google Play facts the Android build is checked against. Recheck against the sources before each first upload after a policy date; Play raises minTargetSdk every August. WAKE_LOCK, ACCESS_NETWORK_STATE, RECEIVE_BOOT_COMPLETED and FOREGROUND_SERVICE are merged from WorkManager; the app starts no foreground service.",
+  "verifiedOn": "2026-11-05",
+  "sources": [
+    "https://developer.android.com/google/play/requirements/target-sdk",
+    "https://support.google.com/googleplay/android-developer/answer/16558241"
+  ],
+  "policy": { "minTargetSdk": 36 },
+  "lastPlayVersionCode": 0,
+  "allowedPermissions": [
+    "android.permission.USE_BIOMETRIC",
+    "android.permission.INTERNET",
+    "android.permission.CAMERA",
+    "android.permission.ACCESS_COARSE_LOCATION",
+    "android.permission.ACCESS_FINE_LOCATION",
+    "android.permission.POST_NOTIFICATIONS",
+    "android.permission.READ_CONTACTS",
+    "android.permission.READ_PHONE_STATE",
+    "android.permission.RECEIVE_SMS",
+    "android.permission.RECEIVE_MMS",
+    "android.permission.RECEIVE_WAP_PUSH",
+    "android.permission.SEND_SMS",
+    "android.permission.READ_SMS",
+    "android.permission.ACCESS_NETWORK_STATE",
+    "android.permission.FOREGROUND_SERVICE",
+    "android.permission.WAKE_LOCK",
+    "android.permission.RECEIVE_BOOT_COMPLETED",
+    "market.grogoni.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+  ]
+}

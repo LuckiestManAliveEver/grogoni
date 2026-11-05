@@ -30,16 +30,18 @@ val releaseKeyPassword = System.getenv("GROGONI_RELEASE_KEY_PASSWORD")
 
 android {
     namespace = "market.grogoni.app"
-    compileSdk = 35
+    compileSdk = 36
+    buildToolsVersion = "36.0.0"
 
     defaultConfig {
         applicationId = "market.grogoni.app"
         minSdk = 23
-        targetSdk = 35
-        versionCode = 3
+        targetSdk = 36
+        versionCode = 4
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "GROGONI_API_ORIGIN", "\"${grogoniApiOrigin.get()}\"")
+        buildConfigField("boolean", "ALLOW_SCREEN_CAPTURE", "false")
     }
 
     signingConfigs {
@@ -54,6 +56,10 @@ android {
     }
 
     buildTypes {
+        debug {
+            // For store screenshots and the Play demo video only. Release can never enable it.
+            buildConfigField("boolean", "ALLOW_SCREEN_CAPTURE", providers.gradleProperty("GROGONI_ALLOW_CAPTURE").orElse("false").get())
+        }
         release {
             isMinifyEnabled = false
             if (releaseStoreFile.isNotBlank()) {

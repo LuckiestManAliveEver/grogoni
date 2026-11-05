@@ -64,7 +64,7 @@ clear the native business link. Provider SMS remains independent of sign-in.
 ## Local build
 
 Use a full JDK 17 (with `javac`; a JRE alone fails with "does not provide the required capabilities:
-[JAVA_COMPILER]"), Gradle 8.10.2, and an Android SDK with API 35. There is no committed Gradle
+[JAVA_COMPILER]"), Gradle 8.11.1, and an Android SDK with API 36. There is no committed Gradle
 wrapper. From this directory, run the project with that
 Gradle installation or import it into Android Studio. First run `pnpm android:web:bundle` from
 the repository root; Android pre-build rejects missing shared assets. The default API origin is
@@ -79,37 +79,49 @@ gradle :app:assembleDebug -PGROGONI_API_ORIGIN=https://your-api.example
 The configured origin must use HTTPS for a device build. Emulator-only cleartext networking is not
 enabled by the manifest.
 
-## Optional Google Play build
+## Google Play build
 
-Create a keystore and configure the required environment variables before generating a release bundle:
-
-```bash
-cd apps/android
-keytool -genkeypair -v \
-  -keystore release.keystore \
-  -alias grogoni \
-  -keyalg RSA \
-  -keysize 2048 \
-  -validity 10000
-```
-
-Then set the signing values in your shell before building:
+Play takes a signed `.aab`, not the APK. `pnpm android:play:build` needs the direct build's signing
+file (`backups/android-release/signing.json`, or `GROGONI_RELEASE_SIGNING_CONFIG`; see
+`docs/direct-android-installation.md`), Gradle on `PATH` or in `GROGONI_GRADLE_BIN`, and JDK 17. It
+runs offline, so run a normal Gradle build once on a new machine.
 
 ```bash
-export GROGONI_RELEASE_STORE_FILE="$PWD/release.keystore"
-export GROGONI_RELEASE_STORE_PASSWORD="your-keystore-password"
-export GROGONI_RELEASE_KEY_ALIAS="grogoni"
-export GROGONI_RELEASE_KEY_PASSWORD="your-key-password"
+pnpm android:play:build
+GROGONI_BUNDLETOOL=/path/to/bundletool-all.jar JAVA_HOME=/path/to/jdk17 pnpm android:play:verify
 ```
 
-A Play bundle can then be generated with:
+Get `bundletool-all-*.jar` from <https://github.com/google/bundletool/releases>; the jar in Gradle's
+cache cannot run. The verifier reads the built bundle and fails on a target below
+`config/android-play-policy.json`, a missing icon or launcher activity, a debug or test-only build,
+a debug key, unsigned entries, a version code not above `lastPlayVersionCode`, a permission
+outside the reviewed list, or a development web build. Upload
+`app/build/outputs/bundle/release/app-release.aab`, then set `lastPlayVersionCode` in that file to
+the uploaded code. Every new upload needs a higher `versionCode`, set in both `app/build.gradle.kts`
+and `config/android-release-identity.json`.
+
+The app blocks screen capture. For store screenshots and the demo video only, build a debug APK that
+allows it. Release builds cannot enable this:
 
 ```bash
-gradle :app:bundleRelease
+gradle :app:assembleDebug -PGROGONI_ALLOW_CAPTURE=true
 ```
 
-The generated `.aab` file is located under `app/build/outputs/bundle/release/` and is the artifact to
-upload in the Google Play Console.
+Play rejections this build guards against:
+
+- **Target API.** New apps and updates must target API 36 since August 31, 2026. Play raises this
+  yearly: update `minTargetSdk` and `targetSdk` together.
+- **Permissions.** Declaring a permission with no use fails review, so unused ones are removed.
+  Attachments use the system picker, so no `READ_MEDIA_*`. Some remain with no direct call.
+  `READ_PHONE_STATE` is kept deliberately: Android's default SMS role grants it, and removing it
+  cannot be tested against real carriers on an emulator. `WAKE_LOCK`, `ACCESS_NETWORK_STATE`,
+  `RECEIVE_BOOT_COMPLETED` and `FOREGROUND_SERVICE` are merged from WorkManager, which SMS recovery
+  uses. The app starts no foreground service.
+- **Updates outside Play.** The installed app must not offer the APK. `MenuDrawer.tsx` and the
+  `/install` route check `isNativeDeviceHost()`.
+
+SMS access still needs Console work that no build can do: see
+[docs/android/play-console-submission.md](../../docs/android/play-console-submission.md).
 
 ## Direct APK distribution from grogoni.com
 
@@ -173,8 +185,8 @@ item ids and statuses only. Every item is backed by code that uses it:
 | Location                       | Coarse/fine location                  | WebView geolocation for the pinned origin (shop location)                                                                                                                                                                         |
 
 Declared permissions that are not asked, and why, are listed under `notAsked` in
-`contracts/device-permission-checklist.json` (for example CALL_PHONE: `tel:` links open the dialer;
-media: attachments use the system picker). `PermissionChecklistPolicyTest` reads
+`contracts/device-permission-checklist.json` (for example INTERNET, granted at install). Tel links
+open the dialer and attachments use the system picker, so neither declares a permission. `PermissionChecklistPolicyTest` reads
 `src/main/AndroidManifest.xml` and fails if a permission there is neither asked nor explained.
 Background location is not declared.
 
@@ -197,8 +209,8 @@ Background location is not declared.
 - Item ids and order are the contract in `contracts/device-permission-checklist.json`; both
   `PermissionChecklistPolicyTest` (Kotlin) and `tests/device-permission-checklist.test.tsx` check it.
 
-Instrumented coverage runs on API 30 and API 35 emulators through `scripts/test-default-messenger-emulator.sh`. It checks snapshots, grants, phonebook reads and insets; Android dialogs and the queue were driven by hand on those emulators, and `ChecklistRequestQueueTest` covers the queue rules.
-The host pads the WebView by the system bar, cutout and keyboard insets because target SDK 35 draws edge to edge. Default SMS
+Instrumented coverage runs on API 30, 35 and 36 emulators through `scripts/test-default-messenger-emulator.sh`. It checks snapshots, grants, phonebook reads and insets; Android dialogs and the queue were driven by hand on those emulators, and `ChecklistRequestQueueTest` covers the queue rules.
+The host pads the WebView by the system bar, cutout and keyboard insets because target SDK 35 and above draws edge to edge. Default SMS
 status always goes through `DefaultSmsRole.held`: on API 29+ the role is the source of truth.
 
 Call-log permissions are not requested. Telephony detection uses the legacy telephony

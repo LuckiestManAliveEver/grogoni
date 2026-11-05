@@ -8,7 +8,8 @@ import {
   type DeviceCapabilities,
   type DeviceMessage,
   type DeviceMessagingAdapter,
-  type DeviceMms
+  type DeviceMms,
+  isNativeDeviceHost
 } from "./device-messaging";
 import DevicePermissionChecklist from "./DevicePermissionChecklist";
 import {
@@ -308,11 +309,20 @@ export default function DeviceMessagingPage({
       {capabilities?.available === false ? (
         <section>
           <h2>Carrier messages on this device</h2>
-          <p>
-            Your browser cannot read the phone’s SMS inbox. Install Grogoni for Android to use
-            carrier messages, or continue with internet conversations.
-          </p>
-          <a href="/install">Install Android app</a>
+          {isNativeDeviceHost() ? (
+            <p>
+              Android does not allow a default SMS app on this phone or profile. You can continue
+              with internet conversations.
+            </p>
+          ) : (
+            <>
+              <p>
+                Your browser cannot read the phone’s SMS inbox. Install Grogoni for Android to use
+                carrier messages, or continue with internet conversations.
+              </p>
+              <a href="/install">Install Android app</a>
+            </>
+          )}
           <a href="/marketplace">Open internet conversations</a>
           {checklistSupported && (
             <button type="button" disabled={busy} onClick={() => void reviewPermissions()}>

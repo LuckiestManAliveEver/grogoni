@@ -95,7 +95,7 @@ open class MainActivity : ComponentActivity() {
 
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
-        window.setFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE, android.view.WindowManager.LayoutParams.FLAG_SECURE)
+        if (!BuildConfig.ALLOW_SCREEN_CAPTURE) window.setFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE, android.view.WindowManager.LayoutParams.FLAG_SECURE)
         webView = WebView(this)
         webView.isSaveEnabled = false
         webView.settings.apply {
@@ -178,7 +178,7 @@ open class MainActivity : ComponentActivity() {
             }
             override fun onReceivedSslError(view: WebView, handler: android.webkit.SslErrorHandler, error: android.net.http.SslError) { handler.cancel() }
         }
-        // Android 15 draws edge to edge for target SDK 35 and the WebView reports no safe area, so the
+        // Android draws edge to edge for target SDK 35 and above and the WebView reports no safe area, so the
         // host keeps the page clear of the status bar, navigation bar, cutout and keyboard.
         val root = android.widget.FrameLayout(this).apply { addView(webView) }
         androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->

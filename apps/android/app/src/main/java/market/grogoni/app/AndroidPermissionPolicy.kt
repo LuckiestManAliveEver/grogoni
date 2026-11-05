@@ -10,32 +10,17 @@ object AndroidPermissionPolicy {
     fun permissionSetForSdk(sdk: Int = Build.VERSION.SDK_INT): Set<String> {
         val permissions = linkedSetOf<String>()
 
+        // Play review checks declared permissions against real use, so this set and the manifest list
+        // only what code uses. Attachments use the system picker and need no media permission.
         permissions += Manifest.permission.CAMERA
-        permissions += Manifest.permission.RECORD_AUDIO
         permissions += Manifest.permission.ACCESS_COARSE_LOCATION
         permissions += Manifest.permission.ACCESS_FINE_LOCATION
         // Native SMS does not need background location. Android 11+ rejects a
         // combined foreground/background location request; any future background
         // feature must request that access separately after foreground approval.
-        if (sdk >= Build.VERSION_CODES.P) permissions += Manifest.permission.FOREGROUND_SERVICE
-        if (sdk >= Build.VERSION_CODES.TIRAMISU) {
-            permissions += Manifest.permission.POST_NOTIFICATIONS
-            permissions += Manifest.permission.READ_MEDIA_IMAGES
-            permissions += Manifest.permission.READ_MEDIA_VIDEO
-            permissions += Manifest.permission.READ_MEDIA_AUDIO
-            if (sdk >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                permissions += Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
-            }
-        } else {
-            permissions += Manifest.permission.READ_EXTERNAL_STORAGE
-            if (sdk < Build.VERSION_CODES.Q) {
-                permissions += Manifest.permission.WRITE_EXTERNAL_STORAGE
-            }
-        }
+        if (sdk >= Build.VERSION_CODES.TIRAMISU) permissions += Manifest.permission.POST_NOTIFICATIONS
         permissions += Manifest.permission.READ_CONTACTS
-        permissions += Manifest.permission.WRITE_CONTACTS
         permissions += Manifest.permission.READ_PHONE_STATE
-        permissions += Manifest.permission.CALL_PHONE
         permissions += Manifest.permission.SEND_SMS
         permissions += Manifest.permission.RECEIVE_MMS
         permissions += Manifest.permission.RECEIVE_WAP_PUSH

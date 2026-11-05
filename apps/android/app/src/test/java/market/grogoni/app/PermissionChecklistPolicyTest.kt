@@ -8,7 +8,7 @@ import org.junit.Test
 import java.io.File
 
 class PermissionChecklistPolicyTest {
-    private val sdks = listOf(23, 28, 29, 30, 33, 34, 35)
+    private val sdks = listOf(23, 28, 29, 30, 33, 34, 35, 36)
 
     /** Gradle runs unit tests from apps/android/app; the contract lives at the repository root. */
     private val contract = File("../../../contracts/device-permission-checklist.json").readText()

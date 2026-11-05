@@ -1,11 +1,13 @@
-"""Build with an existing, private signing configuration; never print its secrets."""
+"""Build a signed APK, or a Play bundle with --bundle, from a private signing configuration; never print its secrets."""
 import json
 import os
 from pathlib import Path
 import stat
 import subprocess
+import sys
 
 root = Path(__file__).resolve().parent.parent
+task = ":app:bundleRelease" if "--bundle" in sys.argv[1:] else ":app:assembleRelease"
 if "GROGONI_ANDROID_BUILD_DIR" not in os.environ:
     subprocess.run(["node", str(root / "scripts/bundle-android-web.mjs")], cwd=root, check=True)
 config = Path(os.environ.get("GROGONI_RELEASE_SIGNING_CONFIG", str(root / "backups/android-release/signing.json")))
@@ -19,4 +21,4 @@ for key in ("GROGONI_RELEASE_STORE_FILE", "GROGONI_RELEASE_STORE_PASSWORD", "GRO
     environment[key] = values[key]
 project = environment.get("GROGONI_ANDROID_BUILD_DIR", str(root / "apps/android"))
 gradle = environment.get("GROGONI_GRADLE_BIN", "gradle")
-subprocess.run([gradle, "-p", project, ":app:assembleRelease", "--offline", "--no-daemon", "--max-workers=1", "-Dorg.gradle.jvmargs=-Xmx768m", "-Pkotlin.compiler.execution.strategy=in-process"], env=environment, check=True)
+subprocess.run([gradle, "-p", project, task, "--offline", "--no-daemon", "--max-workers=1", "-Dorg.gradle.jvmargs=-Xmx768m", "-Pkotlin.compiler.execution.strategy=in-process"], env=environment, check=True)
