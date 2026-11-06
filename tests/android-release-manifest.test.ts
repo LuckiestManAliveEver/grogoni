@@ -162,7 +162,7 @@ describe("verify-android-release-manifest.mjs pre-release gate", () => {
     const out = execFileSync("node", ["scripts/verify-android-release-manifest.mjs"], {
       encoding: "utf8"
     });
-    expect(out).toContain("published 0.1.0, code 4");
+    expect(out).toContain("published 0.1.0, code 5");
   });
 
   it("passes the strict --require-release gate for the signed update", () => {
@@ -174,14 +174,14 @@ describe("verify-android-release-manifest.mjs pre-release gate", () => {
         stdio: "pipe"
       }
     );
-    expect(out).toContain("published 0.1.0, code 4");
+    expect(out).toContain("published 0.1.0, code 5");
   });
 });
 
 describe("published release manifest (apps/web/public/android/release.json)", () => {
   it("publishes the verified Android update for existing users", () => {
     const manifest = JSON.parse(readFileSync("apps/web/public/android/release.json", "utf8"));
-    expect(manifest.release.versionCode).toBe(4);
+    expect(manifest.release.versionCode).toBe(5);
     const status = parseAndroidRelease(manifest, defaultReleaseManifestUrl);
     expect(status.available).toBe(true);
   });

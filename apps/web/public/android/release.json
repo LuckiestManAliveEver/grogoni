@@ -4,9 +4,9 @@
   "release": {
     "packageName": "market.grogoni.app",
     "versionName": "0.1.0",
-    "versionCode": 4,
-    "downloadUrl": "https://grogoni.com/android/grogoni-0.1.0-4.apk",
-    "sha256": "F9:5A:C8:03:6C:08:47:71:37:E4:F7:D0:09:4C:88:C8:1E:18:35:67:BE:9D:EE:31:63:AB:65:64:BD:A4:C4:21",
+    "versionCode": 5,
+    "downloadUrl": "https://grogoni.com/android/grogoni-0.1.0-5.apk",
+    "sha256": "A2:C5:14:AD:E7:8E:85:9D:66:B3:8E:07:F0:D6:D5:F4:9F:44:A5:27:EC:63:59:26:06:2B:9A:74:77:F5:1F:68",
     "minSdk": 23
   }
 }
