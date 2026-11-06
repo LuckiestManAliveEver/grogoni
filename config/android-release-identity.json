@@ -16,7 +16,7 @@
     "distribution": "google-play",
     "firstTrack": "internal",
     "versionName": "0.1.0",
-    "versionCode": 4,
+    "versionCode": 5,
     "minSdk": 23,
     "targetSdk": 36,
     "compileSdk": 36

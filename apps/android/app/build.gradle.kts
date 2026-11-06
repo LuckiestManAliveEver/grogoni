@@ -37,7 +37,7 @@ android {
         applicationId = "market.grogoni.app"
         minSdk = 23
         targetSdk = 36
-        versionCode = 4
+        versionCode = 5
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "GROGONI_API_ORIGIN", "\"${grogoniApiOrigin.get()}\"")
