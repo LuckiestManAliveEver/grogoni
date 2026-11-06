@@ -179,13 +179,9 @@ describe("native device recovery challenges", () => {
       await expect(restore()).rejects.toMatchObject({ code: "device_recovery_invalid" });
     });
 
-    it("ignores a phone the guest has replaced", async () => {
-      const { store, created, restore, addPhoneIdentity } = await guest();
-      addPhoneIdentity();
+    it("keeps restoring a guest with a password but no phone to log in with", async () => {
+      const { store, created, restore } = await guest();
       store.createPassword({ sessionId: created.session.id, password: "secure first password" });
-      const snapshot = store.snapshot();
-      snapshot.users.find((user) => user.id === created.user.id)!.phoneNumberE164 = null;
-      store.hydrateSnapshot(snapshot);
       await expect(restore()).resolves.toHaveProperty("session");
     });
 

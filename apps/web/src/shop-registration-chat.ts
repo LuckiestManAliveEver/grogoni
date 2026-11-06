@@ -73,3 +73,51 @@ export function continueShopRegistration(
     reply: `Which phone number should ${text} use?`
   };
 }
+
+const storageKey = "grogoni.shop-registration.v1";
+
+export interface PendingShopRegistration {
+  accountId: string;
+  threadId: string | null;
+  step: ShopRegistrationStep;
+}
+
+const pendingLifetimeMs = 30 * 60 * 1000;
+/** Used when storage is unavailable, so the flow still works until the page reloads. */
+let memoryPending: string | null = null;
+
+/** Kept for this tab, so a reload does not lose the conversation. */
+export function savePendingShopRegistration(pending: PendingShopRegistration | null): void {
+  memoryPending = pending === null ? null : JSON.stringify({ ...pending, savedAt: Date.now() });
+  try {
+    if (memoryPending === null) sessionStorage.removeItem(storageKey);
+    else sessionStorage.setItem(storageKey, memoryPending);
+  } catch {
+    // The copy in memory carries on.
+  }
+}
+
+function storedPending(): string | null {
+  try {
+    return sessionStorage.getItem(storageKey) ?? memoryPending;
+  } catch {
+    return memoryPending;
+  }
+}
+
+export function readPendingShopRegistration(): PendingShopRegistration | null {
+  try {
+    const raw = storedPending();
+    if (raw === null) return null;
+    const { savedAt, ...pending } = JSON.parse(raw) as PendingShopRegistration & {
+      savedAt?: number;
+    };
+    const fresh = typeof savedAt === "number" && Date.now() - savedAt < pendingLifetimeMs;
+    const valid =
+      typeof pending.accountId === "string" &&
+      ["name", "phone", "confirm"].includes(pending.step?.step);
+    return fresh && valid ? pending : null;
+  } catch {
+    return null;
+  }
+}

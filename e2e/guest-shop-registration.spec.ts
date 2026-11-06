@@ -117,3 +117,29 @@ test("a reminder ends a pending registration, so its answer creates nothing", as
   await page.waitForTimeout(500);
   expect(created).toHaveLength(0);
 });
+
+test("a guest shop owner is asked to add a way back in", async ({ page }) => {
+  await mockGuest(page);
+  const pins: unknown[] = [];
+  await page.route("http://127.0.0.1:4000/auth/pin/setup", async (route) => {
+    pins.push(route.request().postDataJSON());
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...guestSession,
+        account: { ...guestSession.account, identityLevel: "strong" }
+      })
+    });
+  });
+  await page.goto("/marketplace");
+  await page.getByTestId("shop-entry-button").click();
+  await page.getByLabel("Phone number").fill("254712345678");
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await page.getByLabel("Business name").fill("Mama Mboga");
+  await page.getByRole("button", { name: "Create business" }).click();
+  const prompt = page.getByRole("region", { name: "Secure your shop" });
+  await expect(prompt).toBeVisible();
+  await prompt.getByLabel("Or create a 4-digit PIN").fill("4826");
+  await prompt.getByRole("button", { name: "Create PIN", exact: true }).click();
+  await expect.poll(() => pins).toEqual([{ pin: "4826", pinConfirmation: "4826" }]);
+});

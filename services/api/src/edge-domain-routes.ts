@@ -79,6 +79,13 @@ import {
 } from "./guest-intent/service.js";
 import { createPostgresGuestIntentLimiter } from "./guest-intent/rate-limit.js";
 
+export {
+  androidAttestationProblem,
+  fetchAndroidRevokedSerials,
+  grogoniAndroidPackage,
+  grogoniAndroidSigners
+} from "./cp2/android-key-attestation.js";
+
 export interface EdgeDomainDatabase {
   transaction: <T>(action: (client: PoolClient) => Promise<T>) => Promise<T>;
   /** Required to run background jobs; see EdgeJobDatabase. */

@@ -1010,6 +1010,7 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
           : parseString(request.body.country, "country")
       );
       const result = store.signupWithPhonePin({
+        sessionId: readSessionCookie(request.headers.cookie),
         destination,
         pin: parseString(request.body.pin, "pin")
       });
@@ -1042,6 +1043,7 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
             )
           : rawDestination;
       const result = store.continueWithChannelPin({
+        sessionId: readSessionCookie(request.headers.cookie),
         channel,
         destination,
         pin: parseString(request.body.pin, "pin")

@@ -1,7 +1,10 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment jsdom
+import { describe, expect, it, vi } from "vitest";
 import {
   continueShopRegistration,
   isShopRegistrationRequest,
+  readPendingShopRegistration,
+  savePendingShopRegistration,
   startShopRegistration
 } from "../apps/web/src/shop-registration-chat";
 import { routeGuestMessage } from "../apps/web/src/marketplace-search-reply";
@@ -91,6 +94,38 @@ describe("marketplace agent shop registration", () => {
     expect(continueShopRegistration({ step: "phone", name: "Mama" }, "acha", null).kind).toBe(
       "cancelled"
     );
+  });
+
+  it("survives a reload through session storage", () => {
+    const pending = { accountId: "a", threadId: "t", step: { step: "name" } } as const;
+    savePendingShopRegistration(pending);
+    expect(readPendingShopRegistration()).toEqual(pending);
+    savePendingShopRegistration(null);
+    expect(readPendingShopRegistration()).toBeNull();
+  });
+
+  it("drops a stored flow that is malformed or stale", () => {
+    sessionStorage.setItem(
+      "grogoni.shop-registration.v1",
+      JSON.stringify({ accountId: "a", threadId: null, step: { step: "name" }, savedAt: 1 })
+    );
+    expect(readPendingShopRegistration()).toBeNull();
+    sessionStorage.setItem("grogoni.shop-registration.v1", '{"accountId":"a","savedAt":1}');
+    expect(readPendingShopRegistration()).toBeNull();
+    sessionStorage.setItem("grogoni.shop-registration.v1", "not json");
+    expect(readPendingShopRegistration()).toBeNull();
+    sessionStorage.clear();
+  });
+
+  it("keeps working in memory when storage throws", () => {
+    const pending = { accountId: "a", threadId: "t", step: { step: "name" } } as const;
+    const failing = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("blocked");
+    });
+    savePendingShopRegistration(pending);
+    failing.mockRestore();
+    expect(readPendingShopRegistration()).toEqual(pending);
+    savePendingShopRegistration(null);
   });
 
   it("marks the guest route so the agent can start it", () => {

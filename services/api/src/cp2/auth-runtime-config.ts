@@ -6,6 +6,11 @@ export interface AuthRuntimeConfig {
   expectedPasskeyOrigins: ReadonlySet<string>;
 }
 
+/** Off until the attesting Android build is out and proven on a real phone. */
+export function androidAttestationRequired(): boolean {
+  return process.env.ANDROID_KEY_ATTESTATION_REQUIRED === "true";
+}
+
 export function readAuthRuntimeConfig(allowedOrigins: Iterable<string>): AuthRuntimeConfig {
   const config: AuthRuntimeConfig = {
     passkeysEnabled: readBoolean("AUTH_PASSKEYS_ENABLED", true),

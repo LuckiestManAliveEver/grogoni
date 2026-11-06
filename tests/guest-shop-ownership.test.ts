@@ -132,6 +132,88 @@ describe("a guest becomes a shop owner", () => {
   });
 });
 
+describe("a guest owner secures their shop", () => {
+  it("becomes a phone account when they add a PIN, and can log back in", async () => {
+    const { store, app, call, register, session, account } = await fixture();
+    const { business } = (await register()).json<{ business: { id: string } }>();
+    const proven = new Date(Date.now() - 20 * 60_000).toISOString();
+    const snapshot = store.snapshot();
+    snapshot.sessions.find((item) => item.id === session.id)!.authenticatedAt = proven;
+    store.hydrateSnapshot(snapshot);
+    const secured = await call("POST", "/auth/pin/setup", { pin: "4826", pinConfirmation: "4826" });
+    expect(secured.statusCode, secured.body).toBe(200);
+    expect(store.snapshot().accounts[0]).toMatchObject({
+      id: account.id,
+      primaryAuthChannel: "phone",
+      primaryAuthDestination: phone,
+      identityLevel: "strong"
+    });
+    const login = await app.inject({
+      method: "POST",
+      url: "/auth/pin/login",
+      headers: { "content-type": "application/json" },
+      payload: JSON.stringify({ method: "phone", contact: phone, pin: "4826" })
+    });
+    expect(login.statusCode, login.body).toBe(200);
+    expect(login.json<{ account: { id: string } }>().account.id).toBe(account.id);
+    expect(
+      store.snapshot().memberships.filter((item) => item.businessId === business.id)
+    ).toHaveLength(1);
+    await app.close();
+  });
+
+  it("stays a guest with no phone, so nothing claims a sign-in it does not have", async () => {
+    const { store, app, call, account } = await fixture();
+    await call("POST", "/auth/pin/setup", { pin: "4826", pinConfirmation: "4826" });
+    expect(store.snapshot().accounts[0]).toMatchObject({
+      id: account.id,
+      primaryAuthChannel: "device"
+    });
+    await app.close();
+  });
+});
+
+describe("a stolen guest session", () => {
+  it("cannot sign up over a credential the guest already has", async () => {
+    const { store, app, call, account } = await fixture();
+    await call("POST", "/auth/pin/setup", { pin: "4826", pinConfirmation: "4826" });
+    const done = await call("POST", "/auth/pin/signup", {
+      method: "phone",
+      contact: phone,
+      pin: "1111"
+    });
+    expect(done.json<{ account: { id: string } }>().account.id).not.toBe(account.id);
+    expect(store.snapshot().accounts.find((item) => item.id === account.id)).toMatchObject({
+      primaryAuthChannel: "device"
+    });
+    await app.close();
+  });
+
+  it("cannot remove device keys after 15 minutes", async () => {
+    const { store, app, session, deviceRecoveryCredentialId: credentialId } = await fixture();
+    const snapshot = store.snapshot();
+    snapshot.sessions.find((item) => item.id === session.id)!.authenticatedAt = new Date(
+      Date.now() - 20 * 60_000
+    ).toISOString();
+    store.hydrateSnapshot(snapshot);
+    expect(() =>
+      store.revokeDeviceRecoveryCredential({ sessionId: session.id, credentialId })
+    ).toThrowError(expect.objectContaining({ code: "recent_authentication_required" }));
+    await app.close();
+  });
+});
+
+describe("PIN signup from a guest session", () => {
+  it.each(["/auth/pin/signup", "/auth/pin/continue"])("%s keeps the account", async (url) => {
+    const { store, app, call, account } = await fixture();
+    const done = await call("POST", url, { method: "phone", contact: phone, pin: "4826" });
+    expect(done.statusCode, done.body).toBe(200);
+    expect(done.json<{ account: { id: string } }>().account.id).toBe(account.id);
+    expect(store.snapshot().accounts).toHaveLength(1);
+    await app.close();
+  });
+});
+
 describe("signing up from a guest session", () => {
   async function signup(call: Awaited<ReturnType<typeof fixture>>["call"], identifier = phone) {
     const started = await call("POST", "/auth/signup/start", {

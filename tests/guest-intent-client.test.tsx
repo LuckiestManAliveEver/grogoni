@@ -2,6 +2,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { savePendingShopRegistration } from "../apps/web/src/shop-registration-chat";
 import type { ConversationView } from "@grogoni/shared-types";
 
 import {
@@ -35,6 +36,7 @@ function answer(body: unknown, status = 200) {
 
 beforeEach(() => {
   clearGuestIntentCache();
+  savePendingShopRegistration(null);
 });
 afterEach(() => {
   vi.useRealTimers();

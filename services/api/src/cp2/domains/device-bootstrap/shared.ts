@@ -53,6 +53,8 @@ export interface DeviceAccountBootstrapRecord {
 
 export interface DeviceRecoveryCredentialRecord {
   requiresServerChallenge?: boolean;
+  /** Android Key Attestation proved this key is in secure hardware. */
+  attested?: boolean;
   id: string;
   accountId: string;
   publicKeyJwk: Record<string, unknown>;

@@ -127,6 +127,7 @@ import {
 import { useInstallPrompt } from "./misc-browser-utils";
 
 import { BusinessSetupPanel } from "./BusinessSetupPanel";
+import { SecureShopPrompt } from "./SecureShopPrompt";
 import { MenuDrawer } from "./MenuDrawer";
 
 import { ChatSurface } from "./ChatSurface";
@@ -1856,6 +1857,12 @@ export function OwnerApp() {
             signedOut={!isAuthScreen && !authBootstrapPending && session === null}
             onJoinedShop={(shop) => joinStaffShop(shop, setActiveConversationId)}
           />
+          {!isAuthScreen &&
+          business?.role === "owner" &&
+          session !== null &&
+          session.account.identityLevel === "device" ? (
+            <SecureShopPrompt shopName={business.name} onSecured={refreshSession} />
+          ) : null}
           {authBootstrapPending ? (
             <NativeLaunchScreen
               message={bootstrapProgressMessage(

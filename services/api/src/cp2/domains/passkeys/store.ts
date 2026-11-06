@@ -29,6 +29,7 @@ import type { Cp2Snapshot } from "../../store.js";
 
 export interface PasskeyDomainDeps {
   requireAnySession: (sessionId: string | null, now: Date) => AuthSessionView;
+  requireFirstCredentialSession: (sessionId: string | null, now: Date) => AuthSessionView;
   requireRecentlyAuthenticatedSession: (sessionId: string | null, now: Date) => AuthSessionView;
   requirePinVerifiedSession: (sessionId: string | null, now: Date) => AuthSessionView;
   markSessionPinVerified: (sessionId: string, now: Date) => void;
@@ -199,7 +200,7 @@ export class PasskeyDomain {
     options: PublicKeyCredentialCreationOptionsJSON;
   }> {
     const now = input.now ?? new Date();
-    const session = this.deps.requireRecentlyAuthenticatedSession(input.sessionId, now);
+    const session = this.deps.requireFirstCredentialSession(input.sessionId, now);
     this.prunePasskeyCeremonies(now);
     const accountPasskeys = [...this.passkeys.values()].filter(
       (passkey) => passkey.accountId === session.account.id
@@ -252,7 +253,7 @@ export class PasskeyDomain {
     now?: Date;
   }): Promise<PasskeySummary> {
     const now = input.now ?? new Date();
-    const session = this.deps.requireRecentlyAuthenticatedSession(input.sessionId, now);
+    const session = this.deps.requireFirstCredentialSession(input.sessionId, now);
     const ceremony = this.takePasskeyCeremony(input.ceremonyId, "registration", now);
 
     if (

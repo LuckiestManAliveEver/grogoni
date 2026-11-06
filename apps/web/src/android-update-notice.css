@@ -35,6 +35,7 @@
 /* The notice floats over the page, so it must never cover a sign-in or passkey step's buttons. */
 body:has(.auth-onboarding) .android-update-notice,
 body:has(.passkey-step-up) .android-update-notice,
+body:has(.secure-shop-prompt) .android-update-notice,
 body:has(.identity-security-panel) .android-update-notice {
   display: none;
 }

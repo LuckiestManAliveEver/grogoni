@@ -40,14 +40,20 @@ export async function deviceSecurityAvailable(): Promise<boolean> {
 /** Enroll an account-bound native key protected by the existing device screen lock. */
 export async function enrollDeviceRecovery(): Promise<null> {
   if (isNativeDeviceHost()) {
-    const key = await deviceMessagingAdapter.call<{ publicKeyJwk: JsonWebKey; accountId: string }>(
-      "prepareRecoveryKey"
-    );
+    const key = await deviceMessagingAdapter.call<{
+      publicKeyJwk: JsonWebKey;
+      accountId: string;
+      attestationChain?: string[];
+    }>("prepareRecoveryKey");
     const enrolled = await apiFetch<AuthSessionView & { deviceRecoveryCredentialId: string }>(
       "/auth/continue",
       {
         method: "POST",
-        body: { devicePublicKeyJwk: key.publicKeyJwk, deviceSecurity: true },
+        body: {
+          devicePublicKeyJwk: key.publicKeyJwk,
+          deviceSecurity: true,
+          deviceAttestation: key.attestationChain
+        },
         skipAuthRefresh: true
       }
     );

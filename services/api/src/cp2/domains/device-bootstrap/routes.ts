@@ -46,7 +46,9 @@ export function registerDeviceBootstrapRoutes(
     "/auth/continue",
     async (
       request: FastifyRequest<{
-        Body: { devicePublicKeyJwk?: unknown; deviceSecurity?: boolean } | undefined;
+        Body:
+          | { devicePublicKeyJwk?: unknown; deviceSecurity?: boolean; deviceAttestation?: unknown }
+          | undefined;
       }>,
       reply
     ) => {
@@ -56,7 +58,8 @@ export function registerDeviceBootstrapRoutes(
           sessionId: readSessionCookie(request.headers.cookie),
           idempotencyKey: readHeader(request, "idempotency-key"),
           devicePublicKeyJwk: request.body?.devicePublicKeyJwk,
-          deviceSecurity: request.body?.deviceSecurity === true
+          deviceSecurity: request.body?.deviceSecurity === true,
+          deviceAttestation: request.body?.deviceAttestation
         });
         const { refreshToken, ...session } = result;
         if (refreshToken !== null) {

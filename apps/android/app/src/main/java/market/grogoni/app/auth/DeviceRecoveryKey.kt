@@ -8,11 +8,13 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import org.json.JSONArray
 import org.json.JSONObject
 import java.math.BigInteger
 import java.security.KeyPairGenerator
 import java.security.KeyStore
 import java.security.MessageDigest
+import java.security.ProviderException
 import java.security.Signature
 import java.security.interfaces.ECPublicKey
 import java.security.spec.ECGenParameterSpec
@@ -25,26 +27,40 @@ class DeviceRecoveryKey(private val context: Context) {
     private fun alias(accountId: String) = "grogoni-recovery-v2-" + MessageDigest.getInstance("SHA-256")
         .digest(accountId.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
 
+    /** The key in use. It only moves to a replacement once the server has accepted that one. */
+    private fun activeAlias(accountId: String) =
+        preferences.getString("alias:$accountId", null) ?: alias(accountId)
+
+    /** The key to enroll: a key with no attestation is replaced, if this Android can attest. */
+    private fun enrollmentAlias(accountId: String): String {
+        val active = activeAlias(accountId)
+        if (!keyStore.containsAlias(active) || hasAttestation(active) || Build.VERSION.SDK_INT < 24) return active
+        return if (active == alias(accountId)) alias(accountId) + "-attested" else alias(accountId)
+    }
+
+    /** A waiting replacement that cannot pass is remade, so a bad moment is not permanent. */
+    private fun discardFailedReplacement(accountId: String, alias: String) {
+        if (alias == activeAlias(accountId) || !keyStore.containsAlias(alias)) return
+        val chain = keyStore.getCertificateChain(alias)?.drop(1).orEmpty()
+        val expired = chain.any { certificate ->
+            runCatching { (certificate as java.security.cert.X509Certificate).checkValidity() }.isFailure
+        }
+        if (chain.isEmpty() || expired) keyStore.deleteEntry(alias)
+    }
+
     fun publicJwk(accountId: String): JSONObject {
         check(context.getSystemService(KeyguardManager::class.java).isDeviceSecure) {
             "Set a device screen lock before enabling device recovery."
         }
-        val alias = alias(accountId)
+        val alias = enrollmentAlias(accountId)
+        discardFailedReplacement(accountId, alias)
         if (!keyStore.containsAlias(alias)) {
-            KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, "AndroidKeyStore").apply {
-                val builder = KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY)
-                    .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
-                    .setDigests(KeyProperties.DIGEST_SHA256)
-                    .setUserAuthenticationRequired(true)
-                if (Build.VERSION.SDK_INT >= 30) {
-                    builder.setUserAuthenticationParameters(30,
-                        KeyProperties.AUTH_BIOMETRIC_STRONG or KeyProperties.AUTH_DEVICE_CREDENTIAL)
-                } else {
-                    @Suppress("DEPRECATION")
-                    builder.setUserAuthenticationValidityDurationSeconds(30)
-                }
-                initialize(builder.build())
-            }.generateKeyPair()
+            try {
+                generateKey(alias, accountId, attest = Build.VERSION.SDK_INT >= 24)
+            } catch (error: ProviderException) {
+                // Attestation can be unavailable, such as offline. The server decides if that's enough.
+                generateKey(alias, accountId, attest = false)
+            }
         }
         val publicKey = keyStore.getCertificate(alias).publicKey as ECPublicKey
         return JSONObject().put("kty", "EC").put("crv", "P-256")
@@ -52,22 +68,59 @@ class DeviceRecoveryKey(private val context: Context) {
             .put("y", encode(coordinate(publicKey.w.affineY)))
     }
 
+    private fun generateKey(alias: String, accountId: String, attest: Boolean) {
+        KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, "AndroidKeyStore").apply {
+            val builder = KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY)
+                .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
+                .setDigests(KeyProperties.DIGEST_SHA256)
+                .setUserAuthenticationRequired(true)
+            if (Build.VERSION.SDK_INT >= 30) {
+                builder.setUserAuthenticationParameters(30,
+                    KeyProperties.AUTH_BIOMETRIC_STRONG or KeyProperties.AUTH_DEVICE_CREDENTIAL)
+            } else {
+                @Suppress("DEPRECATION")
+                builder.setUserAuthenticationValidityDurationSeconds(30)
+            }
+            // Binds the hardware's proof to this account; see android-key-attestation.ts.
+            if (attest) {
+                builder.setAttestationChallenge(MessageDigest.getInstance("SHA-256").digest(
+                    "grogoni-device-recovery-attestation:v1:$accountId".toByteArray(Charsets.UTF_8)))
+            }
+            initialize(builder.build())
+        }.generateKeyPair()
+    }
+
+    private fun hasAttestation(alias: String) = (keyStore.getCertificateChain(alias)?.size ?: 0) > 1
+
+    /** The Keystore's certificate chain, leaf first, which proves the key from [publicJwk]. */
+    fun attestationChain(accountId: String): JSONArray = JSONArray().apply {
+        keyStore.getCertificateChain(enrollmentAlias(accountId))?.forEach {
+            put(Base64.encodeToString(it.encoded, Base64.NO_WRAP))
+        }
+    }
+
     fun commit(accountId: String, phone: String, credentialId: String) {
-        check(keyStore.containsAlias(alias(accountId))) { "Recovery key unavailable. Sign in again to secure this device." }
+        val enrolled = enrollmentAlias(accountId)
+        check(keyStore.containsAlias(enrolled)) { "Recovery key unavailable. Sign in again to secure this device." }
+        val previous = activeAlias(accountId)
         check(preferences.edit().putString("account:$phone", accountId)
+            .putString("alias:$accountId", enrolled)
             .putString("credential:$accountId", credentialId).commit()) { "Could not save device recovery details." }
+        if (previous != enrolled) keyStore.deleteEntry(previous)
     }
 
     fun hasCredential(phone: String): Boolean = account(phone)?.let { accountId ->
-        preferences.contains("credential:$accountId") && keyStore.containsAlias(alias(accountId))
+        preferences.contains("credential:$accountId") && keyStore.containsAlias(activeAlias(accountId))
     } == true
 
     fun account(phone: String): String? = preferences.getString("account:$phone", null)
 
     fun forget(phone: String) {
         val accountId = account(phone) ?: return
+        keyStore.deleteEntry(activeAlias(accountId))
         keyStore.deleteEntry(alias(accountId))
-        preferences.edit().remove("account:$phone").remove("credential:$accountId").commit()
+        keyStore.deleteEntry(alias(accountId) + "-attested")
+        preferences.edit().remove("account:$phone").remove("alias:$accountId").remove("credential:$accountId").commit()
     }
 
     fun credentialId(phone: String): String {
@@ -78,7 +131,7 @@ class DeviceRecoveryKey(private val context: Context) {
     fun assertion(phone: String, challenge: JSONObject): JSONObject {
         val accountId = requireNotNull(account(phone)) { "No recovery key for this account on this device. Use verified backup email." }
         val credentialId = credentialId(phone)
-        val privateKey = keyStore.getKey(alias(accountId), null)
+        val privateKey = keyStore.getKey(activeAlias(accountId), null)
             as? java.security.PrivateKey ?: error("Recovery key unavailable. Use verified backup email.")
         val info = KeyFactory.getInstance(privateKey.algorithm, "AndroidKeyStore")
             .getKeySpec(privateKey, KeyInfo::class.java)

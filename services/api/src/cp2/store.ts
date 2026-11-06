@@ -1,4 +1,10 @@
 import {
+  androidAttestationProblem,
+  grogoniAndroidPackage,
+  grogoniAndroidSigners
+} from "./android-key-attestation.js";
+import { androidAttestationRequired } from "./auth-runtime-config.js";
+import {
   CommerceSourcesDomain,
   type CommerceSourceRequest
 } from "./domains/commerce-sources/store.js";
@@ -1382,6 +1388,8 @@ export class Cp2Store {
       requireAnySession: (sessionId, now) => this.requireAnySession(sessionId, now),
       requireRecentlyAuthenticatedSession: (sessionId, now) =>
         this.requireRecoveryEnrollmentSession(sessionId, now),
+      requireFirstCredentialSession: (sessionId, now) =>
+        this.requireFirstCredentialSession(sessionId, now),
       requirePinVerifiedSession: (sessionId, now) => this.requirePinVerifiedSession(sessionId, now),
       markSessionPinVerified: (sessionId, now) => this.markSessionPinVerified(sessionId, now),
       getSession: (sessionId, now) => this.getSession(sessionId, now),
@@ -2273,15 +2281,58 @@ export class Cp2Store {
   private readonly auditEvents: BusinessEvent[] = [];
 
   continueWithDevice(
-    input: Parameters<DeviceBootstrapDomain["continueWithDevice"]>[0] & { deviceSecurity?: boolean }
+    input: Parameters<DeviceBootstrapDomain["continueWithDevice"]>[0] & {
+      deviceSecurity?: boolean;
+      deviceAttestation?: unknown;
+    }
   ): ReturnType<DeviceBootstrapDomain["continueWithDevice"]> {
-    if (input.deviceSecurity)
-      this.requireRecoveryEnrollmentSession(input.sessionId, input.now ?? new Date());
+    let attested = false;
+    if (input.deviceSecurity) {
+      const session = this.requireRecoveryEnrollmentSession(
+        input.sessionId,
+        input.now ?? new Date()
+      );
+      // A chain read back later can have expired. The proof was checked when the key was enrolled.
+      const claimed = input.devicePublicKeyJwk as Record<string, unknown>;
+      const proven = [...this.deviceBootstrapDomain.deviceRecoveryCredentialsMap.values()].some(
+        (item) =>
+          item.accountId === session.account.id &&
+          item.attested === true &&
+          item.revokedAt === null &&
+          item.publicKeyJwk.x === claimed.x
+      );
+      const problem = proven
+        ? null
+        : androidAttestationProblem({
+            chain: input.deviceAttestation,
+            publicKeyJwk: input.devicePublicKeyJwk as Record<string, unknown>,
+            accountId: session.account.id,
+            packageName: grogoniAndroidPackage,
+            signerDigests: grogoniAndroidSigners(process.env.ANDROID_ATTESTATION_SIGNERS)
+          });
+      attested = problem === null;
+      if (!attested && androidAttestationRequired()) {
+        this.recordSecurityEvent(
+          "auth.device_attestation_refused",
+          session.account.id,
+          "failure",
+          input.now ?? new Date(),
+          { reason: problem }
+        );
+        throw new Cp2Error(
+          403,
+          "device_attestation_required",
+          "This device cannot prove its screen lock. Use a PIN or passkey, or update Grogoni."
+        );
+      }
+    }
     const result = this.deviceBootstrapDomain.continueWithDevice(input);
     if (input.deviceSecurity && result.deviceRecoveryCredentialId) {
-      this.deviceBootstrapDomain.deviceRecoveryCredentialsMap.get(
+      const credential = this.deviceBootstrapDomain.deviceRecoveryCredentialsMap.get(
         result.deviceRecoveryCredentialId
-      )!.requiresServerChallenge = true;
+      )!;
+      credential.requiresServerChallenge = true;
+      credential.attested = credential.attested === true || attested;
     }
     return result;
   }
@@ -2407,7 +2458,14 @@ export class Cp2Store {
    */
   private requireDeviceKeyMayRestoreAccount(credentialId: string, now: Date): void {
     const credential = this.deviceBootstrapDomain.deviceRecoveryCredentialsMap.get(credentialId);
-    if (credential === undefined || credential.requiresServerChallenge === true) return;
+    if (credential === undefined) return;
+    // Enforced: a screen-lock key must be proven, or it counts as a plain browser key.
+    if (
+      credential.requiresServerChallenge === true &&
+      (credential.attested === true || !androidAttestationRequired())
+    ) {
+      return;
+    }
     if (!this.accountCanSignIn(this.requireAccount(credential.accountId))) return;
     this.recordSecurityEvent(
       "auth.device_recovery_refused",
@@ -2417,6 +2475,10 @@ export class Cp2Store {
       {}
     );
     throw new Cp2Error(401, "device_recovery_invalid", "Device recovery failed.");
+  }
+
+  private isGuestWithoutSignIn(account: AccountSummary): boolean {
+    return account.primaryAuthChannel === "device" && !this.accountCanSignIn(account);
   }
 
   /** Mirrors the login screen: a phone number plus a PIN, a password, or (phone-primary) a passkey. */
@@ -2802,7 +2864,7 @@ export class Cp2Store {
     const now = input.now ?? new Date();
     const session = this.hasCredentialRecoveryGrant(input.sessionId, now)
       ? this.requireAnySession(input.sessionId, now)
-      : this.requireRecoveryEnrollmentSession(input.sessionId, now);
+      : this.requireFirstCredentialSession(input.sessionId, now);
     if (this.accountPinHashes.has(session.account.id)) {
       throw new Cp2Error(409, "pin_already_set", "A login PIN is already set for this account.");
     }
@@ -2834,6 +2896,7 @@ export class Cp2Store {
     }
     this.markSessionPinVerified(session.session.id, now);
     this.promoteAccountIdentityLevel(session.account.id, "strong");
+    this.promoteGuestWithCredential(session.account.id, now);
 
     this.recordAuditEvent({
       type: "auth.pin_set",
@@ -2961,7 +3024,14 @@ export class Cp2Store {
     return this.requireAnySession(session.id, now);
   }
 
-  signupWithPhonePin(input: { destination: string; pin: string; now?: Date }): AuthSessionView {
+  signupWithPhonePin(input: {
+    destination: string;
+    pin: string;
+    sessionId?: string | null;
+    now?: Date;
+  }): AuthSessionView {
+    const upgraded = this.upgradeGuestWithPin(input);
+    if (upgraded !== null) return upgraded;
     return this.createAccountWithPin(
       "phone",
       input.destination,
@@ -2970,10 +3040,48 @@ export class Cp2Store {
     );
   }
 
+  /** PIN signup from a guest session keeps the guest's account, as password signup does. */
+  private upgradeGuestWithPin(input: {
+    destination: string;
+    pin: string;
+    sessionId?: string | null;
+    now?: Date;
+  }): AuthSessionView | null {
+    const now = input.now ?? new Date();
+    const guest = this.guestAccountForSession(input.sessionId ?? null, now);
+    if (guest === null) return null;
+    const phone = normalizeDestination("phone", input.destination);
+    const holder = this.resolveIdentityAccount("phone", phone);
+    if (holder !== undefined && holder !== guest.id) return null;
+    const pin = normalizePin(input.pin);
+    const user = this.requireUser(this.userByAccount.get(guest.id));
+    const normalizedPhone = normalizeInternationalOwnerPhoneNumber(phone);
+    this.clearGuestIdentity(guest, phone);
+    Object.assign(user, {
+      phoneNumberE164: phone,
+      phoneCountryCode: normalizedPhone.country,
+      phoneNationalNumber: normalizedPhone.nationalNumber,
+      phoneVerificationStatus: "unverified" as const,
+      phoneAddedAt: user.phoneAddedAt ?? now.toISOString(),
+      phoneSource: "phone_login" as const,
+      phoneUpdatedAt: now.toISOString()
+    });
+    this.addAccountIdentity(guest, user, "phone", phone, true, now, false);
+    this.accountPinHashes.set(guest.id, hashPin(guest.id, pin));
+    const previous = this.sessions.get(input.sessionId ?? "");
+    if (previous !== undefined) {
+      this.revokeSessionFamily(previous.sessionFamilyId, "signup_upgrade", now);
+    }
+    const session = this.createSession(guest, user, now);
+    this.markSessionPinVerified(session.id, now);
+    return this.requireAnySession(session.id, now);
+  }
+
   continueWithChannelPin(input: {
     channel: AuthChannel;
     destination: string;
     pin: string;
+    sessionId?: string | null;
     now?: Date;
   }): AuthSessionView {
     const now = input.now ?? new Date();
@@ -2984,7 +3092,10 @@ export class Cp2Store {
     const accountId = this.resolveIdentityAccount(input.channel, destination);
 
     if (accountId === undefined) {
-      const session = this.createAccountWithPin(input.channel, destination, input.pin, now);
+      const upgraded =
+        input.channel === "phone" ? this.upgradeGuestWithPin({ ...input, destination, now }) : null;
+      const session =
+        upgraded ?? this.createAccountWithPin(input.channel, destination, input.pin, now);
       return { ...session, isNewAccount: true };
     }
 
@@ -3368,22 +3479,7 @@ export class Cp2Store {
     const account = guest ?? this.createAccount("phone", phone, now);
     const user = this.requireUser(this.userByAccount.get(account.id));
     const normalizedPhone = normalizeInternationalOwnerPhoneNumber(phone);
-    if (guest !== null) {
-      this.accountByDestination.delete(
-        destinationAccountKey(guest.primaryAuthChannel, guest.primaryAuthDestination)
-      );
-      Object.assign(guest, { primaryAuthChannel: "phone", primaryAuthDestination: phone });
-      this.accountByDestination.set(destinationAccountKey("phone", phone), guest.id);
-      this.promoteAccountIdentityLevel(guest.id, "strong");
-      for (const [id, identity] of this.accountIdentities) {
-        if (identity.accountId === guest.id && identity.type === "phone") {
-          this.identityAccountByValue.delete(
-            destinationAccountKey("phone", identity.normalizedValue)
-          );
-          this.accountIdentities.delete(id);
-        }
-      }
-    }
+    if (guest !== null) this.clearGuestIdentity(guest, phone);
     Object.assign(user, {
       displayName,
       phoneNumberE164: phone,
@@ -3418,6 +3514,40 @@ export class Cp2Store {
     return this.requireAnySession(session.id, now);
   }
 
+  /** Turns a guest into a phone account in place. Its data, shop and sessions stay attached. */
+  private clearGuestIdentity(guest: AccountSummary, phone: string): void {
+    this.accountByDestination.delete(
+      destinationAccountKey(guest.primaryAuthChannel, guest.primaryAuthDestination)
+    );
+    Object.assign(guest, { primaryAuthChannel: "phone", primaryAuthDestination: phone });
+    this.accountByDestination.set(destinationAccountKey("phone", phone), guest.id);
+    this.promoteAccountIdentityLevel(guest.id, "strong");
+    for (const [id, identity] of this.accountIdentities) {
+      if (identity.accountId === guest.id && identity.type === "phone") {
+        this.identityAccountByValue.delete(
+          destinationAccountKey("phone", identity.normalizedValue)
+        );
+        this.accountIdentities.delete(id);
+      }
+    }
+  }
+
+  /**
+   * A guest with a phone and a credential can sign in, so it stops being a guest. Without this,
+   * passkey login and recovery, which need a phone account, would refuse it.
+   */
+  private promoteGuestWithCredential(accountId: string, now: Date): void {
+    const account = this.accounts.get(accountId);
+    if (account?.primaryAuthChannel !== "device") return;
+    const user = this.requireUser(this.userByAccount.get(accountId));
+    const phone = user.phoneNumberE164;
+    if (!this.hasCredential(accountId) || typeof phone !== "string" || phone.length === 0) return;
+    const holder = this.accountByDestination.get(destinationAccountKey("phone", phone));
+    if (holder !== undefined && holder !== accountId) return;
+    this.clearGuestIdentity(account, phone);
+    this.addAccountIdentity(account, user, "phone", phone, true, now, false);
+  }
+
   /** A guest may sign up with the phone they already saved; it is not someone else's account. */
   isCurrentGuestPhone(sessionId: string | null, phone: string, now = new Date()): boolean {
     const guest = this.guestAccountForSession(sessionId, now);
@@ -3426,7 +3556,8 @@ export class Cp2Store {
 
   private guestAccountForSession(sessionId: string | null, now: Date): AccountSummary | null {
     const session = this.getSession(sessionId, now);
-    if (session === null || session.account.primaryAuthChannel !== "device") return null;
+    // A guest with a credential must prove it, so signup cannot be a way around that.
+    if (session === null || !this.guestWithoutCredential(session.account)) return null;
     return this.accounts.get(session.account.id) ?? null;
   }
 
@@ -3613,10 +3744,15 @@ export class Cp2Store {
   ): ReturnType<PasskeyDomain["beginPasskeyRegistration"]> {
     return this.passkeyDomain.beginPasskeyRegistration(...args);
   }
-  completePasskeyRegistration(
+  async completePasskeyRegistration(
     ...args: Parameters<PasskeyDomain["completePasskeyRegistration"]>
   ): ReturnType<PasskeyDomain["completePasskeyRegistration"]> {
-    return this.passkeyDomain.completePasskeyRegistration(...args);
+    const passkey = await this.passkeyDomain.completePasskeyRegistration(...args);
+    const session = this.getSession(args[0].sessionId, args[0].now ?? new Date());
+    if (session !== null) {
+      this.promoteGuestWithCredential(session.account.id, args[0].now ?? new Date());
+    }
+    return passkey;
   }
   beginPasskeyAuthentication(
     ...args: Parameters<PasskeyDomain["beginPasskeyAuthentication"]>
@@ -3698,6 +3834,7 @@ export class Cp2Store {
         source: "shop_registration",
         now
       });
+      this.promoteGuestWithCredential(session.account.id, now);
     }
 
     const businessId = randomUUID();
@@ -3790,15 +3927,15 @@ export class Cp2Store {
     const session = this.requireOwnerPhoneSession(input.sessionId, now);
     this.enforcePhoneUpdateRateLimit(session.account.id, now);
 
-    return {
-      user: this.applyOwnerPhoneIdentity({
-        session,
-        phoneNumber: input.phoneNumber,
-        country: input.country,
-        source: "shop_registration",
-        now
-      })
-    };
+    const user = this.applyOwnerPhoneIdentity({
+      session,
+      phoneNumber: input.phoneNumber,
+      country: input.country,
+      source: "shop_registration",
+      now
+    });
+    this.promoteGuestWithCredential(session.account.id, now);
+    return { user };
   }
 
   updateOwnDisplayName(input: { sessionId: string | null; displayName: string; now?: Date }): {
@@ -11264,7 +11401,7 @@ export class Cp2Store {
       }
       this.verifyAccountPinForSession(session, input.currentPin, now);
     } else {
-      this.requireRecoveryEnrollmentSession(input.sessionId, now);
+      this.requireFirstCredentialSession(input.sessionId, now);
     }
 
     this.verifyMfaForCredentialChange(session.account.id, input.mfaCode, now);
@@ -11274,6 +11411,7 @@ export class Cp2Store {
       createPasswordCredential(session.account.id, input.password, now)
     );
     this.recordSecurityEvent("auth.password_created", session.account.id, "success", now, {});
+    this.promoteGuestWithCredential(session.account.id, now);
     return { created: true };
   }
 
@@ -12135,6 +12273,26 @@ export class Cp2Store {
     return session;
   }
 
+  /** A guest's first credential has nothing to be proven with, however old the session is. */
+  private requireFirstCredentialSession(sessionId: string | null, now: Date): AuthSessionView {
+    const session = this.requirePinVerifiedSession(sessionId, now);
+    return this.guestWithoutCredential(session.account)
+      ? session
+      : this.requireRecoveryEnrollmentSession(sessionId, now);
+  }
+
+  private guestWithoutCredential(account: AccountSummary): boolean {
+    return account.primaryAuthChannel === "device" && !this.hasCredential(account.id);
+  }
+
+  private hasCredential(accountId: string): boolean {
+    return (
+      this.accountPinHashes.has(accountId) ||
+      this.passwordCredentials.has(accountId) ||
+      [...this.passkeyDomain.passkeysMap.values()].some((item) => item.accountId === accountId)
+    );
+  }
+
   private requireRecoveryEnrollmentSession(sessionId: string | null, now: Date): AuthSessionView {
     const session = this.requireRecentlyAuthenticatedSession(sessionId, now);
     const accountId = session.account.id;
@@ -12160,8 +12318,7 @@ export class Cp2Store {
    */
   private requireOwnerPhoneSession(sessionId: string | null, now: Date): AuthSessionView {
     const session = this.requirePinVerifiedSession(sessionId, now);
-    return session.account.primaryAuthChannel === "device" &&
-      !this.accountCanSignIn(session.account)
+    return this.isGuestWithoutSignIn(session.account)
       ? session
       : this.requireRecentlyAuthenticatedSession(sessionId, now);
   }

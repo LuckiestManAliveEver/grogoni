@@ -424,6 +424,7 @@ const mutatingMethodNames = new Set([
   "updateVerificationTier",
   "verifyAccountPin",
   "verifyAccountPassword",
+  "createPassword",
   "verifyExternallyApprovedOtp",
   "verifyOtp",
   "finalizeShopDeletion",

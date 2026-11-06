@@ -31,7 +31,11 @@ class DeviceMessagingAdapter(private val context: Context) {
         "deviceSecurity" -> JSONObject().put("screenLock", context.getSystemService(android.app.KeyguardManager::class.java).isDeviceSecure)
         "prepareRecoveryKey" -> {
             val account = verifiedWebAccount(webCookie)
-            JSONObject().put("accountId", account.getString("id")).put("publicKeyJwk", market.grogoni.app.auth.DeviceRecoveryKey(context).publicJwk(account.getString("id")))
+            market.grogoni.app.auth.DeviceRecoveryKey(context).let { key ->
+                val id = account.getString("id")
+                JSONObject().put("accountId", id).put("publicKeyJwk", key.publicJwk(id))
+                    .put("attestationChain", key.attestationChain(id))
+            }
         }
         "commitRecoveryKey" -> {
             val account = verifiedWebAccount(webCookie)

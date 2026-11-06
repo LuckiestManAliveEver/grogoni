@@ -46,10 +46,14 @@ Android screen-lock credentials (`requiresServerChallenge`) are unaffected.
 Known limits:
 
 - An account with no sign-in of its own is still restored by the key, whatever its identity level.
-  That includes a guest with a shop or phone but no PIN or password, a guest who added a passkey
-  without being phone-primary, since passkey sign-in only works for phone-primary accounts, and a
-  guest with only a verified email. The login screen starts from a phone number, so email recovery
-  is not counted as a way in.
-- `requiresServerChallenge` is set by `deviceSecurity: true` on `/auth/continue`, and nothing proves
-  the key is in the Android Keystore. A script holding a recently verified session could mark a
-  software key this way. Closing this needs Android Key Attestation at enrollment.
+  That includes a guest with a shop or phone but no credential, and a guest with only a verified
+  email. A guest shop owner is asked to add a passkey or PIN (`SecureShopPrompt.tsx`), the one prompt
+  a guest gets, because registering a shop is something they started. Adding a credential to an
+  account with a phone turns it into a phone account, so passkey login and recovery work.
+- Android screen-lock enrollment sends an Android Key Attestation chain, which the server checks in
+  `android-key-attestation.ts`: pinned Google root, hardware-backed key, user authentication
+  required, this app's package and signer, and the account. It is recorded as `attested`. Set
+  `ANDROID_KEY_ATTESTATION_REQUIRED=true` to refuse unproven keys, after the attesting Android build
+  is out and tested on a real phone. Add Play App Signing's digest to `ANDROID_ATTESTATION_SIGNERS`.
+  Edge also checks Google's revocation list and treats an unreadable list as unproven; the Node
+  server has no network step, so run enforcement on Edge.

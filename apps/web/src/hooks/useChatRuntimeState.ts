@@ -9,6 +9,8 @@ import { readCurrentOwnerRoute } from "../browser-navigation";
 import {
   continueShopRegistration,
   isShopRegistrationRequest,
+  readPendingShopRegistration,
+  savePendingShopRegistration,
   startShopRegistration,
   type ShopRegistrationStep
 } from "../shop-registration-chat";
@@ -202,11 +204,7 @@ function customerIdFromToolResult(toolResult: unknown): string | undefined {
 export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
   const [isBrowserGenerating, setIsBrowserGenerating] = useState(false);
   // A flow belongs to one account and one thread: a reply elsewhere is not an answer to it.
-  const shopRegistrationRef = useRef<{
-    accountId: string;
-    threadId: string | null;
-    step: ShopRegistrationStep;
-  } | null>(null);
+  const setShopRegistration = savePendingShopRegistration;
   const activeClientInferenceCancelRef = useRef<(() => void) | null>(null);
 
   const {
@@ -532,14 +530,14 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       !hasHumanRecipient && attachments.length === 0 ? parseReminderIntent(message) : null;
     // Explicit capabilities must reach the authorized runtime, including from buyer mode.
     const explicitCapability = message.startsWith("#");
-    const pendingShop = shopRegistrationRef.current;
+    const pendingShop = readPendingShopRegistration();
     const shopRegistration =
       pendingShop?.accountId === activeSession.account.id &&
       pendingShop.threadId === activeConversationId
         ? pendingShop.step
         : null;
     // A reminder changes the subject: a later "ok" answers it, not "create this shop?".
-    if (shopRegistration === null || reminder !== null) shopRegistrationRef.current = null;
+    if (shopRegistration === null || reminder !== null) setShopRegistration(null);
     if (
       business === null &&
       !explicitCapability &&
@@ -574,14 +572,11 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
               activeSession.user.phoneNumberE164 ?? null
             );
       const remember = (step: ShopRegistrationStep | null) => {
-        shopRegistrationRef.current =
+        setShopRegistration(
           step === null
             ? null
-            : {
-                accountId: activeSession.account.id,
-                threadId: activeConversationId,
-                step
-              };
+            : { accountId: activeSession.account.id, threadId: activeConversationId, step }
+        );
       };
       if (turn.kind !== "register") {
         remember(turn.kind === "ask" ? turn.next : null);
@@ -641,11 +636,11 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
         searchBuyFeed: marketplaceSearch,
         startShopRegistration: () => {
           const turn = startShopRegistration();
-          shopRegistrationRef.current = {
+          setShopRegistration({
             accountId: activeSession.account.id,
             threadId: activeConversationId,
             step: turn.next
-          };
+          });
           return turn.reply;
         },
         askModel: (question, clientMessageId) =>

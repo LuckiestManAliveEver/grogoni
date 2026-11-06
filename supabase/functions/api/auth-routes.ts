@@ -24,6 +24,13 @@ interface Dependencies {
   normalizePhone: (value: string, country?: string) => PhoneIdentity;
   passwordEnabled?: boolean;
   passkeysEnabled?: () => boolean;
+  /** Reason an Android device key is unproven, or null. Runs only when enrolling device security. */
+  deviceAttestationProblem?: (input: {
+    chain: unknown;
+    publicKeyJwk: Row;
+    accountId: string;
+  }) => Promise<string | null>;
+  deviceAttestationRequired?: () => boolean;
 }
 const postPaths = new Set([
   "/auth/continue",
@@ -206,6 +213,8 @@ export function createAuthRoutes({
   secrets,
   normalizePhone,
   passwordEnabled = true,
+  deviceAttestationProblem,
+  deviceAttestationRequired,
   passkeysEnabled = () => false
 }: Dependencies) {
   if (Object.values(secrets).some((value) => value.trim().length < 32))
@@ -534,7 +543,15 @@ export function createAuthRoutes({
     if (!session) return null;
     const account = (await client.query(`${accountSelect} where a.id = $1`, [session.account_id]))
       .rows[0];
-    return account?.primary_auth_channel === "device" ? account : null;
+    if (account?.primary_auth_channel !== "device") return null;
+    // A guest with a credential must prove it, so signup cannot be a way around that.
+    const credentials = await client.query(
+      `select 1 from account_pin_hashes where account_id = $1
+      union all select 1 from password_credentials where account_id = $1
+      union all select 1 from cp2_passkeys where account_id = $1::text limit 1`,
+      [session.account_id]
+    );
+    return credentials.rows.length === 0 ? account : null;
   }
   async function upgradeGuestAccount(
     client: SqlClient,
@@ -607,7 +624,8 @@ export function createAuthRoutes({
     client: SqlClient,
     accountId: string,
     value: unknown,
-    requiresServerChallenge = false
+    requiresServerChallenge = false,
+    attested = false
   ) {
     const jwk = value as Row | undefined;
     if (
@@ -641,10 +659,14 @@ export function createAuthRoutes({
           "device_credential_in_use",
           "This device key belongs to another account."
         );
-      if (requiresServerChallenge && existing.requiresServerChallenge !== true) {
+      if (
+        requiresServerChallenge &&
+        (existing.requiresServerChallenge !== true || (attested && existing.attested !== true))
+      ) {
         await mirror(client, "cp2_device_recovery_credentials", String(existing.id), {
           ...existing,
-          requiresServerChallenge: true
+          requiresServerChallenge: true,
+          attested: attested || existing.attested === true
         });
       }
       return String(existing.id);
@@ -656,6 +678,7 @@ export function createAuthRoutes({
       accountId,
       publicKeyJwk: publicKey,
       requiresServerChallenge,
+      attested,
       createdAt: now,
       updatedAt: now,
       revokedAt: null,
@@ -881,6 +904,36 @@ export function createAuthRoutes({
             const account = (
               await client.query(`${accountSelect} where a.id = $1`, [existing.account_id])
             ).rows[0];
+            const alreadyAttested =
+              data.deviceSecurity === true &&
+              (
+                await client.query(
+                  `select 1 from cp2_device_recovery_credentials where account_id = $1::text
+                  and record->'publicKeyJwk'->>'x' = $2 and record->>'attested' = 'true'
+                  and record->>'revokedAt' is null limit 1`,
+                  [
+                    existing.account_id,
+                    String((data.devicePublicKeyJwk as Row | undefined)?.x ?? "")
+                  ]
+                )
+              ).rows.length > 0;
+            const problem =
+              data.deviceSecurity === true && !alreadyAttested
+                ? deviceAttestationProblem
+                  ? await deviceAttestationProblem({
+                      chain: data.deviceAttestation,
+                      publicKeyJwk: data.devicePublicKeyJwk as Row,
+                      accountId: String(existing.account_id)
+                    })
+                  : "attestation_unavailable"
+                : null;
+            if (data.deviceSecurity === true && problem !== null && deviceAttestationRequired?.()) {
+              return error(
+                403,
+                "device_attestation_required",
+                "This device cannot prove its screen lock. Use a PIN or passkey, or update Grogoni."
+              );
+            }
             return Response.json({
               ...publicActor(account),
               session: sessionView(existing),
@@ -892,7 +945,8 @@ export function createAuthRoutes({
                       client,
                       String(existing.account_id),
                       data.devicePublicKeyJwk,
-                      data.deviceSecurity === true
+                      data.deviceSecurity === true,
+                      data.deviceSecurity === true && problem === null
                     )
                   })
             });
@@ -1269,9 +1323,14 @@ export function createAuthRoutes({
             account = await findAccount(client, id.type, id.value);
             if (!account) return error(409, "identity_in_use", "That identity is already in use.");
           } else {
-            account = await newAccount(client, id);
-            await setPin(client, String(account.account_id), value);
-            const session = await makeSession(client, account, request);
+            const guest = await guestAccount(client, request);
+            const guestSession = guest ? await activeSession(client, request) : null;
+            account = guest
+              ? await upgradeGuestAccount(client, guest, id, String(guest.display_name))
+              : await newAccount(client, id);
+            await setPin(client, String(account!.account_id), value);
+            if (guestSession) await revokeFamily(client, guestSession, "signup_upgrade");
+            const session = await makeSession(client, account!, request);
             return sessionResponse(
               account,
               session.row,

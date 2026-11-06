@@ -144,6 +144,24 @@ const auth = createAuthRoutes({
   },
   passwordEnabled: Deno.env.get("AUTH_PASSWORD_FALLBACK_ENABLED") !== "false",
   passkeysEnabled: () => Deno.env.get("AUTH_PASSKEYS_ENABLED") !== "false",
+  deviceAttestationRequired: () => Deno.env.get("ANDROID_KEY_ATTESTATION_REQUIRED") === "true",
+  deviceAttestationProblem: async (input) => {
+    const {
+      androidAttestationProblem,
+      fetchAndroidRevokedSerials,
+      grogoniAndroidPackage,
+      grogoniAndroidSigners
+    } = await import("./domain-bundle.mjs");
+    // Unreadable means unproven: a leaked key is only stopped by this list.
+    const revokedSerials = await fetchAndroidRevokedSerials();
+    if (revokedSerials === null) return "revocation_unavailable";
+    return androidAttestationProblem({
+      ...input,
+      revokedSerials,
+      packageName: grogoniAndroidPackage,
+      signerDigests: grogoniAndroidSigners(Deno.env.get("ANDROID_ATTESTATION_SIGNERS"))
+    });
+  },
   normalizePhone: (value, country) => {
     const normalizedCountry = country?.toUpperCase();
     if (normalizedCountry && !isSupportedCountry(normalizedCountry))
