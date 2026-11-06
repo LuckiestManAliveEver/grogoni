@@ -297,7 +297,7 @@ export async function fetchAndroidRevokedSerials(
     return revocations.serials;
   }
   try {
-    const response = await fetcher(statusUrl, { signal: AbortSignal.timeout(4_000) });
+    const response = await fetcher(statusUrl, { signal: AbortSignal.timeout(10_000) });
     if (!response.ok) return null;
     const { entries } = (await response.json()) as { entries?: Record<string, unknown> };
     if (entries === undefined) return null;
