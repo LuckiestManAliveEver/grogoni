@@ -56,7 +56,7 @@ class DeviceRecoveryKey(private val context: Context) {
         discardFailedReplacement(accountId, alias)
         if (!keyStore.containsAlias(alias)) {
             try {
-                generateKey(alias, accountId, attest = Build.VERSION.SDK_INT >= 24)
+                generateKey(alias, accountId, attest = true)
             } catch (error: ProviderException) {
                 // Attestation can be unavailable, such as offline. The server decides if that's enough.
                 generateKey(alias, accountId, attest = false)
@@ -82,7 +82,7 @@ class DeviceRecoveryKey(private val context: Context) {
                 builder.setUserAuthenticationValidityDurationSeconds(30)
             }
             // Binds the hardware's proof to this account; see android-key-attestation.ts.
-            if (attest) {
+            if (attest && Build.VERSION.SDK_INT >= 24) {
                 builder.setAttestationChallenge(MessageDigest.getInstance("SHA-256").digest(
                     "grogoni-device-recovery-attestation:v1:$accountId".toByteArray(Charsets.UTF_8)))
             }
