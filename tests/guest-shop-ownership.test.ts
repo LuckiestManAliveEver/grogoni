@@ -173,6 +173,49 @@ describe("a guest owner secures their shop", () => {
   });
 });
 
+describe("PIN signup on the guest's own saved phone", () => {
+  it.each(["/auth/pin/signup", "/auth/pin/continue"])("%s keeps the account", async (url) => {
+    const { store, app, call, account, register } = await fixture();
+    await register();
+    const done = await call("POST", url, { method: "phone", contact: phone, pin: "4826" });
+    expect(done.statusCode, done.body).toBe(200);
+    expect(done.json<{ account: { id: string } }>().account.id).toBe(account.id);
+    expect(store.snapshot().accounts).toHaveLength(1);
+    await app.close();
+  });
+});
+
+describe("a phone another account signs in with", () => {
+  it("stops a guest becoming a phone account on it, and they can still add a PIN", async () => {
+    const { store, app, call, account } = await fixture();
+    const holder = store.signupWithPhonePin({ destination: phone, pin: "1234" });
+    const snapshot = store.snapshot();
+    snapshot.users.find((user) => user.id === holder.user.id)!.phoneNumberE164 = "+254700123457";
+    Object.assign(
+      snapshot.users.find((user) => user.accountId === account.id)!,
+      {
+        phoneNumberE164: phone
+      }
+    );
+    store.hydrateSnapshot(snapshot);
+    const secured = await call("POST", "/auth/pin/setup", { pin: "4826", pinConfirmation: "4826" });
+    expect(secured.statusCode, secured.body).toBe(200);
+    expect(store.snapshot().accounts.find((item) => item.id === account.id)).toMatchObject({
+      primaryAuthChannel: "device"
+    });
+    await app.close();
+  });
+
+  it("refuses the number with a clear error", async () => {
+    const { store, app, register } = await fixture();
+    store.signupWithPhonePin({ destination: phone, pin: "1234" });
+    const created = await register();
+    expect(created.statusCode).toBe(409);
+    expect(created.json<{ code: string }>().code).toBe("PHONE_ALREADY_IN_USE");
+    await app.close();
+  });
+});
+
 describe("a stolen guest session", () => {
   it("cannot sign up over a credential the guest already has", async () => {
     const { store, app, call, account } = await fixture();

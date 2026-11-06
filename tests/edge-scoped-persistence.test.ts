@@ -168,6 +168,26 @@ describe("Edge scoped persistence", () => {
     );
   });
 
+  it("loads whoever signs in with a claimed phone, so a collision is seen before saving", async () => {
+    const owner = "00000000-0000-4000-8000-0000000000aa";
+    const query = vi.fn(async () => ({
+      rows: [{ account_id: owner, user_id: owner, primary_auth_destination: "device:x" }]
+    }));
+    const body = { phoneNumber: "0700123456", country: "KE" };
+    const scope = await createEdgeSnapshotScope(
+      { query } as unknown as PoolClient,
+      new Request("https://grogoni.com/account/phone", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body)
+      }),
+      "/account/phone",
+      Buffer.from(JSON.stringify(body))
+    );
+    expect(scope.withClause).toContain("phone_holder.phone_number_e164 = '+254700123456'");
+    expect(scope.withClause).toContain("primary_auth_destination in ('+254700123456'");
+  });
+
   it("escapes user-supplied lookup values and uses invitation destinations", async () => {
     const query = vi.fn(async () => ({
       rows: [{ account_id: "account", user_id: "user", primary_auth_destination: "+442079460123" }]

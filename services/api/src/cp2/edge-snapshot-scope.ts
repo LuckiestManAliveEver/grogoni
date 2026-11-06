@@ -1,4 +1,4 @@
-import { normalizeDestination } from "./phone-identity.js";
+import { normalizeDestination, normalizeOwnerPhoneNumber } from "./phone-identity.js";
 import { createHash } from "node:crypto";
 import { escapeLiteral, type PoolClient } from "pg";
 import { retainedRuntimeCheckpointSql } from "./domains/runtime-handoff/checkpoint-retention.js";
@@ -206,6 +206,9 @@ export async function createEdgeSnapshotScope(
   const actorAccount = escapeLiteral(actor?.account_id ?? "");
   const actorUser = escapeLiteral(actor?.user_id ?? "");
   const destination = escapeLiteral(actor?.primary_auth_destination ?? "");
+  // Who already holds a phone as their sign-in. Scoped data cannot otherwise see them, so a guest
+  // could take that number or become a phone account on it, and hit the unique index.
+  const claimedPhone = escapeLiteral(canonicalClaimedPhone(path, input));
   const requestedBusiness = escapeLiteral(businessId && uuid.test(businessId) ? businessId : "");
   const storefront = escapeLiteral(publicAgent ? decodeURIComponent(publicAgent) : recipient);
   const search = escapeLiteral(
@@ -340,7 +343,13 @@ export async function createEdgeSnapshotScope(
     [
       "edge_identity_user_ids",
       `select id from edge_user_ids union select id from edge_contact_user_ids
-       union select id::text from public.users where account_id::text in (select id from edge_peer_account_ids)`
+       union select id::text from public.users where account_id::text in (select id from edge_peer_account_ids)
+      union select phone_holder.id::text from public.users phone_holder
+      join public.accounts holder_account on holder_account.id = phone_holder.account_id
+      where phone_holder.phone_number_e164 = ${claimedPhone}
+      or (holder_account.primary_auth_channel = 'phone'
+      and holder_account.primary_auth_destination in (${claimedPhone},
+        (select phone_number_e164 from public.users where id = nullif(${actorUser}, '')::uuid)))`
     ],
     [
       "edge_account_ids",
@@ -705,5 +714,21 @@ export async function allocateAccountSyncSequences(
       change.sequence = sequence;
       assigned.set(change.cursor, sequence);
     }
+  }
+}
+
+/** The number a phone-setting request will save, in the same form the store saves it. */
+function canonicalClaimedPhone(path: string, input: Record<string, unknown>): string {
+  if (
+    (path !== "/account/phone" && path !== "/businesses") ||
+    typeof input.phoneNumber !== "string"
+  )
+    return "";
+  const country = input.country ?? input.phoneCountry;
+  try {
+    return normalizeOwnerPhoneNumber(input.phoneNumber, typeof country === "string" ? country : "")
+      .e164;
+  } catch {
+    return ""; // The route refuses this number itself.
   }
 }

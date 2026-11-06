@@ -3091,7 +3091,8 @@ export class Cp2Store {
     this.requirePinAttemptAllowed(attemptKey, now);
     const accountId = this.resolveIdentityAccount(input.channel, destination);
 
-    if (accountId === undefined) {
+    const guest = this.guestAccountForSession(input.sessionId ?? null, now);
+    if (accountId === undefined || accountId === guest?.id) {
       const upgraded =
         input.channel === "phone" ? this.upgradeGuestWithPin({ ...input, destination, now }) : null;
       const session =

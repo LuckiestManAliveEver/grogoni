@@ -98,10 +98,12 @@ export function savePendingShopRegistration(pending: PendingShopRegistration | n
 }
 
 function storedPending(): string | null {
+  // Memory holds the latest save even when storage refused it; storage survives a reload.
+  if (memoryPending !== null) return memoryPending;
   try {
-    return sessionStorage.getItem(storageKey) ?? memoryPending;
+    return sessionStorage.getItem(storageKey);
   } catch {
-    return memoryPending;
+    return null;
   }
 }
 

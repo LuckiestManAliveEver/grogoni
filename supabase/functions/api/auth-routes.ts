@@ -24,12 +24,13 @@ interface Dependencies {
   normalizePhone: (value: string, country?: string) => PhoneIdentity;
   passwordEnabled?: boolean;
   passkeysEnabled?: () => boolean;
-  /** Reason an Android device key is unproven, or null. Runs only when enrolling device security. */
-  deviceAttestationProblem?: (input: {
-    chain: unknown;
-    publicKeyJwk: Row;
-    accountId: string;
-  }) => Promise<string | null>;
+  /**
+   * Prepares the check for an Android device key. It reads Google's revocation list, so it runs
+   * before the transaction: a slow reply must not hold a database connection.
+   */
+  prepareDeviceAttestation?: () => Promise<
+    (input: { chain: unknown; publicKeyJwk: Row; accountId: string }) => string | null
+  >;
   deviceAttestationRequired?: () => boolean;
 }
 const postPaths = new Set([
@@ -213,7 +214,7 @@ export function createAuthRoutes({
   secrets,
   normalizePhone,
   passwordEnabled = true,
-  deviceAttestationProblem,
+  prepareDeviceAttestation,
   deviceAttestationRequired,
   passkeysEnabled = () => false
 }: Dependencies) {
@@ -885,6 +886,8 @@ export function createAuthRoutes({
           return error(410, "phone_login_required", "Log in with your mobile phone number.");
         const data = await body(path === "/auth/mfa/verify" ? request.clone() : request);
         if (path === "/auth/mfa/verify" && data.factor === "email") return null;
+        const attestationProblem =
+          data.deviceSecurity === true ? await prepareDeviceAttestation?.() : undefined;
         return await transaction(async (client) => {
           const existing = await activeSession(client, request);
           if (
@@ -919,8 +922,8 @@ export function createAuthRoutes({
               ).rows.length > 0;
             const problem =
               data.deviceSecurity === true && !alreadyAttested
-                ? deviceAttestationProblem
-                  ? await deviceAttestationProblem({
+                ? attestationProblem
+                  ? attestationProblem({
                       chain: data.deviceAttestation,
                       publicKeyJwk: data.devicePublicKeyJwk as Row,
                       accountId: String(existing.account_id)
@@ -1315,15 +1318,17 @@ export function createAuthRoutes({
           });
           return Response.json({ transactionId, expiresAt, verificationRequired: false });
         }
+        // A guest's own saved phone is not someone else's account.
+        const guest = signup || continuing ? await guestAccount(client, request) : null;
+        if (account && account.account_id === guest?.account_id) account = undefined;
         if (signup || (continuing && !account)) {
           await lock(client, `signup:${id.type}:${id.value}`);
           const existing = await findAccount(client, id.type, id.value, true);
-          if (existing) {
+          if (existing && existing.account_id !== guest?.account_id) {
             if (signup) return error(409, "account_exists", "Continue to sign in.");
             account = await findAccount(client, id.type, id.value);
             if (!account) return error(409, "identity_in_use", "That identity is already in use.");
           } else {
-            const guest = await guestAccount(client, request);
             const guestSession = guest ? await activeSession(client, request) : null;
             account = guest
               ? await upgradeGuestAccount(client, guest, id, String(guest.display_name))
