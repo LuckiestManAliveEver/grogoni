@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 const registry = readFileSync("apps/web/src/generated-surface-registry.tsx", "utf8");
 const grogoni = readFileSync("apps/web/src/grogoni-application-shared.ts", "utf8");
 const chatRuntime = readFileSync("apps/web/src/hooks/useChatRuntimeState.ts", "utf8");
+const chatToolResults = readFileSync("apps/web/src/hooks/chat-tool-results.ts", "utf8");
 const sharedTypes = readFileSync("packages/shared-types/src/index.ts", "utf8");
 const validation = readFileSync("services/api/src/cp2/domains/messaging/shared.ts", "utf8");
 
@@ -25,11 +26,11 @@ describe("customers chat-invokable capability (Phase 4c)", () => {
   });
 
   it("posts the customers card into the owner's own conversation after a successful customer tool run", () => {
-    expect(chatRuntime).toContain(
-      "const customerMutationToolNames: ReadonlySet<string> = new Set<RuntimeToolName>(["
+    expect(chatToolResults).toContain(
+      "export const customerMutationToolNames: ReadonlySet<string> = new Set<RuntimeToolName>(["
     );
-    expect(chatRuntime).toContain('"customer.create"');
-    expect(chatRuntime).toContain('"customer.update"');
+    expect(chatToolResults).toContain('"customer.create"');
+    expect(chatToolResults).toContain('"customer.update"');
     expect(chatRuntime).toContain(
       "customerMutationToolNames.has(result.turn.plan.toolName) &&\n        result.turn.plan.executedAt !== null"
     );

@@ -6,14 +6,21 @@ import { currentOfflineScope, isExplicitOfflineMode } from "../offline-runtime";
 import { runtimeHandoffController, runtimeTransition } from "../runtime-handoff";
 import { readCurrentOwnerRoute } from "../browser-navigation";
 
+import { isShopRegistrationRequest } from "../shop-registration-chat";
 import {
-  continueShopRegistration,
-  isShopRegistrationRequest,
-  readPendingShopRegistration,
-  savePendingShopRegistration,
-  startShopRegistration,
-  type ShopRegistrationStep
-} from "../shop-registration-chat";
+  beginShopRegistration,
+  pendingShopStep,
+  rememberShopStep,
+  runShopRegistrationTurn
+} from "./chat-shop-registration-turn";
+import {
+  customerIdFromToolResult,
+  customerMutationToolNames,
+  productIdFromToolResult,
+  productMutationToolNames,
+  supplierIdFromToolResult,
+  supplierMutationToolNames
+} from "./chat-tool-results";
 import type { RuntimeToolName } from "@grogoni/tool-core";
 import { renderRuntimeModelOutputInstructions, runtimeToolRegistry } from "@grogoni/tool-core";
 import type {
@@ -158,53 +165,8 @@ interface UseChatRuntimeStateDeps {
   registerReset: (domainKey: string, fn: () => void) => void;
 }
 
-const productMutationToolNames: ReadonlySet<string> = new Set<RuntimeToolName>([
-  "product.create",
-  "product.update",
-  "product.stock_adjust"
-]);
-
-function productIdFromToolResult(toolResult: unknown): string | undefined {
-  if (toolResult === null || typeof toolResult !== "object") return undefined;
-  if ("id" in toolResult && typeof toolResult.id === "string") return toolResult.id;
-  if (
-    "product" in toolResult &&
-    typeof toolResult.product === "object" &&
-    toolResult.product !== null &&
-    "id" in toolResult.product &&
-    typeof toolResult.product.id === "string"
-  ) {
-    return toolResult.product.id;
-  }
-  return undefined;
-}
-
-const supplierMutationToolNames: ReadonlySet<string> = new Set<RuntimeToolName>([
-  "supplier.create",
-  "supplier.update"
-]);
-
-function supplierIdFromToolResult(toolResult: unknown): string | undefined {
-  if (toolResult === null || typeof toolResult !== "object") return undefined;
-  if ("id" in toolResult && typeof toolResult.id === "string") return toolResult.id;
-  return undefined;
-}
-
-const customerMutationToolNames: ReadonlySet<string> = new Set<RuntimeToolName>([
-  "customer.create",
-  "customer.update"
-]);
-
-function customerIdFromToolResult(toolResult: unknown): string | undefined {
-  if (toolResult === null || typeof toolResult !== "object") return undefined;
-  if ("id" in toolResult && typeof toolResult.id === "string") return toolResult.id;
-  return undefined;
-}
-
 export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
   const [isBrowserGenerating, setIsBrowserGenerating] = useState(false);
-  // A flow belongs to one account and one thread: a reply elsewhere is not an answer to it.
-  const setShopRegistration = savePendingShopRegistration;
   const activeClientInferenceCancelRef = useRef<(() => void) | null>(null);
 
   const {
@@ -530,14 +492,10 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       !hasHumanRecipient && attachments.length === 0 ? parseReminderIntent(message) : null;
     // Explicit capabilities must reach the authorized runtime, including from buyer mode.
     const explicitCapability = message.startsWith("#");
-    const pendingShop = readPendingShopRegistration();
-    const shopRegistration =
-      pendingShop?.accountId === activeSession.account.id &&
-      pendingShop.threadId === activeConversationId
-        ? pendingShop.step
-        : null;
+    const shopScope = { accountId: activeSession.account.id, threadId: activeConversationId };
+    const shopRegistration = pendingShopStep(shopScope);
     // A reminder changes the subject: a later "ok" answers it, not "create this shop?".
-    if (shopRegistration === null || reminder !== null) setShopRegistration(null);
+    if (shopRegistration === null || reminder !== null) rememberShopStep(shopScope, null);
     if (
       business === null &&
       !explicitCapability &&
@@ -546,55 +504,21 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       reminder === null &&
       (shopRegistration !== null || isShopRegistrationRequest(message))
     ) {
-      const thread = mode === "marketplace" ? activeConversationId : null;
-      const deviceOnlyAfter = deviceOnlyAnchor(chatMessages);
-      const place = (author: "merchant" | "grogoniclaw", body: string) => {
-        const placed: ChatMessage = {
-          id: createClientMessageId(author === "merchant" ? "buyer" : "agent"),
-          author,
-          body,
-          createdAt: new Date().toISOString(),
-          deviceOnlyIn: thread,
-          deviceOnlyAfter
-        };
-        saveDeviceOnlyMessages(activeSession.account.id, [placed]);
-        setChatMessages((messages) => [...messages, placed]);
-      };
-      place("merchant", message);
-      clearSentDraft();
-      setReplyToMessageId(null);
-      const turn =
-        shopRegistration === null
-          ? startShopRegistration()
-          : continueShopRegistration(
-              shopRegistration,
-              message,
-              activeSession.user.phoneNumberE164 ?? null
-            );
-      const remember = (step: ShopRegistrationStep | null) => {
-        setShopRegistration(
-          step === null
-            ? null
-            : { accountId: activeSession.account.id, threadId: activeConversationId, step }
-        );
-      };
-      if (turn.kind !== "register") {
-        remember(turn.kind === "ask" ? turn.next : null);
-        place("grogoniclaw", turn.reply);
-        return;
-      }
-      remember(null);
-      try {
-        setStatusMessage(await registerShopFromChat(turn));
-      } catch (error) {
-        if (turn.phoneNumber !== null) remember({ step: "phone", name: turn.name });
-        place(
-          "grogoniclaw",
-          `I could not register the shop. ${getErrorMessage(error)}${
-            turn.phoneNumber === null ? "" : " Send the phone number again, or say cancel."
-          }`
-        );
-      }
+      await runShopRegistrationTurn({
+        scope: shopScope,
+        step: shopRegistration,
+        message,
+        savedPhone: activeSession.user.phoneNumberE164 ?? null,
+        thread: mode === "marketplace" ? activeConversationId : null,
+        chatMessages,
+        setChatMessages,
+        afterBubble: () => {
+          clearSentDraft();
+          setReplyToMessageId(null);
+        },
+        register: registerShopFromChat,
+        setStatusMessage
+      });
       return;
     }
     const buyerAssistant = !explicitCapability && (mode !== "seller" || business === null);
@@ -634,15 +558,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
         setChatMessages,
         isOpen: () => currentConversationRef.current === activeConversationId,
         searchBuyFeed: marketplaceSearch,
-        startShopRegistration: () => {
-          const turn = startShopRegistration();
-          setShopRegistration({
-            accountId: activeSession.account.id,
-            threadId: activeConversationId,
-            step: turn.next
-          });
-          return turn.reply;
-        },
+        startShopRegistration: () => beginShopRegistration(shopScope),
         askModel: (question, clientMessageId) =>
           askGuestModel({
             message: question,
