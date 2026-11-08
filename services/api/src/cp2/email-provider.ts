@@ -18,6 +18,8 @@ export interface RecoveryNotificationInput {
   to: string;
   sessionId: string;
   credential: "PIN" | "password";
+  /** `browser_approved`: a logged-in device let a browser in (trusted-device recovery approval). */
+  kind?: "credential_reset" | "browser_approved";
 }
 
 export interface EmailProvider {
@@ -118,12 +120,21 @@ class ResendEmailProvider implements EmailProvider {
 
   async sendRecoveryNotification(input: RecoveryNotificationInput): Promise<"sent" | "failed"> {
     try {
-      await this.send({
-        idempotencyKey: `recovery-${input.sessionId}`,
-        subject: `Your Grogoni account ${input.credential} was reset`,
-        text: `Your Grogoni ${input.credential} was reset using an enrolled recovery method. Other sessions were signed out. If this was not you, open https://grogoni.com and review your trusted devices and passkeys.`,
-        to: input.to
-      });
+      await this.send(
+        input.kind === "browser_approved"
+          ? {
+              idempotencyKey: `recovery-approval-${input.sessionId}`,
+              subject: "A browser was let in to your Grogoni account",
+              text: "One of your logged-in devices approved a new browser, and it is now logged in to your Grogoni account. If this was not you, within 24 hours open Grogoni on that device, go to Settings, Login & security, Approve a browser, and choose Undo, this wasn't me. That signs the browser out and removes anything it added.",
+              to: input.to
+            }
+          : {
+              idempotencyKey: `recovery-${input.sessionId}`,
+              subject: `Your Grogoni account ${input.credential} was reset`,
+              text: `Your Grogoni ${input.credential} was reset using an enrolled recovery method. Other sessions were signed out. If this was not you, open https://grogoni.com and review your trusted devices and passkeys.`,
+              to: input.to
+            }
+      );
       return "sent";
     } catch {
       return "failed";

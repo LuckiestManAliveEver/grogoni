@@ -191,6 +191,7 @@ try {
   if (controller.signal.aborted) throw new BootAborted();
   app = buildDaemonGateway({
     store,
+    maxActivePerUser: integerFromEnv("DAEMON_USER_MAX_ACTIVE", 20, 1, 1000),
     token: serviceToken,
     ready: () => !controller.signal.aborted,
     defaults: { modelId: defaultModelId, agentAdapterId: defaultAgentAdapterId },

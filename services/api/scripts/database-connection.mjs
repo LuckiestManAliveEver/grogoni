@@ -1,3 +1,5 @@
+import { URL } from "node:url";
+
 function positiveIntegerFromEnv(name, fallback, environment = process.env) {
   const value = environment[name];
 
@@ -65,6 +67,59 @@ export function readDatabaseUrl(environment = process.env) {
   }
 
   return null;
+}
+
+/** `user@host:port/database` with no password, for logs and errors. */
+export function describeDatabaseTarget(connectionString) {
+  try {
+    const url = new URL(connectionString);
+    const user = url.username ? `${decodeURIComponent(url.username)}@` : "";
+    return `${user}${url.hostname}${url.port ? `:${url.port}` : ""}${url.pathname}`;
+  } catch {
+    return "an unparseable database URL";
+  }
+}
+
+/** The database a URL names. A Neon pooler host and its direct host are the same database. */
+function databaseIdentity(connectionString) {
+  try {
+    const url = new URL(connectionString);
+    const [first, ...rest] = url.hostname.toLowerCase().split(".");
+    const host = [first.replace(/-pooler$/u, ""), ...rest].join(".");
+    return `${decodeURIComponent(url.username)}@${host}:${url.port || "5432"}${url.pathname}`;
+  } catch {
+    return connectionString.trim();
+  }
+}
+
+/**
+ * The database a migration or rollback changes. Stricter than readDatabaseUrl, because the
+ * scripts load .env: a DIRECT_DATABASE_URL from .env silently beat a DATABASE_URL given on the
+ * command line, and migrations ran against a remote database instead of a local one.
+ *
+ * MIGRATION_DATABASE_URL names the target outright. Otherwise, when DIRECT_DATABASE_URL and
+ * DATABASE_URL are both set they must name the same database, or nothing runs.
+ */
+export function readSchemaChangeDatabaseUrl(environment = process.env) {
+  const value = (name) => environment[name]?.trim() ?? "";
+  const explicit = value("MIGRATION_DATABASE_URL");
+  if (explicit !== "") return normalizeDatabaseUrl(explicit);
+  const direct = value("DIRECT_DATABASE_URL");
+  const pooled = value("DATABASE_URL");
+  if (environment.NODE_ENV === "production") {
+    if (direct === "")
+      throw new Error("DIRECT_DATABASE_URL is required for production migrations.");
+    return normalizeDatabaseUrl(direct);
+  }
+  if (direct !== "" && pooled !== "" && databaseIdentity(direct) !== databaseIdentity(pooled)) {
+    throw new Error(
+      `DIRECT_DATABASE_URL (${describeDatabaseTarget(direct)}) and DATABASE_URL ` +
+        `(${describeDatabaseTarget(pooled)}) name different databases. One of them may come ` +
+        "from .env. Set MIGRATION_DATABASE_URL to the database you mean."
+    );
+  }
+  const chosen = direct !== "" ? direct : pooled;
+  return chosen === "" ? null : normalizeDatabaseUrl(chosen);
 }
 
 export function databasePoolConfig(

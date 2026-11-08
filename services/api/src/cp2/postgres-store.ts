@@ -229,6 +229,14 @@ export const normalizedCollections: NormalizedCollection[] = [
 // persistence round trip - and blocking the response on it via app.ts's runtime GET flush wait -
 // on every capability/status poll is not worth it.
 const mutatingMethodNames = new Set([
+  "ingestLinkedWhatsAppMessage",
+  "ensureLinkedWhatsAppRuntime",
+  "setLinkedToolGrants",
+  "executeLinkedToolTurn",
+  "deliverLinkedDelegationResult",
+  "readLinkedWhatsAppEvidence",
+  "deliverLinkedWhatsAppReply",
+  "recordLinkedWhatsAppState",
   "executeSourceCommerce",
   "describeCommerceCatalogue",
   "refreshCommerceSource",
@@ -274,6 +282,11 @@ const mutatingMethodNames = new Set([
   "continueWithDevice",
   "recoverWithDeviceCredential",
   "beginDeviceRecovery",
+  "startRecoveryApproval",
+  "recoveryApprovalStatus",
+  "beginRecoveryApproval",
+  "approveRecoveryApproval",
+  "declineRecoveryApproval",
   "revokeDeviceRecoveryCredential",
   "continueWithChannelPin",
   "loginWithPassword",
@@ -339,6 +352,8 @@ const mutatingMethodNames = new Set([
   "createReceiptOCRJob",
   "createRuntimeSession",
   "createRuntimeTurn",
+  // Rejecting a WhatsApp-delegated action sends the requester an outcome message and audits it.
+  "rejectRuntimeAction",
   "recordVerifiedBusinessTaskExperience",
   "createSalesAgent",
   "createSalesAgentFromPhoneContact",
@@ -3638,6 +3653,11 @@ export async function saveRelationalCoreRecords(
   if (mayHaveRemovals("accountPinHashes")) {
     await deleteMissingAccountPinHashes(client, snapshotRecords(snapshot.accountPinHashes));
   }
+  // Edge password login reads password_credentials, so a removed password must leave it too.
+  // Before this, a deleted password (for example by a trusted-device undo) kept working there.
+  if (mayHaveRemovals("passwordCredentials")) {
+    await deleteMissingPasswordCredentials(client, snapshotRecords(snapshot.passwordCredentials));
+  }
   if (mayHaveRemovals("salesAgents")) {
     await deleteMissingRows(client, "sales_agents", snapshotRecords(snapshot.salesAgents));
   }
@@ -5077,6 +5097,28 @@ async function deleteMissingRows(
     return;
   }
   await client.query(`delete from ${tableName} where not (id = any($1::uuid[]))`, [ids]);
+}
+
+async function deleteMissingPasswordCredentials(
+  client: PoolClient,
+  records: SnapshotRecord[]
+): Promise<void> {
+  const accountIds = records.map((record) => requiredText(record, "accountId"));
+  const baseline = edgeRemovalBaselines.get(client);
+  if (baseline) {
+    // An Edge snapshot holds only the caller's scope: delete exactly what this request removed.
+    const removed = (baseline.passwordCredentials ?? [])
+      .map((record) => record.accountId)
+      .filter((id) => !accountIds.includes(id));
+    if (removed.length)
+      await client.query("delete from password_credentials where account_id = any($1::uuid[])", [
+        removed
+      ]);
+    return;
+  }
+  await client.query("delete from password_credentials where not (account_id = any($1::uuid[]))", [
+    accountIds
+  ]);
 }
 
 async function deleteMissingAccountPinHashes(

@@ -247,7 +247,10 @@ const lineBudgets = new Map([
   // out on its own.
   // Bumped again for unified-commerce wiring: gallery/description source registration delegates
   // to the existing services and sits beside its sibling wiring, not worth a separate module.
-  ["services/api/src/cp2/domains/agent-runtime/store.ts", 3900],
+  // Bumped again for WhatsApp channel delegation: a delegated turn must be deduplicated, audited
+  // and given the customer audience inside executeRuntimeTurn itself, beside the owner/staff
+  // audience decision it replaces, so the checks cannot be skipped by another entry point.
+  ["services/api/src/cp2/domains/agent-runtime/store.ts", 3950],
   ["services/api/src/cp2/domains/agent-runtime/domain-deps.ts", 325],
   ["services/api/src/cp2/domains/agent-runtime/runtime-context.ts", 300],
   ["services/api/src/cp2/domains/agent-runtime/runtime-model-routing.ts", 550],

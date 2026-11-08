@@ -1,3 +1,4 @@
+import WhatsAppLinkedConnection from "./WhatsAppLinkedConnection";
 import { useEffect, useState } from "react";
 import type {
   ChannelProvider,
@@ -47,7 +48,7 @@ export default function MessagingConnectionsPanel({ businessId }: { businessId: 
     (item) =>
       item.configured &&
       item.authorized &&
-      !["grogoni", "email", "native_sms", "tiktok"].includes(item.provider)
+      !["grogoni", "email", "native_sms", "tiktok", "whatsapp_linked"].includes(item.provider)
   );
   const canLinkCustomer = !!customerId && linkable.some((item) => item.provider === provider);
   async function linkCustomer() {
@@ -84,6 +85,7 @@ export default function MessagingConnectionsPanel({ businessId }: { businessId: 
   return (
     <section aria-label="Business messaging connections" className="record-form">
       <h3>Business messaging connections</h3>
+      <WhatsAppLinkedConnection key={businessId} businessId={businessId} />
       <p>
         Connected channels keep replies in the customer’s Grogoni conversation. App handoffs send
         from the account you choose in that app.
@@ -91,7 +93,7 @@ export default function MessagingConnectionsPanel({ businessId }: { businessId: 
       {providers.length === 0 && !message ? <p>Loading connections…</p> : null}
       <ul>
         {providers
-          .filter((item) => item.provider !== "grogoni")
+          .filter((item) => item.provider !== "grogoni" && item.provider !== "whatsapp_linked")
           .map((item) => (
             <li key={item.provider}>
               {formatChannelProvider(item.provider)} ·{" "}

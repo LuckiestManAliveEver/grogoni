@@ -181,11 +181,16 @@ export async function createEdgeSnapshotScope(
        join users u on u.id = c.user_id and u.account_id = a.id
        where a.status = 'active' and a.deleted_at is null limit 1`,
           [
-            sessionId && uuid.test(sessionId) ? sessionId : null,
+            // A recovery-approval poll comes from a signed-out browser that may still hold a guest
+            // session. Its account is the one the approval names, found by transaction id below;
+            // the guest cookie would otherwise win this `limit 1` and the approval could not load.
+            sessionId && uuid.test(sessionId) && path !== "/auth/recovery/device-approval/status"
+              ? sessionId
+              : null,
             createHash("sha256").update(bearer).digest("hex"),
             credential,
             path === "/oauth/token" ? codeHash : "",
-            /^\/auth\/(?:mfa\/(?:email\/challenge|verify)|recovery\/(?:verify|reset-password))$/.test(
+            /^\/auth\/(?:mfa\/(?:email\/challenge|verify)|recovery\/(?:verify|reset-password|device-approval\/status))$/.test(
               path
             ) &&
             typeof input.transactionId === "string" &&
@@ -493,6 +498,7 @@ export async function createEdgeSnapshotScope(
   return {
     directPairLock,
     modelSelectionLock,
+    recoveryApprovalLock: recoveryApprovalLockKey(path, input, actor?.primary_auth_destination),
     accountId: actor?.account_id as string | undefined,
     withClause,
     predicate(key: keyof Cp2Snapshot) {
@@ -546,6 +552,8 @@ export async function createEdgeSnapshotScope(
         return `account_id = ${actorAccount} and ${actorAccount} <> ''
           and record->>'createdAt' >= ${runtimeOperationDedupCutoffSql}
           ${dedupTask === null ? "" : `and task_id = ${escapeLiteral(dedupTask)}`}`;
+      if (key === "authTransactions" && path.startsWith("/auth/recovery/device-approval/"))
+        return recoveryApprovalTransactionScope(path, input, actorAccount, destination);
       if (key === "authTransactions" && typeof input.challengeId === "string")
         return `entity_id = ${escapeLiteral(input.challengeId)} or account_id = nullif(${actorAccount}, '')`;
       if (key === "passkeyCeremonies")
@@ -715,6 +723,59 @@ export async function allocateAccountSyncSequences(
       assigned.set(change.cursor, sequence);
     }
   }
+}
+
+/**
+ * Trusted-device recovery approval (domains/recovery-approval). A request belongs to no account
+ * until its owner approves it, so the account-scoped default would never load it:
+ * - status: the browser's own request, by id.
+ * - start: the open requests for the entered number, so the per-number cap holds.
+ * - approver routes: the open requests for the signed-in owner's number.
+ * The caller's own transactions still load, as everywhere else.
+ */
+export function recoveryApprovalTransactionScope(
+  path: string,
+  input: Record<string, unknown>,
+  actorAccount: string,
+  actorDestination: string
+): string {
+  const own = `(account_id = ${actorAccount} and ${actorAccount} <> '')`;
+  const approvalRequest = "record->'metadata'->>'recoveryApprovalRequest' = 'true'";
+  if (path === "/auth/recovery/device-approval/status")
+    return typeof input.transactionId === "string" && uuid.test(input.transactionId)
+      ? `entity_id = ${escapeLiteral(input.transactionId)} or ${own}`
+      : own;
+  if (path === "/auth/recovery/device-approval/start") {
+    // Signed out: only requests no account has claimed yet. An approved request never loads here.
+    const phone = approvalPhone(input.identifier);
+    return phone === null
+      ? own
+      : `${own} or (${approvalRequest} and account_id is null and record->>'identifierValue' = ${escapeLiteral(phone)})`;
+  }
+  return `${own} or (${approvalRequest} and record->>'identifierValue' = ${actorDestination} and ${actorDestination} <> '')`;
+}
+
+function approvalPhone(value: unknown): string | null {
+  return typeof value === "string" && /^\+[1-9]\d{6,14}$/u.test(value) ? value : null;
+}
+
+/**
+ * One lock per phone number for every route that changes its approval requests. A signed-out
+ * start resolves no account, so without this it ran unlocked: parallel starts all passed the
+ * limits, and a stale write could undo a concurrent approval. Taken before the account lock, in
+ * the same order on every route, so the two cannot deadlock.
+ */
+export function recoveryApprovalLockKey(
+  path: string,
+  input: Record<string, unknown>,
+  actorDestination: string | null | undefined
+): string | undefined {
+  if (!path.startsWith("/auth/recovery/device-approval/")) return undefined;
+  const phone =
+    path === "/auth/recovery/device-approval/start"
+      ? approvalPhone(input.identifier)
+      : approvalPhone(actorDestination);
+  return phone === null ? undefined : `edge:recovery-approval:${phone}`;
 }
 
 /** The number a phone-setting request will save, in the same form the store saves it. */

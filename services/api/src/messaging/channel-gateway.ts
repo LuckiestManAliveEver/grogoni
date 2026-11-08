@@ -23,6 +23,7 @@ export interface OutboundChannelMessage {
   text: string;
   subject?: string;
   replyToProviderMessageId?: string | null;
+  quotedMessage?: { id: string; sender: string | null; fromMe: boolean; text: string };
   externalThreadId?: string | null;
   attachments?: OutboundChannelAttachment[];
   endpoint: ChannelEndpointSummary;
@@ -403,6 +404,7 @@ export function providerToMessageChannel(provider: ChannelProvider): MessageChan
     grogoni: "grogoni",
     telegram: "telegram",
     whatsapp: "whatsapp_business",
+    whatsapp_linked: "whatsapp_linked",
     messenger: "facebook_messenger",
     instagram: "instagram_messaging",
     tiktok: "tiktok_business",

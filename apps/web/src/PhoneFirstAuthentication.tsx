@@ -13,6 +13,7 @@ import { ApiRequestError, apiFetch } from "./lib/api";
 import { AppIcon } from "./AppIcon";
 import { PhoneNumberField, authenticationPhoneCountries } from "./PhoneNumberField";
 import { usePasskeyEnrollment } from "./usePasskeyEnrollment";
+import { TrustedDeviceRecoveryWait } from "./TrustedDeviceRecoveryWait";
 import { getUserFacingErrorMessage } from "./user-facing-error";
 
 type Stage =
@@ -24,7 +25,11 @@ type Stage =
   | "recovery-reset"
   | "offer-passkey"
   | "create-pin"
-  | "recover-pin";
+  | "recover-pin"
+  | "approval-wait"
+  | "approval-passkey";
+
+type RecoveryMethod = "device" | "passkey" | "approval" | "email";
 
 interface LoginMethods {
   preferred: "passkey" | "pin";
@@ -79,8 +84,15 @@ export function PhoneFirstAuthentication({
   const [deviceSecurityReason, setDeviceSecurityReason] = useState("");
   const nativeDevice = isNativeDeviceHost();
   const [pendingSession, setPendingSession] = useState<AuthSessionView | null>(null);
+  const [approvalPasskeyCreated, setApprovalPasskeyCreated] = useState(false);
+  const [approvalIdentifier, setApprovalIdentifier] = useState("");
   const passkeyEnrollment = usePasskeyEnrollment({
-    onCreated: () => {
+    onCreated: async () => {
+      if (stage === "approval-passkey") {
+        setApprovalPasskeyCreated(true);
+        await continueToCredentialReset();
+        return;
+      }
       if (pendingSession !== null) onAuthenticated(pendingSession);
     }
   });
@@ -98,8 +110,9 @@ export function PhoneFirstAuthentication({
       active = false;
     };
   }, [nativeDevice]);
-  const [recoveryMethod, setRecoveryMethod] = useState<"device" | "passkey" | "email">(
-    nativeDevice && !browserSupportsWebAuthn() ? "device" : "passkey"
+  // Without WebAuthn there is no registered passkey to use, so offer the other device first.
+  const [recoveryMethod, setRecoveryMethod] = useState<RecoveryMethod>(
+    browserSupportsWebAuthn() ? "passkey" : nativeDevice ? "device" : "approval"
   );
   const [recoveryCredential, setRecoveryCredential] = useState<"pin" | "password">("pin");
   const [availableMfaFactors, setAvailableMfaFactors] = useState<string[]>([]);
@@ -265,6 +278,13 @@ export function PhoneFirstAuthentication({
 
   // Prove ownership with a user-verified registered passkey or verified backup email.
   async function startRecovery() {
+    if (recoveryMethod === "approval") {
+      setApprovalIdentifier(currentIdentifierBody().identifier);
+      setApprovalPasskeyCreated(false);
+      setStage("approval-wait");
+      setMessage("Approve this browser from a phone or computer that is still logged in.");
+      return;
+    }
     if (recoveryMethod !== "email") {
       if (recoveryMethod === "device") {
         const capability = await deviceSecurityCapability();
@@ -287,24 +307,7 @@ export function PhoneFirstAuthentication({
             : "Use the device previously secured for this mobile phone account."
         );
       }
-      const credentials = await apiFetch<{ hasPin: boolean; hasPassword: boolean }>(
-        "/auth/credentials/status",
-        { skipAuthRefresh: true }
-      );
-      setPassword("");
-      setPasswordConfirmation("");
-      setStage(
-        recoveryCredential === "password"
-          ? "recovery-reset"
-          : devicePinRecoveryStage(credentials.hasPin)
-      );
-      setMessage(
-        recoveryCredential === "password"
-          ? "Identity verified. Choose a new password."
-          : credentials.hasPin
-            ? "Identity verified. Choose a new PIN."
-            : "Identity verified. Create a 4-digit PIN."
-      );
+      await continueToCredentialReset();
       return;
     }
     const result = await apiFetch<{
@@ -323,6 +326,41 @@ export function PhoneFirstAuthentication({
     setRecoveryEmailVerified(false);
     setStage("recovery-reset");
     setMessage(result.message);
+  }
+
+  /** Identity is proven and a recovery grant is held: choose the new PIN or password. */
+  async function continueToCredentialReset() {
+    const credentials = await apiFetch<{ hasPin: boolean; hasPassword: boolean }>(
+      "/auth/credentials/status",
+      { skipAuthRefresh: true }
+    );
+    setPassword("");
+    setPasswordConfirmation("");
+    setStage(
+      recoveryCredential === "password"
+        ? "recovery-reset"
+        : devicePinRecoveryStage(credentials.hasPin)
+    );
+    setMessage(
+      recoveryCredential === "password"
+        ? "Identity verified. Choose a new password."
+        : credentials.hasPin
+          ? "Identity verified. Choose a new PIN."
+          : "Identity verified. Create a 4-digit PIN."
+    );
+  }
+
+  /** The other device approved this browser. Offer it a passkey before resetting the PIN. */
+  async function approvalGranted(session: AuthSessionView) {
+    setPendingSession(session);
+    if (browserSupportsWebAuthn()) {
+      setStage("approval-passkey");
+      setMessage(
+        "Approved. Create a passkey so next time you can log in with this device's fingerprint, face or screen lock."
+      );
+      return;
+    }
+    await continueToCredentialReset();
   }
 
   // Device proof and email verification both precede password mutation.
@@ -346,7 +384,9 @@ export function PhoneFirstAuthentication({
           setMessage(
             recoveryMethod === "passkey"
               ? "Verify your passkey again before changing your password."
-              : "Verify this device again before changing your password."
+              : recoveryMethod === "approval"
+                ? "Approve this browser again before changing your password."
+                : "Verify this device again before changing your password."
           );
           return;
         }
@@ -405,7 +445,9 @@ export function PhoneFirstAuthentication({
         setMessage(
           recoveryMethod === "passkey"
             ? "Verify your passkey again before changing your PIN."
-            : "Verify this device again before changing your PIN."
+            : recoveryMethod === "approval"
+              ? "Approve this browser again before changing your PIN."
+              : "Verify this device again before changing your PIN."
         );
         return;
       }
@@ -422,6 +464,10 @@ export function PhoneFirstAuthentication({
     if (stage === "offer-passkey") {
       // Already logged in: the only way back is forward into the account.
       if (pendingSession !== null) onAuthenticated(pendingSession);
+      return;
+    }
+    if (stage === "approval-passkey") {
+      void run(continueToCredentialReset);
       return;
     }
     if (stage === "mfa") {
@@ -465,7 +511,11 @@ export function PhoneFirstAuthentication({
                   ? "Create a PIN"
                   : stage === "recover-pin"
                     ? "Choose a new PIN"
-                    : "Recover your account";
+                    : stage === "approval-wait"
+                      ? "Approve from another device"
+                      : stage === "approval-passkey"
+                        ? "Create a passkey"
+                        : "Recover your account";
 
   return (
     <main className="auth-onboarding" aria-busy={busy}>
@@ -660,11 +710,10 @@ export function PhoneFirstAuthentication({
                     Recover with
                     <select
                       value={recoveryMethod}
-                      onChange={(event) =>
-                        setRecoveryMethod(event.target.value as "device" | "passkey" | "email")
-                      }
+                      onChange={(event) => setRecoveryMethod(event.target.value as RecoveryMethod)}
                     >
                       <option value="passkey">Registered passkey</option>
+                      <option value="approval">Approve from a logged-in device</option>
                       {nativeDevice ? <option value="device">Device security</option> : null}
                       <option value="email">Verified backup email</option>
                     </select>
@@ -685,12 +734,16 @@ export function PhoneFirstAuthentication({
                         <strong>
                           {recoveryMethod === "device"
                             ? "Recover using device security"
-                            : "Recover using a passkey"}
+                            : recoveryMethod === "approval"
+                              ? "Approve from a logged-in device"
+                              : "Recover using a passkey"}
                         </strong>
                         <p>
                           {recoveryMethod === "device"
                             ? "Use your fingerprint, face unlock, or phone screen lock to securely recover your Grogoni account."
-                            : "Use a passkey you previously registered for this Grogoni account. Your browser or password manager will ask you to verify it."}
+                            : recoveryMethod === "approval"
+                              ? "No passkey yet? Get a code here, enter it on a phone or computer that is still logged in, and confirm with that device's screen lock. Then create a passkey on this browser."
+                              : "Use a passkey you previously registered for this Grogoni account. Your browser or password manager will ask you to verify it."}
                         </p>
                         {recoveryMethod === "device" ? (
                           <>
@@ -711,12 +764,12 @@ export function PhoneFirstAuthentication({
                               </p>
                             </details>
                           </>
-                        ) : (
+                        ) : recoveryMethod === "passkey" ? (
                           <p>
-                            If you have not created a passkey, use your verified backup email. After
-                            signing in, choose Create passkey to set one up.
+                            No passkey yet? Choose Approve from a logged-in device, or use your
+                            verified backup email.
                           </p>
-                        )}
+                        ) : null}
                       </div>
                       <label>
                         Reset
@@ -752,15 +805,17 @@ export function PhoneFirstAuthentication({
                         ? browserSupportsWebAuthn()
                           ? "Recover with passkey"
                           : "Passkeys unavailable in this browser"
-                        : recoveryMethod === "device"
-                          ? nativeDevice && deviceAvailable === false
-                            ? "Try device security again"
-                            : deviceAvailable === null
-                              ? "Checking device security…"
-                              : deviceAvailable
-                                ? "Unlock with device security"
-                                : "Device security unavailable"
-                          : "Send email recovery code"}
+                        : recoveryMethod === "approval"
+                          ? "Get an approval code"
+                          : recoveryMethod === "device"
+                            ? nativeDevice && deviceAvailable === false
+                              ? "Try device security again"
+                              : deviceAvailable === null
+                                ? "Checking device security…"
+                                : deviceAvailable
+                                  ? "Unlock with device security"
+                                  : "Device security unavailable"
+                            : "Send email recovery code"}
                   </button>
                 </>
               ) : null}
@@ -812,6 +867,34 @@ export function PhoneFirstAuthentication({
                 {busy ? "Working…" : "Reset password"}
               </button>
             </form>
+          ) : null}
+          {stage === "approval-wait" ? (
+            <TrustedDeviceRecoveryWait
+              identifier={approvalIdentifier}
+              onApproved={(session) => void run(() => approvalGranted(session))}
+            />
+          ) : null}
+          {stage === "approval-passkey" ? (
+            <div className="auth-fields">
+              <button
+                className="auth-primary-button"
+                type="button"
+                disabled={passkeyEnrollment.busy || busy}
+                onClick={() => void passkeyEnrollment.enroll()}
+              >
+                {passkeyEnrollment.busy ? "Creating passkey…" : "Create passkey"}
+              </button>
+              {passkeyEnrollment.stepUpForm}
+              <button
+                className="auth-guest-button"
+                type="button"
+                disabled={passkeyEnrollment.busy || busy}
+                onClick={() => void run(continueToCredentialReset)}
+              >
+                Not now
+              </button>
+              {passkeyEnrollment.message ? <p role="alert">{passkeyEnrollment.message}</p> : null}
+            </div>
           ) : null}
           {stage === "offer-passkey" ? (
             <div className="auth-fields">
@@ -878,6 +961,16 @@ export function PhoneFirstAuthentication({
               >
                 {busy ? "Working…" : stage === "create-pin" ? "Create PIN" : "Save new PIN"}
               </button>
+              {approvalPasskeyCreated && pendingSession !== null ? (
+                <button
+                  className="auth-guest-button"
+                  type="button"
+                  disabled={busy}
+                  onClick={() => onAuthenticated(pendingSession)}
+                >
+                  Skip, I will log in with my passkey
+                </button>
+              ) : null}
             </form>
           ) : null}
           {stage === "mfa" ? (

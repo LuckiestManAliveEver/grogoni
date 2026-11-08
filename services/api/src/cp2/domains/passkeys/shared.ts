@@ -44,8 +44,10 @@ export interface PasskeyCredentialRecord extends PasskeySummary {
 export interface PasskeyCeremonyRecord {
   id: string;
   kind: "registration" | "authentication";
-  purpose?: "login" | "pin_recovery";
+  purpose?: "login" | "pin_recovery" | "recovery_approval";
   recoveryIdentifier?: string;
+  /** Set for `recovery_approval`: the browser's approval request this assertion vouches for. */
+  approvalRequestId?: string;
   rpId?: string;
   origin?: string;
   accountId: string | null;

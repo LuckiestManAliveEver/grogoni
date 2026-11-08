@@ -21,7 +21,10 @@ An account with neither cannot prove anything, so it stays signed in and is told
 within 15 minutes of signing in. It is never told to sign out, because it could not get back in.
 `usePasskeyEnrollment.tsx` owns this flow.
 
-PWA recovery offers Registered passkey and Verified backup email. Passkey recovery uses
+PWA recovery offers Registered passkey, Approve from a logged-in device, and Verified backup email.
+A browser without WebAuthn starts on the approval option. An account with no passkey gets a code
+here, approves it on a device that is still logged in, then creates its passkey in this browser
+(see `trusted-device-recovery-approval.md`). Passkey recovery uses
 `/auth/passkeys/login/options` with `purpose: pin_recovery` and the normalized account identifier,
 then verifies the browser assertion through `/auth/passkeys/login/verify`. The backend requires
 user verification and enforces the origin, relying-party ID, account binding, expiry and single-use

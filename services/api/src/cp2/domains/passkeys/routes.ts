@@ -35,6 +35,37 @@ interface PasskeyAuthenticationOptionsBody {
   identifier?: string;
 }
 
+/** The origin and relying-party id a passkey ceremony is bound to. Refuses unknown origins. */
+export function resolvePasskeyRelyingParty(
+  request: FastifyRequest,
+  authRuntime: AuthRuntimeConfig
+): { origin: string; rpId: string } {
+  const origin = request.headers.origin;
+
+  if (
+    !authRuntime.passkeysEnabled ||
+    origin === undefined ||
+    !authRuntime.expectedPasskeyOrigins.has(origin)
+  ) {
+    throw new Cp2Error(
+      403,
+      "passkey_origin_not_allowed",
+      "Passkeys are not available from this origin."
+    );
+  }
+
+  const url = new URL(origin);
+  const configuredRpId = process.env.WEBAUTHN_RP_ID?.trim();
+  const rpId =
+    configuredRpId && configuredRpId.length > 0
+      ? configuredRpId
+      : url.hostname.startsWith("www.")
+        ? url.hostname.slice(4)
+        : url.hostname;
+
+  return { origin: url.origin, rpId };
+}
+
 export function registerPasskeysRoutes(
   app: FastifyInstance,
   store: Cp2Store,
@@ -43,30 +74,7 @@ export function registerPasskeysRoutes(
   emailProvider: EmailProvider
 ): void {
   function passkeyRelyingParty(request: FastifyRequest): { origin: string; rpId: string } {
-    const origin = request.headers.origin;
-
-    if (
-      !authRuntime.passkeysEnabled ||
-      origin === undefined ||
-      !authRuntime.expectedPasskeyOrigins.has(origin)
-    ) {
-      throw new Cp2Error(
-        403,
-        "passkey_origin_not_allowed",
-        "Passkeys are not available from this origin."
-      );
-    }
-
-    const url = new URL(origin);
-    const configuredRpId = process.env.WEBAUTHN_RP_ID?.trim();
-    const rpId =
-      configuredRpId && configuredRpId.length > 0
-        ? configuredRpId
-        : url.hostname.startsWith("www.")
-          ? url.hostname.slice(4)
-          : url.hostname;
-
-    return { origin: url.origin, rpId };
+    return resolvePasskeyRelyingParty(request, authRuntime);
   }
 
   app.post("/auth/passkeys/register/options", async (request, reply) => {

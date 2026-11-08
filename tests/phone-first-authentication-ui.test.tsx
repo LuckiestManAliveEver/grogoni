@@ -179,8 +179,10 @@ describe("PhoneFirstAuthentication login methods", () => {
     await change(inputByLabel("Phone number"), "0712345678");
     await click(buttonByText("Trouble logging in?"));
 
-    expect(buttonByText("Passkeys unavailable in this browser").disabled).toBe(true);
+    // No WebAuthn means no registered passkey can work here, so the other device comes first.
+    expect(buttonByText("Get an approval code").disabled).toBe(false);
     expect(document.body.textContent).toContain("Registered passkey");
+    expect(document.body.textContent).toContain("Approve from a logged-in device");
     expect(document.querySelector('option[value="device"]')).toBeNull();
     expect(document.body.textContent).not.toContain("device security");
     expect(document.body.textContent).not.toContain("Unlock with device security");

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import mammoth from "mammoth";
 import * as XLSX from "xlsx";
 import type { DocumentImportSourceInput } from "@grogoni/business-core";
-import { Cp2Error } from "./store.js";
+import { Cp2Error } from "./cp2-error.js";
 
 const maxDocumentBytes = 10 * 1024 * 1024;
 const maxExtractedCharacters = 250_000;

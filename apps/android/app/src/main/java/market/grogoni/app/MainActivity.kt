@@ -6,6 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.ContactsContract
 import android.provider.Settings
 import android.webkit.GeolocationPermissions
 import android.provider.Telephony
@@ -41,6 +42,23 @@ open class MainActivity : ComponentActivity() {
         webFileCallback?.onReceiveValue(uris.toTypedArray()); webFileCallback = null
     }
     private var pendingPicker: ((Any?, String?) -> Unit)? = null
+    private var pendingWhatsAppContact: ((Any?, String?) -> Unit)? = null
+    private val whatsAppContact = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val callback = pendingWhatsAppContact ?: return@registerForActivityResult
+        pendingWhatsAppContact = null
+        val uri = result.data?.data
+        if (result.resultCode != RESULT_OK || uri == null) callback(JSONObject().put("cancelled", true), null)
+        else {
+            val selected = runCatching {
+                contentResolver.query(uri, arrayOf(ContactsContract.CommonDataKinds.Phone.NUMBER), null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) cursor.getString(0)?.take(80) else null
+                }
+            }
+            val phone = selected.getOrNull()
+            if (phone == null) callback(null, "The selected contact number could not be read.")
+            else callback(JSONObject().put("phone", phone), null)
+        }
+    }
     private val roleRequest = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         requestSmsPermissions()
     }
@@ -241,6 +259,19 @@ open class MainActivity : ComponentActivity() {
                 .apply { if (error != null) put("error", error) else put("result", value ?: JSONObject.NULL) }.toString()))
         }
         when (val method = request.optString("method")) {
+            "whatsappAvailability" -> callback(market.grogoni.app.whatsapp.WhatsAppAvailability(this).snapshot(), null)
+            "pickWhatsAppContact" -> {
+                if (pendingWhatsAppContact != null) callback(null, "The contact picker is already open.")
+                else {
+                    pendingWhatsAppContact = callback
+                    val launched = runCatching { whatsAppContact.launch(Intent(Intent.ACTION_PICK, ContactsContract.CommonDataKinds.Phone.CONTENT_URI)) }
+                    if (launched.isFailure) { pendingWhatsAppContact = null; callback(null, "No contact picker is available. Enter the number instead.") }
+                }
+            }
+            "openWhatsApp" -> {
+                val opened = market.grogoni.app.whatsapp.WhatsAppAvailability(this).open()
+                callback(if (opened) JSONObject().put("opened", true) else null, if (opened) null else "WhatsApp could not be opened.")
+            }
             "signRecoveryChallenge" -> unlockDeviceKey { error ->
                 if (error != null) callback(null, error)
                 else executor.execute {

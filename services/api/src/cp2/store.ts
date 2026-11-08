@@ -1,3 +1,11 @@
+import { readLinkedDocument } from "../messaging/whatsapp-linked/document-reader.js";
+import { readChatImage } from "./chat-image-reader.js";
+import { parseLinkedToolGrants } from "../messaging/whatsapp-linked/tool-grants.js";
+import type { LinkedToolDelegation } from "../messaging/whatsapp-linked/tool-grants.js";
+import { linkedDelegationResultText } from "../messaging/whatsapp-linked/delegation-result.js";
+import type { ChannelDelegationResolution } from "./domains/agent-runtime/channel-delegation-result.js";
+import type { LinkedMutation } from "../messaging/whatsapp-linked/connector.js";
+import { daemonConversationRuntime } from "../daemon/conversation-runtime.js";
 import {
   androidAttestationProblem,
   grogoniAndroidPackage,
@@ -195,6 +203,7 @@ import { type McpAccessTokenRecord } from "./domains/mcp-tokens/shared.js";
 import { ExternalConnectionsDomain } from "./domains/external-connections/store.js";
 import { type ExternalConnectionRecord } from "./domains/external-connections/shared.js";
 import { PasskeyDomain } from "./domains/passkeys/store.js";
+import { RecoveryApprovalDomain } from "./domains/recovery-approval/store.js";
 import {
   type PasskeyCeremonyRecord,
   type PasskeyCredentialRecord
@@ -209,7 +218,9 @@ import {
 } from "./domains/otp/shared.js";
 import { DeviceBootstrapDomain } from "./domains/device-bootstrap/store.js";
 import {
+  deviceRecoveryAssertionPayload,
   normalizeDeviceRecoveryCredentialId,
+  verifyDeviceRecoverySignature,
   type DeviceAccountBootstrapRecord,
   type DeviceRecoveryCredentialRecord
 } from "./domains/device-bootstrap/shared.js";
@@ -428,7 +439,8 @@ import type {
 } from "./domains/model-templates/types.js";
 import {
   createChannelGatewayFromEnvironment,
-  type ChannelGateway
+  type ChannelGateway,
+  type MessagingChannelAdapter
 } from "../messaging/channel-gateway.js";
 import {
   createEmailMailboxProviderClient,
@@ -479,8 +491,11 @@ import type { InventoryProcurementStore } from "./domains/agent-runtime/inventor
 import type { BusinessTaskEvaluationReader } from "./domains/agent-runtime/business-task-evaluation-reader.js";
 import type { InventoryTaskController } from "./domains/agent-runtime/inventory-task-controller.js";
 import type { AgentTurnQueue } from "./domains/messaging/shared.js";
+import type { LinkedDownloadedMedia } from "../messaging/whatsapp-linked/media.js";
 import {
   createMemoryConversationAttachmentBlobStore,
+  createCipherAwareAttachmentBlobStore,
+  type AttachmentBlobCipher,
   type ConversationAttachmentBlobStore
 } from "./conversation-attachment-blob-store.js";
 
@@ -1035,10 +1050,56 @@ export type MessageEmailNotificationSender = (
 // a real cookie session id (those are opaque random tokens and could never collide with it).
 const mcpTrustedSessionIdPrefix = "mcp-trusted-account:";
 
+/** The user fields a first shop's phone number writes; restored by a trusted-device undo. */
+const ownerPhoneFields = [
+  "phoneNumberE164",
+  "phoneCountryCode",
+  "phoneNationalNumber",
+  "phoneVerificationStatus",
+  "phoneAddedAt",
+  "phoneUpdatedAt",
+  "phoneSource",
+  "publicPhoneEnabled"
+] as const;
+
+/** The undo snapshot recorded at collection (RecoveryApprovalDomainDeps.credentialSnapshot). */
+function parseCredentialSnapshot(value: string | null): {
+  pinHash: string | null;
+  password: PasswordCredentialRecord | null;
+  phone: Partial<UserSummary> | null;
+} | null {
+  if (value === null) return null;
+  try {
+    const parsed = JSON.parse(value) as { pinHash?: unknown; password?: unknown; phone?: unknown };
+    return {
+      pinHash: typeof parsed.pinHash === "string" ? parsed.pinHash : null,
+      password:
+        parsed.password !== null && typeof parsed.password === "object"
+          ? (parsed.password as PasswordCredentialRecord)
+          : null,
+      phone:
+        parsed.phone !== null && typeof parsed.phone === "object"
+          ? (parsed.phone as Partial<UserSummary>)
+          : null
+    };
+  } catch {
+    return null;
+  }
+}
+
+const probationGuardedCommerceOperations = new Set([
+  "source.connect",
+  "receipt.connect",
+  "relationship.respond",
+  "representation.decide"
+]);
+
 export class Cp2Store {
   private readonly channelGateway: ChannelGateway;
   private readonly emailMailboxProviderClient: EmailMailboxProviderClient;
-  private readonly conversationAttachmentBlobStore: ConversationAttachmentBlobStore;
+  private readonly conversationAttachmentBlobStore: ReturnType<
+    typeof createCipherAwareAttachmentBlobStore
+  >;
   private readonly accountAiAssetStore: AccountAiAssetStore;
   private readonly mcpPrincipalContext = new AsyncLocalStorage<McpPrincipal>();
   private readonly defaultAgentRuntimeAdapters: ReturnType<
@@ -1170,8 +1231,9 @@ export class Cp2Store {
     this.channelGateway = options.channelGateway ?? createChannelGatewayFromEnvironment({});
     this.emailMailboxProviderClient =
       options.emailMailboxProviderClient ?? createEmailMailboxProviderClient({});
-    this.conversationAttachmentBlobStore =
-      options.conversationAttachmentBlobStore ?? createMemoryConversationAttachmentBlobStore();
+    this.conversationAttachmentBlobStore = createCipherAwareAttachmentBlobStore(
+      options.conversationAttachmentBlobStore ?? createMemoryConversationAttachmentBlobStore()
+    );
     this.accountAiAssetStore = options.accountAiAssetStore ?? createMemoryAccountAiAssetStore();
     this.oauthDomain = new OAuthDomain({
       requirePinVerifiedSession: (sessionId, now) => this.requirePinVerifiedSession(sessionId, now),
@@ -1238,8 +1300,17 @@ export class Cp2Store {
         verifyPinHash("unknown-account", pin, dummyPinHash);
       },
       normalizePin: (pin) => normalizePin(pin),
-      mergeDeviceAccountData: (sourceAccountId, sourceUserId, targetAccountId, targetUserId) =>
-        this.mergeDeviceAccountData(sourceAccountId, sourceUserId, targetAccountId, targetUserId),
+      mergeDeviceAccountData: (sourceAccountId, sourceUserId, targetAccountId, targetUserId) => {
+        // Merging would bring another account's passkeys and keys in with their old createdAt,
+        // where undo cannot tell them from the owner's. Not while a browser is on probation.
+        if (this.recoveryApprovalDomain.probationCutoff(targetAccountId) !== null)
+          throw new Cp2Error(
+            403,
+            "recovery_approval_probation",
+            "This account approved a browser less than 24 hours ago, so no account can be joined to it yet."
+          );
+        this.mergeDeviceAccountData(sourceAccountId, sourceUserId, targetAccountId, targetUserId);
+      },
       sessions: this.sessions,
       users: this.users,
       userByAccount: this.userByAccount,
@@ -1411,6 +1482,104 @@ export class Cp2Store {
       ...(this.options.passkeyAuthenticationVerifier === undefined
         ? {}
         : { passkeyAuthenticationVerifier: this.options.passkeyAuthenticationVerifier })
+    });
+    this.recoveryApprovalDomain = new RecoveryApprovalDomain({
+      authTransactions: () => this.authTransactions.values(),
+      getAuthTransaction: (id) => this.authTransactions.get(id),
+      deleteAuthTransaction: (id) => this.authTransactions.delete(id),
+      createAuthTransaction: (purpose, accountId, now, override) =>
+        this.createAuthTransaction(purpose, accountId, now, override),
+      requireAnySession: (sessionId, now) => this.requireAnySession(sessionId, now),
+      approvingDeviceKeyId: (credentialId, accountId) => {
+        let id: string;
+        try {
+          id = normalizeDeviceRecoveryCredentialId(credentialId);
+        } catch {
+          return null;
+        }
+        return this.approvingDeviceKeyUsable(id, accountId) ? id : null;
+      },
+      verifyDeviceKeySignature: async (credentialId, nonce, issuedAt, signature) => {
+        const key = this.deviceBootstrapDomain.deviceRecoveryCredentialsMap.get(credentialId);
+        return (
+          key !== undefined &&
+          (await verifyDeviceRecoverySignature(
+            key.publicKeyJwk,
+            deviceRecoveryAssertionPayload(credentialId, nonce, issuedAt),
+            signature
+          ))
+        );
+      },
+      beginPasskeyApproval: (input) =>
+        this.passkeyDomain.beginPasskeyRecoveryApproval({
+          ...input,
+          createdBefore: this.recoveryApprovalDomain.probationCutoff(input.accountId, input.now)
+        }),
+      verifyPasskeyApproval: (input) =>
+        this.passkeyDomain.verifyPasskeyRecoveryApproval({
+          ...input,
+          createdBefore: this.recoveryApprovalDomain.probationCutoff(input.accountId, input.now)
+        }),
+      approvingCredentialActive: (credentialId, accountId) =>
+        this.passkeyDomain.passkeysMap.get(credentialId)?.accountId === accountId ||
+        this.approvingDeviceKeyUsable(credentialId, accountId),
+      issueApprovedSession: (accountId, approvingCredentialId, approverSessionId, now) => {
+        const account = this.requireAccount(accountId);
+        this.requireAccountAuthenticationAllowed(account);
+        const user = this.requireUser(this.userByAccount.get(accountId));
+        const session = this.createSession(account, user, now);
+        // The owner confirmed this browser with a screen lock: it may enroll a passkey now.
+        this.markSessionPinVerified(session.id, now);
+        this.createAuthTransaction("recovery", accountId, now, {
+          expiresAt: new Date(now.getTime() + 5 * 60_000).toISOString(),
+          metadata: {
+            deviceRecoverySessionId: session.id,
+            recoveryCredentialId: approvingCredentialId,
+            recoveryApproverSessionId: approverSessionId
+          }
+        });
+        // Best effort: a notice that fails must not leave a session with no approval behind it.
+        try {
+          this.notifyBrowserApproved(accountId, now);
+        } catch (error) {
+          console.warn(
+            JSON.stringify({
+              event: "auth.recovery_approval_notice_failed",
+              accountId,
+              error: error instanceof Error ? error.message : String(error)
+            })
+          );
+        }
+        return this.requireAnySession(session.id, now);
+      },
+      sessionFamily: (sessionId) => this.sessions.get(sessionId)?.sessionFamilyId ?? null,
+      liveSessionFamilies: (accountId) => [
+        ...new Set(
+          [...this.sessions.values()]
+            .filter(
+              (session) =>
+                session.accountId === accountId &&
+                session.revokedAt === null &&
+                // A family still on probation from an earlier approval is not trusted by this one.
+                !this.recoveryApprovalDomain.inProbation(session.sessionFamilyId, accountId)
+            )
+            .map((session) => session.sessionFamilyId)
+        )
+      ],
+      credentialSnapshot: (accountId) => {
+        const user = this.users.get(this.userByAccount.get(accountId) ?? "");
+        return JSON.stringify({
+          pinHash: this.accountPinHashes.get(accountId) ?? null,
+          password: this.passwordCredentials.get(accountId) ?? null,
+          phone:
+            user === undefined
+              ? null
+              : Object.fromEntries(ownerPhoneFields.map((field) => [field, user[field] ?? null]))
+        });
+      },
+      undoApprovedLogin: (input) => this.undoApprovedLogin(input),
+      recordSecurityEvent: (type, accountId, outcome, now, metadata) =>
+        this.recordSecurityEvent(type, accountId, outcome, now, metadata)
     });
     this.commerce = new CommerceDomain({
       resolveOffer: (id, now) => this.commerceSources.snapshotOffer(id, now),
@@ -1634,6 +1803,10 @@ export class Cp2Store {
       return member && participant ? { ...conversation, accountId: input.accountId } : conversation;
     };
     this.agentRuntimeDomain = new AgentRuntimeDomain({
+      channelToolGrants: (businessId, ref, tool) =>
+        this.validateLinkedToolDelegation(businessId, ref, tool),
+      deliverChannelDelegationResult: (resolution) =>
+        this.deliverLinkedDelegationResult(resolution),
       assistantPermissionErrors: (sessionId, tool) =>
         this.assistantPermissionErrors(sessionId, tool),
       assertPortableSkillAction: (input, ref, tool, agentId) =>
@@ -2259,6 +2432,7 @@ export class Cp2Store {
   // `passkeyPinRecoveryGrants` is deliberately never swept by the account-deletion purge - see
   // that domain's shared.ts header comment.
   private readonly passkeyDomain: PasskeyDomain;
+  private readonly recoveryApprovalDomain: RecoveryApprovalDomain;
   private readonly accountIdentities = new Map<string, AccountIdentityRecord>();
   private readonly identityAccountByValue = new Map<string, string>();
   private readonly passwordCredentials = new Map<string, PasswordCredentialRecord>();
@@ -2292,6 +2466,7 @@ export class Cp2Store {
         input.sessionId,
         input.now ?? new Date()
       );
+      this.requireOutsideRecoveryProbation(session, input.now ?? new Date());
       // A chain read back later can have expired. The proof was checked when the key was enrolled.
       const claimed = input.devicePublicKeyJwk as Record<string, unknown>;
       const proven = [...this.deviceBootstrapDomain.deviceRecoveryCredentialsMap.values()].some(
@@ -2528,6 +2703,14 @@ export class Cp2Store {
   beginOAuthSession(
     ...args: Parameters<OAuthDomain["beginOAuthSession"]>
   ): ReturnType<OAuthDomain["beginOAuthSession"]> {
+    // Linking a sign-in provider to an account is a credential: not from a probation session.
+    if (args[0].accountSessionId !== null) {
+      const now = args[0].now ?? new Date();
+      this.requireOutsideRecoveryProbation(
+        this.requireAnySession(args[0].accountSessionId, now),
+        now
+      );
+    }
     return this.oauthDomain.beginOAuthSession(...args);
   }
   getOAuthExchangeData(
@@ -2772,6 +2955,7 @@ export class Cp2Store {
   }): DeviceSessionSummary {
     const now = input.now ?? new Date();
     const current = this.requirePinVerifiedSession(input.sessionId, now);
+    this.requireOutsideRecoveryProbation(current, now);
     const target = this.sessions.get(input.targetSessionId);
     if (target === undefined || target.accountId !== current.account.id) {
       throw new Cp2Error(404, "auth_device_session_not_found", "Device session was not found.");
@@ -2817,6 +3001,7 @@ export class Cp2Store {
 
   logoutAll(sessionId: string | null, now = new Date()): { revoked: number } {
     const session = this.requireRecentlyAuthenticatedSession(sessionId, now);
+    this.requireOutsideRecoveryProbation(session, now);
 
     let revoked = 0;
     let recoveryCredentialsRevoked = 0;
@@ -2865,6 +3050,9 @@ export class Cp2Store {
     const session = this.hasCredentialRecoveryGrant(input.sessionId, now)
       ? this.requireAnySession(input.sessionId, now)
       : this.requireFirstCredentialSession(input.sessionId, now);
+    // A browser on probation may set its PIN once, with its recovery grant, and not otherwise.
+    if (!this.hasCredentialRecoveryGrant(session.session.id, now))
+      this.requireOutsideRecoveryProbation(session, now);
     if (this.accountPinHashes.has(session.account.id)) {
       throw new Cp2Error(409, "pin_already_set", "A login PIN is already set for this account.");
     }
@@ -2919,6 +3107,7 @@ export class Cp2Store {
   }): AuthSessionView {
     const now = input.now ?? new Date();
     const session = this.requireAnySession(input.sessionId, now);
+    this.requireOutsideRecoveryProbation(session, now);
     this.verifyAccountPinForSession(session, input.currentPin, now);
     this.verifyMfaForCredentialChange(session.account.id, input.mfaCode, now);
     const pin = normalizePin(input.pin);
@@ -3228,6 +3417,7 @@ export class Cp2Store {
   recoverAccountPin(input: { sessionId: string | null; pin: string; now?: Date }): AuthSessionView {
     const now = input.now ?? new Date();
     const session = this.requireAnySession(input.sessionId, now);
+    this.requireOutsideRecoveryProbation(session, now);
     const pin = normalizePin(input.pin);
 
     if (!this.accountPinHashes.has(session.account.id)) {
@@ -3619,6 +3809,7 @@ export class Cp2Store {
   } {
     const now = input.now ?? new Date();
     const session = this.requireRecentlyAuthenticatedSession(input.sessionId, now);
+    this.requireOutsideRecoveryProbation(session, now);
     const secret = base32Encode(randomBytes(20));
     const factor: MfaFactorRecord = {
       id: randomUUID(),
@@ -3765,6 +3956,24 @@ export class Cp2Store {
   ): ReturnType<PasskeyDomain["completePasskeyAuthentication"]> {
     return this.passkeyDomain.completePasskeyAuthentication(...args);
   }
+  startRecoveryApproval(...args: Parameters<RecoveryApprovalDomain["start"]>) {
+    return this.recoveryApprovalDomain.start(...args);
+  }
+  recoveryApprovalStatus(...args: Parameters<RecoveryApprovalDomain["status"]>) {
+    return this.recoveryApprovalDomain.status(...args);
+  }
+  pendingRecoveryApprovals(...args: Parameters<RecoveryApprovalDomain["pending"]>) {
+    return this.recoveryApprovalDomain.pending(...args);
+  }
+  beginRecoveryApproval(...args: Parameters<RecoveryApprovalDomain["options"]>) {
+    return this.recoveryApprovalDomain.options(...args);
+  }
+  approveRecoveryApproval(...args: Parameters<RecoveryApprovalDomain["approve"]>) {
+    return this.recoveryApprovalDomain.approve(...args);
+  }
+  declineRecoveryApproval(...args: Parameters<RecoveryApprovalDomain["decline"]>) {
+    return this.recoveryApprovalDomain.decline(...args);
+  }
   listPasskeys(
     ...args: Parameters<PasskeyDomain["listPasskeys"]>
   ): ReturnType<PasskeyDomain["listPasskeys"]> {
@@ -3773,6 +3982,8 @@ export class Cp2Store {
   revokePasskey(
     ...args: Parameters<PasskeyDomain["revokePasskey"]>
   ): ReturnType<PasskeyDomain["revokePasskey"]> {
+    const now = args[0].now ?? new Date();
+    this.requireOutsideRecoveryProbation(this.requireAnySession(args[0].sessionId, now), now);
     return this.passkeyDomain.revokePasskey(...args);
   }
   createBusiness(input: {
@@ -3787,6 +3998,8 @@ export class Cp2Store {
   }): CreateBusinessResult {
     const now = input.now ?? new Date();
     const session = this.requirePinVerifiedSession(input.sessionId, now);
+    // A first shop's phone number becomes a sign-in identity: not from a probation session.
+    if (input.phoneNumber !== undefined) this.requireOutsideRecoveryProbation(session, now);
     if (input.viaAssistant && !this.accountAssistantPermissions(session.account.id).store) {
       throw new Cp2Error(
         403,
@@ -3926,6 +4139,7 @@ export class Cp2Store {
   }): OwnerPhoneIdentityResult {
     const now = input.now ?? new Date();
     const session = this.requireOwnerPhoneSession(input.sessionId, now);
+    this.requireOutsideRecoveryProbation(session, now);
     this.enforcePhoneUpdateRateLimit(session.account.id, now);
 
     const user = this.applyOwnerPhoneIdentity({
@@ -4037,6 +4251,7 @@ export class Cp2Store {
   createMcpAccessToken(
     ...args: Parameters<McpTokensDomain["createMcpAccessToken"]>
   ): ReturnType<McpTokensDomain["createMcpAccessToken"]> {
+    this.guardRecoveryProbation(args[0].sessionId, args[0].now);
     return this.mcpTokensDomain.createMcpAccessToken(...args);
   }
   listMcpAccessTokens(
@@ -4590,6 +4805,524 @@ export class Cp2Store {
   channelWebhookChallenge(...args: Parameters<MessagingDomain["channelWebhookChallenge"]>) {
     return this.messagingDomain.channelWebhookChallenge(...args);
   }
+  recordLinkedWhatsAppState(businessId: string, ownerId: string, state: string): void {
+    this.recordAuditEvent({
+      type: "whatsapp_linked.connection_state",
+      aggregateType: "whatsapp_linked_connection",
+      aggregateId: businessId,
+      actorId: ownerId,
+      occurredAt: new Date().toISOString(),
+      payload: { businessId, state }
+    });
+  }
+
+  registerConversationAttachmentCipher(prefix: string, cipher: AttachmentBlobCipher): () => void {
+    return this.conversationAttachmentBlobStore.registerCipher(prefix, cipher);
+  }
+
+  async deliverLinkedWhatsAppReply(input: {
+    businessId: string;
+    ownerId: string;
+    chat: string;
+    text: string;
+    idempotencyKey: string;
+  }) {
+    this.validateLinkedWhatsAppOwner(input.businessId, input.ownerId);
+    return this.messagingDomain.deliverLinkedWhatsAppReply(input);
+  }
+  linkedWhatsAppRuntime(businessId: string, ownerId: string, conversationId: string) {
+    this.validateLinkedWhatsAppOwner(businessId, ownerId);
+    const conversation = this.messagingDomain.conversationsMap.get(conversationId);
+    if (conversation?.activeShopId !== businessId)
+      throw new Cp2Error(403, "permission_denied", "Conversation is outside this business.");
+    return daemonConversationRuntime(this, conversationId);
+  }
+
+  setLinkedToolGrants(input: {
+    businessId: string;
+    ownerId: string;
+    chat: string;
+    tools: unknown;
+    enabled: boolean;
+  }) {
+    this.validateLinkedWhatsAppOwner(input.businessId, input.ownerId);
+    const tools = parseLinkedToolGrants(input.tools);
+    const channel = [...this.messagingDomain.conversationChannelsMap.values()].find(
+      (channel) =>
+        channel.businessId === input.businessId &&
+        channel.provider === "whatsapp_linked" &&
+        channel.externalConversationId === input.chat &&
+        channel.metadata.linkedDeviceOwnerId === input.ownerId
+    );
+    if (!channel)
+      throw new Cp2Error(
+        404,
+        "conversation_channel_not_found",
+        "Approve this WhatsApp conversation first."
+      );
+    const grant = { id: randomUUID(), enabled: input.enabled, tools: input.enabled ? tools : [] };
+    this.messagingDomain.conversationChannelsMap.set(channel.id, {
+      ...channel,
+      metadata: { ...channel.metadata, linkedToolGrant: JSON.stringify(grant) },
+      updatedAt: new Date().toISOString()
+    });
+    this.recordAuditEvent({
+      type: "whatsapp_linked.tools_granted",
+      aggregateType: "conversation_channel",
+      aggregateId: channel.id,
+      actorId: input.ownerId,
+      occurredAt: new Date().toISOString(),
+      payload: {
+        businessId: input.businessId,
+        enabled: grant.enabled,
+        tools: grant.tools.join(","),
+        grantId: grant.id
+      }
+    });
+    return grant;
+  }
+
+  linkedToolGrant(businessId: string, ownerId: string, chat: string) {
+    this.validateLinkedWhatsAppOwner(businessId, ownerId);
+    const channel = [...this.messagingDomain.conversationChannelsMap.values()].find(
+      (channel) =>
+        channel.businessId === businessId &&
+        channel.provider === "whatsapp_linked" &&
+        channel.externalConversationId === chat &&
+        channel.metadata.linkedDeviceOwnerId === ownerId
+    );
+    if (!channel || typeof channel.metadata.linkedToolGrant !== "string") return null;
+    const grant = JSON.parse(channel.metadata.linkedToolGrant) as {
+      id: string;
+      enabled: boolean;
+      tools: string[];
+    };
+    return { channelId: channel.id, ...grant, tools: parseLinkedToolGrants(grant.tools) };
+  }
+
+  validateLinkedToolDelegation(
+    businessId: string,
+    ref: LinkedToolDelegation,
+    tool?: string
+  ): string[] {
+    this.validateLinkedWhatsAppOwner(businessId, ref.ownerId);
+    const channel = this.messagingDomain.conversationChannelsMap.get(ref.channelId);
+    const source = this.messagingDomain.conversationMessagesMap.get(ref.sourceMessageId);
+    const grant = channel
+      ? this.linkedToolGrant(businessId, ref.ownerId, channel.externalConversationId ?? "")
+      : null;
+    if (
+      !channel ||
+      channel.businessId !== businessId ||
+      !grant?.enabled ||
+      grant.id !== ref.grantId ||
+      !source ||
+      source.conversationId !== channel.conversationId ||
+      source.direction !== "inbound" ||
+      source.provider !== "whatsapp_linked" ||
+      source.deletedAt ||
+      source.senderAddress !== ref.actorId ||
+      (tool &&
+        tool !== "unknown.clarify" &&
+        !grant.tools.includes(tool as (typeof grant.tools)[number]))
+    )
+      throw new Cp2Error(
+        403,
+        "whatsapp_tool_grant_revoked",
+        "This WhatsApp business permission is unavailable or has been revoked."
+      );
+    return grant.tools;
+  }
+
+  async readLinkedWhatsAppEvidence(input: {
+    businessId: string;
+    ownerId: string;
+    chat: string;
+    sender: string;
+    messageId: string;
+    signal?: AbortSignal;
+  }): Promise<string | undefined> {
+    const grant = this.linkedToolGrant(input.businessId, input.ownerId, input.chat);
+    if (!grant?.enabled) return undefined;
+    const channel = this.messagingDomain.conversationChannelsMap.get(grant.channelId)!;
+    const source = [...this.messagingDomain.conversationMessagesMap.values()].find(
+      (message) =>
+        message.conversationId === channel.conversationId &&
+        message.provider === "whatsapp_linked" &&
+        message.direction === "inbound" &&
+        message.providerMessageId === input.messageId &&
+        message.senderAddress === input.sender &&
+        !message.deletedAt
+    );
+    if (!source || source.content.type !== "text") return undefined;
+    const attachment = source.content.attachments?.find(
+      (attachment) =>
+        attachment.source === "managed" && ["image", "document"].includes(attachment.category)
+    );
+    const record = attachment
+      ? this.messagingDomain.conversationAttachmentsMap.get(attachment.id)
+      : undefined;
+    if (
+      !record ||
+      record.messageId !== source.id ||
+      record.businessId !== input.businessId ||
+      record.conversationId !== channel.conversationId
+    )
+      return undefined;
+    if (record.caption) return record.caption;
+    const bytes = await this.conversationAttachmentBlobStore.get(record.storageKey);
+    if (
+      !bytes ||
+      bytes.length > 5 * 1024 * 1024 ||
+      createHash("sha256").update(bytes).digest("hex") !== record.checksum
+    )
+      throw new Cp2Error(400, "attachment_invalid", "The attachment could not be verified.");
+    let text: string;
+    if (["text/plain", "text/csv"].includes(record.mimeType))
+      text = new TextDecoder("utf-8", { fatal: true }).decode(bytes).slice(0, 12000);
+    else if (record.kind === "image") {
+      const runtime = this.linkedWhatsAppRuntime(
+        input.businessId,
+        input.ownerId,
+        channel.conversationId
+      );
+      if (!this.resolveCatalogModel(runtime.modelId)?.capabilities.includes("vision"))
+        return "The selected model does not support reading images. Ask for a text description or owner review.";
+      const owner = this.users.get(input.ownerId)!;
+      const result = await readChatImage(
+        {
+          fileName: record.filename,
+          contentType: record.mimeType,
+          contentBase64: bytes.toString("base64")
+        },
+        owner.accountId,
+        () =>
+          this.modelRuntimeAdapterResolver?.({
+            modelId: runtime.modelId,
+            executionTarget: "backend",
+            agentId: "chat-image-reader",
+            shopId: input.businessId
+          }),
+        { modelId: runtime.modelId, ...(input.signal ? { signal: input.signal } : {}) }
+      );
+      text = result.text.slice(0, 12000);
+    } else if (record.mimeType === "application/pdf")
+      text = await readLinkedDocument(
+        { filename: record.filename, mimeType: record.mimeType, bytes },
+        input.signal
+      );
+    else
+      return "The document is attached for review; automatic extraction is unavailable for this format.";
+    const current = this.linkedToolGrant(input.businessId, input.ownerId, input.chat);
+    if (
+      !current?.enabled ||
+      current.id !== grant.id ||
+      this.messagingDomain.conversationMessagesMap.get(source.id)?.deletedAt ||
+      !this.messagingDomain.conversationAttachmentsMap.has(record.id) ||
+      input.signal?.aborted
+    )
+      throw new Cp2Error(
+        403,
+        "whatsapp_tool_grant_revoked",
+        "Attachment processing permission changed."
+      );
+    this.messagingDomain.conversationAttachmentsMap.set(record.id, { ...record, caption: text });
+    return text;
+  }
+
+  async executeLinkedToolTurn(input: {
+    businessId: string;
+    ownerId: string;
+    chat: string;
+    sender: string;
+    messageId: string;
+    grantId: string;
+    signal?: AbortSignal;
+  }) {
+    const grant = this.linkedToolGrant(input.businessId, input.ownerId, input.chat);
+    const channel = grant
+      ? this.messagingDomain.conversationChannelsMap.get(grant.channelId)
+      : undefined;
+    const matches = [...this.messagingDomain.conversationMessagesMap.values()].filter(
+      (message) =>
+        message.provider === "whatsapp_linked" &&
+        message.direction === "inbound" &&
+        message.conversationId === channel?.conversationId &&
+        message.providerMessageId === input.messageId &&
+        message.senderAddress === input.sender
+    );
+    const source = matches.length === 1 ? matches[0]! : undefined;
+    if (!grant || !channel || !source || source.content.type !== "text")
+      throw new Cp2Error(
+        403,
+        "whatsapp_tool_source_invalid",
+        "The authorized source message was not found."
+      );
+    const ref: LinkedToolDelegation = {
+      channelId: channel.id,
+      grantId: input.grantId,
+      ownerId: input.ownerId,
+      sourceMessageId: source.id,
+      actorId: input.sender
+    };
+    this.validateLinkedToolDelegation(input.businessId, ref);
+    const owner = this.users.get(input.ownerId)!;
+    this.ensureLinkedWhatsAppRuntime(input.businessId, input.ownerId, channel.conversationId);
+    let evidence: string | undefined;
+    try {
+      evidence = await this.readLinkedWhatsAppEvidence(input);
+    } catch (error) {
+      if (error instanceof Cp2Error && error.statusCode === 403) throw error;
+      evidence =
+        "Attachment reading is unavailable. Ask for review or a text description; do not invent its contents.";
+    }
+    // An in-process integration principal represents the owner's explicit delegation. No PIN
+    // session is located, borrowed, created or exposed to the external sender.
+    const result = await this.mcpPrincipalContext.run(
+      {
+        tokenId: `whatsapp:${grant.id}`,
+        accountId: owner.accountId,
+        userId: owner.id,
+        scopes: ["mcp:read", "mcp:act"],
+        shopId: input.businessId,
+        expiresAt: new Date(Date.now() + 180_000).toISOString()
+      },
+      async () => {
+        const result = await this.agentRuntimeDomain.createRuntimeTurn({
+          sessionId: null,
+          businessId: input.businessId,
+          conversationId: channel.conversationId,
+          message: source.content.type === "text" ? source.content.text : "",
+          channelDelegation: ref,
+          ...(evidence ? { channelEvidence: evidence } : {}),
+          ...(input.signal ? { signal: input.signal } : {})
+        });
+        this.validateLinkedToolDelegation(input.businessId, ref);
+        if (result.turn.status === "needs_confirmation" && result.turn.plan.confirmationToken)
+          this.messagingDomain.createConversationMessage({
+            sessionId: null,
+            conversationId: channel.conversationId,
+            clientMessageId: `whatsapp-approval:${result.turn.id}`,
+            idempotencyKey: `whatsapp-approval:${result.turn.id}`,
+            author: "agent",
+            content: {
+              type: "confirmation",
+              confirmationToken: result.turn.plan.confirmationToken,
+              approvalScope: {
+                businessId: input.businessId,
+                runtimeSessionId: result.session.id,
+                conversationId: channel.conversationId
+              },
+              prompt: `A permitted WhatsApp participant requested this action. Review it before approving.\n${result.turn.response}`
+            },
+            replyToMessageId: source.id
+          });
+        return result;
+      }
+    );
+    this.validateLinkedToolDelegation(input.businessId, ref);
+    this.recordAuditEvent({
+      type: "whatsapp_linked.delegated_turn",
+      aggregateType: "runtime_turn",
+      aggregateId: result.turn.id,
+      actorId: input.ownerId,
+      occurredAt: new Date().toISOString(),
+      payload: {
+        businessId: input.businessId,
+        channelId: channel.id,
+        grantId: grant.id,
+        externalActor: input.sender,
+        sourceMessageId: source.id,
+        tool: result.turn.plan.toolName,
+        status: result.turn.status
+      }
+    });
+    return {
+      text:
+        result.turn.status === "needs_confirmation"
+          ? "This action is prepared and waiting for the shop owner's approval in Grogoni. Nothing has been changed."
+          : result.turn.response
+    };
+  }
+
+  /**
+   * Owner resolved a WhatsApp-delegated action: send one bounded outcome to the originating chat.
+   * Authority is re-checked at send time, because the grant, the conversation approval or the
+   * recipient's STOP can change while the approval card waits. Nothing is sent when they no longer
+   * allow it; every outcome is audited.
+   */
+  async deliverLinkedDelegationResult(resolution: ChannelDelegationResolution): Promise<void> {
+    const { businessId, delegation: ref, turnId } = resolution;
+    const channel = this.messagingDomain.conversationChannelsMap.get(ref.channelId);
+    const audit = (type: string, payload: Record<string, unknown>) =>
+      this.recordAuditEvent({
+        type,
+        aggregateType: "runtime_turn",
+        aggregateId: turnId,
+        actorId: resolution.resolvedBy,
+        occurredAt: new Date().toISOString(),
+        payload: {
+          businessId,
+          channelId: ref.channelId,
+          grantId: ref.grantId,
+          tool: resolution.toolName,
+          outcome: resolution.outcome,
+          ...payload
+        }
+      });
+    let suppressed: string | null = null;
+    if (
+      !channel ||
+      channel.provider !== "whatsapp_linked" ||
+      channel.businessId !== businessId ||
+      channel.metadata.linkedDeviceOwnerId !== ref.ownerId
+    )
+      suppressed = "channel_unavailable";
+    else if (
+      this.messagingDomain.platformIdentitiesMap.get(channel.platformIdentityId)?.optInStatus ===
+      "revoked"
+    )
+      suppressed = "recipient_opted_out";
+    else
+      try {
+        this.validateLinkedToolDelegation(businessId, ref, resolution.toolName);
+      } catch (error) {
+        suppressed = error instanceof Cp2Error ? error.code : "delegation_invalid";
+      }
+    if (suppressed !== null || !channel) {
+      audit("whatsapp_linked.delegated_result_suppressed", {
+        reason: suppressed ?? "channel_unavailable"
+      });
+      return;
+    }
+    try {
+      const sent = await this.deliverLinkedWhatsAppReply({
+        businessId,
+        ownerId: ref.ownerId,
+        chat: channel.externalConversationId,
+        text: linkedDelegationResultText(resolution.outcome, resolution.toolName),
+        idempotencyKey: `whatsapp-result:${turnId}`
+      });
+      audit("whatsapp_linked.delegated_result_sent", { messageId: sent.message.id });
+    } catch (error) {
+      audit("whatsapp_linked.delegated_result_failed", {
+        errorCode: error instanceof Cp2Error ? error.code : "delivery_failed"
+      });
+    }
+  }
+
+  ensureLinkedWhatsAppRuntime(businessId: string, ownerId: string, conversationId: string) {
+    try {
+      return this.linkedWhatsAppRuntime(businessId, ownerId, conversationId);
+    } catch (error) {
+      const conversation = this.messagingDomain.conversationsMap.get(conversationId);
+      if (
+        !(error instanceof Cp2Error) ||
+        !["RUNTIME_MODEL_NOT_CONFIGURED", "RUNTIME_DEFAULT_MISSING"].includes(error.code) ||
+        (conversation?.runtimeBindingId &&
+          conversation.runtimeBindingId !== globalDefaultRuntimeBindingId)
+      )
+        throw error;
+      this.validateLinkedWhatsAppOwner(businessId, ownerId);
+      if (!conversation || conversation.activeShopId !== businessId) throw error;
+      const owner = this.users.get(ownerId)!;
+      const model = this.modelCatalog.get(this.platformDefaultRuntime.modelId);
+      if (!model?.available) throw error;
+      const checkedAt = new Date().toISOString();
+      const result = this.nativeRuntimeBindings.ensureDefaultRuntimeBinding({
+        businessId,
+        accountId: owner.accountId,
+        conversationId,
+        agentId: businessId,
+        agentName: "Grogoni",
+        agentRuntimeAdapterId: this.platformDefaultRuntime.agentRuntimeAdapterId,
+        candidates: [{ model, executionTarget: "backend", checkedAt }],
+        updatedBy: ownerId,
+        checkedAt
+      });
+      this.messagingDomain.conversationsMap.set(conversationId, {
+        ...conversation,
+        runtimeBindingId: result.binding.id,
+        updatedAt: checkedAt
+      });
+      return this.linkedWhatsAppRuntime(businessId, ownerId, conversationId);
+    }
+  }
+
+  registerMessagingAdapter(adapter: MessagingChannelAdapter): void {
+    this.channelGateway.registerAdapter(adapter);
+  }
+
+  /** Worker event boundary: a revoked business owner cannot keep ingesting messages. */
+  hasLinkedWhatsAppMessage(
+    businessId: string,
+    ownerId: string,
+    message: { chat: string; sender: string; id: string }
+  ): boolean {
+    this.validateLinkedWhatsAppOwner(businessId, ownerId);
+    const key = JSON.stringify([businessId, message.chat, message.sender, message.id]);
+    return [...this.messagingDomain.providerUpdateReceiptsMap.values()].some(
+      (receipt) =>
+        receipt.provider === "whatsapp_linked" &&
+        receipt.externalUpdateId === key &&
+        receipt.status === "processed"
+    );
+  }
+
+  ingestLinkedWhatsAppMessage(input: {
+    businessId: string;
+    ownerId: string;
+    chat: string;
+    sender: string;
+    id: string;
+    text: string;
+    timestamp: string;
+    media?: LinkedDownloadedMedia[];
+    replyTo?: string;
+    mutation?: LinkedMutation;
+  }) {
+    this.validateLinkedWhatsAppOwner(input.businessId, input.ownerId);
+    if (input.mutation)
+      return this.messagingDomain.ingestLinkedMutation(
+        input as typeof input & { mutation: NonNullable<typeof input.mutation> }
+      );
+    if (input.media?.length)
+      return this.messagingDomain.ingestLinkedMediaMessage({
+        businessId: input.businessId,
+        ownerId: input.ownerId,
+        externalConversationId: input.chat,
+        externalUpdateId: JSON.stringify([input.businessId, input.chat, input.sender, input.id]),
+        body: input.text,
+        ...(input.replyTo ? { replyToProviderMessageId: input.replyTo } : {}),
+        providerMessageId: input.id,
+        senderAddress: input.sender,
+        clientTimestamp: new Date(input.timestamp).toISOString(),
+        media: input.media
+      });
+    return this.messagingDomain.ingestProviderMessage({
+      provider: "whatsapp_linked",
+      businessId: input.businessId,
+      externalConversationId: input.chat,
+      externalUpdateId: JSON.stringify([input.businessId, input.chat, input.sender, input.id]),
+      body: input.text,
+      ...(input.replyTo ? { replyToProviderMessageId: input.replyTo } : {}),
+      providerMessageId: input.id,
+      senderAddress: input.sender,
+      clientTimestamp: new Date(input.timestamp).toISOString()
+    });
+  }
+
+  validateLinkedWhatsAppOwner(businessId: string, ownerId: string): void {
+    const input = { businessId, ownerId };
+    this.requireBusiness(input.businessId);
+    const owner = this.users.get(input.ownerId);
+    if (!owner || this.requireMembership(input.businessId, input.ownerId).role !== "owner")
+      throw new Cp2Error(403, "permission_denied", "Connection owner is no longer authorized.");
+    this.requireAccountNotPendingDeletion(owner.accountId, new Date());
+    if (this.quarantinedBusinessIds.has(input.businessId))
+      throw new Cp2Error(410, "business_quarantined", "Business access is disabled.");
+  }
+
   ingestChannelWebhookBatch(...args: Parameters<MessagingDomain["ingestChannelWebhookBatch"]>) {
     return this.messagingDomain.ingestChannelWebhookBatch(...args);
   }
@@ -5565,6 +6298,16 @@ export class Cp2Store {
   registerE2eeDevice(
     ...args: Parameters<MessagingDomain["registerE2eeDevice"]>
   ): ReturnType<MessagingDomain["registerE2eeDevice"]> {
+    // A probation session may register its own new device, which undo revokes. It may not
+    // re-key, or bring back, a device that already exists: that would redirect the owner's
+    // encrypted messages, and undo could not tell the device from the owner's.
+    const existing = this.messagingDomain.e2eeDevicesMap.get(args[0].deviceId.trim());
+    if (
+      existing !== undefined &&
+      (JSON.stringify(existing.publicKey) !== JSON.stringify(args[0].publicKey) ||
+        existing.revokedAt !== null)
+    )
+      this.guardRecoveryProbation(args[0].sessionId, args[0].now);
     return this.messagingDomain.registerE2eeDevice(...args);
   }
   listE2eeDevices(
@@ -6150,6 +6893,7 @@ export class Cp2Store {
   inviteStaff(
     ...args: Parameters<StaffDomain["inviteStaff"]>
   ): ReturnType<StaffDomain["inviteStaff"]> {
+    this.guardRecoveryProbation(args[0].sessionId, args[0].now);
     return this.staffDomain.inviteStaff(...args);
   }
 
@@ -6168,6 +6912,7 @@ export class Cp2Store {
   changeStaffRole(
     ...args: Parameters<StaffDomain["changeStaffRole"]>
   ): ReturnType<StaffDomain["changeStaffRole"]> {
+    this.guardRecoveryProbation(args[0].sessionId, args[0].now);
     return this.staffDomain.changeStaffRole(...args);
   }
 
@@ -7600,6 +8345,8 @@ export class Cp2Store {
     now?: Date;
   }): AccountDeletionRequestSummary {
     const now = input.now ?? new Date();
+    // Before membership checks, so a probation session learns nothing from the refusal.
+    this.guardRecoveryProbation(input.sessionId, now);
     const session = this.requireAuthorizedSession(
       input.sessionId,
       input.businessId,
@@ -7721,6 +8468,7 @@ export class Cp2Store {
   disconnectLoginAccount(
     ...args: Parameters<OAuthDomain["disconnectLoginAccount"]>
   ): ReturnType<OAuthDomain["disconnectLoginAccount"]> {
+    this.guardRecoveryProbation(args[0].sessionId, args[0].now);
     return this.oauthDomain.disconnectLoginAccount(...args);
   }
   listConnectedSocialAccounts(
@@ -7731,6 +8479,8 @@ export class Cp2Store {
   disconnectSocialAccount(
     ...args: Parameters<OAuthDomain["disconnectSocialAccount"]>
   ): ReturnType<OAuthDomain["disconnectSocialAccount"]> {
+    const now = args[0].now ?? new Date();
+    this.requireOutsideRecoveryProbation(this.requireAnySession(args[0].sessionId, now), now);
     return this.oauthDomain.disconnectSocialAccount(...args);
   }
   getShopDeletionPreview(input: {
@@ -7757,6 +8507,8 @@ export class Cp2Store {
     now?: Date;
   }): ShopDeletionRequestResult {
     const now = input.now ?? new Date();
+    // Before membership checks, so a probation session learns nothing from the refusal.
+    this.guardRecoveryProbation(input.sessionId, now);
     const session = this.requireAuthorizedSession(
       input.sessionId,
       input.businessId,
@@ -9642,6 +10394,10 @@ export class Cp2Store {
     operation: string,
     values: Record<string, unknown>
   ) {
+    // Operations that grant an outside business or source lasting access, which undo cannot
+    // take back: not from a session on trusted-device recovery probation.
+    if (probationGuardedCommerceOperations.has(operation))
+      this.guardRecoveryProbation(input.sessionId, input.now);
     if (operation === "catalogue.describe")
       return this.describeCommerceCatalogue(input, String(values.description ?? ""));
     if (operation === "product.match") return this.matchCommerceProducts(input, values.identity);
@@ -11176,16 +11932,12 @@ export class Cp2Store {
       createPasswordCredential(session.account.id, input.password, now)
     );
     this.passkeyDomain.consumePinRecoveryGrant(session.session.id);
-    for (const candidate of this.sessions.values()) {
-      if (
-        candidate.accountId === session.account.id &&
-        candidate.id !== session.session.id &&
-        candidate.revokedAt === null
-      ) {
-        candidate.revokedAt = now.toISOString();
-        candidate.revocationReason = "password_reset";
-      }
-    }
+    this.revokeOtherSessionsForAccount(
+      session.account.id,
+      session.session.id,
+      "password_reset",
+      now
+    );
     this.recordSecurityEvent("auth.password_reset", session.account.id, "success", now, {
       method: "device"
     });
@@ -11249,6 +12001,7 @@ export class Cp2Store {
   }) {
     const now = input.now ?? new Date();
     const session = this.requireRecoveryEnrollmentSession(input.sessionId, now);
+    this.requireOutsideRecoveryProbation(session, now);
     const credential = this.deviceBootstrapDomain.deviceRecoveryCredentialsMap.get(
       input.credentialId
     );
@@ -11261,6 +12014,202 @@ export class Cp2Store {
       credentialId: credential.id
     });
     return { revoked: true };
+  }
+
+  /**
+   * An Android screen-lock key that may approve a browser: this account's, not revoked, enrolled
+   * with device security, and attested by Android Key Attestation. Stricter than Android device
+   * recovery, which accepts unattested keys until ANDROID_KEY_ATTESTATION_REQUIRED is on: without
+   * attestation, `deviceSecurity` is the client's own claim, and a software key could approve.
+   */
+  private approvingDeviceKeyUsable(credentialId: string, accountId: string): boolean {
+    const key = this.deviceBootstrapDomain.deviceRecoveryCredentialsMap.get(credentialId);
+    // Nothing enrolled since a browser was let in may vouch for another one during probation.
+    const cutoff = this.recoveryApprovalDomain.probationCutoff(accountId);
+    return (
+      key?.accountId === accountId &&
+      key.revokedAt === null &&
+      key.requiresServerChallenge === true &&
+      key.attested === true &&
+      (cutoff === null || key.createdAt < cutoff)
+    );
+  }
+
+  /**
+   * For 24 hours after a browser is let in by trusted-device approval, every session family that
+   * was not already signed in (the browser, and any later login) cannot sign out other devices,
+   * remove or add credentials, or change how the account is recovered. The owner keeps their
+   * devices and credentials, and can undo the login from any device signed in before it.
+   */
+  private requireOutsideRecoveryProbation(
+    session: { account: AccountSummary; session?: { id: string } },
+    now: Date
+  ): void {
+    // Actors with no browser session (integration tokens) were never let in by approval.
+    if (session.session === undefined) return;
+    const family = this.sessions.get(session.session.id)?.sessionFamilyId;
+    if (
+      family !== undefined &&
+      this.recoveryApprovalDomain.inProbation(family, session.account.id, now)
+    )
+      throw new Cp2Error(
+        403,
+        "recovery_approval_probation",
+        "This device logged in within 24 hours of a browser being approved from another device, so it cannot change this yet. Use a device that was already logged in, or wait."
+      );
+  }
+
+  /** For the route guard: whether this live session is on trusted-device recovery probation. */
+  isSessionOnRecoveryProbation(sessionId: string, now = new Date()): boolean {
+    const session = this.getSession(sessionId, now);
+    if (session === null) return false;
+    const family = this.sessions.get(session.session.id)?.sessionFamilyId;
+    return (
+      family !== undefined &&
+      this.recoveryApprovalDomain.inProbation(family, session.account.id, now)
+    );
+  }
+
+  /** requireOutsideRecoveryProbation for wrappers that only hold a session id. */
+  private guardRecoveryProbation(sessionId: string | null | undefined, now = new Date()): void {
+    if (sessionId === null || sessionId === undefined) return;
+    this.requireOutsideRecoveryProbation(this.requireAnySession(sessionId, now), now);
+  }
+
+  private undoApprovedLogin(input: {
+    accountId: string;
+    collectedSessionId: string;
+    collectedFamilyId: string | null;
+    collectedAt: string;
+    approverSessionId: string;
+    credentialSnapshot: string | null;
+    trustedFamilies: string[];
+    now: Date;
+  }): void {
+    const approverFamily = this.sessions.get(input.approverSessionId)?.sessionFamilyId;
+    // Every family that was not signed in before the browser got in: the browser, and every later
+    // login with a PIN, passkey or key it set. Refreshes of earlier devices keep their family.
+    for (const session of this.sessions.values()) {
+      if (
+        session.accountId === input.accountId &&
+        session.revokedAt === null &&
+        session.sessionFamilyId !== approverFamily &&
+        !input.trustedFamilies.includes(session.sessionFamilyId)
+      ) {
+        session.revokedAt = input.now.toISOString();
+        session.revocationReason = "recovery_approval_withdrawn";
+      }
+    }
+    for (const passkey of [...this.passkeyDomain.passkeysMap.values()]) {
+      if (passkey.accountId === input.accountId && passkey.createdAt >= input.collectedAt) {
+        this.passkeyDomain.passkeysMap.delete(passkey.id);
+        this.revokeCredentialRecoveryGrants(passkey.id, input.now);
+      }
+    }
+    for (const key of this.deviceBootstrapDomain.deviceRecoveryCredentialsMap.values()) {
+      if (
+        key.accountId === input.accountId &&
+        key.revokedAt === null &&
+        key.createdAt >= input.collectedAt
+      ) {
+        key.revokedAt = input.now.toISOString();
+        key.updatedAt = input.now.toISOString();
+        this.revokeCredentialRecoveryGrants(key.id, input.now);
+      }
+    }
+    // This browser's E2EE devices and push subscriptions, which would keep receiving messages.
+    for (const device of this.messagingDomain.e2eeDevicesMap.values()) {
+      if (
+        device.accountId === input.accountId &&
+        device.revokedAt === null &&
+        device.createdAt >= input.collectedAt
+      )
+        device.revokedAt = input.now.toISOString();
+    }
+    for (const [id, subscription] of [...this.messagingDomain.pushSubscriptionsMap]) {
+      if (subscription.accountId === input.accountId && subscription.createdAt >= input.collectedAt)
+        this.messagingDomain.pushSubscriptionsMap.delete(id);
+    }
+    // API tokens minted since, which would otherwise outlive the sessions for 30 days.
+    for (const token of this.mcpTokensDomain.mcpAccessTokensMap.values()) {
+      if (
+        token.accountId === input.accountId &&
+        token.revokedAt === null &&
+        token.createdAt >= input.collectedAt
+      )
+        token.revokedAt = input.now.toISOString();
+    }
+    // Sign-in providers linked since (Google and others), so none of them leads back in.
+    for (const [id, identity] of [...this.oauthDomain.userIdentitiesMap]) {
+      if (identity.accountId === input.accountId && identity.linkedAt >= input.collectedAt)
+        this.oauthDomain.userIdentitiesMap.delete(id);
+    }
+    for (const grant of this.authTransactions.values()) {
+      if (
+        grant.purpose === "recovery" &&
+        grant.metadata.deviceRecoverySessionId === input.collectedSessionId &&
+        grant.consumedAt === null
+      )
+        grant.consumedAt = input.now.toISOString();
+    }
+    // Sign-in identities added since (a first shop's phone number becomes one).
+    for (const [id, identity] of [...this.accountIdentities]) {
+      if (identity.accountId !== input.accountId || identity.createdAt < input.collectedAt)
+        continue;
+      this.accountIdentities.delete(id);
+      const key = destinationAccountKey(identity.type, identity.normalizedValue);
+      if (this.identityAccountByValue.get(key) === input.accountId)
+        this.identityAccountByValue.delete(key);
+    }
+    // Put back the owner's PIN, password and phone as they were when the browser got in.
+    const before = parseCredentialSnapshot(input.credentialSnapshot);
+    if (before !== null) {
+      if ((this.accountPinHashes.get(input.accountId) ?? null) !== before.pinHash) {
+        if (before.pinHash === null) this.accountPinHashes.delete(input.accountId);
+        else this.accountPinHashes.set(input.accountId, before.pinHash);
+      }
+      const password = this.passwordCredentials.get(input.accountId) ?? null;
+      if (JSON.stringify(password) !== JSON.stringify(before.password)) {
+        if (before.password === null) this.passwordCredentials.delete(input.accountId);
+        else this.passwordCredentials.set(input.accountId, before.password);
+      }
+      const userId = this.userByAccount.get(input.accountId);
+      const user = userId === undefined ? undefined : this.users.get(userId);
+      if (user !== undefined && before.phone !== null)
+        this.users.set(user.id, { ...user, ...before.phone });
+    }
+    this.recordSecurityEvent(
+      "auth.recovery_approval_undone",
+      input.accountId,
+      "success",
+      input.now,
+      {
+        sessionId: input.collectedSessionId
+      }
+    );
+  }
+
+  /** In-app notice to the owner's shops, so an approval obtained by a phishing call is visible. */
+  private notifyBrowserApproved(accountId: string, now: Date): void {
+    for (const business of this.businesses.values()) {
+      if (
+        ![...this.memberships.values()].some(
+          (membership) =>
+            membership.businessId === business.id &&
+            membership.userId === this.userByAccount.get(accountId) &&
+            membership.role === "owner"
+        )
+      )
+        continue;
+      this.notificationsDomain.recordSecurityNotification({
+        businessId: business.id,
+        type: "security_event",
+        title: "A browser was let in to your account",
+        body: "You approved a browser from a logged-in device, and it is now logged in. If this was not you, open Login & security on the device that approved it within 24 hours and choose Undo, this wasn't me.",
+        sourceId: randomUUID(),
+        now
+      });
+    }
   }
 
   private notifyCredentialRecovery(
@@ -11342,6 +12291,7 @@ export class Cp2Store {
   }): { changed: true; revokedSessions: number } {
     const now = input.now ?? new Date();
     const session = this.requireAnySession(input.sessionId, now);
+    this.requireOutsideRecoveryProbation(session, now);
     const credential = this.passwordCredentials.get(session.account.id);
     if (credential === undefined) {
       throw new Cp2Error(409, "password_not_set", "A password has not been set for this account.");
@@ -11388,6 +12338,7 @@ export class Cp2Store {
   }): { created: true } {
     const now = input.now ?? new Date();
     const session = this.requireAnySession(input.sessionId, now);
+    this.requireOutsideRecoveryProbation(session, now);
     if (this.passwordCredentials.has(session.account.id)) {
       throw new Cp2Error(
         409,
@@ -11421,6 +12372,7 @@ export class Cp2Store {
   } {
     const now = input.now ?? new Date();
     const session = this.requireRecentlyAuthenticatedSession(input.sessionId, now);
+    this.requireOutsideRecoveryProbation(session, now);
     if (this.activeMfaFactors(session.account.id).length === 0)
       throw new Cp2Error(409, "mfa_not_enabled", "MFA is not enabled.");
     return { recoveryCodes: this.replaceRecoveryCodes(session.account.id, now) };
@@ -11450,6 +12402,7 @@ export class Cp2Store {
     | { kind: "merge"; email: string; sourceAccountId: string; targetAccountId: string } {
     const now = input.now ?? new Date();
     const session = this.requireRecentlyAuthenticatedSession(input.sessionId, now);
+    this.requireOutsideRecoveryProbation(session, now);
     const email = normalizeDestination("email", input.email);
     const linkedAccountId = this.resolveAnyIdentityAccount("email", email);
     if (linkedAccountId !== undefined && linkedAccountId !== session.account.id) {
@@ -11496,6 +12449,7 @@ export class Cp2Store {
   }): AuthTransactionRecord {
     const now = input.now ?? new Date();
     const session = this.requireAnySession(input.sessionId, now);
+    this.requireOutsideRecoveryProbation(session, now);
     if (session.account.primaryAuthChannel !== "device") {
       throw new Cp2Error(409, "account_merge_not_available", "Account joining is unavailable.");
     }
@@ -11654,6 +12608,7 @@ export class Cp2Store {
   }): { disabled: true } {
     const now = input.now ?? new Date();
     const session = this.requireRecentlyAuthenticatedSession(input.sessionId, now);
+    this.requireOutsideRecoveryProbation(session, now);
     const factor = this.mfaFactors.get(input.factorId);
     if (
       !factor ||
@@ -13697,16 +14652,42 @@ export class Cp2Store {
     reason: string,
     now: Date
   ): void {
+    // A session on trusted-device probation (a browser let in by approval, or anything that logged
+    // in after it) never signs out devices that were signed in before, so the owner keeps them and
+    // can undo. The approving session is always kept.
+    const approver = this.recoveryApproverSession(exceptSessionId);
+    const caller = this.sessions.get(exceptSessionId)?.sessionFamilyId;
+    const onProbation =
+      caller !== undefined && this.recoveryApprovalDomain.inProbation(caller, accountId, now);
     for (const session of this.sessions.values()) {
       if (
         session.accountId === accountId &&
         session.id !== exceptSessionId &&
+        session.id !== approver &&
+        !(
+          onProbation &&
+          !this.recoveryApprovalDomain.inProbation(session.sessionFamilyId, accountId, now)
+        ) &&
         session.revokedAt === null
       ) {
         session.revokedAt = now.toISOString();
         session.revocationReason = reason;
       }
     }
+  }
+
+  /** The approving device's session for a browser let in by approval, consumed grant or not. */
+  private recoveryApproverSession(sessionId: string): string | undefined {
+    for (const record of this.authTransactions.values()) {
+      const approver = record.metadata.recoveryApproverSessionId;
+      if (
+        record.purpose === "recovery" &&
+        record.metadata.deviceRecoverySessionId === sessionId &&
+        typeof approver === "string"
+      )
+        return approver;
+    }
+    return undefined;
   }
 
   private hasAccountPinHash(accountId: string): boolean {

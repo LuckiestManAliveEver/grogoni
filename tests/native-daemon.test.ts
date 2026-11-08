@@ -14,6 +14,51 @@ import {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("native daemon executor", () => {
+  it("routes linked tool tickets to the canonical API with service authentication and no owner cookie", async () => {
+    const ticket = {
+      businessId: "business",
+      ownerId: "owner",
+      chat: "chat",
+      sender: "sender",
+      messageId: "provider-id",
+      grantId: "grant"
+    };
+    const request = vi.fn<typeof fetch>(async () =>
+      Response.json({ text: "Approved catalogue result" })
+    );
+    vi.stubGlobal("fetch", request);
+    const execute = createDaemonExecutor({
+      GROGONI_API_URL: "https://api.example/api",
+      DAEMON_SERVICE_TOKEN: "t".repeat(32)
+    });
+    const payload = {
+      kind: "agent" as const,
+      message: "/whatsapp-linked " + Buffer.from(JSON.stringify(ticket)).toString("base64url"),
+      modelId: "gpt-6-luna",
+      agentAdapterId: "grogoni" as const
+    };
+    const result = await execute(
+      { ...task, owner_user_id: "owner", payload },
+      new AbortController().signal
+    );
+    expect(result).toMatchObject({
+      completion: { outputText: expect.stringContaining("Approved catalogue result") }
+    });
+    expect(String(request.mock.calls[0]![0])).toBe(
+      "https://api.example/api/internal/whatsapp-linked/turn"
+    );
+    const init = request.mock.calls[0]![1]!;
+    expect(init.credentials).toBe("omit");
+    expect(init.headers).toEqual({
+      authorization: `Bearer ${"t".repeat(32)}`,
+      "content-type": "application/json"
+    });
+    expect(JSON.parse(init.body as string)).toEqual(ticket);
+    await expect(
+      execute({ ...task, owner_user_id: "other-owner", payload }, new AbortController().signal)
+    ).rejects.toThrow("OWNER_MISMATCH");
+    expect(request).toHaveBeenCalledTimes(1);
+  });
   it("executes Luna through Grogoni with no tool capability", async () => {
     const request = vi.fn<typeof fetch>(async () =>
       Response.json({

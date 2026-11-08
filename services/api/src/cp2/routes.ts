@@ -57,6 +57,8 @@ import {
 } from "./domains/logistics/routes.js";
 import { registerNotificationsRoutes } from "./domains/notifications/routes.js";
 import { registerPasskeysRoutes } from "./domains/passkeys/routes.js";
+import { registerRecoveryApprovalRoutes } from "./domains/recovery-approval/routes.js";
+import { probationAllows } from "./recovery-probation-routes.js";
 import { registerNetworkRoutes } from "./domains/network/routes.js";
 import { registerCommercialRecordsRoutes } from "./domains/commercial-records/routes.js";
 import { registerFulfillmentRoutes } from "./domains/fulfillment/routes.js";
@@ -296,6 +298,23 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
         : {})
     });
   const webPublicUrl = (options.webPublicUrl ?? "https://grogoni.com").replace(/\/+$/u, "");
+  // Before any route: a session on trusted-device recovery probation may call only allowlisted
+  // routes (recovery-probation-routes.ts). It covers every route of this Fastify instance.
+  app.addHook("preHandler", async (request, reply) => {
+    const url = request.routeOptions.url;
+    if (url === undefined || probationAllows(request.method, url)) return;
+    const sessionId = readSessionCookie(request.headers.cookie);
+    if (sessionId === null || !store.isSessionOnRecoveryProbation(sessionId)) return;
+    request.log.warn(
+      { event: "auth.recovery_probation_refused", route: `${request.method} ${url}` },
+      "Refused a route during trusted-device recovery probation."
+    );
+    return reply.code(403).send({
+      code: "recovery_approval_probation",
+      message:
+        "This device logged in within 24 hours of a browser being approved from another device, so it cannot do this yet. Use a device that was already logged in, or wait."
+    });
+  });
   registerChatImageRoutes(app, store);
   const telegramBotUsername = options.telegramBotUsername ?? "";
   const binaryUploadPipeline = options.binaryUploadPipeline;
@@ -939,6 +958,7 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
   registerOtpRoutes(app, store, emailProvider);
 
   registerPasskeysRoutes(app, store, authRuntime, authAttemptsByIp, emailProvider);
+  registerRecoveryApprovalRoutes(app, store, authRuntime, authAttemptsByIp, emailProvider);
 
   registerOAuthRoutes(app, store, oauthAllowedRedirectOrigins);
 
@@ -1508,6 +1528,12 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
         let registeredNodeId: string | null = null;
         socket.on("message", (raw) => {
           try {
+            // Revalidate on every message, like /v1/realtime: a session signed out, expired, or
+            // undone by trusted-device recovery must not keep receiving the shop's inference jobs.
+            if (store.getSession(session.session.id) === null) {
+              socket.close(1008, "Session ended");
+              return;
+            }
             const message = JSON.parse(String(raw)) as OwnerInferenceNodeMessage;
             if (message.type === "inference.node.register") {
               if (

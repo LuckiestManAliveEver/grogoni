@@ -1,7 +1,8 @@
-import type { RuntimeSessionSummary } from "@grogoni/shared-types";
+import type { RuntimeSessionSummary, RuntimeTurnSummary } from "@grogoni/shared-types";
 import { Cp2Error } from "../../cp2-error.js";
 import type { AgentRuntimeDomainDeps } from "./domain-deps.js";
 import type { PendingRuntimeAction } from "./shared.js";
+import { reportChannelDelegationResolution } from "./channel-delegation-result.js";
 
 export interface RuntimeApprovalRejection {
   sessionId: string | null;
@@ -13,10 +14,12 @@ export interface RuntimeApprovalRejection {
 }
 
 export async function rejectRuntimeApproval(
-  deps: Pick<AgentRuntimeDomainDeps, "requireAuthorizedSession" | "runtimeApprovalStore">,
+  deps: Pick<AgentRuntimeDomainDeps, "requireAuthorizedSession" | "runtimeApprovalStore"> &
+    Partial<Pick<AgentRuntimeDomainDeps, "deliverChannelDelegationResult" | "recordAuditEvent">>,
   sessions: Map<string, RuntimeSessionSummary>,
   pending: Map<string, PendingRuntimeAction>,
-  input: RuntimeApprovalRejection
+  input: RuntimeApprovalRejection,
+  turns: Iterable<RuntimeTurnSummary> = []
 ): Promise<{ status: "REJECTED" }> {
   const now = input.now ?? new Date();
   const actor = deps.requireAuthorizedSession(
@@ -40,8 +43,9 @@ export async function rejectRuntimeApproval(
     input.confirmationToken.length > 200
   )
     throw unavailable();
+  let action: PendingRuntimeAction["action"];
   if (deps.runtimeApprovalStore) {
-    await deps.runtimeApprovalStore.reject({
+    action = await deps.runtimeApprovalStore.reject({
       token: input.confirmationToken,
       businessId: input.businessId,
       actorId: actor.user.id,
@@ -61,6 +65,15 @@ export async function rejectRuntimeApproval(
     )
       throw unavailable();
     pending.delete(input.confirmationToken);
+    action = proposal.action;
   }
+  // The rejection is committed above, so a single rejection reports at most once.
+  await reportChannelDelegationResolution(deps, turns, {
+    businessId: input.businessId,
+    action,
+    outcome: "rejected",
+    resolvedBy: actor.user.id,
+    now
+  });
   return { status: "REJECTED" };
 }

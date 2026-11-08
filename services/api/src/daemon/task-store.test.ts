@@ -8,6 +8,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { createServer } from "node:net";
 import { createServer as createHttpServer } from "node:http";
 import { createPostgresDaemonTaskStore, daemonQueueMigrations } from "./task-store.js";
+import { buildDaemonGateway } from "./gateway.js";
 
 const url = process.env.CP2_POSTGRES_TEST_DATABASE_URL;
 describe.skipIf(!url)("durable native daemon queue", () => {
@@ -28,6 +29,78 @@ describe.skipIf(!url)("durable native daemon queue", () => {
       maxAttempts: 3,
       ...extra
     });
+  it("claims trusted immediate user tasks on the existing server lane without changing browser-first tasks", async () => {
+    const ownerUserId = randomUUID();
+    const delayed = await store.enqueueOwned(
+      {
+        key: randomUUID(),
+        payload: {
+          kind: "agent",
+          message: "normal",
+          modelId: "gpt-6-luna",
+          agentAdapterId: "grogoni"
+        },
+        runAt: new Date(),
+        maxAttempts: 1,
+        ownerUserId
+      },
+      20
+    );
+    const immediate = await store.enqueueOwned(
+      {
+        key: randomUUID(),
+        payload: {
+          kind: "agent",
+          message: "linked reply",
+          modelId: "gpt-6-luna",
+          agentAdapterId: "grogoni"
+        },
+        runAt: new Date(),
+        maxAttempts: 1,
+        ownerUserId,
+        serverImmediate: true
+      },
+      20
+    );
+    expect("task" in delayed && "task" in immediate).toBe(true);
+    if (!("task" in immediate)) throw new Error("Unexpected admission limit");
+    expect((await store.claim(30_000))?.id).toBe(immediate.task.id);
+    expect(await store.claim(30_000)).toBeNull();
+  });
+  it("authenticates immediate owner submissions, enforces the shared cap and fences cross-owner keys", async () => {
+    const token = "test-token-".repeat(4);
+    const app = buildDaemonGateway({
+      store,
+      token,
+      ready: () => true,
+      maxActivePerUser: 1,
+      defaults: { modelId: "gpt-6-luna", agentAdapterId: "grogoni" }
+    });
+    const body = {
+      key: randomUUID(),
+      ownerUserId: randomUUID(),
+      serverImmediate: true,
+      payload: { kind: "agent", message: "hello" }
+    };
+    const submit = (payload = body, authorized = true) =>
+      app.inject({
+        method: "POST",
+        url: "/v1/tasks",
+        headers: authorized ? { authorization: `Bearer ${token}` } : {},
+        payload
+      });
+    try {
+      expect((await submit(body, false)).statusCode).toBe(401);
+      const first = await submit();
+      expect(first.statusCode).toBe(202);
+      expect((await submit()).json().id).toBe(first.json().id);
+      expect((await submit({ ...body, key: randomUUID() })).statusCode).toBe(429);
+      expect((await submit({ ...body, ownerUserId: randomUUID() })).statusCode).toBe(409);
+      expect((await store.claim(30_000))?.id).toBe(first.json().id);
+    } finally {
+      await app.close();
+    }
+  });
   beforeAll(async () => {
     await admin.query(`create schema ${schema}`);
     for (const file of daemonQueueMigrations)
@@ -242,7 +315,7 @@ describe.skipIf(!url)("durable native daemon queue", () => {
       untilLine?: string,
       signal: NodeJS.Signals = "SIGKILL"
     ) =>
-      new Promise<{ code: number | null; output: string }>((resolve) => {
+      new Promise<{ code: number | null; output: string; shutdownMs: number | null }>((resolve) => {
         const daemon = spawn(
           process.execPath,
           ["--import", "tsx", "services/api/src/daemon/index.ts"],
@@ -254,16 +327,24 @@ describe.skipIf(!url)("durable native daemon queue", () => {
         );
         let output = "";
         let signalled = false;
+        let signalledAt: number | null = null;
         const collect = (chunk: Buffer) => {
           output += chunk.toString();
           if (!signalled && untilLine && output.includes(untilLine)) {
             signalled = true;
+            signalledAt = Date.now();
             daemon.kill(signal);
           }
         };
         daemon.stdout.on("data", collect);
         daemon.stderr.on("data", collect);
-        daemon.on("exit", (code) => resolve({ code, output }));
+        daemon.on("exit", (code) =>
+          resolve({
+            code,
+            output,
+            shutdownMs: signalledAt === null ? null : Date.now() - signalledAt
+          })
+        );
       });
     const invalid = await run({
       DAEMON_DATABASE_URL: url!,
@@ -299,7 +380,6 @@ describe.skipIf(!url)("durable native daemon queue", () => {
     expect(blankHost.output).toContain('"host":"127.0.0.1"');
     expect(blankHost.code).toBe(0);
     // SIGTERM while waiting for an unreachable database exits promptly and cleanly.
-    const stopped = Date.now();
     const unreachable = await run(
       {
         DAEMON_DATABASE_URL: "postgres://nobody:nothing@127.0.0.1:1/none",
@@ -311,7 +391,10 @@ describe.skipIf(!url)("durable native daemon queue", () => {
     );
     expect(unreachable.output).toContain('"type":"database_startup_retry"');
     expect(unreachable.code).toBe(0);
-    expect(Date.now() - stopped).toBeLessThan(10_000);
+    // Measure the shutdown contract from SIGTERM, excluding cold tsx startup and the
+    // initial database connection timeout that happens before the retry is observed.
+    expect(unreachable.shutdownMs).not.toBeNull();
+    expect(unreachable.shutdownMs!).toBeLessThan(10_000);
     expect(unreachable.output).not.toContain("database_startup_recovered");
   }, 60_000);
   it("rejects a running row without a lease at the schema level", async () => {

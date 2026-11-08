@@ -57,6 +57,7 @@
     "@grogoni/tool-core": "workspace:*",
     "@simplewebauthn/server": "^13.0.0",
     "@thednp/dommatrix": "2.0.12",
+    "baileys": "7.0.0-rc14",
     "fastify": "^5.2.1",
     "ioredis": "^6.0.0",
     "libphonenumber-js": "^1.13.9",

@@ -90,6 +90,24 @@ describe.skipIf(!url)("durable exact-action runtime approvals", () => {
     expect(row.rejected_at).toBeInstanceOf(Date);
     expect(row.claimed_at).toBeNull();
   });
+  it("returns the rejected action with its channel delegation so the requester can be told", async () => {
+    const channelDelegation = {
+      channelId: "channel",
+      grantId: "grant",
+      ownerId: "actor",
+      sourceMessageId: "source",
+      actorId: "254711111111@s.whatsapp.net"
+    };
+    const proposal = pending();
+    await approvals.put(claim.token, {
+      ...proposal,
+      action: { ...proposal.action, channelDelegation }
+    });
+    const rejected = await approvals.reject(claim);
+    expect(rejected).toMatchObject({ id: proposal.action.id, channelDelegation });
+    expect(rejected.confirmationToken).toBeNull();
+    await expect(approvals.reject(claim)).rejects.toMatchObject({ statusCode: 404 });
+  });
   it("allows only one winner in a confirmation/rejection race", async () => {
     await approvals.put(claim.token, pending());
     const results = await Promise.allSettled([approvals.claim(claim), approvals.reject(claim)]);

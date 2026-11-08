@@ -3,8 +3,10 @@ import {
   databasePoolConfig,
   isAcceptedMigrationChecksum,
   legacyMigrationChecksums,
+  describeDatabaseTarget,
   normalizeDatabaseUrl,
-  readDatabaseUrl
+  readDatabaseUrl,
+  readSchemaChangeDatabaseUrl
 } from "../services/api/scripts/database-connection.mjs";
 
 const migration014 = "014_cp2_phase1_auth_security_relational.sql";
@@ -159,5 +161,66 @@ describe("database connection policy", () => {
         )
       ).toBe(false);
     });
+  });
+});
+
+describe("schema change target", () => {
+  const neonPooled =
+    "postgresql://owner:secret@ep-falling-wind-a54jseby-pooler.us-east-2.aws.neon.tech/neondb?sslmode=require";
+  const neonDirect =
+    "postgresql://owner:secret@ep-falling-wind-a54jseby.us-east-2.aws.neon.tech/neondb?sslmode=require";
+  const local = "postgresql://postgres:postgres@127.0.0.1:55471/grogoni_test";
+
+  it("refuses a .env DIRECT_DATABASE_URL that differs from the DATABASE_URL given", () => {
+    // The regression: DATABASE_URL pointed at a local container, .env supplied a remote
+    // DIRECT_DATABASE_URL, and the migration ran against the remote database.
+    expect(() =>
+      readSchemaChangeDatabaseUrl({ DATABASE_URL: local, DIRECT_DATABASE_URL: neonPooled })
+    ).toThrow(/name different databases.*MIGRATION_DATABASE_URL/su);
+  });
+
+  it("never puts a password in the refusal", () => {
+    let message = "";
+    try {
+      readSchemaChangeDatabaseUrl({ DATABASE_URL: local, DIRECT_DATABASE_URL: neonPooled });
+    } catch (error) {
+      message = String(error);
+    }
+    expect(message).not.toContain("secret");
+    expect(message).not.toContain("postgres:postgres");
+    expect(describeDatabaseTarget(local)).toBe("postgres@127.0.0.1:55471/grogoni_test");
+  });
+
+  it("lets MIGRATION_DATABASE_URL name the target outright", () => {
+    expect(
+      readSchemaChangeDatabaseUrl({
+        MIGRATION_DATABASE_URL: local,
+        DATABASE_URL: neonPooled,
+        DIRECT_DATABASE_URL: neonPooled,
+        NODE_ENV: "production"
+      })
+    ).toBe(local);
+  });
+
+  it("treats a Neon pooler host and its direct host as one database", () => {
+    expect(
+      readSchemaChangeDatabaseUrl({ DATABASE_URL: neonPooled, DIRECT_DATABASE_URL: neonDirect })
+    ).toBe(normalizeDatabaseUrl(neonDirect));
+  });
+
+  it("uses whichever single URL is set, and requires the direct URL in production", () => {
+    expect(readSchemaChangeDatabaseUrl({ DATABASE_URL: local })).toBe(local);
+    expect(readSchemaChangeDatabaseUrl({ DIRECT_DATABASE_URL: local })).toBe(local);
+    expect(readSchemaChangeDatabaseUrl({})).toBeNull();
+    expect(() =>
+      readSchemaChangeDatabaseUrl({ DATABASE_URL: neonPooled, NODE_ENV: "production" })
+    ).toThrow(/DIRECT_DATABASE_URL is required/u);
+    expect(
+      readSchemaChangeDatabaseUrl({
+        DATABASE_URL: neonPooled,
+        DIRECT_DATABASE_URL: local,
+        NODE_ENV: "production"
+      })
+    ).toBe(local);
   });
 });

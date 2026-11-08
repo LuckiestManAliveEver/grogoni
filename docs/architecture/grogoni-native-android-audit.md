@@ -1,5 +1,13 @@
 # Grogoni Native Android Audit
 
+## WhatsApp discovery checkpoint — 2026-11-06
+
+The native message-port bridge now detects enabled WhatsApp/WhatsApp Business installations
+using targeted package queries and can open their launcher intent. The shared messaging panel
+contains the pairing-code control. No WhatsApp account number is inferred, no Node runtime is
+embedded, and the minimum SDK remains 23. This is not live-device pairing certification; the
+[Linked Devices checkpoint](whatsapp-linked-devices.md) records the hosting and remaining gaps.
+
 **Checkpoint:** pre-implementation audit for the "Grogoni Native Android — Capacitor, SMS Gateway,
 Contacts, Offline Messaging and Agent Runtime" directive.
 **Method:** static inspection of the checked-in repository at the time of writing. No production

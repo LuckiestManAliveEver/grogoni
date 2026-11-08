@@ -1,3 +1,4 @@
+import { daemonResultText } from "./result-text.js";
 import { withLookupDeadline } from "./conversation-runtime.js";
 import { Buffer } from "node:buffer";
 import type {
@@ -624,6 +625,7 @@ export function createEdgeDaemon(dependencies: EdgeDaemonDependencies) {
     if (gateway === null) {
       gateway = buildDaemonGateway({
         store,
+        maxActivePerUser: config.maxActivePerUser,
         token: serviceToken,
         ready: () => true,
         defaults: { modelId: config.modelId ?? "unconfigured", agentAdapterId: "grogoni" },
@@ -879,15 +881,7 @@ export function maintenanceFromJobRunner(
 
 /** The reply text from an agent result: the runtime's JSON contract, or the raw output. */
 function userResultFromAgent(task: DaemonTask, result: unknown): UserTaskResult {
-  const completion = (result as { completion?: { outputText?: unknown } } | null)?.completion;
-  const raw = typeof completion?.outputText === "string" ? completion.outputText : "";
-  let text = raw;
-  try {
-    const parsed = JSON.parse(raw) as { message?: unknown };
-    if (typeof parsed.message === "string") text = parsed.message;
-  } catch {
-    // Not the JSON contract: keep the raw text.
-  }
+  const text = daemonResultText(result);
   return {
     text,
     modelId:

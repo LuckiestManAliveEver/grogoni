@@ -406,6 +406,11 @@ export async function createEdgeDomainRoutes(
           await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [
             scope.directPairLock
           ]);
+        // Before the account lock, on every recovery-approval route (edge-snapshot-scope.ts).
+        if (scope.recoveryApprovalLock)
+          await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [
+            scope.recoveryApprovalLock
+          ]);
         if (!isEdgeFastPathWrite(request.method, path)) {
           if (scope.accountId)
             await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [

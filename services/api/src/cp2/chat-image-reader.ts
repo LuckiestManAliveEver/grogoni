@@ -15,7 +15,8 @@ export async function readChatImage(
     createOpenRouterRuntime({
       ...process.env,
       OPENROUTER_MAX_OUTPUT_TOKENS: process.env.LUNA_RECEIPT_MAX_OUTPUT_TOKENS ?? "8192"
-    }).resolve({ modelId: "gpt-6-luna", executionTarget: "backend" })
+    }).resolve({ modelId: "gpt-6-luna", executionTarget: "backend" }),
+  options: { modelId?: string; signal?: AbortSignal } = {}
 ) {
   const body = parseRequestBody(input);
   const fileName = parseString(body.fileName, "fileName");
@@ -48,10 +49,11 @@ export async function readChatImage(
     );
   const result = await adapter.generate({
     context: {
-      modelId: "gpt-6-luna",
+      modelId: options.modelId ?? "gpt-6-luna",
       agentId: "chat-image-reader",
       shopId: "",
-      ...(accountId ? { accountId } : {})
+      ...(accountId ? { accountId } : {}),
+      ...(options.signal ? { signal: options.signal } : {})
     },
     prompt: {
       schemaVersion: "cp11-runtime-model-v1",
@@ -95,7 +97,7 @@ export async function readChatImage(
     contentType,
     text: output.message,
     format: "ocr",
-    engine: "gpt-6-luna",
+    engine: options.modelId ?? "gpt-6-luna",
     warnings: [],
     sizeBytes: bytes.length,
     checksum: createHash("sha256").update(bytes).digest("hex")

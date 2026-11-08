@@ -1,5 +1,6 @@
 import type {
   RuntimeHandoff,
+  RuntimeChannelDelegation,
   RuntimeTurnSummary,
   RuntimeExecutionEvent,
   RuntimeExecutionEventType
@@ -39,8 +40,17 @@ import type { AgentRuntimeCommerceDeps } from "./domain-deps-commerce.js";
 import type { RuntimeApprovalStore } from "./runtime-approval-store.js";
 import type { InventoryProcurementStore } from "./inventory-procurement-store.js";
 import type { BusinessTaskEvaluationReader } from "./business-task-evaluation-reader.js";
+import type { ChannelDelegationResolution } from "./channel-delegation-result.js";
 
 export interface AgentRuntimeDomainDeps extends AgentRuntimeCommerceDeps {
+  channelToolGrants?: (
+    businessId: string,
+    ref: RuntimeChannelDelegation,
+    tool?: string
+  ) => string[];
+  /** Tells the originating channel (WhatsApp) how the owner resolved a delegated action. The
+   *  implementation re-validates the grant, scope and STOP state before sending anything. */
+  deliverChannelDelegationResult?: (resolution: ChannelDelegationResolution) => Promise<void>;
   assistantPermissionErrors?: (sessionId: string | null, tool: string) => string[];
   assertPortableSkillAction?: (
     input: { sessionId: string | null; businessId: string },

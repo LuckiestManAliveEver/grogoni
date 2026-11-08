@@ -769,6 +769,28 @@ export function createAuthRoutes({
     );
     return result.rows[0] ?? null;
   }
+  /**
+   * Trusted-device recovery probation (domains/recovery-approval): within 24 hours of a browser
+   * collecting an approval, every session family not signed in at that moment is on probation.
+   */
+  async function onRecoveryProbation(client: SqlClient, session: Row): Promise<boolean> {
+    const result = await client.query(
+      `select 1 from cp2_auth_transactions t
+      where t.account_id = $1::text
+        and t.record->'metadata'->>'recoveryApprovalRequest' = 'true'
+        and t.record->'metadata'->>'recoveryApprovalStatus' = 'approved'
+        and t.record->>'consumedAt' is not null
+        and t.record->'metadata'->>'recoveryApprovalCollectedAt' is not null
+        and (t.record->>'expiresAt')::timestamptz > now()
+        and not coalesce(
+          (t.record->'metadata'->>'recoveryApprovalTrustedFamilies')::jsonb ? $2::text,
+          false
+        )
+      limit 1`,
+      [String(session.account_id), String(session.session_family_id ?? session.id)]
+    );
+    return result.rows.length > 0;
+  }
   async function revokeFamily(client: SqlClient, row: Row, reason: string) {
     const result = await client.query(
       `update sessions set revoked_at = now(), revocation_reason = $2
@@ -903,6 +925,18 @@ export function createAuthRoutes({
               "Sign in again before enrolling device recovery."
             );
           }
+          // The Fastify probation guard (cp2/recovery-probation-routes.ts) never sees this direct
+          // handler, so it applies the same rule: no device-security key from a probation session.
+          if (
+            data.deviceSecurity === true &&
+            existing &&
+            (await onRecoveryProbation(client, existing))
+          )
+            return error(
+              403,
+              "recovery_approval_probation",
+              "This device logged in within 24 hours of a browser being approved from another device, so it cannot do this yet. Use a device that was already logged in, or wait."
+            );
           if (existing) {
             const account = (
               await client.query(`${accountSelect} where a.id = $1`, [existing.account_id])

@@ -128,6 +128,8 @@ import { useInstallPrompt } from "./misc-browser-utils";
 
 import { BusinessSetupPanel } from "./BusinessSetupPanel";
 import { SecureShopPrompt } from "./SecureShopPrompt";
+import { TrustedDeviceApproval } from "./TrustedDeviceApproval";
+import { WhatsAppLinkedStartupGate } from "./WhatsAppLinkedStartupGate";
 import { MenuDrawer } from "./MenuDrawer";
 
 import { ChatSurface } from "./ChatSurface";
@@ -144,6 +146,7 @@ import {
 
 import ShellNotices from "./ShellNotices";
 import { permissionsForOpenShop } from "./active-shop-permissions";
+
 const AgentProfileSurface = lazy(() =>
   loadLazyModuleWithRecovery(
     agentProfileModuleKeys.surface,
@@ -1863,6 +1866,9 @@ export function OwnerApp() {
           session.account.identityLevel === "device" ? (
             <SecureShopPrompt shopName={business.name} onSecured={refreshSession} />
           ) : null}
+          {!isAuthScreen && session?.account.primaryAuthChannel === "phone" ? (
+            <TrustedDeviceApproval key={session.account.id} mode="prompt" />
+          ) : null}
           {authBootstrapPending ? (
             <NativeLaunchScreen
               message={bootstrapProgressMessage(
@@ -1926,6 +1932,11 @@ export function OwnerApp() {
             />
           ) : (
             <main className="chat-workspace-shell">
+              <WhatsAppLinkedStartupGate
+                accountId={session?.account.id}
+                businessId={business?.id}
+                shops={grogoniSessionContext?.shops}
+              />
               <ChatSurface
                 chatDraft={chatDraft}
                 initialEmailSubject={

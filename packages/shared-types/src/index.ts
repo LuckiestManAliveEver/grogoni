@@ -10,6 +10,7 @@ export * from "./purchase-orders.js";
 export * from "./computer-runtime.js";
 export * from "./fulfillment.js";
 export * from "./grams.js";
+export * from "./recovery-approval.js";
 export * from "./guest-intent.js";
 export * from "./phone-number.js";
 export * from "./portable-agent.js";
@@ -391,6 +392,7 @@ export type ChannelProvider =
   | "grogoni"
   | "telegram"
   | "whatsapp"
+  | "whatsapp_linked"
   | "messenger"
   | "instagram"
   | "tiktok"
@@ -439,6 +441,7 @@ export type MessageChannel =
   | "mms"
   | "rcs_business"
   | "whatsapp_business"
+  | "whatsapp_linked"
   | "telegram"
   | "facebook_messenger"
   | "instagram_messaging"
@@ -807,7 +810,7 @@ export interface ConnectedMailboxSyncSummary {
 }
 
 export interface TrustedMessageAttachmentReference {
-  resourceType: "invoice";
+  resourceType: "invoice" | "conversation_attachment";
   resourceId: string;
 }
 
@@ -4308,7 +4311,15 @@ export interface RuntimeModelTrace {
   agentAdapterId?: string;
 }
 
+export interface RuntimeChannelDelegation {
+  channelId: string;
+  grantId: string;
+  ownerId: string;
+  sourceMessageId: string;
+  actorId: string;
+}
 export interface RuntimePlannedAction {
+  channelDelegation?: RuntimeChannelDelegation;
   portableSkill?: { id: string; version: number; digest: string };
   id: string;
   toolName: RuntimeToolName;
@@ -4357,6 +4368,7 @@ export interface RuntimeSessionSummary {
 }
 
 export interface RuntimeTurnSummary {
+  sourceMessageId?: string;
   id: string;
   sessionId: string;
   businessId: string;

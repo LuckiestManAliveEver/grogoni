@@ -1,4 +1,5 @@
 import { isNativeDeviceHost } from "./device-messaging";
+import { TrustedDeviceApproval } from "./TrustedDeviceApproval";
 import { Suspense, useEffect, useState } from "react";
 import { browserSupportsWebAuthn } from "@simplewebauthn/browser";
 
@@ -744,6 +745,7 @@ export function IdentitySecurityPanel({
         />
       </Suspense>
       {accountPinForm()}
+      <TrustedDeviceApproval mode="panel" />
       <div className="record-form">
         <div className="section-heading">
           <p className="eyebrow">Private identity contact</p>

@@ -18,7 +18,8 @@ export type DaemonPool = Pick<Pool, "query" | "connect">;
 export const daemonQueueMigrations = [
   "112_native_daemon.sql",
   "116_daemon_lanes.sql",
-  "124_daemon_conversation_delivery.sql"
+  "124_daemon_conversation_delivery.sql",
+  "134_daemon_immediate_user_tasks.sql"
 ] as const;
 
 /** How long a user's due task waits for their browser before a server worker takes it. */
@@ -43,6 +44,7 @@ export interface DaemonTask {
   error_code: string | null;
   /** Null for operator tasks; set for tasks a signed-in user owns. */
   owner_user_id: string | null;
+  server_immediate?: boolean;
   lane: DaemonLane | null;
   created_at: Date;
   updated_at: Date;
@@ -86,6 +88,7 @@ export interface DaemonTaskStore {
     maxAttempts: number;
     /** Makes it a user task. Callers namespace `key` per owner: keys are globally unique. */
     ownerUserId?: string;
+    serverImmediate?: boolean;
   }): Promise<DaemonTask>;
   pendingConversationDeliveries(limit: number): Promise<DaemonTask[]>;
   markConversationDelivered(task: DaemonTask): Promise<void>;
@@ -184,8 +187,8 @@ export function createPostgresDaemonTaskStore(
     async enqueue(input) {
       const result = await pool.query<DaemonTask>(
         `insert into grogoni_daemon_tasks
-           (id,idempotency_key,payload,run_at,interval_ms,max_attempts,owner_user_id)
-         values ($1,$2,$3,$4,$5,$6,$7)
+           (id,idempotency_key,payload,run_at,interval_ms,max_attempts,owner_user_id,server_immediate)
+         values ($1,$2,$3,$4,$5,$6,$7,$8)
          on conflict (idempotency_key) do update set idempotency_key=excluded.idempotency_key
          returning *`,
         [
@@ -195,7 +198,8 @@ export function createPostgresDaemonTaskStore(
           input.runAt,
           input.intervalMs ?? null,
           input.maxAttempts,
-          input.ownerUserId ?? null
+          input.ownerUserId ?? null,
+          input.serverImmediate ?? false
         ]
       );
       return result.rows[0]!;
@@ -326,9 +330,9 @@ export function createPostgresDaemonTaskStore(
     async claim(leaseMs) {
       // $4: takeover delay. A user task's server due time is its due time plus that delay.
       return claimWhere(
-        `((status='queued' and run_at <= now()-case when owner_user_id is null then interval '0'
+        `((status='queued' and run_at <= now()-case when owner_user_id is null or server_immediate then interval '0'
              else $4::bigint*interval '1 millisecond' end)
-          or (status='running' and lease_until <= now()-case when owner_user_id is null
+          or (status='running' and lease_until <= now()-case when owner_user_id is null or server_immediate
              then interval '0' else $4::bigint*interval '1 millisecond' end))`,
         [takeoverMs],
         "server",
@@ -406,7 +410,7 @@ export function createPostgresDaemonTaskStore(
            when attempts >= max_attempts then
              case when status='running' then lease_until end
            else (case when status='queued' then run_at else lease_until end)
-             + case when owner_user_id is null then interval '0'
+             + case when owner_user_id is null or server_immediate then interval '0'
                else $1::bigint*interval '1 millisecond' end
          end) as next_due_at
          from grogoni_daemon_tasks where status in ('queued','running')`,
@@ -442,8 +446,8 @@ export function createPostgresDaemonTaskStore(
         }
         const inserted = await client.query<DaemonTask>(
           `insert into grogoni_daemon_tasks
-             (id,idempotency_key,payload,run_at,interval_ms,max_attempts,owner_user_id)
-           values ($1,$2,$3,$4,$5,$6,$7)
+             (id,idempotency_key,payload,run_at,interval_ms,max_attempts,owner_user_id,server_immediate)
+           values ($1,$2,$3,$4,$5,$6,$7,$8)
            on conflict (idempotency_key) do update set idempotency_key=excluded.idempotency_key
            returning *, (xmax = 0) as inserted`,
           [
@@ -453,7 +457,8 @@ export function createPostgresDaemonTaskStore(
             input.runAt,
             input.intervalMs ?? null,
             input.maxAttempts,
-            input.ownerUserId
+            input.ownerUserId,
+            input.serverImmediate ?? false
           ]
         );
         await client.query("commit");

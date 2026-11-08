@@ -42,7 +42,10 @@ metadata are rejected. Accounts with an existing PIN, password, or passkey must 
 another credential. Accounts with none may set their first credential within 15 minutes of
 sign-in. A legacy device-key session restore does not count as a recent sign-in.
 Owners with only a legacy key must sign in through an existing credential/fallback, then explicitly
-register a passkey. A new passkey is never created by the unauthenticated recovery screen.
+register a passkey. A new passkey is never created by the unauthenticated recovery screen. A
+browser with no passkey may instead be approved by a device that is still logged in and confirms
+with its screen lock. The browser creates its passkey only after that approval gives it a session
+(`trusted-device-recovery-approval.md`).
 
 ## Native Android
 
@@ -67,20 +70,22 @@ are separate actions; the account screen provides both.
 
 ## Endpoints and persistence
 
-| Endpoint                                            | Behavior                                                                                                                                |
-| --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| POST /auth/passkeys/register/options, /verify       | Authenticated, user-verified enrollment                                                                                                 |
-| POST /auth/passkeys/login/options                   | `purpose: pin_recovery`, normalized `identifier`; enumeration-safe discoverable challenge                                               |
-| POST /auth/passkeys/login/verify                    | Verify proof and issue a session-bound recovery grant                                                                                   |
-| POST /auth/continue                                 | Existing enrollment endpoint; `deviceSecurity: true` requires recent authentication and marks a native credential as challenge-required |
-| POST /auth/device/recover/options                   | Native challenge, bound to credential and phone; unknown credentials get the same response shape                                        |
-| POST /auth/device/recover                           | Verify native signature with `challengeId` and consume challenge                                                                        |
-| GET /auth/device/credentials                        | List current account's enrolled recovery devices without keys                                                                           |
-| DELETE /auth/device/credentials/:credentialId       | Revoke a device and its outstanding reset grants                                                                                        |
-| POST /auth/pin/recover/device                       | Reset existing PIN using an unexpired grant                                                                                             |
-| POST /auth/pin/setup                                | Set first PIN; recovery sessions must have an unused grant                                                                              |
-| POST /auth/password/recover/device                  | Reset password using an unexpired grant                                                                                                 |
-| POST /auth/recovery/start, /verify, /reset-password | Existing verified email fallback                                                                                                        |
+| Endpoint                                                                      | Behavior                                                                                                                                |
+| ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| POST /auth/passkeys/register/options, /verify                                 | Authenticated, user-verified enrollment                                                                                                 |
+| POST /auth/passkeys/login/options                                             | `purpose: pin_recovery`, normalized `identifier`; enumeration-safe discoverable challenge                                               |
+| POST /auth/passkeys/login/verify                                              | Verify proof and issue a session-bound recovery grant                                                                                   |
+| POST /auth/continue                                                           | Existing enrollment endpoint; `deviceSecurity: true` requires recent authentication and marks a native credential as challenge-required |
+| POST /auth/device/recover/options                                             | Native challenge, bound to credential and phone; unknown credentials get the same response shape                                        |
+| POST /auth/device/recover                                                     | Verify native signature with `challengeId` and consume challenge                                                                        |
+| GET /auth/device/credentials                                                  | List current account's enrolled recovery devices without keys                                                                           |
+| DELETE /auth/device/credentials/:credentialId                                 | Revoke a device and its outstanding reset grants                                                                                        |
+| POST /auth/pin/recover/device                                                 | Reset existing PIN using an unexpired grant                                                                                             |
+| POST /auth/pin/setup                                                          | Set first PIN; recovery sessions must have an unused grant                                                                              |
+| POST /auth/password/recover/device                                            | Reset password using an unexpired grant                                                                                                 |
+| POST /auth/recovery/start, /verify, /reset-password                           | Existing verified email fallback                                                                                                        |
+| POST /auth/recovery/device-approval/start, /status                            | Signed-out browser asks a logged-in device to approve it; see trusted-device-recovery-approval.md                                       |
+| GET /auth/recovery/device-approval/pending; POST /options, /approve, /decline | Logged-in device lists, approves with its screen lock, or declines                                                                      |
 
 No database migration is needed. Optional ceremony/credential metadata and native challenges
 use existing JSON records and auth transactions. Postgres persistence includes the new

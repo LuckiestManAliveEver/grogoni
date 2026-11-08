@@ -20,6 +20,7 @@
  * cross-domain-import pattern used throughout this effort. Exports nothing of its own: no other
  * domain or CORE route in routes.ts references any messaging-only type or helper.
  */
+import { registerLinkedWhatsAppRoutes } from "../../../messaging/whatsapp-linked/routes.js";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type {
   ChannelProvider,
@@ -225,6 +226,7 @@ export function registerMessagingRoutes(
   oauthAllowedRedirectOrigins: ReadonlySet<string>,
   vapidPublicKey: string | undefined
 ): void {
+  registerLinkedWhatsAppRoutes(app, store);
   app.post("/v1/help", async (request, reply) => {
     try {
       return store.ensureHelpConversations({
@@ -1585,6 +1587,7 @@ function isMessageChannel(value: string): value is MessageChannel {
     "mms",
     "rcs_business",
     "whatsapp_business",
+    "whatsapp_linked",
     "telegram",
     "facebook_messenger",
     "instagram_messaging",
@@ -1602,6 +1605,7 @@ function parseChannelProvider(value: unknown): ChannelProvider {
       "grogoni",
       "telegram",
       "whatsapp",
+      "whatsapp_linked",
       "messenger",
       "instagram",
       "tiktok",
@@ -1868,11 +1872,11 @@ function parseTrustedMessageAttachmentReferences(
   return value.map((item, index) => {
     const record = parseRequestBody(item);
     const resourceType = parseString(record.resourceType, `attachments[${index}].resourceType`);
-    if (resourceType !== "invoice") {
+    if (resourceType !== "invoice" && resourceType !== "conversation_attachment") {
       throw new Cp2Error(
         400,
         "EMAIL_ATTACHMENT_UNAVAILABLE",
-        "Only trusted invoice resources can currently be attached to email."
+        "Only trusted invoice or managed conversation attachments are supported."
       );
     }
     return {
