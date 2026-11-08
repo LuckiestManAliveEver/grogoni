@@ -22,6 +22,47 @@ export type DaemonPayload =
 
 export type DaemonTaskStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 
+/**
+ * The daemon task lifecycle, written down once. The queue store moves rows only along these
+ * edges (each SQL update guards on its `from` states; a test in services/api checks them):
+ *
+ *   queued    → running    (a worker claims it)          | cancelled (owner/operator cancels)
+ *   running   → completed  (settled with a result)       | failed (no retries left, or lease exhausted)
+ *             → queued     (retry backoff, recurring run, or the worker releases it)
+ *             → cancelled  (cancelled mid-run; the lease token is cleared to fence the worker)
+ *   failed    → queued     (manual retry)
+ *   cancelled → queued     (manual retry, once the old lease has run out)
+ *   completed is final: a recurring task re-queues from `running`, never from `completed`.
+ */
+export const daemonTaskTransitions = {
+  queued: ["running", "cancelled"],
+  running: ["completed", "failed", "queued", "cancelled"],
+  completed: [],
+  failed: ["queued"],
+  cancelled: ["queued"]
+} as const satisfies Record<DaemonTaskStatus, readonly DaemonTaskStatus[]>;
+
+/** Statuses a worker may still pick up or is executing. */
+export const activeDaemonTaskStatuses = [
+  "queued",
+  "running"
+] as const satisfies readonly DaemonTaskStatus[];
+
+/** Statuses no worker will act on again without a manual retry. */
+export const terminalDaemonTaskStatuses = [
+  "completed",
+  "failed",
+  "cancelled"
+] as const satisfies readonly DaemonTaskStatus[];
+
+export function canTransitionDaemonTask(from: DaemonTaskStatus, to: DaemonTaskStatus): boolean {
+  return (daemonTaskTransitions[from] as readonly DaemonTaskStatus[]).includes(to);
+}
+
+export function isActiveDaemonTaskStatus(status: DaemonTaskStatus): boolean {
+  return (activeDaemonTaskStatuses as readonly DaemonTaskStatus[]).includes(status);
+}
+
 /** Which worker kind ran a task's latest attempt. */
 export type DaemonLane = "browser" | "server";
 
