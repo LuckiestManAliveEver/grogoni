@@ -66,6 +66,21 @@ Social OAuth login is disabled in the frontend and API, so OAuth client credenti
 required. Phone account access uses the Grogoni PIN routes, email verification uses the configured
 email provider, and first-shop phone capture uses no SMS or external phone-auth provider.
 
+### Transactional email (Brevo)
+
+Email verification, backup-email account recovery, and recovery notices are sent through Brevo:
+
+```dotenv
+BREVO_API_KEY=
+GROGONI_EMAIL_FROM="Grogoni <messages@grogoni.com>"
+```
+
+`BREVO_API_KEY` is a secret: set it in the Render dashboard (`sync: false` in `render.yaml`) or as
+a Supabase function secret, never in a committed file. The `GROGONI_EMAIL_FROM` address must be a
+verified Brevo sender or use a domain authenticated in Brevo. With both values unset, development
+returns the verification code in the API response, and production fails closed with
+`email_api_unconfigured`.
+
 There are no Firebase phone-auth environment variables. Owner phone parsing is local to the web and
 API packages through `libphonenumber-js`.
 

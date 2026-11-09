@@ -95,6 +95,8 @@ services:
         sync: false
       - key: AUTH_TOKEN_ENCRYPTION_KEY
         sync: false
+      - key: BREVO_API_KEY
+        sync: false
       - key: GROGONI_EMAIL_FROM
         value: "Grogoni <messages@grogoni.com>"
       - key: CP2_STORE

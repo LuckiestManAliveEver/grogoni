@@ -74,7 +74,10 @@ if (process.argv.includes("--deploy")) {
     "MAILBOX_GOOGLE_CLIENT_ID",
     "MAILBOX_GOOGLE_CLIENT_SECRET",
     "MAILBOX_MICROSOFT_CLIENT_ID",
-    "MAILBOX_MICROSOFT_CLIENT_SECRET"
+    "MAILBOX_MICROSOFT_CLIENT_SECRET",
+    // Transactional email for verification and backup-email recovery codes.
+    "BREVO_API_KEY",
+    "GROGONI_EMAIL_FROM"
   ];
   const credentialKeys = [
     "ACCESS_TOKEN",

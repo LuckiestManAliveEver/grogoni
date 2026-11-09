@@ -30,10 +30,22 @@ export interface EmailProvider {
   sendEncryptedMessageNotification(input: EncryptedMessageEmailInput): Promise<"sent" | "failed">;
 }
 
-interface ResendEmailConfiguration {
+interface TransactionalEmail {
+  idempotencyKey: string;
+  subject: string;
+  text: string;
+  to: string;
+}
+
+/** Delivers one rendered message. Throws a `Cp2Error` when the email API rejects it. */
+type EmailTransport = (message: TransactionalEmail) => Promise<void>;
+
+interface ApiEmailConfiguration {
   apiKey: string;
   from: string;
 }
+
+export const BREVO_TRANSACTIONAL_EMAIL_URL = "https://api.brevo.com/v3/smtp/email";
 
 class LocalEmailProvider implements EmailProvider {
   readonly name = "local";
@@ -82,11 +94,13 @@ class UnconfiguredEmailProvider implements EmailProvider {
   }
 }
 
-class ResendEmailProvider implements EmailProvider {
-  readonly name = "resend";
+class TransactionalEmailProvider implements EmailProvider {
   readonly exposesDevOtp = false;
 
-  constructor(private readonly configuration: ResendEmailConfiguration) {}
+  constructor(
+    readonly name: string,
+    private readonly send: EmailTransport
+  ) {}
 
   async sendOtp(input: EmailOtpInput): Promise<void> {
     await this.send({
@@ -140,24 +154,21 @@ class ResendEmailProvider implements EmailProvider {
       return "failed";
     }
   }
+}
 
-  private async send(input: {
-    idempotencyKey: string;
-    subject: string;
-    text: string;
-    to: string;
-  }): Promise<void> {
+function resendTransport(configuration: ApiEmailConfiguration): EmailTransport {
+  return async (input) => {
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
       // Bounded: notification jobs send while holding a database lock.
       signal: AbortSignal.timeout(10_000),
       headers: {
-        authorization: `Bearer ${this.configuration.apiKey}`,
+        authorization: `Bearer ${configuration.apiKey}`,
         "content-type": "application/json",
         "idempotency-key": input.idempotencyKey
       },
       body: JSON.stringify({
-        from: this.configuration.from,
+        from: configuration.from,
         to: [input.to],
         subject: input.subject,
         text: input.text
@@ -167,17 +178,73 @@ class ResendEmailProvider implements EmailProvider {
     if (!response.ok) {
       throw new Cp2Error(502, "email_delivery_failed", "The email API rejected the message.");
     }
+  };
+}
+
+/**
+ * Brevo transactional email (https://developers.brevo.com/reference/sendtransacemail). The sender
+ * address in GROGONI_EMAIL_FROM must be a verified sender or belong to an authenticated domain in
+ * the Brevo account, or Brevo rejects the message.
+ */
+function brevoTransport(configuration: ApiEmailConfiguration): EmailTransport {
+  const sender = parseEmailSender(configuration.from);
+  return async (input) => {
+    const response = await fetch(BREVO_TRANSACTIONAL_EMAIL_URL, {
+      method: "POST",
+      // Bounded: notification jobs send while holding a database lock.
+      signal: AbortSignal.timeout(10_000),
+      headers: {
+        accept: "application/json",
+        "api-key": configuration.apiKey,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        sender,
+        to: [{ email: input.to }],
+        subject: input.subject,
+        textContent: input.text,
+        // Brevo has no idempotency header; the key still lets support correlate a delivery.
+        headers: { "X-Grogoni-Message-Key": input.idempotencyKey },
+        tags: [input.idempotencyKey.split("-")[0] ?? "transactional"]
+      })
+    });
+
+    if (!response.ok) {
+      throw new Cp2Error(502, "email_delivery_failed", "The email API rejected the message.");
+    }
+  };
+}
+
+/** Parses `Name <address@example.com>` or a bare address into Brevo's sender object. */
+export function parseEmailSender(from: string): { email: string; name?: string } {
+  const match = /^\s*(?:"?([^"<]*?)"?\s*)?<\s*([^<>\s]+@[^<>\s]+)\s*>\s*$/u.exec(from);
+  if (match) {
+    const name = match[1]?.trim();
+    return name ? { name, email: match[2]! } : { email: match[2]! };
   }
+  const email = from.trim();
+  if (!/^[^\s@<>]+@[^\s@<>]+$/u.test(email)) {
+    throw new Error("GROGONI_EMAIL_FROM must be an email address or `Name <address>`.");
+  }
+  return { email };
 }
 
 export function createEmailProviderFromEnvironment(
   env: NodeJS.ProcessEnv = process.env
 ): EmailProvider {
-  const apiKey = env.RESEND_API_KEY?.trim();
   const from = env.GROGONI_EMAIL_FROM?.trim();
+  const brevoApiKey = env.BREVO_API_KEY?.trim();
+  const resendApiKey = env.RESEND_API_KEY?.trim();
 
-  if (apiKey && from) {
-    return new ResendEmailProvider({ apiKey, from });
+  if (from && brevoApiKey) {
+    return new TransactionalEmailProvider("brevo", brevoTransport({ apiKey: brevoApiKey, from }));
+  }
+
+  if (from && resendApiKey) {
+    return new TransactionalEmailProvider(
+      "resend",
+      resendTransport({ apiKey: resendApiKey, from })
+    );
   }
 
   return env.NODE_ENV?.trim() === "production"

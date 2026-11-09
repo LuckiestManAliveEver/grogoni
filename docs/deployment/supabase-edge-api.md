@@ -94,9 +94,12 @@ TOTP uses the existing SHA-1/six-digit/30-second policy with a one-step clock-sk
 rejects reused time steps. PIN setup for MFA-enabled accounts also requires a second factor.
 MFA enrollment and management routes use the shared domain adapter.
 
-Email-based account recovery is intentionally unavailable: `RESEND_API_KEY` and
-`GROGONI_EMAIL_FROM` are not configured, and the operator confirmed there is no email
-delivery setup yet. Do not enable development OTP exposure in the deployed function.
+Email verification and backup-email account recovery deliver codes through Brevo. Set
+`BREVO_API_KEY` and `GROGONI_EMAIL_FROM` in the shell before `pnpm deploy:api:supabase`; the
+deploy script forwards them as function secrets only when they are set, so an unset local value
+never erases the installed key. The sender address must be verified in Brevo (a verified sender or
+an authenticated domain). Without both values the function fails closed with
+`email_api_unconfigured`. Do not enable development OTP exposure in the deployed function.
 
 Run local coverage with:
 

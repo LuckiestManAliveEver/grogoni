@@ -50,6 +50,8 @@ describe("Render Blueprint", () => {
     // Hosted transactional email (Resend) was retired with the cloud providers; the API rejects
     // RESEND_API_KEY at boot, so the Blueprint must not provision it.
     expect(api).not.toContain("RESEND_API_KEY");
+    // Brevo delivers verification and recovery codes; its key is a dashboard-only secret.
+    expect(api).toContain("BREVO_API_KEY\n        sync: false");
     expect(api).not.toMatch(/AUTH_SMS|SMS_GATEWAY|ANDROID_SMS|LOCAL_SMS/u);
     // The passkey RP ID must be the registrable domain of every expected origin, or
     // readAuthRuntimeConfig refuses to boot (regression: the rename left it as "grogoni").
