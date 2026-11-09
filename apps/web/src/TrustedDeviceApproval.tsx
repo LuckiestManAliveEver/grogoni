@@ -21,6 +21,22 @@ import "./trusted-device-approval.css";
 export const approvalRecheckMs = 30_000;
 
 /**
+ * Where the owner is in approving one browser. One value, so the screen can never show a
+ * confirmation and an approval at once:
+ *
+ *   enter_code → confirm   (the code matched; shows which browser asked)
+ *   confirm    → approved  (screen lock confirmed) | enter_code (cancelled, failed or declined)
+ *   approved   → enter_code (undone, or the prompt dismissed)
+ */
+type ApprovalStep =
+  | { kind: "enter_code" }
+  /** The code matched: which browser asked, and the challenge to sign once the owner agrees. */
+  | { kind: "confirm"; checked: RecoveryApprovalOptionsResponse }
+  | { kind: "approved"; requestId: string; client: string };
+
+const enterCode: ApprovalStep = { kind: "enter_code" };
+
+/**
  * The trusted device's half of recovery approval: the owner types the code shown on the
  * signed-out browser, sees which browser asked, then confirms with this device's screen lock.
  * Until the browser collects its session, the owner can still withdraw the approval.
@@ -36,10 +52,7 @@ export function TrustedDeviceApproval({ mode }: { mode: "prompt" | "panel" }) {
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  /** The code matched: which browser asked, and the challenge to sign once the owner agrees. */
-  const [checked, setChecked] = useState<RecoveryApprovalOptionsResponse | null>(null);
-  const [approved, setApproved] = useState<{ requestId: string; client: string } | null>(null);
-  const approvedClient = approved?.client ?? null;
+  const [step, setStep] = useState<ApprovalStep>(enterCode);
   const [needsPasskey, setNeedsPasskey] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   /** Only a signed-in phone account can approve. Until the server says so, show nothing. */
@@ -100,7 +113,7 @@ export function TrustedDeviceApproval({ mode }: { mode: "prompt" | "panel" }) {
     } else {
       setMessage(getUserFacingErrorMessage(error));
     }
-    setChecked(null);
+    setStep(enterCode);
     setCode("");
     void refresh();
   }
@@ -111,7 +124,7 @@ export function TrustedDeviceApproval({ mode }: { mode: "prompt" | "panel" }) {
     setBusy(true);
     setMessage("");
     try {
-      setChecked(await checkRecoveryApprovalCode({ code, method }));
+      setStep({ kind: "confirm", checked: await checkRecoveryApprovalCode({ code, method }) });
       setCode("");
     } catch (error) {
       failed(error);
@@ -121,13 +134,13 @@ export function TrustedDeviceApproval({ mode }: { mode: "prompt" | "panel" }) {
   }
 
   async function confirm() {
-    if (busy || checked === null || phone === null) return;
+    if (busy || step.kind !== "confirm" || phone === null) return;
+    const { checked } = step;
     setBusy(true);
     setMessage("");
     try {
       await confirmRecoveryApproval(checked, phone);
-      setApproved({ requestId: checked.requestId, client: checked.client });
-      setChecked(null);
+      setStep({ kind: "approved", requestId: checked.requestId, client: checked.client });
       setRequests([]);
     } catch (error) {
       failed(error);
@@ -144,15 +157,14 @@ export function TrustedDeviceApproval({ mode }: { mode: "prompt" | "panel" }) {
       const undoingLogin = recent.some((item) => item.requestId === requestId);
       setRequests((current) => current.filter((request) => request.requestId !== requestId));
       setRecent((current) => current.filter((item) => item.requestId !== requestId));
-      setChecked(null);
       setMessage(
         undoingLogin
           ? "Undone. That browser is signed out, and any passkey, device key, PIN or password added since it got in was removed. To set a new PIN, log out and choose Trouble logging in."
-          : approved?.requestId === requestId
+          : step.kind === "approved" && step.requestId === requestId
             ? "Approval withdrawn. If that browser had already logged in, it is now signed out."
             : "Declined. That browser was not let in."
       );
-      setApproved(null);
+      setStep(enterCode);
     } catch (error) {
       setMessage(getUserFacingErrorMessage(error));
     } finally {
@@ -160,9 +172,9 @@ export function TrustedDeviceApproval({ mode }: { mode: "prompt" | "panel" }) {
     }
   }
 
-  if (!eligible && approvedClient === null) return null;
+  if (!eligible && step.kind !== "approved") return null;
   // After an approval or a decline the prompt stays until dismissed, so its outcome is read.
-  const outcomeShown = approvedClient !== null || checked !== null || message !== "";
+  const outcomeShown = step.kind !== "enter_code" || message !== "";
   if (mode === "prompt" && (dismissed || (requests.length === 0 && !outcomeShown))) return null;
 
   const confirmLabel =
@@ -183,25 +195,23 @@ export function TrustedDeviceApproval({ mode }: { mode: "prompt" | "panel" }) {
           confirm with this device's fingerprint, face or screen lock to let that browser in.
         </p>
       </div>
-      {approved !== null ? (
+      {step.kind === "approved" ? (
         <>
-          <p role="status">
-            Approved {approved.client}. Go back to it to add a passkey and finish.
-          </p>
+          <p role="status">Approved {step.client}. Go back to it to add a passkey and finish.</p>
           <button
             type="button"
             className="secondary"
             disabled={busy}
-            onClick={() => void decline(approved.requestId)}
+            onClick={() => void decline(step.requestId)}
           >
             Undo, this wasn't me
           </button>
         </>
-      ) : checked !== null ? (
+      ) : step.kind === "confirm" ? (
         <div className="trusted-device-confirm" role="group" aria-label="Confirm the browser">
           <p>
-            Let in <strong>{checked.client}</strong>? It asked {minutesAgo(checked.requestedAt)}.
-            Only approve if you are holding it right now.
+            Let in <strong>{step.checked.client}</strong>? It asked{" "}
+            {minutesAgo(step.checked.requestedAt)}. Only approve if you are holding it right now.
           </p>
           <button type="button" disabled={busy} aria-busy={busy} onClick={() => void confirm()}>
             {busy ? "Confirming…" : confirmLabel}
@@ -210,7 +220,7 @@ export function TrustedDeviceApproval({ mode }: { mode: "prompt" | "panel" }) {
             type="button"
             className="secondary"
             disabled={busy}
-            onClick={() => void decline(checked.requestId)}
+            onClick={() => void decline(step.checked.requestId)}
           >
             This wasn't me
           </button>
@@ -317,12 +327,11 @@ export function TrustedDeviceApproval({ mode }: { mode: "prompt" | "panel" }) {
           disabled={busy}
           onClick={() => {
             setDismissed(true);
-            setApproved(null);
-            setChecked(null);
+            setStep(enterCode);
             setMessage("");
           }}
         >
-          {requests.length > 0 && approvedClient === null ? "Not now" : "Done"}
+          {requests.length > 0 && step.kind !== "approved" ? "Not now" : "Done"}
         </button>
       ) : null}
     </section>

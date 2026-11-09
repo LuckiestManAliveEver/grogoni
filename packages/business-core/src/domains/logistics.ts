@@ -1,5 +1,11 @@
 import { createEvent, type BusinessEvent } from "@grogoni/event-core";
-import type { FulfillmentMethod, FulfillmentStatus, LogisticsSummary } from "@grogoni/shared-types";
+import {
+  canTransitionFulfillment,
+  isFinalFulfillmentStatus,
+  type FulfillmentMethod,
+  type FulfillmentStatus,
+  type LogisticsSummary
+} from "@grogoni/shared-types";
 import { invalid, type ValidationResult, valid } from "@grogoni/tool-core";
 
 import {
@@ -77,22 +83,11 @@ export function validateLogisticsStatusTransition(
     return valid();
   }
 
-  if (current === "completed" || current === "cancelled") {
+  if (isFinalFulfillmentStatus(current)) {
     return invalid("Completed or cancelled fulfillment records cannot change status.");
   }
 
-  const allowed: Record<FulfillmentStatus, FulfillmentStatus[]> = {
-    pending: ["ready", "cancelled"],
-    ready:
-      method === "delivery"
-        ? ["out_for_delivery", "completed", "cancelled"]
-        : ["completed", "cancelled"],
-    out_for_delivery: method === "delivery" ? ["completed", "cancelled"] : [],
-    completed: [],
-    cancelled: []
-  };
-
-  return allowed[current]?.includes(next)
+  return canTransitionFulfillment(current, next, method)
     ? valid()
     : invalid(`Cannot change fulfillment status from ${current} to ${next}.`);
 }

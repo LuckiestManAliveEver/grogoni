@@ -21,6 +21,44 @@ export interface TurnQueryable {
 
 export type AgentTurnStatus = "pending" | "running" | "completed" | "failed";
 
+/**
+ * The agent turn lifecycle, written down once. Every SQL update below guards on its `from` states;
+ * edge-agent-turn-lifecycle.test.ts checks them against this table.
+ *
+ *   (insert)  → pending
+ *   pending   → running    (a worker claims it, in conversation order)
+ *             → completed  (its reply was already saved on the side; settleAnsweredAgentTurn)
+ *             → failed     (queued with nobody to start it; the hourly sweep, AGENT_TURN_LOST)
+ *   running   → completed  (the worker saves the reply)
+ *             → failed     (the run failed, or its lease ended with no attempts left)
+ *   failed    → pending    (a resend retries it)
+ *             → completed  (its reply was already saved on the side)
+ *   completed → pending    (a resend after its reply was deleted)
+ *
+ * A running turn whose lease ended can also be re-claimed (running → running, a new lease); that
+ * changes the worker, not the status. Finished turns are deleted after agentTurnRetentionDays.
+ */
+export const agentTurnTransitions = {
+  pending: ["running", "completed", "failed"],
+  running: ["completed", "failed"],
+  completed: ["pending"],
+  failed: ["pending", "completed"]
+} as const satisfies Record<AgentTurnStatus, readonly AgentTurnStatus[]>;
+
+/** Statuses a worker may still pick up or is executing; a resend never starts a second run. */
+export const unfinishedAgentTurnStatuses = [
+  "pending",
+  "running"
+] as const satisfies readonly AgentTurnStatus[];
+
+export function canTransitionAgentTurn(from: AgentTurnStatus, to: AgentTurnStatus): boolean {
+  return (agentTurnTransitions[from] as readonly AgentTurnStatus[]).includes(to);
+}
+
+export function isUnfinishedAgentTurn(status: AgentTurnStatus): boolean {
+  return (unfinishedAgentTurnStatuses as readonly AgentTurnStatus[]).includes(status);
+}
+
 /** What a worker needs to run the turn: the agent part of the original POST /v1/messages. */
 export interface AgentTurnRequest {
   conversationId: string;

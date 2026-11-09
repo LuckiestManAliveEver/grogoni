@@ -6,6 +6,7 @@ export * from "./business-settings.js";
 export * from "./assistant-permissions.js";
 export * from "./commerce-address.js";
 export * from "./daemon-lanes.js";
+export * from "./whatsapp-linked-state.js";
 export * from "./purchase-orders.js";
 export * from "./computer-runtime.js";
 export * from "./fulfillment.js";
@@ -2659,6 +2660,46 @@ export type FulfillmentMethod = "delivery" | "pickup";
 
 export type FulfillmentStatus =
   "pending" | "ready" | "out_for_delivery" | "completed" | "cancelled";
+
+/**
+ * The fulfillment (logistics) lifecycle, shared by the server's validation (business-core
+ * validateLogisticsStatusTransition) and the Logistics screen's buttons:
+ *
+ *   pending → ready | cancelled
+ *   ready   → out_for_delivery (delivery only) | completed | cancelled
+ *   out_for_delivery (delivery only) → completed | cancelled
+ *   completed and cancelled are final.
+ */
+export function fulfillmentTransitions(
+  current: FulfillmentStatus,
+  method: FulfillmentMethod
+): readonly FulfillmentStatus[] {
+  switch (current) {
+    case "pending":
+      return ["ready", "cancelled"];
+    case "ready":
+      return method === "delivery"
+        ? ["out_for_delivery", "completed", "cancelled"]
+        : ["completed", "cancelled"];
+    case "out_for_delivery":
+      return method === "delivery" ? ["completed", "cancelled"] : [];
+    case "completed":
+    case "cancelled":
+      return [];
+  }
+}
+
+export function canTransitionFulfillment(
+  current: FulfillmentStatus,
+  next: FulfillmentStatus,
+  method: FulfillmentMethod
+): boolean {
+  return fulfillmentTransitions(current, method).includes(next);
+}
+
+export function isFinalFulfillmentStatus(status: FulfillmentStatus): boolean {
+  return status === "completed" || status === "cancelled";
+}
 
 export interface LogisticsSummary {
   id: string;

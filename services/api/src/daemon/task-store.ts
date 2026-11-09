@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
-import type {
-  DaemonLane,
-  DaemonPayload,
-  DaemonTaskStatus,
-  PublicDaemonTask
+import {
+  isActiveDaemonTaskStatus,
+  type DaemonLane,
+  type DaemonPayload,
+  type DaemonTaskStatus,
+  type PublicDaemonTask
 } from "@grogoni/shared-types";
 
 export type { DaemonLane, DaemonPayload, DaemonTaskStatus, PublicDaemonTask };
@@ -25,7 +26,8 @@ export const daemonQueueMigrations = [
 /** How long a user's due task waits for their browser before a server worker takes it. */
 export const defaultUserTakeoverMs = 10 * 60_000;
 
-export const terminalDaemonTaskStatuses = ["completed", "failed", "cancelled"] as const;
+/** The lifecycle these statuses follow lives in @grogoni/shared-types (daemonTaskTransitions). */
+export { terminalDaemonTaskStatuses } from "@grogoni/shared-types";
 
 /** Internal row shape. Lease tokens fence workers and must never leave the process. */
 export interface DaemonTask {
@@ -263,7 +265,7 @@ export function createPostgresDaemonTaskStore(
           )
         ).rows[0];
         // Replaying a retry while queued/running is idempotent and never resets its lease.
-        if (row && (row.status === "queued" || row.status === "running")) {
+        if (row && isActiveDaemonTaskStatus(row.status)) {
           await client.query("commit");
           return "queued";
         }
