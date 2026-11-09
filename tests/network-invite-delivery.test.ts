@@ -82,7 +82,7 @@ async function createOwnerBusiness(app: ReturnType<typeof buildApi>) {
     payload: JSON.stringify({
       method: "phone",
       contact: "+254700000332",
-      pin: "1234"
+      pin: "3927"
     })
   });
   const setCookie = verified.headers["set-cookie"];

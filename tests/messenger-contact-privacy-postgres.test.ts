@@ -21,12 +21,12 @@ describe.skipIf(!url)("contact privacy PostgreSQL persistence", () => {
       const a = store.continueWithChannelPin({
         channel: "email",
         destination: `privacy-a-${randomUUID()}@example.invalid`,
-        pin: "1234"
+        pin: "3927"
       });
       const b = store.continueWithChannelPin({
         channel: "email",
         destination: `privacy-b-${randomUUID()}@example.invalid`,
-        pin: "1234"
+        pin: "3927"
       });
       const graph = store.syncPhoneContacts({
         sessionId: a.session.id,

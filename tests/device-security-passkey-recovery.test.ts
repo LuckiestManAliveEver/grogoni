@@ -21,7 +21,7 @@ const assertion: AuthenticationResponseJSON = {
 
 function fixture(userVerified = true) {
   const seed = createCp2Store();
-  const original = seed.signupWithPhonePin({ destination: phone, pin: "1234" });
+  const original = seed.signupWithPhonePin({ destination: phone, pin: "3927" });
   const snapshot = seed.snapshot();
   snapshot.passkeys = [
     {
@@ -95,7 +95,7 @@ describe("device security passkey recovery", () => {
     });
     expect(loggedIn.account.primaryAuthDestination).toBe(phone);
     expect(() =>
-      store.recoverPhoneAccountPinWithDevice({ sessionId: loggedIn.session.id, pin: "5678" })
+      store.recoverPhoneAccountPinWithDevice({ sessionId: loggedIn.session.id, pin: "5193" })
     ).toThrow(/Verify this device/iu);
     const wrong = await store.beginPasskeyAuthentication({
       rpId: "localhost",
@@ -117,7 +117,7 @@ describe("device security passkey recovery", () => {
     async (kind) => {
       const now = new Date();
       const seed = createCp2Store();
-      const original = seed.signupWithPhonePin({ destination: phone, pin: "1234", now });
+      const original = seed.signupWithPhonePin({ destination: phone, pin: "3927", now });
       const snapshot = seed.snapshot();
       snapshot.accountPinHashes = [];
       const record = snapshot.sessions.find((session) => session.id === original.session.id)!;
@@ -128,7 +128,7 @@ describe("device security passkey recovery", () => {
       store.hydrateSnapshot(snapshot);
       const enroll = (at: Date) => {
         const input = { sessionId: original.session.id, now: at };
-        if (kind === "pin") return store.setAccountPin({ ...input, pin: "5678" });
+        if (kind === "pin") return store.setAccountPin({ ...input, pin: "5193" });
         if (kind === "password")
           return store.createPassword({ ...input, password: "secure first password" });
         return store.beginPasskeyRegistration({ ...input, rpId: "localhost", origin });
@@ -146,7 +146,7 @@ describe("device security passkey recovery", () => {
       store.hydrateSnapshot(existing);
       const input = { sessionId: session.id, now };
       await expect(async () => {
-        if (kind === "pin") return store.setAccountPin({ ...input, pin: "5678" });
+        if (kind === "pin") return store.setAccountPin({ ...input, pin: "5193" });
         if (kind === "password")
           return store.createPassword({ ...input, password: "secure first password" });
         return store.beginPasskeyRegistration({ ...input, rpId: "localhost", origin });
@@ -168,7 +168,7 @@ describe("device security passkey recovery", () => {
     const restored = createCp2Store();
     restored.hydrateSnapshot(store.snapshot());
     expect(
-      restored.recoverPhoneAccountPinWithDevice({ sessionId: session.session.id, pin: "5678" })
+      restored.recoverPhoneAccountPinWithDevice({ sessionId: session.session.id, pin: "5193" })
         .account.id
     ).toBe(original.account.id);
     expect(restored.getSession(original.session.id)).toBeNull();
@@ -198,7 +198,7 @@ describe("device security passkey recovery", () => {
       }).account.id
     ).toBe(original.account.id);
     expect(() =>
-      store.recoverPhoneAccountPinWithDevice({ sessionId: session.session.id, pin: "5678" })
+      store.recoverPhoneAccountPinWithDevice({ sessionId: session.session.id, pin: "5193" })
     ).toThrow(/Verify this device/u);
     expect(store.getSession(original.session.id)).toBeNull();
   });
@@ -298,7 +298,7 @@ describe("device security passkey recovery", () => {
     const { session } = await prove(store);
     store.revokePasskey({ sessionId: original.session.id, credentialId: assertion.id });
     expect(() =>
-      store.recoverPhoneAccountPinWithDevice({ sessionId: session.session.id, pin: "5678" })
+      store.recoverPhoneAccountPinWithDevice({ sessionId: session.session.id, pin: "5193" })
     ).toThrow(/Verify this device/u);
   });
 
@@ -314,12 +314,12 @@ describe("device security passkey recovery", () => {
         expect(() =>
           store.setAccountPin({
             sessionId: session.session.id,
-            pin: "5678",
+            pin: "5193",
             now: new Date(now.getTime() + 6 * 60_000)
           })
         ).toThrow(/Verify this device/u);
       } else {
-        store.setAccountPin({ sessionId: session.session.id, pin: "5678", now });
+        store.setAccountPin({ sessionId: session.session.id, pin: "5193", now });
         expect(() =>
           store.recoverPasswordWithDevice({
             sessionId: session.session.id,
@@ -374,7 +374,7 @@ describe("device security passkey recovery", () => {
         method: "POST",
         url: "/auth/pin/recover/device",
         headers: { cookie: `grogoni_session=${session.session.id}` },
-        payload: { pin: "5678" }
+        payload: { pin: "5193" }
       });
       expect(result.statusCode).toBe(200);
       expect(sendRecoveryNotification).toHaveBeenCalledWith({
@@ -392,7 +392,7 @@ describe("device security passkey recovery", () => {
   it("verifies real WebAuthn signatures and rejects tampered or unverified assertions", async () => {
     for (const failure of ["none", "signature", "challenge", "origin", "uv"] as const) {
       const seed = createCp2Store();
-      const original = seed.signupWithPhonePin({ destination: phone, pin: "1234" });
+      const original = seed.signupWithPhonePin({ destination: phone, pin: "3927" });
       const { privateKey, publicKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
       const jwk = publicKey.export({ format: "jwk" });
       const cose = Buffer.concat([
@@ -471,7 +471,7 @@ describe("device security passkey recovery", () => {
       if (failure === "none") {
         const session = await result;
         expect(
-          store.recoverPhoneAccountPinWithDevice({ sessionId: session.session.id, pin: "5678" })
+          store.recoverPhoneAccountPinWithDevice({ sessionId: session.session.id, pin: "5193" })
             .account.id
         ).toBe(original.account.id);
       } else await expect(result).rejects.toMatchObject({ code: "passkey_authentication_invalid" });
@@ -485,7 +485,7 @@ describe("device security passkey recovery", () => {
       delete transaction.metadata.recoveryCredentialId;
     store.hydrateSnapshot(snapshot);
     expect(() =>
-      store.recoverPhoneAccountPinWithDevice({ sessionId: session.session.id, pin: "5678" })
+      store.recoverPhoneAccountPinWithDevice({ sessionId: session.session.id, pin: "5193" })
     ).toThrow(/Verify this device/u);
   });
 });

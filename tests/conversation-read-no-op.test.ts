@@ -12,7 +12,7 @@ describe("marking a conversation read", () => {
     const owner = store.continueWithChannelPin({
       channel: "phone",
       destination: "+254712345678",
-      pin: "1234"
+      pin: "3927"
     });
     const businessId = store.createBusiness({
       sessionId: owner.session.id,

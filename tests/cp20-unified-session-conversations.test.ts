@@ -385,7 +385,7 @@ describe("CP20 unified account, conversation, and session foundation", () => {
     const secondLogin = await postResponse(app, "/auth/pin/login", {
       method: "phone",
       contact: phone,
-      pin: "1234"
+      pin: "3927"
     });
     expect(secondLogin.statusCode).toBe(200);
     const secondDeviceCookie = extractSessionCookie(secondLogin.headers["set-cookie"]);
@@ -914,7 +914,7 @@ async function createAccountSession(app: FastifyInstance, destination: string): 
   const response = await postResponse(app, "/auth/pin/signup", {
     method: "phone",
     contact: destination,
-    pin: "1234"
+    pin: "3927"
   });
   return extractSessionCookie(response.headers["set-cookie"]);
 }

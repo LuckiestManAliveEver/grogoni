@@ -102,7 +102,7 @@ describe("account sync collection compatibility", () => {
     const store = createCp2Store();
     const signup = store.signupWithPhonePin({
       destination: "+254700100001",
-      pin: "1234",
+      pin: "3927",
       now: new Date("2026-07-18T12:00:00.000Z")
     });
     const context = store.getGrogoniSessionContext({
@@ -124,7 +124,7 @@ describe("account sync collection compatibility", () => {
     const store = createCp2Store();
     const signup = store.signupWithPhonePin({
       destination: "+254700100002",
-      pin: "1234"
+      pin: "3927"
     });
     const recordSyncChange = (
       store as unknown as {
@@ -160,19 +160,19 @@ describe("account sync collection compatibility", () => {
   it("keeps successful and failed PIN logins free of duplicate initialization keys", () => {
     const store = createCp2Store();
     const phone = "+254700100003";
-    store.signupWithPhonePin({ destination: phone, pin: "1234" });
+    store.signupWithPhonePin({ destination: phone, pin: "3927" });
     const beforeRejectedLogin = store.snapshot().syncChanges.length;
     const initialConversationChanges = store
       .snapshot()
       .syncChanges.filter((change) => change.collection === "conversations").length;
 
     expect(() =>
-      store.loginWithAccountPin({ channel: "phone", destination: phone, pin: "9999" })
+      store.loginWithAccountPin({ channel: "phone", destination: phone, pin: "6473" })
     ).toThrowError(expect.objectContaining({ code: "auth_credentials_invalid" }));
     expect(store.snapshot().syncChanges).toHaveLength(beforeRejectedLogin);
 
-    store.loginWithAccountPin({ channel: "phone", destination: phone, pin: "1234" });
-    store.loginWithAccountPin({ channel: "phone", destination: phone, pin: "1234" });
+    store.loginWithAccountPin({ channel: "phone", destination: phone, pin: "3927" });
+    store.loginWithAccountPin({ channel: "phone", destination: phone, pin: "3927" });
     const keys = store
       .snapshot()
       .syncChanges.map((change) => `${change.accountId}:${change.sequence}`);

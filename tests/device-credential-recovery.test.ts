@@ -10,7 +10,7 @@ describe("device credential recovery", () => {
       const signup = await app.inject({
         method: "POST",
         url: "/auth/pin/continue",
-        payload: { contact: "0712345699", country: "KE", pin: "1234" }
+        payload: { contact: "0712345699", country: "KE", pin: "3927" }
       });
       expect(signup.statusCode).toBe(200);
       const cookie = signup.cookies.map((c) => `${c.name}=${c.value}`).join("; ");
@@ -26,7 +26,7 @@ describe("device credential recovery", () => {
         method: "POST",
         url: "/auth/pin/recover/device",
         headers: { cookie },
-        payload: { pin: "5678" }
+        payload: { pin: "5193" }
       });
       expect(denied.statusCode).toBe(401);
       const credentialId = bound.json().deviceRecoveryCredentialId;
@@ -50,7 +50,7 @@ describe("device credential recovery", () => {
         method: "POST",
         url: "/auth/pin/recover/device",
         headers: { cookie: recoveredCookie },
-        payload: { pin: "5678" }
+        payload: { pin: "5193" }
       });
       expect(reset.statusCode).toBe(200);
       const replay = await app.inject({ method: "POST", url: "/auth/device/recover", payload });
@@ -66,7 +66,7 @@ describe("device credential recovery", () => {
         method: "POST",
         url: "/auth/pin/recover/passkey",
         headers: { cookie },
-        payload: { pin: "9999" }
+        payload: { pin: "6473" }
       });
       expect(retired.statusCode).toBe(404);
     } finally {

@@ -58,8 +58,8 @@ describe.skipIf(!databaseUrl)("trusted-device recovery approval on Edge with Pos
       const strangerPhone = randomPhone();
       const seed = createCp2Store();
       const baseline = seed.snapshot();
-      const owner = seed.signupWithPhonePin({ destination: phone, pin: "1234" });
-      const stranger = seed.signupWithPhonePin({ destination: strangerPhone, pin: "4321" });
+      const owner = seed.signupWithPhonePin({ destination: phone, pin: "3927" });
+      const stranger = seed.signupWithPhonePin({ destination: strangerPhone, pin: "6180" });
       const keys = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
       const credentialId = seed.continueWithDevice({
         sessionId: owner.session.id,

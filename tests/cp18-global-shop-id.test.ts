@@ -136,7 +136,7 @@ async function createOwnerBusiness(
     payload: JSON.stringify({
       method: "phone",
       contact: destination,
-      pin: "1234"
+      pin: "3927"
     })
   });
   const sessionCookie = extractSessionCookie(verifyResponse.headers["set-cookie"]);

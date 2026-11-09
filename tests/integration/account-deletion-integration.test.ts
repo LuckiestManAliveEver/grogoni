@@ -36,7 +36,7 @@ describe("Account deletion HTTP + purge integration", () => {
       payload: JSON.stringify({
         method: "phone",
         contact: "+254700000999",
-        pin: "1234"
+        pin: "3927"
       })
     });
     const setCookie = verifyResponse.headers["set-cookie"] as string | string[] | undefined;

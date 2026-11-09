@@ -13,7 +13,7 @@ function fixture() {
   const actor = store.continueWithChannelPin({
     channel: "phone",
     destination: "+442079460112",
-    pin: "1234"
+    pin: "3927"
   });
   const context = store.getGrogoniSessionContext({ sessionId: actor.session.id });
   const conversationId = context.conversationId;
@@ -117,7 +117,7 @@ describe("Phase 6 durable daemon message projection", () => {
     const stranger = store.continueWithChannelPin({
       channel: "phone",
       destination: "+442079460113",
-      pin: "1234"
+      pin: "3927"
     });
     expect(() => store.deliverDaemonTask(task, stranger.user.id)).toThrow();
     store.deliverDaemonTask(

@@ -1377,7 +1377,7 @@ describePostgres("CP2 Postgres store", () => {
       method: "POST",
       url: "/auth/pin/login",
       headers: jsonHeaders(),
-      payload: JSON.stringify({ method: "phone", contact: uniquePhone, pin: "0000" })
+      payload: JSON.stringify({ method: "phone", contact: uniquePhone, pin: "3826" })
     });
     expect(wrongPin.statusCode).toBe(401);
     expect(wrongPin.json()).toMatchObject({ code: "auth_credentials_invalid" });
@@ -3046,7 +3046,7 @@ describePostgres("CP2 Postgres store", () => {
       await postJson(
         app,
         `/businesses/${businessId}/shop-deletion/${deletion.request.id}/finalize`,
-        { pin: "1234", acknowledgement: true, idempotencyKey: `purge-${businessId}` },
+        { pin: "3927", acknowledgement: true, idempotencyKey: `purge-${businessId}` },
         owner.sessionCookie
       );
       expect(store.purgeExpiredShopDeletions(new Date(Date.now() + 31 * 24 * 60 * 60 * 1000))).toBe(
@@ -3083,7 +3083,7 @@ describePostgres("CP2 Postgres store", () => {
       await postJson(
         app,
         `/businesses/${businessId}/shop-deletion/${deletion.request.id}/finalize`,
-        { pin: "1234", acknowledgement: true, idempotencyKey: `tombstone-${businessId}` },
+        { pin: "3927", acknowledgement: true, idempotencyKey: `tombstone-${businessId}` },
         owner.sessionCookie
       );
       store.purgeExpiredShopDeletions(new Date(Date.now() + 31 * 24 * 60 * 60 * 1000));
@@ -3795,7 +3795,7 @@ describePostgres("CP2 Postgres store", () => {
       await postJson(
         app,
         `/businesses/${purgedBusinessId}/shop-deletion/${deletion.request.id}/finalize`,
-        { pin: "1234", acknowledgement: true, idempotencyKey: `double-${purgedBusinessId}` },
+        { pin: "3927", acknowledgement: true, idempotencyKey: `double-${purgedBusinessId}` },
         purged.sessionCookie
       );
       store.purgeExpiredShopDeletions(new Date(Date.now() + 31 * 24 * 60 * 60 * 1000));
@@ -4132,7 +4132,7 @@ describePostgres("CP2 Postgres store", () => {
         payload: JSON.stringify({
           method: "phone",
           contact: `254736${Date.now().toString().slice(-6)}`,
-          pin: "1234"
+          pin: "3927"
         })
       });
       expect(signup.statusCode).toBe(200);
@@ -4477,7 +4477,7 @@ async function createOwnerBusiness(
     payload: JSON.stringify({
       method: "phone",
       contact: destination,
-      pin: "1234"
+      pin: "3927"
     })
   });
   const sessionCookie = extractSessionCookie(verifyResponse.headers["set-cookie"]);

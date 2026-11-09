@@ -31,12 +31,12 @@ describe("Edge shared user and business routes", () => {
     const owner = store.continueWithChannelPin({
       channel: "phone",
       destination: "+254712345678",
-      pin: "1234"
+      pin: "3927"
     });
     const other = store.continueWithChannelPin({
       channel: "phone",
       destination: "+254712345679",
-      pin: "4321"
+      pin: "6180"
     });
     state.snapshot = store.snapshot();
     const client = {
