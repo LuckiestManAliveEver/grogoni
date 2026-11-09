@@ -252,6 +252,115 @@ describe("transactional email API", () => {
     await app.close();
   });
 
+  it("resets a forgotten PIN through verified backup email", async () => {
+    vi.stubEnv("OTP_COOLDOWN_SECONDS", "0");
+    const deliveries: EmailOtpInput[] = [];
+    const notices: string[] = [];
+    const emailProvider: EmailProvider = {
+      name: "mock-email-pin",
+      exposesDevOtp: false,
+      sendOtp: async (input) => {
+        deliveries.push(input);
+      },
+      sendRecoveryNotification: async (input) => {
+        notices.push(`${input.to}:${input.credential}`);
+        return "sent";
+      },
+      sendEncryptedMessageNotification: async () => "sent"
+    };
+    const app = buildApi({ cp2: { store: createCp2Store(), emailProvider } });
+    const post = (url: string, payload: Record<string, unknown>, cookie?: string) =>
+      app.inject({ method: "POST", url, payload, headers: cookie ? { cookie } : {} });
+    const phone = "+254700002214";
+    const email = "pin.recovery@example.test";
+
+    const signup = await post("/auth/pin/signup", { method: "phone", contact: phone, pin: "7306" });
+    expect(signup.statusCode).toBe(200);
+    const accountId = signup.json<{ account: { id: string } }>().account.id;
+    const oldCookie = sessionCookie(signup.headers["set-cookie"]);
+    const link = await post("/auth/identity/email/start", { email }, oldCookie);
+    expect(
+      (
+        await post(
+          "/auth/identity/email/verify",
+          {
+            challengeId: link.json<{ challengeId: string }>().challengeId,
+            code: deliveries.at(-1)!.code
+          },
+          oldCookie
+        )
+      ).statusCode
+    ).toBe(200);
+
+    const start = async () => {
+      const recovery = await post("/auth/recovery/start", { type: "email", identifier: email });
+      expect(recovery.statusCode).toBe(200);
+      return recovery.json<{ transactionId: string }>().transactionId;
+    };
+
+    // Unverified transactions cannot reset the PIN.
+    const unverified = await start();
+    expect(
+      (
+        await post("/auth/recovery/reset-pin", {
+          transactionId: unverified,
+          pin: "5831",
+          pinConfirmation: "5831"
+        })
+      ).statusCode
+    ).toBe(400);
+
+    const transactionId = await start();
+    expect(
+      (await post("/auth/recovery/verify", { transactionId, code: deliveries.at(-1)!.code }))
+        .statusCode
+    ).toBe(200);
+    const mismatch = await post("/auth/recovery/reset-pin", {
+      transactionId,
+      pin: "5831",
+      pinConfirmation: "5832"
+    });
+    expect(mismatch.statusCode).toBe(400);
+    expect(mismatch.json()).toMatchObject({ code: "pin_confirmation_invalid" });
+    const predictable = await post("/auth/recovery/reset-pin", {
+      transactionId,
+      pin: "1234",
+      pinConfirmation: "1234"
+    });
+    expect(predictable.statusCode).toBe(400);
+
+    const reset = await post("/auth/recovery/reset-pin", {
+      transactionId,
+      pin: "5831",
+      pinConfirmation: "5831"
+    });
+    expect(reset.statusCode).toBe(200);
+    expect(reset.json()).toMatchObject({ account: { id: accountId } });
+    expect(reset.headers["set-cookie"]).toBeDefined();
+    expect(notices).toEqual([`${email}:PIN`]);
+
+    // Single use, other sessions signed out, old PIN refused, new PIN works.
+    expect(
+      (
+        await post("/auth/recovery/reset-pin", {
+          transactionId,
+          pin: "5831",
+          pinConfirmation: "5831"
+        })
+      ).statusCode
+    ).toBe(400);
+    expect(
+      (await app.inject({ method: "GET", url: "/session", headers: { cookie: oldCookie } }))
+        .statusCode
+    ).toBe(401);
+    expect(
+      (await post("/auth/pin/login", { method: "phone", contact: phone, pin: "7306" })).statusCode
+    ).toBe(401);
+    const login = await post("/auth/pin/login", { method: "phone", contact: phone, pin: "5831" });
+    expect([200, 202]).toContain(login.statusCode);
+    await app.close();
+  });
+
   it("fails closed for production email signup when the email API is unconfigured", async () => {
     const provider = createEmailProviderFromEnvironment({ NODE_ENV: "production" });
 

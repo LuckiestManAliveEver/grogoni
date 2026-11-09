@@ -190,7 +190,7 @@ export async function createEdgeSnapshotScope(
             createHash("sha256").update(bearer).digest("hex"),
             credential,
             path === "/oauth/token" ? codeHash : "",
-            /^\/auth\/(?:mfa\/(?:email\/challenge|verify)|recovery\/(?:verify|reset-password|device-approval\/status))$/.test(
+            /^\/auth\/(?:mfa\/(?:email\/challenge|verify)|recovery\/(?:verify|reset-password|reset-pin|device-approval\/status))$/.test(
               path
             ) &&
             typeof input.transactionId === "string" &&

@@ -83,7 +83,7 @@ are separate actions; the account screen provides both.
 | POST /auth/pin/recover/device                                                 | Reset existing PIN using an unexpired grant                                                                                             |
 | POST /auth/pin/setup                                                          | Set first PIN; recovery sessions must have an unused grant                                                                              |
 | POST /auth/password/recover/device                                            | Reset password using an unexpired grant                                                                                                 |
-| POST /auth/recovery/start, /verify, /reset-password                           | Existing verified email fallback                                                                                                        |
+| POST /auth/recovery/start, /verify, /reset-pin, /reset-password               | Verified backup email fallback; resets the PIN or the password                                                                          |
 | POST /auth/recovery/device-approval/start, /status                            | Signed-out browser asks a logged-in device to approve it; see trusted-device-recovery-approval.md                                       |
 | GET /auth/recovery/device-approval/pending; POST /options, /approve, /decline | Logged-in device lists, approves with its screen lock, or declines                                                                      |
 

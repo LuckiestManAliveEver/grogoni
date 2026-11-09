@@ -363,7 +363,7 @@ export function PhoneFirstAuthentication({
     await continueToCredentialReset();
   }
 
-  // Device proof and email verification both precede password mutation.
+  // Device proof and email verification both precede the credential reset (password, or PIN by email).
   async function verifyAndResetPassword() {
     if (recoveryMethod !== "email") {
       try {
@@ -402,15 +402,18 @@ export function PhoneFirstAuthentication({
       });
       setRecoveryEmailVerified(true);
     }
-    const session = await apiFetch<AuthSessionView>("/auth/recovery/reset-password", {
-      method: "POST",
-      body: {
-        transactionId,
-        password,
-        passwordConfirmation,
-        ...(recoveryMfaCode ? { mfaCode: recoveryMfaCode } : {})
+    const mfa = recoveryMfaCode ? { mfaCode: recoveryMfaCode } : {};
+    const session = await apiFetch<AuthSessionView>(
+      emailPinReset ? "/auth/recovery/reset-pin" : "/auth/recovery/reset-password",
+      {
+        method: "POST",
+        body: emailPinReset
+          ? { transactionId, pin: password, pinConfirmation: passwordConfirmation, ...mfa }
+          : { transactionId, password, passwordConfirmation, ...mfa }
       }
-    });
+    );
+    setPassword("");
+    setPasswordConfirmation("");
     onAuthenticated(session);
   }
 
@@ -487,10 +490,11 @@ export function PhoneFirstAuthentication({
     !identifier.trim() ||
     (stage === "password" && !password) ||
     (stage === "pin" && pin.length !== 4);
+  const emailPinReset = recoveryMethod === "email" && recoveryCredential === "pin";
   const passwordResetBlocked =
     busy ||
     (recoveryMethod === "email" && !code.trim()) ||
-    password.length < 10 ||
+    (emailPinReset ? !/^\d{4}$/u.test(password) : password.length < 10) ||
     password !== passwordConfirmation;
   const stepNumber = stage === "entry" ? 1 : 2;
   const stepTotal = 2;
@@ -771,20 +775,20 @@ export function PhoneFirstAuthentication({
                           </p>
                         ) : null}
                       </div>
-                      <label>
-                        Reset
-                        <select
-                          value={recoveryCredential}
-                          onChange={(event) =>
-                            setRecoveryCredential(event.target.value as "pin" | "password")
-                          }
-                        >
-                          <option value="pin">Account PIN</option>
-                          <option value="password">Account password</option>
-                        </select>
-                      </label>
                     </>
                   )}
+                  <label>
+                    Reset
+                    <select
+                      value={recoveryCredential}
+                      onChange={(event) =>
+                        setRecoveryCredential(event.target.value as "pin" | "password")
+                      }
+                    >
+                      <option value="pin">Account PIN</option>
+                      <option value="password">Account password</option>
+                    </select>
+                  </label>
 
                   <button
                     className={
@@ -842,12 +846,21 @@ export function PhoneFirstAuthentication({
                   />
                 </label>
               ) : null}
-              <PasswordFields
-                password={password}
-                confirmation={passwordConfirmation}
-                setPassword={setPassword}
-                setConfirmation={setPasswordConfirmation}
-              />
+              {emailPinReset ? (
+                <PinFields
+                  pin={password}
+                  confirmation={passwordConfirmation}
+                  setPin={setPassword}
+                  setConfirmation={setPasswordConfirmation}
+                />
+              ) : (
+                <PasswordFields
+                  password={password}
+                  confirmation={passwordConfirmation}
+                  setPassword={setPassword}
+                  setConfirmation={setPasswordConfirmation}
+                />
+              )}
               {recoveryMethod === "email" ? (
                 <label>
                   MFA code (if enabled)
@@ -864,7 +877,7 @@ export function PhoneFirstAuthentication({
                 disabled={passwordResetBlocked}
                 aria-busy={busy}
               >
-                {busy ? "Working…" : "Reset password"}
+                {busy ? "Working…" : emailPinReset ? "Reset PIN" : "Reset password"}
               </button>
             </form>
           ) : null}
@@ -929,30 +942,12 @@ export function PhoneFirstAuthentication({
                 void run(finishPinRecovery);
               }}
             >
-              <label>
-                New 4-digit PIN
-                <input
-                  type="password"
-                  inputMode="numeric"
-                  maxLength={4}
-                  autoComplete="new-password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value.replace(/\D/gu, ""))}
-                />
-              </label>
-              <label>
-                Confirm new PIN
-                <input
-                  type="password"
-                  inputMode="numeric"
-                  maxLength={4}
-                  autoComplete="new-password"
-                  value={passwordConfirmation}
-                  onChange={(event) =>
-                    setPasswordConfirmation(event.target.value.replace(/\D/gu, ""))
-                  }
-                />
-              </label>
+              <PinFields
+                pin={password}
+                confirmation={passwordConfirmation}
+                setPin={setPassword}
+                setConfirmation={setPasswordConfirmation}
+              />
               <button
                 className="auth-primary-button"
                 type="submit"
@@ -1065,6 +1060,40 @@ export function devicePinMutationEndpoint(
   stage: "create-pin" | "recover-pin"
 ): "/auth/pin/setup" | "/auth/pin/recover/device" {
   return stage === "create-pin" ? "/auth/pin/setup" : "/auth/pin/recover/device";
+}
+
+function PinFields(props: {
+  pin: string;
+  confirmation: string;
+  setPin: (value: string) => void;
+  setConfirmation: (value: string) => void;
+}) {
+  return (
+    <>
+      <label>
+        New 4-digit PIN
+        <input
+          type="password"
+          inputMode="numeric"
+          maxLength={4}
+          autoComplete="new-password"
+          value={props.pin}
+          onChange={(event) => props.setPin(event.target.value.replace(/\D/gu, ""))}
+        />
+      </label>
+      <label>
+        Confirm new PIN
+        <input
+          type="password"
+          inputMode="numeric"
+          maxLength={4}
+          autoComplete="new-password"
+          value={props.confirmation}
+          onChange={(event) => props.setConfirmation(event.target.value.replace(/\D/gu, ""))}
+        />
+      </label>
+    </>
+  );
 }
 
 function PasswordFields(props: {

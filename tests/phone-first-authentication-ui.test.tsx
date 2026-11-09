@@ -357,6 +357,7 @@ describe("PhoneFirstAuthentication login methods", () => {
       select.dispatchEvent(new Event("change", { bubbles: true }));
     });
     await change(inputByLabel("Backup email"), "backup@example.test");
+    await chooseResetCredential("password");
     await click(buttonByText("Send email recovery code"));
     await change(inputByLabel("Password"), "secure new password");
     await change(inputByLabel("Confirm password"), "secure new password");
@@ -370,4 +371,60 @@ describe("PhoneFirstAuthentication login methods", () => {
       mockedApiFetch.mock.calls.filter(([path]) => path === "/auth/recovery/verify")
     ).toHaveLength(1);
   });
+
+  it("resets the account PIN with a backup email code", async () => {
+    const completedSession = { account: { id: "recovered-pin" } };
+    mockedApiFetch.mockImplementation(async (path) => {
+      if (path === "/auth/login/methods")
+        return { recoveryAvailable: true, passwordFallback: true };
+      if (path === "/auth/recovery/start")
+        return { transactionId: "email-pin-recovery", message: "Check your email." };
+      if (path === "/auth/recovery/verify") return { verified: true };
+      if (path === "/auth/recovery/reset-pin") return completedSession;
+      throw new Error(`Unexpected request to ${path}`);
+    });
+    renderLogin();
+    await change(inputByLabel("Phone number"), "0712345678");
+    await click(buttonByText("Trouble logging in?"));
+    const select = document.querySelector("select")!;
+    await act(async () => {
+      select.value = "email";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await change(inputByLabel("Backup email"), "backup@example.test");
+    await chooseResetCredential("pin");
+    await click(buttonByText("Send email recovery code"));
+    await change(inputByLabel("Verification code"), "654321");
+    await change(inputByLabel("New 4-digit PIN"), "5831");
+    await change(inputByLabel("Confirm new PIN"), "5832");
+    expect(buttonByText("Reset PIN").disabled).toBe(true);
+    await change(inputByLabel("Confirm new PIN"), "5831");
+    await click(buttonByText("Reset PIN"));
+    expect(onAuthenticated).toHaveBeenCalledWith(completedSession);
+    expect(mockedApiFetch).toHaveBeenCalledWith(
+      "/auth/recovery/verify",
+      expect.objectContaining({ body: { transactionId: "email-pin-recovery", code: "654321" } })
+    );
+    expect(mockedApiFetch).toHaveBeenCalledWith(
+      "/auth/recovery/reset-pin",
+      expect.objectContaining({
+        body: { transactionId: "email-pin-recovery", pin: "5831", pinConfirmation: "5831" }
+      })
+    );
+    expect(
+      mockedApiFetch.mock.calls.some(([path]) => path === "/auth/recovery/reset-password")
+    ).toBe(false);
+  });
 });
+
+async function chooseResetCredential(credential: "pin" | "password") {
+  const label = Array.from(document.querySelectorAll("label")).find((item) =>
+    item.textContent?.startsWith("Reset")
+  );
+  const select = label?.querySelector("select");
+  if (!(select instanceof HTMLSelectElement)) throw new Error("Missing Reset select");
+  await act(async () => {
+    select.value = credential;
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+}

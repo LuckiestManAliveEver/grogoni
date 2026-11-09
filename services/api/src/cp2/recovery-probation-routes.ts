@@ -351,6 +351,7 @@ export const probationRefusedWrites: Readonly<Record<string, string>> = {
   "POST /auth/recovery/device-approval/decline": "sign-in, credentials and sessions",
   "POST /auth/recovery/device-approval/options": "sign-in, credentials and sessions",
   "POST /auth/recovery/reset-password": "sign-in, credentials and sessions",
+  "POST /auth/recovery/reset-pin": "sign-in, credentials and sessions",
   "POST /auth/recovery/start": "sign-in, credentials and sessions",
   "POST /auth/recovery/verify": "sign-in, credentials and sessions",
   "POST /auth/signup/complete": "sign-in, credentials and sessions",

@@ -301,6 +301,7 @@ const mutatingMethodNames = new Set([
   "beginRecovery",
   "verifyEmailRecovery",
   "resetRecoveredPassword",
+  "resetRecoveredPin",
   "changePassword",
   "regenerateMfaRecoveryCodes",
   "disableMfaFactor",

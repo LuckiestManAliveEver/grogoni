@@ -11886,8 +11886,51 @@ export class Cp2Store {
     now?: Date;
   }): AuthSessionView {
     const now = input.now ?? new Date();
+    const { transaction, accountId } = this.requireVerifiedEmailRecovery(input, now);
+    validatePassword(input.password);
+    this.passwordCredentials.set(
+      accountId,
+      createPasswordCredential(accountId, input.password, now)
+    );
+    return this.completeEmailRecovery(transaction, accountId, "password_reset", now);
+  }
+
+  /**
+   * Sets a new login PIN after a verified backup-email recovery challenge. Same proof as
+   * `resetRecoveredPassword` (an emailed code bound to this transaction, plus TOTP when enrolled);
+   * creates the PIN when the account has none.
+   */
+  resetRecoveredPin(input: {
+    transactionId: string;
+    pin: string;
+    mfaCode?: string;
+    now?: Date;
+  }): AuthSessionView {
+    const now = input.now ?? new Date();
+    const { transaction, accountId } = this.requireVerifiedEmailRecovery(input, now);
+    const pin = normalizePin(input.pin);
+    assertAcceptablePin(pin);
+    this.resetAccountPinHash(accountId, pin);
+    const session = this.completeEmailRecovery(transaction, accountId, "pin_recovery", now);
+    this.promoteAccountIdentityLevel(accountId, "strong");
+    this.recordAuditEvent({
+      type: "auth.pin_recovered",
+      aggregateType: "account",
+      aggregateId: accountId,
+      actorId: session.user.id,
+      occurredAt: now.toISOString(),
+      payload: { method: "backup_email" }
+    });
+    return session;
+  }
+
+  /** The recovery transaction's emailed code was verified, and any enrolled TOTP is supplied. */
+  private requireVerifiedEmailRecovery(
+    input: { transactionId: string; mfaCode?: string },
+    now: Date
+  ): { transaction: AuthTransactionRecord; accountId: string } {
     const transaction = this.requireAuthTransaction(input.transactionId, "recovery", now, true);
-    if (transaction.accountId === null)
+    if (transaction.accountId === null || transaction.identifierType !== "email")
       throw new Cp2Error(401, "recovery_verification_invalid", "Recovery verification failed.");
     const factors = this.activeMfaFactors(transaction.accountId);
     if (factors.length > 0) {
@@ -11904,23 +11947,34 @@ export class Cp2Store {
         throw new Cp2Error(401, "mfa_code_invalid", "The verification code is invalid.");
       factor.lastUsedStep = step;
     }
-    validatePassword(input.password);
-    this.passwordCredentials.set(
-      transaction.accountId,
-      createPasswordCredential(transaction.accountId, input.password, now)
-    );
+    return { transaction, accountId: transaction.accountId };
+  }
+
+  /** Signs out every session, consumes the single-use grant and opens a fresh session. */
+  private completeEmailRecovery(
+    transaction: AuthTransactionRecord,
+    accountId: string,
+    reason: "password_reset" | "pin_recovery",
+    now: Date
+  ): AuthSessionView {
     for (const session of this.sessions.values()) {
-      if (session.accountId === transaction.accountId && session.revokedAt === null) {
+      if (session.accountId === accountId && session.revokedAt === null) {
         session.revokedAt = now.toISOString();
-        session.revocationReason = "password_reset";
+        session.revocationReason = reason;
       }
     }
     transaction.consumedAt = now.toISOString();
-    const account = this.requireAccount(transaction.accountId);
+    const account = this.requireAccount(accountId);
     const user = this.requireUser(this.userByAccount.get(account.id));
     const sessionRecord = this.createSession(account, user, now);
     this.markSessionPinVerified(sessionRecord.id, now);
-    this.recordSecurityEvent("auth.password_reset", account.id, "success", now, {});
+    this.recordSecurityEvent(
+      reason === "password_reset" ? "auth.password_reset" : "auth.pin_reset",
+      account.id,
+      "success",
+      now,
+      reason === "password_reset" ? {} : { method: "backup_email" }
+    );
     return this.requireAnySession(sessionRecord.id, now);
   }
 
