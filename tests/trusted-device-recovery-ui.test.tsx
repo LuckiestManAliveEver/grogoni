@@ -426,6 +426,59 @@ describe("approving on the trusted device", () => {
     expect(document.body.textContent).not.toContain("Firefox on Windows · logged in");
   });
 
+  function passkeyApproval() {
+    mockedApiFetch.mockImplementation(async (path) => {
+      if (path === "/auth/recovery/device-approval/pending") return pending;
+      if (path === "/auth/recovery/device-approval/options")
+        return {
+          ...pending.requests[0],
+          method: "passkey",
+          ceremonyId: "ceremony-1",
+          options: { challenge: "c" }
+        };
+      if (path === "/auth/recovery/device-approval/approve") return { approved: true };
+      throw new Error(`Unexpected request ${String(path)}`);
+    });
+  }
+
+  it("goes back to code entry when the owner cancels the screen lock", async () => {
+    passkeyApproval();
+    const cancelled = new Error("cancelled");
+    cancelled.name = "NotAllowedError";
+    vi.mocked(webauthn.startAuthentication).mockRejectedValue(cancelled);
+    render(<TrustedDeviceApproval mode="panel" />);
+    await settle();
+    await change(inputByLabel("Code from the other browser"), "482915");
+    await click(buttonByText("Continue"));
+    await settle();
+    await click(buttonByText("Approve with passkey"));
+    await settle();
+    expect(document.body.textContent).toContain("Screen lock confirmation was cancelled");
+    expect(document.body.textContent).not.toContain("Let in Chrome on Android?");
+    expect(inputByLabel("Code from the other browser").value).toBe("");
+    expect(mockedApiFetch).not.toHaveBeenCalledWith(
+      "/auth/recovery/device-approval/approve",
+      expect.anything()
+    );
+  });
+
+  it("keeps the prompt's outcome until Done, then hides it", async () => {
+    passkeyApproval();
+    vi.mocked(webauthn.startAuthentication).mockResolvedValue({ id: "passkey" } as never);
+    render(<TrustedDeviceApproval mode="prompt" />);
+    await settle();
+    expect(buttonByText("Not now")).toBeTruthy();
+    await change(inputByLabel("Code from the other browser"), "482915");
+    await click(buttonByText("Continue"));
+    await settle();
+    await click(buttonByText("Approve with passkey"));
+    await settle();
+    // The request list is cleared, but the approval stays on screen with its undo.
+    expect(document.body.textContent).toContain("Approved Chrome on Android");
+    await click(buttonByText("Done"));
+    expect(host.textContent).toBe("");
+  });
+
   it("shows nothing to guests or while no request is open", async () => {
     mockedApiFetch.mockRejectedValue(
       new ApiRequestError(403, "Sign in", { code: "recovery_approval_phone_required" })
