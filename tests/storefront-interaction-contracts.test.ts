@@ -258,7 +258,7 @@ describe("storefront interaction contracts", () => {
       method: "POST",
       url: `/account-restoration/${deletion.id}`,
       headers: jsonHeaders(recoveryCookie),
-      payload: JSON.stringify({ pin: "0000" })
+      payload: JSON.stringify({ pin: "3826" })
     });
     expect(wrongPin.statusCode).toBe(401);
 

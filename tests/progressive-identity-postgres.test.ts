@@ -94,7 +94,7 @@ describePostgres("progressive identity PostgreSQL persistence", () => {
     const existing = await app.inject({
       method: "POST",
       url: "/auth/pin/continue",
-      payload: { method: "phone", contact: phone, pin: "8642" }
+      payload: { method: "phone", contact: phone, pin: "5083" }
     });
     expect(existing.statusCode).toBe(200);
     const targetAccountId = existing.json<{ account: { id: string } }>().account.id;
@@ -119,7 +119,7 @@ describePostgres("progressive identity PostgreSQL persistence", () => {
       method: "POST",
       url: "/auth/identity/merge/pin",
       headers: { cookie },
-      payload: { method: "phone", contact: phone, pin: "8642" }
+      payload: { method: "phone", contact: phone, pin: "5083" }
     });
     expect(merged.statusCode).toBe(200);
     expect(merged.json<{ account: { id: string } }>().account.id).toBe(targetAccountId);

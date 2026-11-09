@@ -15,7 +15,7 @@ function uniquePhone(seed: number): string {
 }
 
 function seedOwner(store: ReturnType<typeof createCp2Store>, seed: number, businessName: string) {
-  const auth = store.signupWithPhonePin({ destination: uniquePhone(seed), pin: "1234" });
+  const auth = store.signupWithPhonePin({ destination: uniquePhone(seed), pin: "3927" });
   const business = store.createBusiness({
     sessionId: auth.session.id,
     name: businessName,

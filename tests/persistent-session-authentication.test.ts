@@ -96,7 +96,7 @@ describe("persistent session authentication", () => {
     const store = createCp2Store();
     const signup = store.signupWithPhonePin({
       destination: "+254712349002",
-      pin: "1234",
+      pin: "3927",
       now: startedAt
     });
     const originalRefreshToken = store.prepareDeviceSession(
@@ -156,7 +156,7 @@ describe("persistent session authentication", () => {
     const store = createCp2Store();
     const signup = store.signupWithPhonePin({
       destination: "+254712349003",
-      pin: "1234",
+      pin: "3927",
       now: startedAt
     });
     const originalRefreshToken = store.prepareDeviceSession(
@@ -208,7 +208,7 @@ describe("persistent session authentication", () => {
     const originalStore = createCp2Store();
     const signup = originalStore.signupWithPhonePin({
       destination: "+254712349003",
-      pin: "1234",
+      pin: "3927",
       now: startedAt
     });
     const originalRefreshToken = originalStore.prepareDeviceSession(

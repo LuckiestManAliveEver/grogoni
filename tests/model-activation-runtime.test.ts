@@ -388,7 +388,7 @@ describe("agent model activation runtime", () => {
       method: "POST",
       url: "/auth/pin/login",
       headers: jsonHeaders(),
-      payload: JSON.stringify({ method: "phone", contact, pin: "1234" })
+      payload: JSON.stringify({ method: "phone", contact, pin: "3927" })
     });
     expect(secondLogin.statusCode).toBe(200);
     const secondDeviceCookie = sessionCookie(secondLogin.headers["set-cookie"]);
@@ -960,7 +960,7 @@ async function createOwnerBusiness(
     method: "POST",
     url: "/auth/pin/signup",
     headers: jsonHeaders(),
-    payload: JSON.stringify({ method: "phone", contact, pin: "1234" })
+    payload: JSON.stringify({ method: "phone", contact, pin: "3927" })
   });
   expect(signup.statusCode).toBe(200);
   const cookie = sessionCookie(signup.headers["set-cookie"]);

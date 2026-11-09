@@ -27,7 +27,7 @@ describe("sanitizeClientLogMetadata", () => {
       authorization: "Bearer tok",
       cookie: "grogoni_session=abc",
       password: "hunter2",
-      pin: "1234",
+      pin: "3927",
       passkey: "blob",
       secret: "shh"
     });

@@ -97,11 +97,11 @@ describe("owner phone identity normalization", () => {
 
   it("uses E.164 for legacy account lookup and never keeps duplicated prefixes", () => {
     const store = createCp2Store();
-    const signup = store.signupWithPhonePin({ destination: "+254712345678", pin: "1234" });
+    const signup = store.signupWithPhonePin({ destination: "+254712345678", pin: "3927" });
     const login = store.loginWithAccountPin({
       channel: "phone",
       destination: "+254254712345678",
-      pin: "1234"
+      pin: "3927"
     });
     expect(login.account.id).toBe(signup.account.id);
     expect(normalizeDestination("phone", "254254712345678")).toBe("+254712345678");

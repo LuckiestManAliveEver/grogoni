@@ -33,7 +33,7 @@ async function setup(options: { takenIds?: string[]; failFirst?: number; failCod
   const owner = store.continueWithChannelPin({
     channel: "phone",
     destination: "+254712345678",
-    pin: "1234"
+    pin: "3927"
   });
   state.snapshot = store.snapshot();
   const queries: string[] = [];

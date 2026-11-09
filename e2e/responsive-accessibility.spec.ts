@@ -1179,7 +1179,7 @@ test("account deletion requires DELETE, PIN, acknowledgement, and signs out", as
   await page
     .getByRole("group", { name: "Verify account deletion" })
     .getByLabel("Owner PIN")
-    .fill("1234");
+    .fill("3927");
   await page.getByLabel(/I understand that all account access is disabled immediately/).check();
   await page.getByTestId("delete-account-confirm").click();
   await expect(page).toHaveURL(/\/signup$/);
@@ -1208,7 +1208,7 @@ test("shop deletion Continue and Quarantine buttons call the backend", async ({ 
   await page.getByRole("button", { name: "Delete this shop", exact: true }).click();
   await page.getByLabel("Type the shop ID to continue").fill("grogoni.janes-market");
   await page.getByRole("button", { name: "Continue", exact: true }).click();
-  await page.getByRole("textbox", { name: "Login PIN", exact: true }).fill("1234");
+  await page.getByRole("textbox", { name: "Login PIN", exact: true }).fill("3927");
   await page.getByLabel(/I understand the shop will be hidden now and permanently purged/).check();
   await page.getByRole("button", { name: "Quarantine shop" }).click();
 

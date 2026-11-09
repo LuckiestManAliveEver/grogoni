@@ -103,7 +103,7 @@ describe("CP2 store persistence", () => {
     const pinLogin = await postJson<VerifyOtpResponse>(restoredApp, "/auth/pin/login", {
       channel: "phone",
       destination: "254700000900",
-      pin: "1234"
+      pin: "3927"
     });
     expect(pinLogin.session.id).toBeTruthy();
 
@@ -125,7 +125,7 @@ async function createOwnerBusiness(
     payload: JSON.stringify({
       method: "phone",
       contact: "254700000900",
-      pin: "1234"
+      pin: "3927"
     })
   });
   const sessionCookie = extractSessionCookie(verifyResponse.headers["set-cookie"]);

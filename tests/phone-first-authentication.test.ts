@@ -67,7 +67,7 @@ describe("phone-first authentication", () => {
       method: "phone",
       contact: "0712345678",
       country: "KE",
-      pin: "1234"
+      pin: "3927"
     });
     expect(signup.statusCode).toBe(200);
     expect(signup.json()).toMatchObject({
@@ -77,7 +77,7 @@ describe("phone-first authentication", () => {
       method: "phone",
       contact: "+254254712345678",
       country: "KE",
-      pin: "1234"
+      pin: "3927"
     });
     expect(login.statusCode).toBe(200);
     expect(login.json()).toMatchObject({
@@ -94,7 +94,7 @@ describe("phone-first authentication", () => {
         method: "phone",
         contact: `07123458${String(index).padStart(2, "0")}`,
         country: "KE",
-        pin: "1234"
+        pin: "3927"
       });
       expect(response.statusCode).toBe(200);
     }
@@ -103,7 +103,7 @@ describe("phone-first authentication", () => {
       method: "phone",
       contact: "0712345899",
       country: "KE",
-      pin: "1234"
+      pin: "3927"
     });
     expect(throttled.statusCode).toBe(429);
     expect(throttled.json()).toMatchObject({ code: "auth_rate_limited" });
@@ -117,7 +117,7 @@ describe("phone-first authentication", () => {
       method: "phone",
       contact: "0712345898",
       country: "KE",
-      pin: "1234"
+      pin: "3927"
     });
     expect(signup.statusCode).toBe(200);
 
@@ -129,7 +129,7 @@ describe("phone-first authentication", () => {
       method: "phone",
       contact: "0712345898",
       country: "KE",
-      pin: "1234"
+      pin: "3927"
     });
     expect(login.statusCode).toBe(403);
     expect(login.json()).toMatchObject({ code: "account_suspended" });

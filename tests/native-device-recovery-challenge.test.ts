@@ -5,7 +5,7 @@ import { createCp2Store } from "../services/api/src/cp2/store";
 const phone = "+254711223344";
 function fixture(deviceSecurity = true) {
   const store = createCp2Store();
-  const session = store.signupWithPhonePin({ destination: phone, pin: "1234" });
+  const session = store.signupWithPhonePin({ destination: phone, pin: "3927" });
   const { publicKey, privateKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
   const enrollment = store.continueWithDevice({
     sessionId: session.session.id,
@@ -52,11 +52,11 @@ describe("native device recovery challenges", () => {
       code: "auth_transaction_invalid"
     });
     expect(
-      restored.recoverPhoneAccountPinWithDevice({ sessionId: recovered.session.id, pin: "5678" })
+      restored.recoverPhoneAccountPinWithDevice({ sessionId: recovered.session.id, pin: "5193" })
         .account.id
     ).toBe(session.account.id);
     expect(() =>
-      restored.recoverPhoneAccountPinWithDevice({ sessionId: recovered.session.id, pin: "6789" })
+      restored.recoverPhoneAccountPinWithDevice({ sessionId: recovered.session.id, pin: "3140" })
     ).toThrow(/Verify this device/u);
   });
 
@@ -102,7 +102,7 @@ describe("native device recovery challenges", () => {
     store.revokeDeviceRecoveryCredential({ sessionId: session.session.id, credentialId });
     expect(store.listDeviceRecoveryCredentials({ sessionId: session.session.id })).toHaveLength(1);
     expect(() =>
-      store.recoverPhoneAccountPinWithDevice({ sessionId: recovered.session.id, pin: "5678" })
+      store.recoverPhoneAccountPinWithDevice({ sessionId: recovered.session.id, pin: "5193" })
     ).toThrow(/Verify this device/u);
     const next = store.beginDeviceRecovery({ credentialId, identifier: phone });
     await expect(

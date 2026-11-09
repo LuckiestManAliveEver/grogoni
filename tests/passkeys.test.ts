@@ -124,7 +124,7 @@ describe("passkey authentication", () => {
 
   it("does not authorize PIN or password recovery with an ordinary passkey login", async () => {
     const sourceStore = createCp2Store();
-    sourceStore.signupWithPhonePin({ destination: "+254700000099", pin: "2468" });
+    sourceStore.signupWithPhonePin({ destination: "+254700000099", pin: "7306" });
     const snapshot = sourceStore.snapshot();
     const account = snapshot.accounts[0]!;
     const user = snapshot.users[0]!;
@@ -169,7 +169,7 @@ describe("passkey authentication", () => {
           url: endpoint,
           headers: { cookie: authentication.cookie },
           payload: {
-            pin: "1357",
+            pin: "4902",
             password: "secure new password",
             passwordConfirmation: "secure new password"
           }
@@ -237,7 +237,7 @@ async function createSessionCookie(app: ReturnType<typeof buildApi>): Promise<st
   const verified = await app.inject({
     method: "POST",
     url: "/auth/pin/signup",
-    payload: { method: "phone", contact: "+254711123456", pin: "2468" }
+    payload: { method: "phone", contact: "+254711123456", pin: "7306" }
   });
   expect(verified.statusCode).toBe(200);
   return responseCookies(verified);

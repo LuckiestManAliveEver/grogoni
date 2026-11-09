@@ -44,7 +44,7 @@ test("a locked-out PWA is approved by a signed-in phone, then gets its own passk
 }) => {
   test.setTimeout(120_000);
   const store = createCp2Store();
-  const owner = store.signupWithPhonePin({ destination: phone, pin: "1234" });
+  const owner = store.signupWithPhonePin({ destination: phone, pin: "3927" });
   const api = buildApi({ cp2: { store } });
   await api.ready();
 
@@ -130,8 +130,8 @@ test("a locked-out PWA is approved by a signed-in phone, then gets its own passk
     });
     await lockedOut.getByRole("button", { name: "Create passkey", exact: true }).click();
     await expect(lockedOut.getByRole("heading", { name: "Choose a new PIN" })).toBeVisible();
-    await lockedOut.getByLabel("New 4-digit PIN", { exact: true }).fill("6789");
-    await lockedOut.getByLabel("Confirm new PIN", { exact: true }).fill("6789");
+    await lockedOut.getByLabel("New 4-digit PIN", { exact: true }).fill("3140");
+    await lockedOut.getByLabel("Confirm new PIN", { exact: true }).fill("3140");
     await lockedOut.getByRole("button", { name: "Save new PIN", exact: true }).click();
     await expect(lockedOut.getByRole("heading", { name: "Choose a new PIN" })).toHaveCount(0);
 
@@ -147,7 +147,7 @@ test("a locked-out PWA is approved by a signed-in phone, then gets its own passk
     );
     // The new PIN works and the old one does not.
     expect(
-      store.loginWithAccountPin({ channel: "phone", destination: phone, pin: "6789" }).account.id
+      store.loginWithAccountPin({ channel: "phone", destination: phone, pin: "3140" }).account.id
     ).toBe(owner.account.id);
   } finally {
     // Close the phones first: an open app keeps polling the API.

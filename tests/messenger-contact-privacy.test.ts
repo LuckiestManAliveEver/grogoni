@@ -10,7 +10,7 @@ function person(store: ReturnType<typeof createCp2Store>, suffix: string) {
   return store.continueWithChannelPin({
     channel: "phone",
     destination: `+442079460${suffix}`,
-    pin: "1234"
+    pin: "3927"
   });
 }
 afterEach(() => vi.unstubAllEnvs());

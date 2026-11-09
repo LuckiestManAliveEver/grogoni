@@ -436,7 +436,7 @@ async function createOwnerBusiness(
   app: ReturnType<typeof buildApi>,
   destination: string,
   name: string,
-  pin = "1234"
+  pin = "3927"
 ) {
   const signup = await app.inject({
     method: "POST",

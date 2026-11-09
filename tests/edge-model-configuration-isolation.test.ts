@@ -11,7 +11,7 @@ it("keeps account inboxes available when hosted provider configuration is invali
   const account = store.continueWithChannelPin({
     channel: "phone",
     destination: "+442079460551",
-    pin: "1234"
+    pin: "3927"
   });
   expect(
     store

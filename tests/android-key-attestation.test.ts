@@ -185,7 +185,7 @@ describe("real device chains", () => {
 describe("enforcing attestation", () => {
   const enroll = () => {
     const store = createCp2Store();
-    const session = store.signupWithPhonePin({ destination: "+254711223344", pin: "1234" });
+    const session = store.signupWithPhonePin({ destination: "+254711223344", pin: "3927" });
     const { publicKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
     return () =>
       store.continueWithDevice({

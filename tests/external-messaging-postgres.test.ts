@@ -33,7 +33,7 @@ describe.skipIf(!databaseUrl)("external webhook Edge persistence", () => {
       const actor = store.continueWithChannelPin({
         channel: "email",
         destination: `external-${randomUUID()}@example.invalid`,
-        pin: "1234"
+        pin: "3927"
       });
       const shop = store.createBusiness({
         sessionId: actor.session.id,
@@ -45,7 +45,7 @@ describe.skipIf(!databaseUrl)("external webhook Edge persistence", () => {
       const otherActor = store.continueWithChannelPin({
         channel: "email",
         destination: `unrelated-${randomUUID()}@example.invalid`,
-        pin: "4321"
+        pin: "6180"
       });
       const other = store.createBusiness({
         sessionId: otherActor.session.id,

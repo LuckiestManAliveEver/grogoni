@@ -497,7 +497,7 @@ async function createOwnerBusiness(app: ReturnType<typeof buildApi>) {
     {
       method: "phone",
       contact: "+254700000099",
-      pin: "1234"
+      pin: "3927"
     },
     null
   );

@@ -35,7 +35,7 @@ describe("model selection spoof resistance", () => {
         return modelId === "smollm2-360m" ? hostedProvider : undefined;
       }
     });
-    const auth = store.signupWithPhonePin({ destination: "+254700799991", pin: "2468" });
+    const auth = store.signupWithPhonePin({ destination: "+254700799991", pin: "7306" });
     const created = store.createBusiness({
       sessionId: auth.session.id,
       name: "Cross Device Shop",

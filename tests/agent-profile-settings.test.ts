@@ -254,7 +254,7 @@ async function createOwnerBusiness(app: ReturnType<typeof buildApi>): Promise<{
     payload: JSON.stringify({
       method: "phone",
       contact: "+254700000991",
-      pin: "1234"
+      pin: "3927"
     })
   });
   const setCookie = verifyResponse.headers["set-cookie"];

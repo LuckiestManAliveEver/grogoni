@@ -148,7 +148,7 @@ describe("compulsory owner phone identity", () => {
       code: challenge.devOtp,
       now: authenticatedAt
     });
-    store.setAccountPin({ sessionId: session.session.id, pin: "1234", now: authenticatedAt });
+    store.setAccountPin({ sessionId: session.session.id, pin: "3927", now: authenticatedAt });
 
     expect(() =>
       store.updateOwnerPhone({
@@ -177,7 +177,7 @@ async function createEmailOwner(
     method: "POST",
     url: "/auth/pin/setup",
     headers: { ...jsonHeaders(), cookie },
-    payload: JSON.stringify({ pin: "1234" })
+    payload: JSON.stringify({ pin: "3927" })
   });
   expect(pin.statusCode).toBe(200);
 

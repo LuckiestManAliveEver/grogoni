@@ -18,7 +18,7 @@ describe("native-style account session lifecycle", () => {
       method: "POST",
       url: "/auth/pin/signup",
       headers: deviceHeaders("device-one"),
-      payload: { method: "phone", contact: "+254700003001", pin: "1234" }
+      payload: { method: "phone", contact: "+254700003001", pin: "3927" }
     });
     const originalCookies = cookieHeader(signup.headers["set-cookie"]);
 
@@ -51,7 +51,7 @@ describe("native-style account session lifecycle", () => {
       method: "POST",
       url: "/auth/pin/signup",
       headers: deviceHeaders("device-one"),
-      payload: { method: "phone", contact: "+254700003002", pin: "1234" }
+      payload: { method: "phone", contact: "+254700003002", pin: "3927" }
     });
     const originalCookies = cookieHeader(signup.headers["set-cookie"]);
 
@@ -93,7 +93,7 @@ describe("native-style account session lifecycle", () => {
       method: "POST",
       url: "/auth/pin/signup",
       headers: deviceHeaders("device-one"),
-      payload: { method: "phone", contact: "+254700003003", pin: "1234" }
+      payload: { method: "phone", contact: "+254700003003", pin: "3927" }
     });
     const originalCookies = cookieHeader(signup.headers["set-cookie"]);
 
@@ -152,7 +152,7 @@ describe("native-style account session lifecycle", () => {
       method: "POST",
       url: "/auth/pin/signup",
       headers: deviceHeaders("device-one"),
-      payload: { method: "phone", contact: "+254700003009", pin: "1234" }
+      payload: { method: "phone", contact: "+254700003009", pin: "3927" }
     });
     const cookies = cookieHeader(signup.headers["set-cookie"]);
 
@@ -180,14 +180,14 @@ describe("native-style account session lifecycle", () => {
       method: "POST",
       url: "/auth/pin/signup",
       headers: deviceHeaders("phone-one"),
-      payload: { method: "phone", contact: "+254700003002", pin: "1234" }
+      payload: { method: "phone", contact: "+254700003002", pin: "3927" }
     });
     const firstCookies = cookieHeader(signup.headers["set-cookie"]);
     const login = await app.inject({
       method: "POST",
       url: "/auth/pin/login",
       headers: deviceHeaders("phone-two"),
-      payload: { method: "phone", contact: "+254700003002", pin: "1234" }
+      payload: { method: "phone", contact: "+254700003002", pin: "3927" }
     });
     const secondCookies = cookieHeader(login.headers["set-cookie"]);
 
@@ -214,14 +214,14 @@ describe("native-style account session lifecycle", () => {
       method: "POST",
       url: "/auth/pin/signup",
       headers: deviceHeaders("all-devices-one"),
-      payload: { method: "phone", contact: "+254700003004", pin: "1234" }
+      payload: { method: "phone", contact: "+254700003004", pin: "3927" }
     });
     const firstCookies = cookieHeader(signup.headers["set-cookie"]);
     const login = await app.inject({
       method: "POST",
       url: "/auth/pin/login",
       headers: deviceHeaders("all-devices-two"),
-      payload: { method: "phone", contact: "+254700003004", pin: "1234" }
+      payload: { method: "phone", contact: "+254700003004", pin: "3927" }
     });
     const secondCookies = cookieHeader(login.headers["set-cookie"]);
 

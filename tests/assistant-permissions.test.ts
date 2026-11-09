@@ -24,7 +24,7 @@ function guest(store: ReturnType<typeof createCp2Store>) {
 describe("assistant action permissions", () => {
   it("authorizes the checklist endpoints and saves only the current account's grants", async () => {
     const store = createCp2Store();
-    const owner = store.signupWithPhonePin({ destination: "+254712345668", pin: "1234" });
+    const owner = store.signupWithPhonePin({ destination: "+254712345668", pin: "3927" });
     const id = store.getGrogoniSessionContext({ sessionId: owner.session.id }).conversationId;
     const app = buildApi({ cp2: { store } });
     try {
@@ -60,7 +60,7 @@ describe("assistant action permissions", () => {
         }
       }
     });
-    const owner = store.signupWithPhonePin({ destination: "+254712345665", pin: "1234" });
+    const owner = store.signupWithPhonePin({ destination: "+254712345665", pin: "3927" });
     const id = store.getGrogoniSessionContext({ sessionId: owner.session.id }).conversationId;
     const business = store.createBusiness({
       sessionId: owner.session.id,
@@ -106,8 +106,8 @@ describe("assistant action permissions", () => {
   });
   it("persists account permissions and refuses access from another account", () => {
     const store = createCp2Store();
-    const owner = store.signupWithPhonePin({ destination: "+254712345670", pin: "1234" });
-    const other = store.signupWithPhonePin({ destination: "+254712345671", pin: "1234" });
+    const owner = store.signupWithPhonePin({ destination: "+254712345670", pin: "3927" });
+    const other = store.signupWithPhonePin({ destination: "+254712345671", pin: "3927" });
     const id = store.getGrogoniSessionContext({ sessionId: owner.session.id }).conversationId;
     expect(store.getAssistantPermissions(owner.session.id, id).permissions).toEqual(
       defaultAssistantPermissions()
@@ -130,7 +130,7 @@ describe("assistant action permissions", () => {
     const session = guest(store);
     const id = store.getGrogoniSessionContext({ sessionId: session.session.id }).conversationId;
     expect(store.searchBuyFeed({ sessionId: session.session.id, query: "maize" })).toBeDefined();
-    const seller = store.signupWithPhonePin({ destination: "+254712345679", pin: "1234" });
+    const seller = store.signupWithPhonePin({ destination: "+254712345679", pin: "3927" });
     const shop = store.createBusiness({
       sessionId: seller.session.id,
       name: "Maize shop",
