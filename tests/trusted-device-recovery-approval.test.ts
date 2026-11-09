@@ -59,7 +59,7 @@ function requestScope(snapshot: Cp2Snapshot, verifier = passkeyVerifier()): Stor
 /** A phone account signed in on an Android phone that has device security turned on. */
 function trustedAndroidOwner(destination = phone, deviceSecurity = true, attested = true) {
   const store = createCp2Store();
-  const owner = store.signupWithPhonePin({ destination, pin: "1234" });
+  const owner = store.signupWithPhonePin({ destination, pin: "3927" });
   const keys = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
   const enrolled = store.continueWithDevice({
     sessionId: owner.session.id,
@@ -182,17 +182,17 @@ describe("trusted-device recovery approval", () => {
     // And it holds exactly one credential reset.
     const reset = requestScope(afterCollect);
     expect(
-      reset.recoverPhoneAccountPinWithDevice({ sessionId: browser.session.id, pin: "5678" }).account
+      reset.recoverPhoneAccountPinWithDevice({ sessionId: browser.session.id, pin: "5193" }).account
         .id
     ).toBe(owner.owner.account.id);
     expect(() =>
-      reset.recoverPhoneAccountPinWithDevice({ sessionId: browser.session.id, pin: "6789" })
+      reset.recoverPhoneAccountPinWithDevice({ sessionId: browser.session.id, pin: "3140" })
     ).toThrow(/Verify this device/u);
   });
 
   it("approves with a user-verified passkey on a signed-in browser", async () => {
     const seed = createCp2Store();
-    const owner = seed.signupWithPhonePin({ destination: phone, pin: "1234" });
+    const owner = seed.signupWithPhonePin({ destination: phone, pin: "3927" });
     const snapshot = seed.snapshot();
     snapshot.passkeys = [
       {
@@ -252,7 +252,7 @@ describe("trusted-device recovery approval", () => {
 
   it("refuses a passkey assertion without user verification", async () => {
     const seed = createCp2Store();
-    const owner = seed.signupWithPhonePin({ destination: phone, pin: "1234" });
+    const owner = seed.signupWithPhonePin({ destination: phone, pin: "3927" });
     const snapshot = seed.snapshot();
     snapshot.passkeys = [
       {
@@ -300,7 +300,7 @@ describe("trusted-device recovery approval", () => {
 
   it("asks an owner with no passkey to add one before approving from a browser", async () => {
     const seed = createCp2Store();
-    const owner = seed.signupWithPhonePin({ destination: phone, pin: "1234" });
+    const owner = seed.signupWithPhonePin({ destination: phone, pin: "3927" });
     const { started, snapshot } = start(seed.snapshot());
     await expect(
       requestScope(snapshot).beginRecoveryApproval({
@@ -345,7 +345,7 @@ describe("trusted-device recovery approval", () => {
     const victim = trustedAndroidOwner(phone);
     const { started, snapshot } = start(victim.snapshot);
     const other = requestScope(snapshot);
-    const attacker = other.signupWithPhonePin({ destination: otherPhone, pin: "4321" });
+    const attacker = other.signupWithPhonePin({ destination: otherPhone, pin: "6180" });
     await expect(
       other.beginRecoveryApproval({
         sessionId: attacker.session.id,
@@ -409,7 +409,7 @@ describe("trusted-device recovery approval", () => {
         sessionId = second.loginWithAccountPin({
           channel: "phone",
           destination: phone,
-          pin: "1234"
+          pin: "3927"
         }).session.id;
         afterOptions = second.snapshot();
       }
@@ -608,7 +608,7 @@ describe("trusted-device recovery approval", () => {
     const other = elsewhere.loginWithAccountPin({
       channel: "phone",
       destination: phone,
-      pin: "1234"
+      pin: "3927"
     });
     const { started, snapshot } = start(elsewhere.snapshot());
     const approved = await approveOnAndroid(snapshot, {
@@ -621,7 +621,7 @@ describe("trusted-device recovery approval", () => {
     const browser = collect.recoveryApprovalStatus(started);
     if (browser.status !== "approved") throw new Error("expected approval");
     const reset = requestScope(collect.snapshot());
-    reset.recoverPhoneAccountPinWithDevice({ sessionId: browser.session.id, pin: "5678" });
+    reset.recoverPhoneAccountPinWithDevice({ sessionId: browser.session.id, pin: "5193" });
     const after = reset.snapshot();
     const revoked = (id: string) => after.sessions.find((session) => session.id === id)?.revokedAt;
     expect(revoked(owner.owner.session.id)).toBeNull();
@@ -689,7 +689,7 @@ describe("trusted-device recovery approval", () => {
 
     // The browser resets the PIN, adds its own passkey, and logs in again with it.
     const reset = requestScope(collected);
-    reset.recoverPhoneAccountPinWithDevice({ sessionId: browser.session.id, pin: "5678" });
+    reset.recoverPhoneAccountPinWithDevice({ sessionId: browser.session.id, pin: "5193" });
     const afterReset = reset.snapshot();
     const later = new Date(Date.now() + 1000).toISOString();
     afterReset.passkeys = [
@@ -755,7 +755,7 @@ describe("trusted-device recovery approval", () => {
     const second = relogin.loginWithAccountPin({
       channel: "phone",
       destination: phone,
-      pin: "5678"
+      pin: "5193"
     });
 
     const undo = requestScope(relogin.snapshot());
@@ -780,10 +780,10 @@ describe("trusted-device recovery approval", () => {
     );
     // The PIN the browser set no longer works; the owner's own PIN works again.
     expect(() =>
-      requestScope(after).loginWithAccountPin({ channel: "phone", destination: phone, pin: "5678" })
+      requestScope(after).loginWithAccountPin({ channel: "phone", destination: phone, pin: "5193" })
     ).toThrow();
     expect(
-      requestScope(after).loginWithAccountPin({ channel: "phone", destination: phone, pin: "1234" })
+      requestScope(after).loginWithAccountPin({ channel: "phone", destination: phone, pin: "3927" })
         .account.id
     ).toBe(owner.owner.account.id);
     expect(
@@ -810,12 +810,12 @@ describe("trusted-device recovery approval", () => {
     // Attack: reset the PIN through the grant, log in again with it, and act from the new session.
     const { owner, started, browser, collected } = await letBrowserIn();
     const reset = requestScope(collected);
-    reset.recoverPhoneAccountPinWithDevice({ sessionId: browser.session.id, pin: "5678" });
+    reset.recoverPhoneAccountPinWithDevice({ sessionId: browser.session.id, pin: "5193" });
     const relogin = requestScope(reset.snapshot());
     const fresh = relogin.loginWithAccountPin({
       channel: "phone",
       destination: phone,
-      pin: "5678"
+      pin: "5193"
     });
     const state = relogin.snapshot();
     const probation = expect.objectContaining({ code: "recovery_approval_probation" });
@@ -883,7 +883,7 @@ describe("trusted-device recovery approval", () => {
     const laptop = laptopLogin.loginWithAccountPin({
       channel: "phone",
       destination: phone,
-      pin: "1234"
+      pin: "3927"
     });
     const metadata = {
       deviceId: "laptop",
@@ -959,11 +959,11 @@ describe("trusted-device recovery approval", () => {
     ],
     [
       "reset the PIN without a grant",
-      (store, sessionId) => store.recoverAccountPin({ sessionId, pin: "4444" })
+      (store, sessionId) => store.recoverAccountPin({ sessionId, pin: "9271" })
     ],
     [
       "change the PIN",
-      (store, sessionId) => store.changeAccountPin({ sessionId, currentPin: "5678", pin: "4444" })
+      (store, sessionId) => store.changeAccountPin({ sessionId, currentPin: "5193", pin: "9271" })
     ],
     [
       "change the password",
@@ -1106,7 +1106,7 @@ describe("trusted-device recovery approval", () => {
     // phished approval. Its credentials would keep their old createdAt and survive undo.
     const { browser, collected } = await letBrowserIn();
     const reset = requestScope(collected);
-    reset.recoverPhoneAccountPinWithDevice({ sessionId: browser.session.id, pin: "5678" });
+    reset.recoverPhoneAccountPinWithDevice({ sessionId: browser.session.id, pin: "5193" });
     const merge = requestScope(reset.snapshot());
     const attacker = merge.continueWithDevice({
       sessionId: null,
@@ -1120,7 +1120,7 @@ describe("trusted-device recovery approval", () => {
         sessionId: attacker.session.id,
         channel: "phone",
         destination: phone,
-        pin: "5678"
+        pin: "5193"
       })
     ).toThrow(expect.objectContaining({ code: "recovery_approval_probation" }));
   });
@@ -1229,10 +1229,10 @@ describe("trusted-device recovery approval", () => {
     state.accountPinHashes = [];
     const store = requestScope(state);
     expect(
-      store.setAccountPin({ sessionId: browser.session.id, pin: "5678", pinConfirmation: "5678" })
+      store.setAccountPin({ sessionId: browser.session.id, pin: "5193", pinConfirmation: "5193" })
     ).toBeDefined();
     expect(() =>
-      store.setAccountPin({ sessionId: browser.session.id, pin: "4444", pinConfirmation: "4444" })
+      store.setAccountPin({ sessionId: browser.session.id, pin: "9271", pinConfirmation: "9271" })
     ).toThrow();
   });
 
@@ -1298,7 +1298,7 @@ describe("trusted-device recovery approval", () => {
     expect(() =>
       requestScope(revoke.snapshot()).recoverPhoneAccountPinWithDevice({
         sessionId: browser.session.id,
-        pin: "5678"
+        pin: "5193"
       })
     ).toThrow(/Verify this device/u);
   });

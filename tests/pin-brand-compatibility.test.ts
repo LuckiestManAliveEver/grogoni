@@ -8,10 +8,10 @@ function legacyPinStore() {
   vi.stubEnv("NODE_ENV", "test");
   vi.stubEnv("PIN_HASH_SECRET", "");
   const store = createCp2Store();
-  const auth = store.signupWithPhonePin({ destination: "+254712345678", pin: "4321" });
+  const auth = store.signupWithPhonePin({ destination: "+254712345678", pin: "6180" });
   const snapshot = store.snapshot();
   const salt = Buffer.alloc(16, 7);
-  const hash = scryptSync(`${auth.account.id}:4321:soko-market-local-pin-hash-secret`, salt, 32, {
+  const hash = scryptSync(`${auth.account.id}:6180:soko-market-local-pin-hash-secret`, salt, 32, {
     N: 16384,
     r: 8,
     p: 1,
@@ -37,7 +37,7 @@ describe("PIN compatibility after the brand rename", () => {
     const auth = store.loginWithAccountPin({
       channel: "phone",
       destination: "+254712345678",
-      pin: "4321"
+      pin: "6180"
     });
     expect(auth.account.id).toBe(accountId);
     expect(store.snapshot().accountPinHashes?.[0]?.pinHash).not.toBe(legacyHash);
@@ -45,7 +45,7 @@ describe("PIN compatibility after the brand rename", () => {
       store.loginWithAccountPin({
         channel: "phone",
         destination: "+254712345678",
-        pin: "4321"
+        pin: "6180"
       }).account.id
     ).toBe(accountId);
   });
@@ -56,7 +56,7 @@ describe("PIN compatibility after the brand rename", () => {
       store.loginWithAccountPin({
         channel: "phone",
         destination: "+254712345678",
-        pin: "1234"
+        pin: "3927"
       })
     ).toThrow("The account credentials are invalid.");
     expect(store.snapshot().accountPinHashes?.[0]?.pinHash).toBe(legacyHash);
@@ -72,7 +72,7 @@ describe("PIN compatibility after the brand rename", () => {
         store.loginWithAccountPin({
           channel: "phone",
           destination: "+254712345678",
-          pin: "4321"
+          pin: "6180"
         })
       ).toThrow("The account credentials are invalid.");
       expect(store.snapshot().accountPinHashes?.[0]?.pinHash).toBe(legacyHash);

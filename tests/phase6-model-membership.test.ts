@@ -8,7 +8,7 @@ function account(store: ReturnType<typeof createCp2Store>, suffix: string) {
   return store.continueWithChannelPin({
     channel: "phone",
     destination: `+442079460${suffix}`,
-    pin: "1234"
+    pin: "3927"
   });
 }
 describe("Phase 6 model selection and business revocation", () => {

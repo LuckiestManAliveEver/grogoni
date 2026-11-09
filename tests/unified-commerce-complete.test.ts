@@ -226,7 +226,7 @@ for (const postgres of [false, true])
           const signup = await raw("POST", "/auth/pin/signup", {
             method: "phone",
             contact,
-            pin: "1234"
+            pin: "3927"
           });
           expect(signup.statusCode, signup.body).toBe(200);
           const header = signup.headers["set-cookie"]!;

@@ -1065,7 +1065,7 @@ describe("staff invitations over HTTP", () => {
       "POST",
       `/businesses/${owner.businessId}/shop-deletion/${deletion.request.id}/finalize`,
       owner.cookie,
-      { pin: "1234", acknowledgement: true, idempotencyKey: "close-shop" }
+      { pin: "3927", acknowledgement: true, idempotencyKey: "close-shop" }
     );
     // Quarantined: the invitation can no longer be seen or accepted.
     const person = await signUp(app, phone);

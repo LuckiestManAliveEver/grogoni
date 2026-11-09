@@ -106,7 +106,7 @@ describe("probation route classification", () => {
 describe("probation route guard", () => {
   async function probationFixture() {
     const store = createCp2Store();
-    const owner = store.signupWithPhonePin({ destination: phone, pin: "1234" });
+    const owner = store.signupWithPhonePin({ destination: phone, pin: "3927" });
     const keys = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
     const credentialId = store.continueWithDevice({
       sessionId: owner.session.id,

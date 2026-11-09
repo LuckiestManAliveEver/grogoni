@@ -141,7 +141,7 @@ async function createOwnerBusiness(
     method: "POST",
     url: "/auth/pin/signup",
     headers: deviceHeaders("refresh-device"),
-    payload: { method: "phone", contact, pin: "1234" }
+    payload: { method: "phone", contact, pin: "3927" }
   });
   expect(signup.statusCode).toBe(200);
   const cookies = cookieHeader(signup.headers["set-cookie"]);

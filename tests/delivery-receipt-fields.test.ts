@@ -61,7 +61,7 @@ async function fixture() {
   const signup = await app.inject({
     method: "POST",
     url: "/auth/pin/signup",
-    payload: { method: "phone", contact: "+254712000077", pin: "1234" }
+    payload: { method: "phone", contact: "+254712000077", pin: "3927" }
   });
   const cookies = signup.headers["set-cookie"];
   const cookie = (Array.isArray(cookies) ? cookies[0] : cookies)!.split(";")[0]!;

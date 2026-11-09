@@ -26,17 +26,17 @@ describe.skipIf(!url)("Phase 6 Edge hydration on real PostgreSQL", () => {
       const a = store.continueWithChannelPin({
         channel: "email",
         destination: `phase6-a-${randomUUID()}@example.invalid`,
-        pin: "1234"
+        pin: "3927"
       });
       const b = store.continueWithChannelPin({
         channel: "email",
         destination: `phase6-b-${randomUUID()}@example.invalid`,
-        pin: "1234"
+        pin: "3927"
       });
       const outsider = store.continueWithChannelPin({
         channel: "email",
         destination: `phase6-x-${randomUUID()}@example.invalid`,
-        pin: "1234"
+        pin: "3927"
       });
       const direct = store.createConversation({
         sessionId: a.session.id,

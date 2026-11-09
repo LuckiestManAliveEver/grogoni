@@ -825,7 +825,7 @@ async function signUp(
     method: "POST",
     url: "/auth/pin/signup",
     headers: { "content-type": "application/json" },
-    payload: JSON.stringify({ method: "phone", contact: phone, pin: "1234" })
+    payload: JSON.stringify({ method: "phone", contact: phone, pin: "3927" })
   });
   expect(response.statusCode).toBe(200);
   const header = response.headers["set-cookie"];

@@ -94,7 +94,7 @@ describe("Shop profile lifecycle", () => {
       payload: JSON.stringify({
         method: "phone",
         contact: phone,
-        pin: "1234"
+        pin: "3927"
       })
     });
     expect(owner.statusCode).toBe(200);
@@ -116,7 +116,7 @@ describe("Shop profile lifecycle", () => {
       app,
       `/businesses/${shop.business.id}/shop-deletion/${deletion.request.id}/finalize`,
       {
-        pin: "1234",
+        pin: "3927",
         acknowledgement: true,
         idempotencyKey: "pin-delete-shop"
       },
@@ -208,7 +208,7 @@ describe("Shop profile lifecycle", () => {
         cookie: ownerCookie
       },
       payload: JSON.stringify({
-        pin: "9999",
+        pin: "6473",
         acknowledgement: true,
         idempotencyKey: "delete-first-shop"
       })
@@ -219,7 +219,7 @@ describe("Shop profile lifecycle", () => {
       app,
       `/businesses/${firstShop.business.id}/shop-deletion/${deletion.request.id}/finalize`,
       {
-        pin: "1234",
+        pin: "3927",
         acknowledgement: true,
         idempotencyKey: "delete-first-shop"
       },
@@ -299,7 +299,7 @@ async function verifyOtp(
       payload: JSON.stringify({
         method: "phone",
         contact: destination.startsWith("+") ? destination : `+${destination}`,
-        pin: "1234"
+        pin: "3927"
       })
     });
     expect(response.statusCode).toBe(200);

@@ -76,7 +76,7 @@ beforeAll(async () => {
   const signup = await request(
     "POST",
     "/auth/pin/signup",
-    { method: "phone", contact: "+254700009871", pin: "1234" },
+    { method: "phone", contact: "+254700009871", pin: "3927" },
     ""
   );
   const set = signup.headers["set-cookie"]!;

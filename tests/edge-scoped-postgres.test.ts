@@ -27,12 +27,12 @@ describe.skipIf(!databaseUrl)("Edge tenant scoping on PostgreSQL", () => {
       const actor = store.continueWithChannelPin({
         channel: "email",
         destination: `checkpoint-${randomUUID()}@example.invalid`,
-        pin: "1234"
+        pin: "3927"
       });
       const other = store.continueWithChannelPin({
         channel: "email",
         destination: `other-${randomUUID()}@example.invalid`,
-        pin: "4321"
+        pin: "6180"
       });
       const shop = store.createBusiness({
         sessionId: actor.session.id,
@@ -261,12 +261,12 @@ describe.skipIf(!databaseUrl)("Edge tenant scoping on PostgreSQL", () => {
       const viewer = store.continueWithChannelPin({
         channel: "email",
         destination: `viewer-${randomUUID()}@example.invalid`,
-        pin: "1234"
+        pin: "3927"
       });
       const sender = store.continueWithChannelPin({
         channel: "email",
         destination: `sender-${randomUUID()}@example.invalid`,
-        pin: "4321"
+        pin: "6180"
       });
       const shop = store.createBusiness({
         sessionId: sender.session.id,

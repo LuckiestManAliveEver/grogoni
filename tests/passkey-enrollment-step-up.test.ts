@@ -12,7 +12,7 @@ async function fixture() {
   const { response, cookie } = await signupPhone(app, "passkey-step-up");
   const sessionId = response.json<{ session: { id: string } }>().session.id;
   const now = new Date();
-  store.createPassword({ sessionId, password, currentPin: "1234", now });
+  store.createPassword({ sessionId, password, currentPin: "3927", now });
   // A refreshed session stays valid but keeps the time its credential was last proven.
   const proven = new Date(now.getTime() - 20 * 60_000).toISOString();
   const snapshot = store.snapshot();

@@ -198,7 +198,7 @@ async function createAccountSession(app: FastifyInstance, destination: string): 
     method: "POST",
     url: "/auth/pin/signup",
     headers: { "content-type": "application/json" },
-    payload: JSON.stringify({ method: "phone", contact: destination, pin: "1234" })
+    payload: JSON.stringify({ method: "phone", contact: destination, pin: "3927" })
   });
   return extractSessionCookie(response.headers["set-cookie"]);
 }

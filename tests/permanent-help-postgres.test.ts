@@ -28,7 +28,7 @@ describe.skipIf(!url)("Help persistence on Edge", () => {
       const session = store.continueWithChannelPin({
         channel: "email",
         destination: `help-${randomUUID()}@example.invalid`,
-        pin: "1234"
+        pin: "3927"
       });
       const help = store.ensureHelpConversations({ sessionId: session.session.id });
       store.createConversationMessage({

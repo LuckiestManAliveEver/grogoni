@@ -186,7 +186,7 @@ async function createOwner(app: ReturnType<typeof buildApi>) {
     payload: JSON.stringify({
       method: "phone",
       contact: "+254700000554",
-      pin: "1234"
+      pin: "3927"
     })
   });
   const setCookie = verified.headers["set-cookie"];

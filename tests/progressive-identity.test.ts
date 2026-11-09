@@ -355,7 +355,7 @@ describe("one-tap signup and progressive identity", () => {
       method: "POST",
       url: "/auth/pin/continue",
       headers: jsonHeaders(),
-      payload: JSON.stringify({ method: "phone", contact: "+254711222333", pin: "1357" })
+      payload: JSON.stringify({ method: "phone", contact: "+254711222333", pin: "4902" })
     });
     expect(existing.statusCode).toBe(200);
     const existingAccountId = existing.json<ContinueResponse>().account.id;
@@ -375,7 +375,7 @@ describe("one-tap signup and progressive identity", () => {
       method: "POST",
       url: "/auth/identity/merge/pin",
       headers: jsonHeaders(device.cookie),
-      payload: JSON.stringify({ method: "phone", contact: "+254711222333", pin: "1357" })
+      payload: JSON.stringify({ method: "phone", contact: "+254711222333", pin: "4902" })
     });
     expect(merged.statusCode).toBe(200);
     expect(merged.json<ContinueResponse>().account.id).toBe(existingAccountId);

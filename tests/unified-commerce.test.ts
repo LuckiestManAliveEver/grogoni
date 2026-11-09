@@ -254,7 +254,7 @@ describe("unified source-linked commerce", () => {
       const signup = await app.inject({
         method: "POST",
         url: "/auth/pin/signup",
-        payload: { method: "phone", contact: phone, pin: "1234" }
+        payload: { method: "phone", contact: phone, pin: "3927" }
       });
       expect(signup.statusCode).toBeLessThan(300);
       const header = signup.headers["set-cookie"];

@@ -65,12 +65,12 @@ function harness() {
   const buyer = store.continueWithChannelPin({
     channel: "phone",
     destination: "+254700000721",
-    pin: "1234"
+    pin: "3927"
   });
   const other = store.continueWithChannelPin({
     channel: "phone",
     destination: "+254700000722",
-    pin: "1234"
+    pin: "3927"
   });
   const assistantId = store.getGrogoniSessionContext({
     sessionId: buyer.session.id

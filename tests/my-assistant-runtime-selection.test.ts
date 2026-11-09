@@ -47,7 +47,7 @@ function account(store: ReturnType<typeof createCp2Store>, suffix: string) {
   return store.continueWithChannelPin({
     channel: "phone",
     destination: `+442079461${suffix}`,
-    pin: "1234"
+    pin: "3927"
   });
 }
 
@@ -557,7 +557,7 @@ async function signUp(app: FastifyInstance, destination: string): Promise<string
     method: "POST",
     url: "/auth/pin/signup",
     headers: { "content-type": "application/json" },
-    payload: JSON.stringify({ method: "phone", contact: destination, pin: "1234" })
+    payload: JSON.stringify({ method: "phone", contact: destination, pin: "3927" })
   });
   const header = response.headers["set-cookie"];
   const cookies = Array.isArray(header) ? header : [header ?? ""];

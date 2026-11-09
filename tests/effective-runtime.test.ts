@@ -143,7 +143,7 @@ async function createActor(app: ReturnType<typeof buildApi>, contact: string) {
     method: "POST",
     url: "/auth/pin/signup",
     headers: { "content-type": "application/json" },
-    payload: JSON.stringify({ method: "phone", contact, pin: "1234" })
+    payload: JSON.stringify({ method: "phone", contact, pin: "3927" })
   });
   const cookieHeader = signup.headers["set-cookie"];
   const cookie = (Array.isArray(cookieHeader) ? cookieHeader[0] : cookieHeader)!.split(";")[0]!;

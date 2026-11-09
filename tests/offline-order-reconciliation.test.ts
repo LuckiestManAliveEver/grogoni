@@ -337,7 +337,7 @@ async function signUpAccount(
     method: "POST",
     url: "/auth/pin/signup",
     headers: { "content-type": "application/json" },
-    payload: JSON.stringify({ method: "phone", contact: destination, pin: "1234" })
+    payload: JSON.stringify({ method: "phone", contact: destination, pin: "3927" })
   });
   expect(auth.statusCode, auth.body).toBe(200);
   return auth.json<{ account: { id: string } }>().account.id;
@@ -350,7 +350,7 @@ async function fixture(destination = "254700000900", signupHeaders: Record<strin
     method: "POST",
     url: "/auth/pin/signup",
     headers: { "content-type": "application/json", ...signupHeaders },
-    payload: JSON.stringify({ method: "phone", contact: destination, pin: "1234" })
+    payload: JSON.stringify({ method: "phone", contact: destination, pin: "3927" })
   });
   expect(auth.statusCode, auth.body).toBe(200);
   const cookie = extractCookie(auth.headers["set-cookie"]);

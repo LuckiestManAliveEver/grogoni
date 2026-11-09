@@ -205,7 +205,7 @@ async function createSession(app: FastifyInstance, destination: string): Promise
     method: "POST",
     url: "/auth/pin/signup",
     headers: { "content-type": "application/json" },
-    payload: JSON.stringify({ method: "phone", contact: destination, pin: "1234" })
+    payload: JSON.stringify({ method: "phone", contact: destination, pin: "3927" })
   });
   expect(response.statusCode).toBe(200);
   return extractCookie(response.headers["set-cookie"]);

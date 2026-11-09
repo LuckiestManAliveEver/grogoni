@@ -275,7 +275,7 @@ async function createOwnerBusiness(app: ReturnType<typeof buildApi>) {
     payload: JSON.stringify({
       method: "phone",
       contact: "+254700000301",
-      pin: "1234"
+      pin: "3927"
     })
   });
   expect(verified.statusCode).toBe(200);

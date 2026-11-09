@@ -53,7 +53,7 @@ function model(): Omit<InstalledAgentModelSummary, "accountId" | "userId"> {
 describe("account-scoped AI assets", () => {
   it("makes an agent manifest and completed model artifact available to another session", async () => {
     const store = createCp2Store();
-    const first = store.signupWithPhonePin({ destination: "+254700880001", pin: "2468" });
+    const first = store.signupWithPhonePin({ destination: "+254700880001", pin: "7306" });
 
     await store.installAccountOssAgentManifest({ sessionId: first.session.id, agent });
     const artifact = await store.beginAccountModelArtifact({
@@ -74,7 +74,7 @@ describe("account-scoped AI assets", () => {
     const second = store.continueWithChannelPin({
       channel: "phone",
       destination: "+254700880001",
-      pin: "2468"
+      pin: "7306"
     });
     expect(await store.listAccountOssAgentManifests({ sessionId: second.session.id })).toEqual([
       expect.objectContaining({
@@ -100,8 +100,8 @@ describe("account-scoped AI assets", () => {
 
   it("does not expose account assets to a different account", async () => {
     const store = createCp2Store();
-    const owner = store.signupWithPhonePin({ destination: "+254700880002", pin: "2468" });
-    const other = store.signupWithPhonePin({ destination: "+254700880003", pin: "2468" });
+    const owner = store.signupWithPhonePin({ destination: "+254700880002", pin: "7306" });
+    const other = store.signupWithPhonePin({ destination: "+254700880003", pin: "7306" });
     await store.installAccountOssAgentManifest({ sessionId: owner.session.id, agent });
 
     await expect(

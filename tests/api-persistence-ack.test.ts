@@ -97,7 +97,7 @@ describe("API persistence acknowledgement barrier", () => {
   it("keeps PIN authentication available when only account sync persistence fails", async () => {
     const store = createCp2Store();
     const phone = "+254700200001";
-    store.signupWithPhonePin({ destination: phone, pin: "1234" });
+    store.signupWithPhonePin({ destination: phone, pin: "3927" });
     const app = buildApi({
       cp2: { store },
       mutationPersistenceFlush: vi
@@ -115,7 +115,7 @@ describe("API persistence acknowledgement barrier", () => {
       method: "POST",
       url: "/auth/pin/login",
       headers: { "content-type": "application/json" },
-      payload: JSON.stringify({ method: "phone", contact: phone, pin: "1234" })
+      payload: JSON.stringify({ method: "phone", contact: phone, pin: "3927" })
     });
 
     expect(response.statusCode).toBe(200);
@@ -144,7 +144,7 @@ describe("API persistence acknowledgement barrier", () => {
   it("fails PIN authentication closed when critical session persistence fails", async () => {
     const store = createCp2Store();
     const phone = "+254700200003";
-    store.signupWithPhonePin({ destination: phone, pin: "1234" });
+    store.signupWithPhonePin({ destination: phone, pin: "3927" });
     const app = buildApi({
       cp2: { store },
       mutationPersistenceFlush: vi.fn().mockRejectedValue(new Error("session table unavailable"))
@@ -154,7 +154,7 @@ describe("API persistence acknowledgement barrier", () => {
       method: "POST",
       url: "/auth/pin/login",
       headers: { "content-type": "application/json" },
-      payload: JSON.stringify({ method: "phone", contact: phone, pin: "1234" })
+      payload: JSON.stringify({ method: "phone", contact: phone, pin: "3927" })
     });
 
     expect(response.statusCode).toBe(503);
@@ -173,7 +173,7 @@ describe("API persistence acknowledgement barrier", () => {
     try {
       const store = createCp2Store();
       const phone = "+254700200002";
-      store.signupWithPhonePin({ destination: phone, pin: "1234" });
+      store.signupWithPhonePin({ destination: phone, pin: "3927" });
       // A flush that never settles models a stuck/backlogged persistence queue (see
       // postgres-store.ts scheduleSaveRetry), not a failed one - the write is still running in
       // the background and may well complete a moment later. A deadline timeout is not itself a
@@ -189,7 +189,7 @@ describe("API persistence acknowledgement barrier", () => {
         method: "POST",
         url: "/auth/pin/login",
         headers: { "content-type": "application/json" },
-        payload: JSON.stringify({ method: "phone", contact: phone, pin: "1234" })
+        payload: JSON.stringify({ method: "phone", contact: phone, pin: "3927" })
       });
 
       expect(response.statusCode).toBe(200);

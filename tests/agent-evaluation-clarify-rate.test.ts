@@ -81,7 +81,7 @@ async function createOwnerBusiness(app: ReturnType<typeof buildApi>) {
     method: "POST",
     url: "/auth/pin/signup",
     headers: jsonHeaders(),
-    payload: JSON.stringify({ method: "phone", contact: "254700009906", pin: "1234" })
+    payload: JSON.stringify({ method: "phone", contact: "254700009906", pin: "3927" })
   });
   expect(signup.statusCode).toBe(200);
   const cookie = extractSessionCookie(signup.headers["set-cookie"]);

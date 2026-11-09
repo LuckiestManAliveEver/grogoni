@@ -370,7 +370,7 @@ describe("zero-setup local-first runtime provisioning", () => {
       method: "POST",
       url: "/auth/pin/signup",
       headers: { "content-type": "application/json" },
-      payload: JSON.stringify({ method: "phone", contact: "+254700009001", pin: "1234" })
+      payload: JSON.stringify({ method: "phone", contact: "+254700009001", pin: "3927" })
     });
     expect(signup.statusCode).toBe(200);
     const setCookieHeader = signup.headers["set-cookie"];
@@ -463,7 +463,7 @@ describe("zero-setup local-first runtime provisioning", () => {
       method: "POST",
       url: "/auth/pin/signup",
       headers: { "content-type": "application/json" },
-      payload: JSON.stringify({ method: "phone", contact: "+254700009002", pin: "1234" })
+      payload: JSON.stringify({ method: "phone", contact: "+254700009002", pin: "3927" })
     });
     expect(signup.statusCode).toBe(200);
     const setCookieHeader = signup.headers["set-cookie"];
@@ -544,7 +544,7 @@ describe("zero-setup local-first runtime provisioning", () => {
       method: "POST",
       url: "/auth/pin/signup",
       headers: { "content-type": "application/json" },
-      payload: JSON.stringify({ method: "phone", contact: "+254700009003", pin: "1234" })
+      payload: JSON.stringify({ method: "phone", contact: "+254700009003", pin: "3927" })
     });
     const cookie = (
       Array.isArray(signup.headers["set-cookie"])

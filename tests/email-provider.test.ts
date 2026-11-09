@@ -94,7 +94,7 @@ describe("transactional email API", () => {
     const signup = await app.inject({
       method: "POST",
       url: "/auth/pin/signup",
-      payload: { method: "phone", contact: "+254700002211", pin: "2468" }
+      payload: { method: "phone", contact: "+254700002211", pin: "7306" }
     });
     expect(signup.statusCode).toBe(200);
     const cookie = sessionCookie(signup.headers["set-cookie"]);
@@ -152,7 +152,7 @@ describe("transactional email API", () => {
         payload: payload as Record<string, unknown>,
         headers: cookie ? { cookie } : {}
       });
-    const signup = await post("/auth/pin/signup", { method: "phone", contact: phone, pin: "2468" });
+    const signup = await post("/auth/pin/signup", { method: "phone", contact: phone, pin: "7306" });
     expect(signup.statusCode).toBe(200);
     const accountId = signup.json<{ account: { id: string } }>().account.id;
     const cookie = sessionCookie(signup.headers["set-cookie"]);
@@ -161,7 +161,7 @@ describe("transactional email API", () => {
       (
         await post(
           "/auth/password/setup",
-          { currentPin: "2468", password, passwordConfirmation: password },
+          { currentPin: "7306", password, passwordConfirmation: password },
           cookie
         )
       ).statusCode
@@ -181,7 +181,7 @@ describe("transactional email API", () => {
       ).statusCode
     ).toBe(200);
     await post("/auth/logout", {}, cookie);
-    const login = await post("/auth/pin/login", { method: "phone", contact: phone, pin: "2468" });
+    const login = await post("/auth/pin/login", { method: "phone", contact: phone, pin: "7306" });
     expect(login.statusCode).toBe(202);
     expect(login.headers["set-cookie"]).toBeUndefined();
     const authenticated = await finishEmailMfa(
@@ -226,7 +226,7 @@ describe("transactional email API", () => {
     );
     expect(verified.json()).toMatchObject({ account: { id: accountId } });
     expect(
-      (await post("/auth/pin/login", { method: "email", contact: email, pin: "2468" })).statusCode
+      (await post("/auth/pin/login", { method: "email", contact: email, pin: "7306" })).statusCode
     ).toBe(400);
     await app.close();
   });

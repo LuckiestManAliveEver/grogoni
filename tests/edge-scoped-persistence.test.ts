@@ -99,7 +99,7 @@ describe("Edge scoped persistence", () => {
 
   it("does not run broad relational deletion queries for a scoped account removal", async () => {
     const store = createCp2Store();
-    store.continueWithChannelPin({ channel: "phone", destination: "+442079460123", pin: "1234" });
+    store.continueWithChannelPin({ channel: "phone", destination: "+442079460123", pin: "3927" });
     const previous = store.snapshot();
     const after = createCp2Store().snapshot();
     const query = vi.fn(async () => ({ rows: [], rowCount: 0 }));
