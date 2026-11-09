@@ -63,11 +63,40 @@ above the type. A confirmation and an approval can no longer be on screen at onc
   `tests/trusted-device-recovery-ui.test.tsx` pass before and after, as do the other 26 recovery
   suites run alongside.
 
-## Recommended next (not changed — each needs its own tests)
+### WhatsApp Linked Devices — one shared state type
 
-| #   | Where                                                                                                                                                                            | Implicit machine                                                                                                                                                            | Suggested shape                                                                                                                   |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | `apps/web/src/WhatsAppLinkedConnection.tsx`                                                                                                                                      | `expanded`, `dismissed`, `consent`, `grantConsent`, `installed`, `busy`, `error`, `notice` alongside a server `connection.status`                                           | Derive the view stage from `connection.status` + one local `step`; keep `busy`/`error` as the only transient flags.               |
-| 2   | `apps/web/src/OfflineRuntimeSettings.tsx`                                                                                                                                        | Three parallel sub-flows (download/`confirming`/`progress`, OCR `ocrBusy`/`ocrProgress`, nearby `nearbyBusy`/`nearbyError`) each with its own `idle → busy → done \| error` | A small shared `useAsyncTask()` (status `idle \| running \| done \| error`) per sub-flow.                                         |
-| 3   | Terminal-status checks duplicated in the UI, e.g. `LogisticsSurface.tsx:176-188` (`completed \|\| cancelled`), `useSuppliersState.ts:351` (`failed \|\| FAILED`)                 | Each screen re-decides which statuses are final                                                                                                                             | Export `isTerminal…` helpers next to each status type in `@grogoni/shared-types` (as done for daemon tasks).                      |
-| 4   | Status types in `packages/shared-types/src/index.ts` (`HandoffOrderStatus`, `NetworkConnectionStatus`, `ReceiptOCRJobStatus`, `InvoicePaymentStatus`, `LaunchIncidentStatus`, …) | Types list the states but not the edges                                                                                                                                     | Add transition tables where the server mutates them; start with the ones a user can act on (handoff orders, network connections). |
+The connector (`services/api/src/messaging/whatsapp-linked/connector.ts`) already funnels every move
+through `transition()`, driven by socket events, so no edge table was added there. The web app,
+though, stored the state as `string` and repeated `["PAIRING", "CONNECTING", "RECONNECTING"]` three
+times.
+
+- `packages/shared-types/src/whatsapp-linked-state.ts` names the states (`WhatsAppLinkedState`, now
+  what the connector's `LinkedState` is) and the in-progress group (`isWhatsAppLinkInProgress`).
+- `apps/web/src/WhatsAppLinkedConnection.tsx` types `Connection.state` with it and uses the helper.
+  Its `labels` map is now typed over every state, so a new server state without a label fails the
+  typecheck instead of showing a fallback.
+
+### Logistics (fulfillment) — one transition table for server and screen
+
+`business-core`'s `validateLogisticsStatusTransition` held the table, and `LogisticsSurface.tsx`
+re-derived it by hand in four button conditions.
+
+- `fulfillmentTransitions`, `canTransitionFulfillment` and `isFinalFulfillmentStatus` now live next
+  to `FulfillmentStatus` in `@grogoni/shared-types`; the server validation uses them unchanged.
+- The screen's buttons use `canChangeFulfillment`: the shared rule plus one written-down screen
+  policy (a delivery is dispatched before it is completed, which the server would allow).
+- `tests/fulfillment-transitions.test.ts` checks every status × method × next status: server
+  validation equals the table, and every button is enabled exactly as before. The one difference
+  is an unreachable record (a pickup that is out for delivery), where Back is now disabled because
+  the server would refuse it anyway.
+
+## Reviewed, no change
+
+- `apps/web/src/OfflineRuntimeSettings.tsx`: each sub-flow (download, OCR, nearby, assistant) is an
+  independent busy/error pair, cleared on start and set on finish. No impossible combination hides
+  in them; folding them into a shared hook would churn ~10 sites for no behavioural gain.
+- `apps/web/src/WhatsAppLinkedConnection.tsx` local flags (`expanded`, `dismissed`, consents): plain
+  UI toggles, not a lifecycle.
+- Small three-state flows (`NetworkConnectionStatus` in `cp2/domains/network/connections.ts`,
+  commerce-source requests): each move is guarded inline where it happens; a separate table would
+  only duplicate those guards.
