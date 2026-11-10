@@ -14,15 +14,15 @@ describe("service-worker route policies", () => {
     );
   });
 
-  it("separates immutable assets from public stale-while-revalidate reads", () => {
+  it("caches static assets and leaves all public API reads network-only", () => {
     expect(source).toContain("cacheFirst(request, STATIC_CACHE)");
-    expect(source).toContain("staleWhileRevalidate(event, request, PUBLIC_READ_CACHE)");
-    expect(source).toContain('url.pathname.startsWith("/public/storefronts/")');
+    expect(source).not.toContain("staleWhileRevalidate");
+    expect(source).toContain('url.pathname.startsWith("/public/")');
   });
 
   it("keeps authentication, private business data, messaging, and model APIs network-only", () => {
     const policyStart = source.indexOf("function isNetworkOnlyRequest");
-    const policy = source.slice(policyStart, source.indexOf("function isPublicCatalogueRead"));
+    const policy = source.slice(policyStart, source.indexOf("function isInteractiveModelRequest"));
 
     expect(policy).toContain('url.pathname.startsWith("/auth/")');
     expect(policy).toContain('url.pathname.startsWith("/businesses/")');

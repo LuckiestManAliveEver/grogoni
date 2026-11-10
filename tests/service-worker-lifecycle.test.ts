@@ -114,7 +114,19 @@ function loadServiceWorker(fetchImpl: (request: MockRequest) => Promise<Response
     location: { origin }
   };
   const caches = new MockCacheStorage();
-  const context = createContext({ self, caches, URL, Response, fetch: fetchImpl });
+  const context = createContext({
+    self,
+    caches,
+    URL,
+    Response,
+    fetch: (request: MockRequest | string, options?: RequestInit) => {
+      if (typeof request === "string") {
+        expect(options).toEqual({ credentials: "omit", cache: "no-store" });
+        return Promise.resolve(new Response(`precached:${request}`));
+      }
+      return fetchImpl(request);
+    }
+  });
   runInContext(swSource, context);
   return { self, listeners, caches };
 }
@@ -161,7 +173,7 @@ describe("service worker: install / activate lifecycle", () => {
     await Promise.all(installWaited);
 
     expect(sw.self.skipWaiting).toHaveBeenCalledTimes(1);
-    const shell = sw.caches.caches.get("grogoni-app-v13");
+    const shell = sw.caches.caches.get("grogoni-app-v14");
     expect(shell).toBeDefined();
     expect(await shell?.match("/manifest.webmanifest")).toBeDefined();
   });
@@ -175,9 +187,9 @@ describe("service worker: install / activate lifecycle", () => {
     sw.caches.seed("grogoni-app-v10", { "/": "old shell v10" });
     sw.caches.seed("grogoni-app-static-v10", { "/assets/app-old.js": "old asset" });
     sw.caches.seed("grogoni-app-public-read-v10", {});
-    sw.caches.seed("grogoni-app-v13", { "/": "current shell" });
-    sw.caches.seed("grogoni-app-static-v13", {});
-    sw.caches.seed("grogoni-app-public-read-v13", {});
+    sw.caches.seed("grogoni-app-v14", { "/": "current shell" });
+    sw.caches.seed("grogoni-app-static-v14", {});
+    sw.caches.seed("grogoni-app-public-read-v14", {});
     sw.caches.seed("grogoni-offline-shell-v1", {
       "/__grogoni_offline_active__": "active",
       "/": "offline shell for deliberate offline mode"
@@ -193,9 +205,9 @@ describe("service worker: install / activate lifecycle", () => {
     expect(remaining.has("grogoni-app-static-v10")).toBe(false);
     expect(remaining.has("grogoni-app-public-read-v10")).toBe(false);
 
-    expect(remaining.has("grogoni-app-v13")).toBe(true);
-    expect(remaining.has("grogoni-app-static-v13")).toBe(true);
-    expect(remaining.has("grogoni-app-public-read-v13")).toBe(true);
+    expect(remaining.has("grogoni-app-v14")).toBe(true);
+    expect(remaining.has("grogoni-app-static-v14")).toBe(true);
+    expect(remaining.has("grogoni-app-public-read-v14")).toBe(false);
 
     // Customer/seller offline data must survive an app-shell cache-version bump.
     expect(remaining.has("grogoni-offline-shell-v1")).toBe(true);
@@ -229,7 +241,7 @@ describe("service worker: navigation requests are network-first", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(await response?.text()).toBe("<html>v14 shell</html>");
 
-    const shell = sw.caches.caches.get("grogoni-app-v13");
+    const shell = sw.caches.caches.get("grogoni-app-v14");
     const cachedRoot = await shell?.match("/");
     expect(await cachedRoot?.text()).toBe("<html>v14 shell</html>");
   });
@@ -246,7 +258,7 @@ describe("service worker: navigation requests are network-first", () => {
     const fetchImpl = vi.fn().mockResolvedValue(fresh);
     const sw = loadServiceWorker(fetchImpl);
     await runInstallAndActivate(sw);
-    const shell = sw.caches.caches.get("grogoni-app-v13");
+    const shell = sw.caches.caches.get("grogoni-app-v14");
     await shell?.put("/", stale);
 
     const request = makeRequest("/", { mode: "navigate" });
@@ -262,7 +274,7 @@ describe("service worker: navigation requests are network-first", () => {
     const fetchImpl = vi.fn().mockRejectedValue(new TypeError("network error"));
     const sw = loadServiceWorker(fetchImpl);
     await runInstallAndActivate(sw);
-    const shell = sw.caches.caches.get("grogoni-app-v13");
+    const shell = sw.caches.caches.get("grogoni-app-v14");
     await shell?.put("/", new Response("<html>last known good</html>", { status: 200 }));
 
     const request = makeRequest("/", { mode: "navigate" });
@@ -278,7 +290,7 @@ describe("service worker: navigation requests are network-first", () => {
     const sw = loadServiceWorker(fetchImpl);
     await runInstallAndActivate(sw);
     // Simulate a brand-new install whose one-time app-shell precache never included "/".
-    const shell = sw.caches.caches.get("grogoni-app-v13");
+    const shell = sw.caches.caches.get("grogoni-app-v14");
     await shell?.delete("/");
 
     const request = makeRequest("/", { mode: "navigate" });
@@ -334,7 +346,7 @@ describe("service worker: hashed static assets stay cache-first", () => {
   it("a new deployment's differently-hashed asset is fetched and cached independently", async () => {
     const fetchImpl = vi
       .fn()
-      .mockResolvedValueOnce(new Response("v13 asset", { status: 200 }))
+      .mockResolvedValueOnce(new Response("v14 asset", { status: 200 }))
       .mockResolvedValueOnce(new Response("v14 asset", { status: 200 }));
     const sw = loadServiceWorker(fetchImpl);
     await runInstallAndActivate(sw);
@@ -349,7 +361,7 @@ describe("service worker: hashed static assets stay cache-first", () => {
 
     expect(await nextResponse?.text()).toBe("v14 asset");
     expect(fetchImpl).toHaveBeenCalledTimes(2);
-    const staticCache = sw.caches.caches.get("grogoni-app-static-v13");
+    const staticCache = sw.caches.caches.get("grogoni-app-static-v14");
     expect(await staticCache?.match("/assets/app-a83f21.js")).toBeDefined();
     expect(await staticCache?.match("/assets/app-b91cc4.js")).toBeDefined();
   });
@@ -413,5 +425,67 @@ describe("service worker: deliberate offline mode overrides normal routing witho
     expect(await response?.text()).toBe("offline install shell");
     expect(fetchImpl).not.toHaveBeenCalled();
     expect(await offlineShell.match("/__grogoni_offline_active__")).toBeDefined();
+  });
+});
+
+describe("service worker: sensitive response cache isolation", () => {
+  it.each(["/auth/login", "/businesses/private", "/public/storefronts/secret", "/api/session"])(
+    "never intercepts navigation to %s, even in explicit offline mode",
+    async (path) => {
+      const sw = loadServiceWorker(vi.fn());
+      sw.caches.seed("grogoni-offline-shell-v1", {
+        "/__grogoni_offline_active__": "active",
+        "/": "shell"
+      });
+      const request = fetchEvent(makeRequest(path, { mode: "navigate" }));
+      sw.listeners.get("fetch")?.(request.event);
+      expect(request.handled()).toBe(false);
+    }
+  );
+
+  it.each(["private", "no-store", "no-cache", 'public, max-age=0, private="field"'])(
+    "does not cache a static response with cache-control %s",
+    async (policy) => {
+      const fetchImpl = vi.fn().mockImplementation(
+        async () =>
+          new Response("sensitive", {
+            headers: { "cache-control": policy }
+          })
+      );
+      const sw = loadServiceWorker(fetchImpl);
+      const first = fetchEvent(makeRequest("/assets/private.js"));
+      sw.listeners.get("fetch")?.(first.event);
+      expect(await (await first.resolve())?.text()).toBe("sensitive");
+      const second = fetchEvent(makeRequest("/assets/private.js"));
+      sw.listeners.get("fetch")?.(second.event);
+      await second.resolve();
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+    }
+  );
+
+  it.each(["/auth/callback?token=secret", "/?token=secret", "/workspace/private"])(
+    "never replaces the shared root shell with HTML from %s",
+    async (path) => {
+      const sw = loadServiceWorker(
+        async () =>
+          new Response("private HTML", {
+            headers: { "content-type": "text/html" }
+          })
+      );
+      await runInstallAndActivate(sw);
+      const request = fetchEvent(makeRequest(path, { mode: "navigate" }));
+      sw.listeners.get("fetch")?.(request.event);
+      await request.resolve();
+      const shell = sw.caches.caches.get("grogoni-app-v14");
+      expect(await (await shell?.match("/"))?.text()).toBe("precached:/");
+    }
+  );
+
+  it("bypasses even cached assets for authenticated requests", async () => {
+    const sw = loadServiceWorker(vi.fn());
+    sw.caches.seed("grogoni-app-static-v14", { "/assets/app.js": "old" });
+    const request = fetchEvent(makeRequest("/assets/app.js", { headers: ["authorization"] }));
+    sw.listeners.get("fetch")?.(request.event);
+    expect(request.handled()).toBe(false);
   });
 });
