@@ -66,7 +66,9 @@ export async function createEdgeSnapshotScope(
   const bearer = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
   // Recovery identifies its target independently of any guest or other account cookie/token.
   const recoveryTarget =
-    /^\/auth\/recovery\/(?:start|verify|reset-password|device-approval\/status)$/.test(path);
+    /^\/auth\/recovery\/(?:start|verify|reset-password|reset-pin|device-approval\/status)$/.test(
+      path
+    );
   let input: Record<string, unknown> = {};
   if (payload && request.headers.get("content-type")?.includes("application/json")) {
     try {
@@ -195,7 +197,7 @@ export async function createEdgeSnapshotScope(
               .digest("hex"),
             credential,
             path === "/oauth/token" ? codeHash : "",
-            /^\/auth\/(?:mfa\/(?:email\/challenge|verify)|recovery\/(?:verify|reset-password|device-approval\/status))$/.test(
+            /^\/auth\/(?:mfa\/(?:email\/challenge|verify)|recovery\/(?:verify|reset-password|reset-pin|device-approval\/status))$/.test(
               path
             ) &&
             typeof input.transactionId === "string" &&

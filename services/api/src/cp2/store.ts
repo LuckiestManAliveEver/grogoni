@@ -11879,6 +11879,66 @@ export class Cp2Store {
     return { verified: true };
   }
 
+  resetRecoveredPin(input: {
+    transactionId: string;
+    pin: string;
+    mfaCode?: string;
+    now?: Date;
+  }): AuthSessionView {
+    const now = input.now ?? new Date();
+    const transaction = this.requireAuthTransaction(input.transactionId, "recovery", now, true);
+    const challenge =
+      transaction.providerChallengeId === null
+        ? undefined
+        : this.otpDomain.otpChallengesMap.get(transaction.providerChallengeId);
+    // Only an enrolled email's verified, unexpired recovery OTP authorizes this mutation.
+    if (
+      transaction.accountId === null ||
+      transaction.identifierType !== "email" ||
+      transaction.identifierValue === null ||
+      !challenge ||
+      challenge.channel !== "email" ||
+      challenge.purpose !== "recovery" ||
+      challenge.verifiedAt === null ||
+      challenge.destination !== transaction.identifierValue ||
+      Date.parse(challenge.expiresAt) <= now.getTime() ||
+      ![...this.accountIdentities.values()].some(
+        (identity) =>
+          identity.accountId === transaction.accountId &&
+          identity.type === "email" &&
+          identity.normalizedValue === transaction.identifierValue &&
+          identity.verifiedAt !== null
+      )
+    ) {
+      throw new Cp2Error(401, "recovery_verification_invalid", "Recovery verification failed.");
+    }
+    const account = this.requireAccount(transaction.accountId);
+    this.requireAccountAuthenticationAllowed(account);
+    this.requireAccountNotPendingDeletion(account.id, now);
+    const pin = normalizePin(input.pin);
+    assertAcceptablePin(pin);
+    try {
+      this.verifyMfaForCredentialChange(account.id, input.mfaCode, now);
+    } catch (error) {
+      if (error instanceof Cp2Error && error.code === "mfa_code_invalid") transaction.attempts += 1;
+      throw error;
+    }
+    this.accountPinHashes.set(account.id, hashPin(account.id, pin));
+    transaction.consumedAt = now.toISOString();
+    for (const session of this.sessions.values()) {
+      if (session.accountId === account.id && session.revokedAt === null) {
+        session.revokedAt = now.toISOString();
+        session.revocationReason = "pin_recovery";
+      }
+    }
+    const user = this.requireUser(this.userByAccount.get(account.id));
+    const session = this.createSession(account, user, now);
+    this.markSessionPinVerified(session.id, now);
+    this.recordSecurityEvent("auth.pin_recovered", account.id, "success", now, { method: "email" });
+    this.notifyCredentialRecovery(account.id, "PIN", now);
+    return this.requireAnySession(session.id, now);
+  }
+
   resetRecoveredPassword(input: {
     transactionId: string;
     password: string;

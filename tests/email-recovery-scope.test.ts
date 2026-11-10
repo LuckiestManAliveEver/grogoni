@@ -4,7 +4,7 @@ import type { PoolClient } from "pg";
 import { createEdgeSnapshotScope } from "../services/api/src/cp2/edge-snapshot-scope";
 
 describe("recovery target selection", () => {
-  it.each(["start", "verify", "reset-password", "device-approval/status"])(
+  it.each(["start", "verify", "reset-password", "reset-pin", "device-approval/status"])(
     "ignores an unrelated cookie and bearer token for %s",
     async (suffix) => {
       const query = vi.fn().mockResolvedValue({ rows: [] });

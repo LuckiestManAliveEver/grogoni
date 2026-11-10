@@ -127,6 +127,8 @@ export interface Cp2RouteOptions {
   businessTaskStore?: BusinessTaskStore;
   binaryUploadPipeline?: BinaryUploadPipeline;
   emailProvider?: EmailProvider;
+  /** Keeps recovery email delivery alive after the generic response is sent on Edge runtimes. */
+  waitUntil?: (work: Promise<unknown>) => void;
   oauthAllowedRedirectOrigins?: string[];
   ownerNodeBroker?: OwnerNodeBroker;
   realtimeAllowedOrigins?: string[];
@@ -795,65 +797,71 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
             "Phone and SMS recovery are unavailable. Use a passkey, password, or linked verified email."
           );
         }
-        // Decide whether an account exists BEFORE minting an OTP challenge. Creating the challenge
-        // unconditionally (as before) burned the recipient's OTP cooldown and persisted an
-        // orphaned, never-emailed challenge for every unknown or unverified backup email, which
-        // surfaced to real users as "the recovery code never arrives" when a legitimate owner
-        // then hit otp_rate_limited on the request that would actually have sent the code. The
-        // response is byte-for-byte the same whether or not the account exists, so this is still
-        // not an account-enumeration oracle.
+        const recoveryStartResponse = (transactionId: string = randomUUID()) => ({
+          message: "If an account matches those details, recovery instructions have been sent.",
+          transactionId
+        });
+        // Avoid minting an OTP for unknown or unverified addresses so they do not consume the
+        // recipient's cooldown. Return the same response shape for every outcome to prevent
+        // account existence, throttling, and delivery failures from being exposed by this route.
         const accountFound =
           store.identifyAccount({ channel: "email", identifier: identifier.value }).next ===
           "login";
         if (!accountFound) {
-          return {
-            message: "If an account matches those details, recovery instructions have been sent.",
-            // A throwaway id: no transaction backs it, so verification fails closed - exactly as
-            // it would for an expired transaction.
-            transactionId: randomUUID()
-          };
+          return recoveryStartResponse();
         }
-        const otp = store.requestOtp({
-          channel: "email",
-          destination: identifier.value,
-          purpose: "recovery"
-        });
-        const transaction = store.beginRecovery({
-          channel: "email",
-          identifier: identifier.value,
-          providerChallengeId: otp.challengeId,
-          expiresAt: otp.expiresAt
-        });
         try {
-          await emailProvider.sendOtp({
-            challengeId: otp.challengeId,
-            code: otp.devOtp,
-            expiresAt: otp.expiresAt,
-            to: otp.destination
+          const otp = store.requestOtp({
+            channel: "email",
+            destination: identifier.value,
+            purpose: "recovery"
           });
+          const transaction = store.beginRecovery({
+            channel: "email",
+            identifier: identifier.value,
+            providerChallengeId: otp.challengeId,
+            expiresAt: otp.expiresAt
+          });
+          const delivery = Promise.resolve()
+            .then(() =>
+              emailProvider.sendOtp({
+                challengeId: otp.challengeId,
+                code: otp.devOtp,
+                expiresAt: otp.expiresAt,
+                to: otp.destination
+              })
+            )
+            .catch((error: unknown) => {
+              // Keep the public response indistinguishable while preserving safe diagnostics for
+              // operators. Do not log the destination, OTP, or provider rejection text.
+              request.log.error(
+                {
+                  event: "auth.recovery_start_failed",
+                  ...(error instanceof Cp2Error ? { errorCode: error.code } : {}),
+                  ...(error instanceof EmailDeliveryError
+                    ? { providerStatus: error.providerStatus, providerCode: error.providerCode }
+                    : {}),
+                  requestCorrelationId: request.id
+                },
+                "Recovery email could not be delivered."
+              );
+            });
+          options.waitUntil?.(delivery);
+          return recoveryStartResponse(transaction.transactionId);
         } catch (error) {
-          // The account exists but delivery failed (provider outage/misconfiguration). Surface it
-          // instead of silently claiming an email was sent, so the operator log and the client
-          // both record that no code went out. Delivery failure does not consume the challenge;
-          // the recipient can retry once the provider recovers.
           request.log.error(
             {
-              event: "auth.recovery_email_failed",
+              event: "auth.recovery_start_failed",
+              ...(error instanceof Cp2Error ? { errorCode: error.code } : {}),
               ...(error instanceof EmailDeliveryError
                 ? { providerStatus: error.providerStatus, providerCode: error.providerCode }
                 : {}),
-              transactionId: transaction.transactionId,
               requestCorrelationId: request.id
             },
-            "Recovery code email could not be delivered."
+            "Recovery transaction could not be created."
           );
-          throw error;
+          return recoveryStartResponse();
         }
-        return {
-          message: "If an account matches those details, recovery instructions have been sent.",
-          transactionId: transaction.transactionId,
-          ...(emailProvider.exposesDevOtp ? { developmentCode: otp.devOtp } : {})
-        };
       } catch (error) {
         if (error instanceof Cp2Error) return sendCp2Error(reply, error);
         return sendCp2Error(
@@ -869,8 +877,8 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
     async (request: FastifyRequest<{ Body: { transactionId?: string; code?: string } }>, reply) => {
       try {
         const transactionId = parseString(request.body.transactionId, "transactionId");
-        const transaction = store.getAuthTransaction(transactionId, "recovery");
         const code = parseString(request.body.code, "code");
+        const transaction = store.getAuthTransaction(transactionId, "recovery");
         if (transaction.identifierType !== "email" || transaction.providerChallengeId === null)
           throw new Cp2Error(401, "recovery_verification_invalid", "Recovery verification failed.");
         return store.verifyEmailRecovery({
@@ -878,6 +886,47 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
           challengeId: transaction.providerChallengeId,
           code
         });
+      } catch (error) {
+        if (
+          error instanceof Cp2Error &&
+          (error.code === "auth_transaction_invalid" ||
+            error.code === "recovery_verification_invalid")
+        ) {
+          return sendCp2Error(
+            reply,
+            new Cp2Error(401, "recovery_verification_invalid", "Recovery verification failed.")
+          );
+        }
+        return sendCp2Error(reply, error);
+      }
+    }
+  );
+
+  app.post(
+    "/auth/recovery/reset-pin",
+    async (
+      request: FastifyRequest<{
+        Body: {
+          transactionId?: string;
+          pin?: string;
+          pinConfirmation?: string;
+          mfaCode?: string;
+        };
+      }>,
+      reply
+    ) => {
+      try {
+        const pin = parseString(request.body.pin, "pin");
+        if (pin !== request.body.pinConfirmation)
+          throw new Cp2Error(400, "pin_confirmation_invalid", "PINs do not match.");
+        const result = store.resetRecoveredPin({
+          transactionId: parseString(request.body.transactionId, "transactionId"),
+          pin,
+          ...(request.body.mfaCode === undefined ? {} : { mfaCode: request.body.mfaCode })
+        });
+        setAuthSessionCookies(reply, request, store, result.session.id);
+        await notifyAccountRecovery(store, emailProvider, request, result.session.id, "PIN");
+        return result;
       } catch (error) {
         return sendCp2Error(reply, error);
       }

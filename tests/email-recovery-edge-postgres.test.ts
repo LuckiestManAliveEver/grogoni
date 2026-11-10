@@ -3,7 +3,10 @@ import { createRequire } from "node:module";
 import { describe, expect, it } from "vitest";
 import type { Pool as PgPool } from "pg";
 import { createCp2Store } from "../services/api/src/cp2/store";
-import { createEdgeSnapshotScope } from "../services/api/src/cp2/edge-snapshot-scope";
+import {
+  createEdgeSnapshotScope,
+  prepareEdgeHydration
+} from "../services/api/src/cp2/edge-snapshot-scope";
 import {
   loadTransactionalCp2Snapshot,
   saveTransactionalCp2Snapshot
@@ -74,6 +77,77 @@ describe.skipIf(!databaseUrl)("email recovery across Edge requests", () => {
           expect(result.accountFound).toBe(expectedAccount !== null);
         }
       }
+      const beforeRecovery = store.snapshot();
+      const recoveryOtp = store.requestOtp({
+        channel: "email",
+        destination: email,
+        purpose: "recovery"
+      });
+      const recovery = store.beginRecovery({
+        channel: "email",
+        identifier: email,
+        providerChallengeId: recoveryOtp.challengeId,
+        expiresAt: recoveryOtp.expiresAt
+      });
+      await saveTransactionalCp2Snapshot(client, store.snapshot(), beforeRecovery);
+      for (const path of ["/auth/recovery/verify", "/auth/recovery/reset-pin"]) {
+        const body = Buffer.from(JSON.stringify({ transactionId: recovery.transactionId }));
+        const scope = await createEdgeSnapshotScope(
+          client,
+          new Request(`https://grogoni.com/api${path}`, {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              cookie: `grogoni_session=${stranger.session.id}`
+            },
+            body
+          }),
+          path,
+          body
+        );
+        const loaded = await loadTransactionalCp2Snapshot(client, scope);
+        expect(loaded.accounts.map((a) => a.id)).toEqual([owner.account.id]);
+        const requestStore = createCp2Store();
+        requestStore.hydrateSnapshot(prepareEdgeHydration(loaded));
+        const previous = loaded;
+        if (path.endsWith("verify")) {
+          requestStore.verifyEmailRecovery({
+            transactionId: recovery.transactionId,
+            challengeId: recoveryOtp.challengeId,
+            code: recoveryOtp.devOtp
+          });
+        } else {
+          const reset = requestStore.resetRecoveredPin({
+            transactionId: recovery.transactionId,
+            pin: "6379"
+          });
+          expect(reset.account.id).toBe(owner.account.id);
+        }
+        await saveTransactionalCp2Snapshot(client, requestStore.snapshot(), previous);
+      }
+      const finalStore = createCp2Store();
+      finalStore.hydrateSnapshot(await loadTransactionalCp2Snapshot(client));
+      expect(() =>
+        finalStore.loginWithAccountPin({
+          channel: "phone",
+          destination: owner.account.primaryAuthDestination,
+          pin: "7392"
+        })
+      ).toThrow();
+      expect(
+        finalStore.loginWithAccountPin({
+          channel: "phone",
+          destination: owner.account.primaryAuthDestination,
+          pin: "6379"
+        }).account.id
+      ).toBe(owner.account.id);
+      expect(
+        finalStore.loginWithAccountPin({
+          channel: "phone",
+          destination: stranger.account.primaryAuthDestination,
+          pin: "8246"
+        }).account.id
+      ).toBe(stranger.account.id);
     } finally {
       await client.query("rollback");
       client.release();

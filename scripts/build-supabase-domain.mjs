@@ -12,6 +12,9 @@ const pdfBrowserEntry = fileURLToPath(
   new URL("../web/pdf-parse.es.js", pathToFileURL(apiRequire.resolve("pdf-parse")))
 );
 const externalPackages = new Map([
+  // Loaded only by the linked-WhatsApp daemon; keep its protocol/native dependencies
+  // out of the Edge upload, where the management API enforces a 5 MB limit.
+  ["baileys", "npm:baileys@7.0.0-rc14"],
   ["fastify", "npm:fastify@5.9.0"],
   ["@simplewebauthn/server", "npm:@simplewebauthn/server@13.3.2"],
   ["@fastify/websocket", "npm:@fastify/websocket@11.3.0"],
@@ -40,7 +43,7 @@ await build({
         builder.onResolve(
           {
             filter:
-              /^(@simplewebauthn\/server|fastify|@fastify\/websocket|pg|mammoth|pdf-parse|libphonenumber-js(?:\/max)?)$/
+              /^(baileys|@simplewebauthn\/server|fastify|@fastify\/websocket|pg|mammoth|pdf-parse|libphonenumber-js(?:\/max)?)$/
           },
           (args) => ({
             // Avoid shipping native canvas binaries to Edge for PDF text extraction.
