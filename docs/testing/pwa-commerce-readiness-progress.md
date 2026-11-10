@@ -56,3 +56,12 @@ Verification: 10 offline-shell privacy/recovery tests pass. Installed-browser ev
 recovery remain separate acceptance tests. Network-first shell caching and explicit user-requested
 offline downloads intentionally differ: an anonymous static shell marked no-cache may be saved
 by the explicit offline installer; private and no-store responses are always rejected.
+
+## Section 8 — dependency and secret scanning
+
+Implemented a dedicated security workflow for pushes, PRs, weekly and manual runs, with
+read-only permissions, a commit-pinned Gitleaks action and production dependency auditing.
+[Configuration and initial findings](../security-scanning.md) record the commands and results.
+Local scans executed against real history and registry data: 70 untriaged historical secret-rule
+findings; 22 high production dependency advisories. Findings remain release work, not passing
+security certification. No scanner exclusions or vulnerability ignores were introduced.
