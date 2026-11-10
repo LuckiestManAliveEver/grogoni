@@ -352,7 +352,11 @@ export function buildApi(options: BuildApiOptions = {}) {
     reply.header("x-frame-options", "DENY");
     reply.header("referrer-policy", "no-referrer");
     reply.header("permissions-policy", "camera=(), microphone=(), geolocation=()");
+    // Default API responses (including errors and downloads) to private browser state.
+    // Static serving sets its own explicit cache policy before this hook.
     if (
+      !reply.hasHeader("cache-control") ||
+      String(reply.getHeader("content-type") ?? "").includes("application/json") ||
       request.url.startsWith("/auth/") ||
       request.url === "/session" ||
       request.url.startsWith("/session/") ||

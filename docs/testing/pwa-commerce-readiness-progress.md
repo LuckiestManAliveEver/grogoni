@@ -65,3 +65,12 @@ read-only permissions, a commit-pinned Gitleaks action and production dependency
 Local scans executed against real history and registry data: 70 untriaged historical secret-rule
 findings; 22 high production dependency advisories. Findings remain release work, not passing
 security certification. No scanner exclusions or vulnerability ignores were introduced.
+
+## Section 5 — HTTP cache privacy
+
+API responses now default to `Cache-Control: no-store` and `Pragma: no-cache`, including errors,
+unmatched routes and downloads without an explicit static policy. JSON responses always receive
+no-store even if a handler supplies another policy. Static bundles retain their explicit caching
+policy. This complements the service-worker and offline installer exclusions.
+
+Verification: API cache privacy and authentication security-hardening suites: 11 tests pass.
