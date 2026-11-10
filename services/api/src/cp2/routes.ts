@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { registerCommerceSourceRoutes } from "./domains/commerce-sources/routes.js";
 import { registerAgentSkillsRoutes } from "./domains/agent-skills/routes.js";
 import { registerOfflineRuntimeRoutes } from "./offline-runtime-routes.js";
@@ -97,7 +98,11 @@ import { registerStaffRoutes } from "./domains/staff/routes.js";
 import { registerShopHubRoutes } from "./domains/shop-hub/routes.js";
 import { registerDeviceBootstrapRoutes } from "./domains/device-bootstrap/routes.js";
 import { registerModelTemplateRoutes } from "./domains/model-templates/routes.js";
-import { createEmailProviderFromEnvironment, type EmailProvider } from "./email-provider.js";
+import {
+  createEmailProviderFromEnvironment,
+  EmailDeliveryError,
+  type EmailProvider
+} from "./email-provider.js";
 import {
   normalizeInternationalOwnerPhoneNumber,
   normalizeOwnerPhoneNumber
@@ -122,6 +127,8 @@ export interface Cp2RouteOptions {
   businessTaskStore?: BusinessTaskStore;
   binaryUploadPipeline?: BinaryUploadPipeline;
   emailProvider?: EmailProvider;
+  /** Keeps recovery email delivery alive after the generic response is sent on Edge runtimes. */
+  waitUntil?: (work: Promise<unknown>) => void;
   oauthAllowedRedirectOrigins?: string[];
   ownerNodeBroker?: OwnerNodeBroker;
   realtimeAllowedOrigins?: string[];
@@ -790,29 +797,71 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
             "Phone and SMS recovery are unavailable. Use a passkey, password, or linked verified email."
           );
         }
-        const otp = store.requestOtp({
-          channel: "email",
-          destination: identifier.value,
-          purpose: "recovery"
-        });
-        const transaction = store.beginRecovery({
-          channel: "email",
-          identifier: identifier.value,
-          providerChallengeId: otp.challengeId,
-          expiresAt: otp.expiresAt
-        });
-        if (transaction.accountFound)
-          await emailProvider.sendOtp({
-            challengeId: otp.challengeId,
-            code: otp.devOtp,
-            expiresAt: otp.expiresAt,
-            to: otp.destination
-          });
-        return {
+        const recoveryStartResponse = (transactionId: string = randomUUID()) => ({
           message: "If an account matches those details, recovery instructions have been sent.",
-          transactionId: transaction.transactionId,
-          ...(emailProvider.exposesDevOtp ? { developmentCode: otp.devOtp } : {})
-        };
+          transactionId
+        });
+        // Avoid minting an OTP for unknown or unverified addresses so they do not consume the
+        // recipient's cooldown. Return the same response shape for every outcome to prevent
+        // account existence, throttling, and delivery failures from being exposed by this route.
+        const accountFound =
+          store.identifyAccount({ channel: "email", identifier: identifier.value }).next ===
+          "login";
+        if (!accountFound) {
+          return recoveryStartResponse();
+        }
+        try {
+          const otp = store.requestOtp({
+            channel: "email",
+            destination: identifier.value,
+            purpose: "recovery"
+          });
+          const transaction = store.beginRecovery({
+            channel: "email",
+            identifier: identifier.value,
+            providerChallengeId: otp.challengeId,
+            expiresAt: otp.expiresAt
+          });
+          const delivery = Promise.resolve()
+            .then(() =>
+              emailProvider.sendOtp({
+                challengeId: otp.challengeId,
+                code: otp.devOtp,
+                expiresAt: otp.expiresAt,
+                to: otp.destination
+              })
+            )
+            .catch((error: unknown) => {
+              // Keep the public response indistinguishable while preserving safe diagnostics for
+              // operators. Do not log the destination, OTP, or provider rejection text.
+              request.log.error(
+                {
+                  event: "auth.recovery_start_failed",
+                  ...(error instanceof Cp2Error ? { errorCode: error.code } : {}),
+                  ...(error instanceof EmailDeliveryError
+                    ? { providerStatus: error.providerStatus, providerCode: error.providerCode }
+                    : {}),
+                  requestCorrelationId: request.id
+                },
+                "Recovery email could not be delivered."
+              );
+            });
+          options.waitUntil?.(delivery);
+          return recoveryStartResponse(transaction.transactionId);
+        } catch (error) {
+          request.log.error(
+            {
+              event: "auth.recovery_start_failed",
+              ...(error instanceof Cp2Error ? { errorCode: error.code } : {}),
+              ...(error instanceof EmailDeliveryError
+                ? { providerStatus: error.providerStatus, providerCode: error.providerCode }
+                : {}),
+              requestCorrelationId: request.id
+            },
+            "Recovery transaction could not be created."
+          );
+          return recoveryStartResponse();
+        }
       } catch (error) {
         if (error instanceof Cp2Error) return sendCp2Error(reply, error);
         return sendCp2Error(
@@ -828,8 +877,8 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
     async (request: FastifyRequest<{ Body: { transactionId?: string; code?: string } }>, reply) => {
       try {
         const transactionId = parseString(request.body.transactionId, "transactionId");
-        const transaction = store.getAuthTransaction(transactionId, "recovery");
         const code = parseString(request.body.code, "code");
+        const transaction = store.getAuthTransaction(transactionId, "recovery");
         if (transaction.identifierType !== "email" || transaction.providerChallengeId === null)
           throw new Cp2Error(401, "recovery_verification_invalid", "Recovery verification failed.");
         return store.verifyEmailRecovery({
@@ -838,6 +887,16 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
           code
         });
       } catch (error) {
+        if (
+          error instanceof Cp2Error &&
+          (error.code === "auth_transaction_invalid" ||
+            error.code === "recovery_verification_invalid")
+        ) {
+          return sendCp2Error(
+            reply,
+            new Cp2Error(401, "recovery_verification_invalid", "Recovery verification failed.")
+          );
+        }
         return sendCp2Error(reply, error);
       }
     }

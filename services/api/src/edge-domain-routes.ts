@@ -677,6 +677,7 @@ export async function createEdgeDomainRoutes(
             }),
             ledger
           ),
+          ...(runtime.waitUntil === undefined ? {} : { waitUntil: runtime.waitUntil }),
           fulfillmentService: fulfillment,
           webPublicUrl: process.env.WEB_PUBLIC_URL ?? "https://grogoni.com",
           realtimeAllowedOrigins: (process.env.WEB_ORIGINS ?? "https://grogoni.com").split(","),
