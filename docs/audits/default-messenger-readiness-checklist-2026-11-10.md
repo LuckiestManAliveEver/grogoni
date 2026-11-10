@@ -201,7 +201,154 @@ own contacts app syncs with the user's Google account.
 - [ ] **Coverage.** Only phones whose contacts sync to Google. SIM-only and phone-only contacts are
       not seen; iPhone works only if that Google account is added for contacts.
 
-## Suggested order
+---
+
+# Part 2: commerce and agents
+
+Question reviewed: once Part 1 is done, is Grogoni a complete place where businesses, people and AI
+agents do business with each other?
+
+**Answer: no.** People and agents can find goods, agree an order and plan a delivery, but no money
+moves inside Grogoni, an order has no working life cycle after it is placed, and nothing tells a
+buyer whether a shop can be trusted.
+
+Method: read the commerce, sales, supplier, compliance, fulfilment and agent tool code, the
+outside-agent (MCP) server, and the store's persistence notes. No commerce flow was run end to end
+and production was not checked.
+
+## 9. What exists today
+
+- Catalogue, stock, customers, invoices, manual payment records, debts and reports.
+- A public storefront where a guest can chat and place an order request.
+- Marketplace search and a cart that splits one checkout into one order per shop.
+- Purchase orders from one shop to a supplier, sent in Grogoni, by email or by WhatsApp. A supplier
+  on Grogoni can accept or reject in the app.
+- Delivery planning: routes, vehicles, loads, driver manifests and a delivered state.
+- A shop assistant with about 60 tools. Consequential tools (invoices, payments, messages,
+  purchase orders, checkout) need an explicit confirmation for each action.
+- A connection for outside AI agents. With the owner's PIN-approved token an outside agent can
+  search the marketplace, read a catalogue and inbox, send messages (including encrypted ones),
+  place orders and run delivery tools.
+- Staff roles and invitations.
+
+## 10. Orders and checkout
+
+- [ ] **Order life cycle in the owner's app.** Orders are created as "requested". The only code
+      that changes a marketplace order's status is the external shop-system API
+      (`services/api/src/cp2/store.ts:7777`). The owner's app has no accept, reject or complete
+      action, and guest storefront orders never change status at all.
+- [ ] **Seller alert for a new marketplace order.** No notification type exists for orders
+      (`packages/shared-types/src/index.ts:3865`), and I found no screen in the owner's app that
+      lists marketplace orders. The seller sees only a new draft invoice.
+- [ ] **Buyer order history and tracking.** A buyer can fetch one checkout by its id. There is no
+      "my orders" list.
+- [ ] **Buyer told when status changes.** A status update through the shop-system API changes the
+      record only. It does not message the buyer, touch the invoice or check that the change makes
+      sense (a cancelled order can be set back to accepted).
+- [ ] **Delivery details at checkout.** A checkout item carries no address, delivery choice or fee.
+- [ ] **Stock held for an order.** Stock is checked when the invoice is confirmed, not when the
+      order is placed, so two buyers can both order the last unit.
+- [ ] **Cancel, return and credit.** Invoices are only "draft" or "confirmed"
+      (`packages/shared-types/src/index.ts:2568`). There is no void, return or credit note.
+- [ ] **Orders from source offers.** The unified commerce report says offers cannot yet become
+      real orders.
+
+## 11. Money
+
+- [ ] **A payment rail.** Payment methods are all manual records
+      (`packages/shared-types/src/index.ts:2627`), and the checkout type notes that there is no
+      real payment rail. Buyers and sellers settle outside Grogoni.
+- [ ] **Payment confirmation.** Nothing verifies that a recorded payment happened.
+- [ ] **Refunds.** The assistant is told to pass refund requests to the owner; there is no refund
+      record or flow.
+- [ ] **Disputes.** No code.
+- [ ] **Holding funds and paying sellers.** No code.
+- [ ] **Platform fees and billing for shops.** Not found.
+
+## 12. Trust and safety
+
+- [ ] **Verified businesses.** A shop's verification tier is set by the shop itself; the evidence
+      types are "none", "owner attestation" or "business document"
+      (`packages/shared-types/src/index.ts:3069`). Nobody at the platform reviews it and buyers do
+      not see it.
+- [ ] **Ratings and reviews.** None.
+- [ ] **Report a shop, listing or user.** Users can block a contact. I found no way to report abuse.
+- [ ] **Platform controls.** The platform operator role can only edit the model catalogue. There is
+      no way to suspend a shop or remove a listing short of the database.
+- [ ] **Customer support.** Support tickets exist only as a beta feature inside a shop's own
+      workspace.
+
+## 13. The shop's own assistant
+
+- [ ] **Delegated authority.** Every consequential action needs a person to confirm it, one at a
+      time. There is no rule such as "accept orders under a set value" and no spending limit, so an
+      assistant cannot trade unattended.
+- [ ] **Unconfirmed stock and product changes.** Creating a product and adjusting stock run without
+      confirmation (`packages/tool-core/src/domains/products.ts:69`, `:129`). This is deliberate,
+      but both change what buyers see.
+- [ ] **Limits on AI cost.** Usage budgets are unlimited unless set (`.env.example`).
+- [ ] **Assistant replies on SMS.** Off, as noted in Part 1.
+- [ ] **Live checks.** The agent tests use scripted model replies. Behaviour with the real model on
+      real shop data was not verified here.
+
+## 14. Outside agents
+
+- [ ] **Value limits per connection.** A token has two permissions, read and act. An agent with
+      "act" prepares a checkout and then confirms it itself (`services/api/src/mcp/routes.ts:761`,
+      `:779`), and confirms its own proposed actions (`:717`). No limit on order value or count.
+      Low risk while orders carry no payment; a blocker once they do.
+- [ ] **Checkout confirmation that survives restarts.** Pending checkouts sit in process memory
+      (`services/api/src/mcp/routes.ts:41`). Check that prepare and confirm still pair up on the
+      deployed Edge API, where requests may not share memory.
+- [ ] **A record of who acted.** Confirm that orders and messages placed by an outside agent are
+      marked as such for the other party.
+- [ ] **Agent-to-agent trade.** A buying agent can order from a shop, and a shop's assistant can
+      prepare a purchase order, but each side still needs a person to approve. No negotiation or
+      quote exchange between two agents runs on its own.
+
+## 15. Business to business
+
+- [ ] **What happens after a supplier accepts.** Acceptance changes no stock and no payment record
+      on either side.
+- [ ] **Replies outside Grogoni.** A supplier's email or WhatsApp reply does not update the order.
+- [ ] **Purchase orders by SMS.** Channels are Grogoni, email and WhatsApp only.
+- [ ] **WhatsApp sending.** Needs an operator to configure a sender and an approved template per
+      buying shop.
+- [ ] **Verified wholesalers and resale.** Listed as not built in the unified commerce report.
+
+## 16. Tax, currency and countries
+
+- [ ] **Tax compliance.** A shop can store a tax rate and a KRA PIN. There is no link to the tax
+      authority's invoicing system and no tax-compliant receipt.
+- [ ] **One country.** Kenya is the only tax country (`packages/shared-types/src/index.ts:3075`).
+- [ ] **One currency.** The app formats all money as Kenyan shillings
+      (`apps/web/src/formatters.ts:14`).
+
+## 17. Reliability and operations
+
+- [ ] **Acknowledged writes can be lost.** The server answers from memory and saves to the database
+      afterwards. A crash in between loses that write (`docs/single-instance-store-ceiling.md`).
+      Unacceptable once orders carry money.
+- [ ] **One server only.** All shop data must fit in one process, and a second instance would
+      diverge. The repo's own note says this is safe for a closed beta only.
+- [ ] **Login rate limits** are held in memory and reset on restart.
+- [ ] **Monitoring.** A metrics endpoint exists but nothing collects it, and there are no alerts.
+- [ ] **Full test run.** The last recorded full run (2026-10-25) had 15 failures and was not
+      repeated cleanly. This review ran focused tests only.
+
+## Suggested order for Part 2
+
+1. Make orders work end to end in the owner's app: alert, accept or reject, complete, tell the
+   buyer, hold stock.
+2. Fix lost writes before any money feature.
+3. One real payment method with confirmation and refunds.
+4. Platform controls: report, suspend, reviewed verification.
+5. Limits for outside agents, then delegated authority for the shop assistant.
+6. Tax-compliant receipts.
+
+---
+
+## Suggested order for Part 1
 
 1. Test build 5 on two real phones with different carriers; fix what breaks. Include the encrypted
    chat and push rows.
