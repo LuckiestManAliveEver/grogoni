@@ -47,8 +47,8 @@ describe("Render Blueprint", () => {
       expect(api).toContain(`${continuitySecret}\n        sync: false`);
       expect(api).not.toContain(`${continuitySecret}\n        generateValue: true`);
     }
-    // Hosted transactional email (Resend) was retired with the cloud providers; the API rejects
-    // RESEND_API_KEY at boot, so the Blueprint must not provision it.
+    // Brevo credentials are supplied by the operator, never generated or committed.
+    expect(api).toContain("BREVO_API_KEY\n        sync: false");
     expect(api).not.toContain("RESEND_API_KEY");
     expect(api).not.toMatch(/AUTH_SMS|SMS_GATEWAY|ANDROID_SMS|LOCAL_SMS/u);
     // The passkey RP ID must be the registrable domain of every expected origin, or

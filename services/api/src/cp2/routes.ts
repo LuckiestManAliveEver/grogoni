@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { registerCommerceSourceRoutes } from "./domains/commerce-sources/routes.js";
 import { registerAgentSkillsRoutes } from "./domains/agent-skills/routes.js";
 import { registerOfflineRuntimeRoutes } from "./offline-runtime-routes.js";
@@ -97,7 +98,11 @@ import { registerStaffRoutes } from "./domains/staff/routes.js";
 import { registerShopHubRoutes } from "./domains/shop-hub/routes.js";
 import { registerDeviceBootstrapRoutes } from "./domains/device-bootstrap/routes.js";
 import { registerModelTemplateRoutes } from "./domains/model-templates/routes.js";
-import { createEmailProviderFromEnvironment, type EmailProvider } from "./email-provider.js";
+import {
+  createEmailProviderFromEnvironment,
+  EmailDeliveryError,
+  type EmailProvider
+} from "./email-provider.js";
 import {
   normalizeInternationalOwnerPhoneNumber,
   normalizeOwnerPhoneNumber
@@ -790,6 +795,24 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
             "Phone and SMS recovery are unavailable. Use a passkey, password, or linked verified email."
           );
         }
+        // Decide whether an account exists BEFORE minting an OTP challenge. Creating the challenge
+        // unconditionally (as before) burned the recipient's OTP cooldown and persisted an
+        // orphaned, never-emailed challenge for every unknown or unverified backup email, which
+        // surfaced to real users as "the recovery code never arrives" when a legitimate owner
+        // then hit otp_rate_limited on the request that would actually have sent the code. The
+        // response is byte-for-byte the same whether or not the account exists, so this is still
+        // not an account-enumeration oracle.
+        const accountFound =
+          store.identifyAccount({ channel: "email", identifier: identifier.value }).next ===
+          "login";
+        if (!accountFound) {
+          return {
+            message: "If an account matches those details, recovery instructions have been sent.",
+            // A throwaway id: no transaction backs it, so verification fails closed - exactly as
+            // it would for an expired transaction.
+            transactionId: randomUUID()
+          };
+        }
         const otp = store.requestOtp({
           channel: "email",
           destination: identifier.value,
@@ -801,13 +824,31 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
           providerChallengeId: otp.challengeId,
           expiresAt: otp.expiresAt
         });
-        if (transaction.accountFound)
+        try {
           await emailProvider.sendOtp({
             challengeId: otp.challengeId,
             code: otp.devOtp,
             expiresAt: otp.expiresAt,
             to: otp.destination
           });
+        } catch (error) {
+          // The account exists but delivery failed (provider outage/misconfiguration). Surface it
+          // instead of silently claiming an email was sent, so the operator log and the client
+          // both record that no code went out. Delivery failure does not consume the challenge;
+          // the recipient can retry once the provider recovers.
+          request.log.error(
+            {
+              event: "auth.recovery_email_failed",
+              ...(error instanceof EmailDeliveryError
+                ? { providerStatus: error.providerStatus, providerCode: error.providerCode }
+                : {}),
+              transactionId: transaction.transactionId,
+              requestCorrelationId: request.id
+            },
+            "Recovery code email could not be delivered."
+          );
+          throw error;
+        }
         return {
           message: "If an account matches those details, recovery instructions have been sent.",
           transactionId: transaction.transactionId,

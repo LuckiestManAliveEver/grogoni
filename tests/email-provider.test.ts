@@ -13,7 +13,7 @@ describe("transactional email API", () => {
     vi.unstubAllEnvs();
   });
 
-  it("sends signup OTPs and privacy-preserving encrypted-message notifications through Resend", async () => {
+  it("sends signup OTPs and privacy-preserving encrypted-message notifications through Brevo", async () => {
     const requests: Array<{ url: string; init: RequestInit }> = [];
     vi.stubGlobal(
       "fetch",
@@ -24,7 +24,7 @@ describe("transactional email API", () => {
     );
     const provider = createEmailProviderFromEnvironment({
       NODE_ENV: "production",
-      RESEND_API_KEY: "re_mock_api_key",
+      BREVO_API_KEY: "brevo_mock_api_key",
       GROGONI_EMAIL_FROM: "Grogoni <messages@grogoni.test>"
     });
 
@@ -44,23 +44,116 @@ describe("transactional email API", () => {
     ).resolves.toBe("sent");
 
     expect(requests).toHaveLength(2);
-    expect(requests[0]?.url).toBe("https://api.resend.com/emails");
+    expect(requests[0]?.url).toBe("https://api.brevo.com/v3/smtp/email");
     expect(requests[0]?.init.headers).toMatchObject({
-      authorization: "Bearer re_mock_api_key",
-      "idempotency-key": "otp-challenge-email-1"
+      "api-key": "brevo_mock_api_key"
     });
     const otpBody = JSON.parse(String(requests[0]?.init.body)) as Record<string, unknown>;
     expect(otpBody).toMatchObject({
-      from: "Grogoni <messages@grogoni.test>",
-      to: ["email-user@example.test"],
+      sender: { name: "Grogoni", email: "messages@grogoni.test" },
+      to: [{ email: "email-user@example.test" }],
+      headers: { IdempotencyKey: "otp-challenge-email-1" },
       subject: "Your Grogoni verification code"
     });
-    expect(otpBody.text).toContain("483921");
+    expect(otpBody.textContent).toContain("483921");
 
     const notificationBody = JSON.parse(String(requests[1]?.init.body)) as Record<string, unknown>;
-    expect(notificationBody.text).toContain("end-to-end encrypted");
-    expect(notificationBody.text).toContain("https://grogoni.com/?conversation=");
-    expect(notificationBody.text).not.toContain("private phone to email message");
+    expect(notificationBody.textContent).toContain("end-to-end encrypted");
+    expect(notificationBody.textContent).toContain("https://grogoni.com/?conversation=");
+    expect(notificationBody.textContent).not.toContain("private phone to email message");
+  });
+
+  it("sends recovery alerts through Brevo with a plain sender address", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 201 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const provider = createEmailProviderFromEnvironment({
+      NODE_ENV: "production",
+      BREVO_API_KEY: "brevo_mock_api_key",
+      GROGONI_EMAIL_FROM: "messages@grogoni.test"
+    });
+    expect(provider.name).toBe("brevo");
+    expect(provider.exposesDevOtp).toBe(false);
+    await expect(
+      provider.sendRecoveryNotification!({
+        to: "owner@example.test",
+        sessionId: "reset-1",
+        credential: "password"
+      })
+    ).resolves.toBe("sent");
+    await expect(
+      provider.sendRecoveryNotification!({
+        to: "owner@example.test",
+        sessionId: "approval-1",
+        credential: "PIN",
+        kind: "browser_approved"
+      })
+    ).resolves.toBe("sent");
+    const bodies = fetchMock.mock.calls.map((call) => JSON.parse(call[1].body));
+    expect(bodies[0]).toMatchObject({
+      sender: { email: "messages@grogoni.test" },
+      to: [{ email: "owner@example.test" }],
+      subject: "Your Grogoni account password was reset",
+      headers: { IdempotencyKey: "recovery-reset-1" }
+    });
+    expect(bodies[1]).toMatchObject({
+      subject: "A browser was let in to your Grogoni account",
+      headers: { IdempotencyKey: "recovery-approval-approval-1" }
+    });
+  });
+
+  it("propagates OTP delivery failures and reports failed recovery notifications", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("{}", { status: 401 })));
+    const provider = createEmailProviderFromEnvironment({
+      NODE_ENV: "production",
+      BREVO_API_KEY: "brevo_mock_api_key",
+      GROGONI_EMAIL_FROM: "messages@grogoni.test"
+    });
+    await expect(
+      provider.sendOtp({
+        challengeId: "failed",
+        code: "123456",
+        expiresAt: "2026-11-09T15:00:00Z",
+        to: "owner@example.test"
+      })
+    ).rejects.toMatchObject({ statusCode: 502, code: "email_delivery_failed" });
+    await expect(
+      provider.sendRecoveryNotification!({
+        to: "owner@example.test",
+        sessionId: "failed",
+        credential: "PIN"
+      })
+    ).resolves.toBe("failed");
+  });
+
+  it("retains safe provider diagnostics without retaining rejection text", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockImplementation(
+          async () =>
+            new Response(
+              JSON.stringify({ code: "unauthorized", message: "private@example.test secret-key" }),
+              { status: 401 }
+            )
+        )
+    );
+    const provider = createEmailProviderFromEnvironment({
+      NODE_ENV: "production",
+      BREVO_API_KEY: "test-key",
+      GROGONI_EMAIL_FROM: "sender@example.test"
+    });
+    const error = await provider
+      .sendOtp({
+        challengeId: "diagnostic",
+        code: "123456",
+        expiresAt: "2026-11-10T15:00:00Z",
+        to: "owner@example.test"
+      })
+      .catch((error: unknown) => error);
+    expect(error).toMatchObject({ providerStatus: 401, providerCode: "unauthorized" });
+    expect(JSON.stringify(error)).not.toContain("private@example.test");
+    expect(JSON.stringify(error)).not.toContain("secret-key");
   });
 
   it("fails closed for production email signup when the email API is unconfigured", async () => {

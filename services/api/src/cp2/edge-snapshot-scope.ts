@@ -64,6 +64,9 @@ export async function createEdgeSnapshotScope(
       /(?:^|;\s*)grogoni_session=([a-f0-9-]{36})(?:;|$)/i
     )?.[1] ?? null;
   const bearer = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
+  // Recovery identifies its target independently of any guest or other account cookie/token.
+  const recoveryTarget =
+    /^\/auth\/recovery\/(?:start|verify|reset-password|device-approval\/status)$/.test(path);
   let input: Record<string, unknown> = {};
   if (payload && request.headers.get("content-type")?.includes("application/json")) {
     try {
@@ -174,8 +177,10 @@ export async function createEdgeSnapshotScope(
        union all select t.account_id::uuid, u.id from cp2_auth_transactions t join users u on u.account_id = t.account_id::uuid
          where t.entity_id = $5::text and t.record->>'purpose' in ('login_mfa', 'recovery')
            and t.record->>'consumedAt' is null and (t.record->>'expiresAt')::timestamptz > now() and (t.record->>'attempts')::int < 5
-       union all select i.account_id, u.id from account_identities i join users u on u.account_id = i.account_id
-         where i.type = 'email' and i.normalized_value = $6 and i.verified_at is not null
+       union all select i.account_id::uuid, u.id from cp2_account_identities i
+         join users u on u.account_id = i.account_id::uuid
+         where i.record->>'type' = 'email' and i.record->>'normalizedValue' = $6
+           and i.record->>'verifiedAt' is not null
      ) select a.id as account_id, u.id as user_id, a.primary_auth_destination
        from candidates c join accounts a on a.id = c.account_id
        join users u on u.id = c.user_id and u.account_id = a.id
@@ -184,10 +189,10 @@ export async function createEdgeSnapshotScope(
             // A recovery-approval poll comes from a signed-out browser that may still hold a guest
             // session. Its account is the one the approval names, found by transaction id below;
             // the guest cookie would otherwise win this `limit 1` and the approval could not load.
-            sessionId && uuid.test(sessionId) && path !== "/auth/recovery/device-approval/status"
-              ? sessionId
-              : null,
-            createHash("sha256").update(bearer).digest("hex"),
+            sessionId && uuid.test(sessionId) && !recoveryTarget ? sessionId : null,
+            createHash("sha256")
+              .update(recoveryTarget ? "" : bearer)
+              .digest("hex"),
             credential,
             path === "/oauth/token" ? codeHash : "",
             /^\/auth\/(?:mfa\/(?:email\/challenge|verify)|recovery\/(?:verify|reset-password|device-approval\/status))$/.test(

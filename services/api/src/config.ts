@@ -107,7 +107,6 @@ function rejectRemovedCloudConfiguration(): void {
     "COMPUTER_RUNTIME_SERVICE_TOKEN",
     "REDIS_URL",
     "RENDER_DEPLOY_WEBHOOK_SECRET",
-    "RESEND_API_KEY",
     "SMTP_URL",
     "TELEGRAM_BOT_TOKEN",
     "TWILIO_ACCOUNT_SID",
