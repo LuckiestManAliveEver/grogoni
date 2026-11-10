@@ -392,44 +392,22 @@ export function buildApi(options: BuildApiOptions = {}) {
       }
     } catch (error) {
       if (error instanceof PersistenceFlushDeadlineExceeded) {
-        // An offline ACK must prove durability before the device clears its pending mutation -
-        // same reasoning for a confirmed/rejected order intent outcome.
-        if (
-          request.routeOptions.url === "/sync/push" ||
-          request.routeOptions.url === "/sync/order-intents"
-        )
-          throw error;
-        if (request.url.startsWith("/v1/runtime/")) {
-          reply.code(503);
-          return JSON.stringify({
-            code: "RUNTIME_PERSISTENCE_PENDING",
-            message:
-              "Runtime durability is not confirmed yet. Refresh the handoff status before retrying.",
-            retryable: true
-          });
-        }
-        // The write is still queued and will complete/retry in the background (see
-        // Cp2Store.flush()) - holding this response open until then would leave the caller's
-        // "Working..." state spinning for as long as the queue is backed up, with no bound. A
-        // request that already succeeded in memory - including a freshly issued session cookie -
-        // should not wait forever on a best-effort durability sync, and a deadline timeout is not
-        // itself a persistence failure: the flush has not failed, it is merely still running (see
-        // withPersistenceFlushDeadline below). Treating "not confirmed yet" the same as "failed"
-        // here would turn ordinary Postgres latency (a Neon cold start, a slow query sharing the
-        // pool) into a hard login failure even though the in-memory session this response's
-        // cookie points to is already valid and immediately usable on this single API instance -
-        // exactly the tradeoff docs/single-instance-store-ceiling.md already made deliberately
-        // ("a failed save no longer reverts anything... discarding it was strictly worse than
-        // keeping it"). A genuinely failed flush (the branch below, not this one) still fails
-        // authentication closed.
+        // A deadline bounds response latency, not the durability requirement. The queued
+        // write may still commit later; do not acknowledge it or expose uncommitted cookies.
+        reply.removeHeader("set-cookie");
         request.log.warn(
-          {
-            event: "auth.persistence_flush_deadline_exceeded",
-            requestCorrelationId: request.id
-          },
-          "Persistence flush exceeded the response deadline; responding without waiting further."
+          { event: "persistence.confirmation_pending", requestCorrelationId: request.id },
+          "Persistence deadline elapsed before durability was confirmed."
         );
-        return payload;
+        reply.code(503);
+        return JSON.stringify({
+          code: request.url.startsWith("/v1/runtime/")
+            ? "RUNTIME_PERSISTENCE_PENDING"
+            : "PERSISTENCE_CONFIRMATION_PENDING",
+          message:
+            "Durability is not confirmed yet. Check the operation status before retrying with the same idempotency key.",
+          retryable: true
+        });
       }
 
       const syncFailure = readAccountSyncFailure(error);

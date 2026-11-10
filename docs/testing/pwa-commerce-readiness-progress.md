@@ -28,3 +28,17 @@ provider onboarding, a real payment/refund, and H5 with independent businesses r
 participants or configured services. They remain open. Automated mocks cannot satisfy those gates.
 
 No milestone or harness gate is certified by this ledger.
+
+## Section 22 — acknowledge only confirmed writes
+
+Fixed the API response deadline path: a stalled persistence queue returns HTTP 503 with
+`PERSISTENCE_CONFIRMATION_PENDING` and removes authentication cookies. The write can still finish
+in the background; callers must inspect state and reuse their idempotency key on retry. Runtime
+handoffs retain their existing `RUNTIME_PERSISTENCE_PENDING` code. Normal success remains blocked
+until the flush resolves. This replaces the previous deadline behavior that returned success
+based only on process memory.
+
+Verification: API acknowledgment barrier, runtime handoff protocol and persistence boundary:
+21 tests pass, including delayed success, stalled mutation, stalled login and failed write cases.
+This fixes one acknowledged-write-loss path; PostgreSQL crash recovery, all mutating GETs, and
+multi-instance concurrency still require verification before section 22 can be certified.
