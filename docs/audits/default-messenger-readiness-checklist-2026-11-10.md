@@ -28,6 +28,10 @@ Nothing was tested on a physical phone or against production.
 - Private by default: nothing is uploaded unless the user shares one message with a business.
 - A shared SMS that looks like an order becomes an invoice on the server.
 - Signed APK build 5 is published and the release manifest gate passes.
+- Direct chats between two Grogoni users are end-to-end encrypted in the PWA
+  (`apps/web/src/e2ee.ts`). This does not depend on anything in this checklist.
+- Contacts can be imported through the Android Chrome contact picker, a vCard or CSV file, or a
+  read-only Google Contacts import.
 
 ## 1. Messenger basics that are missing
 
@@ -135,11 +139,76 @@ Nothing was tested on a physical phone or against production.
       is SMS-only, needs iOS 26 and an Apple entitlement that is limited to the EU, and cannot
       read existing messages. On iPhone the PWA can only hand off to Apple's Messages app.
 
+## 6. Reaching SMS users over data
+
+Finishing sections 1 to 5 does not let Grogoni reach someone's built-in SMS app over mobile data
+or Wi-Fi. That app only receives SMS (carrier signalling, charged per message), MMS (the carrier's
+own data service, billed as MMS) and RCS (closed to third-party apps). The last hop is always a
+paid carrier message. The options below change who sends it, not whether it is paid.
+
+- [ ] **Phone-and-SIM gateway.** The remote SIM send path is already a small gateway: the server
+      queues a message and a linked Android phone sends it from its SIM. Still to add: several
+      phones or SIMs per business with failover, push wake-up, rate limits and retries, a delivery
+      report that reads the carrier status, and per-message accounting. Carrier terms usually
+      forbid bulk sending from consumer SIMs, and Play already treats business sends as a review
+      risk. Suits one shop replying from its own number, not bulk traffic.
+- [ ] **Direct carrier connection over SMPP.** Not in the code. The client is small (a Node
+      library exists), but it needs a carrier or aggregator account first: host, credentials, an
+      allow-listed address and a per-message price. Check the licensing rules for bulk messaging
+      before planning this.
+- [ ] **A host for the SMPP session.** The production API is a Supabase Edge function and cannot
+      hold a long-lived connection. The session belongs in an always-on Node process such as the
+      optional daemon, added as one more provider in `services/api/src/messaging/channel-gateway.ts`.
+- [ ] **Gateway bookkeeping.** Send queue, stored delivery reports, sender ID per business and cost
+      tracking.
+
+## 7. Encrypted Grogoni-to-Grogoni chat
+
+Already implemented for direct person-to-person chats: each message is encrypted on the sender's
+device with AES-256-GCM and its key is wrapped for the recipient. Shop conversations handled by the
+assistant, SMS, MMS and WhatsApp handoffs are not end-to-end encrypted.
+
+- [ ] **Two-phone proof.** "A sends to B, both reload and still decrypt" is still Pending in
+      `docs/testing/android-pwa-messenger-acceptance.md`, as is real push delivery.
+- [ ] **Key loss.** The private key lives in browser storage. Test that clearing site data or
+      changing phone still leaves old messages readable through the recovery path.
+- [ ] **Key rotation.** Each message has a one-time key, but the recipient's long-term key never
+      rotates, so a leaked key exposes past messages. Weaker than Signal-style encryption.
+
+## 8. Business phonebook
+
+A PWA cannot be the phone's contacts app, cannot read the whole phonebook, cannot write to it and
+cannot show caller ID. It can be the business's own contact book: customers, suppliers and staff,
+synced to the account. The Android app reads the full phonebook for names, read-only.
+
+Google Contacts is the way to reach the phone's contacts without native code, because the phone's
+own contacts app syncs with the user's Google account.
+
+- [ ] **Google sign-in in production.** The import (`services/api/src/cp2/google-contacts.ts`)
+      needs `OAUTH_GOOGLE_ENABLED` and client credentials, which are off by default. Not checked on
+      the deployed API.
+- [ ] **Write-back.** The import asks for read-only access. Writing Grogoni customers and suppliers
+      to Google Contacts makes them appear on the phone, with names on calls and texts.
+- [ ] **Ongoing sync.** The import runs on demand only. Use Google's sync tokens on a schedule, with
+      a rule for conflicts and deletions.
+- [ ] **Separate label.** Keep business contacts under their own Google label so they are not mixed
+      with personal ones and can be removed cleanly.
+- [ ] **Disconnect.** Revoke the token and state what happens to contacts already written.
+- [ ] **Google verification.** Contact access is a sensitive permission; Google must verify the app
+      first, which needs the final privacy policy.
+- [ ] **Consent wording.** Customer numbers are copied into a personal Google account. This matters
+      most when a staff member, not the owner, connects theirs.
+- [ ] **Coverage.** Only phones whose contacts sync to Google. SIM-only and phone-only contacts are
+      not seen; iPhone works only if that Google account is added for contacts.
+
 ## Suggested order
 
-1. Test build 5 on two real phones with different carriers; fix what breaks.
+1. Test build 5 on two real phones with different carriers; fix what breaks. Include the encrypted
+   chat and push rows.
 2. Conversation list with thread grouping, merged SMS and MMS, and real notifications.
 3. MMS fixes that lose or reject messages: unsupported parts, photo resizing.
 4. In-app update check.
 5. Commerce link: per-customer sharing, faster reply delivery, payment request.
-6. Final privacy policy and terms, then the Play gates.
+6. Final privacy policy and terms, then the Play gates and Google verification.
+7. Google Contacts write-back and ongoing sync.
+8. SMPP only after a carrier or aggregator account exists.
