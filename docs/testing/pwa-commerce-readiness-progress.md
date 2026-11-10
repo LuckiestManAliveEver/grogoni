@@ -42,3 +42,17 @@ Verification: API acknowledgment barrier, runtime handoff protocol and persisten
 21 tests pass, including delayed success, stalled mutation, stalled login and failed write cases.
 This fixes one acknowledged-write-loss path; PostgreSQL crash recovery, all mutating GETs, and
 multi-instance concurrency still require verification before section 22 can be certified.
+
+## Section 5 — explicit offline shell privacy and interruption recovery
+
+The separate opt-in shell installer now requests its manifest and resources without account
+credentials and refuses private/no-store, redirected, opaque, cookie-setting or Vary responses.
+It validates declared download size, file bounds, duplicate entries and shell content type.
+Immutable assets install before the root HTML, so an interrupted download does not replace the
+previous shell with references to absent new assets. Pinned OCR/model artifact downloads already
+omit credentials and verify content hashes; they do not cache arbitrary application responses.
+
+Verification: 10 offline-shell privacy/recovery tests pass. Installed-browser eviction and crash
+recovery remain separate acceptance tests. Network-first shell caching and explicit user-requested
+offline downloads intentionally differ: an anonymous static shell marked no-cache may be saved
+by the explicit offline installer; private and no-store responses are always rejected.
