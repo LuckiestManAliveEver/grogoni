@@ -65,6 +65,7 @@ describe("PWA installability", () => {
     const html = readFileSync("apps/web/index.html", "utf8");
     const entrypoint = readFileSync("apps/web/src/main.tsx", "utf8");
     const serviceWorkerRegistration = readFileSync("apps/web/src/service-worker.ts", "utf8");
+    const appUpdateNotice = readFileSync("apps/web/src/AppUpdateNotice.tsx", "utf8");
     const serviceWorker = readFileSync("apps/web/public/sw.js", "utf8");
 
     expect(html).toContain('rel="manifest" href="/manifest.webmanifest"');
@@ -78,9 +79,9 @@ describe("PWA installability", () => {
     expect(existsSync(`${publicDirectory}/icons/grogoni-icon-32.png`)).toBe(true);
     expect(entrypoint).toContain("registerAppServiceWorker()");
     expect(serviceWorkerRegistration).toContain('.register("/sw.js"');
-    expect(serviceWorkerRegistration).toContain('addEventListener("controllerchange"');
     expect(serviceWorkerRegistration).toContain("registration.update()");
-    expect(serviceWorkerRegistration).toContain("window.location.reload()");
+    expect(appUpdateNotice).toContain('addEventListener("controllerchange"');
+    expect(appUpdateNotice).toContain("window.location.reload()");
     expect(serviceWorkerRegistration).not.toContain('window.addEventListener("load"');
     expect(serviceWorker).toMatch(/const CACHE_NAME = `\$\{CACHE_PREFIX\}v\d+`/);
     expect(serviceWorker).toContain('"/favicon.ico"');
