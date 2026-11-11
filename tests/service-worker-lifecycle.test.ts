@@ -104,7 +104,10 @@ interface FakeSelf {
   location: { origin: string };
 }
 
-function loadServiceWorker(fetchImpl: (request: MockRequest) => Promise<Response>) {
+function loadServiceWorker(
+  fetchImpl: (request: MockRequest) => Promise<Response>,
+  installHeaders: Record<string, string> = {}
+) {
   const listeners = new Map<string, (event: unknown) => void>();
   const self: FakeSelf = {
     addEventListener: (event, handler) => listeners.set(event, handler),
@@ -122,7 +125,7 @@ function loadServiceWorker(fetchImpl: (request: MockRequest) => Promise<Response
     fetch: (request: MockRequest | string, options?: RequestInit) => {
       if (typeof request === "string") {
         expect(options).toEqual({ credentials: "omit", cache: "no-store" });
-        return Promise.resolve(new Response(`precached:${request}`));
+        return Promise.resolve(new Response(`precached:${request}`, { headers: installHeaders }));
       }
       return fetchImpl(request);
     }
@@ -488,4 +491,29 @@ describe("service worker: sensitive response cache isolation", () => {
     sw.listeners.get("fetch")?.(request.event);
     expect(request.handled()).toBe(false);
   });
+});
+
+describe("service worker: production HTML cache policy", () => {
+  it("installs an anonymous no-cache shell and uses it only when navigation fails", async () => {
+    const fetchImpl = vi.fn().mockRejectedValue(new TypeError("offline"));
+    const sw = loadServiceWorker(fetchImpl, {
+      "cache-control": "no-cache, max-age=0, must-revalidate",
+      "content-type": "text/html"
+    });
+    await runInstallAndActivate(sw);
+    const request = fetchEvent(makeRequest("/", { mode: "navigate" }));
+    sw.listeners.get("fetch")?.(request.event);
+    expect(await (await request.resolve())?.text()).toBe("precached:/");
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["private", "no-store", "no-cache, private"])(
+    "never installs a shell marked %s even when downloaded anonymously",
+    async (policy) => {
+      const sw = loadServiceWorker(vi.fn(), { "cache-control": policy });
+      await runInstallAndActivate(sw);
+      const shell = sw.caches.caches.get("grogoni-app-v14");
+      expect(await shell?.match("/")).toBeUndefined();
+    }
+  );
 });

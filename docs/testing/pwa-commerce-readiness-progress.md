@@ -74,3 +74,15 @@ no-store even if a handler supplies another policy. Static bundles retain their 
 policy. This complements the service-worker and offline installer exclusions.
 
 Verification: API cache privacy and authentication security-hardening suites: 11 tests pass.
+
+## Section 5 — production shell cache-policy regression correction
+
+Anonymous installation now permits storing the known static shell when production sends
+`no-cache, must-revalidate`; ordinary navigation remains network-first. The previous blanket
+no-cache rejection could leave a production install without HTML for an offline fallback.
+Private/no-store, redirected, opaque, cookie-setting and Vary responses remain excluded.
+Runtime static-asset caching still rejects no-cache. The exception applies only to the fixed
+shell allowlist fetched with omitted credentials, never navigation responses or APIs.
+
+Verification: production-policy regression tests cover an offline navigation after anonymous
+installation and rejection of private/no-store shells, alongside the existing lifecycle tests.

@@ -25,7 +25,9 @@ self.addEventListener("install", (event) => {
           APP_SHELL.map(async (path) => {
             // Install an anonymous shell, never an account-personalized navigation response.
             const response = await fetch(path, { credentials: "omit", cache: "no-store" });
-            if (isCacheableResponse(response)) await cache.put(path, response);
+            // no-cache permits storing an anonymous static shell; online navigations still
+            // revalidate through the network. Private/no-store responses remain forbidden.
+            if (isCacheableResponse(response, true)) await cache.put(path, response);
           })
         )
       )
@@ -175,13 +177,14 @@ async function cacheFirst(request, cacheName) {
   return response;
 }
 
-function isCacheableResponse(response) {
+function isCacheableResponse(response, anonymousShell = false) {
   const policy = response.headers.get("cache-control") || "";
   return (
     response.ok &&
     response.type !== "opaque" &&
     !response.redirected &&
-    !/(?:^|,)\s*(?:private|no-store|no-cache)(?:\s|,|=|$)/i.test(policy) &&
+    !/(?:^|,)\s*(?:private|no-store)(?:\s|,|=|$)/i.test(policy) &&
+    (anonymousShell || !/(?:^|,)\s*no-cache(?:\s|,|=|$)/i.test(policy)) &&
     !response.headers.has("set-cookie") &&
     !response.headers.has("vary")
   );
