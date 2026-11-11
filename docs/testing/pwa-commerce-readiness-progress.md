@@ -86,3 +86,12 @@ shell allowlist fetched with omitted credentials, never navigation responses or 
 
 Verification: production-policy regression tests cover an offline navigation after anonymous
 installation and rejection of private/no-store shells, alongside the existing lifecycle tests.
+
+## Section 5 — manifest audit
+
+Audited stable application identity, browser entry-point linkage, installation scope, shortcuts,
+standalone display, and icon availability. Automated checks now inspect PNG signatures and real
+image dimensions against the manifest rather than trusting filenames. The description reflects
+the browser-first messaging and commerce application. Four installability tests pass.
+The installability test no longer depends on the presence of an uncommitted update-notice component;
+update behavior is covered separately by registration/lifecycle tests.

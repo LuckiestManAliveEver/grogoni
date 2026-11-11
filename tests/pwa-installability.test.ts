@@ -8,6 +8,7 @@ describe("PWA installability", () => {
     const manifest = JSON.parse(
       readFileSync(`${publicDirectory}/manifest.webmanifest`, "utf8")
     ) as {
+      id?: string;
       name?: string;
       short_name?: string;
       start_url?: string;
@@ -18,6 +19,7 @@ describe("PWA installability", () => {
       icons?: Array<{ src?: string; sizes?: string; type?: string; purpose?: string }>;
     };
 
+    expect(manifest.id).toBe("/");
     expect(manifest.name).toBe("Grogoni");
     expect(manifest.short_name).toBe("Grogoni");
     expect(manifest.start_url).toBe("/");
@@ -58,6 +60,11 @@ describe("PWA installability", () => {
     for (const icon of manifest.icons ?? []) {
       expect(icon.src).toMatch(/^\/icons\//);
       expect(existsSync(`${publicDirectory}${icon.src}`)).toBe(true);
+      if (icon.type === "image/png") {
+        const bytes = readFileSync(`${publicDirectory}${icon.src}`);
+        expect(bytes.subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
+        expect(`${bytes.readUInt32BE(16)}x${bytes.readUInt32BE(20)}`).toBe(icon.sizes);
+      }
     }
   });
 
@@ -65,7 +72,6 @@ describe("PWA installability", () => {
     const html = readFileSync("apps/web/index.html", "utf8");
     const entrypoint = readFileSync("apps/web/src/main.tsx", "utf8");
     const serviceWorkerRegistration = readFileSync("apps/web/src/service-worker.ts", "utf8");
-    const appUpdateNotice = readFileSync("apps/web/src/AppUpdateNotice.tsx", "utf8");
     const serviceWorker = readFileSync("apps/web/public/sw.js", "utf8");
 
     expect(html).toContain('rel="manifest" href="/manifest.webmanifest"');
@@ -80,8 +86,6 @@ describe("PWA installability", () => {
     expect(entrypoint).toContain("registerAppServiceWorker()");
     expect(serviceWorkerRegistration).toContain('.register("/sw.js"');
     expect(serviceWorkerRegistration).toContain("registration.update()");
-    expect(appUpdateNotice).toContain('addEventListener("controllerchange"');
-    expect(appUpdateNotice).toContain("window.location.reload()");
     expect(serviceWorkerRegistration).not.toContain('window.addEventListener("load"');
     expect(serviceWorker).toMatch(/const CACHE_NAME = `\$\{CACHE_PREFIX\}v\d+`/);
     expect(serviceWorker).toContain('"/favicon.ico"');

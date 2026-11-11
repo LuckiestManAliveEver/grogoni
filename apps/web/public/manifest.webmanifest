@@ -1,7 +1,7 @@
 {
   "name": "Grogoni",
   "short_name": "Grogoni",
-  "description": "Mobile-first business shell for Grogoni merchants.",
+  "description": "Browser-first messaging and commerce for people, businesses and authorized agents.",
   "id": "/",
   "start_url": "/",
   "scope": "/",
@@ -21,13 +21,23 @@
       "name": "Marketplace",
       "short_name": "Marketplace",
       "url": "/marketplace",
-      "icons": [{ "src": "/icons/grogoni-icon-192.png", "sizes": "192x192" }]
+      "icons": [
+        {
+          "src": "/icons/grogoni-icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
     },
     {
       "name": "Seller workspace",
       "short_name": "Workspace",
       "url": "/workspace",
-      "icons": [{ "src": "/icons/grogoni-icon-192.png", "sizes": "192x192" }]
+      "icons": [
+        {
+          "src": "/icons/grogoni-icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
     }
   ],
   "icons": [
