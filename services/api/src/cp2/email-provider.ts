@@ -30,6 +30,15 @@ export interface EmailProvider {
   sendEncryptedMessageNotification(input: EncryptedMessageEmailInput): Promise<"sent" | "failed">;
 }
 
+export class EmailDeliveryError extends Cp2Error {
+  constructor(
+    readonly providerStatus: number,
+    readonly providerCode: string
+  ) {
+    super(502, "email_delivery_failed", "The email API rejected the message.");
+  }
+}
+
 interface ResendEmailConfiguration {
   apiKey: string;
   from: string;
