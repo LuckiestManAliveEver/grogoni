@@ -348,6 +348,9 @@ export function buildApi(options: BuildApiOptions = {}) {
   });
 
   app.addHook("onSend", async (request, reply, payload) => {
+    if (process.env.NODE_ENV === "production") {
+      reply.header("strict-transport-security", "max-age=31536000; includeSubDomains");
+    }
     reply.header("x-content-type-options", "nosniff");
     reply.header("x-frame-options", "DENY");
     reply.header("referrer-policy", "no-referrer");
