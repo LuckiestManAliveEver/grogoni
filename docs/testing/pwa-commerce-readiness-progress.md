@@ -95,3 +95,16 @@ image dimensions against the manifest rather than trusting filenames. The descri
 the browser-first messaging and commerce application. Four installability tests pass.
 The installability test no longer depends on the presence of an uncommitted update-notice component;
 update behavior is covered separately by registration/lifecycle tests.
+
+## Section 8 — dependency advisory remediation
+
+Updated Fastify in API, sync and computer-runtime services to the patched 5.12 series, upgraded
+the static-file plugin, and pinned safe minimums for URI parsing, XML parsing, brace expansion and
+IP-address parsing. The isolated committed-manifest dependency graph reports zero production
+advisories at every severity. The working lockfile retains pre-existing UI dependency additions;
+only the security graph is staged in this commit.
+
+Verification: 49 targeted tests pass across authentication, persistence acknowledgments, HTTP
+cache privacy, document imports, file delivery and inference-provider security. Workspace packages
+build in the isolated checkout. A stable full-suite run is underway separately; it is not yet a
+passing release gate.
