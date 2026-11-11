@@ -693,17 +693,17 @@ export function buildApi(options: BuildApiOptions = {}) {
       decorateReply: true,
       cacheControl: false,
       setHeaders(response, pathName) {
-        response.setHeader(
+        response.header(
           "Content-Security-Policy",
           "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; " +
             "form-action 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; " +
             "font-src 'self' data:; manifest-src 'self'; worker-src 'self'; child-src 'self'; " +
             "connect-src 'self' https://*.grogoni.com wss://*.grogoni.com; upgrade-insecure-requests"
         );
-        response.setHeader("Cross-Origin-Embedder-Policy", "credentialless");
-        response.setHeader("Cross-Origin-Opener-Policy", "same-origin");
-        response.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-        response.setHeader(
+        response.header("Cross-Origin-Embedder-Policy", "credentialless");
+        response.header("Cross-Origin-Opener-Policy", "same-origin");
+        response.header("Referrer-Policy", "strict-origin-when-cross-origin");
+        response.header(
           "Cache-Control",
           pathName.includes("/assets/")
             ? "public, max-age=31536000, immutable"
