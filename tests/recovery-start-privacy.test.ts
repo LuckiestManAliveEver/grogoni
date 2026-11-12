@@ -79,6 +79,48 @@ describe("recovery start privacy", () => {
     await app.close();
   });
 
+  it("waits for delivery before responding when there is no waitUntil hook", async () => {
+    const store = createCp2Store();
+    const deliveries: EmailOtpInput[] = [];
+    const backgroundTasks: Promise<unknown>[] = [];
+    let releaseDelivery: () => void = () => {};
+    const deliveryGate = new Promise<void>((resolve) => {
+      releaseDelivery = resolve;
+    });
+    const setupApp = buildApi({
+      cp2: {
+        store,
+        emailProvider: createEmailProvider(async (input) => {
+          deliveries.push(input);
+        }, true),
+        waitUntil: (work) => backgroundTasks.push(work)
+      }
+    });
+    const email = "owner.delivery@example.test";
+    await addVerifiedEmail(setupApp, email, deliveries, backgroundTasks);
+    await setupApp.close();
+
+    const recoveryApp = buildApi({
+      cp2: {
+        store,
+        emailProvider: createEmailProvider(async () => {
+          await deliveryGate;
+        }, true)
+      }
+    });
+
+    const recovery = startRecovery(recoveryApp, email);
+    const respondedBeforeDelivery = await Promise.race([
+      recovery.then(() => true),
+      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 50))
+    ]);
+    expect(respondedBeforeDelivery).toBe(false);
+    releaseDelivery();
+    const response = await recovery;
+    expect(response.statusCode).toBe(200);
+    await recoveryApp.close();
+  });
+
   it("uses the same response when recovery email delivery fails", async () => {
     let sendCount = 0;
     const deliveries: EmailOtpInput[] = [];

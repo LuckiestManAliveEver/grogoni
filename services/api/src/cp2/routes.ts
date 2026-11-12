@@ -846,7 +846,11 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
                 "Recovery email could not be delivered."
               );
             });
-          options.waitUntil?.(delivery);
+          if (options.waitUntil) {
+            options.waitUntil(delivery);
+            return recoveryStartResponse(transaction.transactionId);
+          }
+          await delivery;
           return recoveryStartResponse(transaction.transactionId);
         } catch (error) {
           request.log.error(
