@@ -808,7 +808,13 @@ function requiresRuntimeDurabilityConfirmation(url: string): boolean {
 // that lands behind a large backlog could otherwise wait indefinitely. This does not cancel the
 // underlying flush - it keeps running - it only stops this response from waiting on it forever.
 function withPersistenceFlushDeadline<T>(flush: Promise<T>, request: FastifyRequest): Promise<T> {
-  const deadlineMs = positiveIntegerFromEnv("PERSISTENCE_FLUSH_RESPONSE_DEADLINE_MS", 8_000);
+  // Keep the user-facing auth and runtime requests from sitting behind a stalled shared-flush
+  // queue for many seconds. The write itself remains allowed to finish in the background, but the
+  // HTTP response must fail fast enough to avoid long waits for the client when the queue is jammed.
+  const deadlineMs = positiveIntegerFromEnv(
+    "PERSISTENCE_FLUSH_RESPONSE_DEADLINE_MS",
+    Math.max(250, interactiveResponseBudgetMs * 4)
+  );
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => {
       reject(new PersistenceFlushDeadlineExceeded());
