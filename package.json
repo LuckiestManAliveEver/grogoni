@@ -10,14 +10,27 @@
   },
   "pnpm": {
     "overrides": {
-      "fast-uri": "^3.1.5",
+      "fast-uri": "^3.1.7",
       "find-my-way": "^9.7.0",
       "tar": "^7.5.21",
-      "sharp": "^0.35.0"
+      "sharp": "^0.35.0",
+      "@xmldom/xmldom": "^0.8.15",
+      "brace-expansion@>=4.0.0 <5.0.11": "^5.0.11",
+      "ip-address": "^10.7.4"
+    },
+    "patchedDependencies": {
+      "libsignal@6.0.0": "patches/libsignal@6.0.0.patch"
     }
   },
   "scripts": {
+    "android:web:bundle": "node scripts/bundle-android-web.mjs",
+    "android:direct:build": "python3 scripts/build-direct-android-release.py",
+    "android:direct:prepare": "node scripts/prepare-direct-android-release.mjs",
+    "android:icons": "python3 scripts/generate-android-launcher-icons.py",
+    "android:play:build": "python3 scripts/build-direct-android-release.py --bundle",
+    "android:play:verify": "node scripts/verify-android-play-bundle.mjs",
     "eval:inventory:hosted": "INVENTORY_BENCHMARK_PROVIDER=openrouter node --env-file-if-exists=.env.openrouter --import tsx services/api/src/benchmarks/run-inventory-benchmark.ts --require-model-pass",
+    "eval:my-assistant-runtime": "node --env-file-if-exists=.env --env-file-if-exists=.env.openrouter --import tsx scripts/eval-my-assistant-runtime.ts",
     "eval:guest-intent": "node --env-file-if-exists=.env --env-file-if-exists=.env.openrouter --import tsx scripts/eval-guest-intent.ts",
     "eval:inventory": "node --import tsx services/api/src/benchmarks/run-inventory-benchmark.ts",
     "daemon:dev": "pnpm --filter @grogoni/api daemon:dev",
@@ -35,7 +48,8 @@
     "android:identity:verify": "node scripts/verify-android-release-identity.mjs",
     "android:legal:gate": "node scripts/verify-play-legal-readiness.mjs --require-approved",
     "android:legal:verify": "node scripts/verify-play-legal-readiness.mjs",
-    "android:release:apk": "cd apps/android && ./gradlew :app:assembleRelease",
+    "android:release:apk": "pnpm android:web:bundle && cd apps/android && gradle :app:assembleRelease",
+    "android:check": "pnpm android:web:bundle && cd apps/android && gradle :app:testDebugUnitTest :app:assembleDebug :app:lintDebug",
     "android:release:assetlinks": "node scripts/generate-android-assetlinks.mjs",
     "build": "pnpm -r --if-present build",
     "build:production": "pnpm check:esm-relative-imports && pnpm build:production:workspace && pnpm check:production-imports && pnpm check:retired-runtime-references && pnpm check:retired-device-model-references && pnpm check:render-inference-boundaries",

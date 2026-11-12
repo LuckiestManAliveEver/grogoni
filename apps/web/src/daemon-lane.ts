@@ -109,15 +109,19 @@ async function runClaim(
   try {
     if (signal?.aborted) return await release();
     const device = claim.message === null ? null : deviceFor();
-    const selectedModel =
+    const conversationTask =
       claim.task.payload.kind === "agent" && claim.task.payload.conversation
-        ? claim.task.payload.modelId
+        ? claim.task.payload
         : null;
     if (
       (claim.message !== null && /^\/(?:business\s|skills?(?:\s|$))/.test(claim.message)) ||
       device === null ||
       claim.message === null ||
-      (selectedModel !== null && device.modelId !== selectedModel)
+      // A conversation's chosen model and engine (My Assistant's details) bind its tasks. The
+      // device only does plain generation, so any engine other than the default runs on the server.
+      (conversationTask !== null &&
+        (device.modelId !== conversationTask.modelId ||
+          conversationTask.agentAdapterId !== "grogoni"))
     )
       return await executeOnServer();
     const outcome = await generateUnderLease(

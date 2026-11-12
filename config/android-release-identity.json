@@ -2,7 +2,7 @@
   "$schema": "./android-release-identity.schema.json",
   "schemaVersion": 1,
   "checkpoint": "CP26",
-  "lastReviewedOn": "2026-07-15",
+  "lastReviewedOn": "2026-11-05",
   "identityStatus": "proposed",
   "brand": {
     "appName": "Grogoni",
@@ -12,14 +12,14 @@
   "android": {
     "applicationId": "market.grogoni.app",
     "applicationIdStatus": "proposed",
-    "wrapper": "trusted-web-activity",
+    "wrapper": "native-kotlin",
     "distribution": "google-play",
     "firstTrack": "internal",
     "versionName": "0.1.0",
-    "versionCode": 1,
+    "versionCode": 5,
     "minSdk": 23,
-    "targetSdk": 35,
-    "compileSdk": 35
+    "targetSdk": 36,
+    "compileSdk": 36
   },
   "web": {
     "origin": "https://grogoni.com",
@@ -51,7 +51,7 @@
     "rotationAndRecoveryDocumented": false
   },
   "policyBaseline": {
-    "targetApiVerifiedOn": "2026-07-15",
+    "targetApiVerifiedOn": "2026-11-05",
     "targetApiSource": "https://developer.android.com/google/play/requirements/target-sdk",
     "revalidateBeforeFirstUpload": true
   },

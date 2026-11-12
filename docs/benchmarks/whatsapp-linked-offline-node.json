@@ -1,0 +1,15 @@
+{
+  "kind": "offline-import-only",
+  "node": "v22.19.0",
+  "arch": "x64",
+  "platform": "linux",
+  "importMs": 2247,
+  "rssBeforeBytes": 45117440,
+  "rssAfterBytes": 141340672,
+  "rssDeltaBytes": 96223232,
+  "heapDeltaBytes": 22208928,
+  "freshAuthJsonBytes": 1145,
+  "encryptedEnvelopeOverheadBytes": 29,
+  "liveSockets": 0,
+  "caveat": "Does not measure linked-session memory, reconnect latency, Android or battery usage."
+}

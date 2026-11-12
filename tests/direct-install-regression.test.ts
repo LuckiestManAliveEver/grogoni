@@ -19,18 +19,21 @@ describe("direct Android installation flow", () => {
     expect(installUtils).toContain("dismissedInstallPrompt");
   });
 
-  it("publishes an Android App Links file for the production package", () => {
+  it("publishes only certificate-backed Android App Links", () => {
     const assetLinksPath = "apps/web/public/.well-known/assetlinks.json";
     expect(existsSync(assetLinksPath)).toBe(true);
-
     const assetLinks = JSON.parse(readFileSync(assetLinksPath, "utf8"));
     expect(Array.isArray(assetLinks)).toBe(true);
-    expect(assetLinks[0]).toMatchObject({
-      relation: ["delegate_permission/common.handle_all_urls"],
-      target: {
-        namespace: "android_app",
-        package_name: "market.grogoni.app"
+    for (const link of assetLinks) {
+      expect(link.relation).toContain("delegate_permission/common.handle_all_urls");
+      expect(link).toMatchObject({
+        target: { namespace: "android_app", package_name: "market.grogoni.app" }
+      });
+      expect(link.target.sha256_cert_fingerprints.length).toBeGreaterThan(0);
+      for (const fingerprint of link.target.sha256_cert_fingerprints) {
+        expect(fingerprint).toMatch(/^([A-F0-9]{2}:){31}[A-F0-9]{2}$/);
+        expect(fingerprint).not.toContain("AA:BB:CC:DD:EE:FF");
       }
-    });
+    }
   });
 });

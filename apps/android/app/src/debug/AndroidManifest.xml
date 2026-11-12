@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug only: instrumented tests insert contacts to prove the phonebook read. Release builds never edit contacts. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.WRITE_CONTACTS" />
+</manifest>

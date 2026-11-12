@@ -1,3 +1,5 @@
+import { daemonResultText } from "./result-text.js";
+import { withLookupDeadline } from "./conversation-runtime.js";
 import { Buffer } from "node:buffer";
 import type {
   DaemonPayload,
@@ -148,8 +150,13 @@ export interface EdgeDaemonDependencies {
   authorizeConversation?: (
     request: Request,
     conversationId: string
-  ) => Promise<{ modelId: string }>;
+  ) => Promise<{ modelId: string; agentAdapterId: "grogoni" | "pi" }>;
   deliverConversationTask?: (task: DaemonTask) => Promise<void>;
+  /** The model and engine a conversation task's conversation is on now; null to keep the
+   *  task's own (conversation gone). Read when the task is claimed and before the server runs it. */
+  currentConversationRuntime?: (
+    task: DaemonTask
+  ) => Promise<{ modelId: string; agentAdapterId: "grogoni" | "pi" } | null>;
   loadConversationHistory?: (task: DaemonTask) => Promise<RuntimeModelConversationMessage[]>;
   runBusinessSkill?: (
     task: DaemonTask,
@@ -246,10 +253,63 @@ export function createEdgeDaemon(dependencies: EdgeDaemonDependencies) {
         ? { loadConversationHistory: dependencies.loadConversationHistory }
         : {})
     });
+  // A conversation task runs on its conversation's current model and engine, not the ones it was
+  // created with: a scheduled or recurring task must follow a later switch in My Assistant's
+  // details. Best effort: if the lookup fails the task keeps its stored runtime.
+  async function withCurrentRuntime(task: DaemonTask): Promise<DaemonTask> {
+    const payload = task.payload;
+    if (
+      payload.kind !== "agent" ||
+      !payload.conversation ||
+      !task.owner_user_id ||
+      !dependencies.currentConversationRuntime
+    )
+      return task;
+    let runtime: Awaited<ReturnType<NonNullable<typeof dependencies.currentConversationRuntime>>>;
+    try {
+      runtime = await withLookupDeadline(dependencies.currentConversationRuntime(task));
+    } catch (error) {
+      report({
+        type: "conversation_runtime_unavailable",
+        taskId: task.id,
+        // A Postgres code (e.g. 42501 for a missing grant), never row data; timeouts have none.
+        errorCode:
+          typeof error === "object" && error !== null && "code" in error
+            ? String((error as { code: unknown }).code)
+            : "LOOKUP_FAILED"
+      });
+      return task;
+    }
+    if (
+      runtime === null ||
+      (runtime.modelId === payload.modelId && runtime.agentAdapterId === payload.agentAdapterId)
+    )
+      return task;
+    const next: DaemonTask = { ...task, payload: { ...payload, ...runtime } };
+    // The same checks as creating or retrying it: a runtime this server cannot run (a model the
+    // operator has since removed) keeps the task on the runtime it already has.
+    if (refusal(next.payload) !== null) {
+      report({ type: "conversation_runtime_refused", taskId: task.id });
+      return task;
+    }
+    // This run uses the new runtime either way; an unsaved one is read again on the next claim.
+    let saved = false;
+    try {
+      saved = await store.updateLeasedPayload(next);
+    } catch {
+      saved = false;
+    }
+    report({
+      type: saved ? "conversation_runtime_refreshed" : "conversation_runtime_unsaved",
+      taskId: task.id
+    });
+    return next;
+  }
   // User tasks store one result shape for both lanes; operator tasks keep the raw agent result.
   const execute: DaemonExecutor = async (task, signal) => {
-    const result = await baseExecute(task, signal);
-    return task.owner_user_id === null ? result : userResultFromAgent(task, result);
+    const current = await withCurrentRuntime(task);
+    const result = await baseExecute(current, signal);
+    return task.owner_user_id === null ? result : userResultFromAgent(current, result);
   };
   /** Best effort: a failed hint write is repaired by the hourly sweep. */
   async function lowerHint(at: Date) {
@@ -331,7 +391,7 @@ export function createEdgeDaemon(dependencies: EdgeDaemonDependencies) {
         );
       intervalMs = body.intervalMs;
     }
-    let conversationModelId: string | undefined;
+    let conversationRuntime: { modelId: string; agentAdapterId: "grogoni" | "pi" } | undefined;
     let conversation: Extract<DaemonPayload, { kind: "agent" }>["conversation"];
     if (body.conversation !== undefined) {
       const value = body.conversation as Record<string, unknown> | null;
@@ -358,7 +418,7 @@ export function createEdgeDaemon(dependencies: EdgeDaemonDependencies) {
           "task_conversation_unavailable",
           "Conversation delivery is unavailable."
         );
-      conversationModelId = (await dependencies.authorizeConversation(request, value.id)).modelId;
+      conversationRuntime = await dependencies.authorizeConversation(request, value.id);
       conversation = {
         id: value.id,
         clientMessageId: value.clientMessageId,
@@ -379,7 +439,7 @@ export function createEdgeDaemon(dependencies: EdgeDaemonDependencies) {
         );
       runAt = new Date(Math.max(now, parsed));
     }
-    if (config.modelId === null && !conversationModelId)
+    if (config.modelId === null && !conversationRuntime)
       throw new DaemonHttpError(
         503,
         "daemon_server_lane_unavailable",
@@ -389,8 +449,9 @@ export function createEdgeDaemon(dependencies: EdgeDaemonDependencies) {
     const payload: DaemonPayload = {
       kind: "agent",
       message,
-      modelId: conversationModelId ?? config.modelId!,
-      agentAdapterId: "grogoni",
+      modelId: conversationRuntime?.modelId ?? config.modelId!,
+      // The conversation's chosen agent engine ("My Assistant" details); "grogoni" otherwise.
+      agentAdapterId: conversationRuntime?.agentAdapterId ?? "grogoni",
       ...(conversation ? { conversation } : {})
     };
     const refused = refusal(payload);
@@ -564,6 +625,7 @@ export function createEdgeDaemon(dependencies: EdgeDaemonDependencies) {
     if (gateway === null) {
       gateway = buildDaemonGateway({
         store,
+        maxActivePerUser: config.maxActivePerUser,
         token: serviceToken,
         ready: () => true,
         defaults: { modelId: config.modelId ?? "unconfigured", agentAdapterId: "grogoni" },
@@ -627,12 +689,29 @@ export function createEdgeDaemon(dependencies: EdgeDaemonDependencies) {
       if (action === "retry") {
         if (method !== "POST")
           throw new DaemonHttpError(405, "method_not_allowed", "Method not allowed.");
+        let runtime: { modelId: string; agentAdapterId: "grogoni" | "pi" } | undefined;
         if (task.payload.kind === "agent" && task.payload.conversation) {
           if (!dependencies.authorizeConversation)
-            throw new DaemonHttpError(503, "daemon_unavailable", "Daemon unavailable.");
-          await dependencies.authorizeConversation(request, task.payload.conversation.id);
+            throw new DaemonHttpError(
+              503,
+              "daemon_unavailable",
+              "Background tasks are not available right now."
+            );
+          // Re-run on the conversation's current model and engine: the usual reason to retry is
+          // having just picked a working one in My Assistant's details.
+          runtime = await dependencies.authorizeConversation(request, task.payload.conversation.id);
+          // The same checks as creating it: the new engine or model must be able to run it.
+          const refused = refusal({ ...task.payload, ...runtime });
+          if (refused === "MESSAGE_TOO_LARGE")
+            throw new DaemonHttpError(400, "task_message_invalid", "message is too large.");
+          if (refused !== null)
+            throw new DaemonHttpError(
+              503,
+              "daemon_server_lane_unavailable",
+              "Background tasks are not available right now."
+            );
         }
-        const outcome = await store.retryOwned(userId, id!, config.maxActivePerUser);
+        const outcome = await store.retryOwned(userId, id!, config.maxActivePerUser, runtime);
         if (outcome === "limited")
           throw new DaemonHttpError(429, "daemon_task_limit", "Too many active tasks.");
         if (outcome === "conflict")
@@ -667,7 +746,8 @@ export function createEdgeDaemon(dependencies: EdgeDaemonDependencies) {
       throw new DaemonHttpError(405, "method_not_allowed", "Method not allowed.");
     if (id === undefined) {
       // Dead-lettering exhausted leases is the server lane's sweep, never a browser poll's.
-      const task = await store.claimOwned(userId, config.browserLeaseMs);
+      const claimedTask = await store.claimOwned(userId, config.browserLeaseMs);
+      const task = claimedTask === null ? null : await withCurrentRuntime(claimedTask);
       if (task === null) {
         return json({ claim: null, nextDueInMs: await store.nextOwnedDueInMs(userId) });
       }
@@ -801,15 +881,7 @@ export function maintenanceFromJobRunner(
 
 /** The reply text from an agent result: the runtime's JSON contract, or the raw output. */
 function userResultFromAgent(task: DaemonTask, result: unknown): UserTaskResult {
-  const completion = (result as { completion?: { outputText?: unknown } } | null)?.completion;
-  const raw = typeof completion?.outputText === "string" ? completion.outputText : "";
-  let text = raw;
-  try {
-    const parsed = JSON.parse(raw) as { message?: unknown };
-    if (typeof parsed.message === "string") text = parsed.message;
-  } catch {
-    // Not the JSON contract: keep the raw text.
-  }
+  const text = daemonResultText(result);
   return {
     text,
     modelId:

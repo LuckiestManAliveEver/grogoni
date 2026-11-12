@@ -1,0 +1,17 @@
+.secure-shop-prompt {
+  position: fixed;
+  z-index: 11;
+  top: calc(5rem + env(safe-area-inset-top, 0px));
+  right: max(1rem, env(safe-area-inset-right, 0px));
+  left: max(1rem, env(safe-area-inset-left, 0px));
+  max-width: 32rem;
+  max-height: 70dvh;
+  overflow-y: auto;
+  margin: 0 auto;
+  padding: 1rem;
+  border: 1px solid var(--grogoni-line-strong);
+  border-radius: 1rem;
+  background: var(--grogoni-paper);
+  color: var(--grogoni-ink);
+  box-shadow: 0 8px 32px #0003;
+}

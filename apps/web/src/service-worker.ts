@@ -1,5 +1,7 @@
 import { isExplicitOfflineMode } from "./offline-runtime";
 export function registerAppServiceWorker() {
+  // The native host serves this same build from its signed APK, including while offline.
+  if (document.querySelector('meta[name="grogoni-native-channel"]') !== null) return;
   if (!("serviceWorker" in navigator)) return;
 
   if (import.meta.env.DEV) {

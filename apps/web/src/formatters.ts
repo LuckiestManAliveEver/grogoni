@@ -77,6 +77,7 @@ export function formatChannelProvider(provider: ChannelProvider): string {
     grogoni: "Grogoni",
     telegram: "Telegram",
     whatsapp: "WhatsApp",
+    whatsapp_linked: "WhatsApp Linked Devices",
     messenger: "Messenger",
     instagram: "Instagram",
     tiktok: "TikTok",

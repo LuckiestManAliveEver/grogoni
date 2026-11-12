@@ -1,5 +1,13 @@
 # Omnichannel messaging gateway
 
+## Linked Devices checkpoint — 2026-11-06
+
+The default-off `whatsapp_linked` connector now reuses this gateway for approved text ingestion
+and manual replies. The official `whatsapp` adapter is unchanged. Automatic Daemon replies,
+media and live-account validation remain unfinished; see the
+[implementation checkpoint](whatsapp-linked-devices.md) and
+[verification report](whatsapp-linked-implementation-report.md).
+
 ## Audit result
 
 Grogoni already had a useful canonical conversation and message model, delivery attempts,

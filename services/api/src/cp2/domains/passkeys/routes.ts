@@ -8,8 +8,11 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { AuthenticationResponseJSON, RegistrationResponseJSON } from "@simplewebauthn/server";
 import { Cp2Error } from "../../cp2-error.js";
 import { type Cp2Store, readSessionCookie } from "../../store.js";
+import type { EmailProvider } from "../../email-provider.js";
 import type { AuthRuntimeConfig } from "../../auth-runtime-config.js";
 import {
+  notifyAccountRecovery,
+  enforceAuthIpRate,
   parseOptionalString,
   parseString,
   sendCp2Error,
@@ -29,38 +32,49 @@ interface PasskeyAuthenticationVerifyBody {
 
 interface PasskeyAuthenticationOptionsBody {
   purpose?: string;
+  identifier?: string;
+}
+
+/** The origin and relying-party id a passkey ceremony is bound to. Refuses unknown origins. */
+export function resolvePasskeyRelyingParty(
+  request: FastifyRequest,
+  authRuntime: AuthRuntimeConfig
+): { origin: string; rpId: string } {
+  const origin = request.headers.origin;
+
+  if (
+    !authRuntime.passkeysEnabled ||
+    origin === undefined ||
+    !authRuntime.expectedPasskeyOrigins.has(origin)
+  ) {
+    throw new Cp2Error(
+      403,
+      "passkey_origin_not_allowed",
+      "Passkeys are not available from this origin."
+    );
+  }
+
+  const url = new URL(origin);
+  const configuredRpId = process.env.WEBAUTHN_RP_ID?.trim();
+  const rpId =
+    configuredRpId && configuredRpId.length > 0
+      ? configuredRpId
+      : url.hostname.startsWith("www.")
+        ? url.hostname.slice(4)
+        : url.hostname;
+
+  return { origin: url.origin, rpId };
 }
 
 export function registerPasskeysRoutes(
   app: FastifyInstance,
   store: Cp2Store,
-  authRuntime: AuthRuntimeConfig
+  authRuntime: AuthRuntimeConfig,
+  authAttemptsByIp: Map<string, number[]>,
+  emailProvider: EmailProvider
 ): void {
   function passkeyRelyingParty(request: FastifyRequest): { origin: string; rpId: string } {
-    const origin = request.headers.origin;
-
-    if (
-      !authRuntime.passkeysEnabled ||
-      origin === undefined ||
-      !authRuntime.expectedPasskeyOrigins.has(origin)
-    ) {
-      throw new Cp2Error(
-        403,
-        "passkey_origin_not_allowed",
-        "Passkeys are not available from this origin."
-      );
-    }
-
-    const url = new URL(origin);
-    const configuredRpId = process.env.WEBAUTHN_RP_ID?.trim();
-    const rpId =
-      configuredRpId && configuredRpId.length > 0
-        ? configuredRpId
-        : url.hostname.startsWith("www.")
-          ? url.hostname.slice(4)
-          : url.hostname;
-
-    return { origin: url.origin, rpId };
+    return resolvePasskeyRelyingParty(request, authRuntime);
   }
 
   app.post("/auth/passkeys/register/options", async (request, reply) => {
@@ -68,7 +82,8 @@ export function registerPasskeysRoutes(
       const relyingParty = passkeyRelyingParty(request);
       return await store.beginPasskeyRegistration({
         sessionId: readSessionCookie(request.headers.cookie),
-        rpId: relyingParty.rpId
+        rpId: relyingParty.rpId,
+        origin: relyingParty.origin
       });
     } catch (error) {
       return sendCp2Error(reply, error);
@@ -100,9 +115,14 @@ export function registerPasskeysRoutes(
     async (request: FastifyRequest<{ Body: PasskeyAuthenticationOptionsBody }>, reply) => {
       try {
         const relyingParty = passkeyRelyingParty(request);
+        enforceAuthIpRate(authAttemptsByIp, request, "passkey_options", 10);
         return await store.beginPasskeyAuthentication({
           rpId: relyingParty.rpId,
-          purpose: parsePasskeyAuthenticationPurpose(request.body?.purpose)
+          origin: relyingParty.origin,
+          purpose: parsePasskeyAuthenticationPurpose(request.body?.purpose),
+          ...(request.body?.identifier === undefined
+            ? {}
+            : { recoveryIdentifier: parseString(request.body.identifier, "identifier") })
         });
       } catch (error) {
         return sendCp2Error(reply, error);
@@ -115,6 +135,7 @@ export function registerPasskeysRoutes(
     async (request: FastifyRequest<{ Body: PasskeyAuthenticationVerifyBody }>, reply) => {
       try {
         const relyingParty = passkeyRelyingParty(request);
+        enforceAuthIpRate(authAttemptsByIp, request, "passkey_verify", 10);
         const result = await store.completePasskeyAuthentication({
           ceremonyId: parseString(request.body.ceremonyId, "ceremonyId"),
           origin: relyingParty.origin,
@@ -174,14 +195,15 @@ export function registerPasskeysRoutes(
   );
 
   app.post(
-    "/auth/pin/recover/passkey",
+    "/auth/pin/recover/device",
     async (request: FastifyRequest<{ Body: { pin?: string } }>, reply) => {
       try {
-        const result = store.recoverPhoneAccountPinWithPasskey({
+        const result = store.recoverPhoneAccountPinWithDevice({
           sessionId: readSessionCookie(request.headers.cookie),
           pin: parseString(request.body.pin, "pin")
         });
         setAuthSessionCookies(reply, request, store, result.session.id);
+        await notifyAccountRecovery(store, emailProvider, request, result.session.id, "PIN");
         return result;
       } catch (error) {
         return sendCp2Error(reply, error);
@@ -195,16 +217,23 @@ function parsePasskeyResponse<T>(value: unknown): T {
     throw new Cp2Error(400, "passkey_response_required", "Passkey response is required.");
   }
 
+  const record = value as Record<string, unknown>;
+  if (
+    typeof record.id !== "string" ||
+    record.type !== "public-key" ||
+    record.response === null ||
+    typeof record.response !== "object" ||
+    Array.isArray(record.response)
+  ) {
+    throw new Cp2Error(400, "passkey_response_invalid", "Passkey response is invalid.");
+  }
   return value as T;
 }
 
 function parsePasskeyAuthenticationPurpose(value: string | undefined): "login" | "pin_recovery" {
+  if (value === "pin_recovery") return value;
   if (value === undefined || value === "login") {
     return "login";
-  }
-
-  if (value === "pin_recovery") {
-    return "pin_recovery";
   }
 
   throw new Cp2Error(400, "passkey_purpose_invalid", "Passkey purpose is invalid.");

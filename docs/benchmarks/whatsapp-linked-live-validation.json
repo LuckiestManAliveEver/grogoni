@@ -1,0 +1,32 @@
+{
+  "date": "2026-11-07",
+  "timezone": "America/New_York",
+  "scope": "Explicitly authorized test account and consenting test recipient only",
+  "pairing": "passed",
+  "encryptedSessionRestoreAfterApiRestart": "passed",
+  "canonicalInbound": "passed",
+  "fixedReply": {
+    "providerAcknowledged": true,
+    "recipientReceiptConfirmedByUser": true,
+    "authorizedReplyLimit": 1
+  },
+  "lunaReply": {
+    "path": "WhatsApp -> canonical inbox -> existing Daemon -> existing OpenRouter Luna runtime -> WhatsApp",
+    "language": "Kiswahili",
+    "providerAcknowledged": true,
+    "recipientReceiptConfirmedByUser": true,
+    "authorizedReplyLimit": 1
+  },
+  "cleanup": {
+    "temporaryLinkedDevicesLoggedOut": true,
+    "temporaryEncryptedCredentialsRemoved": true
+  },
+  "notCertifiedByTheseTests": [
+    "Media delivery",
+    "Group delivery",
+    "Business tool execution over the live protocol",
+    "Android local Node worker",
+    "Connected-session memory or battery usage",
+    "Production deployment"
+  ]
+}

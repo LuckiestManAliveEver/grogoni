@@ -1,0 +1,10 @@
+
+market.grogoni.app.sms.MessengerReadinessInstrumentedTest:........
+market.grogoni.app.sms.MmsInstrumentedTest:....
+market.grogoni.app.sms.SharedMessengerUiInstrumentedTest:.
+
+Time: 10.749
+
+OK (13 tests)
+
+

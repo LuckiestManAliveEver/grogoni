@@ -121,6 +121,51 @@ describe("Edge credential compatibility", () => {
       id
     ]);
   });
+  it("enrolls and returns a recovery credential for an existing authenticated account", async () => {
+    const publicKey = generateKeyPairSync("ec", { namedCurve: "prime256v1" }).publicKey.export({
+      format: "jwk"
+    });
+    const query = vi.fn(async (sql: string) => {
+      if (sql.includes("select s.* from sessions")) return { rows: [{ ...session }] };
+      if (sql.includes("from accounts a")) return { rows: [account] };
+      return { rows: [] };
+    });
+    const { routes } = setup(query);
+    const response = await routes(
+      request("/auth/continue", { devicePublicKeyJwk: publicKey }, `grogoni_session=${id}`),
+      "/auth/continue"
+    );
+    expect(response!.status).toBe(200);
+    expect(await response!.json()).toMatchObject({
+      deviceRecoveryCredentialId: expect.any(String),
+      isNewAccount: false
+    });
+    expect(
+      query.mock.calls.some(([sql]) => sql.includes("insert into cp2_device_recovery_credentials"))
+    ).toBe(true);
+    expect(query.mock.calls.some(([sql]) => sql.includes("insert into sessions"))).toBe(false);
+  });
+
+  it("does not bind another account's recovery key to the current account", async () => {
+    const publicKey = generateKeyPairSync("ec", { namedCurve: "prime256v1" }).publicKey.export({
+      format: "jwk"
+    });
+    const query = vi.fn(async (sql: string) => {
+      if (sql.includes("select s.* from sessions")) return { rows: [{ ...session }] };
+      if (sql.includes("from accounts a")) return { rows: [account] };
+      if (sql.includes("select record from cp2_device_recovery_credentials"))
+        return { rows: [{ record: { id, accountId: "other-account" } }] };
+      return { rows: [] };
+    });
+    const { routes } = setup(query);
+    const response = await routes(
+      request("/auth/continue", { devicePublicKeyJwk: publicKey }, `grogoni_session=${id}`),
+      "/auth/continue"
+    );
+    expect(response!.status).toBe(409);
+    expect(await response!.json()).toMatchObject({ code: "device_credential_in_use" });
+  });
+
   it.each([true, false])(
     "preserves scrypt formats and verifies secret and credential (PIN=%s)",
     (pin) => {
@@ -385,12 +430,147 @@ describe("native Edge authentication routes", () => {
       expect(query).not.toHaveBeenCalled();
     }
   );
-  it("requires an authenticated session for PIN setup", async () => {
+  describe("session step-up", () => {
+    const cookie = `grogoni_session=${id}`;
+    const stepUp = (attempts: number) => {
+      const statements: Array<[string, unknown[]]> = [];
+      const query = vi.fn(async (sql: string, values: unknown[] = []) => {
+        statements.push([sql, values]);
+        if (sql.includes("from sessions s join accounts"))
+          return { rows: [{ ...session, pin_verified_at: null }] };
+        if (sql.includes("count(*)::int as attempts")) return { rows: [{ attempts }] };
+        if (sql.includes("password_credentials"))
+          return {
+            rows: [{ credential: credentialHash(id, "secure password", secrets.password, false) }]
+          };
+        if (sql.includes("account_pin_hashes"))
+          return { rows: [{ credential: credentialHash(id, "1234", secrets.pin, true) }] };
+        if (sql.includes("where a.id = $1")) return { rows: [account] };
+        return { rows: [] };
+      }) as unknown as SqlClient["query"];
+      return { routes: setup(query).routes, statements };
+    };
+
+    it.each([
+      ["/auth/password/verify", { password: "secure password" }],
+      ["/auth/pin/verify", { pin: "1234" }]
+    ])("%s records the proof in both session stores", async (path, body) => {
+      const { routes, statements } = stepUp(0);
+      const response = await routes(request(path, body, cookie), path);
+      expect(response?.status).toBe(200);
+      expect(
+        statements.some(([sql]) => sql.startsWith("update sessions set pin_verified_at"))
+      ).toBe(true);
+      const mirrored = statements.find(([sql]) => sql.includes("update cp2_sessions"));
+      expect(String(mirrored?.[1][1])).toContain("pinVerifiedAt");
+    });
+
+    it("audits a wrong answer so the limit survives across requests", async () => {
+      const { routes, statements } = stepUp(0);
+      const response = await routes(
+        request("/auth/password/verify", { password: "wrong password" }, cookie),
+        "/auth/password/verify"
+      );
+      expect(response?.status).toBe(401);
+      expect(await response?.json()).toMatchObject({ code: "password_incorrect" });
+      expect(statements.some(([, values]) => values.includes("auth.edge.login_failure"))).toBe(
+        true
+      );
+      expect(statements.some(([sql]) => sql.startsWith("update sessions"))).toBe(false);
+    });
+
+    it("refuses even the right answer once the durable limit is reached", async () => {
+      const { routes, statements } = stepUp(5);
+      const response = await routes(
+        request("/auth/pin/verify", { pin: "1234" }, cookie),
+        "/auth/pin/verify"
+      );
+      expect(response?.status).toBe(429);
+      expect(statements.some(([sql]) => sql.startsWith("update sessions"))).toBe(false);
+    });
+
+    it("rejects password step-up when password login is off", async () => {
+      const { routes } = setup(vi.fn() as unknown as SqlClient["query"], false);
+      const response = await routes(
+        request("/auth/password/verify", { password: "secure password" }, cookie),
+        "/auth/password/verify"
+      );
+      expect(response?.status).toBe(403);
+    });
+
+    it("needs a session", async () => {
+      const { routes } = stepUp(0);
+      const response = await routes(
+        request("/auth/pin/verify", { pin: "1234" }),
+        "/auth/pin/verify"
+      );
+      expect(response?.status).toBe(401);
+    });
+  });
+
+  it("finds a guest's added phone by the current, unique user phone only", async () => {
+    const statements: string[] = [];
+    const query = loginQuery(credentialHash(id, "1234", secrets.pin, true));
+    const spy = vi.fn(async (sql: string) => {
+      statements.push(sql);
+      return query(sql);
+    }) as unknown as SqlClient["query"];
+    await setup(spy).routes(
+      request("/auth/pin/login", { method: "phone", contact: "+254712345678", pin: "1234" }),
+      "/auth/pin/login"
+    );
+    const lookup = statements.find((sql) => sql.includes("from accounts a"));
+    expect(lookup).toContain("u.phone_number_e164 = $2");
+    expect(lookup).not.toContain("cp2_account_identities");
+    expect(lookup).toContain("order by (u.phone_number_e164 = $2) is true desc");
+  });
+
+  it("upgrades a guest in place at signup instead of creating an account", async () => {
+    const statements: string[] = [];
+    const guest = {
+      ...account,
+      primary_auth_channel: "device",
+      primary_auth_destination: "device:abc",
+      identity_level: "device"
+    };
+    const query = vi.fn(async (sql: string) => {
+      statements.push(sql);
+      if (sql.includes("from auth_transactions"))
+        return {
+          rows: [{ id, metadata: { identifierValue: "+254712345678" } }]
+        };
+      if (sql.includes("from sessions s join accounts")) return { rows: [session] };
+      if (sql.includes("where a.id = $1")) return { rows: [guest] };
+      if (sql.includes("insert into sessions")) return { rows: [session] };
+      return { rows: [] };
+    }) as unknown as SqlClient["query"];
+    const response = await setup(query).routes(
+      request(
+        "/auth/signup/complete",
+        {
+          transactionId: id,
+          displayName: "Jane",
+          password: "secure first password",
+          passwordConfirmation: "secure first password",
+          termsAccepted: true,
+          privacyAccepted: true
+        },
+        `grogoni_session=${id}`
+      ),
+      "/auth/signup/complete"
+    );
+    expect(response?.status).toBe(200);
+    expect(
+      statements.some((sql) => sql.startsWith("update accounts set primary_auth_channel"))
+    ).toBe(true);
+    expect(statements.some((sql) => sql.startsWith("insert into accounts"))).toBe(false);
+  });
+
+  it("delegates PIN setup to the shared recovery-aware authentication store", async () => {
     const query = vi.fn();
     const { routes } = setup(query);
-    expect(
-      (await routes(request("/auth/pin/setup", { pin: "1234" }), "/auth/pin/setup"))!.status
-    ).toBe(401);
+    // PIN setup delegates to the shared store so recovery grants cannot be bypassed on Edge.
+    expect(await routes(request("/auth/pin/setup", { pin: "1234" }), "/auth/pin/setup")).toBeNull();
     expect(query).not.toHaveBeenCalled();
   });
 });

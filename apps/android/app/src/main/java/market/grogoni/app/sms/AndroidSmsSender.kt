@@ -7,16 +7,33 @@ import android.content.ContentValues
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.telephony.SmsManager
-import android.telephony.SubscriptionManager
 import android.provider.Telephony
 import androidx.core.content.ContextCompat
 
 class NativeSmsSendException(val code: NativeSmsErrorCode) : Exception(code.name)
 
 class AndroidSmsSender(private val context: Context) {
-    @Suppress("DEPRECATION")
     fun send(command: NativeSmsCommand) {
-        if (Telephony.Sms.getDefaultSmsPackage(context) != context.packageName) {
+        try {
+            sendChecked(command)
+        } catch (error: Exception) {
+            NativeSmsStore(context).use { store ->
+                val code = (error as? NativeSmsSendException)?.code ?: NativeSmsErrorCode.SMS_SEND_FAILED
+                store.markCommandTerminal(command.id, "failed", code)
+                store.providerMessageUri(command.id)?.let { uri ->
+                    runCatching { context.contentResolver.update(
+                        android.net.Uri.parse(uri),
+                        ContentValues().apply { put(Telephony.Sms.TYPE, Telephony.Sms.MESSAGE_TYPE_FAILED) }, null, null,
+                    ) }
+                }
+            }
+            throw error
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun sendChecked(command: NativeSmsCommand) {
+        if (!DefaultSmsRole.held(context)) {
             throw NativeSmsSendException(NativeSmsErrorCode.SMS_ROLE_REQUIRED)
         }
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.SEND_SMS) !=
@@ -24,9 +41,7 @@ class AndroidSmsSender(private val context: Context) {
         ) {
             throw NativeSmsSendException(NativeSmsErrorCode.SMS_PERMISSION_REQUIRED)
         }
-        val currentSubscription = SubscriptionManager.getDefaultSmsSubscriptionId().takeIf {
-            it != SubscriptionManager.INVALID_SUBSCRIPTION_ID
-        } ?: throw NativeSmsSendException(NativeSmsErrorCode.SMS_SIM_SELECTION_REQUIRED)
+        val currentSubscription = SmsSubscription.defaultId() ?: throw NativeSmsSendException(NativeSmsErrorCode.SMS_SIM_SELECTION_REQUIRED)
         if (command.subscriptionId != null && command.subscriptionId != currentSubscription) {
             throw NativeSmsSendException(NativeSmsErrorCode.SMS_SIM_SELECTION_REQUIRED)
         }
@@ -69,7 +84,7 @@ class AndroidSmsSender(private val context: Context) {
                 put(Telephony.Sms.TYPE, Telephony.Sms.MESSAGE_TYPE_OUTBOX)
             },
         ) ?: throw NativeSmsSendException(NativeSmsErrorCode.SMS_SEND_FAILED)
-        NativeSmsStore(context).saveProviderMessageUri(command.id, uri.toString())
+        NativeSmsStore(context).use { it.saveProviderMessageUri(command.id, uri.toString()) }
     }
 
     private fun callback(
@@ -82,6 +97,8 @@ class AndroidSmsSender(private val context: Context) {
     ): PendingIntent {
         val intent = Intent(context, receiver).apply {
             this.action = action
+            data = android.net.Uri.Builder().scheme("grogoni-sms").authority("result")
+                .appendPath(action).appendPath(commandId).appendPath(index.toString()).build()
             putExtra("command_id", commandId)
             putExtra("segment_index", index)
             putExtra("segment_count", count)
@@ -89,7 +106,7 @@ class AndroidSmsSender(private val context: Context) {
         }
         return PendingIntent.getBroadcast(
             context,
-            31 * commandId.hashCode() + index + action.hashCode(),
+            0,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )

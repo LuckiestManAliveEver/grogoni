@@ -1,0 +1,10 @@
+
+market.grogoni.app.sms.LocalSmsInboxInstrumentedTest:..
+market.grogoni.app.sms.NativeSmsStoreInstrumentedTest:.....
+market.grogoni.app.auth.NativeAuthInstrumentedTest:......
+
+Time: 4.956
+
+OK (15 tests)
+
+

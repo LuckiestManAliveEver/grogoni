@@ -597,7 +597,8 @@ export function enforceAgentPolicy(input: {
   }
   if (
     !policy.catalogueModificationAllowed &&
-    /^product\.(?:create|update|delete|stock_adjust|field\.)/.test(input.toolName)
+    (input.toolName === "catalogue.marketplace.import" ||
+      /^product\.(?:create|update|delete|stock_adjust|field\.)/.test(input.toolName))
   ) {
     errors.push("Catalogue modification is disabled by the active business policy.");
   }

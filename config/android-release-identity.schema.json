@@ -55,14 +55,14 @@
           "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*){2,}$"
         },
         "applicationIdStatus": { "enum": ["proposed", "approved"] },
-        "wrapper": { "const": "trusted-web-activity" },
+        "wrapper": { "const": "native-kotlin" },
         "distribution": { "const": "google-play" },
         "firstTrack": { "const": "internal" },
         "versionName": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
         "versionCode": { "type": "integer", "minimum": 1 },
         "minSdk": { "type": "integer", "minimum": 23 },
-        "targetSdk": { "type": "integer", "minimum": 35 },
-        "compileSdk": { "type": "integer", "minimum": 35 }
+        "targetSdk": { "type": "integer", "minimum": 36 },
+        "compileSdk": { "type": "integer", "minimum": 36 }
       }
     },
     "web": {

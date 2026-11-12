@@ -48,6 +48,16 @@ export async function executeRuntimeCapability(
     now: Date;
   }
 ): Promise<unknown> {
+  if (input.action.channelDelegation) {
+    if (!deps.channelToolGrants)
+      throw new Cp2Error(403, "channel_grant_unavailable", "Channel delegation is unavailable.");
+    deps.channelToolGrants(input.businessId, input.action.channelDelegation, input.action.toolName);
+  }
+  if (input.action.toolName.startsWith("catalogue.marketplace.")) {
+    if (!deps.marketCatalogue)
+      throw new Cp2Error(503, "market_catalogue_unavailable", "Market catalogue is unavailable.");
+    return deps.marketCatalogue(input);
+  }
   if (input.action.toolName === "commerce.sources.list" && deps.listSourceCommerce)
     return deps.listSourceCommerce(input);
   if (input.action.toolName === "commerce.discovery.search" && deps.discoverCommerceOffers)

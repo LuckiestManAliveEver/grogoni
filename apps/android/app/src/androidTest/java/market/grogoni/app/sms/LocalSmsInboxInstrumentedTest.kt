@@ -37,7 +37,7 @@ class LocalSmsInboxInstrumentedTest {
     /** Run on a dedicated emulator/device with the default SMS role and READ_SMS granted. */
     @Test
     fun localInboxReadsAndMarksSmsWithoutBackendSync() {
-        assumeTrue(Telephony.Sms.getDefaultSmsPackage(context) == context.packageName)
+        assumeTrue(DefaultSmsRole.held(context))
         assumeTrue(ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED)
         val session = GrogoniSessionStore(context)
         val previous = session.syncEnabled

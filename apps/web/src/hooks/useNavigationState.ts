@@ -160,9 +160,8 @@ export function useNavigationState(deps: UseNavigationStateDeps) {
     }
   }
 
-  function requireMessagingSignIn() {
-    openAuth();
-    setStatusMessage("Sign in to send end-to-end encrypted messages.");
+  async function requireMessagingSignIn() {
+    return deps.getContinueToGrogoni()();
   }
 
   function openAuth(intent: "signup" | "login" = "login") {
@@ -232,6 +231,10 @@ export function useNavigationState(deps: UseNavigationStateDeps) {
 
   function switchMode(nextMode: GrogoniMode) {
     const { setIsBusinessSetupOpen, setBusinessSetupStep } = deps.getBusinessSetupSetters();
+    if (nextMode === "seller" && session === null) {
+      openAuth("signup");
+      return;
+    }
 
     if (nextMode === "seller" && business === null) {
       if (

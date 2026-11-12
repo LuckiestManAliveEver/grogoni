@@ -1,4 +1,10 @@
 import { StackedModule } from "./StackedModule";
+import { parseAndroidRelease, defaultReleaseManifestUrl } from "./android-release";
+import androidReleaseManifest from "../public/android/release.json";
+import { isNativeDeviceHost } from "./device-messaging";
+import "./menu-download.css";
+
+const androidRelease = parseAndroidRelease(androidReleaseManifest, defaultReleaseManifestUrl);
 
 export interface MenuDrawerProps {
   open: boolean;
@@ -127,6 +133,29 @@ export function MenuDrawer({
           Set up your shop
         </button>
       )}
+      {/* Play forbids a store app updating outside Play, so the installed app never links the APK. */}
+      {androidRelease.available && !isNativeDeviceHost() ? (
+        <div className="menu-download-footer">
+          <a
+            className="menu-download-button"
+            href={androidRelease.release.downloadUrl}
+            aria-label="Download Grogoni for Android"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              aria-hidden="true"
+            >
+              <path d="M12 3v12m-5-5 5 5 5-5M5 16v5h14v-5" />
+            </svg>
+            Download app
+          </a>
+        </div>
+      ) : null}
     </StackedModule>
   );
 }

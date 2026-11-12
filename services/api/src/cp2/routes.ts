@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { registerCommerceSourceRoutes } from "./domains/commerce-sources/routes.js";
 import { registerAgentSkillsRoutes } from "./domains/agent-skills/routes.js";
 import { registerOfflineRuntimeRoutes } from "./offline-runtime-routes.js";
@@ -45,6 +46,7 @@ import {
   parseString,
   readDeviceSessionMetadata,
   sendCp2Error,
+  notifyAccountRecovery,
   setAuthSessionCookies,
   type BusinessParams,
   type StorefrontParams
@@ -56,6 +58,8 @@ import {
 } from "./domains/logistics/routes.js";
 import { registerNotificationsRoutes } from "./domains/notifications/routes.js";
 import { registerPasskeysRoutes } from "./domains/passkeys/routes.js";
+import { registerRecoveryApprovalRoutes } from "./domains/recovery-approval/routes.js";
+import { probationAllows } from "./recovery-probation-routes.js";
 import { registerNetworkRoutes } from "./domains/network/routes.js";
 import { registerCommercialRecordsRoutes } from "./domains/commercial-records/routes.js";
 import { registerFulfillmentRoutes } from "./domains/fulfillment/routes.js";
@@ -94,7 +98,11 @@ import { registerStaffRoutes } from "./domains/staff/routes.js";
 import { registerShopHubRoutes } from "./domains/shop-hub/routes.js";
 import { registerDeviceBootstrapRoutes } from "./domains/device-bootstrap/routes.js";
 import { registerModelTemplateRoutes } from "./domains/model-templates/routes.js";
-import { createEmailProviderFromEnvironment, type EmailProvider } from "./email-provider.js";
+import {
+  createEmailProviderFromEnvironment,
+  EmailDeliveryError,
+  type EmailProvider
+} from "./email-provider.js";
 import {
   normalizeInternationalOwnerPhoneNumber,
   normalizeOwnerPhoneNumber
@@ -119,6 +127,8 @@ export interface Cp2RouteOptions {
   businessTaskStore?: BusinessTaskStore;
   binaryUploadPipeline?: BinaryUploadPipeline;
   emailProvider?: EmailProvider;
+  /** Keeps recovery email delivery alive after the generic response is sent on Edge runtimes. */
+  waitUntil?: (work: Promise<unknown>) => void;
   oauthAllowedRedirectOrigins?: string[];
   ownerNodeBroker?: OwnerNodeBroker;
   realtimeAllowedOrigins?: string[];
@@ -180,6 +190,7 @@ interface CreateBusinessBody {
   language?: string;
   phoneCountry?: string;
   phoneNumber?: string;
+  viaAssistant?: boolean;
 }
 
 interface OwnerPhoneBody {
@@ -294,6 +305,23 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
         : {})
     });
   const webPublicUrl = (options.webPublicUrl ?? "https://grogoni.com").replace(/\/+$/u, "");
+  // Before any route: a session on trusted-device recovery probation may call only allowlisted
+  // routes (recovery-probation-routes.ts). It covers every route of this Fastify instance.
+  app.addHook("preHandler", async (request, reply) => {
+    const url = request.routeOptions.url;
+    if (url === undefined || probationAllows(request.method, url)) return;
+    const sessionId = readSessionCookie(request.headers.cookie);
+    if (sessionId === null || !store.isSessionOnRecoveryProbation(sessionId)) return;
+    request.log.warn(
+      { event: "auth.recovery_probation_refused", route: `${request.method} ${url}` },
+      "Refused a route during trusted-device recovery probation."
+    );
+    return reply.code(403).send({
+      code: "recovery_approval_probation",
+      message:
+        "This device logged in within 24 hours of a browser being approved from another device, so it cannot do this yet. Use a device that was already logged in, or wait."
+    });
+  });
   registerChatImageRoutes(app, store);
   const telegramBotUsername = options.telegramBotUsername ?? "";
   const binaryUploadPipeline = options.binaryUploadPipeline;
@@ -378,7 +406,7 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
         // for known and unknown accounts to avoid an account-enumeration oracle.
         requirePhoneLogin(readIdentifier(request.body).channel);
         return {
-          preferred: "pin",
+          preferred: authRuntime.passkeysEnabled ? "passkey" : "pin",
           passkeyAvailable: authRuntime.passkeysEnabled,
           passwordFallback: authRuntime.passwordFallbackEnabled,
           recoveryAvailable: true,
@@ -398,11 +426,13 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
         requirePhoneLogin(parseAuthChannel(request.body.type ?? "phone"));
         const identifier = readIdentifier({ ...request.body, type: "phone" });
         if (
+          !store.isCurrentGuestPhone(readSessionCookie(request.headers.cookie), identifier.value) &&
           store.identifyAccount({ channel: "phone", identifier: identifier.value }).next === "login"
         ) {
           throw new Cp2Error(409, "account_exists", "Continue to sign in.");
         }
         const transaction = store.beginPhoneSignup({
+          sessionId: readSessionCookie(request.headers.cookie),
           phoneE164: identifier.value
         });
         return {
@@ -444,6 +474,7 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
         if (password !== passwordConfirmation)
           throw new Cp2Error(400, "password_confirmation_invalid", "Passwords do not match.");
         const result = store.completePhoneSignup({
+          sessionId: readSessionCookie(request.headers.cookie),
           transactionId: parseString(request.body.transactionId, "transactionId"),
           displayName: parseString(request.body.displayName, "displayName"),
           password,
@@ -703,7 +734,7 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
   );
 
   app.post(
-    "/auth/password/recover/passkey",
+    "/auth/password/recover/device",
     async (
       request: FastifyRequest<{ Body: { password?: string; passwordConfirmation?: string } }>,
       reply
@@ -712,11 +743,12 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
         const password = parseString(request.body.password, "password");
         if (password !== request.body.passwordConfirmation)
           throw new Cp2Error(400, "password_confirmation_invalid", "Passwords do not match.");
-        const result = store.recoverPasswordWithPasskey({
+        const result = store.recoverPasswordWithDevice({
           sessionId: readSessionCookie(request.headers.cookie),
           password
         });
         setAuthSessionCookies(reply, request, store, result.session.id);
+        await notifyAccountRecovery(store, emailProvider, request, result.session.id, "password");
         return result;
       } catch (error) {
         return sendCp2Error(reply, error);
@@ -765,29 +797,71 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
             "Phone and SMS recovery are unavailable. Use a passkey, password, or linked verified email."
           );
         }
-        const otp = store.requestOtp({
-          channel: "email",
-          destination: identifier.value,
-          purpose: "recovery"
-        });
-        const transaction = store.beginRecovery({
-          channel: "email",
-          identifier: identifier.value,
-          providerChallengeId: otp.challengeId,
-          expiresAt: otp.expiresAt
-        });
-        if (transaction.accountFound)
-          await emailProvider.sendOtp({
-            challengeId: otp.challengeId,
-            code: otp.devOtp,
-            expiresAt: otp.expiresAt,
-            to: otp.destination
-          });
-        return {
+        const recoveryStartResponse = (transactionId: string = randomUUID()) => ({
           message: "If an account matches those details, recovery instructions have been sent.",
-          transactionId: transaction.transactionId,
-          ...(emailProvider.exposesDevOtp ? { developmentCode: otp.devOtp } : {})
-        };
+          transactionId
+        });
+        // Avoid minting an OTP for unknown or unverified addresses so they do not consume the
+        // recipient's cooldown. Return the same response shape for every outcome to prevent
+        // account existence, throttling, and delivery failures from being exposed by this route.
+        const accountFound =
+          store.identifyAccount({ channel: "email", identifier: identifier.value }).next ===
+          "login";
+        if (!accountFound) {
+          return recoveryStartResponse();
+        }
+        try {
+          const otp = store.requestOtp({
+            channel: "email",
+            destination: identifier.value,
+            purpose: "recovery"
+          });
+          const transaction = store.beginRecovery({
+            channel: "email",
+            identifier: identifier.value,
+            providerChallengeId: otp.challengeId,
+            expiresAt: otp.expiresAt
+          });
+          const delivery = Promise.resolve()
+            .then(() =>
+              emailProvider.sendOtp({
+                challengeId: otp.challengeId,
+                code: otp.devOtp,
+                expiresAt: otp.expiresAt,
+                to: otp.destination
+              })
+            )
+            .catch((error: unknown) => {
+              // Keep the public response indistinguishable while preserving safe diagnostics for
+              // operators. Do not log the destination, OTP, or provider rejection text.
+              request.log.error(
+                {
+                  event: "auth.recovery_start_failed",
+                  ...(error instanceof Cp2Error ? { errorCode: error.code } : {}),
+                  ...(error instanceof EmailDeliveryError
+                    ? { providerStatus: error.providerStatus, providerCode: error.providerCode }
+                    : {}),
+                  requestCorrelationId: request.id
+                },
+                "Recovery email could not be delivered."
+              );
+            });
+          options.waitUntil?.(delivery);
+          return recoveryStartResponse(transaction.transactionId);
+        } catch (error) {
+          request.log.error(
+            {
+              event: "auth.recovery_start_failed",
+              ...(error instanceof Cp2Error ? { errorCode: error.code } : {}),
+              ...(error instanceof EmailDeliveryError
+                ? { providerStatus: error.providerStatus, providerCode: error.providerCode }
+                : {}),
+              requestCorrelationId: request.id
+            },
+            "Recovery transaction could not be created."
+          );
+          return recoveryStartResponse();
+        }
       } catch (error) {
         if (error instanceof Cp2Error) return sendCp2Error(reply, error);
         return sendCp2Error(
@@ -803,8 +877,8 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
     async (request: FastifyRequest<{ Body: { transactionId?: string; code?: string } }>, reply) => {
       try {
         const transactionId = parseString(request.body.transactionId, "transactionId");
-        const transaction = store.getAuthTransaction(transactionId, "recovery");
         const code = parseString(request.body.code, "code");
+        const transaction = store.getAuthTransaction(transactionId, "recovery");
         if (transaction.identifierType !== "email" || transaction.providerChallengeId === null)
           throw new Cp2Error(401, "recovery_verification_invalid", "Recovery verification failed.");
         return store.verifyEmailRecovery({
@@ -813,6 +887,16 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
           code
         });
       } catch (error) {
+        if (
+          error instanceof Cp2Error &&
+          (error.code === "auth_transaction_invalid" ||
+            error.code === "recovery_verification_invalid")
+        ) {
+          return sendCp2Error(
+            reply,
+            new Cp2Error(401, "recovery_verification_invalid", "Recovery verification failed.")
+          );
+        }
         return sendCp2Error(reply, error);
       }
     }
@@ -846,6 +930,7 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
           ...(request.body.mfaCode === undefined ? {} : { mfaCode: request.body.mfaCode })
         });
         setAuthSessionCookies(reply, request, store, result.session.id);
+        await notifyAccountRecovery(store, emailProvider, request, result.session.id, "password");
         return result;
       } catch (error) {
         return sendCp2Error(reply, error);
@@ -931,7 +1016,8 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
 
   registerOtpRoutes(app, store, emailProvider);
 
-  registerPasskeysRoutes(app, store, authRuntime);
+  registerPasskeysRoutes(app, store, authRuntime, authAttemptsByIp, emailProvider);
+  registerRecoveryApprovalRoutes(app, store, authRuntime, authAttemptsByIp, emailProvider);
 
   registerOAuthRoutes(app, store, oauthAllowedRedirectOrigins);
 
@@ -946,12 +1032,17 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
       if (request.body.pinConfirmation !== undefined && pin !== request.body.pinConfirmation) {
         throw new Cp2Error(400, "pin_confirmation_invalid", "PINs do not match.");
       }
+      const recovering = store.hasCredentialRecoveryGrant(
+        readSessionCookie(request.headers.cookie)
+      );
       const result = store.setAccountPin({
         sessionId: readSessionCookie(request.headers.cookie),
         pin,
         ...(request.body.mfaCode === undefined ? {} : { mfaCode: request.body.mfaCode })
       });
       setAuthSessionCookies(reply, request, store, result.session.id);
+      if (recovering)
+        await notifyAccountRecovery(store, emailProvider, request, result.session.id, "PIN");
       return result;
     } catch (error) {
       return sendCp2Error(reply, error);
@@ -998,6 +1089,7 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
           : parseString(request.body.country, "country")
       );
       const result = store.signupWithPhonePin({
+        sessionId: readSessionCookie(request.headers.cookie),
         destination,
         pin: parseString(request.body.pin, "pin")
       });
@@ -1030,6 +1122,7 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
             )
           : rawDestination;
       const result = store.continueWithChannelPin({
+        sessionId: readSessionCookie(request.headers.cookie),
         channel,
         destination,
         pin: parseString(request.body.pin, "pin")
@@ -1080,6 +1173,20 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
       return sendCp2Error(reply, error);
     }
   });
+
+  app.post(
+    "/auth/password/verify",
+    async (request: FastifyRequest<{ Body: { password?: string } }>, reply) => {
+      try {
+        return store.verifyAccountPassword({
+          sessionId: readSessionCookie(request.headers.cookie),
+          password: parseString(request.body.password, "password")
+        });
+      } catch (error) {
+        return sendCp2Error(reply, error);
+      }
+    }
+  );
 
   app.post("/auth/pin/login", async (request: FastifyRequest<{ Body: PinLoginBody }>, reply) => {
     try {
@@ -1480,6 +1587,12 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
         let registeredNodeId: string | null = null;
         socket.on("message", (raw) => {
           try {
+            // Revalidate on every message, like /v1/realtime: a session signed out, expired, or
+            // undone by trusted-device recovery must not keep receiving the shop's inference jobs.
+            if (store.getSession(session.session.id) === null) {
+              socket.close(1008, "Session ended");
+              return;
+            }
             const message = JSON.parse(String(raw)) as OwnerInferenceNodeMessage;
             if (message.type === "inference.node.register") {
               if (
@@ -1692,7 +1805,8 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
           : { phoneNumber: request.body.phoneNumber }),
         ...(request.body.phoneCountry === undefined
           ? {}
-          : { phoneCountry: request.body.phoneCountry })
+          : { phoneCountry: request.body.phoneCountry }),
+        ...(request.body.viaAssistant === true ? { viaAssistant: true } : {})
       });
     } catch (error) {
       return sendCp2Error(reply, error);

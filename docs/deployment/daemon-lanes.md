@@ -52,6 +52,15 @@ All routes need the user's session cookie; every task route acts only on that us
 | `POST /v1/daemon/claims/:id/release` | `{ leaseToken }`                                        | `{ task }` back in the queue, the attempt not counted                                                                                                         |
 | `POST /v1/daemon/claims/:id/execute` | `{ leaseToken }`                                        | `{ task }` after the server ran it                                                                                                                            |
 
+A task with a `conversation` (one of the caller's own one-person agent chats: My Assistant, a help
+topic or an agent session) takes that conversation's model and engine when it is created, and
+again on retry. My Assistant's tasks are also re-read when they are claimed and just before the
+server runs them, so scheduled, recurring and queued tasks follow a switch made later in its
+details (`docs/frontend/my-assistant.md`); only My Assistant holds such an explicit selection.
+The Edge lane saves the refreshed runtime on the task; the standalone native daemon applies it
+for that run only, and reads it again on the next. Without a conversation a task runs the Grogoni
+engine on `PLATFORM_DEFAULT_MODEL_ID`.
+
 Limits: `key` 1-120 of `A-Z a-z 0-9 . _ : -`; `message` 1-8000 characters, no NUL or unpaired
 surrogates; `runAt` within a year (a past time means now); `intervalMs` from
 `DAEMON_USER_MIN_INTERVAL_MS` to 30 days; a device result at most 32000 characters. A lost or

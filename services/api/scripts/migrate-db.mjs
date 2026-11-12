@@ -5,22 +5,27 @@ import { fileURLToPath, URL } from "node:url";
 import { Pool } from "pg";
 import {
   databasePoolConfig,
+  describeDatabaseTarget,
   isAcceptedMigrationChecksum,
-  readDatabaseUrl
+  readSchemaChangeDatabaseUrl
 } from "./database-connection.mjs";
 
 const rootDir = resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const migrationsDir = resolve(rootDir, "infra/db/migrations");
-const directDatabaseUrl = process.env.DIRECT_DATABASE_URL?.trim() ?? "";
-if (process.env.NODE_ENV === "production" && directDatabaseUrl === "") {
-  console.error("DIRECT_DATABASE_URL is required for production migrations.");
+let databaseUrl;
+try {
+  databaseUrl = readSchemaChangeDatabaseUrl();
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
   process.exit(1);
 }
-const databaseUrl = process.env.NODE_ENV === "production" ? directDatabaseUrl : readDatabaseUrl();
 if (databaseUrl === null) {
-  console.error("DATABASE_URL or DIRECT_DATABASE_URL is required to run database migrations.");
+  console.error(
+    "MIGRATION_DATABASE_URL, DIRECT_DATABASE_URL or DATABASE_URL is required to run database migrations."
+  );
   process.exit(1);
 }
+console.log(`Migrating ${describeDatabaseTarget(databaseUrl)}`);
 
 const pool = new Pool(
   databasePoolConfig(databaseUrl, {

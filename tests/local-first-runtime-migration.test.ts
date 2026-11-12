@@ -400,7 +400,14 @@ describePostgres("migration 108: local-first runtime cleanup", () => {
     } finally {
       await app.close().catch(() => undefined);
       await store.close().catch(() => undefined);
-      await pool.end();
+      try {
+        // This suite exercises the historical local-only default in the shared test database.
+        // Restore today's repository-owned default before later suites create new accounts.
+        await pool.query(await migration("111_openrouter_grogoni_default.sql"));
+        await pool.query(await migration("132_my_assistant_rename.sql"));
+      } finally {
+        await pool.end();
+      }
     }
   }, 120_000);
 });

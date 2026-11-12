@@ -1,5 +1,8 @@
-import { useState } from "react";
-import { browserSupportsWebAuthn, startRegistration } from "@simplewebauthn/browser";
+import { useEffect, useState } from "react";
+import { deviceSecurityAvailable, enrollDeviceRecovery } from "./passkey-recovery";
+import { isNativeDeviceHost } from "./device-messaging";
+import { browserSupportsWebAuthn } from "./browser-passkeys";
+import { usePasskeyEnrollment } from "./usePasskeyEnrollment";
 import type { AuthSessionView } from "@grogoni/shared-types";
 import { normalizePhoneInput, phoneNormalizationErrorMessage } from "@grogoni/shared-types";
 import { getCountryCallingCode, type CountryCode } from "libphonenumber-js";
@@ -8,7 +11,7 @@ import { ApiRequestError, apiFetch } from "./lib/api";
 import { authenticationPhoneCountries, PhoneNumberField } from "./PhoneNumberField";
 import { getUserFacingErrorMessage } from "./user-facing-error";
 
-type SignupStage = "phone" | "profile" | "passkey";
+type SignupStage = "phone" | "profile" | "device";
 
 interface SignupTransaction {
   transactionId: string;
@@ -23,7 +26,19 @@ interface Props {
 }
 
 export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Props) {
-  const passkeyAvailable = browserSupportsWebAuthn();
+  const nativeDevice = isNativeDeviceHost();
+  const supportsPasskey = browserSupportsWebAuthn();
+  const [deviceAvailable, setDeviceAvailable] = useState(false);
+  useEffect(() => {
+    if (!nativeDevice) return;
+    let active = true;
+    void deviceSecurityAvailable().then((available) => {
+      if (active) setDeviceAvailable(available);
+    });
+    return () => {
+      active = false;
+    };
+  }, [nativeDevice]);
   const [stage, setStage] = useState<SignupStage>("phone");
   const [country, setCountry] = useState<CountryCode>("KE");
   const [phone, setPhone] = useState("");
@@ -39,6 +54,11 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
   const [message, setMessage] = useState("");
   const [accountExists, setAccountExists] = useState(false);
   const [createdSession, setCreatedSession] = useState<AuthSessionView | null>(null);
+  const enrollment = usePasskeyEnrollment({
+    onCreated: () => {
+      if (createdSession !== null) onAuthenticated(createdSession);
+    }
+  });
 
   async function run(action: () => Promise<void>) {
     if (busy) return;
@@ -54,7 +74,14 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
     }
   }
 
+  // The guest's access cookie lasts 15 minutes. Signup must arrive with a live one, or it would
+  // create a separate account instead of upgrading the guest's own.
+  async function refreshGuestSession() {
+    await apiFetch("/auth/bootstrap").catch(() => null);
+  }
+
   async function startSignup() {
+    await refreshGuestSession();
     const normalized = normalizePhoneInput({
       rawInput: phone,
       selectedCountry: country,
@@ -107,6 +134,7 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
       return;
     }
 
+    await refreshGuestSession();
     const session = await apiFetch<AuthSessionView>("/auth/signup/complete", {
       method: "POST",
       body: {
@@ -121,30 +149,22 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
       skipAuthRefresh: true
     });
     setCreatedSession(session);
-    setStage("passkey");
-    setMessage("Your account is ready. You can also add a passkey as a backup way in.");
+    setStage("device");
+    setMessage(
+      nativeDevice
+        ? "Your account is ready. Secure this device to recover your PIN or password."
+        : "Your account is ready. Create a passkey for account access and recovery."
+    );
   }
 
-  async function createPasskey() {
+  async function createDevice() {
     if (createdSession === null) return;
-    if (!browserSupportsWebAuthn()) {
-      setMessage("Passkeys are unavailable in this browser. Your password still works.");
-      return;
-    }
-    const challenge = await apiFetch<{
-      ceremonyId: string;
-      options: Parameters<typeof startRegistration>[0]["optionsJSON"];
-    }>("/auth/passkeys/register/options", { method: "POST", body: {} });
-    const response = await startRegistration({ optionsJSON: challenge.options });
-    await apiFetch("/auth/passkeys/register/verify", {
-      method: "POST",
-      body: { ceremonyId: challenge.ceremonyId, label: "Signup device", response }
-    });
+    await enrollDeviceRecovery();
     onAuthenticated(createdSession);
   }
 
   function goBack() {
-    if (stage === "passkey") {
+    if (stage === "device") {
       if (createdSession !== null) onAuthenticated(createdSession);
       return;
     }
@@ -178,7 +198,7 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
           >
             <span className="complete" />
             <span className={stage !== "phone" ? "complete" : ""} />
-            <span className={stage === "passkey" ? "complete" : ""} />
+            <span className={stage === "device" ? "complete" : ""} />
           </div>
 
           <div className="auth-onboarding-heading">
@@ -188,14 +208,18 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
                 ? "Connect with your market"
                 : stage === "profile"
                   ? "Finish your profile"
-                  : "Secure your account"}
+                  : nativeDevice
+                    ? "Secure your account"
+                    : "Create your passkey"}
             </h1>
             <p>
               {stage === "phone"
                 ? "Your phone number becomes your Grogoni account identity. No SMS code is required."
                 : stage === "profile"
                   ? `Set up the account attached to ${normalizedPhone}.`
-                  : "Optionally add a passkey as a backup way in if you ever lose access to your password."}
+                  : nativeDevice
+                    ? "Save a secure recovery key on this device in case you forget your PIN or password."
+                    : "Save a passkey with your browser or password manager for account access and recovery."}
             </p>
           </div>
 
@@ -330,32 +354,56 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
               </button>
             </div>
           ) : (
-            <div className="auth-fields auth-passkey-enrollment">
+            <div className="auth-fields auth-device-enrollment">
               <div className="auth-security-summary">
-                <strong>Optional: add a passkey as a backup</strong>
+                <strong>
+                  {nativeDevice ? "Secure this device for recovery" : "Add a passkey"}
+                </strong>
                 <p>
-                  Recover your PIN or password using an enrolled passkey with fingerprint, Face ID,
-                  or your device PIN or password.
+                  {nativeDevice
+                    ? "Use your existing fingerprint, face unlock, or device screen lock to recover your PIN or password. Enable recovery on this phone before you need it."
+                    : "Your browser will help you create a passkey and may ask for your fingerprint, face, or screen lock. Register it now so you can recover your account later."}
                 </p>
               </div>
               <button
                 className="auth-primary-button"
                 type="button"
-                disabled={busy || !passkeyAvailable}
-                aria-busy={busy}
-                onClick={() => void run(createPasskey)}
+                disabled={
+                  busy ||
+                  enrollment.busy ||
+                  (supportsPasskey ? false : nativeDevice ? !deviceAvailable : true)
+                }
+                aria-busy={busy || enrollment.busy}
+                onClick={() => void (supportsPasskey ? enrollment.enroll() : run(createDevice))}
               >
-                {busy
-                  ? "Creating passkey…"
-                  : passkeyAvailable
-                    ? "Create a passkey"
-                    : "Passkeys unavailable"}
+                {busy || enrollment.busy
+                  ? supportsPasskey
+                    ? "Creating passkey…"
+                    : "Securing device…"
+                  : supportsPasskey
+                    ? "Create passkey"
+                    : !nativeDevice
+                      ? "Passkeys unavailable in this browser"
+                      : deviceAvailable
+                        ? "Secure this device"
+                        : "Device security unavailable"}
               </button>
+              {nativeDevice && supportsPasskey ? (
+                <button
+                  className="secondary"
+                  type="button"
+                  disabled={busy || enrollment.busy || !deviceAvailable}
+                  onClick={() => void run(createDevice)}
+                >
+                  Use Android screen-lock recovery instead
+                </button>
+              ) : null}
+              {enrollment.stepUpForm}
               {createdSession !== null ? (
                 <button
                   className="auth-guest-button"
                   type="button"
-                  disabled={busy}
+                  disabled={busy || enrollment.busy}
                   onClick={() => onAuthenticated(createdSession)}
                 >
                   Do this later
@@ -364,9 +412,9 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
             </div>
           )}
 
-          {message ? (
+          {message || enrollment.message ? (
             <div className="auth-feedback" role="alert">
-              <p>{message}</p>
+              <p>{enrollment.message || message}</p>
               {accountExists ? (
                 <button className="auth-text-button" type="button" onClick={onLogIn}>
                   Log in to this account

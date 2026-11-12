@@ -41,6 +41,28 @@ describe("Edge scoped persistence", () => {
     ]);
   });
 
+  it("persists reset passwords to the native login credential table as well as the snapshot", async () => {
+    const previous = createCp2Store().snapshot();
+    const timestamp = new Date().toISOString();
+    const credential = {
+      accountId: "account",
+      passwordHash: "new-password-hash",
+      passwordChangedAt: timestamp,
+      createdAt: timestamp,
+      updatedAt: timestamp
+    };
+    const snapshot = { ...previous, passwordCredentials: [credential] };
+    const query = vi.fn(async () => ({ rows: [], rowCount: 1 }));
+    await saveTransactionalCp2Snapshot({ query } as unknown as PoolClient, snapshot, previous);
+    const native = query.mock.calls.find(([sql]) =>
+      sql.includes("insert into password_credentials")
+    );
+    expect(native?.[1]).toEqual(["account", "new-password-hash", timestamp, timestamp, timestamp]);
+    expect(
+      query.mock.calls.some(([sql]) => sql.includes("insert into cp2_password_credentials"))
+    ).toBe(true);
+  });
+
   it("does not delete rows outside the loaded baseline or rewrite unchanged records", async () => {
     const query = vi.fn(async () => ({ rows: [], rowCount: 1 }));
     const keep = { id: "keep", accountId: "owner", value: 1 };
@@ -101,6 +123,69 @@ describe("Edge scoped persistence", () => {
     expect(scope.predicate("passwordCredentials")).not.toBe("true");
     expect(scope.predicate("conversationMessages")).toContain("record->>'conversationId'");
     expect(scope.predicate("modelCatalog")).toBe("true");
+  });
+
+  it("scopes sessionless device recovery to the credential owner", async () => {
+    const credentialId = "00000000-0000-4000-8000-000000000001";
+    const query = vi.fn(async () => ({ rows: [] }));
+    await createEdgeSnapshotScope(
+      { query } as unknown as PoolClient,
+      new Request("https://grogoni.com/auth/device/recover", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ credentialId })
+      }),
+      "/auth/device/recover",
+      Buffer.from(JSON.stringify({ credentialId }))
+    );
+    const [sql, values] = query.mock.calls[0]!;
+    expect(sql).toContain("cp2_device_recovery_credentials");
+    expect(sql).toContain("d.record->>'revokedAt' is null");
+    expect(values[6]).toBe(credentialId);
+  });
+
+  it("loads the owner's sign-in records for device recovery, so the refusal cannot fail open", async () => {
+    const credentialId = "00000000-0000-4000-8000-000000000001";
+    const owner = "00000000-0000-4000-8000-0000000000aa";
+    const query = vi.fn(async () => ({
+      rows: [{ account_id: owner, user_id: owner, primary_auth_destination: "+254700123456" }]
+    }));
+    const scope = await createEdgeSnapshotScope(
+      { query } as unknown as PoolClient,
+      new Request("https://grogoni.com/auth/device/recover", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ credentialId })
+      }),
+      "/auth/device/recover",
+      Buffer.from(JSON.stringify({ credentialId }))
+    );
+    for (const key of ["passkeys", "passwordCredentials", "accountIdentities"] as const) {
+      expect(scope.predicate(key)).toContain(owner);
+    }
+    expect(scope.withClause).toMatch(
+      /public\.account_pin_hashes where account_id = nullif\('[^']*-0000000000aa'/u
+    );
+  });
+
+  it("loads whoever signs in with a claimed phone, so a collision is seen before saving", async () => {
+    const owner = "00000000-0000-4000-8000-0000000000aa";
+    const query = vi.fn(async () => ({
+      rows: [{ account_id: owner, user_id: owner, primary_auth_destination: "device:x" }]
+    }));
+    const body = { phoneNumber: "0700123456", country: "KE" };
+    const scope = await createEdgeSnapshotScope(
+      { query } as unknown as PoolClient,
+      new Request("https://grogoni.com/account/phone", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body)
+      }),
+      "/account/phone",
+      Buffer.from(JSON.stringify(body))
+    );
+    expect(scope.withClause).toContain("phone_holder.phone_number_e164 = '+254700123456'");
+    expect(scope.withClause).toContain("primary_auth_destination in ('+254700123456'");
   });
 
   it("escapes user-supplied lookup values and uses invitation destinations", async () => {

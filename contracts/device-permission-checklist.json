@@ -1,0 +1,32 @@
+{
+  "description": "First-run device access checklist shared by the Android host (apps/android) and the shared web UI (apps/web). Android reports these item ids in this order (notifications only on API 33+); the web UI owns the copy for each id. Every item must be backed by code that uses the permission.",
+  "version": 2,
+  "statuses": ["granted", "not_requested", "denied", "blocked", "unavailable"],
+  "items": [
+    {
+      "id": "sms",
+      "required": true
+    },
+    {
+      "id": "contacts",
+      "required": false
+    },
+    {
+      "id": "notifications",
+      "required": false
+    },
+    {
+      "id": "camera",
+      "required": false
+    },
+    {
+      "id": "location",
+      "required": false
+    }
+  ],
+  "notAsked": {
+    "android.permission.INTERNET": "Normal permission granted at install.",
+    "android.permission.USE_BIOMETRIC": "Normal permission granted at install; used by the device unlock prompt.",
+    "android.permission.READ_PHONE_STATE": "No Grogoni code reads it; the default SMS role grants it, so sending and reading do not depend on it here."
+  }
+}

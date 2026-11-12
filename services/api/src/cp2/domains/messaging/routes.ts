@@ -20,6 +20,7 @@
  * cross-domain-import pattern used throughout this effort. Exports nothing of its own: no other
  * domain or CORE route in routes.ts references any messaging-only type or helper.
  */
+import { registerLinkedWhatsAppRoutes } from "../../../messaging/whatsapp-linked/routes.js";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type {
   ChannelProvider,
@@ -225,6 +226,7 @@ export function registerMessagingRoutes(
   oauthAllowedRedirectOrigins: ReadonlySet<string>,
   vapidPublicKey: string | undefined
 ): void {
+  registerLinkedWhatsAppRoutes(app, store);
   app.post("/v1/help", async (request, reply) => {
     try {
       return store.ensureHelpConversations({
@@ -305,14 +307,47 @@ export function registerMessagingRoutes(
       }
     }
   );
-  app.put<{ Params: ConversationParams; Body: { modelId?: string } }>(
+  app.get<{ Params: ConversationParams }>(
+    "/v1/conversations/:conversationId/permissions",
+    async (request, reply) => {
+      try {
+        return store.getAssistantPermissions(
+          readSessionCookie(request.headers.cookie),
+          parseString(request.params.conversationId, "conversationId")
+        );
+      } catch (error) {
+        return sendCp2Error(reply, error);
+      }
+    }
+  );
+  app.put<{ Params: ConversationParams; Body: unknown }>(
+    "/v1/conversations/:conversationId/permissions",
+    async (request, reply) => {
+      try {
+        return store.updateAssistantPermissions(
+          readSessionCookie(request.headers.cookie),
+          parseString(request.params.conversationId, "conversationId"),
+          request.body
+        );
+      } catch (error) {
+        return sendCp2Error(reply, error);
+      }
+    }
+  );
+  app.put<{ Params: ConversationParams; Body: { modelId?: unknown; agentId?: unknown } | null }>(
     "/v1/conversations/:conversationId/model",
     async (request, reply) => {
       try {
+        const body = request.body ?? {};
         return await store.selectConversationModel(
           readSessionCookie(request.headers.cookie),
           parseString(request.params.conversationId, "conversationId"),
-          parseString(request.body.modelId, "modelId")
+          {
+            ...(body.modelId === undefined
+              ? {}
+              : { modelId: parseString(body.modelId, "modelId") }),
+            ...(body.agentId === undefined ? {} : { agentId: parseString(body.agentId, "agentId") })
+          }
         );
       } catch (error) {
         return sendCp2Error(reply, error);
@@ -1552,6 +1587,7 @@ function isMessageChannel(value: string): value is MessageChannel {
     "mms",
     "rcs_business",
     "whatsapp_business",
+    "whatsapp_linked",
     "telegram",
     "facebook_messenger",
     "instagram_messaging",
@@ -1569,6 +1605,7 @@ function parseChannelProvider(value: unknown): ChannelProvider {
       "grogoni",
       "telegram",
       "whatsapp",
+      "whatsapp_linked",
       "messenger",
       "instagram",
       "tiktok",
@@ -1835,11 +1872,11 @@ function parseTrustedMessageAttachmentReferences(
   return value.map((item, index) => {
     const record = parseRequestBody(item);
     const resourceType = parseString(record.resourceType, `attachments[${index}].resourceType`);
-    if (resourceType !== "invoice") {
+    if (resourceType !== "invoice" && resourceType !== "conversation_attachment") {
       throw new Cp2Error(
         400,
         "EMAIL_ATTACHMENT_UNAVAILABLE",
-        "Only trusted invoice resources can currently be attached to email."
+        "Only trusted invoice or managed conversation attachments are supported."
       );
     }
     return {

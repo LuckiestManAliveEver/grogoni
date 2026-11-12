@@ -48,7 +48,12 @@ remains the authenticated domain API and Neon remains the durable database.
    `&sslrootcert=/path/to/ca.pem`, and for a local database without TLS use
    `sslmode=disable`. If the server logs DDL (`log_statement` = `ddl` or `all`), the
    password statement is logged; disable that for the session or rotate afterwards. The role gets `usage` on the queue's
-   schema and read/write on `grogoni_daemon_tasks` only. On PostgreSQL 14 and older,
+   schema, read/write on `grogoni_daemon_tasks`, and `execute` on
+   `grogoni_conversation_task_runtime(uuid, text)` (migration 132), the one question it may ask
+   about conversations: which model and engine a task's conversation is on now. Run the grant file
+   after migrations, and re-run it after upgrading past migration 132. Without that grant,
+   conversation tasks keep the runtime they were created with and each run logs
+   `conversation_runtime_unavailable` with `errorCode` `42501`. On PostgreSQL 14 and older,
    `PUBLIC` can also create objects in the `public` schema by default; run
    `revoke create on schema public from public` there if that matters to you. If
    retention is disabled (`DAEMON_RETENTION_DAYS=0`), revoke `delete` from the role.

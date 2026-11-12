@@ -9,19 +9,26 @@ during migration.
 
 `mobile phone → signup transaction → profile/password (required) → session`
 
-`mobile phone → methods (PIN primary, password secondary) → PIN or password → MFA when configured → session`
+`user chooses login → mobile phone → registered passkey first → PIN/password alternatives (or enrolled native Android device key) → session`
 
 `identifier → generic recovery response → channel verification → optional MFA → password reset → rotated session`
 
-`mobile phone → "Trouble logging in?" → enrolled passkey proves identity → new PIN or password`
+`mobile phone → "Trouble logging in?" → Device security → user-verified passkey or Android Keystore proof → new PIN or password`
 
-Every account gets a real password at signup - `/auth/signup/complete` rejects a request with no
-`password`. Passkeys are optional and never load-bearing: creating one (at signup or later, in
-account security settings) only registers a backup credential for the "Trouble logging in?"
-recovery path on phone accounts, which proves identity with a passkey ceremony before letting the
-owner set a new PIN or password. Passkey login is not offered as a normal sign-in method - there is no
-device-hint fast path and no "Continue with a passkey" option on the methods screen; PIN is the
-primary method there, with password as a secondary option when the account has one.
+Phone signup requires a password and then offers explicit device-security recovery enrollment.
+Existing accounts can enroll in account security settings. Browser recovery requires a previously
+registered WebAuthn passkey with user verification; ordinary passkey login cannot authorize
+credential resets. Native Android recovery requires authentication to unlock an enrolled Keystore
+key and a fresh server challenge. Passkey login is preferred when enabled, with PIN/password alternatives.
+See [Device security recovery](device-security-recovery.md) for the protocol, compatibility,
+revocation, notification policy and testing details.
+
+Guests receive a cookie-backed device account through `/auth/continue`, without a login or signup
+form. Personal and direct conversations use the same messaging APIs throughout that account's
+lifetime. Missing sessions are restored with the device key or continued without opening login.
+Guests can browse, buy, use personal app functions and register a shop without enrolling a PIN or
+passkey. Store APIs use ordinary membership checks. Signing up from a guest session upgrades that
+same account, so its chats, orders and any shop stay with it.
 
 Passkeys use discoverable WebAuthn credentials and resolve directly to the same account UUID.
 Access cookies last 15 minutes; HTTP-only refresh cookies last 30 days and rotate on use. Reuse
@@ -47,12 +54,15 @@ email enables email MFA after either PIN or password verification; enabled authe
 and recovery codes remain available. The MFA transaction and email challenge are bounded by
 expiry, attempt limits, and single use. No session cookie is issued before the second factor.
 
-Passkey enrollment uses WebAuthn with required user verification. The browser or operating system
-chooses the available device unlock (fingerprint, Face ID, device PIN, or password). A device unlock
-alone cannot recover an account without an enrolled passkey. Recovery proof lasts five minutes,
-is bound to the new session, persists in an internal recovery transaction across hosted requests,
-and is consumed by a successful PIN or password mutation. Password reset revokes other sessions.
-Email recovery remains available for a verified backup address.
+Interactive browser recovery uses server-generated WebAuthn challenges bound to the supplied
+phone account, origin, RP ID and recovery purpose. Native recovery signs a server challenge with
+an authentication-bound P-256 Android Keystore key. Both issue five-minute, single-use recovery
+grants for the existing PIN/password reset endpoints. Recovery transactions persist across hosted
+requests. Verified backup email remains available when no enrolled credential can be used.
+
+Legacy IndexedDB keys still support device-account session restoration; they are not used by the
+interactive browser PIN/password recovery screen. Passkey enrollment requires an authenticated,
+explicit user action. Legacy native keys require re-enrollment to gain device authentication.
 
 Existing email identities, OAuth records, and Grogoni storefront IDs remain stored for their
 non-login uses. Existing accounts need a linked phone number to use the mobile login flow.
@@ -64,3 +74,8 @@ terminal logout before the rotating refresh cookie is tried, especially when sta
 state is involved. The existing client already sent credentials and coalesced refresh attempts; this
 rollout preserves that behavior, retains only non-secret cached session display data, and extends
 network-only/no-store handling to every new auth and session route alias.
+
+Android enables WebAuthn through AndroidX WebKit when the installed WebView supports it,
+using Credential Manager and the production Digital Asset Links association. Unsupported
+WebViews retain the previously registered Android screen-lock key as the native fallback.
+The PWA never uses that native fallback. See [Android's WebView integration guide](https://developer.android.com/identity/sign-in/credential-manager-webview).

@@ -229,6 +229,14 @@ export const normalizedCollections: NormalizedCollection[] = [
 // persistence round trip - and blocking the response on it via app.ts's runtime GET flush wait -
 // on every capability/status poll is not worth it.
 const mutatingMethodNames = new Set([
+  "ingestLinkedWhatsAppMessage",
+  "ensureLinkedWhatsAppRuntime",
+  "setLinkedToolGrants",
+  "executeLinkedToolTurn",
+  "deliverLinkedDelegationResult",
+  "readLinkedWhatsAppEvidence",
+  "deliverLinkedWhatsAppReply",
+  "recordLinkedWhatsAppState",
   "executeSourceCommerce",
   "describeCommerceCatalogue",
   "refreshCommerceSource",
@@ -273,6 +281,13 @@ const mutatingMethodNames = new Set([
   "completePhoneSignup",
   "continueWithDevice",
   "recoverWithDeviceCredential",
+  "beginDeviceRecovery",
+  "startRecoveryApproval",
+  "recoveryApprovalStatus",
+  "beginRecoveryApproval",
+  "approveRecoveryApproval",
+  "declineRecoveryApproval",
+  "revokeDeviceRecoveryCredential",
   "continueWithChannelPin",
   "loginWithPassword",
   "mergeCurrentDeviceAccountWithPin",
@@ -282,7 +297,7 @@ const mutatingMethodNames = new Set([
   "verifyMfa",
   "beginEmailMfa",
   "challengePinLoginMfa",
-  "recoverPasswordWithPasskey",
+  "recoverPasswordWithDevice",
   "beginRecovery",
   "verifyEmailRecovery",
   "resetRecoveredPassword",
@@ -337,6 +352,8 @@ const mutatingMethodNames = new Set([
   "createReceiptOCRJob",
   "createRuntimeSession",
   "createRuntimeTurn",
+  // Rejecting a WhatsApp-delegated action sends the requester an outcome message and audits it.
+  "rejectRuntimeAction",
   "recordVerifiedBusinessTaskExperience",
   "createSalesAgent",
   "createSalesAgentFromPhoneContact",
@@ -364,7 +381,7 @@ const mutatingMethodNames = new Set([
   "logout",
   "logoutAll",
   "recoverAccountPin",
-  "recoverPhoneAccountPinWithPasskey",
+  "recoverPhoneAccountPinWithDevice",
   "recordBetaDeviceTest",
   "recordBetaTelemetry",
   "recordPayment",
@@ -421,11 +438,16 @@ const mutatingMethodNames = new Set([
   "updateTaxConfig",
   "updateVerificationTier",
   "verifyAccountPin",
+  "verifyAccountPassword",
+  "createPassword",
   "verifyExternallyApprovedOtp",
   "verifyOtp",
   "finalizeShopDeletion",
   "activateAiModel",
   "activateAgentModel",
+  // My Assistant's agent/model switch: without this it reached Postgres only with some later write.
+  "selectConversationModel",
+  "updateAssistantPermissions",
   "activateGlobalDefaultModel",
   "removeAgentModelBinding",
   "authenticateMcpAccessToken",
@@ -3631,6 +3653,11 @@ export async function saveRelationalCoreRecords(
   if (mayHaveRemovals("accountPinHashes")) {
     await deleteMissingAccountPinHashes(client, snapshotRecords(snapshot.accountPinHashes));
   }
+  // Edge password login reads password_credentials, so a removed password must leave it too.
+  // Before this, a deleted password (for example by a trusted-device undo) kept working there.
+  if (mayHaveRemovals("passwordCredentials")) {
+    await deleteMissingPasswordCredentials(client, snapshotRecords(snapshot.passwordCredentials));
+  }
   if (mayHaveRemovals("salesAgents")) {
     await deleteMissingRows(client, "sales_agents", snapshotRecords(snapshot.salesAgents));
   }
@@ -4651,6 +4678,30 @@ async function savePhase1AuthSecurityRecords(
   const changed = relationalChangeSelector(snapshot, previous, stats);
   await saveIdentityProviders(client, snapshot);
 
+  // Native Edge login reads the relational credentials, while domain recovery updates the
+  // compatibility snapshot. Persist both within this transaction so a reset is usable at login.
+  for (const record of changed("passwordCredentials")) {
+    await client.query(
+      `insert into password_credentials
+        (account_id, password_hash, password_changed_at, created_at, updated_at)
+       values ($1, $2, $3, $4, $5)
+       on conflict (account_id) do update set
+         password_hash = excluded.password_hash,
+         password_changed_at = excluded.password_changed_at,
+         updated_at = excluded.updated_at
+       where (password_credentials.password_hash, password_credentials.password_changed_at,
+              password_credentials.updated_at) is distinct from
+             (excluded.password_hash, excluded.password_changed_at, excluded.updated_at)`,
+      [
+        requiredText(record, "accountId"),
+        requiredText(record, "passwordHash"),
+        requiredText(record, "passwordChangedAt"),
+        requiredText(record, "createdAt"),
+        requiredText(record, "updatedAt")
+      ]
+    );
+  }
+
   for (const record of changed("otpChallenges")) {
     await client.query(
       `
@@ -5046,6 +5097,28 @@ async function deleteMissingRows(
     return;
   }
   await client.query(`delete from ${tableName} where not (id = any($1::uuid[]))`, [ids]);
+}
+
+async function deleteMissingPasswordCredentials(
+  client: PoolClient,
+  records: SnapshotRecord[]
+): Promise<void> {
+  const accountIds = records.map((record) => requiredText(record, "accountId"));
+  const baseline = edgeRemovalBaselines.get(client);
+  if (baseline) {
+    // An Edge snapshot holds only the caller's scope: delete exactly what this request removed.
+    const removed = (baseline.passwordCredentials ?? [])
+      .map((record) => record.accountId)
+      .filter((id) => !accountIds.includes(id));
+    if (removed.length)
+      await client.query("delete from password_credentials where account_id = any($1::uuid[])", [
+        removed
+      ]);
+    return;
+  }
+  await client.query("delete from password_credentials where not (account_id = any($1::uuid[]))", [
+    accountIds
+  ]);
 }
 
 async function deleteMissingAccountPinHashes(

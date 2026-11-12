@@ -12,28 +12,30 @@ class NativeSmsSyncWorker(context: Context, parameters: WorkerParameters) : Work
     private fun sync(): Result {
         val session = GrogoniSessionStore(applicationContext)
         if (!session.syncEnabled || session.cookieHeader == null || session.businessId == null) return Result.success()
+        val account = session.accountId ?: return Result.success()
+        fun sessionChanged() = session.accountId != account || session.cookieHeader == null
         NativeSmsStore(applicationContext).use { store ->
             val api = NativeSmsApiClient(applicationContext)
             return try {
-                if (isStopped) return Result.retry()
+                if (isStopped || sessionChanged()) return Result.retry()
                 api.register(NativeSmsCapability.inspect(applicationContext))
                 val inbound = store.unsyncedInbound()
                 inbound.forEach { message ->
-                    if (isStopped || !session.syncEnabled) return Result.retry()
+                    if (isStopped || sessionChanged() || !session.syncEnabled) return Result.retry()
                     api.uploadInbound(message)
                     store.markInboundSynced(message.eventId)
                 }
                 val results = store.pendingResults()
                 results.forEach { result ->
-                    if (isStopped || !session.syncEnabled) return Result.retry()
+                    if (isStopped || sessionChanged() || !session.syncEnabled) return Result.retry()
                     api.report(result)
                     store.deletePendingResult(result)
                 }
-                if (isStopped) return Result.retry()
+                if (isStopped || sessionChanged()) return Result.retry()
                 val commands = api.fetchCommands()
                 commands.forEach { command ->
-                    if (isStopped || !session.syncEnabled) return Result.retry()
-                    executeOnce(command, store, api)
+                    if (isStopped || sessionChanged() || !session.syncEnabled) return Result.retry()
+                    executeOnce(command, store, api, account)
                 }
                 // Continue draining a reconnect backlog without waiting for the periodic job.
                 if (inbound.size == 50 || results.size == 50 || commands.size == 20 ||
@@ -52,9 +54,11 @@ class NativeSmsSyncWorker(context: Context, parameters: WorkerParameters) : Work
         command: NativeSmsCommand,
         store: NativeSmsStore,
         api: NativeSmsApiClient,
+        accountId: String,
     ) {
+        if (GrogoniSessionStore(applicationContext).accountId != accountId) return
         when (commandReplayDecision(
-            store.claimCommand(command.id), store.commandState(command.id),
+            store.claimCommand(command.id, accountId), store.commandState(command.id),
             store.executionTimedOut(command.id),
         )) {
             CommandReplayDecision.REPORT_DELIVERY_UNKNOWN -> {
@@ -72,7 +76,8 @@ class NativeSmsSyncWorker(context: Context, parameters: WorkerParameters) : Work
             CommandReplayDecision.EXECUTE -> Unit
         }
         api.acknowledge(command.id)
-        if (isStopped || !GrogoniSessionStore(applicationContext).syncEnabled) return
+        val currentSession = GrogoniSessionStore(applicationContext)
+        if (isStopped || !currentSession.syncEnabled || currentSession.accountId != accountId || currentSession.cookieHeader == null) return
         try {
             store.markCommandExecutionStarted(command.id)
             AndroidSmsSender(applicationContext).send(command)

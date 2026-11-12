@@ -5,6 +5,7 @@ import {
   installBrowserLinkInterceptor,
   subscribeToBrowserNavigation
 } from "./browser-navigation";
+import { isNativeDeviceHost } from "./device-messaging";
 import InstallPage from "./InstallPage";
 import { appRouteModuleKeys, loadLazyModuleWithRecovery } from "./lazy-module-recovery";
 import { LazyModuleErrorBoundary } from "./LazyModuleErrorBoundary";
@@ -22,6 +23,13 @@ const initialGrogoniApplicationModule = shouldWarmOwnerRoute(initialPathname)
   ? loadLazyModuleWithRecovery(appRouteModuleKeys.ownerApp, () => import("./GrogoniApplication"))
   : null;
 
+// Recovers from a stale chunk after a deploy, like every other route.
+const DeviceMessagingPage = lazy(() =>
+  loadLazyModuleWithRecovery(
+    appRouteModuleKeys.deviceMessaging,
+    () => import("./DeviceMessagingPage")
+  )
+);
 const TermsOfServicePage = lazy(() =>
   loadLazyModuleWithRecovery(
     appRouteModuleKeys.termsOfService,
@@ -67,6 +75,14 @@ export function AppRouter() {
   useEffect(() => installBrowserLinkInterceptor(), []);
   const storefrontRoute = readStorefrontRoute();
 
+  if (window.location.pathname === "/device-messages") {
+    return (
+      <Suspense fallback={<p>Opening messages…</p>}>
+        <DeviceMessagingPage />
+      </Suspense>
+    );
+  }
+
   if (storefrontRoute !== null) {
     return (
       <LazyRoute
@@ -82,7 +98,7 @@ export function AppRouter() {
     );
   }
 
-  if (window.location.pathname === routes.install) {
+  if (window.location.pathname === routes.install && !isNativeDeviceHost()) {
     return <InstallPage />;
   }
 

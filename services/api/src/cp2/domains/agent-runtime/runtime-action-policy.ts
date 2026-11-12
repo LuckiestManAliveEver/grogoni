@@ -15,6 +15,7 @@ export function runtimeActionPolicyErrors(
     toolName: RuntimeToolName;
     toolInput: Record<string, unknown>;
     intent: RuntimeParserIntent;
+    sessionId: string | null;
   }
 ): string[] {
   const entityReferenceError = findRuntimeUnknownEntityReferenceError(
@@ -24,6 +25,7 @@ export function runtimeActionPolicyErrors(
     input.toolInput
   );
   return [
+    ...(deps.assistantPermissionErrors?.(input.sessionId, input.toolName) ?? []),
     ...(entityReferenceError === null ? [] : [entityReferenceError]),
     ...enforceAgentPolicy({
       runtime: input.runtime,

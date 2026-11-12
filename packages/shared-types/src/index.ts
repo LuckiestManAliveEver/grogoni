@@ -3,12 +3,14 @@ import type { PublishedCommerceOffer, CommerceOfferOrderSnapshot } from "./comme
 export type RuntimeName = "api" | "sync" | "ai-runtime" | "web";
 
 export * from "./business-settings.js";
+export * from "./assistant-permissions.js";
 export * from "./commerce-address.js";
 export * from "./daemon-lanes.js";
 export * from "./purchase-orders.js";
 export * from "./computer-runtime.js";
 export * from "./fulfillment.js";
 export * from "./grams.js";
+export * from "./recovery-approval.js";
 export * from "./guest-intent.js";
 export * from "./phone-number.js";
 export * from "./portable-agent.js";
@@ -390,6 +392,7 @@ export type ChannelProvider =
   | "grogoni"
   | "telegram"
   | "whatsapp"
+  | "whatsapp_linked"
   | "messenger"
   | "instagram"
   | "tiktok"
@@ -438,6 +441,7 @@ export type MessageChannel =
   | "mms"
   | "rcs_business"
   | "whatsapp_business"
+  | "whatsapp_linked"
   | "telegram"
   | "facebook_messenger"
   | "instagram_messaging"
@@ -806,7 +810,7 @@ export interface ConnectedMailboxSyncSummary {
 }
 
 export interface TrustedMessageAttachmentReference {
-  resourceType: "invoice";
+  resourceType: "invoice" | "conversation_attachment";
   resourceId: string;
 }
 
@@ -907,6 +911,30 @@ export interface ProviderUpdateReceiptSummary {
   status: "received" | "processed" | "failed";
   createdAt: string;
   processedAt: string | null;
+}
+
+/** User-facing name of the account's permanent daemon conversation and its agent. */
+export const permanentDaemonDisplayName = "My Assistant";
+
+/** Agent engines the permanent daemon conversation can run on; each is a registered adapter id. */
+export type DaemonAgentId = "grogoni" | "pi";
+export const daemonAgentOptions: ReadonlyArray<{ id: DaemonAgentId; label: string }> = [
+  { id: "grogoni", label: "Grogoni agent" },
+  { id: "pi", label: "Pi agent" }
+];
+export function isDaemonAgentId(value: unknown): value is DaemonAgentId {
+  return daemonAgentOptions.some((option) => option.id === value);
+}
+
+/** GET/PUT /v1/conversations/:conversationId/model for the permanent daemon conversation. */
+export interface ConversationRuntimeSelection {
+  conversationId: string;
+  selectedAgentId: DaemonAgentId | null;
+  agents: Array<{ id: DaemonAgentId; label: string }>;
+  selectedModelId: string | null;
+  models: Array<{ id: string; label: string }>;
+  available: boolean;
+  errorCode: string | null;
 }
 
 export interface ConversationSummary {
@@ -3874,6 +3902,9 @@ export interface BusinessKnowledgeSummary {
 }
 
 export type RuntimeToolName =
+  | "catalogue.marketplace.search"
+  | "catalogue.marketplace.products"
+  | "catalogue.marketplace.import"
   | "products.list"
   | "invoices.list"
   | "reports.summary"
@@ -4280,7 +4311,15 @@ export interface RuntimeModelTrace {
   agentAdapterId?: string;
 }
 
+export interface RuntimeChannelDelegation {
+  channelId: string;
+  grantId: string;
+  ownerId: string;
+  sourceMessageId: string;
+  actorId: string;
+}
 export interface RuntimePlannedAction {
+  channelDelegation?: RuntimeChannelDelegation;
   portableSkill?: { id: string; version: number; digest: string };
   id: string;
   toolName: RuntimeToolName;
@@ -4329,6 +4368,7 @@ export interface RuntimeSessionSummary {
 }
 
 export interface RuntimeTurnSummary {
+  sourceMessageId?: string;
   id: string;
   sessionId: string;
   businessId: string;

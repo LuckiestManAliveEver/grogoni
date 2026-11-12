@@ -1,11 +1,74 @@
 # Grogoni Native Android Audit
 
+## WhatsApp discovery checkpoint — 2026-11-06
+
+The native message-port bridge now detects enabled WhatsApp/WhatsApp Business installations
+using targeted package queries and can open their launcher intent. The shared messaging panel
+contains the pairing-code control. No WhatsApp account number is inferred, no Node runtime is
+embedded, and the minimum SDK remains 23. This is not live-device pairing certification; the
+[Linked Devices checkpoint](whatsapp-linked-devices.md) records the hosting and remaining gaps.
+
 **Checkpoint:** pre-implementation audit for the "Grogoni Native Android — Capacitor, SMS Gateway,
 Contacts, Offline Messaging and Agent Runtime" directive.
 **Method:** static inspection of the checked-in repository at the time of writing. No production
 behavior was modified to produce this document.
 **Rule applied:** repository reality takes precedence over assumptions in the directive. Where the
 directive's premises conflict with the code, the code wins and the conflict is recorded explicitly.
+
+## Native recovery and runtime follow-up — 2026-10-31
+
+The earlier blocked emulator entries are historical. Host KVM now reports usable acceleration,
+and the API 30 emulator runs the native APK successfully.
+
+Changes in this follow-up:
+
+- Native account screen supports PIN/password login and email, TOTP and recovery-code MFA.
+- Signed-in accounts can register an account-scoped non-exportable Android Keystore P-256 key.
+  Recovery signs the existing backend assertion format (P1363), verifies account identity, checks
+  whether a PIN exists, and submits a single-use PIN/password reset without automatic replay.
+- Verified backup email recovery is native: verify code, reset password, include TOTP if needed.
+  A recovered password can be used for sign-in; then enroll the device key to replace a lost PIN.
+  Missing/revoked keys produce email fallback guidance. No SMS recovery or ownership bypass exists.
+- Authentication secrets are excluded from saved UI state and screenshots. Keys survive logout,
+  and users can explicitly forget a local key. Cookies remain encrypted at rest.
+- Shared HTTPS transport rejects redirects, disconnects reliably, handles non-JSON errors, merges
+  refreshed cookies, and never retries a failed request under another account's session.
+- Account switching clears business selection. Remote SMS queues/results are account-scoped,
+  including late delivery callbacks. The schema migration retains unattributed legacy rows in
+  quarantine rather than sending them under a newly signed-in account.
+- Hardened SMS-role availability checks, older-Android telephony detection, permission ordering,
+  and foreground-service permission gating. API 23 uses the API-22 SMS subscription accessor;
+  timestamps no longer depend on API-26 java.time. CI now runs Android lint as well as JVM/build.
+- Compose intents parse encoded body/recipient correctly. MMS and multiple-recipient intents are
+  rejected explicitly, incoming MMS warns when notifications are available, and the main screen
+  states that MMS transport is unsupported. Immediate send failures become terminal/failed rather
+  than remaining in Sending. Default-SIM selection never falls back to SIM slot zero.
+- Android instrumentation runner is now an explicit dependency. Release tasks reject missing
+  signing configuration; no unsigned artifact is presented as a signed distributable.
+- Includes the earlier native release-identity correction and removal of placeholder App Links.
+
+Validation:
+
+- 14 JVM tests passed, including P1363 interop, API-specific permissions, UTC timestamps and URI parsing.
+- 13 on-emulator instrumentation tests passed with no skips, covering actual Keystore storage,
+  native account UI, MFA/recovery request contracts, session refresh, durable queues, ownership
+  isolation, and local SMS provider reads. API responses in native auth tests use an injected
+  transport; production email delivery/account recovery was not exercised.
+- 61 targeted API/web tests passed across nine suites, including server single-use recovery/MFA checks.
+- Android lint: zero errors, 64 warnings (including existing localization/style/dependency warnings).
+- Final APK installed, incoming SMS injected, `sms:` URI recipient/body prefilled, outgoing message
+  submitted and persisted as Sent on the emulator. Prior role-prompt evidence is retained locally.
+- Missing-release-signing task correctly failed with a configuration error (expected negative check).
+- Debug APK SHA-256: `7665c6956c9ded845673f065791ac164c7fb678f83c6b3fc37c57948918341ff`.
+- Detailed local evidence: `/tmp/android-emu/native-auth-emulator-tests.log`,
+  `/tmp/android-emu/native-auth-final-build.log`, `/tmp/android-emu/native-auth-api-tests.log`,
+  and `/tmp/android-emu/critique/20-*` through `22-*`.
+
+Remaining capability and external requirements: MMS transport, paginated conversations, actual
+carrier delivery on a physical SIM, API-33+ runtime permission dialogs, release signing/identity
+approval, production APK publication, certificate-backed App Links, and production email delivery.
+The emulator's Sent state proves Android acceptance, not carrier delivery. Browser account
+creation/backup-email management remain linked from the native account screen.
 
 ---
 
@@ -427,6 +490,12 @@ does **not** exercise real telephony.
 send/receive, emulator startup, WorkManager background behavior, signing, and a fresh
 production-DB seed check. These remain **unverified** here.
 
+> **2026-10-30 emulator attempt:** the debug APK now compiles and its JVM tests pass (7/7). An API 30
+> x86_64 emulator was booted with `-accel off` on a ThinkPad P50 whose BIOS has VT-x disabled. It
+> reached `sys.boot_completed=1` after 630 s, then `system_server` crash-looped (single-threaded TCG
+> misses the framework watchdog), so the default-SMS role flow could not be exercised. Software
+> emulation is not a viable test bed; enable VT-x (KVM) or use a physical phone.
+
 ---
 
 ## Appendix A — Files that an implementer must not duplicate
@@ -457,3 +526,30 @@ production-DB seed check. These remain **unverified** here.
 
 _End of audit. Proceeding is gated on owner sign-off of §8 (notably the Capacitor reinterpretation),
 per the directive's "stop for review before continuing" rule._
+
+## Follow-up: 2026-10-30, 15:40 America/New_York
+
+Code fixes completed locally; runtime verification remains blocked.
+
+- Removed the automatic startup permission request. Both permission-button and post-role flows
+  now exclude SMS and call-log permissions until the SMS role is held; only missing permissions
+  are requested.
+- Replaced the required API-33 messaging feature in the manifest with legacy telephony. Runtime
+  detection uses `FEATURE_TELEPHONY` below API 33 and `FEATURE_TELEPHONY_MESSAGING` on API 33+.
+- Corrected release identity, schema, verifier, and test expectations to `native-kotlin`.
+- Removed the placeholder App Links statement. The committed file is now an empty array pending
+  the real release certificate. The generator rejects missing, malformed, and known placeholder
+  fingerprints, and invokes keytool without shell interpolation or command-line passwords.
+- Added permission-order and certificate-generator regression coverage; documented the setup.
+- Validation: 8 Android JVM tests passed; debug APK rebuilt; 40 TypeScript tests across six
+  suites passed; identity structure verifier and `git diff --check` passed.
+- Debug APK SHA-256: `8c5fbf51a442bef104589d7c68ef27e4ec43b1d958d894cd04fb4e3ac5f0eecd`.
+- Resumed host checks: `adb devices -l` lists no devices. Emulator `-accel-check`, run outside
+  the sandbox, exits 8: `/dev/kvm is not found: VT disabled in BIOS or KVM kernel module not loaded`.
+  This does not establish which BIOS/kernel configuration is responsible. No software-only boot
+  was repeated because the previous attempt crash-looped.
+- Still needed: connect a phone with USB debugging authorized, or make host KVM usable, then verify
+  the role prompt, SENDTO, receive/send, and native grants. Carrier verification needs a real SIM.
+  Signed production APK publication and certificate-backed App Links remain pending.
+- Changes are local, not committed, pushed, or deployed. Earlier production observations below
+  have not been rechecked in this follow-up.

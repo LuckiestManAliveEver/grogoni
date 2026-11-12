@@ -29,6 +29,7 @@ import type { Cp2Snapshot } from "../../store.js";
 
 export interface PasskeyDomainDeps {
   requireAnySession: (sessionId: string | null, now: Date) => AuthSessionView;
+  requireFirstCredentialSession: (sessionId: string | null, now: Date) => AuthSessionView;
   requireRecentlyAuthenticatedSession: (sessionId: string | null, now: Date) => AuthSessionView;
   requirePinVerifiedSession: (sessionId: string | null, now: Date) => AuthSessionView;
   markSessionPinVerified: (sessionId: string, now: Date) => void;
@@ -59,10 +60,26 @@ export interface PasskeyDomainDeps {
     reason: string,
     now: Date
   ) => void;
-  createRecoveryGrant: (sessionId: string, accountId: string, now: Date) => void;
+  issueRecoveryGrant: (
+    sessionId: string,
+    accountId: string,
+    credentialId: string,
+    now: Date
+  ) => void;
+  revokeRecoveryGrants: (credentialId: string, now: Date) => void;
+  notifyCredentialRecovery: (accountId: string, credential: "PIN" | "password", now: Date) => void;
   recoveryGrantExpiry: (sessionId: string) => string | undefined;
   consumeRecoveryGrant: (sessionId: string) => void;
   passkeyAuthenticationVerifier?: typeof verifyAuthenticationResponse;
+}
+
+interface VerifiedPasskeyAssertion {
+  passkey: PasskeyCredentialRecord;
+  use: {
+    newCounter: number;
+    credentialBackedUp: boolean;
+    credentialDeviceType: PasskeyCredentialRecord["deviceType"];
+  };
 }
 
 export class PasskeyDomain {
@@ -89,8 +106,8 @@ export class PasskeyDomain {
     if (expiry === undefined || Date.parse(expiry) <= now.getTime()) {
       throw new Cp2Error(
         401,
-        "passkey_pin_recovery_required",
-        "Verify your passkey again before resetting credentials."
+        "device_credential_recovery_required",
+        "Verify this device again before resetting credentials."
       );
     }
   }
@@ -108,7 +125,7 @@ export class PasskeyDomain {
     }
   }
 
-  recoverPhoneAccountPinWithPasskey(input: {
+  recoverPhoneAccountPinWithDevice(input: {
     sessionId: string | null;
     pin: string;
     now?: Date;
@@ -121,8 +138,8 @@ export class PasskeyDomain {
     if (grantExpiresAt === undefined || Date.parse(grantExpiresAt) <= now.getTime()) {
       throw new Cp2Error(
         401,
-        "passkey_pin_recovery_required",
-        "Verify a passkey before resetting this phone account PIN."
+        "device_credential_recovery_required",
+        "Verify this device before resetting this phone account PIN."
       );
     }
 
@@ -130,7 +147,7 @@ export class PasskeyDomain {
       throw new Cp2Error(
         409,
         "phone_pin_recovery_not_applicable",
-        "Passkey PIN recovery is available only for phone accounts."
+        "Device PIN recovery is available only for phone accounts."
       );
     }
 
@@ -159,10 +176,11 @@ export class PasskeyDomain {
       actorId: session.user.id,
       occurredAt: now.toISOString(),
       payload: {
-        method: "passkey"
+        method: "device_security"
       }
     });
 
+    this.deps.notifyCredentialRecovery(session.account.id, "PIN", now);
     return this.deps.requireAnySession(session.session.id, now);
   }
 
@@ -184,13 +202,14 @@ export class PasskeyDomain {
   async beginPasskeyRegistration(input: {
     sessionId: string | null;
     rpId: string;
+    origin?: string;
     now?: Date;
   }): Promise<{
     ceremonyId: string;
     options: PublicKeyCredentialCreationOptionsJSON;
   }> {
     const now = input.now ?? new Date();
-    const session = this.deps.requireRecentlyAuthenticatedSession(input.sessionId, now);
+    const session = this.deps.requireFirstCredentialSession(input.sessionId, now);
     this.prunePasskeyCeremonies(now);
     const accountPasskeys = [...this.passkeys.values()].filter(
       (passkey) => passkey.accountId === session.account.id
@@ -217,6 +236,8 @@ export class PasskeyDomain {
     const ceremony: PasskeyCeremonyRecord = {
       id: randomUUID(),
       kind: "registration",
+      rpId: input.rpId,
+      ...(input.origin ? { origin: input.origin } : {}),
       accountId: session.account.id,
       challenge: options.challenge,
       webauthnUserId: options.user.id,
@@ -241,10 +262,15 @@ export class PasskeyDomain {
     now?: Date;
   }): Promise<PasskeySummary> {
     const now = input.now ?? new Date();
-    const session = this.deps.requireRecentlyAuthenticatedSession(input.sessionId, now);
+    const session = this.deps.requireFirstCredentialSession(input.sessionId, now);
     const ceremony = this.takePasskeyCeremony(input.ceremonyId, "registration", now);
 
-    if (ceremony.accountId !== session.account.id || ceremony.webauthnUserId === null) {
+    if (
+      ceremony.accountId !== session.account.id ||
+      ceremony.webauthnUserId === null ||
+      (ceremony.rpId !== undefined && ceremony.rpId !== input.rpId) ||
+      (ceremony.origin !== undefined && ceremony.origin !== input.origin)
+    ) {
       throw new Cp2Error(403, "passkey_ceremony_invalid", "Passkey registration is invalid.");
     }
 
@@ -307,11 +333,23 @@ export class PasskeyDomain {
   async beginPasskeyAuthentication(input: {
     rpId: string;
     purpose?: "login" | "pin_recovery";
+    recoveryIdentifier?: string;
+    origin?: string;
     now?: Date;
   }): Promise<{
     ceremonyId: string;
     options: PublicKeyCredentialRequestOptionsJSON;
   }> {
+    if (
+      input.purpose === "pin_recovery" &&
+      !/^\+[1-9]\d{6,14}$/u.test(input.recoveryIdentifier ?? "")
+    ) {
+      throw new Cp2Error(
+        400,
+        "recovery_identifier_required",
+        "Enter your phone number before recovering your account."
+      );
+    }
     const now = input.now ?? new Date();
     this.prunePasskeyCeremonies(now);
     const options = await generateAuthenticationOptions({
@@ -321,6 +359,11 @@ export class PasskeyDomain {
     const ceremony: PasskeyCeremonyRecord = {
       id: randomUUID(),
       kind: "authentication",
+      rpId: input.rpId,
+      ...(input.origin ? { origin: input.origin } : {}),
+      ...(input.recoveryIdentifier !== undefined
+        ? { recoveryIdentifier: input.recoveryIdentifier! }
+        : {}),
       purpose: input.purpose ?? "login",
       accountId: null,
       challenge: options.challenge,
@@ -345,8 +388,140 @@ export class PasskeyDomain {
   }): Promise<AuthSessionView> {
     const now = input.now ?? new Date();
     const ceremony = this.takePasskeyCeremony(input.ceremonyId, "authentication", now);
+    // An approval ceremony vouches for another browser. It must never sign this one in.
+    if (ceremony.purpose === "recovery_approval")
+      throw new Cp2Error(400, "passkey_ceremony_invalid", "Passkey request expired or is invalid.");
+    const verified = await this.verifyPasskeyAssertion(ceremony, input);
+    const { passkey } = verified;
+    const account = this.deps.requireAccount(passkey.accountId);
+    if (
+      ceremony.recoveryIdentifier !== undefined &&
+      (account.primaryAuthChannel !== "phone" ||
+        account.primaryAuthDestination !== ceremony.recoveryIdentifier)
+    ) {
+      throw new Cp2Error(
+        401,
+        "passkey_account_mismatch",
+        "Use a passkey registered for this phone account."
+      );
+    }
+    this.commitPasskeyUse(verified, now);
+    this.deps.requireAccountAuthenticationAllowed(account);
+    const user = this.deps.requireUser(passkey.userId);
+    const createdSession = this.deps.createSession(account, user, now);
+    this.deps.markSessionPinVerified(createdSession.id, now);
+    if (ceremony.purpose === "pin_recovery") {
+      this.deps.issueRecoveryGrant(createdSession.id, account.id, passkey.id, now);
+    }
+
+    this.deps.recordAuditEvent({
+      type: ceremony.purpose === "pin_recovery" ? "auth.device_recovered" : "auth.passkey_login",
+      aggregateType: "account",
+      aggregateId: account.id,
+      actorId: user.id,
+      occurredAt: now.toISOString(),
+      payload: {
+        credentialId: passkey.id,
+        purpose: ceremony.purpose ?? "login"
+      }
+    });
+
+    return this.deps.requireAnySession(createdSession.id, now);
+  }
+
+  /**
+   * A user-verified passkey challenge for a signed-in owner approving another browser's recovery.
+   * Only this account's passkeys are allowed, and the ceremony is bound to the approval request.
+   */
+  async beginPasskeyRecoveryApproval(input: {
+    accountId: string;
+    approvalRequestId: string;
+    rpId: string;
+    origin: string;
+    /** Passkeys created at or after this time cannot approve (trusted-device probation). */
+    createdBefore?: string | null;
+    now?: Date;
+  }): Promise<{ ceremonyId: string; options: PublicKeyCredentialRequestOptionsJSON }> {
+    const now = input.now ?? new Date();
+    const passkeys = [...this.passkeys.values()].filter(
+      (passkey) =>
+        passkey.accountId === input.accountId &&
+        (input.createdBefore == null || passkey.createdAt < input.createdBefore)
+    );
+    if (passkeys.length === 0)
+      throw new Cp2Error(
+        409,
+        "recovery_approval_passkey_missing",
+        "Add a passkey on this device first, then approve."
+      );
+    this.prunePasskeyCeremonies(now);
+    const options = await generateAuthenticationOptions({
+      rpID: input.rpId,
+      userVerification: "required",
+      allowCredentials: passkeys.map((passkey) => ({
+        id: passkey.id,
+        transports: passkey.transports as AuthenticatorTransportFuture[]
+      }))
+    });
+    const ceremony: PasskeyCeremonyRecord = {
+      id: randomUUID(),
+      kind: "authentication",
+      purpose: "recovery_approval",
+      approvalRequestId: input.approvalRequestId,
+      rpId: input.rpId,
+      origin: input.origin,
+      accountId: input.accountId,
+      challenge: options.challenge,
+      webauthnUserId: null,
+      expiresAt: new Date(now.getTime() + passkeyCeremonyTtlMs).toISOString(),
+      createdAt: now.toISOString()
+    };
+    this.passkeyCeremonies.set(ceremony.id, ceremony);
+    return { ceremonyId: ceremony.id, options };
+  }
+
+  /** Verifies an approval assertion without creating a session. Returns the passkey id. */
+  async verifyPasskeyRecoveryApproval(input: {
+    ceremonyId: string;
+    accountId: string;
+    approvalRequestId: string;
+    origin: string;
+    rpId: string;
+    response: AuthenticationResponseJSON;
+    createdBefore?: string | null;
+    now?: Date;
+  }): Promise<string> {
+    const now = input.now ?? new Date();
+    const ceremony = this.takePasskeyCeremony(input.ceremonyId, "authentication", now);
+    if (
+      ceremony.purpose !== "recovery_approval" ||
+      ceremony.accountId !== input.accountId ||
+      ceremony.approvalRequestId !== input.approvalRequestId
+    )
+      throw new Cp2Error(401, "passkey_authentication_invalid", "Passkey verification failed.");
+    const verified = await this.verifyPasskeyAssertion(ceremony, input);
+    if (
+      verified.passkey.accountId !== input.accountId ||
+      (input.createdBefore != null && verified.passkey.createdAt >= input.createdBefore)
+    )
+      throw new Cp2Error(401, "passkey_account_mismatch", "Use a passkey for this account.");
+    this.commitPasskeyUse(verified, now);
+    return verified.passkey.id;
+  }
+
+  /** Signature, user verification, user handle, relying party and origin. No state changes. */
+  private async verifyPasskeyAssertion(
+    ceremony: PasskeyCeremonyRecord,
+    input: { origin: string; rpId: string; response: AuthenticationResponseJSON }
+  ): Promise<VerifiedPasskeyAssertion> {
     const passkey = this.passkeys.get(input.response.id);
 
+    if (
+      (ceremony.rpId !== undefined && ceremony.rpId !== input.rpId) ||
+      (ceremony.origin !== undefined && ceremony.origin !== input.origin)
+    ) {
+      throw new Cp2Error(401, "passkey_authentication_invalid", "Passkey verification failed.");
+    }
     if (passkey === undefined) {
       throw new Cp2Error(401, "passkey_unknown", "Passkey sign-in failed.");
     }
@@ -379,35 +554,21 @@ export class PasskeyDomain {
       throw new Cp2Error(401, "passkey_authentication_invalid", "Passkey sign-in failed.");
     }
 
-    if (!verification.verified) {
+    if (
+      !verification.verified ||
+      !verification.authenticationInfo.userVerified ||
+      this.passkeys.get(passkey.id) !== passkey
+    ) {
       throw new Cp2Error(401, "passkey_authentication_invalid", "Passkey sign-in failed.");
     }
+    return { passkey, use: verification.authenticationInfo };
+  }
 
-    passkey.counter = verification.authenticationInfo.newCounter;
-    passkey.backedUp = verification.authenticationInfo.credentialBackedUp;
-    passkey.deviceType = verification.authenticationInfo.credentialDeviceType;
-    passkey.lastUsedAt = now.toISOString();
-    const account = this.deps.requireAccount(passkey.accountId);
-    this.deps.requireAccountAuthenticationAllowed(account);
-    const user = this.deps.requireUser(passkey.userId);
-    const createdSession = this.deps.createSession(account, user, now);
-    this.deps.markSessionPinVerified(createdSession.id, now);
-    if (ceremony.purpose === "pin_recovery") {
-      this.deps.createRecoveryGrant(createdSession.id, account.id, now);
-    }
-    this.deps.recordAuditEvent({
-      type: "auth.passkey_login",
-      aggregateType: "account",
-      aggregateId: account.id,
-      actorId: user.id,
-      occurredAt: now.toISOString(),
-      payload: {
-        credentialId: passkey.id,
-        purpose: ceremony.purpose ?? "login"
-      }
-    });
-
-    return this.deps.requireAnySession(createdSession.id, now);
+  private commitPasskeyUse(verified: VerifiedPasskeyAssertion, now: Date): void {
+    verified.passkey.counter = verified.use.newCounter;
+    verified.passkey.backedUp = verified.use.credentialBackedUp;
+    verified.passkey.deviceType = verified.use.credentialDeviceType;
+    verified.passkey.lastUsedAt = now.toISOString();
   }
 
   listPasskeys(input: { sessionId: string | null; now?: Date }): PasskeySummary[] {
@@ -446,6 +607,7 @@ export class PasskeyDomain {
     }
 
     this.passkeys.delete(passkey.id);
+    this.deps.revokeRecoveryGrants(passkey.id, now);
     this.deps.recordAuditEvent({
       type: "auth.passkey_revoked",
       aggregateType: "account",

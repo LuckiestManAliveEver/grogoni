@@ -1,5 +1,7 @@
+import { isNativeDeviceHost } from "./device-messaging";
+import { TrustedDeviceApproval } from "./TrustedDeviceApproval";
 import { Suspense, useEffect, useState } from "react";
-import { browserSupportsWebAuthn, startRegistration } from "@simplewebauthn/browser";
+import { browserSupportsWebAuthn } from "@simplewebauthn/browser";
 
 import type {
   ConnectedMailboxOAuthStartSummary,
@@ -10,6 +12,9 @@ import type {
   PasskeySummary
 } from "@grogoni/shared-types";
 
+import { enrollDeviceRecovery } from "./passkey-recovery";
+import { AuthenticationActionMessage } from "./AuthenticationActionMessage";
+import { usePasskeyEnrollment } from "./usePasskeyEnrollment";
 import { ConnectedSourcesPanel } from "./ConnectedSourcesPanel";
 import { normalizeOwnerPhoneInput } from "./phone-identity";
 import { formatDate } from "./formatters";
@@ -17,7 +22,6 @@ import { PhoneNumberField } from "./PhoneNumberField";
 import { deleteJson, getJson, patchJson, postJson, putJson } from "./api-helpers";
 import { ApiRequestError } from "./lib/api";
 import { recordOnboardingEvent } from "./performance";
-import { AuthenticationActionMessage } from "./AuthenticationActionMessage";
 import { routes } from "./routes";
 import {
   getCountryDialCode,
@@ -34,7 +38,6 @@ import {
   type OAuthProviderSummary,
   type OAuthStartResponse,
   type PasskeyListResponse,
-  type PasskeyRegistrationOptionsResponse,
   type SessionResponse,
   type SocialSignupProvider,
   pendingOAuthStorageKey,
@@ -84,6 +87,17 @@ export function IdentitySecurityPanel({
     ConnectedSocialAccountSummary[]
   >([]);
   const [passkeys, setPasskeys] = useState<PasskeySummary[]>([]);
+  const [recoveryDevices, setRecoveryDevices] = useState<Array<{
+    id: string;
+    createdAt: string;
+    lastUsedAt: string | null;
+  }> | null>(null);
+  async function loadRecoveryDevices() {
+    const response = await getJson<{
+      credentials: Array<{ id: string; createdAt: string; lastUsedAt: string | null }>;
+    }>("/auth/device/credentials");
+    setRecoveryDevices(response.credentials);
+  }
   const [passkeyLabels, setPasskeyLabels] = useState<Record<string, string>>({});
   const [mfaFactors, setMfaFactors] = useState<
     Array<{ id: string; type: "totp"; createdAt: string }>
@@ -419,33 +433,13 @@ export function IdentitySecurityPanel({
     );
   }
 
-  async function registerPasskey() {
-    if (!browserSupportsWebAuthn()) {
-      setProfileMessage("Passkeys are not supported in this browser.");
-      return;
-    }
-
-    try {
-      const challenge = await postJson<PasskeyRegistrationOptionsResponse>(
-        "/auth/passkeys/register/options",
-        {}
-      );
-      const credential = await startRegistration({
-        optionsJSON: challenge.options
-      });
-      await postJson<PasskeySummary>("/auth/passkeys/register/verify", {
-        ceremonyId: challenge.ceremonyId,
-        label: passkeyDeviceLabel(),
-        response: credential
-      });
+  const passkeyEnrollment = usePasskeyEnrollment({
+    label: passkeyDeviceLabel(),
+    onCreated: async () => {
       await loadPasskeys();
-      setProfileMessage(
-        "Passkey added. You can use it to recover this account if you ever lose access to your PIN and password."
-      );
-    } catch (error) {
-      setProfileMessage(getErrorMessage(error));
+      setProfileMessage("Passkey added.");
     }
-  }
+  });
 
   async function revokePasskey(credentialId: string) {
     try {
@@ -730,14 +724,14 @@ export function IdentitySecurityPanel({
   }, [accountId, business.id]);
 
   return (
-    <div className="record-form shop-profile-card">
+    <div className="record-form shop-profile-card identity-security-panel">
       <div className="section-heading">
         <p className="eyebrow">Account</p>
         <h3>Passkeys and login accounts</h3>
         <p>
-          Your PIN and password remain the normal way to sign in. Add a passkey here as a backup way
-          back into your account if you ever lose access to both - it uses your device unlock and
-          keeps biometric data on the device.
+          {isNativeDeviceHost()
+            ? "Recover your PIN or password with a registered passkey, trusted Android device, or verified backup email. Enroll device security before you need recovery."
+            : "Create a passkey for account access and recovery, or use your verified backup email. Register your passkey before you need recovery."}
         </p>
         <p className="shell-note">Identity strength: {identityLevel.replace("_", " ")}</p>
       </div>
@@ -751,6 +745,7 @@ export function IdentitySecurityPanel({
         />
       </Suspense>
       {accountPinForm()}
+      <TrustedDeviceApproval mode="panel" />
       <div className="record-form">
         <div className="section-heading">
           <p className="eyebrow">Private identity contact</p>
@@ -935,10 +930,71 @@ export function IdentitySecurityPanel({
       <button
         type="button"
         disabled={!browserSupportsWebAuthn() || pendingProfileAction !== null}
-        onClick={() => void runProfileAction("passkey-register", registerPasskey)}
+        onClick={() => void runProfileAction("passkey-register", passkeyEnrollment.enroll)}
       >
-        {browserSupportsWebAuthn() ? "Secure this device with a passkey" : "Passkeys unavailable"}
+        {browserSupportsWebAuthn()
+          ? "Add a passkey for account access and recovery"
+          : "Passkeys unavailable"}
       </button>
+      {passkeyEnrollment.stepUpForm}
+      {passkeyEnrollment.message ? <p role="alert">{passkeyEnrollment.message}</p> : null}
+      {isNativeDeviceHost() ? (
+        <>
+          <button
+            type="button"
+            disabled={pendingProfileAction !== null}
+            onClick={() =>
+              void runProfileAction("device-recovery", async () => {
+                await enrollDeviceRecovery();
+                await loadPasskeys();
+                setProfileMessage("Device security enabled for PIN and password recovery.");
+              })
+            }
+          >
+            Enable device recovery
+          </button>
+          <button
+            type="button"
+            disabled={pendingProfileAction !== null}
+            onClick={() => void runProfileAction("recovery-devices", loadRecoveryDevices)}
+          >
+            Manage trusted recovery devices
+          </button>
+          {recoveryDevices !== null ? (
+            <div role="group" aria-label="Trusted recovery devices">
+              {recoveryDevices.length === 0 ? (
+                <p>No device recovery keys are registered. Registered passkeys are listed above.</p>
+              ) : null}
+              {recoveryDevices.map((device, index) => (
+                <article className="connected-social-card" key={device.id}>
+                  <strong>Recovery device {index + 1}</strong>
+                  <p>
+                    Added: {formatDate(device.createdAt)}. Last used:{" "}
+                    {device.lastUsedAt === null ? "Never" : formatDate(device.lastUsedAt)}.
+                  </p>
+                  <button
+                    type="button"
+                    disabled={pendingProfileAction !== null}
+                    onClick={() =>
+                      void runProfileAction("recovery-device-revoke", async () => {
+                        await deleteJson(
+                          `/auth/device/credentials/${encodeURIComponent(device.id)}`
+                        );
+                        await loadRecoveryDevices();
+                        setProfileMessage(
+                          "Device recovery revoked. That device can no longer recover your account."
+                        );
+                      })
+                    }
+                  >
+                    Revoke recovery device
+                  </button>
+                </article>
+              ))}
+            </div>
+          ) : null}
+        </>
+      ) : null}
       <div className="record-form" role="group" aria-label="Multi-factor authentication">
         <div className="section-heading">
           <p className="eyebrow">Multi-factor authentication</p>

@@ -94,13 +94,6 @@ export const initialAccountControlsModule =
         () => import("./AccountBackendControls")
       )
     : null;
-export const initialAgentModelPanelModule =
-  initialOwnerModuleView === "agent"
-    ? loadLazyModuleWithRecovery(
-        agentProfileModuleKeys.modelPanel,
-        () => import("./AgentModelPanel")
-      )
-    : null;
 export const initialIdentitySecurityPanelModule =
   initialOwnerModuleView === "agent"
     ? loadLazyModuleWithRecovery(
@@ -139,12 +132,6 @@ export const AccountBackendControls = lazy(
       ownerModuleKeys.accountBackendControls,
       () => import("./AccountBackendControls")
     )
-);
-export const AgentModelPanel = lazy(() =>
-  (
-    initialAgentModelPanelModule ??
-    loadLazyModuleWithRecovery(agentProfileModuleKeys.modelPanel, () => import("./AgentModelPanel"))
-  ).then((module) => ({ default: module.AgentModelPanel }))
 );
 export const IdentitySecurityPanel = lazy(() =>
   (

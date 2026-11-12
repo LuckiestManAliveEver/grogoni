@@ -3,7 +3,10 @@ package market.grogoni.app.sms
 import android.provider.Telephony
 import android.content.Intent
 import java.security.MessageDigest
-import java.time.Instant
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 
 object MultipartSmsAssembler {
     data class Assembled(val sender: String, val text: String, val timestampMillis: Long, val id: String)
@@ -32,5 +35,7 @@ object MultipartSmsAssembler {
         return bytes.joinToString("") { "%02x".format(it) }
     }
 
-    fun occurredAt(timestampMillis: Long): String = Instant.ofEpochMilli(timestampMillis).toString()
+    fun occurredAt(timestampMillis: Long): String = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
+        timeZone = TimeZone.getTimeZone("UTC")
+    }.format(Date(timestampMillis))
 }

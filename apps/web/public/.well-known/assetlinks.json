@@ -1,11 +1,14 @@
 [
   {
-    "relation": ["delegate_permission/common.handle_all_urls"],
+    "relation": [
+      "delegate_permission/common.handle_all_urls",
+      "delegate_permission/common.get_login_creds"
+    ],
     "target": {
       "namespace": "android_app",
       "package_name": "market.grogoni.app",
       "sha256_cert_fingerprints": [
-        "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99"
+        "C0:AA:FB:59:8D:E5:87:49:DD:50:89:90:6E:F3:B0:8C:77:76:D3:0A:02:A5:D6:AD:61:C4:DE:98:D6:7F:DD:CD"
       ]
     }
   }

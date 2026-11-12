@@ -18,7 +18,8 @@ export type DaemonPool = Pick<Pool, "query" | "connect">;
 export const daemonQueueMigrations = [
   "112_native_daemon.sql",
   "116_daemon_lanes.sql",
-  "124_daemon_conversation_delivery.sql"
+  "124_daemon_conversation_delivery.sql",
+  "134_daemon_immediate_user_tasks.sql"
 ] as const;
 
 /** How long a user's due task waits for their browser before a server worker takes it. */
@@ -43,6 +44,7 @@ export interface DaemonTask {
   error_code: string | null;
   /** Null for operator tasks; set for tasks a signed-in user owns. */
   owner_user_id: string | null;
+  server_immediate?: boolean;
   lane: DaemonLane | null;
   created_at: Date;
   updated_at: Date;
@@ -86,14 +88,21 @@ export interface DaemonTaskStore {
     maxAttempts: number;
     /** Makes it a user task. Callers namespace `key` per owner: keys are globally unique. */
     ownerUserId?: string;
+    serverImmediate?: boolean;
   }): Promise<DaemonTask>;
   pendingConversationDeliveries(limit: number): Promise<DaemonTask[]>;
   markConversationDelivered(task: DaemonTask): Promise<void>;
+  /** `runtime` replaces an agent task's model and engine, so a retry runs the conversation's
+   *  current choice rather than the one that failed. */
   retryOwned(
     ownerUserId: string,
     id: string,
-    maxActive: number
+    maxActive: number,
+    runtime?: { modelId: string; agentAdapterId: "grogoni" | "pi" }
   ): Promise<"queued" | "limited" | "conflict">;
+  /** Stores a running task's payload while `lease_token` still holds an unexpired claim; false
+   *  when the lease is gone (nothing written). */
+  updateLeasedPayload(task: DaemonTask): Promise<boolean>;
   get(id: string): Promise<DaemonTask | null>;
   list(): Promise<DaemonTask[]>;
   retry(id: string): Promise<boolean>;
@@ -178,8 +187,8 @@ export function createPostgresDaemonTaskStore(
     async enqueue(input) {
       const result = await pool.query<DaemonTask>(
         `insert into grogoni_daemon_tasks
-           (id,idempotency_key,payload,run_at,interval_ms,max_attempts,owner_user_id)
-         values ($1,$2,$3,$4,$5,$6,$7)
+           (id,idempotency_key,payload,run_at,interval_ms,max_attempts,owner_user_id,server_immediate)
+         values ($1,$2,$3,$4,$5,$6,$7,$8)
          on conflict (idempotency_key) do update set idempotency_key=excluded.idempotency_key
          returning *`,
         [
@@ -189,7 +198,8 @@ export function createPostgresDaemonTaskStore(
           input.runAt,
           input.intervalMs ?? null,
           input.maxAttempts,
-          input.ownerUserId ?? null
+          input.ownerUserId ?? null,
+          input.serverImmediate ?? false
         ]
       );
       return result.rows[0]!;
@@ -239,7 +249,7 @@ export function createPostgresDaemonTaskStore(
         [task.id, task.updated_at, task.status, task.attempts, task.executions]
       );
     },
-    async retryOwned(ownerUserId, id, maxActive) {
+    async retryOwned(ownerUserId, id, maxActive, runtime) {
       const client = await pool.connect();
       try {
         await client.query("begin");
@@ -267,9 +277,10 @@ export function createPostgresDaemonTaskStore(
         }
         const updated = await client.query(
           `update grogoni_daemon_tasks set status='queued',attempts=0,result=null,
-          run_at=now(),error_code=null,lease_token=null,lease_until=null,conversation_delivered_at=null,updated_at=now()
+          run_at=now(),error_code=null,lease_token=null,lease_until=null,conversation_delivered_at=null,updated_at=now(),
+          payload = case when $3::jsonb is not null and payload->>'kind' = 'agent' then payload || $3::jsonb else payload end
           where id=$1 and owner_user_id=$2 and status in ('failed','cancelled') and (lease_until is null or lease_until <= now())`,
-          [id, ownerUserId]
+          [id, ownerUserId, runtime === undefined ? null : JSON.stringify(runtime)]
         );
         await client.query("commit");
         return updated.rowCount === 1 ? "queued" : "conflict";
@@ -306,12 +317,22 @@ export function createPostgresDaemonTaskStore(
         )
       ).rows.map((row) => row.id);
     },
+    async updateLeasedPayload(task) {
+      return (
+        (
+          await pool.query(
+            "update grogoni_daemon_tasks set payload=$3::jsonb,updated_at=now() where id=$1 and lease_token=$2 and status='running' and lease_until > now()",
+            [task.id, task.lease_token, JSON.stringify(task.payload)]
+          )
+        ).rowCount === 1
+      );
+    },
     async claim(leaseMs) {
       // $4: takeover delay. A user task's server due time is its due time plus that delay.
       return claimWhere(
-        `((status='queued' and run_at <= now()-case when owner_user_id is null then interval '0'
+        `((status='queued' and run_at <= now()-case when owner_user_id is null or server_immediate then interval '0'
              else $4::bigint*interval '1 millisecond' end)
-          or (status='running' and lease_until <= now()-case when owner_user_id is null
+          or (status='running' and lease_until <= now()-case when owner_user_id is null or server_immediate
              then interval '0' else $4::bigint*interval '1 millisecond' end))`,
         [takeoverMs],
         "server",
@@ -389,7 +410,7 @@ export function createPostgresDaemonTaskStore(
            when attempts >= max_attempts then
              case when status='running' then lease_until end
            else (case when status='queued' then run_at else lease_until end)
-             + case when owner_user_id is null then interval '0'
+             + case when owner_user_id is null or server_immediate then interval '0'
                else $1::bigint*interval '1 millisecond' end
          end) as next_due_at
          from grogoni_daemon_tasks where status in ('queued','running')`,
@@ -425,8 +446,8 @@ export function createPostgresDaemonTaskStore(
         }
         const inserted = await client.query<DaemonTask>(
           `insert into grogoni_daemon_tasks
-             (id,idempotency_key,payload,run_at,interval_ms,max_attempts,owner_user_id)
-           values ($1,$2,$3,$4,$5,$6,$7)
+             (id,idempotency_key,payload,run_at,interval_ms,max_attempts,owner_user_id,server_immediate)
+           values ($1,$2,$3,$4,$5,$6,$7,$8)
            on conflict (idempotency_key) do update set idempotency_key=excluded.idempotency_key
            returning *, (xmax = 0) as inserted`,
           [
@@ -436,7 +457,8 @@ export function createPostgresDaemonTaskStore(
             input.runAt,
             input.intervalMs ?? null,
             input.maxAttempts,
-            input.ownerUserId
+            input.ownerUserId,
+            input.serverImmediate ?? false
           ]
         );
         await client.query("commit");

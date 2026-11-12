@@ -1,0 +1,1 @@
+drop index if exists cp2_auth_transactions_recovery_approval_idx;

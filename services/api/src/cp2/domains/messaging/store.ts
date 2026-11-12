@@ -64,10 +64,16 @@
  *   reference `nativeSmsTransportReadiness`/`queueNativeSmsCommand`/`emailTransportReadiness`/
  *   `sendEmailTransport`, all of which live here now.
  */
+import type { LinkedMutation } from "../../../messaging/whatsapp-linked/connector.js";
 import { isDeepStrictEqual } from "node:util";
 import { contactIsBlocked } from "../network/shared.js";
 import { helpConversationId, helpGuides, helpGuideText } from "./help-guides.js";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
+import {
+  linkedMediaMaxBytes,
+  validateLinkedMedia,
+  type LinkedDownloadedMedia
+} from "../../../messaging/whatsapp-linked/media.js";
 
 import type { InventoryTaskController } from "../agent-runtime/inventory-task-controller.js";
 import type {
@@ -140,6 +146,7 @@ import type {
   UserSummary,
   WorkspaceDeliverResult
 } from "@grogoni/shared-types";
+import { permanentDaemonDisplayName } from "@grogoni/shared-types";
 import type { BusinessPermission } from "@grogoni/business-core";
 import {
   ChannelGatewayError,
@@ -2658,12 +2665,17 @@ export class MessagingDomain {
     const replyTo =
       input.replyToMessageId === undefined
         ? null
-        : this.requireEmailReplyTarget(selection.endpoint.conversationId, input.replyToMessageId);
+        : selection.endpoint.provider === "whatsapp_linked"
+          ? this.requireLinkedReplyTarget(selection.endpoint.conversationId, input.replyToMessageId)
+          : this.requireEmailReplyTarget(selection.endpoint.conversationId, input.replyToMessageId);
     const subject =
       selection.endpoint.provider === "email"
         ? normalizeEmailSubject(input.subject ?? replyTo?.subject ?? "")
         : null;
-    if (selection.endpoint.provider !== "email" && (input.attachments?.length ?? 0) > 0) {
+    if (
+      !["email", "whatsapp_linked"].includes(selection.endpoint.provider) &&
+      (input.attachments?.length ?? 0) > 0
+    ) {
       throw new Cp2Error(
         400,
         "channel_attachment_unsupported",
@@ -2677,7 +2689,18 @@ export class MessagingDomain {
             customer.id,
             input.attachments ?? []
           )
-        : { canonical: [], provider: [] };
+        : selection.endpoint.provider === "whatsapp_linked"
+          ? await this.resolveTrustedLinkedAttachments({
+              businessId: input.businessId,
+              accountId: auth.account.id,
+              userId: auth.user.id,
+              conversationId: selection.endpoint.conversationId,
+              customerId: customer.id,
+              references: input.attachments ?? [],
+              idempotencyKey,
+              now
+            })
+          : { canonical: [], provider: [] };
     const message = this.persistOutboundChannelMessage({
       endpoint: selection.endpoint,
       authorId: auth.user.id,
@@ -2689,6 +2712,7 @@ export class MessagingDomain {
       idempotencyKey,
       now
     });
+    this.associateManagedConversationAttachments(message);
     try {
       const dispatched = await this.deps.channelGateway.send({
         businessId: input.businessId,
@@ -2703,6 +2727,19 @@ export class MessagingDomain {
               replyToProviderMessageId: replyTo.providerMessageId ?? null,
               externalThreadId: replyTo.externalThreadId ?? null
             }),
+        ...(replyTo && selection.endpoint.provider === "whatsapp_linked"
+          ? {
+              quotedMessage: {
+                id: replyTo.providerMessageId!,
+                sender: replyTo.senderAddress ?? null,
+                fromMe: replyTo.direction === "outbound",
+                text:
+                  replyTo.content.type === "text"
+                    ? replyTo.content.text.slice(0, 2000)
+                    : "[Message]"
+              }
+            }
+          : {}),
         ...(resolvedAttachments.provider.length === 0
           ? {}
           : { attachments: resolvedAttachments.provider }),
@@ -2760,6 +2797,47 @@ export class MessagingDomain {
       );
       throw normalized;
     }
+  }
+
+  async deliverLinkedWhatsAppReply(input: {
+    businessId: string;
+    ownerId: string;
+    chat: string;
+    text: string;
+    idempotencyKey: string;
+  }) {
+    const channel = [...this.conversationChannels.values()].find(
+      (entry) =>
+        entry.businessId === input.businessId &&
+        entry.provider === "whatsapp_linked" &&
+        entry.externalConversationId === input.chat &&
+        entry.metadata.linkedDeviceOwnerId === input.ownerId
+    );
+    if (!channel)
+      throw new Cp2Error(403, "permission_denied", "This WhatsApp conversation is not authorized.");
+    const result = await this.sendChannelMessage({
+      sessionId: null,
+      businessId: input.businessId,
+      conversationId: channel.conversationId,
+      provider: "whatsapp_linked",
+      text: input.text,
+      idempotencyKey: input.idempotencyKey,
+      [systemChannelDelivery]: true
+    });
+    const message: ConversationMessageSummary = {
+      ...result.message,
+      author: "agent",
+      authorId: `shop-${input.businessId}-agent`
+    };
+    this.conversationMessages.set(message.id, message);
+    this.recordConversationSyncForParticipants(
+      message.conversationId,
+      "conversation_messages",
+      message.id,
+      message,
+      new Date()
+    );
+    return { ...result, message };
   }
 
   async deliverFulfillmentNotification(input: {
@@ -2827,11 +2905,14 @@ export class MessagingDomain {
     externalUpdateId: string;
     body: string;
     providerMessageId?: string | null;
+    replyToProviderMessageId?: string;
     subject?: string | null;
     externalThreadId?: string | null;
     senderAddress?: string | null;
     recipientAddresses?: string[];
     ccAddresses?: string[];
+    clientTimestamp?: string | null;
+    attachments?: ConversationAttachment[];
     now?: Date;
   }): { receipt: ProviderUpdateReceiptSummary; message: ConversationMessageSummary | null } {
     const now = input.now ?? new Date();
@@ -2861,7 +2942,40 @@ export class MessagingDomain {
         "Provider relationship was not found."
       );
     }
+    if (input.provider === "whatsapp_linked") {
+      const identity = this.platformIdentities.get(channel.platformIdentityId);
+      const stopped = /^(?:stop|unsubscribe)$/i.test(input.body.trim());
+      const started = /^start$/i.test(input.body.trim());
+      if (stopped)
+        this.conversationChannels.set(channel.id, {
+          ...channel,
+          metadata: {
+            ...channel.metadata,
+            linkedToolGrant: JSON.stringify({ id: randomUUID(), enabled: false, tools: [] })
+          },
+          updatedAt: now.toISOString()
+        });
+      if (identity && (stopped || started))
+        this.platformIdentities.set(identity.id, {
+          ...identity,
+          optInStatus: stopped ? "revoked" : "granted",
+          optInSource: "provider_message",
+          optInAt: started ? now.toISOString() : identity.optInAt,
+          optOutAt: stopped ? now.toISOString() : null,
+          updatedAt: now.toISOString()
+        });
+    }
+    const quoted = input.replyToProviderMessageId
+      ? [...this.conversationMessages.values()].filter(
+          (candidate) =>
+            candidate.conversationId === channel.conversationId &&
+            candidate.provider === input.provider &&
+            candidate.providerMessageId === input.replyToProviderMessageId &&
+            !candidate.deletedAt
+        )
+      : [];
     const message = this.persistExternalConversationMessage({
+      replyToMessageId: quoted.length === 1 ? quoted[0]!.id : null,
       conversationId: channel.conversationId,
       provider: input.provider,
       channelIdentityId: channel.platformIdentityId,
@@ -2870,8 +2984,10 @@ export class MessagingDomain {
       authorId: channel.platformIdentityId,
       body: normalizeRequiredBoundedText(input.body, "message", 4000),
       attachmentNames: [],
+      ...(input.attachments ? { attachments: input.attachments } : {}),
       idempotencyKey: `${input.provider}:update:${input.externalUpdateId}`,
       providerMessageId: input.providerMessageId ?? null,
+      clientTimestamp: input.clientTimestamp ?? null,
       subject: input.subject ?? null,
       externalThreadId: input.externalThreadId ?? null,
       senderAddress: input.senderAddress ?? null,
@@ -2880,7 +2996,7 @@ export class MessagingDomain {
       now
     });
     this.conversationChannels.set(channel.id, {
-      ...channel,
+      ...(this.conversationChannels.get(channel.id) ?? channel),
       lastInboundAt: now.toISOString(),
       updatedAt: now.toISOString()
     });
@@ -2897,6 +3013,225 @@ export class MessagingDomain {
     };
     this.providerUpdateReceipts.set(receipt.id, receipt);
     return { receipt, message };
+  }
+
+  async ingestLinkedMutation(input: {
+    businessId: string;
+    ownerId: string;
+    chat: string;
+    sender: string;
+    id: string;
+    text: string;
+    timestamp: string;
+    mutation: LinkedMutation;
+  }): Promise<{
+    receipt: ProviderUpdateReceiptSummary;
+    message: ConversationMessageSummary | null;
+  }> {
+    const externalUpdateId = JSON.stringify([input.businessId, input.chat, input.sender, input.id]);
+    const existing = [...this.providerUpdateReceipts.values()].find(
+      (receipt) =>
+        receipt.provider === "whatsapp_linked" && receipt.externalUpdateId === externalUpdateId
+    );
+    if (existing)
+      return {
+        receipt: existing,
+        message: existing.messageId
+          ? (this.conversationMessages.get(existing.messageId) ?? null)
+          : null
+      };
+    const channel = [...this.conversationChannels.values()].find(
+      (channel) =>
+        channel.provider === "whatsapp_linked" &&
+        channel.businessId === input.businessId &&
+        channel.externalConversationId === input.chat &&
+        channel.metadata.linkedDeviceOwnerId === input.ownerId
+    );
+    if (!channel)
+      throw new Cp2Error(
+        403,
+        "permission_denied",
+        "This WhatsApp update is outside the approved account."
+      );
+    const matches = [...this.conversationMessages.values()].filter(
+      (message) =>
+        message.conversationId === channel.conversationId &&
+        message.provider === "whatsapp_linked" &&
+        message.providerMessageId === input.mutation.targetId &&
+        (input.mutation.fromMe
+          ? message.direction === "outbound"
+          : message.direction === "inbound" && message.senderAddress === input.sender)
+    );
+    const now = new Date();
+    const occurredAt = new Date(input.timestamp).toISOString();
+    let message = matches.length === 1 ? matches[0]! : null;
+    if (message) {
+      let updated: ConversationMessageSummary = message;
+      const change = input.mutation;
+      if (change.kind === "receipt" && !updated.deletedAt) {
+        const rank: Record<string, number> = {
+          queued: 0,
+          failed: 0,
+          sent: 1,
+          delivered: 2,
+          read: 3
+        };
+        const current = updated.readAt ? 3 : (rank[updated.status ?? "queued"] ?? 0);
+        const next = rank[change.status] ?? 0;
+        if (next > current || (change.status === "failed" && current < 2))
+          updated = {
+            ...updated,
+            status: change.status === "read" ? "delivered" : change.status,
+            sentAt:
+              change.status !== "failed"
+                ? (updated.sentAt ?? occurredAt)
+                : (updated.sentAt ?? null),
+            deliveredAt:
+              next >= 2 ? (updated.deliveredAt ?? occurredAt) : (updated.deliveredAt ?? null),
+            readAt: next >= 3 ? (updated.readAt ?? occurredAt) : (updated.readAt ?? null),
+            failureCode: change.status === "failed" ? "CHANNEL_SEND_FAILED" : null
+          };
+      } else if (change.kind === "delete" && !updated.deletedAt) {
+        // Tombstones retain identity/deduplication, but remove imported content and managed blobs.
+        for (const attachment of [...this.conversationAttachments.values()].filter(
+          (record) =>
+            record.messageId === updated!.id && record.conversationId === channel.conversationId
+        )) {
+          await this.deps.conversationAttachmentBlobStore.delete(attachment.storageKey);
+          this.conversationAttachments.delete(attachment.id);
+        }
+        updated = {
+          ...updated,
+          content: { type: "text", text: "[Message deleted on WhatsApp]" },
+          deletedAt: occurredAt
+        };
+      } else if (
+        change.kind === "edit" &&
+        !updated.deletedAt &&
+        updated.content.type === "text" &&
+        Date.parse(occurredAt) >=
+          Date.parse(updated.editedAt ?? updated.clientTimestamp ?? updated.createdAt)
+      ) {
+        updated = {
+          ...updated,
+          content: {
+            ...updated.content,
+            text: normalizeRequiredBoundedText(input.text, "message", 4000)
+          },
+          editedAt: occurredAt
+        };
+      }
+      this.conversationMessages.set(updated.id, updated);
+      this.recordConversationSyncForParticipants(
+        channel.conversationId,
+        "conversation_messages",
+        updated.id,
+        updated,
+        now
+      );
+      message = updated;
+    }
+    const receipt: ProviderUpdateReceiptSummary = {
+      id: randomUUID(),
+      provider: "whatsapp_linked",
+      externalUpdateId,
+      businessId: input.businessId,
+      conversationChannelId: channel.id,
+      messageId: message?.id ?? null,
+      status: "processed",
+      createdAt: now.toISOString(),
+      processedAt: now.toISOString()
+    };
+    this.providerUpdateReceipts.set(receipt.id, receipt);
+    return { receipt, message };
+  }
+
+  async ingestLinkedMediaMessage(input: {
+    businessId: string;
+    ownerId: string;
+    externalConversationId: string;
+    externalUpdateId: string;
+    body: string;
+    providerMessageId: string;
+    replyToProviderMessageId?: string;
+    senderAddress: string;
+    clientTimestamp: string;
+    media: LinkedDownloadedMedia[];
+  }) {
+    const canonical = { ...input, provider: "whatsapp_linked" as const };
+    if (
+      [...this.providerUpdateReceipts.values()].some(
+        (receipt) =>
+          receipt.provider === "whatsapp_linked" &&
+          receipt.externalUpdateId === input.externalUpdateId
+      )
+    )
+      return this.ingestProviderMessage(canonical);
+    if (
+      input.media.length > 1 ||
+      input.media.some(
+        (media) => media.bytes.length < 1 || media.bytes.length > linkedMediaMaxBytes
+      )
+    )
+      throw new Cp2Error(
+        400,
+        "attachment_size_invalid",
+        "The attachment exceeds the supported limit."
+      );
+    const channel = [...this.conversationChannels.values()].find(
+      (entry) =>
+        entry.businessId === input.businessId &&
+        entry.provider === "whatsapp_linked" &&
+        entry.externalConversationId === input.externalConversationId &&
+        entry.metadata.linkedDeviceOwnerId === input.ownerId
+    );
+    const owner = this.deps.users.get(input.ownerId);
+    const conversation = channel ? this.conversations.get(channel.conversationId) : undefined;
+    if (!channel || !owner || !conversation || conversation.accountId !== owner.accountId)
+      throw new Cp2Error(
+        403,
+        "permission_denied",
+        "This WhatsApp attachment is outside the approved account."
+      );
+    const records: ConversationAttachmentRecord[] = [];
+    const attachments: ConversationAttachment[] = [];
+    for (const [index, media] of input.media.entries()) {
+      const digest = createHash("sha256")
+        .update(JSON.stringify([input.businessId, input.externalUpdateId, index]))
+        .digest("hex");
+      const id = `${digest.slice(0, 8)}-${digest.slice(8, 12)}-5${digest.slice(13, 16)}-a${digest.slice(17, 20)}-${digest.slice(20, 32)}`;
+      const record: ConversationAttachmentRecord = {
+        id,
+        accountId: owner.accountId,
+        userId: owner.id,
+        businessId: input.businessId,
+        conversationId: conversation.id,
+        messageId: null,
+        toolCallId: `whatsapp-media:${digest}`,
+        filename: media.filename,
+        mimeType: media.mimeType,
+        size: media.bytes.length,
+        kind: media.kind,
+        previewable: false,
+        caption: null,
+        checksum: createHash("sha256").update(media.bytes).digest("hex"),
+        storageKey: `encrypted/whatsapp-linked/${input.businessId}/${id}`,
+        createdAt: new Date().toISOString()
+      };
+      await this.deps.conversationAttachmentBlobStore.put({
+        storageKey: record.storageKey,
+        bytes: media.bytes,
+        checksum: record.checksum,
+        mimeType: media.mimeType
+      });
+      records.push(record);
+      attachments.push({ ...managedAttachmentFromRecord(record), category: media.category });
+    }
+    const result = this.ingestProviderMessage({ ...canonical, attachments });
+    if (result.message)
+      for (const record of records)
+        this.conversationAttachments.set(record.id, { ...record, messageId: result.message.id });
+    return result;
   }
 
   listConversations(input: {
@@ -3672,7 +4007,9 @@ export class MessagingDomain {
           : result.text
         : task.status === "cancelled"
           ? "This task was cancelled."
-          : "The daemon could not finish this task. You can retry it here.";
+          : this.conversations.get(origin.id)?.isPermanentDaemon
+            ? `${permanentDaemonDisplayName} could not finish this task. You can retry it here.`
+            : "This background task could not finish. You can retry it here.";
     // Failed attempts and a later successful retry must not share the same response key.
     const message = this.createMessageForActor(
       {
@@ -4255,7 +4592,7 @@ export class MessagingDomain {
       throw new Cp2Error(
         400,
         "daemon_conversation_permanent",
-        "Your daemon remains available in the messenger."
+        "My Assistant remains available in the messenger."
       );
     if (
       conversation.helpTopic &&
@@ -4349,11 +4686,7 @@ export class MessagingDomain {
     const session = this.deps.requirePinVerifiedSession(input.sessionId, now);
     const conversation = this.requireAccountConversation(input.conversationId, session.account.id);
     if (conversation.isPermanentDaemon)
-      throw new Cp2Error(
-        400,
-        "daemon_conversation_permanent",
-        "Your daemon conversation cannot be deleted."
-      );
+      throw new Cp2Error(400, "daemon_conversation_permanent", "My Assistant cannot be deleted.");
     if (conversation.helpTopic)
       throw new Cp2Error(
         400,
@@ -5013,8 +5346,10 @@ export class MessagingDomain {
     authorId: string;
     body: string;
     attachmentNames: string[];
+    attachments?: ConversationAttachment[];
     idempotencyKey: string;
     providerMessageId?: string | null;
+    replyToMessageId?: string | null;
     channelIdentityId?: string | null;
     externalConversationId?: string | null;
     subject?: string | null;
@@ -5023,6 +5358,7 @@ export class MessagingDomain {
     recipientAddresses?: string[];
     ccAddresses?: string[];
     bccAddresses?: string[];
+    clientTimestamp?: string | null;
     now: Date;
   }): ConversationMessageSummary {
     const conversation = this.conversations.get(input.conversationId);
@@ -5035,14 +5371,16 @@ export class MessagingDomain {
     if (existingId !== undefined) {
       return this.conversationMessages.get(existingId) as ConversationMessageSummary;
     }
-    const attachments = input.attachmentNames.map((name) => ({
-      id: randomUUID(),
-      name,
-      mimeType: "application/octet-stream",
-      size: 0,
-      category: "other" as const,
-      url: `https://grogoni.com/attachment-reference/${encodeURIComponent(name)}`
-    }));
+    const attachments =
+      input.attachments ??
+      input.attachmentNames.map((name) => ({
+        id: randomUUID(),
+        name,
+        mimeType: "application/octet-stream",
+        size: 0,
+        category: "other" as const,
+        url: `https://grogoni.com/attachment-reference/${encodeURIComponent(name)}`
+      }));
     const content: ConversationMessageContent = {
       type: "text",
       text: input.body,
@@ -5083,10 +5421,10 @@ export class MessagingDomain {
       consentRecordId: null,
       editedAt: null,
       deletedAt: null,
-      replyToMessageId: null,
+      replyToMessageId: input.replyToMessageId ?? null,
       forwardedFromMessageId: null,
       reactions: [],
-      clientTimestamp: null,
+      clientTimestamp: input.clientTimestamp ?? null,
       createdAt: input.now.toISOString()
     };
     this.conversationMessages.set(message.id, message);
@@ -5309,7 +5647,9 @@ export class MessagingDomain {
         accountId: null,
         businessId: null,
         agentId: `account-${input.accountId}-agent`,
-        displayName: "Grogoni agent",
+        displayName: input.identityKey?.startsWith("daemon:")
+          ? permanentDaemonDisplayName
+          : "Grogoni agent",
         createdAt: input.now.toISOString()
       }
     ];
@@ -5388,7 +5728,7 @@ export class MessagingDomain {
         kind: "personal",
         activeShopId: null,
         identityKey: `daemon:${input.accountId}`,
-        title: "Your daemon"
+        title: permanentDaemonDisplayName
       });
     if (conversation.isPermanentDaemon) return conversation;
     const permanent = { ...conversation, isPermanentDaemon: true };
@@ -6186,6 +6526,139 @@ export class MessagingDomain {
     }
   }
 
+  private async resolveTrustedLinkedAttachments(input: {
+    businessId: string;
+    accountId: string;
+    userId: string;
+    conversationId: string;
+    customerId: string;
+    references: TrustedMessageAttachmentReference[];
+    idempotencyKey: string;
+    now: Date;
+  }): Promise<{
+    canonical: ConversationAttachment[];
+    provider: Array<{ filename: string; mimeType: string; contentBase64: string }>;
+  }> {
+    if (input.references.length > 1)
+      throw new Cp2Error(
+        400,
+        "attachment_limit_exceeded",
+        "WhatsApp supports one attachment per message."
+      );
+    const canonical: ConversationAttachment[] = [];
+    const provider: Array<{ filename: string; mimeType: string; contentBase64: string }> = [];
+    for (const reference of input.references) {
+      let bytes: Buffer;
+      let filename: string;
+      let mimeType: string;
+      if (reference.resourceType === "invoice") {
+        const resolved = this.resolveTrustedEmailAttachments(input.businessId, input.customerId, [
+          reference
+        ]).provider[0]!;
+        bytes = Buffer.from(resolved.contentBase64, "base64");
+        filename = resolved.filename;
+        mimeType = resolved.mimeType;
+      } else {
+        const record = this.conversationAttachments.get(reference.resourceId);
+        if (
+          !record ||
+          record.businessId !== input.businessId ||
+          record.accountId !== input.accountId ||
+          !record.messageId
+        )
+          throw new Cp2Error(
+            404,
+            "ATTACHMENT_NOT_FOUND",
+            "The conversation attachment was not found."
+          );
+        const stored = await this.deps.conversationAttachmentBlobStore.get(record.storageKey);
+        if (
+          !stored ||
+          stored.length !== record.size ||
+          createHash("sha256").update(stored).digest("hex") !== record.checksum
+        )
+          throw new Cp2Error(
+            404,
+            "ATTACHMENT_NOT_FOUND",
+            "The conversation attachment was not found."
+          );
+        bytes = stored;
+        filename = record.filename;
+        mimeType = record.mimeType;
+      }
+      let media: LinkedDownloadedMedia;
+      try {
+        media = validateLinkedMedia(
+          {
+            type: mimeType.startsWith("image/")
+              ? "image"
+              : mimeType.startsWith("audio/")
+                ? "audio"
+                : "document",
+            mimeType,
+            filename,
+            size: bytes.length,
+            directPath: "",
+            key: "",
+            sha256: createHash("sha256").update(bytes).digest("base64")
+          },
+          bytes
+        );
+      } catch {
+        throw new Cp2Error(
+          400,
+          "attachment_unsupported",
+          "The attachment type or size is unsupported."
+        );
+      }
+      const digest = createHash("sha256")
+        .update(
+          JSON.stringify([
+            input.businessId,
+            input.conversationId,
+            input.idempotencyKey,
+            media.filename,
+            media.mimeType,
+            createHash("sha256").update(bytes).digest("hex")
+          ])
+        )
+        .digest("hex");
+      const id = `${digest.slice(0, 8)}-${digest.slice(8, 12)}-5${digest.slice(13, 16)}-a${digest.slice(17, 20)}-${digest.slice(20, 32)}`;
+      const record: ConversationAttachmentRecord = {
+        id,
+        accountId: input.accountId,
+        userId: input.userId,
+        businessId: input.businessId,
+        conversationId: input.conversationId,
+        messageId: null,
+        toolCallId: `whatsapp-outbound:${digest}`,
+        filename: media.filename,
+        mimeType: media.mimeType,
+        size: bytes.length,
+        kind: media.kind,
+        previewable: false,
+        caption: null,
+        checksum: createHash("sha256").update(bytes).digest("hex"),
+        storageKey: `encrypted/whatsapp-linked/${input.businessId}/${id}`,
+        createdAt: input.now.toISOString()
+      };
+      await this.deps.conversationAttachmentBlobStore.put({
+        storageKey: record.storageKey,
+        bytes,
+        checksum: record.checksum,
+        mimeType: record.mimeType
+      });
+      this.conversationAttachments.set(id, record);
+      canonical.push({ ...managedAttachmentFromRecord(record), category: media.category });
+      provider.push({
+        filename: media.filename,
+        mimeType: media.mimeType,
+        contentBase64: bytes.toString("base64")
+      });
+    }
+    return { canonical, provider };
+  }
+
   private resolveTrustedEmailAttachments(
     businessId: string,
     customerId: string,
@@ -6205,7 +6678,13 @@ export class MessagingDomain {
     const canonical: ConversationAttachment[] = [];
     const provider: Array<{ filename: string; mimeType: string; contentBase64: string }> = [];
     for (const reference of references) {
-      if (reference.resourceType !== "invoice" || unique.has(reference.resourceId)) continue;
+      if (reference.resourceType !== "invoice")
+        throw new Cp2Error(
+          400,
+          "EMAIL_ATTACHMENT_UNAVAILABLE",
+          "Only confirmed invoice attachments are supported for email."
+        );
+      if (unique.has(reference.resourceId)) continue;
       unique.add(reference.resourceId);
       const invoice = this.deps.requireInvoice(businessId, reference.resourceId);
       if (invoice.customerId !== customerId) {
@@ -6962,6 +7441,22 @@ export class MessagingDomain {
       ownerUserId: input.userId,
       now: input.now
     });
+  }
+
+  private requireLinkedReplyTarget(
+    conversationId: string,
+    messageId: string
+  ): ConversationMessageSummary {
+    const message = this.conversationMessages.get(messageId);
+    if (
+      !message ||
+      message.conversationId !== conversationId ||
+      message.provider !== "whatsapp_linked" ||
+      !message.providerMessageId ||
+      message.deletedAt
+    )
+      throw new Cp2Error(404, "reply_target_not_found", "The reply target was not found.");
+    return message;
   }
 
   private requireEmailReplyTarget(

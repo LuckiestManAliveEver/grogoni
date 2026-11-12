@@ -30,16 +30,18 @@ val releaseKeyPassword = System.getenv("GROGONI_RELEASE_KEY_PASSWORD")
 
 android {
     namespace = "market.grogoni.app"
-    compileSdk = 35
+    compileSdk = 36
+    buildToolsVersion = "36.0.0"
 
     defaultConfig {
         applicationId = "market.grogoni.app"
         minSdk = 23
-        targetSdk = 35
-        versionCode = 1
+        targetSdk = 36
+        versionCode = 5
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "GROGONI_API_ORIGIN", "\"${grogoniApiOrigin.get()}\"")
+        buildConfigField("boolean", "ALLOW_SCREEN_CAPTURE", "false")
     }
 
     signingConfigs {
@@ -54,6 +56,10 @@ android {
     }
 
     buildTypes {
+        debug {
+            // For store screenshots and the Play demo video only. Release can never enable it.
+            buildConfigField("boolean", "ALLOW_SCREEN_CAPTURE", providers.gradleProperty("GROGONI_ALLOW_CAPTURE").orElse("false").get())
+        }
         release {
             isMinifyEnabled = false
             if (releaseStoreFile.isNotBlank()) {
@@ -66,6 +72,17 @@ android {
         buildConfig = true
     }
 
+    // Pin Java and Kotlin to the same bytecode target. Without this, javac defaults to 1.8 while
+    // Kotlin follows the JDK running Gradle, and Kotlin 2.x fails the build on the mismatch.
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+
     testOptions {
         unitTests.isReturnDefaultValues = true
     }
@@ -73,9 +90,36 @@ android {
 
 dependencies {
     implementation("androidx.activity:activity-ktx:1.10.1")
+    implementation("androidx.webkit:webkit:1.14.0")
+    implementation("androidx.credentials:credentials:1.5.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.5.0")
     implementation("androidx.core:core-ktx:1.16.0")
     implementation("androidx.work:work-runtime-ktx:2.10.1")
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test:core-ktx:1.6.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test.ext:junit-ktx:1.2.1")
 }
+
+// Do not produce an unsigned APK that can be mistaken for a distributable release.
+val validateReleaseSigning by tasks.registering {
+    doLast {
+        require(releaseStoreFile.isNotBlank() && releaseStorePassword.isNotBlank() &&
+            releaseKeyAlias.isNotBlank() && releaseKeyPassword.isNotBlank()) {
+            "Configure the release keystore, alias and passwords before building a release APK or bundle."
+        }
+        require(file(releaseStoreFile).isFile) { "The configured release keystore does not exist." }
+    }
+}
+tasks.matching { it.name == "preReleaseBuild" }.configureEach {
+    dependsOn(validateReleaseSigning)
+}
+
+val verifySharedWebBundle by tasks.registering {
+    doLast {
+        require(file("src/main/assets/web/index.html").isFile && file("src/main/assets/web-bundle.json").isFile) {
+            "Run pnpm android:web:bundle before building Android. Android hosts the shared web application."
+        }
+    }
+}
+tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(verifySharedWebBundle) }

@@ -1,4 +1,16 @@
 /* Customer home from grogoni-home.html, with real application actions. */
+.customer-auth-actions {
+  display: flex;
+  flex-shrink: 0;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 18px 12px;
+}
+.customer-auth-actions > button {
+  min-height: 44px;
+}
+
 .app-frame:not(.auth-frame) .top-bar {
   grid-template-columns: 38px minmax(0, 1fr) 38px 38px;
   gap: 6px;

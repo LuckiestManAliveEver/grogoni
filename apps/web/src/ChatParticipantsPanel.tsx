@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { ConversationView } from "@grogoni/shared-types";
+import { permanentDaemonDisplayName, type ConversationView } from "@grogoni/shared-types";
 import { fetchFreshJson, postJson } from "./api-helpers";
 import { getErrorMessage } from "./chat-message-plumbing";
 import { StackedModule } from "./StackedModule";
@@ -81,7 +81,9 @@ export function ChatParticipantsPanel({
         <ul aria-label="Participants">
           {view.participants.map((participant) => (
             <li key={participant.id}>
-              {participant.displayName ?? participant.role}
+              {participant.role === "agent" && view.conversation.isPermanentDaemon
+                ? permanentDaemonDisplayName
+                : (participant.displayName ?? participant.role)}
               {participant.role === "agent" ? " · Agent" : ""}
             </li>
           ))}

@@ -31,7 +31,6 @@ export interface BusinessSetupPanelProps {
   onPhoneNumberChange: (phoneNumber: string) => void;
   onContinuePhone: (phoneNumber: string, country: CountryCode) => void;
   onEditPhone: () => void;
-  onBackToLoginOptions: () => void;
   onCancel: () => void;
   onCreateBusiness: () => void;
 }
@@ -95,8 +94,8 @@ export function BusinessSetupPanel(props: BusinessSetupPanelProps) {
             >
               {props.isPending ? "Saving…" : "Continue"}
             </button>
-            <button className="secondary" type="button" onClick={props.onBackToLoginOptions}>
-              Back to login options
+            <button className="secondary" type="button" onClick={props.onCancel}>
+              Not now
             </button>
           </div>
           <p className="setup-status" role="status" aria-live="polite">

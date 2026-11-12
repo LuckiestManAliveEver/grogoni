@@ -76,7 +76,7 @@ interface UseChatInboxStateDeps {
   setStatusMessage: (message: string) => void;
   setView: (view: ShellView) => void;
   applySessionContextForConversation: (conversationId: string) => Promise<GrogoniMode | null>;
-  requireMessagingSignIn: () => void;
+  requireMessagingSignIn: () => Promise<SessionResponse | null>;
   chatMessages: ChatMessage[];
   chatDraft: string;
   /**
@@ -117,6 +117,8 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
     viewport.addEventListener("change", change);
     return () => viewport.removeEventListener("change", change);
   }, []);
+  const sessionRef = useRef(deps.session);
+  sessionRef.current = deps.session;
   const currentAccountId = useRef(deps.session?.account.id ?? null);
   currentAccountId.current = deps.session?.account.id ?? null;
   const helpInitializedForAccount = useRef<string | null>(null);
@@ -161,6 +163,7 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
 
   // The server owns daemon identity; open that durable thread on initial launch.
   async function loadMessagingInbox(preferredConversationId: string | null = activeConversationId) {
+    const session = sessionRef.current;
     if (session === null) return;
     const offlineScope = currentOfflineScope();
     if (offlineScope) {
@@ -232,6 +235,7 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
   }
 
   async function loadConversationThread(conversationId: string) {
+    const session = sessionRef.current;
     if (session === null) return;
     const offlineScope = currentOfflineScope();
     if (offlineScope) {
@@ -334,9 +338,10 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
   // singleton used at login) and switches to it, so the account can hold several independently
   // moded conversations with its own agent. See docs/frontend/frontend.md Phase 3.
   async function createAgentSession(title?: string) {
-    if (session === null) {
-      requireMessagingSignIn();
-      return;
+    if (sessionRef.current === null) {
+      const continued = await requireMessagingSignIn();
+      if (continued === null) return;
+      sessionRef.current = continued;
     }
     const created = await postJson<ConversationView>("/v1/conversations", {
       kind: "personal",
@@ -348,9 +353,10 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
   }
 
   async function createDirectConversation(recipient: string, title: string) {
-    if (session === null) {
-      requireMessagingSignIn();
-      return;
+    if (sessionRef.current === null) {
+      const continued = await requireMessagingSignIn();
+      if (continued === null) return;
+      sessionRef.current = continued;
     }
     // Phone Contacts opens a chat by phonebook node id. The server already reuses the one
     // conversation between the two accounts, and so does this: the same guard against a second

@@ -16,7 +16,10 @@ export interface RuntimeApprovalStore {
   deleteScope(actorIds: string[], businessIds: string[]): Promise<number>;
   purgeExpired(now: Date): Promise<number>;
   put(token: string, pending: PendingRuntimeAction): Promise<void>;
-  reject(input: Parameters<RuntimeApprovalStore["claim"]>[0]): Promise<void>;
+  /** Resolves with the rejected action so the caller can notify a delegating channel. */
+  reject(
+    input: Parameters<RuntimeApprovalStore["claim"]>[0]
+  ): Promise<PendingRuntimeAction["action"]>;
   claim(input: {
     token: string;
     businessId: string;
@@ -66,10 +69,11 @@ export function createPostgresRuntimeApprovalStore(database: {
     },
     async reject(input) {
       if (input.token.length > 200 || !Number.isFinite(input.now.getTime())) throw notFound();
-      const result = await database.query(
+      const result = await database.query<{ action: PendingRuntimeAction["action"] }>(
         `update business_runtime_approvals set status='REJECTED',rejected_at=$6
          where token_hash=$1 and business_id=$2 and actor_id=$3 and runtime_session_id=$4
-           and conversation_id is not distinct from $5 and status='PENDING' and expires_at>$6`,
+           and conversation_id is not distinct from $5 and status='PENDING' and expires_at>$6
+         returning action`,
         [
           hash(input.token),
           input.businessId,
@@ -79,7 +83,9 @@ export function createPostgresRuntimeApprovalStore(database: {
           input.now
         ]
       );
-      if (result.rowCount !== 1) throw notFound();
+      const row = result.rows[0];
+      if (result.rowCount !== 1 || !row) throw notFound();
+      return row.action;
     },
     async claim(input) {
       if (input.token.length > 200 || !Number.isFinite(input.now.getTime())) throw notFound();

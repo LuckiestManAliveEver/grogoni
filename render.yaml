@@ -24,6 +24,7 @@ services:
         - render.yaml
         - infra/db/**
         - packages/**
+        - patches/**
         - apps/web/**
         - services/api/**
         - scripts/**

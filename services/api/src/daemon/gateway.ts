@@ -12,6 +12,7 @@ export function buildDaemonGateway(input: {
   store: DaemonTaskStore;
   token: string;
   ready: () => boolean;
+  maxActivePerUser?: number;
   /** Applied when an agent task omits them; the executor still rejects unmapped models. */
   defaults: { modelId: string; agentAdapterId: "grogoni" | "pi" };
   /** Returns an error code when this daemon cannot run the payload (answered with 422). */
@@ -60,6 +61,8 @@ export function buildDaemonGateway(input: {
   app.post<{
     Body: {
       key: string;
+      ownerUserId?: string;
+      serverImmediate?: boolean;
       payload: DaemonPayload;
       runAt?: string;
       intervalMs?: number;
@@ -75,6 +78,8 @@ export function buildDaemonGateway(input: {
           required: ["key", "payload"],
           properties: {
             key: { type: "string", minLength: 1, maxLength: 200, pattern: "\\S" },
+            ownerUserId: { type: "string", format: "uuid" },
+            serverImmediate: { type: "boolean" },
             runAt: { type: "string", format: "date-time" },
             intervalMs: { type: "integer", minimum: 60_000, maximum: 2_592_000_000 },
             maxAttempts: { type: "integer", minimum: 1, maximum: 5 },
@@ -109,6 +114,10 @@ export function buildDaemonGateway(input: {
     async (request, reply) => {
       if (!input.ready()) return reply.code(503).send({ error: "DAEMON_STOPPING" });
       const body = request.body;
+      if (body.ownerUserId && body.payload.kind !== "agent")
+        return reply.code(400).send({ error: "INVALID_USER_TASK" });
+      if (body.serverImmediate && (!body.ownerUserId || body.intervalMs !== undefined))
+        return reply.code(400).send({ error: "INVALID_IMMEDIATE_TASK" });
       const runAt = body.runAt ? new Date(body.runAt) : new Date();
       // PostgreSQL cannot store U+0000 or lone surrogates (the latter would also make distinct
       // idempotency keys collide), and JSON Schema date-time admits values Date cannot represent.
@@ -128,13 +137,24 @@ export function buildDaemonGateway(input: {
           : body.payload;
       const refused = input.refusal?.(payload) ?? null;
       if (refused) return reply.code(422).send({ error: refused });
-      const task = await input.store.enqueue({
+      const submission = {
         key: body.key,
         payload,
         runAt,
         ...(body.intervalMs === undefined ? {} : { intervalMs: body.intervalMs }),
-        maxAttempts: body.maxAttempts ?? 3
-      });
+        maxAttempts: body.maxAttempts ?? 3,
+        serverImmediate: body.serverImmediate ?? false
+      };
+      const owned = body.ownerUserId
+        ? await input.store.enqueueOwned(
+            { ...submission, ownerUserId: body.ownerUserId },
+            input.maxActivePerUser ?? 20
+          )
+        : null;
+      if (owned && "limited" in owned) return reply.code(429).send({ error: "USER_TASK_LIMIT" });
+      const task = owned && "task" in owned ? owned.task : await input.store.enqueue(submission);
+      if (body.ownerUserId && task.owner_user_id !== body.ownerUserId)
+        return reply.code(409).send({ error: "TASK_OWNER_CONFLICT" });
       await input.onQueued?.(task);
       return reply.code(202).send(toPublicDaemonTask(task));
     }

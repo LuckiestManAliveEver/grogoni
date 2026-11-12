@@ -24,6 +24,14 @@ interface Dependencies {
   normalizePhone: (value: string, country?: string) => PhoneIdentity;
   passwordEnabled?: boolean;
   passkeysEnabled?: () => boolean;
+  /**
+   * Prepares the check for an Android device key. It reads Google's revocation list, so it runs
+   * before the transaction: a slow reply must not hold a database connection.
+   */
+  prepareDeviceAttestation?: () => Promise<
+    (input: { chain: unknown; publicKeyJwk: Row; accountId: string }) => string | null
+  >;
+  deviceAttestationRequired?: () => boolean;
 }
 const postPaths = new Set([
   "/auth/continue",
@@ -36,9 +44,10 @@ const postPaths = new Set([
   "/auth/pin/continue",
   "/auth/signup/start",
   "/auth/signup/complete",
-  "/auth/pin/setup",
   "/auth/mfa/challenge",
   "/auth/mfa/verify",
+  "/auth/pin/verify",
+  "/auth/password/verify",
   "/auth/session/refresh",
   "/session/refresh"
 ]);
@@ -205,6 +214,8 @@ export function createAuthRoutes({
   secrets,
   normalizePhone,
   passwordEnabled = true,
+  prepareDeviceAttestation,
+  deviceAttestationRequired,
   passkeysEnabled = () => false
 }: Dependencies) {
   if (Object.values(secrets).some((value) => value.trim().length < 32))
@@ -230,13 +241,17 @@ export function createAuthRoutes({
       throw new AuthError(400, "INVALID_PHONE_NUMBER", "Enter a valid phone number.");
     }
   }
+  // A guest's added phone lives on the user, not in account_identities. It must log in here, or
+  // refusing the browser device key would lock them out. The column is unique and always current,
+  // so its holder wins over an older account that still lists the number as its primary.
   async function findAccount(client: SqlClient, type: string, value: string, anyIdentity = false) {
     const result = await client.query(
       `${accountSelect} where
       (a.primary_auth_channel = $1 and a.primary_auth_destination = $2) or exists
       (select 1 from account_identities i where i.account_id = a.id and i.type = $1
         and i.normalized_value = $2 and ($3::boolean or i.type = 'phone' or i.verified_at is not null))
-      order by u.created_at, u.id limit 1`,
+      or ($1 = 'phone' and u.phone_number_e164 = $2)
+      order by (u.phone_number_e164 = $2) is true desc, u.created_at, u.id limit 1`,
       [type, value, anyIdentity]
     );
     return result.rows[0];
@@ -264,6 +279,63 @@ export function createAuthRoutes({
       [key, signup ? "auth.edge.signup_attempt" : "auth.edge.login_failure"]
     );
     return Number(result.rows[0]?.attempts ?? 0) >= (signup ? 10 : 5);
+  }
+  /**
+   * Step-up for an existing session, needed before sensitive changes such as adding a passkey.
+   * Handled here, not in the domain store, because that store is rebuilt per request and its
+   * attempt counter would reset on every guess. This limit is durable and spans PIN and password.
+   */
+  async function verifySessionCredential(request: Request, usePassword: boolean, value: string) {
+    return transaction(async (client) => {
+      const session = await activeSession(client, request);
+      if (!session) return error(401, "auth_required", "Authentication is required.");
+      const accountId = String(session.account_id);
+      const key = correlation(`verify:${accountId}`, secrets.audit);
+      if (await limited(client, key))
+        return error(429, "pin_rate_limited", "Too many attempts. Try again later.");
+      const credential = (
+        await client.query(
+          usePassword
+            ? "select password_hash as credential from password_credentials where account_id = $1"
+            : "select pin_hash as credential from account_pin_hashes where account_id = $1",
+          [accountId]
+        )
+      ).rows[0]?.credential;
+      if (!credential)
+        return usePassword
+          ? error(404, "password_not_set", "This account has no password.")
+          : error(404, "pin_not_set", "Login PIN has not been set.");
+      const valid = verifyCredential(
+        accountId,
+        value,
+        String(credential),
+        usePassword ? secrets.password : secrets.pin,
+        !usePassword
+      );
+      if (valid === "invalid") {
+        await audit(client, "auth.edge.login_failure", key, session);
+        return usePassword
+          ? error(401, "password_incorrect", "That password is not correct.")
+          : error(401, "pin_invalid", "Login PIN is invalid.");
+      }
+      if (valid === "legacy" && !usePassword) await setPin(client, accountId, value);
+      const verifiedAt = new Date().toISOString();
+      await client.query("update sessions set pin_verified_at = $2 where id = $1", [
+        session.id,
+        verifiedAt
+      ]);
+      await client.query(
+        `update cp2_sessions set record = record || $2::jsonb, updated_at = now()
+        where entity_id = $1`,
+        [session.id, JSON.stringify({ pinVerifiedAt: verifiedAt })]
+      );
+      await audit(client, "auth.edge.login_success", key, session);
+      const account = (await client.query(`${accountSelect} where a.id = $1`, [accountId])).rows[0];
+      return Response.json({
+        ...publicActor(account),
+        session: sessionView({ ...session, pin_verified_at: verifiedAt })
+      });
+    });
   }
   async function setPin(client: SqlClient, accountId: string, value: string) {
     const pinHash = credentialHash(accountId, value, secrets.pin, true);
@@ -466,6 +538,61 @@ export function createAuthRoutes({
     if (id.type !== "device") await addIdentity(client, row, id.type, id.value, true);
     return row;
   }
+  /** The signed-in guest, whose signup upgrades their own account so nothing they made is lost. */
+  async function guestAccount(client: SqlClient, request: Request) {
+    const session = await activeSession(client, request);
+    if (!session) return null;
+    const account = (await client.query(`${accountSelect} where a.id = $1`, [session.account_id]))
+      .rows[0];
+    if (account?.primary_auth_channel !== "device") return null;
+    // A guest with a credential must prove it, so signup cannot be a way around that.
+    const credentials = await client.query(
+      `select 1 from account_pin_hashes where account_id = $1
+      union all select 1 from password_credentials where account_id = $1
+      union all select 1 from cp2_passkeys where account_id = $1::text limit 1`,
+      [session.account_id]
+    );
+    return credentials.rows.length === 0 ? account : null;
+  }
+  async function upgradeGuestAccount(
+    client: SqlClient,
+    guest: Row,
+    id: { type: string; value: string; phone: PhoneIdentity | null },
+    displayName: string
+  ) {
+    const accountId = String(guest.account_id);
+    const now = new Date().toISOString();
+    await client.query(
+      `update accounts set primary_auth_channel = $2, primary_auth_destination = $3,
+      identity_level = 'strong' where id = $1`,
+      [accountId, id.type, id.value]
+    );
+    await client.query(
+      `update users set display_name = $2, phone_number_e164 = $3, phone_country_code = $4,
+      phone_national_number = $5, phone_verification_status = 'unverified',
+      phone_added_at = coalesce(phone_added_at, $6), phone_updated_at = $6, phone_source = 'phone_login'
+      where id = $1`,
+      [guest.user_id, displayName, id.phone?.e164, id.phone?.country, id.phone?.nationalNumber, now]
+    );
+    // A phone the guest saved earlier is a non-primary mirror row, even when it differs from this
+    // one; addIdentity writes the primary, so no stale number stays attached to the account.
+    await client.query(
+      `delete from cp2_account_identities where account_id = $1 and record->>'type' = $2`,
+      [accountId, id.type]
+    );
+    const row = (await client.query(`${accountSelect} where a.id = $1`, [accountId])).rows[0];
+    const actor = publicActor(row);
+    await client.query(
+      "update cp2_accounts set record = record || $2::jsonb, updated_at = now() where entity_id = $1",
+      [accountId, JSON.stringify(actor.account)]
+    );
+    await client.query(
+      "update cp2_users set record = record || $2::jsonb, updated_at = now() where entity_id = $1",
+      [guest.user_id, JSON.stringify(actor.user)]
+    );
+    await addIdentity(client, row, id.type, id.value, true);
+    return row;
+  }
   async function addIdentity(
     client: SqlClient,
     row: Row,
@@ -493,6 +620,74 @@ export function createAuthRoutes({
       createdAt: now,
       updatedAt: now
     });
+  }
+  async function registerDeviceCredential(
+    client: SqlClient,
+    accountId: string,
+    value: unknown,
+    requiresServerChallenge = false,
+    attested = false
+  ) {
+    const jwk = value as Row | undefined;
+    if (
+      !jwk ||
+      jwk.kty !== "EC" ||
+      jwk.crv !== "P-256" ||
+      typeof jwk.x !== "string" ||
+      typeof jwk.y !== "string" ||
+      jwk.d !== undefined
+    ) {
+      throw new AuthError(400, "device_recovery_key_required", "A device public key is required.");
+    }
+    const publicKey = { kty: "EC", crv: "P-256", x: jwk.x, y: jwk.y };
+    try {
+      createPublicKey({ key: publicKey as JsonWebKey, format: "jwk" });
+    } catch {
+      throw new AuthError(400, "device_recovery_key_invalid", "The device public key is invalid.");
+    }
+    await lock(client, `device-key:${hash(JSON.stringify(publicKey))}`);
+    const existing = (
+      await client.query(
+        `select record from cp2_device_recovery_credentials
+       where record->'publicKeyJwk' = $1::jsonb and record->>'revokedAt' is null for update`,
+        [JSON.stringify(publicKey)]
+      )
+    ).rows[0]?.record as Row | undefined;
+    if (existing) {
+      if (existing.accountId !== accountId)
+        throw new AuthError(
+          409,
+          "device_credential_in_use",
+          "This device key belongs to another account."
+        );
+      if (
+        requiresServerChallenge &&
+        (existing.requiresServerChallenge !== true || (attested && existing.attested !== true))
+      ) {
+        await mirror(client, "cp2_device_recovery_credentials", String(existing.id), {
+          ...existing,
+          requiresServerChallenge: true,
+          attested: attested || existing.attested === true
+        });
+      }
+      return String(existing.id);
+    }
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    await mirror(client, "cp2_device_recovery_credentials", id, {
+      id,
+      accountId,
+      publicKeyJwk: publicKey,
+      requiresServerChallenge,
+      attested,
+      createdAt: now,
+      updatedAt: now,
+      revokedAt: null,
+      lastAssertionHash: null,
+      lastAssertionAt: null,
+      lastSessionId: null
+    });
+    return id;
   }
   async function makeSession(client: SqlClient, account: Row, request: Request, previous?: Row) {
     const now = new Date();
@@ -573,6 +768,28 @@ export function createAuthRoutes({
       [id]
     );
     return result.rows[0] ?? null;
+  }
+  /**
+   * Trusted-device recovery probation (domains/recovery-approval): within 24 hours of a browser
+   * collecting an approval, every session family not signed in at that moment is on probation.
+   */
+  async function onRecoveryProbation(client: SqlClient, session: Row): Promise<boolean> {
+    const result = await client.query(
+      `select 1 from cp2_auth_transactions t
+      where t.account_id = $1::text
+        and t.record->'metadata'->>'recoveryApprovalRequest' = 'true'
+        and t.record->'metadata'->>'recoveryApprovalStatus' = 'approved'
+        and t.record->>'consumedAt' is not null
+        and t.record->'metadata'->>'recoveryApprovalCollectedAt' is not null
+        and (t.record->>'expiresAt')::timestamptz > now()
+        and not coalesce(
+          (t.record->'metadata'->>'recoveryApprovalTrustedFamilies')::jsonb ? $2::text,
+          false
+        )
+      limit 1`,
+      [String(session.account_id), String(session.session_family_id ?? session.id)]
+    );
+    return result.rows.length > 0;
   }
   async function revokeFamily(client: SqlClient, row: Row, reason: string) {
     const result = await client.query(
@@ -691,16 +908,84 @@ export function createAuthRoutes({
           return error(410, "phone_login_required", "Log in with your mobile phone number.");
         const data = await body(path === "/auth/mfa/verify" ? request.clone() : request);
         if (path === "/auth/mfa/verify" && data.factor === "email") return null;
+        const attestationProblem =
+          data.deviceSecurity === true ? await prepareDeviceAttestation?.() : undefined;
         return await transaction(async (client) => {
           const existing = await activeSession(client, request);
+          if (
+            data.deviceSecurity === true &&
+            (!existing ||
+              !existing.pin_verified_at ||
+              Date.now() - Date.parse(iso(existing.pin_verified_at ?? existing.authenticated_at)) >
+                15 * 60_000)
+          ) {
+            return error(
+              401,
+              "recent_authentication_required",
+              "Sign in again before enrolling device recovery."
+            );
+          }
+          // The Fastify probation guard (cp2/recovery-probation-routes.ts) never sees this direct
+          // handler, so it applies the same rule: no device-security key from a probation session.
+          if (
+            data.deviceSecurity === true &&
+            existing &&
+            (await onRecoveryProbation(client, existing))
+          )
+            return error(
+              403,
+              "recovery_approval_probation",
+              "This device logged in within 24 hours of a browser being approved from another device, so it cannot do this yet. Use a device that was already logged in, or wait."
+            );
           if (existing) {
             const account = (
               await client.query(`${accountSelect} where a.id = $1`, [existing.account_id])
             ).rows[0];
+            const alreadyAttested =
+              data.deviceSecurity === true &&
+              (
+                await client.query(
+                  `select 1 from cp2_device_recovery_credentials where account_id = $1::text
+                  and record->'publicKeyJwk'->>'x' = $2 and record->>'attested' = 'true'
+                  and record->>'revokedAt' is null limit 1`,
+                  [
+                    existing.account_id,
+                    String((data.devicePublicKeyJwk as Row | undefined)?.x ?? "")
+                  ]
+                )
+              ).rows.length > 0;
+            const problem =
+              data.deviceSecurity === true && !alreadyAttested
+                ? attestationProblem
+                  ? attestationProblem({
+                      chain: data.deviceAttestation,
+                      publicKeyJwk: data.devicePublicKeyJwk as Row,
+                      accountId: String(existing.account_id)
+                    })
+                  : "attestation_unavailable"
+                : null;
+            if (data.deviceSecurity === true && problem !== null && deviceAttestationRequired?.()) {
+              return error(
+                403,
+                "device_attestation_required",
+                "This device cannot prove its screen lock. Use a PIN or passkey, or update Grogoni."
+              );
+            }
             return Response.json({
               ...publicActor(account),
               session: sessionView(existing),
-              isNewAccount: false
+              isNewAccount: false,
+              ...(data.devicePublicKeyJwk === undefined
+                ? {}
+                : {
+                    deviceRecoveryCredentialId: await registerDeviceCredential(
+                      client,
+                      String(existing.account_id),
+                      data.devicePublicKeyJwk,
+                      data.deviceSecurity === true,
+                      data.deviceSecurity === true && problem === null
+                    )
+                  })
             });
           }
           const key = request.headers.get("idempotency-key")?.trim() ?? "";
@@ -775,19 +1060,12 @@ export function createAuthRoutes({
               accountId: account.account_id
             });
           }
-          const credentialId = String(prior?.credentialId ?? randomUUID());
+          const credentialId = await registerDeviceCredential(
+            client,
+            String(account.account_id),
+            publicKey
+          );
           const now = new Date().toISOString();
-          await mirror(client, "cp2_device_recovery_credentials", credentialId, {
-            id: credentialId,
-            accountId: account.account_id,
-            publicKeyJwk: publicKey,
-            createdAt: now,
-            updatedAt: now,
-            revokedAt: null,
-            lastAssertionHash: null,
-            lastAssertionAt: null,
-            lastSessionId: null
-          });
           const session = await makeSession(client, account, request);
           await client.query("update sessions set pin_verified_at = null where id = $1", [
             session.row.id
@@ -868,6 +1146,12 @@ export function createAuthRoutes({
         return await transaction((client) =>
           verifyMfa(client, request, data, path === "/auth/mfa/challenge")
         );
+      if (path === "/auth/pin/verify")
+        return await verifySessionCredential(request, false, pin(data.pin));
+      if (path === "/auth/password/verify" && !passwordEnabled)
+        return error(403, "password_fallback_disabled", "Password fallback is disabled.");
+      if (path === "/auth/password/verify")
+        return await verifySessionCredential(request, true, text(data.password, "password"));
       if (path === "/auth/login/methods" || path === "/auth/identify") {
         identifier(data);
         if (path === "/auth/identify")
@@ -877,84 +1161,11 @@ export function createAuthRoutes({
             "Use the enumeration-safe login method endpoint."
           );
         return Response.json({
-          preferred: "pin",
+          preferred: passkeysEnabled() ? "passkey" : "pin",
           passkeyAvailable: passkeysEnabled(),
           passwordFallback: passwordEnabled,
           recoveryAvailable: true,
           smsLogin: false
-        });
-      }
-      if (path === "/auth/pin/setup") {
-        const value = pin(data.pin);
-        if (data.pinConfirmation !== undefined && value !== data.pinConfirmation)
-          throw new AuthError(400, "pin_confirmation_invalid", "PINs do not match.");
-        return await transaction(async (client) => {
-          const session = await activeSession(client, request);
-          if (!session) return error(401, "auth_required", "Authentication is required.");
-          await client.query("select id from accounts where id = $1 for update", [
-            session.account_id
-          ]);
-          if (Date.now() - Date.parse(iso(session.authenticated_at)) > 15 * 60000)
-            return error(
-              401,
-              "auth_reauthentication_required",
-              "Sign in again before changing credentials."
-            );
-          if (
-            (
-              await client.query(
-                "select account_id from account_pin_hashes where account_id = $1",
-                [session.account_id]
-              )
-            ).rows.length
-          )
-            return error(409, "pin_already_set", "A login PIN is already set for this account.");
-          if (
-            (
-              await client.query(
-                "select id from mfa_factors where account_id = $1 and verified_at is not null and disabled_at is null",
-                [session.account_id]
-              )
-            ).rows.length
-          ) {
-            if (data.mfaCode === undefined)
-              return error(401, "mfa_required", "Enter your second factor.");
-            const code = text(data.mfaCode, "mfaCode", 100);
-            const key = correlation(`mfa:${session.account_id}`, secrets.audit);
-            if (await limited(client, key))
-              return error(
-                429,
-                "mfa_rate_limited",
-                "Too many verification attempts. Try again later."
-              );
-            if (
-              !(await verifySecondFactor(
-                client,
-                String(session.account_id),
-                /^\d{6}$/.test(code) ? "totp" : "recovery_code",
-                code
-              ))
-            ) {
-              await audit(client, "auth.edge.login_failure", key);
-              return error(401, "mfa_code_invalid", "The verification code is invalid.");
-            }
-            await audit(client, "auth.edge.login_success", key);
-          }
-          await setPin(client, String(session.account_id), value);
-          await client.query("update sessions set pin_verified_at = now() where id = $1", [
-            session.id
-          ]);
-          await client.query(
-            "update cp2_sessions set record = record || jsonb_build_object('pinVerifiedAt', now()::text), updated_at = now() where entity_id = $1",
-            [session.id]
-          );
-          const account = (
-            await client.query(`${accountSelect} where a.id = $1 and u.id = $2`, [
-              session.account_id,
-              session.user_id
-            ])
-          ).rows[0];
-          return Response.json({ ...publicActor(account), session: sessionView(session) });
         });
       }
       if (path === "/auth/signup/complete") {
@@ -999,11 +1210,16 @@ export function createAuthRoutes({
           const metadata = row.metadata as Row;
           const id = identifier({ type: "phone", identifier: metadata.identifierValue });
           await lock(client, `signup:${id.type}:${id.value}`);
-          if (await findAccount(client, id.type, id.value, true))
+          const guest = await guestAccount(client, request);
+          const guestSession = guest ? await activeSession(client, request) : null;
+          const holder = await findAccount(client, id.type, id.value, true);
+          if (holder && holder.account_id !== guest?.account_id)
             return error(409, "account_exists", "Continue to sign in.");
           if (extraEmail && (await findAccount(client, "email", extraEmail, true)))
             return error(409, "identity_in_use", "That email cannot be linked to this account.");
-          const account = await newAccount(client, id, displayName);
+          const account = guest
+            ? await upgradeGuestAccount(client, guest, id, displayName)
+            : await newAccount(client, id, displayName);
           if (extraEmail) await addIdentity(client, account, "email", extraEmail, false);
           const passwordHash = credentialHash(
             String(account.account_id),
@@ -1014,7 +1230,9 @@ export function createAuthRoutes({
           const now = new Date().toISOString();
           await client.query(
             `insert into password_credentials (account_id, password_hash, password_changed_at, created_at, updated_at)
-            values ($1,$2,$3,$3,$3)`,
+            values ($1,$2,$3,$3,$3)
+            on conflict (account_id) do update set password_hash = excluded.password_hash,
+              password_changed_at = excluded.password_changed_at, updated_at = excluded.updated_at`,
             [account.account_id, passwordHash, now]
           );
           await mirror(client, "cp2_password_credentials", String(account.account_id), {
@@ -1036,6 +1254,7 @@ export function createAuthRoutes({
               JSON.stringify({ accountId: account.account_id, consumedAt: now })
             ]
           );
+          if (guestSession) await revokeFamily(client, guestSession, "signup_upgrade");
           const session = await makeSession(client, account, request);
           return sessionResponse(account, session.row, session.refresh);
         });
@@ -1099,7 +1318,9 @@ export function createAuthRoutes({
           );
         if (signup) await audit(client, "auth.edge.signup_attempt", key);
         if (path === "/auth/signup/start") {
-          if (account) return error(409, "account_exists", "Continue to sign in.");
+          const guest = account ? await guestAccount(client, request) : null;
+          if (account && account.account_id !== guest?.account_id)
+            return error(409, "account_exists", "Continue to sign in.");
           const transactionId = randomUUID();
           const now = new Date().toISOString();
           const expiresAt = new Date(Date.now() + 15 * 60000).toISOString();
@@ -1131,17 +1352,24 @@ export function createAuthRoutes({
           });
           return Response.json({ transactionId, expiresAt, verificationRequired: false });
         }
+        // A guest's own saved phone is not someone else's account.
+        const guest = signup || continuing ? await guestAccount(client, request) : null;
+        if (account && account.account_id === guest?.account_id) account = undefined;
         if (signup || (continuing && !account)) {
           await lock(client, `signup:${id.type}:${id.value}`);
           const existing = await findAccount(client, id.type, id.value, true);
-          if (existing) {
+          if (existing && existing.account_id !== guest?.account_id) {
             if (signup) return error(409, "account_exists", "Continue to sign in.");
             account = await findAccount(client, id.type, id.value);
             if (!account) return error(409, "identity_in_use", "That identity is already in use.");
           } else {
-            account = await newAccount(client, id);
-            await setPin(client, String(account.account_id), value);
-            const session = await makeSession(client, account, request);
+            const guestSession = guest ? await activeSession(client, request) : null;
+            account = guest
+              ? await upgradeGuestAccount(client, guest, id, String(guest.display_name))
+              : await newAccount(client, id);
+            await setPin(client, String(account!.account_id), value);
+            if (guestSession) await revokeFamily(client, guestSession, "signup_upgrade");
+            const session = await makeSession(client, account!, request);
             return sessionResponse(
               account,
               session.row,

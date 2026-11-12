@@ -6,9 +6,21 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.Telephony
-import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
 import androidx.core.content.ContextCompat
+
+/**
+ * Whether Grogoni is the default SMS app. On Android 10+ the role is the source of truth: on the
+ * API 35 emulator Telephony.Sms.getDefaultSmsPackage returned null while the role was held and
+ * every SMS permission was granted.
+ */
+object DefaultSmsRole {
+    fun held(context: Context): Boolean = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        context.getSystemService(RoleManager::class.java)?.isRoleHeld(RoleManager.ROLE_SMS) == true
+    } else {
+        Telephony.Sms.getDefaultSmsPackage(context) == context.packageName
+    }
+}
 
 object NativeSmsCapability {
     fun inspect(context: Context): SmsCapabilityState {
@@ -24,22 +36,20 @@ object NativeSmsCapability {
             context, Manifest.permission.RECEIVE_SMS,
         ) == PackageManager.PERMISSION_GRANTED
         val hasTelephony = context.packageManager.hasSystemFeature(
-            PackageManager.FEATURE_TELEPHONY_MESSAGING,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                PackageManager.FEATURE_TELEPHONY_MESSAGING
+            } else {
+                PackageManager.FEATURE_TELEPHONY
+            },
         )
         val roleAvailable = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             roleManager?.isRoleAvailable(RoleManager.ROLE_SMS) == true
         } else {
             hasTelephony
         }
-        val roleGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            roleManager?.isRoleHeld(RoleManager.ROLE_SMS) == true
-        } else {
-            Telephony.Sms.getDefaultSmsPackage(context) == context.packageName
-        }
+        val roleGranted = DefaultSmsRole.held(context)
         val subscriptionId = if (hasTelephony) {
-            SubscriptionManager.getDefaultSmsSubscriptionId().takeIf {
-                it != SubscriptionManager.INVALID_SUBSCRIPTION_ID
-            }
+            SmsSubscription.defaultId()
         } else {
             null
         }

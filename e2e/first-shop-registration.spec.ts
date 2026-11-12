@@ -26,6 +26,22 @@ test("a signed-in account registers its first shop without OTP", async ({ page }
         session: { expiresAt: "2099-01-01T00:00:00.000Z" }
       });
     }
+    if (path === "/v1/session/context") {
+      return json({
+        accountId: "first-shop-account",
+        userId: "first-shop-user",
+        sessionId: "guest-session",
+        conversationId: "guest-conversation",
+        activeShopId: null,
+        agentId: "agent",
+        activeModelId: "model",
+        mode: "marketplace",
+        activeSurface: "chat",
+        permissions: [],
+        sessionVersion: 1,
+        shops: []
+      });
+    }
     if (path === "/auth/oauth/providers") return json({ providers: [] });
     if (path === "/v1/marketplace-intro") {
       return json({ completedAt: "2026-07-17T00:00:00.000Z" });
@@ -108,6 +124,22 @@ async function captureOwnerPhone(page: Page, press: (target: Locator) => Promise
     if (path.startsWith("/auth/otp/")) {
       otpRequests += 1;
       return json({ message: "OTP must not be used for shop phone capture." }, 500);
+    }
+    if (path === "/v1/session/context") {
+      return json({
+        accountId: "first-shop-account",
+        userId: "first-shop-user",
+        sessionId: "guest-session",
+        conversationId: "guest-conversation",
+        activeShopId: null,
+        agentId: "agent",
+        activeModelId: "model",
+        mode: "marketplace",
+        activeSurface: "chat",
+        permissions: [],
+        sessionVersion: 1,
+        shops: []
+      });
     }
     if (path === "/auth/oauth/providers") return json({ providers: [] });
     if (path === "/session" || path === "/auth/bootstrap") {

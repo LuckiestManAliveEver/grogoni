@@ -127,6 +127,9 @@ import {
 import { useInstallPrompt } from "./misc-browser-utils";
 
 import { BusinessSetupPanel } from "./BusinessSetupPanel";
+import { SecureShopPrompt } from "./SecureShopPrompt";
+import { TrustedDeviceApproval } from "./TrustedDeviceApproval";
+import { WhatsAppLinkedStartupGate } from "./WhatsAppLinkedStartupGate";
 import { MenuDrawer } from "./MenuDrawer";
 
 import { ChatSurface } from "./ChatSurface";
@@ -143,6 +146,7 @@ import {
 
 import ShellNotices from "./ShellNotices";
 import { permissionsForOpenShop } from "./active-shop-permissions";
+
 const AgentProfileSurface = lazy(() =>
   loadLazyModuleWithRecovery(
     agentProfileModuleKeys.surface,
@@ -752,6 +756,8 @@ export function OwnerApp() {
     rejectRuntimeAction,
     cancelGeneration
   } = useChatRuntimeState({
+    // Declared below; called only when a chat message registers a shop.
+    registerShopFromChat: (input) => registerShopFromChat(input),
     business,
     mode,
     session,
@@ -794,14 +800,9 @@ export function OwnerApp() {
   // references refreshSession by name at hook-call time) - same TDZ-avoidance reasoning as every
   // other domain hook ordering decision in this effort.
   const authBootstrapPending = isAuthBootstrapPending(authBootstrapState);
-  // Device-only identities are cookie-backed but still need explicit signup/login.
-  // Auth completion upgrades this temporary session, as it does a fresh session.
+  // Device accounts can use chat immediately; account sign-in remains optional.
   const isSignedOut = session === null || session.account.identityLevel === "device";
-  useDaemonLane(
-    session && (!isSignedOut || activeConversation?.conversation.helpTopic)
-      ? session.account.id
-      : null
-  );
+  useDaemonLane(session?.account.id ?? null);
   const shouldShowAuth = !authBootstrapPending && isAuthOpen && isSignedOut;
   // Log in / Sign up entry points (menu drawer, seller header). A device account can already own a
   // shop; offering it a login that replaces that account would strand the shop, so a shop owner's
@@ -823,7 +824,8 @@ export function OwnerApp() {
     isBusinessSetupOpen,
     setIsBusinessSetupOpen,
     saveOwnerPhoneForShop,
-    createBusiness
+    createBusiness,
+    registerShopFromChat
   } = useBusinessSetupState({
     business,
     setBusiness,
@@ -1679,6 +1681,24 @@ export function OwnerApp() {
               </>
             ) : null}
           </header>
+          {!isAuthScreen && mode === "marketplace" && showsSignInEntry ? (
+            <nav className="customer-auth-actions" aria-label="Account access">
+              <button
+                className="header-auth-button secondary"
+                type="button"
+                onClick={() => openAuth("signup")}
+              >
+                Sign up
+              </button>
+              <button
+                className="header-auth-button"
+                type="button"
+                onClick={() => openAuth("login")}
+              >
+                Log in
+              </button>
+            </nav>
+          ) : null}
           {!isAuthScreen ? (
             <MenuDrawer
               open={isMenuDrawerOpen}
@@ -1840,6 +1860,15 @@ export function OwnerApp() {
             signedOut={!isAuthScreen && !authBootstrapPending && session === null}
             onJoinedShop={(shop) => joinStaffShop(shop, setActiveConversationId)}
           />
+          {!isAuthScreen &&
+          business?.role === "owner" &&
+          session !== null &&
+          session.account.identityLevel === "device" ? (
+            <SecureShopPrompt shopName={business.name} onSecured={refreshSession} />
+          ) : null}
+          {!isAuthScreen && session?.account.primaryAuthChannel === "phone" ? (
+            <TrustedDeviceApproval key={session.account.id} mode="prompt" />
+          ) : null}
           {authBootstrapPending ? (
             <NativeLaunchScreen
               message={bootstrapProgressMessage(
@@ -1893,10 +1922,6 @@ export function OwnerApp() {
                 )
               }
               onEditPhone={() => setBusinessSetupStep("phone")}
-              onBackToLoginOptions={() => {
-                setIsBusinessSetupOpen(false);
-                openAuth();
-              }}
               onCancel={() => {
                 setIsBusinessSetupOpen(false);
                 setStatusMessage(
@@ -1907,6 +1932,11 @@ export function OwnerApp() {
             />
           ) : (
             <main className="chat-workspace-shell">
+              <WhatsAppLinkedStartupGate
+                accountId={session?.account.id}
+                businessId={business?.id}
+                shops={grogoniSessionContext?.shops}
+              />
               <ChatSurface
                 chatDraft={chatDraft}
                 initialEmailSubject={

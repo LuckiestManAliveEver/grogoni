@@ -5,6 +5,13 @@ import android.telephony.PhoneNumberUtils
 object NativePhoneNormalizer {
     private val e164 = Regex("^\\+[1-9]\\d{6,14}$")
 
+    /**
+     * Phonebook numbers saved in local form belong to the SIM's country. The network country is
+     * never used: roaming would read a saved 0712... as a number in the visited country.
+     */
+    fun homeCountry(simCountryIso: String?): String? =
+        simCountryIso?.trim()?.uppercase()?.takeIf { it.matches(Regex("[A-Z]{2}")) }
+
     fun normalize(
         raw: String,
         networkCountryIso: String?,

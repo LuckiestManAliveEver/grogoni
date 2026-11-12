@@ -18,6 +18,16 @@ DIRECT_DATABASE_URL=postgresql://...
 
 If `DIRECT_DATABASE_URL` is not set, migration, backup, and restore commands fall back to `DATABASE_URL`.
 
+`pnpm db:migrate` and `pnpm db:rollback` load `.env`, so a variable you set on the command line can
+lose to one from `.env`. They print the database they are about to change, and they refuse to run
+when `DIRECT_DATABASE_URL` and `DATABASE_URL` name different databases (a Neon `-pooler` host and
+its direct host count as the same one). To aim them at a database outright, such as a throwaway
+test container, set `MIGRATION_DATABASE_URL`, which wins over both:
+
+```bash
+MIGRATION_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:55471/grogoni_test pnpm db:migrate
+```
+
 ## Brand rename
 
 For a database created before the Grogoni rename, stop API writers and run this maintenance task before deploying the renamed API or running its migrations:

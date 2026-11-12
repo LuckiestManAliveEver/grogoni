@@ -148,6 +148,48 @@ export function createDaemonExecutor(
         throw error;
       }
     }
+    const linked = /^\/whatsapp-linked ([A-Za-z0-9_-]{1,4096})$/.exec(payload.message);
+    if (linked) {
+      if (!task.owner_user_id || !environment.GROGONI_API_URL || !environment.DAEMON_SERVICE_TOKEN)
+        throw new DaemonTaskError("LINKED_TOOL_API_NOT_CONFIGURED", false);
+      let ticket: Record<string, unknown>;
+      try {
+        ticket = JSON.parse(Buffer.from(linked[1]!, "base64url").toString("utf8")) as Record<
+          string,
+          unknown
+        >;
+      } catch {
+        throw new DaemonTaskError("INVALID_LINKED_TOOL_TICKET", false);
+      }
+      if (ticket.ownerId !== task.owner_user_id)
+        throw new DaemonTaskError("LINKED_TOOL_OWNER_MISMATCH", false);
+      const base = hostedEndpoint(
+        environment.GROGONI_API_URL,
+        environment.DAEMON_ALLOW_LOCAL_API === "true"
+      );
+      const result = await hostedJsonRequest({
+        url: new URL(`${base.pathname.replace(/\/$/, "")}/internal/whatsapp-linked/turn`, base),
+        signal,
+        timeoutMs: 150_000,
+        init: {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${environment.DAEMON_SERVICE_TOKEN}`,
+            "content-type": "application/json"
+          },
+          body: JSON.stringify(ticket)
+        }
+      });
+      return {
+        completion: {
+          status: "available",
+          outputText: JSON.stringify({
+            type: "response",
+            message: (result as { text: string }).text
+          })
+        }
+      };
+    }
     const businessSkill = /^\/business\s+([0-9a-f-]{36})\s+(\/skills?\s+[\s\S]+)$/i.exec(
       payload.message
     );

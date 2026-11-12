@@ -174,12 +174,7 @@ describe("API persistence acknowledgement barrier", () => {
       const store = createCp2Store();
       const phone = "+254700200002";
       store.signupWithPhonePin({ destination: phone, pin: "1234" });
-      // A flush that never settles models a stuck/backlogged persistence queue (see
-      // postgres-store.ts scheduleSaveRetry), not a failed one - the write is still running in
-      // the background and may well complete a moment later. A deadline timeout is not itself a
-      // persistence failure, so the response must not wait on it forever AND must not be treated
-      // as though the write is known to have failed: the session this response's cookie points to
-      // is already valid in memory on this single API instance (docs/single-instance-store-ceiling.md).
+      // A stalled write must yield a bounded error without releasing uncommitted cookies.
       const app = buildApi({
         cp2: { store },
         mutationPersistenceFlush: () => new Promise<void>(() => {})
@@ -192,22 +187,70 @@ describe("API persistence acknowledgement barrier", () => {
         payload: JSON.stringify({ method: "phone", contact: phone, pin: "1234" })
       });
 
-      expect(response.statusCode).toBe(200);
-      expect(response.cookies.map((cookie) => cookie.name)).toEqual(
-        expect.arrayContaining(["grogoni_session", "grogoni_refresh"])
-      );
-
-      const authenticated = await app.inject({
-        method: "GET",
-        url: "/session",
-        headers: {
-          cookie: response.cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("; ")
-        }
-      });
-      expect(authenticated.statusCode).toBe(200);
+      expect(response.statusCode).toBe(503);
+      expect(response.json()).toMatchObject({ code: "PERSISTENCE_CONFIRMATION_PENDING" });
+      expect(response.cookies.map((cookie) => cookie.name)).not.toContain("grogoni_session");
+      expect(response.cookies.map((cookie) => cookie.name)).not.toContain("grogoni_refresh");
       await app.close();
     } finally {
       delete process.env.PERSISTENCE_FLUSH_RESPONSE_DEADLINE_MS;
     }
   });
+});
+
+it("does not release a mutation success before its durable write completes", async () => {
+  let finish!: () => void;
+  let started!: () => void;
+  const entered = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  const pending = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  const app = buildApi({
+    cp2: { store: createCp2Store() },
+    mutationPersistenceFlush: () => {
+      started();
+      return pending;
+    }
+  });
+  let responded = false;
+  const response = app
+    .inject({
+      method: "POST",
+      url: "/auth/otp/request",
+      payload: { channel: "email", destination: "held@example.test", purpose: "recovery" }
+    })
+    .then((result) => {
+      responded = true;
+      return result;
+    });
+  await entered;
+  await new Promise((resolve) => setImmediate(resolve));
+  expect(responded).toBe(false);
+  finish();
+  expect((await response).statusCode).toBe(200);
+  await app.close();
+});
+
+it("returns an unconfirmed result rather than a successful mutation on a flush deadline", async () => {
+  const previous = process.env.PERSISTENCE_FLUSH_RESPONSE_DEADLINE_MS;
+  process.env.PERSISTENCE_FLUSH_RESPONSE_DEADLINE_MS = "20";
+  const app = buildApi({
+    cp2: { store: createCp2Store() },
+    mutationPersistenceFlush: () => new Promise<void>(() => {})
+  });
+  try {
+    const response = await app.inject({
+      method: "POST",
+      url: "/auth/otp/request",
+      payload: { channel: "email", destination: "pending@example.test", purpose: "recovery" }
+    });
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toMatchObject({ code: "PERSISTENCE_CONFIRMATION_PENDING" });
+  } finally {
+    await app.close();
+    if (previous === undefined) delete process.env.PERSISTENCE_FLUSH_RESPONSE_DEADLINE_MS;
+    else process.env.PERSISTENCE_FLUSH_RESPONSE_DEADLINE_MS = previous;
+  }
 });

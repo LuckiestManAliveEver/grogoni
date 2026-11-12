@@ -193,6 +193,10 @@
       "status": "gap",
       "reason": "Linking a sales agent to a contact has no tool."
     },
+    "share-links": {
+      "status": "gap",
+      "reason": "Reading and updating the public share identity and click-to-chat link has no tool."
+    },
     "shop-deletion": {
       "status": "exempt",
       "reason": "Destructive; requires the owner's explicit confirmation by design."

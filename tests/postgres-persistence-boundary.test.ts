@@ -11,6 +11,16 @@ describe("Postgres persistence boundary", () => {
     expect(methods).toContain('"recordVerifiedBusinessTaskExperience"');
     expect(methods).not.toContain('"businessTaskExperienceAdvice"');
   });
+  it("persists the WhatsApp outcome message sent when an owner rejects a delegated action", () => {
+    const source = readFileSync("services/api/src/cp2/postgres-store.ts", "utf8");
+    const methods = source.slice(
+      source.indexOf("const mutatingMethodNames"),
+      source.indexOf("const targetedPasskeyCeremonyMethodNames")
+    );
+    expect(methods).toContain('"rejectRuntimeAction"');
+    expect(methods).toContain('"createRuntimeTurn"');
+    expect(methods).toContain('"deliverLinkedDelegationResult"');
+  });
   it("persists every route-level mutation and read that materializes durable defaults", () => {
     const source = readFileSync("services/api/src/cp2/postgres-store.ts", "utf8");
     const requiredMethods = [

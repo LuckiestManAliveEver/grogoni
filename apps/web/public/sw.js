@@ -1,10 +1,9 @@
 /* global URL, Response, caches, self */
 
 const CACHE_PREFIX = "grogoni-app-";
-const CACHE_NAME = `${CACHE_PREFIX}v13`;
-const STATIC_CACHE = `${CACHE_PREFIX}static-v13`;
-const PUBLIC_READ_CACHE = `${CACHE_PREFIX}public-read-v13`;
-const ACTIVE_CACHES = new Set([CACHE_NAME, STATIC_CACHE, PUBLIC_READ_CACHE]);
+const CACHE_NAME = `${CACHE_PREFIX}v14`;
+const STATIC_CACHE = `${CACHE_PREFIX}static-v14`;
+const ACTIVE_CACHES = new Set([CACHE_NAME, STATIC_CACHE]);
 const APP_SHELL = [
   "/",
   "/manifest.webmanifest",
@@ -21,7 +20,17 @@ self.addEventListener("install", (event) => {
   event.waitUntil(
     caches
       .open(CACHE_NAME)
-      .then((cache) => cache.addAll(APP_SHELL))
+      .then((cache) =>
+        Promise.all(
+          APP_SHELL.map(async (path) => {
+            // Install an anonymous shell, never an account-personalized navigation response.
+            const response = await fetch(path, { credentials: "omit", cache: "no-store" });
+            // no-cache permits storing an anonymous static shell; online navigations still
+            // revalidate through the network. Private/no-store responses remain forbidden.
+            if (isCacheableResponse(response, true)) await cache.put(path, response);
+          })
+        )
+      )
       .then(() => self.skipWaiting())
   );
 });
@@ -76,14 +85,13 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // Apply privacy exclusions before navigation or any cache lookup.
+  if (isNetworkOnlyRequest(request, url) || request.cache === "no-store") return;
+
   if (request.mode === "navigate") {
     event.respondWith(
       offlineShellResponse(request).then((cached) => cached || navigationResponse(event))
     );
-    return;
-  }
-
-  if (isNetworkOnlyRequest(request, url)) {
     return;
   }
 
@@ -120,9 +128,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  if (isPublicCatalogueRead(url)) {
-    event.respondWith(staleWhileRevalidate(event, request, PUBLIC_READ_CACHE));
-  }
+  // API responses, including public storefronts, are never cached by this worker.
 });
 
 async function offlineShellResponse(request) {
@@ -143,7 +149,12 @@ async function navigationResponse(event) {
   try {
     const preloaded = await event.preloadResponse;
     const response = preloaded || (await fetch(event.request));
-    if (response.ok && response.headers.get("content-type")?.includes("text/html")) {
+    if (
+      new URL(event.request.url).pathname === "/" &&
+      !new URL(event.request.url).search &&
+      isCacheableResponse(response) &&
+      response.headers.get("content-type")?.includes("text/html")
+    ) {
       event.waitUntil(shellCache.put("/", response.clone()));
     }
     return response;
@@ -162,29 +173,28 @@ async function cacheFirst(request, cacheName) {
   const cached = await cache.match(request);
   if (cached !== undefined) return cached;
   const response = await fetch(request);
-  if (response.ok) await cache.put(request, response.clone());
+  if (isCacheableResponse(response)) await cache.put(request, response.clone());
   return response;
 }
 
-async function staleWhileRevalidate(event, request, cacheName) {
-  const cache = await caches.open(cacheName);
-  const cached = await cache.match(request);
-  const network = fetch(request).then((response) => {
-    if (response.ok && response.type !== "opaque") {
-      event.waitUntil(cache.put(request, response.clone()));
-    }
-    return response;
-  });
-  if (cached !== undefined) {
-    event.waitUntil(network.catch(() => undefined));
-    return cached;
-  }
-  return network;
+function isCacheableResponse(response, anonymousShell = false) {
+  const policy = response.headers.get("cache-control") || "";
+  return (
+    response.ok &&
+    response.type !== "opaque" &&
+    !response.redirected &&
+    !/(?:^|,)\s*(?:private|no-store)(?:\s|,|=|$)/i.test(policy) &&
+    (anonymousShell || !/(?:^|,)\s*no-cache(?:\s|,|=|$)/i.test(policy)) &&
+    !response.headers.has("set-cookie") &&
+    !response.headers.has("vary")
+  );
 }
 
 function isNetworkOnlyRequest(request, url) {
   return (
     request.headers.has("authorization") ||
+    url.pathname.startsWith("/api/") ||
+    url.pathname.startsWith("/public/") ||
     url.pathname.startsWith("/auth/") ||
     url.pathname === "/session" ||
     url.pathname.startsWith("/session/") ||
@@ -196,12 +206,6 @@ function isNetworkOnlyRequest(request, url) {
     url.pathname.startsWith("/v1/conversations") ||
     url.pathname.startsWith("/v1/messages") ||
     url.pathname.startsWith("/v1/models/")
-  );
-}
-
-function isPublicCatalogueRead(url) {
-  return (
-    url.pathname.startsWith("/public/storefronts/") || url.pathname.startsWith("/public/catalogue/")
   );
 }
 

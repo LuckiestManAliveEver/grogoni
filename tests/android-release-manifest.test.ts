@@ -158,29 +158,32 @@ describe("android install dismissal persistence", () => {
 });
 
 describe("verify-android-release-manifest.mjs pre-release gate", () => {
-  it("passes in the default (no release published) state", () => {
+  it("validates the published release", () => {
     const out = execFileSync("node", ["scripts/verify-android-release-manifest.mjs"], {
       encoding: "utf8"
     });
-    expect(out).toContain("no release published");
+    expect(out).toContain("published 0.1.0, code 5");
   });
 
-  it("fails the strict --require-release gate when no release is published", () => {
-    expect(() =>
-      execFileSync("node", ["scripts/verify-android-release-manifest.mjs", "--require-release"], {
+  it("passes the strict --require-release gate for the signed update", () => {
+    const out = execFileSync(
+      "node",
+      ["scripts/verify-android-release-manifest.mjs", "--require-release"],
+      {
         encoding: "utf8",
         stdio: "pipe"
-      })
-    ).toThrow();
+      }
+    );
+    expect(out).toContain("published 0.1.0, code 5");
   });
 });
 
 describe("published release manifest (apps/web/public/android/release.json)", () => {
-  it("ships with no published release, so the install CTA stays hidden by default", () => {
+  it("publishes the verified Android update for existing users", () => {
     const manifest = JSON.parse(readFileSync("apps/web/public/android/release.json", "utf8"));
-    expect(manifest.release).toBeNull();
+    expect(manifest.release.versionCode).toBe(5);
     const status = parseAndroidRelease(manifest, defaultReleaseManifestUrl);
-    expect(status.available).toBe(false);
+    expect(status.available).toBe(true);
   });
 
   it("has a schema file next to it documenting the contract", () => {

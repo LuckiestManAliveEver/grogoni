@@ -2,6 +2,7 @@ import { createHmac } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { buildApi } from "../services/api/src/app";
+import type { EmailOtpInput, EmailProvider } from "../services/api/src/cp2/email-provider";
 import { createCp2Store } from "../services/api/src/cp2/store";
 
 describe("phone-first authentication", () => {
@@ -193,7 +194,23 @@ describe("phone-first authentication", () => {
   });
 
   it("logs in with a password, gives generic failures, and recovers with a single-use challenge", async () => {
-    const app = buildApi({ cp2: { store: createCp2Store() } });
+    const deliveries: EmailOtpInput[] = [];
+    const backgroundTasks: Promise<unknown>[] = [];
+    const emailProvider: EmailProvider = {
+      name: "test-email-provider",
+      exposesDevOtp: true,
+      sendOtp: async (input) => {
+        deliveries.push(input);
+      },
+      sendEncryptedMessageNotification: async () => "sent"
+    };
+    const app = buildApi({
+      cp2: {
+        store: createCp2Store(),
+        emailProvider,
+        waitUntil: (work) => backgroundTasks.push(work)
+      }
+    });
     const credentials = { type: "phone", identifier: "+254712345679" };
     const started = await post(app, "/auth/signup/start", credentials);
     const signupChallenge = started.json<{ transactionId: string }>();
@@ -288,15 +305,18 @@ describe("phone-first authentication", () => {
       identifier: "owner-recovery@example.com"
     });
     vi.unstubAllEnvs();
+    await backgroundTasks.at(-1);
     expect(recovery.json()).toMatchObject({
       message: "If an account matches those details, recovery instructions have been sent."
     });
-    const recoveryData = recovery.json<{ transactionId: string; developmentCode: string }>();
+    expect(recovery.json()).not.toHaveProperty("developmentCode");
+    const recoveryData = recovery.json<{ transactionId: string }>();
+    const recoveryDelivery = deliveries.at(-1)!;
     expect(
       (
         await post(app, "/auth/recovery/verify", {
           transactionId: recoveryData.transactionId,
-          code: recoveryData.developmentCode
+          code: recoveryDelivery.code
         })
       ).statusCode
     ).toBe(200);

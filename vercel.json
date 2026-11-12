@@ -4,6 +4,28 @@
   "buildCommand": "pnpm -r --filter @grogoni/web... --if-present build",
   "outputDirectory": "apps/web/dist",
   "installCommand": "pnpm install --frozen-lockfile",
+  "redirects": [
+    {
+      "source": "/android/grogoni-0.1.0-5.apk",
+      "destination": "https://github.com/LuckiestManAliveEver/grogoni/releases/download/android-0.1.0-5/grogoni-0.1.0-5.apk",
+      "permanent": false
+    },
+    {
+      "source": "/android/grogoni-0.1.0-4.apk",
+      "destination": "https://github.com/LuckiestManAliveEver/grogoni/releases/download/android-0.1.0-4/grogoni-0.1.0-4.apk",
+      "permanent": false
+    },
+    {
+      "source": "/android/grogoni-0.1.0-3.apk",
+      "destination": "https://github.com/LuckiestManAliveEver/grogoni/releases/download/android-0.1.0-3/grogoni-0.1.0-3.apk",
+      "permanent": false
+    },
+    {
+      "source": "/android/grogoni-0.1.0-2.apk",
+      "destination": "https://github.com/LuckiestManAliveEver/grogoni/releases/download/android-0.1.0-2/grogoni-0.1.0-2.apk",
+      "permanent": false
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/:path*",
@@ -20,6 +42,17 @@
     {
       "source": "/(.*)",
       "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Strict-Transport-Security",
+          "value": "max-age=31536000; includeSubDomains"
+        }
+      ]
     }
   ]
 }

@@ -140,6 +140,129 @@ describe("one-tap signup and progressive identity", () => {
     await app.close();
   });
 
+  it("stops the browser key restoring an account once it is more than a guest", async () => {
+    const store = createCp2Store();
+    const app = buildApi({ cp2: { store } });
+    const continued = await continueToGrogoni(app, "progressive-browser-key-upgrade-00000001");
+    const credentialId = continued.response.json<ContinueResponse>().deviceRecoveryCredentialId;
+    await app.inject({
+      method: "PUT",
+      url: "/account/phone",
+      headers: jsonHeaders(continued.cookie),
+      payload: JSON.stringify({ phoneNumber: "+254 700 123 456", country: "KE" })
+    });
+    await app.inject({
+      method: "POST",
+      url: "/auth/pin/setup",
+      headers: jsonHeaders(continued.cookie),
+      payload: JSON.stringify({ pin: "4826" })
+    });
+
+    const assertion = (nonce: string, issuedAt: number) => ({
+      credentialId,
+      nonce,
+      issuedAt,
+      signature: sign(
+        "sha256",
+        Buffer.from(`grogoni-device-recovery:v1:${credentialId}:${issuedAt}:${nonce}`),
+        { key: deviceKeyPair.privateKey, dsaEncoding: "ieee-p1363" }
+      ).toString("base64url")
+    });
+    const silent = await app.inject({
+      method: "POST",
+      url: "/auth/device/recover",
+      headers: jsonHeaders(),
+      payload: JSON.stringify(assertion("browser-key-upgrade-nonce-000000000001", Date.now()))
+    });
+    expect(silent.statusCode).toBe(401);
+    expect(silent.json<{ code: string }>().code).toBe("device_recovery_invalid");
+
+    // Lookups must use the normalized id, or an uppercase id skips every check.
+    const uppercase = await app.inject({
+      method: "POST",
+      url: "/auth/device/recover",
+      headers: jsonHeaders(),
+      payload: JSON.stringify({
+        ...assertion("browser-key-upgrade-nonce-000000000002", Date.now()),
+        credentialId: credentialId.toUpperCase()
+      })
+    });
+    expect(uppercase.statusCode).toBe(401);
+
+    // The Android challenge route must not be a way around the same rule.
+    const options = await app.inject({
+      method: "POST",
+      url: "/auth/device/recover/options",
+      headers: jsonHeaders(),
+      payload: JSON.stringify({ credentialId, identifier: "+254700123456" })
+    });
+    const challenge = options.json<{ challengeId: string; nonce: string; issuedAt: number }>();
+    const challenged = await app.inject({
+      method: "POST",
+      url: "/auth/device/recover",
+      headers: jsonHeaders(),
+      payload: JSON.stringify({
+        ...assertion(challenge.nonce, challenge.issuedAt),
+        challengeId: challenge.challengeId
+      })
+    });
+    expect(challenged.statusCode).toBe(401);
+    expect(store.snapshot().sessions.filter((session) => session.revokedAt === null)).toHaveLength(
+      1
+    );
+
+    await app.close();
+  });
+
+  it.each([
+    ["a phone but no credential", true, undefined],
+    ["a PIN but no phone", false, "/auth/pin/setup"]
+  ])(
+    "keeps restoring a guest with %s, who cannot sign in any other way",
+    async (_, phone, path) => {
+      const store = createCp2Store();
+      const app = buildApi({ cp2: { store } });
+      const continued = await continueToGrogoni(
+        app,
+        `progressive-keep-key-${phone ? "phone" : "pin"}-00000000000001`
+      );
+      const credentialId = continued.response.json<ContinueResponse>().deviceRecoveryCredentialId;
+      if (phone) {
+        const added = await app.inject({
+          method: "PUT",
+          url: "/account/phone",
+          headers: jsonHeaders(continued.cookie),
+          payload: JSON.stringify({ phoneNumber: "+254 700 123 456", country: "KE" })
+        });
+        expect(added.statusCode).toBe(200);
+      }
+      if (path) {
+        const set = await app.inject({
+          method: "POST",
+          url: path,
+          headers: jsonHeaders(continued.cookie),
+          payload: JSON.stringify({ pin: "4826" })
+        });
+        expect(set.statusCode).toBe(200);
+      }
+      const issuedAt = Date.now();
+      const nonce = "browser-key-keep-nonce-00000000000001";
+      const signature = sign(
+        "sha256",
+        Buffer.from(`grogoni-device-recovery:v1:${credentialId}:${issuedAt}:${nonce}`),
+        { key: deviceKeyPair.privateKey, dsaEncoding: "ieee-p1363" }
+      ).toString("base64url");
+      const recovered = await app.inject({
+        method: "POST",
+        url: "/auth/device/recover",
+        headers: jsonHeaders(),
+        payload: JSON.stringify({ credentialId, nonce, issuedAt, signature })
+      });
+      expect(recovered.statusCode).toBe(200);
+      await app.close();
+    }
+  );
+
   it("upgrades phone and PIN on the same account and preserves existing PIN login", async () => {
     const store = createCp2Store();
     const app = buildApi({ cp2: { store } });

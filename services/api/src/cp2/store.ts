@@ -1,3 +1,17 @@
+import { readLinkedDocument } from "../messaging/whatsapp-linked/document-reader.js";
+import { readChatImage } from "./chat-image-reader.js";
+import { parseLinkedToolGrants } from "../messaging/whatsapp-linked/tool-grants.js";
+import type { LinkedToolDelegation } from "../messaging/whatsapp-linked/tool-grants.js";
+import { linkedDelegationResultText } from "../messaging/whatsapp-linked/delegation-result.js";
+import type { ChannelDelegationResolution } from "./domains/agent-runtime/channel-delegation-result.js";
+import type { LinkedMutation } from "../messaging/whatsapp-linked/connector.js";
+import { daemonConversationRuntime } from "../daemon/conversation-runtime.js";
+import {
+  androidAttestationProblem,
+  grogoniAndroidPackage,
+  grogoniAndroidSigners
+} from "./android-key-attestation.js";
+import { androidAttestationRequired } from "./auth-runtime-config.js";
 import {
   CommerceSourcesDomain,
   type CommerceSourceRequest
@@ -10,13 +24,29 @@ import {
   type SkillInput
 } from "./domains/agent-skills/store.js";
 import { runBuyerAssistant } from "./domains/commerce/buyer-assistant.js";
+import {
+  assistantActions,
+  assistantToolAction,
+  assistantToolAllowed,
+  assistantPermissionsVersion,
+  assistantToolIsStoreRelated,
+  normalizeAssistantPermissions,
+  type AssistantPermissionsView,
+  type AssistantPermissions
+} from "@grogoni/shared-types";
 import type {
   BuyFeedSummary,
   BuyerShoppingSession,
   BuyerShoppingTurnResult
 } from "@grogoni/shared-types";
 import { withRuntimeDeadline } from "./runtime-deadline.js";
-import { isLocalRuntimeHost, isModelExecutionTarget } from "@grogoni/shared-types";
+import {
+  daemonAgentOptions,
+  isDaemonAgentId,
+  isLocalRuntimeHost,
+  isModelExecutionTarget,
+  type ConversationRuntimeSelection
+} from "@grogoni/shared-types";
 import {
   calculateOrderFulfillmentWeight,
   isValidIanaTimeZone,
@@ -173,6 +203,7 @@ import { type McpAccessTokenRecord } from "./domains/mcp-tokens/shared.js";
 import { ExternalConnectionsDomain } from "./domains/external-connections/store.js";
 import { type ExternalConnectionRecord } from "./domains/external-connections/shared.js";
 import { PasskeyDomain } from "./domains/passkeys/store.js";
+import { RecoveryApprovalDomain } from "./domains/recovery-approval/store.js";
 import {
   type PasskeyCeremonyRecord,
   type PasskeyCredentialRecord
@@ -187,6 +218,9 @@ import {
 } from "./domains/otp/shared.js";
 import { DeviceBootstrapDomain } from "./domains/device-bootstrap/store.js";
 import {
+  deviceRecoveryAssertionPayload,
+  normalizeDeviceRecoveryCredentialId,
+  verifyDeviceRecoverySignature,
   type DeviceAccountBootstrapRecord,
   type DeviceRecoveryCredentialRecord
 } from "./domains/device-bootstrap/shared.js";
@@ -405,7 +439,8 @@ import type {
 } from "./domains/model-templates/types.js";
 import {
   createChannelGatewayFromEnvironment,
-  type ChannelGateway
+  type ChannelGateway,
+  type MessagingChannelAdapter
 } from "../messaging/channel-gateway.js";
 import {
   createEmailMailboxProviderClient,
@@ -456,8 +491,11 @@ import type { InventoryProcurementStore } from "./domains/agent-runtime/inventor
 import type { BusinessTaskEvaluationReader } from "./domains/agent-runtime/business-task-evaluation-reader.js";
 import type { InventoryTaskController } from "./domains/agent-runtime/inventory-task-controller.js";
 import type { AgentTurnQueue } from "./domains/messaging/shared.js";
+import type { LinkedDownloadedMedia } from "../messaging/whatsapp-linked/media.js";
 import {
   createMemoryConversationAttachmentBlobStore,
+  createCipherAwareAttachmentBlobStore,
+  type AttachmentBlobCipher,
   type ConversationAttachmentBlobStore
 } from "./conversation-attachment-blob-store.js";
 
@@ -1012,10 +1050,56 @@ export type MessageEmailNotificationSender = (
 // a real cookie session id (those are opaque random tokens and could never collide with it).
 const mcpTrustedSessionIdPrefix = "mcp-trusted-account:";
 
+/** The user fields a first shop's phone number writes; restored by a trusted-device undo. */
+const ownerPhoneFields = [
+  "phoneNumberE164",
+  "phoneCountryCode",
+  "phoneNationalNumber",
+  "phoneVerificationStatus",
+  "phoneAddedAt",
+  "phoneUpdatedAt",
+  "phoneSource",
+  "publicPhoneEnabled"
+] as const;
+
+/** The undo snapshot recorded at collection (RecoveryApprovalDomainDeps.credentialSnapshot). */
+function parseCredentialSnapshot(value: string | null): {
+  pinHash: string | null;
+  password: PasswordCredentialRecord | null;
+  phone: Partial<UserSummary> | null;
+} | null {
+  if (value === null) return null;
+  try {
+    const parsed = JSON.parse(value) as { pinHash?: unknown; password?: unknown; phone?: unknown };
+    return {
+      pinHash: typeof parsed.pinHash === "string" ? parsed.pinHash : null,
+      password:
+        parsed.password !== null && typeof parsed.password === "object"
+          ? (parsed.password as PasswordCredentialRecord)
+          : null,
+      phone:
+        parsed.phone !== null && typeof parsed.phone === "object"
+          ? (parsed.phone as Partial<UserSummary>)
+          : null
+    };
+  } catch {
+    return null;
+  }
+}
+
+const probationGuardedCommerceOperations = new Set([
+  "source.connect",
+  "receipt.connect",
+  "relationship.respond",
+  "representation.decide"
+]);
+
 export class Cp2Store {
   private readonly channelGateway: ChannelGateway;
   private readonly emailMailboxProviderClient: EmailMailboxProviderClient;
-  private readonly conversationAttachmentBlobStore: ConversationAttachmentBlobStore;
+  private readonly conversationAttachmentBlobStore: ReturnType<
+    typeof createCipherAwareAttachmentBlobStore
+  >;
   private readonly accountAiAssetStore: AccountAiAssetStore;
   private readonly mcpPrincipalContext = new AsyncLocalStorage<McpPrincipal>();
   private readonly defaultAgentRuntimeAdapters: ReturnType<
@@ -1147,8 +1231,9 @@ export class Cp2Store {
     this.channelGateway = options.channelGateway ?? createChannelGatewayFromEnvironment({});
     this.emailMailboxProviderClient =
       options.emailMailboxProviderClient ?? createEmailMailboxProviderClient({});
-    this.conversationAttachmentBlobStore =
-      options.conversationAttachmentBlobStore ?? createMemoryConversationAttachmentBlobStore();
+    this.conversationAttachmentBlobStore = createCipherAwareAttachmentBlobStore(
+      options.conversationAttachmentBlobStore ?? createMemoryConversationAttachmentBlobStore()
+    );
     this.accountAiAssetStore = options.accountAiAssetStore ?? createMemoryAccountAiAssetStore();
     this.oauthDomain = new OAuthDomain({
       requirePinVerifiedSession: (sessionId, now) => this.requirePinVerifiedSession(sessionId, now),
@@ -1215,8 +1300,17 @@ export class Cp2Store {
         verifyPinHash("unknown-account", pin, dummyPinHash);
       },
       normalizePin: (pin) => normalizePin(pin),
-      mergeDeviceAccountData: (sourceAccountId, sourceUserId, targetAccountId, targetUserId) =>
-        this.mergeDeviceAccountData(sourceAccountId, sourceUserId, targetAccountId, targetUserId),
+      mergeDeviceAccountData: (sourceAccountId, sourceUserId, targetAccountId, targetUserId) => {
+        // Merging would bring another account's passkeys and keys in with their old createdAt,
+        // where undo cannot tell them from the owner's. Not while a browser is on probation.
+        if (this.recoveryApprovalDomain.probationCutoff(targetAccountId) !== null)
+          throw new Cp2Error(
+            403,
+            "recovery_approval_probation",
+            "This account approved a browser less than 24 hours ago, so no account can be joined to it yet."
+          );
+        this.mergeDeviceAccountData(sourceAccountId, sourceUserId, targetAccountId, targetUserId);
+      },
       sessions: this.sessions,
       users: this.users,
       userByAccount: this.userByAccount,
@@ -1342,31 +1436,31 @@ export class Cp2Store {
       recordAuditEvent: (input) => this.recordAuditEvent(input)
     });
     this.passkeyDomain = new PasskeyDomain({
-      createRecoveryGrant: (sessionId, accountId, now) => {
+      issueRecoveryGrant: (sessionId, accountId, credentialId, now) => {
         this.createAuthTransaction("recovery", accountId, now, {
-          expiresAt: new Date(now.getTime() + 5 * 60 * 1000).toISOString(),
-          metadata: { passkeyRecoverySessionId: sessionId }
+          expiresAt: new Date(now.getTime() + 5 * 60_000).toISOString(),
+          metadata: { deviceRecoverySessionId: sessionId, recoveryCredentialId: credentialId }
         });
       },
-      recoveryGrantExpiry: (sessionId) =>
-        [...this.authTransactions.values()].find(
-          (record) =>
-            record.purpose === "recovery" &&
-            record.metadata.passkeyRecoverySessionId === sessionId &&
-            record.consumedAt === null
-        )?.expiresAt,
+      revokeRecoveryGrants: (credentialId, now) =>
+        this.revokeCredentialRecoveryGrants(credentialId, now),
+      notifyCredentialRecovery: (accountId, credential, now) =>
+        this.notifyCredentialRecovery(accountId, credential, now),
+      recoveryGrantExpiry: (sessionId) => this.credentialRecoveryGrant(sessionId)?.expiresAt,
       consumeRecoveryGrant: (sessionId) => {
-        for (const [id, record] of this.authTransactions) {
+        for (const record of this.authTransactions.values()) {
           if (
             record.purpose === "recovery" &&
-            record.metadata.passkeyRecoverySessionId === sessionId
+            record.metadata.deviceRecoverySessionId === sessionId
           )
-            this.authTransactions.delete(id);
+            record.consumedAt = new Date().toISOString();
         }
       },
       requireAnySession: (sessionId, now) => this.requireAnySession(sessionId, now),
       requireRecentlyAuthenticatedSession: (sessionId, now) =>
-        this.requireRecentlyAuthenticatedSession(sessionId, now),
+        this.requireRecoveryEnrollmentSession(sessionId, now),
+      requireFirstCredentialSession: (sessionId, now) =>
+        this.requireFirstCredentialSession(sessionId, now),
       requirePinVerifiedSession: (sessionId, now) => this.requirePinVerifiedSession(sessionId, now),
       markSessionPinVerified: (sessionId, now) => this.markSessionPinVerified(sessionId, now),
       getSession: (sessionId, now) => this.getSession(sessionId, now),
@@ -1388,6 +1482,104 @@ export class Cp2Store {
       ...(this.options.passkeyAuthenticationVerifier === undefined
         ? {}
         : { passkeyAuthenticationVerifier: this.options.passkeyAuthenticationVerifier })
+    });
+    this.recoveryApprovalDomain = new RecoveryApprovalDomain({
+      authTransactions: () => this.authTransactions.values(),
+      getAuthTransaction: (id) => this.authTransactions.get(id),
+      deleteAuthTransaction: (id) => this.authTransactions.delete(id),
+      createAuthTransaction: (purpose, accountId, now, override) =>
+        this.createAuthTransaction(purpose, accountId, now, override),
+      requireAnySession: (sessionId, now) => this.requireAnySession(sessionId, now),
+      approvingDeviceKeyId: (credentialId, accountId) => {
+        let id: string;
+        try {
+          id = normalizeDeviceRecoveryCredentialId(credentialId);
+        } catch {
+          return null;
+        }
+        return this.approvingDeviceKeyUsable(id, accountId) ? id : null;
+      },
+      verifyDeviceKeySignature: async (credentialId, nonce, issuedAt, signature) => {
+        const key = this.deviceBootstrapDomain.deviceRecoveryCredentialsMap.get(credentialId);
+        return (
+          key !== undefined &&
+          (await verifyDeviceRecoverySignature(
+            key.publicKeyJwk,
+            deviceRecoveryAssertionPayload(credentialId, nonce, issuedAt),
+            signature
+          ))
+        );
+      },
+      beginPasskeyApproval: (input) =>
+        this.passkeyDomain.beginPasskeyRecoveryApproval({
+          ...input,
+          createdBefore: this.recoveryApprovalDomain.probationCutoff(input.accountId, input.now)
+        }),
+      verifyPasskeyApproval: (input) =>
+        this.passkeyDomain.verifyPasskeyRecoveryApproval({
+          ...input,
+          createdBefore: this.recoveryApprovalDomain.probationCutoff(input.accountId, input.now)
+        }),
+      approvingCredentialActive: (credentialId, accountId) =>
+        this.passkeyDomain.passkeysMap.get(credentialId)?.accountId === accountId ||
+        this.approvingDeviceKeyUsable(credentialId, accountId),
+      issueApprovedSession: (accountId, approvingCredentialId, approverSessionId, now) => {
+        const account = this.requireAccount(accountId);
+        this.requireAccountAuthenticationAllowed(account);
+        const user = this.requireUser(this.userByAccount.get(accountId));
+        const session = this.createSession(account, user, now);
+        // The owner confirmed this browser with a screen lock: it may enroll a passkey now.
+        this.markSessionPinVerified(session.id, now);
+        this.createAuthTransaction("recovery", accountId, now, {
+          expiresAt: new Date(now.getTime() + 5 * 60_000).toISOString(),
+          metadata: {
+            deviceRecoverySessionId: session.id,
+            recoveryCredentialId: approvingCredentialId,
+            recoveryApproverSessionId: approverSessionId
+          }
+        });
+        // Best effort: a notice that fails must not leave a session with no approval behind it.
+        try {
+          this.notifyBrowserApproved(accountId, now);
+        } catch (error) {
+          console.warn(
+            JSON.stringify({
+              event: "auth.recovery_approval_notice_failed",
+              accountId,
+              error: error instanceof Error ? error.message : String(error)
+            })
+          );
+        }
+        return this.requireAnySession(session.id, now);
+      },
+      sessionFamily: (sessionId) => this.sessions.get(sessionId)?.sessionFamilyId ?? null,
+      liveSessionFamilies: (accountId) => [
+        ...new Set(
+          [...this.sessions.values()]
+            .filter(
+              (session) =>
+                session.accountId === accountId &&
+                session.revokedAt === null &&
+                // A family still on probation from an earlier approval is not trusted by this one.
+                !this.recoveryApprovalDomain.inProbation(session.sessionFamilyId, accountId)
+            )
+            .map((session) => session.sessionFamilyId)
+        )
+      ],
+      credentialSnapshot: (accountId) => {
+        const user = this.users.get(this.userByAccount.get(accountId) ?? "");
+        return JSON.stringify({
+          pinHash: this.accountPinHashes.get(accountId) ?? null,
+          password: this.passwordCredentials.get(accountId) ?? null,
+          phone:
+            user === undefined
+              ? null
+              : Object.fromEntries(ownerPhoneFields.map((field) => [field, user[field] ?? null]))
+        });
+      },
+      undoApprovedLogin: (input) => this.undoApprovedLogin(input),
+      recordSecurityEvent: (type, accountId, outcome, now, metadata) =>
+        this.recordSecurityEvent(type, accountId, outcome, now, metadata)
     });
     this.commerce = new CommerceDomain({
       resolveOffer: (id, now) => this.commerceSources.snapshotOffer(id, now),
@@ -1611,6 +1803,12 @@ export class Cp2Store {
       return member && participant ? { ...conversation, accountId: input.accountId } : conversation;
     };
     this.agentRuntimeDomain = new AgentRuntimeDomain({
+      channelToolGrants: (businessId, ref, tool) =>
+        this.validateLinkedToolDelegation(businessId, ref, tool),
+      deliverChannelDelegationResult: (resolution) =>
+        this.deliverLinkedDelegationResult(resolution),
+      assistantPermissionErrors: (sessionId, tool) =>
+        this.assistantPermissionErrors(sessionId, tool),
       assertPortableSkillAction: (input, ref, tool, agentId) =>
         this.agentSkills.assertAction(input, ref, tool, agentId),
       ...(options.businessTaskEvaluations === undefined
@@ -1746,6 +1944,22 @@ export class Cp2Store {
       addManualIdentity: (input) => this.networkDomain.addManualIdentity(input),
       searchBuyFeed: (input) => this.commerce.searchBuyFeed(input),
       sourceCommerce: (input) => this.executeSourceCommerce(input, input.operation, input.values),
+      marketCatalogue: ({ sessionId, businessId, action, now }) => {
+        const context = { sessionId, viewerBusinessId: businessId, now };
+        if (action.toolName === "catalogue.marketplace.search")
+          return this.listShareableCatalogues({
+            ...context,
+            ...(typeof action.input.search === "string" ? { search: action.input.search } : {})
+          });
+        const sourceBusinessId = String(action.input.sourceBusinessId);
+        if (action.toolName === "catalogue.marketplace.products")
+          return this.listShareableCatalogueProducts({ ...context, sourceBusinessId });
+        return this.duplicateCatalogueProducts({
+          ...context,
+          sourceBusinessId,
+          productIds: action.input.productIds as string[]
+        });
+      },
       listSourceCommerce: (input) => this.listCommerceSources(input),
       discoverCommerceOffers: (input) => this.searchPublishedOffers(input),
       createUnifiedCheckout: (input) => this.commerce.createUnifiedCheckout(input),
@@ -1834,7 +2048,9 @@ export class Cp2Store {
         for (const [conversationId, conversation] of this.messagingDomain.conversationsMap) {
           if (
             conversation.accountId === input.accountId &&
-            (conversation.activeShopId === input.businessId || conversation.activeShopId === null)
+            (conversation.activeShopId === input.businessId ||
+              conversation.activeShopId === null) &&
+            !this.keepsSelectedRuntime(conversation)
           ) {
             this.messagingDomain.conversationsMap.set(conversationId, {
               ...conversation,
@@ -1882,7 +2098,10 @@ export class Cp2Store {
           );
         }
         const result = this.nativeRuntimeBindings.ensureDefaultRuntimeBinding(input);
-        if (conversation.runtimeBindingId !== result.binding.id) {
+        if (
+          conversation.runtimeBindingId !== result.binding.id &&
+          !this.keepsSelectedRuntime(conversation)
+        ) {
           this.messagingDomain.conversationsMap.set(conversation.id, {
             ...this.messagingDomain.conversationsMap.get(conversation.id)!,
             runtimeBindingId: result.binding.id,
@@ -2213,6 +2432,7 @@ export class Cp2Store {
   // `passkeyPinRecoveryGrants` is deliberately never swept by the account-deletion purge - see
   // that domain's shared.ts header comment.
   private readonly passkeyDomain: PasskeyDomain;
+  private readonly recoveryApprovalDomain: RecoveryApprovalDomain;
   private readonly accountIdentities = new Map<string, AccountIdentityRecord>();
   private readonly identityAccountByValue = new Map<string, string>();
   private readonly passwordCredentials = new Map<string, PasswordCredentialRecord>();
@@ -2235,14 +2455,222 @@ export class Cp2Store {
   private readonly auditEvents: BusinessEvent[] = [];
 
   continueWithDevice(
-    ...args: Parameters<DeviceBootstrapDomain["continueWithDevice"]>
+    input: Parameters<DeviceBootstrapDomain["continueWithDevice"]>[0] & {
+      deviceSecurity?: boolean;
+      deviceAttestation?: unknown;
+    }
   ): ReturnType<DeviceBootstrapDomain["continueWithDevice"]> {
-    return this.deviceBootstrapDomain.continueWithDevice(...args);
+    let attested = false;
+    if (input.deviceSecurity) {
+      const session = this.requireRecoveryEnrollmentSession(
+        input.sessionId,
+        input.now ?? new Date()
+      );
+      this.requireOutsideRecoveryProbation(session, input.now ?? new Date());
+      // A chain read back later can have expired. The proof was checked when the key was enrolled.
+      const claimed = input.devicePublicKeyJwk as Record<string, unknown>;
+      const proven = [...this.deviceBootstrapDomain.deviceRecoveryCredentialsMap.values()].some(
+        (item) =>
+          item.accountId === session.account.id &&
+          item.attested === true &&
+          item.revokedAt === null &&
+          item.publicKeyJwk.x === claimed.x
+      );
+      const problem = proven
+        ? null
+        : androidAttestationProblem({
+            chain: input.deviceAttestation,
+            publicKeyJwk: input.devicePublicKeyJwk as Record<string, unknown>,
+            accountId: session.account.id,
+            packageName: grogoniAndroidPackage,
+            signerDigests: grogoniAndroidSigners(process.env.ANDROID_ATTESTATION_SIGNERS)
+          });
+      attested = problem === null;
+      if (!attested && androidAttestationRequired()) {
+        this.recordSecurityEvent(
+          "auth.device_attestation_refused",
+          session.account.id,
+          "failure",
+          input.now ?? new Date(),
+          { reason: problem }
+        );
+        throw new Cp2Error(
+          403,
+          "device_attestation_required",
+          "This device cannot prove its screen lock. Use a PIN or passkey, or update Grogoni."
+        );
+      }
+    }
+    const result = this.deviceBootstrapDomain.continueWithDevice(input);
+    if (input.deviceSecurity && result.deviceRecoveryCredentialId) {
+      const credential = this.deviceBootstrapDomain.deviceRecoveryCredentialsMap.get(
+        result.deviceRecoveryCredentialId
+      )!;
+      credential.requiresServerChallenge = true;
+      credential.attested = credential.attested === true || attested;
+    }
+    return result;
   }
-  recoverWithDeviceCredential(
-    ...args: Parameters<DeviceBootstrapDomain["recoverWithDeviceCredential"]>
+  beginDeviceRecovery(rawInput: { credentialId: string; identifier: string; now?: Date }) {
+    const now = rawInput.now ?? new Date();
+    const input = {
+      ...rawInput,
+      credentialId: normalizeDeviceRecoveryCredentialId(rawInput.credentialId)
+    };
+    if (!/^\+[1-9]\d{6,14}$/u.test(input.identifier))
+      throw new Cp2Error(
+        400,
+        "recovery_identifier_required",
+        "Enter your international phone number."
+      );
+    const challenges = [...this.authTransactions.values()].filter(
+      (record) => record.metadata.deviceChallengeCredentialId !== undefined
+    );
+    for (const record of challenges) {
+      if (Date.parse(record.expiresAt) <= now.getTime()) this.authTransactions.delete(record.id);
+    }
+    const pending = challenges.filter((record) => this.authTransactions.has(record.id));
+    if (pending.length >= 1_000) {
+      const oldest = pending.sort((left, right) =>
+        left.createdAt.localeCompare(right.createdAt)
+      )[0]!;
+      this.authTransactions.delete(oldest.id);
+    }
+
+    const credential = this.deviceBootstrapDomain.deviceRecoveryCredentialsMap.get(
+      input.credentialId
+    );
+    const nonce = randomBytes(24).toString("base64url");
+    const transaction = this.createAuthTransaction("recovery", credential?.accountId ?? null, now, {
+      expiresAt: new Date(now.getTime() + 2 * 60_000).toISOString(),
+      metadata: {
+        deviceChallengeCredentialId: input.credentialId,
+        deviceChallengeIdentifier: input.identifier,
+        deviceChallengeNonce: nonce,
+        deviceChallengeIssuedAt: String(now.getTime())
+      }
+    });
+    return {
+      challengeId: transaction.id,
+      nonce,
+      issuedAt: now.getTime(),
+      expiresAt: transaction.expiresAt
+    };
+  }
+
+  async recoverWithDeviceCredential(
+    rawInput: Parameters<DeviceBootstrapDomain["recoverWithDeviceCredential"]>[0] & {
+      challengeId?: string;
+    }
   ): ReturnType<DeviceBootstrapDomain["recoverWithDeviceCredential"]> {
-    return this.deviceBootstrapDomain.recoverWithDeviceCredential(...args);
+    // Every check below looks the credential up by id, so they must see the form the domain uses.
+    const input = {
+      ...rawInput,
+      credentialId: normalizeDeviceRecoveryCredentialId(rawInput.credentialId)
+    };
+    const args = [input] as const;
+    if (
+      this.deviceBootstrapDomain.deviceRecoveryCredentialsMap.get(input.credentialId)
+        ?.requiresServerChallenge &&
+      !input.challengeId
+    ) {
+      throw new Cp2Error(
+        401,
+        "device_recovery_challenge_required",
+        "Unlock device security using a fresh recovery challenge."
+      );
+    }
+    if (input.challengeId !== undefined) {
+      const now = input.now ?? new Date();
+      const transaction = this.requireAuthTransaction(input.challengeId, "recovery", now);
+      // Consume before signature verification: every challenge permits exactly one attempt.
+      transaction.consumedAt = now.toISOString();
+      const credential = this.deviceBootstrapDomain.deviceRecoveryCredentialsMap.get(
+        input.credentialId
+      );
+      const account = credential ? this.requireAccount(credential.accountId) : undefined;
+      if (
+        transaction.metadata.deviceChallengeCredentialId !== input.credentialId ||
+        transaction.metadata.deviceChallengeNonce !== input.nonce ||
+        transaction.metadata.deviceChallengeIssuedAt !== String(input.issuedAt) ||
+        account?.primaryAuthChannel !== "phone" ||
+        account.primaryAuthDestination !== transaction.metadata.deviceChallengeIdentifier ||
+        credential?.revokedAt !== null
+      ) {
+        throw new Cp2Error(401, "device_recovery_invalid", "Device recovery failed.");
+      }
+    }
+    this.requireDeviceKeyMayRestoreAccount(input.credentialId, input.now ?? new Date());
+    const result = await this.deviceBootstrapDomain.recoverWithDeviceCredential(...args);
+    const now = args[0].now ?? new Date();
+    const assertionKey = `${args[0].credentialId.trim()}:${args[0].issuedAt}:${args[0].nonce.trim()}`;
+    // A signed device assertion grants one credential reset for five minutes.
+    // Replayed assertions must not replenish a consumed grant.
+    if (
+      input.challengeId !== undefined &&
+      this.deviceBootstrapDomain.deviceRecoveryCredentialsMap.get(input.credentialId)
+        ?.requiresServerChallenge === true &&
+      ![...this.authTransactions.values()].some(
+        (record) => record.metadata.deviceRecoveryAssertionKey === assertionKey
+      )
+    ) {
+      this.createAuthTransaction("recovery", result.account.id, now, {
+        expiresAt: new Date(now.getTime() + 5 * 60 * 1000).toISOString(),
+        metadata: {
+          deviceRecoverySessionId: result.session.id,
+          deviceRecoveryAssertionKey: assertionKey,
+          recoveryCredentialId: input.credentialId
+        }
+      });
+    }
+    return result;
+  }
+
+  /**
+   * A browser's stored key involves no user verification, so it is refused once the account can
+   * sign in another way. It keeps working until then, because refusing it would lock the user out.
+   * The Android screen-lock credential is the only key marked requiresServerChallenge.
+   */
+  private requireDeviceKeyMayRestoreAccount(credentialId: string, now: Date): void {
+    const credential = this.deviceBootstrapDomain.deviceRecoveryCredentialsMap.get(credentialId);
+    if (credential === undefined) return;
+    // Enforced: a screen-lock key must be proven, or it counts as a plain browser key.
+    if (
+      credential.requiresServerChallenge === true &&
+      (credential.attested === true || !androidAttestationRequired())
+    ) {
+      return;
+    }
+    if (!this.accountCanSignIn(this.requireAccount(credential.accountId))) return;
+    this.recordSecurityEvent(
+      "auth.device_recovery_refused",
+      credential.accountId,
+      "failure",
+      now,
+      {}
+    );
+    throw new Cp2Error(401, "device_recovery_invalid", "Device recovery failed.");
+  }
+
+  private isGuestWithoutSignIn(account: AccountSummary): boolean {
+    return account.primaryAuthChannel === "device" && !this.accountCanSignIn(account);
+  }
+
+  /** Mirrors the login screen: a phone number plus a PIN, a password, or (phone-primary) a passkey. */
+  private accountCanSignIn(account: AccountSummary): boolean {
+    const phonePrimary = account.primaryAuthChannel === "phone";
+    const phone = this.users.get(this.userByAccount.get(account.id) ?? "")?.phoneNumberE164;
+    const hasPhone = phonePrimary || (typeof phone === "string" && phone.length > 0);
+    if (!hasPhone) return false;
+    if (this.accountPinHashes.has(account.id) || this.passwordCredentials.has(account.id)) {
+      return true;
+    }
+    return (
+      phonePrimary &&
+      [...this.passkeyDomain.passkeysMap.values()].some(
+        (passkey) => passkey.accountId === account.id
+      )
+    );
   }
 
   requestOtp(...args: Parameters<OtpDomain["requestOtp"]>): ReturnType<OtpDomain["requestOtp"]> {
@@ -2275,6 +2703,14 @@ export class Cp2Store {
   beginOAuthSession(
     ...args: Parameters<OAuthDomain["beginOAuthSession"]>
   ): ReturnType<OAuthDomain["beginOAuthSession"]> {
+    // Linking a sign-in provider to an account is a credential: not from a probation session.
+    if (args[0].accountSessionId !== null) {
+      const now = args[0].now ?? new Date();
+      this.requireOutsideRecoveryProbation(
+        this.requireAnySession(args[0].accountSessionId, now),
+        now
+      );
+    }
     return this.oauthDomain.beginOAuthSession(...args);
   }
   getOAuthExchangeData(
@@ -2519,6 +2955,7 @@ export class Cp2Store {
   }): DeviceSessionSummary {
     const now = input.now ?? new Date();
     const current = this.requirePinVerifiedSession(input.sessionId, now);
+    this.requireOutsideRecoveryProbation(current, now);
     const target = this.sessions.get(input.targetSessionId);
     if (target === undefined || target.accountId !== current.account.id) {
       throw new Cp2Error(404, "auth_device_session_not_found", "Device session was not found.");
@@ -2564,6 +3001,7 @@ export class Cp2Store {
 
   logoutAll(sessionId: string | null, now = new Date()): { revoked: number } {
     const session = this.requireRecentlyAuthenticatedSession(sessionId, now);
+    this.requireOutsideRecoveryProbation(session, now);
 
     let revoked = 0;
     let recoveryCredentialsRevoked = 0;
@@ -2609,11 +3047,25 @@ export class Cp2Store {
     now?: Date;
   }): AuthSessionView {
     const now = input.now ?? new Date();
-    const session = this.requireRecentlyAuthenticatedSession(input.sessionId, now);
+    const session = this.hasCredentialRecoveryGrant(input.sessionId, now)
+      ? this.requireAnySession(input.sessionId, now)
+      : this.requireFirstCredentialSession(input.sessionId, now);
+    // A browser on probation may set its PIN once, with its recovery grant, and not otherwise.
+    if (!this.hasCredentialRecoveryGrant(session.session.id, now))
+      this.requireOutsideRecoveryProbation(session, now);
     if (this.accountPinHashes.has(session.account.id)) {
       throw new Cp2Error(409, "pin_already_set", "A login PIN is already set for this account.");
     }
-    this.verifyMfaForCredentialChange(session.account.id, input.mfaCode, now);
+    const recovering = this.hasCredentialRecoveryGrant(session.session.id, now);
+    if (
+      !recovering &&
+      [...this.authTransactions.values()].some(
+        (record) => record.metadata.deviceRecoverySessionId === session.session.id
+      )
+    ) {
+      this.passkeyDomain.requireCredentialRecoveryGrant(session.session.id, now);
+    }
+    if (!recovering) this.verifyMfaForCredentialChange(session.account.id, input.mfaCode, now);
     const pin = normalizePin(input.pin);
     const pinHash = hashPin(session.account.id, pin);
     this.accountPinHashes.set(session.account.id, pinHash);
@@ -2621,8 +3073,18 @@ export class Cp2Store {
     // Clear the grant only after every setup precondition and credential write has succeeded. This
     // is a no-op for ordinary recently authenticated password/PIN sessions.
     this.passkeyDomain.consumePinRecoveryGrant(session.session.id);
+    if (recovering) {
+      this.revokeOtherSessionsForAccount(
+        session.account.id,
+        session.session.id,
+        "pin_recovery",
+        now
+      );
+      this.notifyCredentialRecovery(session.account.id, "PIN", now);
+    }
     this.markSessionPinVerified(session.session.id, now);
     this.promoteAccountIdentityLevel(session.account.id, "strong");
+    this.promoteGuestWithCredential(session.account.id, now);
 
     this.recordAuditEvent({
       type: "auth.pin_set",
@@ -2645,6 +3107,7 @@ export class Cp2Store {
   }): AuthSessionView {
     const now = input.now ?? new Date();
     const session = this.requireAnySession(input.sessionId, now);
+    this.requireOutsideRecoveryProbation(session, now);
     this.verifyAccountPinForSession(session, input.currentPin, now);
     this.verifyMfaForCredentialChange(session.account.id, input.mfaCode, now);
     const pin = normalizePin(input.pin);
@@ -2750,7 +3213,14 @@ export class Cp2Store {
     return this.requireAnySession(session.id, now);
   }
 
-  signupWithPhonePin(input: { destination: string; pin: string; now?: Date }): AuthSessionView {
+  signupWithPhonePin(input: {
+    destination: string;
+    pin: string;
+    sessionId?: string | null;
+    now?: Date;
+  }): AuthSessionView {
+    const upgraded = this.upgradeGuestWithPin(input);
+    if (upgraded !== null) return upgraded;
     return this.createAccountWithPin(
       "phone",
       input.destination,
@@ -2759,10 +3229,48 @@ export class Cp2Store {
     );
   }
 
+  /** PIN signup from a guest session keeps the guest's account, as password signup does. */
+  private upgradeGuestWithPin(input: {
+    destination: string;
+    pin: string;
+    sessionId?: string | null;
+    now?: Date;
+  }): AuthSessionView | null {
+    const now = input.now ?? new Date();
+    const guest = this.guestAccountForSession(input.sessionId ?? null, now);
+    if (guest === null) return null;
+    const phone = normalizeDestination("phone", input.destination);
+    const holder = this.resolveIdentityAccount("phone", phone);
+    if (holder !== undefined && holder !== guest.id) return null;
+    const pin = normalizePin(input.pin);
+    const user = this.requireUser(this.userByAccount.get(guest.id));
+    const normalizedPhone = normalizeInternationalOwnerPhoneNumber(phone);
+    this.clearGuestIdentity(guest, phone);
+    Object.assign(user, {
+      phoneNumberE164: phone,
+      phoneCountryCode: normalizedPhone.country,
+      phoneNationalNumber: normalizedPhone.nationalNumber,
+      phoneVerificationStatus: "unverified" as const,
+      phoneAddedAt: user.phoneAddedAt ?? now.toISOString(),
+      phoneSource: "phone_login" as const,
+      phoneUpdatedAt: now.toISOString()
+    });
+    this.addAccountIdentity(guest, user, "phone", phone, true, now, false);
+    this.accountPinHashes.set(guest.id, hashPin(guest.id, pin));
+    const previous = this.sessions.get(input.sessionId ?? "");
+    if (previous !== undefined) {
+      this.revokeSessionFamily(previous.sessionFamilyId, "signup_upgrade", now);
+    }
+    const session = this.createSession(guest, user, now);
+    this.markSessionPinVerified(session.id, now);
+    return this.requireAnySession(session.id, now);
+  }
+
   continueWithChannelPin(input: {
     channel: AuthChannel;
     destination: string;
     pin: string;
+    sessionId?: string | null;
     now?: Date;
   }): AuthSessionView {
     const now = input.now ?? new Date();
@@ -2772,8 +3280,12 @@ export class Cp2Store {
     this.requirePinAttemptAllowed(attemptKey, now);
     const accountId = this.resolveIdentityAccount(input.channel, destination);
 
-    if (accountId === undefined) {
-      const session = this.createAccountWithPin(input.channel, destination, input.pin, now);
+    const guest = this.guestAccountForSession(input.sessionId ?? null, now);
+    if (accountId === undefined || accountId === guest?.id) {
+      const upgraded =
+        input.channel === "phone" ? this.upgradeGuestWithPin({ ...input, destination, now }) : null;
+      const session =
+        upgraded ?? this.createAccountWithPin(input.channel, destination, input.pin, now);
       return { ...session, isNewAccount: true };
     }
 
@@ -2905,6 +3417,7 @@ export class Cp2Store {
   recoverAccountPin(input: { sessionId: string | null; pin: string; now?: Date }): AuthSessionView {
     const now = input.now ?? new Date();
     const session = this.requireAnySession(input.sessionId, now);
+    this.requireOutsideRecoveryProbation(session, now);
     const pin = normalizePin(input.pin);
 
     if (!this.accountPinHashes.has(session.account.id)) {
@@ -2926,10 +3439,10 @@ export class Cp2Store {
     return this.requireAnySession(input.sessionId, now);
   }
 
-  recoverPhoneAccountPinWithPasskey(
-    ...args: Parameters<PasskeyDomain["recoverPhoneAccountPinWithPasskey"]>
-  ): ReturnType<PasskeyDomain["recoverPhoneAccountPinWithPasskey"]> {
-    return this.passkeyDomain.recoverPhoneAccountPinWithPasskey(...args);
+  recoverPhoneAccountPinWithDevice(
+    ...args: Parameters<PasskeyDomain["recoverPhoneAccountPinWithDevice"]>
+  ): ReturnType<PasskeyDomain["recoverPhoneAccountPinWithDevice"]> {
+    return this.passkeyDomain.recoverPhoneAccountPinWithDevice(...args);
   }
   verifyAccountPin(input: { sessionId: string | null; pin: string; now?: Date }): AuthSessionView {
     const now = input.now ?? new Date();
@@ -2952,6 +3465,47 @@ export class Cp2Store {
     this.markSessionPinVerified(session.session.id, now);
     this.recordAuditEvent({
       type: "auth.pin_verified",
+      aggregateType: "account",
+      aggregateId: session.account.id,
+      actorId: session.user.id,
+      occurredAt: now.toISOString(),
+      payload: {}
+    });
+
+    return this.requireAnySession(input.sessionId, now);
+  }
+
+  /** Step-up for accounts without a PIN: password signup creates only a password. */
+  verifyAccountPassword(input: {
+    sessionId: string | null;
+    password: string;
+    now?: Date;
+  }): AuthSessionView {
+    const now = input.now ?? new Date();
+    const session = this.requireAnySession(input.sessionId, now);
+    const credential = this.passwordCredentials.get(session.account.id);
+    const attemptKey = `verify:${session.account.id}`;
+
+    if (credential === undefined) {
+      throw new Cp2Error(404, "password_not_set", "This account has no password.");
+    }
+
+    try {
+      this.requirePinAttemptAllowed(attemptKey, now);
+    } catch {
+      throw new Cp2Error(429, "pin_rate_limited", "Too many attempts. Try again later.");
+    }
+    if (
+      verifyPasswordHash(session.account.id, input.password, credential.passwordHash) === "invalid"
+    ) {
+      this.recordFailedPinAttempt(attemptKey, now);
+      throw new Cp2Error(401, "password_incorrect", "That password is not correct.");
+    }
+
+    this.failedPinAttempts.delete(attemptKey);
+    this.markSessionPinVerified(session.session.id, now);
+    this.recordAuditEvent({
+      type: "auth.password_verified",
       aggregateType: "account",
       aggregateId: session.account.id,
       actorId: session.user.id,
@@ -3029,13 +3583,16 @@ export class Cp2Store {
     };
   }
 
-  beginPhoneSignup(input: { phoneE164: string; now?: Date }): {
+  beginPhoneSignup(input: { phoneE164: string; sessionId?: string | null; now?: Date }): {
     transactionId: string;
     expiresAt: string;
   } {
     const now = input.now ?? new Date();
     const phoneE164 = normalizeDestination("phone", input.phoneE164);
-    if (this.resolveIdentityAccount("phone", phoneE164) !== undefined) {
+    if (
+      this.resolveIdentityAccount("phone", phoneE164) !== undefined &&
+      !this.isCurrentGuestPhone(input.sessionId ?? null, phoneE164, now)
+    ) {
       throw new Cp2Error(409, "account_exists", "Continue to sign in.");
     }
     const transaction: AuthTransactionRecord = {
@@ -3068,6 +3625,8 @@ export class Cp2Store {
   }
 
   completePhoneSignup(input: {
+    /** A guest signing up keeps their account, so their chats, orders and any shop stay theirs. */
+    sessionId?: string | null;
     transactionId: string;
     displayName: string;
     password?: string;
@@ -3090,7 +3649,9 @@ export class Cp2Store {
       throw new Cp2Error(400, "display_name_invalid", "Enter your display name.");
     }
     const phone = transaction.identifierValue!;
-    if (this.resolveIdentityAccount("phone", phone) !== undefined) {
+    const guest = this.guestAccountForSession(input.sessionId ?? null, now);
+    const phoneHolder = this.resolveIdentityAccount("phone", phone);
+    if (phoneHolder !== undefined && phoneHolder !== guest?.id) {
       throw new Cp2Error(409, "account_exists", "Continue to sign in.");
     }
     if (input.password !== undefined) validatePassword(input.password);
@@ -3106,15 +3667,18 @@ export class Cp2Store {
       throw new Cp2Error(409, "identity_in_use", "That email cannot be linked to this account.");
     }
 
-    const account = this.createAccount("phone", phone, now);
+    const account = guest ?? this.createAccount("phone", phone, now);
     const user = this.requireUser(this.userByAccount.get(account.id));
     const normalizedPhone = normalizeInternationalOwnerPhoneNumber(phone);
+    if (guest !== null) this.clearGuestIdentity(guest, phone);
     Object.assign(user, {
       displayName,
       phoneNumberE164: phone,
       phoneCountryCode: normalizedPhone.country,
       phoneNationalNumber: normalizedPhone.nationalNumber,
       phoneVerificationStatus: "unverified" as const,
+      phoneAddedAt: user.phoneAddedAt ?? now.toISOString(),
+      phoneSource: "phone_login" as const,
       phoneUpdatedAt: now.toISOString()
     });
     this.addAccountIdentity(account, user, "phone", phone, true, now, false);
@@ -3128,6 +3692,10 @@ export class Cp2Store {
     }
     transaction.accountId = account.id;
     transaction.consumedAt = now.toISOString();
+    const guestSession = guest === null ? undefined : this.sessions.get(input.sessionId ?? "");
+    if (guestSession !== undefined) {
+      this.revokeSessionFamily(guestSession.sessionFamilyId, "signup_upgrade", now);
+    }
     const session = this.createSession(account, user, now);
     this.markSessionPinVerified(session.id, now);
     this.recordSecurityEvent("auth.signup_completed", account.id, "success", now, {
@@ -3135,6 +3703,53 @@ export class Cp2Store {
       phoneVerified: false
     });
     return this.requireAnySession(session.id, now);
+  }
+
+  /** Turns a guest into a phone account in place. Its data, shop and sessions stay attached. */
+  private clearGuestIdentity(guest: AccountSummary, phone: string): void {
+    this.accountByDestination.delete(
+      destinationAccountKey(guest.primaryAuthChannel, guest.primaryAuthDestination)
+    );
+    Object.assign(guest, { primaryAuthChannel: "phone", primaryAuthDestination: phone });
+    this.accountByDestination.set(destinationAccountKey("phone", phone), guest.id);
+    this.promoteAccountIdentityLevel(guest.id, "strong");
+    for (const [id, identity] of this.accountIdentities) {
+      if (identity.accountId === guest.id && identity.type === "phone") {
+        this.identityAccountByValue.delete(
+          destinationAccountKey("phone", identity.normalizedValue)
+        );
+        this.accountIdentities.delete(id);
+      }
+    }
+  }
+
+  /**
+   * A guest with a phone and a credential can sign in, so it stops being a guest. Without this,
+   * passkey login and recovery, which need a phone account, would refuse it.
+   */
+  private promoteGuestWithCredential(accountId: string, now: Date): void {
+    const account = this.accounts.get(accountId);
+    if (account?.primaryAuthChannel !== "device") return;
+    const user = this.requireUser(this.userByAccount.get(accountId));
+    const phone = user.phoneNumberE164;
+    if (!this.hasCredential(accountId) || typeof phone !== "string" || phone.length === 0) return;
+    const holder = this.accountByDestination.get(destinationAccountKey("phone", phone));
+    if (holder !== undefined && holder !== accountId) return;
+    this.clearGuestIdentity(account, phone);
+    this.addAccountIdentity(account, user, "phone", phone, true, now, false);
+  }
+
+  /** A guest may sign up with the phone they already saved; it is not someone else's account. */
+  isCurrentGuestPhone(sessionId: string | null, phone: string, now = new Date()): boolean {
+    const guest = this.guestAccountForSession(sessionId, now);
+    return guest !== null && this.resolveIdentityAccount("phone", phone) === guest.id;
+  }
+
+  private guestAccountForSession(sessionId: string | null, now: Date): AccountSummary | null {
+    const session = this.getSession(sessionId, now);
+    // A guest with a credential must prove it, so signup cannot be a way around that.
+    if (session === null || !this.guestWithoutCredential(session.account)) return null;
+    return this.accounts.get(session.account.id) ?? null;
   }
 
   loginWithPassword(input: {
@@ -3194,6 +3809,7 @@ export class Cp2Store {
   } {
     const now = input.now ?? new Date();
     const session = this.requireRecentlyAuthenticatedSession(input.sessionId, now);
+    this.requireOutsideRecoveryProbation(session, now);
     const secret = base32Encode(randomBytes(20));
     const factor: MfaFactorRecord = {
       id: randomUUID(),
@@ -3320,10 +3936,15 @@ export class Cp2Store {
   ): ReturnType<PasskeyDomain["beginPasskeyRegistration"]> {
     return this.passkeyDomain.beginPasskeyRegistration(...args);
   }
-  completePasskeyRegistration(
+  async completePasskeyRegistration(
     ...args: Parameters<PasskeyDomain["completePasskeyRegistration"]>
   ): ReturnType<PasskeyDomain["completePasskeyRegistration"]> {
-    return this.passkeyDomain.completePasskeyRegistration(...args);
+    const passkey = await this.passkeyDomain.completePasskeyRegistration(...args);
+    const session = this.getSession(args[0].sessionId, args[0].now ?? new Date());
+    if (session !== null) {
+      this.promoteGuestWithCredential(session.account.id, args[0].now ?? new Date());
+    }
+    return passkey;
   }
   beginPasskeyAuthentication(
     ...args: Parameters<PasskeyDomain["beginPasskeyAuthentication"]>
@@ -3335,6 +3956,24 @@ export class Cp2Store {
   ): ReturnType<PasskeyDomain["completePasskeyAuthentication"]> {
     return this.passkeyDomain.completePasskeyAuthentication(...args);
   }
+  startRecoveryApproval(...args: Parameters<RecoveryApprovalDomain["start"]>) {
+    return this.recoveryApprovalDomain.start(...args);
+  }
+  recoveryApprovalStatus(...args: Parameters<RecoveryApprovalDomain["status"]>) {
+    return this.recoveryApprovalDomain.status(...args);
+  }
+  pendingRecoveryApprovals(...args: Parameters<RecoveryApprovalDomain["pending"]>) {
+    return this.recoveryApprovalDomain.pending(...args);
+  }
+  beginRecoveryApproval(...args: Parameters<RecoveryApprovalDomain["options"]>) {
+    return this.recoveryApprovalDomain.options(...args);
+  }
+  approveRecoveryApproval(...args: Parameters<RecoveryApprovalDomain["approve"]>) {
+    return this.recoveryApprovalDomain.approve(...args);
+  }
+  declineRecoveryApproval(...args: Parameters<RecoveryApprovalDomain["decline"]>) {
+    return this.recoveryApprovalDomain.decline(...args);
+  }
   listPasskeys(
     ...args: Parameters<PasskeyDomain["listPasskeys"]>
   ): ReturnType<PasskeyDomain["listPasskeys"]> {
@@ -3343,6 +3982,8 @@ export class Cp2Store {
   revokePasskey(
     ...args: Parameters<PasskeyDomain["revokePasskey"]>
   ): ReturnType<PasskeyDomain["revokePasskey"]> {
+    const now = args[0].now ?? new Date();
+    this.requireOutsideRecoveryProbation(this.requireAnySession(args[0].sessionId, now), now);
     return this.passkeyDomain.revokePasskey(...args);
   }
   createBusiness(input: {
@@ -3351,10 +3992,21 @@ export class Cp2Store {
     language: SupportedLanguage;
     phoneNumber?: string;
     phoneCountry?: string;
+    /** The marketplace agent asked for this shop, so its Store setup permission applies. */
+    viaAssistant?: boolean;
     now?: Date;
   }): CreateBusinessResult {
     const now = input.now ?? new Date();
     const session = this.requirePinVerifiedSession(input.sessionId, now);
+    // A first shop's phone number becomes a sign-in identity: not from a probation session.
+    if (input.phoneNumber !== undefined) this.requireOutsideRecoveryProbation(session, now);
+    if (input.viaAssistant && !this.accountAssistantPermissions(session.account.id).store) {
+      throw new Cp2Error(
+        403,
+        "assistant_permission_denied",
+        "Turn on Set up a store in My Assistant details, or use the Set up your shop button."
+      );
+    }
 
     const name = input.name.trim();
 
@@ -3388,7 +4040,7 @@ export class Cp2Store {
         throw new Cp2Error(400, "phone_number_required", "Enter your phone number to continue.");
       }
     } else {
-      this.requireRecentlyAuthenticatedSession(input.sessionId, now);
+      this.requireOwnerPhoneSession(input.sessionId, now);
       this.applyOwnerPhoneIdentity({
         session,
         phoneNumber: input.phoneNumber,
@@ -3396,6 +4048,7 @@ export class Cp2Store {
         source: "shop_registration",
         now
       });
+      this.promoteGuestWithCredential(session.account.id, now);
     }
 
     const businessId = randomUUID();
@@ -3485,18 +4138,19 @@ export class Cp2Store {
     now?: Date;
   }): OwnerPhoneIdentityResult {
     const now = input.now ?? new Date();
-    const session = this.requireRecentlyAuthenticatedSession(input.sessionId, now);
+    const session = this.requireOwnerPhoneSession(input.sessionId, now);
+    this.requireOutsideRecoveryProbation(session, now);
     this.enforcePhoneUpdateRateLimit(session.account.id, now);
 
-    return {
-      user: this.applyOwnerPhoneIdentity({
-        session,
-        phoneNumber: input.phoneNumber,
-        country: input.country,
-        source: "shop_registration",
-        now
-      })
-    };
+    const user = this.applyOwnerPhoneIdentity({
+      session,
+      phoneNumber: input.phoneNumber,
+      country: input.country,
+      source: "shop_registration",
+      now
+    });
+    this.promoteGuestWithCredential(session.account.id, now);
+    return { user };
   }
 
   updateOwnDisplayName(input: { sessionId: string | null; displayName: string; now?: Date }): {
@@ -3597,6 +4251,7 @@ export class Cp2Store {
   createMcpAccessToken(
     ...args: Parameters<McpTokensDomain["createMcpAccessToken"]>
   ): ReturnType<McpTokensDomain["createMcpAccessToken"]> {
+    this.guardRecoveryProbation(args[0].sessionId, args[0].now);
     return this.mcpTokensDomain.createMcpAccessToken(...args);
   }
   listMcpAccessTokens(
@@ -4150,6 +4805,524 @@ export class Cp2Store {
   channelWebhookChallenge(...args: Parameters<MessagingDomain["channelWebhookChallenge"]>) {
     return this.messagingDomain.channelWebhookChallenge(...args);
   }
+  recordLinkedWhatsAppState(businessId: string, ownerId: string, state: string): void {
+    this.recordAuditEvent({
+      type: "whatsapp_linked.connection_state",
+      aggregateType: "whatsapp_linked_connection",
+      aggregateId: businessId,
+      actorId: ownerId,
+      occurredAt: new Date().toISOString(),
+      payload: { businessId, state }
+    });
+  }
+
+  registerConversationAttachmentCipher(prefix: string, cipher: AttachmentBlobCipher): () => void {
+    return this.conversationAttachmentBlobStore.registerCipher(prefix, cipher);
+  }
+
+  async deliverLinkedWhatsAppReply(input: {
+    businessId: string;
+    ownerId: string;
+    chat: string;
+    text: string;
+    idempotencyKey: string;
+  }) {
+    this.validateLinkedWhatsAppOwner(input.businessId, input.ownerId);
+    return this.messagingDomain.deliverLinkedWhatsAppReply(input);
+  }
+  linkedWhatsAppRuntime(businessId: string, ownerId: string, conversationId: string) {
+    this.validateLinkedWhatsAppOwner(businessId, ownerId);
+    const conversation = this.messagingDomain.conversationsMap.get(conversationId);
+    if (conversation?.activeShopId !== businessId)
+      throw new Cp2Error(403, "permission_denied", "Conversation is outside this business.");
+    return daemonConversationRuntime(this, conversationId);
+  }
+
+  setLinkedToolGrants(input: {
+    businessId: string;
+    ownerId: string;
+    chat: string;
+    tools: unknown;
+    enabled: boolean;
+  }) {
+    this.validateLinkedWhatsAppOwner(input.businessId, input.ownerId);
+    const tools = parseLinkedToolGrants(input.tools);
+    const channel = [...this.messagingDomain.conversationChannelsMap.values()].find(
+      (channel) =>
+        channel.businessId === input.businessId &&
+        channel.provider === "whatsapp_linked" &&
+        channel.externalConversationId === input.chat &&
+        channel.metadata.linkedDeviceOwnerId === input.ownerId
+    );
+    if (!channel)
+      throw new Cp2Error(
+        404,
+        "conversation_channel_not_found",
+        "Approve this WhatsApp conversation first."
+      );
+    const grant = { id: randomUUID(), enabled: input.enabled, tools: input.enabled ? tools : [] };
+    this.messagingDomain.conversationChannelsMap.set(channel.id, {
+      ...channel,
+      metadata: { ...channel.metadata, linkedToolGrant: JSON.stringify(grant) },
+      updatedAt: new Date().toISOString()
+    });
+    this.recordAuditEvent({
+      type: "whatsapp_linked.tools_granted",
+      aggregateType: "conversation_channel",
+      aggregateId: channel.id,
+      actorId: input.ownerId,
+      occurredAt: new Date().toISOString(),
+      payload: {
+        businessId: input.businessId,
+        enabled: grant.enabled,
+        tools: grant.tools.join(","),
+        grantId: grant.id
+      }
+    });
+    return grant;
+  }
+
+  linkedToolGrant(businessId: string, ownerId: string, chat: string) {
+    this.validateLinkedWhatsAppOwner(businessId, ownerId);
+    const channel = [...this.messagingDomain.conversationChannelsMap.values()].find(
+      (channel) =>
+        channel.businessId === businessId &&
+        channel.provider === "whatsapp_linked" &&
+        channel.externalConversationId === chat &&
+        channel.metadata.linkedDeviceOwnerId === ownerId
+    );
+    if (!channel || typeof channel.metadata.linkedToolGrant !== "string") return null;
+    const grant = JSON.parse(channel.metadata.linkedToolGrant) as {
+      id: string;
+      enabled: boolean;
+      tools: string[];
+    };
+    return { channelId: channel.id, ...grant, tools: parseLinkedToolGrants(grant.tools) };
+  }
+
+  validateLinkedToolDelegation(
+    businessId: string,
+    ref: LinkedToolDelegation,
+    tool?: string
+  ): string[] {
+    this.validateLinkedWhatsAppOwner(businessId, ref.ownerId);
+    const channel = this.messagingDomain.conversationChannelsMap.get(ref.channelId);
+    const source = this.messagingDomain.conversationMessagesMap.get(ref.sourceMessageId);
+    const grant = channel
+      ? this.linkedToolGrant(businessId, ref.ownerId, channel.externalConversationId ?? "")
+      : null;
+    if (
+      !channel ||
+      channel.businessId !== businessId ||
+      !grant?.enabled ||
+      grant.id !== ref.grantId ||
+      !source ||
+      source.conversationId !== channel.conversationId ||
+      source.direction !== "inbound" ||
+      source.provider !== "whatsapp_linked" ||
+      source.deletedAt ||
+      source.senderAddress !== ref.actorId ||
+      (tool &&
+        tool !== "unknown.clarify" &&
+        !grant.tools.includes(tool as (typeof grant.tools)[number]))
+    )
+      throw new Cp2Error(
+        403,
+        "whatsapp_tool_grant_revoked",
+        "This WhatsApp business permission is unavailable or has been revoked."
+      );
+    return grant.tools;
+  }
+
+  async readLinkedWhatsAppEvidence(input: {
+    businessId: string;
+    ownerId: string;
+    chat: string;
+    sender: string;
+    messageId: string;
+    signal?: AbortSignal;
+  }): Promise<string | undefined> {
+    const grant = this.linkedToolGrant(input.businessId, input.ownerId, input.chat);
+    if (!grant?.enabled) return undefined;
+    const channel = this.messagingDomain.conversationChannelsMap.get(grant.channelId)!;
+    const source = [...this.messagingDomain.conversationMessagesMap.values()].find(
+      (message) =>
+        message.conversationId === channel.conversationId &&
+        message.provider === "whatsapp_linked" &&
+        message.direction === "inbound" &&
+        message.providerMessageId === input.messageId &&
+        message.senderAddress === input.sender &&
+        !message.deletedAt
+    );
+    if (!source || source.content.type !== "text") return undefined;
+    const attachment = source.content.attachments?.find(
+      (attachment) =>
+        attachment.source === "managed" && ["image", "document"].includes(attachment.category)
+    );
+    const record = attachment
+      ? this.messagingDomain.conversationAttachmentsMap.get(attachment.id)
+      : undefined;
+    if (
+      !record ||
+      record.messageId !== source.id ||
+      record.businessId !== input.businessId ||
+      record.conversationId !== channel.conversationId
+    )
+      return undefined;
+    if (record.caption) return record.caption;
+    const bytes = await this.conversationAttachmentBlobStore.get(record.storageKey);
+    if (
+      !bytes ||
+      bytes.length > 5 * 1024 * 1024 ||
+      createHash("sha256").update(bytes).digest("hex") !== record.checksum
+    )
+      throw new Cp2Error(400, "attachment_invalid", "The attachment could not be verified.");
+    let text: string;
+    if (["text/plain", "text/csv"].includes(record.mimeType))
+      text = new TextDecoder("utf-8", { fatal: true }).decode(bytes).slice(0, 12000);
+    else if (record.kind === "image") {
+      const runtime = this.linkedWhatsAppRuntime(
+        input.businessId,
+        input.ownerId,
+        channel.conversationId
+      );
+      if (!this.resolveCatalogModel(runtime.modelId)?.capabilities.includes("vision"))
+        return "The selected model does not support reading images. Ask for a text description or owner review.";
+      const owner = this.users.get(input.ownerId)!;
+      const result = await readChatImage(
+        {
+          fileName: record.filename,
+          contentType: record.mimeType,
+          contentBase64: bytes.toString("base64")
+        },
+        owner.accountId,
+        () =>
+          this.modelRuntimeAdapterResolver?.({
+            modelId: runtime.modelId,
+            executionTarget: "backend",
+            agentId: "chat-image-reader",
+            shopId: input.businessId
+          }),
+        { modelId: runtime.modelId, ...(input.signal ? { signal: input.signal } : {}) }
+      );
+      text = result.text.slice(0, 12000);
+    } else if (record.mimeType === "application/pdf")
+      text = await readLinkedDocument(
+        { filename: record.filename, mimeType: record.mimeType, bytes },
+        input.signal
+      );
+    else
+      return "The document is attached for review; automatic extraction is unavailable for this format.";
+    const current = this.linkedToolGrant(input.businessId, input.ownerId, input.chat);
+    if (
+      !current?.enabled ||
+      current.id !== grant.id ||
+      this.messagingDomain.conversationMessagesMap.get(source.id)?.deletedAt ||
+      !this.messagingDomain.conversationAttachmentsMap.has(record.id) ||
+      input.signal?.aborted
+    )
+      throw new Cp2Error(
+        403,
+        "whatsapp_tool_grant_revoked",
+        "Attachment processing permission changed."
+      );
+    this.messagingDomain.conversationAttachmentsMap.set(record.id, { ...record, caption: text });
+    return text;
+  }
+
+  async executeLinkedToolTurn(input: {
+    businessId: string;
+    ownerId: string;
+    chat: string;
+    sender: string;
+    messageId: string;
+    grantId: string;
+    signal?: AbortSignal;
+  }) {
+    const grant = this.linkedToolGrant(input.businessId, input.ownerId, input.chat);
+    const channel = grant
+      ? this.messagingDomain.conversationChannelsMap.get(grant.channelId)
+      : undefined;
+    const matches = [...this.messagingDomain.conversationMessagesMap.values()].filter(
+      (message) =>
+        message.provider === "whatsapp_linked" &&
+        message.direction === "inbound" &&
+        message.conversationId === channel?.conversationId &&
+        message.providerMessageId === input.messageId &&
+        message.senderAddress === input.sender
+    );
+    const source = matches.length === 1 ? matches[0]! : undefined;
+    if (!grant || !channel || !source || source.content.type !== "text")
+      throw new Cp2Error(
+        403,
+        "whatsapp_tool_source_invalid",
+        "The authorized source message was not found."
+      );
+    const ref: LinkedToolDelegation = {
+      channelId: channel.id,
+      grantId: input.grantId,
+      ownerId: input.ownerId,
+      sourceMessageId: source.id,
+      actorId: input.sender
+    };
+    this.validateLinkedToolDelegation(input.businessId, ref);
+    const owner = this.users.get(input.ownerId)!;
+    this.ensureLinkedWhatsAppRuntime(input.businessId, input.ownerId, channel.conversationId);
+    let evidence: string | undefined;
+    try {
+      evidence = await this.readLinkedWhatsAppEvidence(input);
+    } catch (error) {
+      if (error instanceof Cp2Error && error.statusCode === 403) throw error;
+      evidence =
+        "Attachment reading is unavailable. Ask for review or a text description; do not invent its contents.";
+    }
+    // An in-process integration principal represents the owner's explicit delegation. No PIN
+    // session is located, borrowed, created or exposed to the external sender.
+    const result = await this.mcpPrincipalContext.run(
+      {
+        tokenId: `whatsapp:${grant.id}`,
+        accountId: owner.accountId,
+        userId: owner.id,
+        scopes: ["mcp:read", "mcp:act"],
+        shopId: input.businessId,
+        expiresAt: new Date(Date.now() + 180_000).toISOString()
+      },
+      async () => {
+        const result = await this.agentRuntimeDomain.createRuntimeTurn({
+          sessionId: null,
+          businessId: input.businessId,
+          conversationId: channel.conversationId,
+          message: source.content.type === "text" ? source.content.text : "",
+          channelDelegation: ref,
+          ...(evidence ? { channelEvidence: evidence } : {}),
+          ...(input.signal ? { signal: input.signal } : {})
+        });
+        this.validateLinkedToolDelegation(input.businessId, ref);
+        if (result.turn.status === "needs_confirmation" && result.turn.plan.confirmationToken)
+          this.messagingDomain.createConversationMessage({
+            sessionId: null,
+            conversationId: channel.conversationId,
+            clientMessageId: `whatsapp-approval:${result.turn.id}`,
+            idempotencyKey: `whatsapp-approval:${result.turn.id}`,
+            author: "agent",
+            content: {
+              type: "confirmation",
+              confirmationToken: result.turn.plan.confirmationToken,
+              approvalScope: {
+                businessId: input.businessId,
+                runtimeSessionId: result.session.id,
+                conversationId: channel.conversationId
+              },
+              prompt: `A permitted WhatsApp participant requested this action. Review it before approving.\n${result.turn.response}`
+            },
+            replyToMessageId: source.id
+          });
+        return result;
+      }
+    );
+    this.validateLinkedToolDelegation(input.businessId, ref);
+    this.recordAuditEvent({
+      type: "whatsapp_linked.delegated_turn",
+      aggregateType: "runtime_turn",
+      aggregateId: result.turn.id,
+      actorId: input.ownerId,
+      occurredAt: new Date().toISOString(),
+      payload: {
+        businessId: input.businessId,
+        channelId: channel.id,
+        grantId: grant.id,
+        externalActor: input.sender,
+        sourceMessageId: source.id,
+        tool: result.turn.plan.toolName,
+        status: result.turn.status
+      }
+    });
+    return {
+      text:
+        result.turn.status === "needs_confirmation"
+          ? "This action is prepared and waiting for the shop owner's approval in Grogoni. Nothing has been changed."
+          : result.turn.response
+    };
+  }
+
+  /**
+   * Owner resolved a WhatsApp-delegated action: send one bounded outcome to the originating chat.
+   * Authority is re-checked at send time, because the grant, the conversation approval or the
+   * recipient's STOP can change while the approval card waits. Nothing is sent when they no longer
+   * allow it; every outcome is audited.
+   */
+  async deliverLinkedDelegationResult(resolution: ChannelDelegationResolution): Promise<void> {
+    const { businessId, delegation: ref, turnId } = resolution;
+    const channel = this.messagingDomain.conversationChannelsMap.get(ref.channelId);
+    const audit = (type: string, payload: Record<string, unknown>) =>
+      this.recordAuditEvent({
+        type,
+        aggregateType: "runtime_turn",
+        aggregateId: turnId,
+        actorId: resolution.resolvedBy,
+        occurredAt: new Date().toISOString(),
+        payload: {
+          businessId,
+          channelId: ref.channelId,
+          grantId: ref.grantId,
+          tool: resolution.toolName,
+          outcome: resolution.outcome,
+          ...payload
+        }
+      });
+    let suppressed: string | null = null;
+    if (
+      !channel ||
+      channel.provider !== "whatsapp_linked" ||
+      channel.businessId !== businessId ||
+      channel.metadata.linkedDeviceOwnerId !== ref.ownerId
+    )
+      suppressed = "channel_unavailable";
+    else if (
+      this.messagingDomain.platformIdentitiesMap.get(channel.platformIdentityId)?.optInStatus ===
+      "revoked"
+    )
+      suppressed = "recipient_opted_out";
+    else
+      try {
+        this.validateLinkedToolDelegation(businessId, ref, resolution.toolName);
+      } catch (error) {
+        suppressed = error instanceof Cp2Error ? error.code : "delegation_invalid";
+      }
+    if (suppressed !== null || !channel) {
+      audit("whatsapp_linked.delegated_result_suppressed", {
+        reason: suppressed ?? "channel_unavailable"
+      });
+      return;
+    }
+    try {
+      const sent = await this.deliverLinkedWhatsAppReply({
+        businessId,
+        ownerId: ref.ownerId,
+        chat: channel.externalConversationId,
+        text: linkedDelegationResultText(resolution.outcome, resolution.toolName),
+        idempotencyKey: `whatsapp-result:${turnId}`
+      });
+      audit("whatsapp_linked.delegated_result_sent", { messageId: sent.message.id });
+    } catch (error) {
+      audit("whatsapp_linked.delegated_result_failed", {
+        errorCode: error instanceof Cp2Error ? error.code : "delivery_failed"
+      });
+    }
+  }
+
+  ensureLinkedWhatsAppRuntime(businessId: string, ownerId: string, conversationId: string) {
+    try {
+      return this.linkedWhatsAppRuntime(businessId, ownerId, conversationId);
+    } catch (error) {
+      const conversation = this.messagingDomain.conversationsMap.get(conversationId);
+      if (
+        !(error instanceof Cp2Error) ||
+        !["RUNTIME_MODEL_NOT_CONFIGURED", "RUNTIME_DEFAULT_MISSING"].includes(error.code) ||
+        (conversation?.runtimeBindingId &&
+          conversation.runtimeBindingId !== globalDefaultRuntimeBindingId)
+      )
+        throw error;
+      this.validateLinkedWhatsAppOwner(businessId, ownerId);
+      if (!conversation || conversation.activeShopId !== businessId) throw error;
+      const owner = this.users.get(ownerId)!;
+      const model = this.modelCatalog.get(this.platformDefaultRuntime.modelId);
+      if (!model?.available) throw error;
+      const checkedAt = new Date().toISOString();
+      const result = this.nativeRuntimeBindings.ensureDefaultRuntimeBinding({
+        businessId,
+        accountId: owner.accountId,
+        conversationId,
+        agentId: businessId,
+        agentName: "Grogoni",
+        agentRuntimeAdapterId: this.platformDefaultRuntime.agentRuntimeAdapterId,
+        candidates: [{ model, executionTarget: "backend", checkedAt }],
+        updatedBy: ownerId,
+        checkedAt
+      });
+      this.messagingDomain.conversationsMap.set(conversationId, {
+        ...conversation,
+        runtimeBindingId: result.binding.id,
+        updatedAt: checkedAt
+      });
+      return this.linkedWhatsAppRuntime(businessId, ownerId, conversationId);
+    }
+  }
+
+  registerMessagingAdapter(adapter: MessagingChannelAdapter): void {
+    this.channelGateway.registerAdapter(adapter);
+  }
+
+  /** Worker event boundary: a revoked business owner cannot keep ingesting messages. */
+  hasLinkedWhatsAppMessage(
+    businessId: string,
+    ownerId: string,
+    message: { chat: string; sender: string; id: string }
+  ): boolean {
+    this.validateLinkedWhatsAppOwner(businessId, ownerId);
+    const key = JSON.stringify([businessId, message.chat, message.sender, message.id]);
+    return [...this.messagingDomain.providerUpdateReceiptsMap.values()].some(
+      (receipt) =>
+        receipt.provider === "whatsapp_linked" &&
+        receipt.externalUpdateId === key &&
+        receipt.status === "processed"
+    );
+  }
+
+  ingestLinkedWhatsAppMessage(input: {
+    businessId: string;
+    ownerId: string;
+    chat: string;
+    sender: string;
+    id: string;
+    text: string;
+    timestamp: string;
+    media?: LinkedDownloadedMedia[];
+    replyTo?: string;
+    mutation?: LinkedMutation;
+  }) {
+    this.validateLinkedWhatsAppOwner(input.businessId, input.ownerId);
+    if (input.mutation)
+      return this.messagingDomain.ingestLinkedMutation(
+        input as typeof input & { mutation: NonNullable<typeof input.mutation> }
+      );
+    if (input.media?.length)
+      return this.messagingDomain.ingestLinkedMediaMessage({
+        businessId: input.businessId,
+        ownerId: input.ownerId,
+        externalConversationId: input.chat,
+        externalUpdateId: JSON.stringify([input.businessId, input.chat, input.sender, input.id]),
+        body: input.text,
+        ...(input.replyTo ? { replyToProviderMessageId: input.replyTo } : {}),
+        providerMessageId: input.id,
+        senderAddress: input.sender,
+        clientTimestamp: new Date(input.timestamp).toISOString(),
+        media: input.media
+      });
+    return this.messagingDomain.ingestProviderMessage({
+      provider: "whatsapp_linked",
+      businessId: input.businessId,
+      externalConversationId: input.chat,
+      externalUpdateId: JSON.stringify([input.businessId, input.chat, input.sender, input.id]),
+      body: input.text,
+      ...(input.replyTo ? { replyToProviderMessageId: input.replyTo } : {}),
+      providerMessageId: input.id,
+      senderAddress: input.sender,
+      clientTimestamp: new Date(input.timestamp).toISOString()
+    });
+  }
+
+  validateLinkedWhatsAppOwner(businessId: string, ownerId: string): void {
+    const input = { businessId, ownerId };
+    this.requireBusiness(input.businessId);
+    const owner = this.users.get(input.ownerId);
+    if (!owner || this.requireMembership(input.businessId, input.ownerId).role !== "owner")
+      throw new Cp2Error(403, "permission_denied", "Connection owner is no longer authorized.");
+    this.requireAccountNotPendingDeletion(owner.accountId, new Date());
+    if (this.quarantinedBusinessIds.has(input.businessId))
+      throw new Cp2Error(410, "business_quarantined", "Business access is disabled.");
+  }
+
   ingestChannelWebhookBatch(...args: Parameters<MessagingDomain["ingestChannelWebhookBatch"]>) {
     return this.messagingDomain.ingestChannelWebhookBatch(...args);
   }
@@ -4549,27 +5722,131 @@ export class Cp2Store {
     return this.agentRuntimeDomain.activateAiModel(...args);
   }
 
-  getConversationModelSelection(sessionId: string | null, conversationId: string) {
+  private accountAssistantPermissions(accountId: string): AssistantPermissions {
+    return normalizeAssistantPermissions(
+      this.nativeRuntimeBindings.agentsMap.get(`account-${accountId}-agent`)?.configuration
+        .assistantPermissions
+    );
+  }
+
+  assistantPermissionErrors(sessionId: string | null, tool: string): string[] {
+    const actor = this.requireMcpAwareSession(sessionId, new Date());
+    return assistantToolAllowed(this.accountAssistantPermissions(actor.account.id), tool)
+      ? []
+      : [`Assistant permission denied for ${tool}. Review My Assistant details.`];
+  }
+
+  getAssistantPermissions(
+    sessionId: string | null,
+    conversationId: string
+  ): AssistantPermissionsView {
     const actor = this.requirePinVerifiedSession(sessionId, new Date());
     const view = this.messagingDomain.getConversation({ sessionId, conversationId });
-    if (
-      view.conversation.accountId !== actor.account.id ||
-      view.conversation.conversationType !== "DAEMON"
-    )
+    if (view.conversation.accountId !== actor.account.id || !view.conversation.isPermanentDaemon)
       throw new Cp2Error(404, "conversation_not_found", "Conversation was not found.");
-    const models = this.listAiModels()
-      .filter((m) => m.available && m.runtimeAvailability?.backend === "configured")
-      .map((m) => ({ id: m.id, label: m.label }));
+    return {
+      conversationId,
+      permissions: this.accountAssistantPermissions(actor.account.id),
+      functions: Object.entries(runtimeToolRegistry).map(([id, tool]) => ({
+        id,
+        action: assistantToolAction(id) ?? "execute",
+        label: tool.hub?.label.en ?? tool.description,
+        storeRelated: assistantToolIsStoreRelated(id)
+      }))
+    };
+  }
+
+  updateAssistantPermissions(
+    sessionId: string | null,
+    conversationId: string,
+    input: unknown
+  ): AssistantPermissionsView {
+    const current = this.getAssistantPermissions(sessionId, conversationId);
+    const actor = this.requirePinVerifiedSession(sessionId, new Date());
+    if (!input || typeof input !== "object" || Array.isArray(input))
+      throw new Cp2Error(
+        400,
+        "assistant_permissions_invalid",
+        "Choose valid assistant permissions."
+      );
+    const permissions = { ...current.permissions };
+    for (const [key, value] of Object.entries(input)) {
+      if (!assistantActions.some((action) => action.id === key) || typeof value !== "boolean")
+        throw new Cp2Error(
+          400,
+          "assistant_permissions_invalid",
+          "Choose valid assistant permissions."
+        );
+      permissions[key as keyof AssistantPermissions] = value;
+    }
+    const id = `account-${actor.account.id}-agent`;
+    const existingAgent = this.nativeRuntimeBindings.agentsMap.get(id);
+    const base =
+      existingAgent ??
+      this.nativeRuntimeBindings.agentsMap.get(repositoryDefaultRuntimePolicy.agentId)!;
+    this.nativeRuntimeBindings.agentsMap.set(id, {
+      ...base,
+      id,
+      accountId: actor.account.id,
+      businessId: existingAgent?.businessId ?? null,
+      configuration: {
+        ...base.configuration,
+        assistantPermissions: { ...permissions, version: assistantPermissionsVersion }
+      },
+      updatedAt: new Date().toISOString()
+    });
+    this.recordAuditEvent({
+      type: "assistant.permissions_updated",
+      aggregateType: "account",
+      aggregateId: actor.account.id,
+      actorId: actor.user.id,
+      occurredAt: new Date().toISOString(),
+      payload: { permissions }
+    });
+    return this.getAssistantPermissions(sessionId, conversationId);
+  }
+
+  // The permanent daemon conversation ("My Assistant") is the only conversation whose agent engine
+  // and model the owner switches directly. Only engines this deployment has registered and models
+  // with a configured backend are offered, so every listed choice can actually execute.
+  getConversationModelSelection(
+    sessionId: string | null,
+    conversationId: string
+  ): ConversationRuntimeSelection {
+    const actor = this.requirePinVerifiedSession(sessionId, new Date());
+    const view = this.messagingDomain.getConversation({ sessionId, conversationId });
+    // Only the permanent conversation: every one-person agent chat is conversationType "DAEMON",
+    // and all of them would otherwise rewrite the one shared account agent record below.
+    if (view.conversation.accountId !== actor.account.id || !view.conversation.isPermanentDaemon)
+      throw new Cp2Error(404, "conversation_not_found", "Conversation was not found.");
+    const models = this.selectableConversationModels().map((m) => ({ id: m.id, label: m.label }));
+    const agents = this.selectableDaemonAgents();
     try {
       const runtime = this.resolveRuntimeBinding(conversationId);
+      const agentId = runtimeAdapterIdForAgent(runtime.agent);
+      const selectedModelId = runtime.selected.model.id;
+      // A model that is no longer configured still resolves from stored state; say so, so the
+      // panel asks for a new one instead of failing on the next agent switch.
+      const modelSelectable = models.some((model) => model.id === selectedModelId);
       return {
-        selectedModelId: runtime.selected.model.id,
+        conversationId,
+        selectedAgentId: isDaemonAgentId(agentId) ? agentId : null,
+        agents,
+        selectedModelId,
         models,
-        available: true,
-        errorCode: null
+        available: modelSelectable,
+        errorCode: modelSelectable ? null : "model_unavailable"
       };
     } catch (error) {
+      // The engine is still the account agent's, so picking a new model keeps it.
+      const accountAgent = this.nativeRuntimeBindings.agentsMap.get(
+        `account-${actor.account.id}-agent`
+      );
+      const agentId = accountAgent ? runtimeAdapterIdForAgent(accountAgent) : null;
       return {
+        conversationId,
+        selectedAgentId: isDaemonAgentId(agentId) ? agentId : null,
+        agents,
         selectedModelId: null,
         models,
         available: false,
@@ -4578,17 +5855,33 @@ export class Cp2Store {
     }
   }
 
-  async selectConversationModel(sessionId: string | null, conversationId: string, modelId: string) {
-    this.getConversationModelSelection(sessionId, conversationId);
+  async selectConversationModel(
+    sessionId: string | null,
+    conversationId: string,
+    selection: { modelId?: string; agentId?: string }
+  ): Promise<ConversationRuntimeSelection> {
+    const current = this.getConversationModelSelection(sessionId, conversationId);
     const actor = this.requirePinVerifiedSession(sessionId, new Date());
     const conversation = this.messagingDomain.requireAccountConversation(
       conversationId,
       actor.account.id
     );
     if (conversation.activeShopId) this.requireMembership(conversation.activeShopId, actor.user.id);
-    const model = this.listAiModels().find(
-      (m) => m.id === modelId && m.available && m.runtimeAvailability?.backend === "configured"
-    );
+    if (selection.modelId === undefined && selection.agentId === undefined)
+      throw new Cp2Error(400, "runtime_selection_empty", "Choose an agent or a model.");
+    // An engine this deployment no longer runs is replaced by the first one it does, so picking a
+    // working model is always a way out; an engine named in the request must itself be offered.
+    const keptAgent = (agentId: string | null) =>
+      current.agents.some((agent) => agent.id === agentId)
+        ? agentId!
+        : (current.agents[0]?.id ?? "grogoni");
+    const agentId = selection.agentId ?? keptAgent(current.selectedAgentId);
+    if (!current.agents.some((agent) => agent.id === agentId))
+      throw new Cp2Error(400, "agent_unavailable", "Choose an available agent.");
+    const modelId = selection.modelId ?? current.selectedModelId;
+    if (modelId === null)
+      throw new Cp2Error(400, "model_unavailable", "Choose a configured model.");
+    const model = this.selectableConversationModels().find((m) => m.id === modelId);
     if (!model || !model.hostedExecutionTarget)
       throw new Cp2Error(400, "model_unavailable", "Choose a configured model.");
     const adapter = this.modelRuntimeAdapterResolver?.({
@@ -4613,20 +5906,76 @@ export class Cp2Store {
         health.errorCode ?? "model_unavailable",
         "The selected model is unavailable."
       );
+    // The health check can take seconds. Whatever this request did not set is re-read now, so a
+    // concurrent switch of the other half (another tab) is kept instead of overwritten.
+    const latest = this.getConversationModelSelection(sessionId, conversationId);
+    const finalAgentId =
+      selection.agentId ??
+      (latest.selectedAgentId === null ? agentId : keptAgent(latest.selectedAgentId));
+    const finalModel =
+      selection.modelId === undefined && latest.selectedModelId !== null
+        ? (this.selectableConversationModels().find((m) => m.id === latest.selectedModelId) ??
+          model)
+        : model;
+    if (!finalModel.hostedExecutionTarget)
+      throw new Cp2Error(400, "model_unavailable", "Choose a configured model.");
     const binding = this.nativeRuntimeBindings.selectConversationModel({
       accountId: actor.account.id,
       businessId: conversation.activeShopId,
       conversationId,
-      model,
-      executionTarget: model.hostedExecutionTarget,
+      model: finalModel,
+      executionTarget: finalModel.hostedExecutionTarget,
+      agentAdapterId: finalAgentId,
       checkedAt: new Date().toISOString(),
       updatedBy: actor.user.id
     });
     this.messagingDomain.conversationsMap.set(conversationId, {
-      ...conversation,
+      ...this.messagingDomain.requireAccountConversation(conversationId, actor.account.id),
       runtimeBindingId: binding.id
     });
+    // The trace for every switch: which engine and model My Assistant moved from and to.
+    this.recordAuditEvent({
+      type: "conversation.runtime_selected",
+      aggregateType: "conversation",
+      aggregateId: conversationId,
+      actorId: actor.user.id,
+      occurredAt: new Date().toISOString(),
+      payload: {
+        previousAgentId: latest.selectedAgentId,
+        agentId: finalAgentId,
+        previousModelId: latest.selectedModelId,
+        modelId: finalModel.id
+      }
+    });
     return this.getConversationModelSelection(sessionId, conversationId);
+  }
+
+  // My Assistant with an agent and model chosen in its details keeps them: activating a shop
+  // model or provisioning a default runtime for a turn must not silently replace the owner's
+  // choice. A My Assistant that never had a choice follows those defaults as before.
+  private keepsSelectedRuntime(conversation: ConversationSummary): boolean {
+    if (!conversation.isPermanentDaemon || !conversation.runtimeBindingId) return false;
+    const binding = this.nativeRuntimeBindings.bindingsMap.get(conversation.runtimeBindingId);
+    return (
+      binding?.status === "active" && binding.configuration.source === "conversation-selection"
+    );
+  }
+
+  private selectableConversationModels(): AiModelSummary[] {
+    return this.listAiModels().filter(
+      (m) => m.available && m.runtimeAvailability?.backend === "configured"
+    );
+  }
+
+  // Same precedence as ordinary chat turns: an injected resolver (tests) replaces the registry.
+  // In production nothing is injected and this is the registry the daemon executor also uses.
+  private selectableDaemonAgents(): ConversationRuntimeSelection["agents"] {
+    const resolve =
+      this.options.agentRuntimeAdapterResolver ??
+      ((adapterId: string) => this.defaultAgentRuntimeAdapters.resolve(adapterId));
+    return daemonAgentOptions
+      .filter((option) => resolve(option.id) !== undefined)
+      .map((option) => ({ ...option }));
   }
 
   /** In-process, state-only resolver. It never performs a network probe. */
@@ -4949,6 +6298,16 @@ export class Cp2Store {
   registerE2eeDevice(
     ...args: Parameters<MessagingDomain["registerE2eeDevice"]>
   ): ReturnType<MessagingDomain["registerE2eeDevice"]> {
+    // A probation session may register its own new device, which undo revokes. It may not
+    // re-key, or bring back, a device that already exists: that would redirect the owner's
+    // encrypted messages, and undo could not tell the device from the owner's.
+    const existing = this.messagingDomain.e2eeDevicesMap.get(args[0].deviceId.trim());
+    if (
+      existing !== undefined &&
+      (JSON.stringify(existing.publicKey) !== JSON.stringify(args[0].publicKey) ||
+        existing.revokedAt !== null)
+    )
+      this.guardRecoveryProbation(args[0].sessionId, args[0].now);
     return this.messagingDomain.registerE2eeDevice(...args);
   }
   listE2eeDevices(
@@ -5534,6 +6893,7 @@ export class Cp2Store {
   inviteStaff(
     ...args: Parameters<StaffDomain["inviteStaff"]>
   ): ReturnType<StaffDomain["inviteStaff"]> {
+    this.guardRecoveryProbation(args[0].sessionId, args[0].now);
     return this.staffDomain.inviteStaff(...args);
   }
 
@@ -5552,6 +6912,7 @@ export class Cp2Store {
   changeStaffRole(
     ...args: Parameters<StaffDomain["changeStaffRole"]>
   ): ReturnType<StaffDomain["changeStaffRole"]> {
+    this.guardRecoveryProbation(args[0].sessionId, args[0].now);
     return this.staffDomain.changeStaffRole(...args);
   }
 
@@ -6135,11 +7496,42 @@ export class Cp2Store {
     return this.commerce.createUnifiedCheckout(...args);
   }
 
+  // The shopping tool loop has its own harness, so My Assistant's agent engine does not apply
+  // to it, but its selected model does. Any other chat, or a runtime that does not resolve,
+  // keeps the platform default model.
+  private buyerShoppingModel(
+    accountId: string,
+    conversationId: string | undefined
+  ): { modelId: string; executionTarget: ModelExecutionTarget } {
+    const fallback = {
+      modelId: this.platformDefaultRuntime.modelId,
+      executionTarget: this.platformDefaultRuntime.executionTarget
+    };
+    const conversation =
+      conversationId === undefined
+        ? undefined
+        : this.messagingDomain.conversationsMap.get(conversationId);
+    if (conversation?.accountId !== accountId || !conversation.isPermanentDaemon) return fallback;
+    try {
+      const model = this.selectableConversationModels().find(
+        (m) => m.id === this.resolveRuntimeBinding(conversation.id).selected.model.id
+      );
+      return model?.hostedExecutionTarget
+        ? { modelId: model.id, executionTarget: model.hostedExecutionTarget }
+        : fallback;
+    } catch (error) {
+      if (error instanceof Cp2Error) return fallback;
+      throw error;
+    }
+  }
+
   async createBuyerShoppingTurn(input: {
     sessionId: string | null;
     shoppingSessionId: string;
     requestId: string;
     message: string;
+    /** The chat the request was typed in; My Assistant's selected model then answers it. */
+    conversationId?: string;
     signal?: AbortSignal;
   }): Promise<BuyerShoppingTurnResult> {
     const actor = this.requirePinVerifiedSession(input.sessionId, new Date());
@@ -6147,11 +7539,14 @@ export class Cp2Store {
     if (shopping && shopping.accountId !== actor.account.id) {
       throw new Cp2Error(404, "buyer_shopping_session_not_found", "Shopping chat was not found.");
     }
-    const modelId = this.platformDefaultRuntime.modelId;
+    const { modelId, executionTarget } = this.buyerShoppingModel(
+      actor.account.id,
+      input.conversationId
+    );
     const agentId = `buyer-assistant:${actor.account.id}`;
     const adapter = this.modelRuntimeAdapterResolver?.({
       modelId,
-      executionTarget: this.platformDefaultRuntime.executionTarget,
+      executionTarget,
       agentId,
       shopId: ""
     });
@@ -6203,14 +7598,24 @@ export class Cp2Store {
     try {
       return await runBuyerAssistant(shopping, input, {
         provider,
+        toolAllowed: (tool) => this.assistantPermissionErrors(input.sessionId, tool).length === 0,
+        assertPermission: (tool) => {
+          const errors = this.assistantPermissionErrors(input.sessionId, tool);
+          if (errors.length) throw new Cp2Error(403, "assistant_permission_denied", errors[0]!);
+        },
         quote: (items) => this.commerce.quoteBuyerCheckout({ sessionId: input.sessionId, items }),
-        checkout: (items, idempotencyKey) =>
-          this.commerce.createUnifiedCheckout({
+        checkout: (items, idempotencyKey) => {
+          const errors = this.assistantPermissionErrors(input.sessionId, "commerce.checkout");
+          if (errors.length) throw new Cp2Error(403, "assistant_permission_denied", errors[0]!);
+          return this.commerce.createUnifiedCheckout({
             sessionId: input.sessionId,
             items,
             idempotencyKey
-          }).id,
+          }).id;
+        },
         execute: async (tool, values, current) => {
+          const errors = this.assistantPermissionErrors(input.sessionId, tool);
+          if (errors.length) throw new Cp2Error(403, "assistant_permission_denied", errors[0]!);
           // Recheck authentication before every operation, including after a slow model call.
           this.requirePinVerifiedSession(input.sessionId, new Date());
           if (tool === "commerce.discovery.search")
@@ -6940,6 +8345,8 @@ export class Cp2Store {
     now?: Date;
   }): AccountDeletionRequestSummary {
     const now = input.now ?? new Date();
+    // Before membership checks, so a probation session learns nothing from the refusal.
+    this.guardRecoveryProbation(input.sessionId, now);
     const session = this.requireAuthorizedSession(
       input.sessionId,
       input.businessId,
@@ -7061,6 +8468,7 @@ export class Cp2Store {
   disconnectLoginAccount(
     ...args: Parameters<OAuthDomain["disconnectLoginAccount"]>
   ): ReturnType<OAuthDomain["disconnectLoginAccount"]> {
+    this.guardRecoveryProbation(args[0].sessionId, args[0].now);
     return this.oauthDomain.disconnectLoginAccount(...args);
   }
   listConnectedSocialAccounts(
@@ -7071,6 +8479,8 @@ export class Cp2Store {
   disconnectSocialAccount(
     ...args: Parameters<OAuthDomain["disconnectSocialAccount"]>
   ): ReturnType<OAuthDomain["disconnectSocialAccount"]> {
+    const now = args[0].now ?? new Date();
+    this.requireOutsideRecoveryProbation(this.requireAnySession(args[0].sessionId, now), now);
     return this.oauthDomain.disconnectSocialAccount(...args);
   }
   getShopDeletionPreview(input: {
@@ -7097,6 +8507,8 @@ export class Cp2Store {
     now?: Date;
   }): ShopDeletionRequestResult {
     const now = input.now ?? new Date();
+    // Before membership checks, so a probation session learns nothing from the refusal.
+    this.guardRecoveryProbation(input.sessionId, now);
     const session = this.requireAuthorizedSession(
       input.sessionId,
       input.businessId,
@@ -8982,6 +10394,10 @@ export class Cp2Store {
     operation: string,
     values: Record<string, unknown>
   ) {
+    // Operations that grant an outside business or source lasting access, which undo cannot
+    // take back: not from a session on trusted-device recovery probation.
+    if (probationGuardedCommerceOperations.has(operation))
+      this.guardRecoveryProbation(input.sessionId, input.now);
     if (operation === "catalogue.describe")
       return this.describeCommerceCatalogue(input, String(values.description ?? ""));
     if (operation === "product.match") return this.matchCommerceProducts(input, values.identity);
@@ -10502,7 +11918,7 @@ export class Cp2Store {
     return this.requireAnySession(sessionRecord.id, now);
   }
 
-  recoverPasswordWithPasskey(input: {
+  recoverPasswordWithDevice(input: {
     sessionId: string | null;
     password: string;
     now?: Date;
@@ -10516,20 +11932,310 @@ export class Cp2Store {
       createPasswordCredential(session.account.id, input.password, now)
     );
     this.passkeyDomain.consumePinRecoveryGrant(session.session.id);
-    for (const candidate of this.sessions.values()) {
-      if (
-        candidate.accountId === session.account.id &&
-        candidate.id !== session.session.id &&
-        candidate.revokedAt === null
-      ) {
-        candidate.revokedAt = now.toISOString();
-        candidate.revocationReason = "password_reset";
+    this.revokeOtherSessionsForAccount(
+      session.account.id,
+      session.session.id,
+      "password_reset",
+      now
+    );
+    this.recordSecurityEvent("auth.password_reset", session.account.id, "success", now, {
+      method: "device"
+    });
+    this.notifyCredentialRecovery(session.account.id, "password", now);
+    this.markSessionPinVerified(session.session.id, now);
+    return this.requireAnySession(session.session.id, now);
+  }
+
+  private credentialRecoveryGrant(sessionId: string) {
+    return [...this.authTransactions.values()].find((record) => {
+      const credentialId = record.metadata.recoveryCredentialId;
+      return (
+        record.purpose === "recovery" &&
+        record.metadata.deviceRecoverySessionId === sessionId &&
+        record.consumedAt === null &&
+        typeof credentialId === "string" &&
+        (this.passkeyDomain.passkeysMap.has(credentialId) ||
+          (this.deviceBootstrapDomain.deviceRecoveryCredentialsMap.get(credentialId)
+            ?.requiresServerChallenge === true &&
+            this.deviceBootstrapDomain.deviceRecoveryCredentialsMap.get(credentialId)?.revokedAt ===
+              null))
+      );
+    });
+  }
+
+  hasCredentialRecoveryGrant(sessionId: string | null, now = new Date()): boolean {
+    const grant = sessionId === null ? undefined : this.credentialRecoveryGrant(sessionId);
+    return grant !== undefined && Date.parse(grant.expiresAt) > now.getTime();
+  }
+
+  getRecoveryNotificationRecipient(sessionId: string): string | undefined {
+    const session = this.requireAnySession(sessionId, new Date());
+    return this.verifiedBackupEmail(session.account.id);
+  }
+
+  private revokeCredentialRecoveryGrants(credentialId: string, now: Date): void {
+    for (const record of this.authTransactions.values()) {
+      if (record.metadata.recoveryCredentialId === credentialId && record.consumedAt === null) {
+        record.consumedAt = now.toISOString();
       }
     }
-    this.recordSecurityEvent("auth.password_reset", session.account.id, "success", now, {
-      method: "passkey"
+  }
+
+  listDeviceRecoveryCredentials(input: { sessionId: string | null; now?: Date }) {
+    const session = this.requireRecoveryEnrollmentSession(input.sessionId, input.now ?? new Date());
+    return [...this.deviceBootstrapDomain.deviceRecoveryCredentialsMap.values()]
+      .filter(
+        (credential) => credential.accountId === session.account.id && credential.revokedAt === null
+      )
+      .map(({ id, createdAt, lastAssertionAt }) => ({
+        id,
+        createdAt,
+        lastUsedAt: lastAssertionAt
+      }));
+  }
+
+  revokeDeviceRecoveryCredential(input: {
+    sessionId: string | null;
+    credentialId: string;
+    now?: Date;
+  }) {
+    const now = input.now ?? new Date();
+    const session = this.requireRecoveryEnrollmentSession(input.sessionId, now);
+    this.requireOutsideRecoveryProbation(session, now);
+    const credential = this.deviceBootstrapDomain.deviceRecoveryCredentialsMap.get(
+      input.credentialId
+    );
+    if (!credential || credential.accountId !== session.account.id)
+      throw new Cp2Error(404, "device_credential_not_found", "Recovery credential was not found.");
+    credential.revokedAt = now.toISOString();
+    credential.updatedAt = now.toISOString();
+    this.revokeCredentialRecoveryGrants(credential.id, now);
+    this.recordSecurityEvent("auth.device_credential_revoked", session.account.id, "success", now, {
+      credentialId: credential.id
     });
-    return this.requireAnySession(session.session.id, now);
+    return { revoked: true };
+  }
+
+  /**
+   * An Android screen-lock key that may approve a browser: this account's, not revoked, enrolled
+   * with device security, and attested by Android Key Attestation. Stricter than Android device
+   * recovery, which accepts unattested keys until ANDROID_KEY_ATTESTATION_REQUIRED is on: without
+   * attestation, `deviceSecurity` is the client's own claim, and a software key could approve.
+   */
+  private approvingDeviceKeyUsable(credentialId: string, accountId: string): boolean {
+    const key = this.deviceBootstrapDomain.deviceRecoveryCredentialsMap.get(credentialId);
+    // Nothing enrolled since a browser was let in may vouch for another one during probation.
+    const cutoff = this.recoveryApprovalDomain.probationCutoff(accountId);
+    return (
+      key?.accountId === accountId &&
+      key.revokedAt === null &&
+      key.requiresServerChallenge === true &&
+      key.attested === true &&
+      (cutoff === null || key.createdAt < cutoff)
+    );
+  }
+
+  /**
+   * For 24 hours after a browser is let in by trusted-device approval, every session family that
+   * was not already signed in (the browser, and any later login) cannot sign out other devices,
+   * remove or add credentials, or change how the account is recovered. The owner keeps their
+   * devices and credentials, and can undo the login from any device signed in before it.
+   */
+  private requireOutsideRecoveryProbation(
+    session: { account: AccountSummary; session?: { id: string } },
+    now: Date
+  ): void {
+    // Actors with no browser session (integration tokens) were never let in by approval.
+    if (session.session === undefined) return;
+    const family = this.sessions.get(session.session.id)?.sessionFamilyId;
+    if (
+      family !== undefined &&
+      this.recoveryApprovalDomain.inProbation(family, session.account.id, now)
+    )
+      throw new Cp2Error(
+        403,
+        "recovery_approval_probation",
+        "This device logged in within 24 hours of a browser being approved from another device, so it cannot change this yet. Use a device that was already logged in, or wait."
+      );
+  }
+
+  /** For the route guard: whether this live session is on trusted-device recovery probation. */
+  isSessionOnRecoveryProbation(sessionId: string, now = new Date()): boolean {
+    const session = this.getSession(sessionId, now);
+    if (session === null) return false;
+    const family = this.sessions.get(session.session.id)?.sessionFamilyId;
+    return (
+      family !== undefined &&
+      this.recoveryApprovalDomain.inProbation(family, session.account.id, now)
+    );
+  }
+
+  /** requireOutsideRecoveryProbation for wrappers that only hold a session id. */
+  private guardRecoveryProbation(sessionId: string | null | undefined, now = new Date()): void {
+    if (sessionId === null || sessionId === undefined) return;
+    this.requireOutsideRecoveryProbation(this.requireAnySession(sessionId, now), now);
+  }
+
+  private undoApprovedLogin(input: {
+    accountId: string;
+    collectedSessionId: string;
+    collectedFamilyId: string | null;
+    collectedAt: string;
+    approverSessionId: string;
+    credentialSnapshot: string | null;
+    trustedFamilies: string[];
+    now: Date;
+  }): void {
+    const approverFamily = this.sessions.get(input.approverSessionId)?.sessionFamilyId;
+    // Every family that was not signed in before the browser got in: the browser, and every later
+    // login with a PIN, passkey or key it set. Refreshes of earlier devices keep their family.
+    for (const session of this.sessions.values()) {
+      if (
+        session.accountId === input.accountId &&
+        session.revokedAt === null &&
+        session.sessionFamilyId !== approverFamily &&
+        !input.trustedFamilies.includes(session.sessionFamilyId)
+      ) {
+        session.revokedAt = input.now.toISOString();
+        session.revocationReason = "recovery_approval_withdrawn";
+      }
+    }
+    for (const passkey of [...this.passkeyDomain.passkeysMap.values()]) {
+      if (passkey.accountId === input.accountId && passkey.createdAt >= input.collectedAt) {
+        this.passkeyDomain.passkeysMap.delete(passkey.id);
+        this.revokeCredentialRecoveryGrants(passkey.id, input.now);
+      }
+    }
+    for (const key of this.deviceBootstrapDomain.deviceRecoveryCredentialsMap.values()) {
+      if (
+        key.accountId === input.accountId &&
+        key.revokedAt === null &&
+        key.createdAt >= input.collectedAt
+      ) {
+        key.revokedAt = input.now.toISOString();
+        key.updatedAt = input.now.toISOString();
+        this.revokeCredentialRecoveryGrants(key.id, input.now);
+      }
+    }
+    // This browser's E2EE devices and push subscriptions, which would keep receiving messages.
+    for (const device of this.messagingDomain.e2eeDevicesMap.values()) {
+      if (
+        device.accountId === input.accountId &&
+        device.revokedAt === null &&
+        device.createdAt >= input.collectedAt
+      )
+        device.revokedAt = input.now.toISOString();
+    }
+    for (const [id, subscription] of [...this.messagingDomain.pushSubscriptionsMap]) {
+      if (subscription.accountId === input.accountId && subscription.createdAt >= input.collectedAt)
+        this.messagingDomain.pushSubscriptionsMap.delete(id);
+    }
+    // API tokens minted since, which would otherwise outlive the sessions for 30 days.
+    for (const token of this.mcpTokensDomain.mcpAccessTokensMap.values()) {
+      if (
+        token.accountId === input.accountId &&
+        token.revokedAt === null &&
+        token.createdAt >= input.collectedAt
+      )
+        token.revokedAt = input.now.toISOString();
+    }
+    // Sign-in providers linked since (Google and others), so none of them leads back in.
+    for (const [id, identity] of [...this.oauthDomain.userIdentitiesMap]) {
+      if (identity.accountId === input.accountId && identity.linkedAt >= input.collectedAt)
+        this.oauthDomain.userIdentitiesMap.delete(id);
+    }
+    for (const grant of this.authTransactions.values()) {
+      if (
+        grant.purpose === "recovery" &&
+        grant.metadata.deviceRecoverySessionId === input.collectedSessionId &&
+        grant.consumedAt === null
+      )
+        grant.consumedAt = input.now.toISOString();
+    }
+    // Sign-in identities added since (a first shop's phone number becomes one).
+    for (const [id, identity] of [...this.accountIdentities]) {
+      if (identity.accountId !== input.accountId || identity.createdAt < input.collectedAt)
+        continue;
+      this.accountIdentities.delete(id);
+      const key = destinationAccountKey(identity.type, identity.normalizedValue);
+      if (this.identityAccountByValue.get(key) === input.accountId)
+        this.identityAccountByValue.delete(key);
+    }
+    // Put back the owner's PIN, password and phone as they were when the browser got in.
+    const before = parseCredentialSnapshot(input.credentialSnapshot);
+    if (before !== null) {
+      if ((this.accountPinHashes.get(input.accountId) ?? null) !== before.pinHash) {
+        if (before.pinHash === null) this.accountPinHashes.delete(input.accountId);
+        else this.accountPinHashes.set(input.accountId, before.pinHash);
+      }
+      const password = this.passwordCredentials.get(input.accountId) ?? null;
+      if (JSON.stringify(password) !== JSON.stringify(before.password)) {
+        if (before.password === null) this.passwordCredentials.delete(input.accountId);
+        else this.passwordCredentials.set(input.accountId, before.password);
+      }
+      const userId = this.userByAccount.get(input.accountId);
+      const user = userId === undefined ? undefined : this.users.get(userId);
+      if (user !== undefined && before.phone !== null)
+        this.users.set(user.id, { ...user, ...before.phone });
+    }
+    this.recordSecurityEvent(
+      "auth.recovery_approval_undone",
+      input.accountId,
+      "success",
+      input.now,
+      {
+        sessionId: input.collectedSessionId
+      }
+    );
+  }
+
+  /** In-app notice to the owner's shops, so an approval obtained by a phishing call is visible. */
+  private notifyBrowserApproved(accountId: string, now: Date): void {
+    for (const business of this.businesses.values()) {
+      if (
+        ![...this.memberships.values()].some(
+          (membership) =>
+            membership.businessId === business.id &&
+            membership.userId === this.userByAccount.get(accountId) &&
+            membership.role === "owner"
+        )
+      )
+        continue;
+      this.notificationsDomain.recordSecurityNotification({
+        businessId: business.id,
+        type: "security_event",
+        title: "A browser was let in to your account",
+        body: "You approved a browser from a logged-in device, and it is now logged in. If this was not you, open Login & security on the device that approved it within 24 hours and choose Undo, this wasn't me.",
+        sourceId: randomUUID(),
+        now
+      });
+    }
+  }
+
+  private notifyCredentialRecovery(
+    accountId: string,
+    credential: "PIN" | "password",
+    now: Date
+  ): void {
+    for (const business of this.businesses.values()) {
+      if (
+        ![...this.memberships.values()].some(
+          (membership) =>
+            membership.businessId === business.id &&
+            membership.userId === this.userByAccount.get(accountId) &&
+            membership.role === "owner"
+        )
+      )
+        continue;
+      this.notificationsDomain.recordSecurityNotification({
+        businessId: business.id,
+        type: "security_event",
+        title: `Account ${credential} recovered`,
+        body: `Your Grogoni ${credential} was reset using a registered recovery credential. Other sessions were signed out. If this was not you, review your trusted devices and revoke them.`,
+        sourceId: randomUUID(),
+        now
+      });
+    }
   }
 
   private verifiedBackupEmail(accountId: string): string | undefined {
@@ -10585,6 +12291,7 @@ export class Cp2Store {
   }): { changed: true; revokedSessions: number } {
     const now = input.now ?? new Date();
     const session = this.requireAnySession(input.sessionId, now);
+    this.requireOutsideRecoveryProbation(session, now);
     const credential = this.passwordCredentials.get(session.account.id);
     if (credential === undefined) {
       throw new Cp2Error(409, "password_not_set", "A password has not been set for this account.");
@@ -10631,6 +12338,7 @@ export class Cp2Store {
   }): { created: true } {
     const now = input.now ?? new Date();
     const session = this.requireAnySession(input.sessionId, now);
+    this.requireOutsideRecoveryProbation(session, now);
     if (this.passwordCredentials.has(session.account.id)) {
       throw new Cp2Error(
         409,
@@ -10645,7 +12353,7 @@ export class Cp2Store {
       }
       this.verifyAccountPinForSession(session, input.currentPin, now);
     } else {
-      this.requireRecentlyAuthenticatedSession(input.sessionId, now);
+      this.requireFirstCredentialSession(input.sessionId, now);
     }
 
     this.verifyMfaForCredentialChange(session.account.id, input.mfaCode, now);
@@ -10655,6 +12363,7 @@ export class Cp2Store {
       createPasswordCredential(session.account.id, input.password, now)
     );
     this.recordSecurityEvent("auth.password_created", session.account.id, "success", now, {});
+    this.promoteGuestWithCredential(session.account.id, now);
     return { created: true };
   }
 
@@ -10663,6 +12372,7 @@ export class Cp2Store {
   } {
     const now = input.now ?? new Date();
     const session = this.requireRecentlyAuthenticatedSession(input.sessionId, now);
+    this.requireOutsideRecoveryProbation(session, now);
     if (this.activeMfaFactors(session.account.id).length === 0)
       throw new Cp2Error(409, "mfa_not_enabled", "MFA is not enabled.");
     return { recoveryCodes: this.replaceRecoveryCodes(session.account.id, now) };
@@ -10692,6 +12402,7 @@ export class Cp2Store {
     | { kind: "merge"; email: string; sourceAccountId: string; targetAccountId: string } {
     const now = input.now ?? new Date();
     const session = this.requireRecentlyAuthenticatedSession(input.sessionId, now);
+    this.requireOutsideRecoveryProbation(session, now);
     const email = normalizeDestination("email", input.email);
     const linkedAccountId = this.resolveAnyIdentityAccount("email", email);
     if (linkedAccountId !== undefined && linkedAccountId !== session.account.id) {
@@ -10738,6 +12449,7 @@ export class Cp2Store {
   }): AuthTransactionRecord {
     const now = input.now ?? new Date();
     const session = this.requireAnySession(input.sessionId, now);
+    this.requireOutsideRecoveryProbation(session, now);
     if (session.account.primaryAuthChannel !== "device") {
       throw new Cp2Error(409, "account_merge_not_available", "Account joining is unavailable.");
     }
@@ -10896,6 +12608,7 @@ export class Cp2Store {
   }): { disabled: true } {
     const now = input.now ?? new Date();
     const session = this.requireRecentlyAuthenticatedSession(input.sessionId, now);
+    this.requireOutsideRecoveryProbation(session, now);
     const factor = this.mfaFactors.get(input.factorId);
     if (
       !factor ||
@@ -11514,6 +13227,56 @@ export class Cp2Store {
     }
 
     return session;
+  }
+
+  /** A guest's first credential has nothing to be proven with, however old the session is. */
+  private requireFirstCredentialSession(sessionId: string | null, now: Date): AuthSessionView {
+    const session = this.requirePinVerifiedSession(sessionId, now);
+    return this.guestWithoutCredential(session.account)
+      ? session
+      : this.requireRecoveryEnrollmentSession(sessionId, now);
+  }
+
+  private guestWithoutCredential(account: AccountSummary): boolean {
+    return account.primaryAuthChannel === "device" && !this.hasCredential(account.id);
+  }
+
+  private hasCredential(accountId: string): boolean {
+    return (
+      this.accountPinHashes.has(accountId) ||
+      this.passwordCredentials.has(accountId) ||
+      [...this.passkeyDomain.passkeysMap.values()].some((item) => item.accountId === accountId)
+    );
+  }
+
+  private requireRecoveryEnrollmentSession(sessionId: string | null, now: Date): AuthSessionView {
+    const session = this.requireRecentlyAuthenticatedSession(sessionId, now);
+    const accountId = session.account.id;
+    const hasCredential =
+      this.accountPinHashes.has(accountId) ||
+      this.passwordCredentials.has(accountId) ||
+      [...this.passkeyDomain.passkeysMap.values()].some(
+        (credential) => credential.accountId === accountId
+      );
+    if (hasCredential && this.sessions.get(session.session.id)?.pinVerifiedAt == null) {
+      throw new Cp2Error(
+        401,
+        "recent_authentication_required",
+        "Sign in with your PIN, password or passkey before enrolling recovery credentials."
+      );
+    }
+    return session;
+  }
+
+  /**
+   * Changing a phone needs a recently proven credential. A guest who cannot sign in has nothing to
+   * prove it with, so an old guest session must still be able to add the phone a shop needs.
+   */
+  private requireOwnerPhoneSession(sessionId: string | null, now: Date): AuthSessionView {
+    const session = this.requirePinVerifiedSession(sessionId, now);
+    return this.isGuestWithoutSignIn(session.account)
+      ? session
+      : this.requireRecentlyAuthenticatedSession(sessionId, now);
   }
 
   private requireRecentlyAuthenticatedSession(
@@ -12889,16 +14652,42 @@ export class Cp2Store {
     reason: string,
     now: Date
   ): void {
+    // A session on trusted-device probation (a browser let in by approval, or anything that logged
+    // in after it) never signs out devices that were signed in before, so the owner keeps them and
+    // can undo. The approving session is always kept.
+    const approver = this.recoveryApproverSession(exceptSessionId);
+    const caller = this.sessions.get(exceptSessionId)?.sessionFamilyId;
+    const onProbation =
+      caller !== undefined && this.recoveryApprovalDomain.inProbation(caller, accountId, now);
     for (const session of this.sessions.values()) {
       if (
         session.accountId === accountId &&
         session.id !== exceptSessionId &&
+        session.id !== approver &&
+        !(
+          onProbation &&
+          !this.recoveryApprovalDomain.inProbation(session.sessionFamilyId, accountId, now)
+        ) &&
         session.revokedAt === null
       ) {
         session.revokedAt = now.toISOString();
         session.revocationReason = reason;
       }
     }
+  }
+
+  /** The approving device's session for a browser let in by approval, consumed grant or not. */
+  private recoveryApproverSession(sessionId: string): string | undefined {
+    for (const record of this.authTransactions.values()) {
+      const approver = record.metadata.recoveryApproverSessionId;
+      if (
+        record.purpose === "recovery" &&
+        record.metadata.deviceRecoverySessionId === sessionId &&
+        typeof approver === "string"
+      )
+        return approver;
+    }
+    return undefined;
   }
 
   private hasAccountPinHash(accountId: string): boolean {

@@ -1,5 +1,12 @@
 {
   "$schema": "./release.schema.json",
-  "note": "Static manifest describing the current verified Android release. When `release` is null the browser hides the native-install call-to-action entirely; publishing a release means replacing `release` with real, signed artifact metadata (never a placeholder). See docs/architecture/grogoni-native-android-audit.md.",
-  "release": null
+  "note": "Direct website distribution. Metadata comes from a verified, non-debuggable signed APK.",
+  "release": {
+    "packageName": "market.grogoni.app",
+    "versionName": "0.1.0",
+    "versionCode": 5,
+    "downloadUrl": "https://grogoni.com/android/grogoni-0.1.0-5.apk",
+    "sha256": "A2:C5:14:AD:E7:8E:85:9D:66:B3:8E:07:F0:D6:D5:F4:9F:44:A5:27:EC:63:59:26:06:2B:9A:74:77:F5:1F:68",
+    "minSdk": 23
+  }
 }

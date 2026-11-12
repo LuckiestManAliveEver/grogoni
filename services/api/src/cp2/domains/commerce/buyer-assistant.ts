@@ -24,6 +24,8 @@ const allowedTools: RuntimeToolName[] = [
 ];
 
 export interface BuyerAssistantDeps {
+  toolAllowed?: (tool: RuntimeToolName) => boolean;
+  assertPermission?: (tool: RuntimeToolName) => void;
   provider: RuntimeModelProvider;
   execute: (
     tool: RuntimeToolName,
@@ -40,6 +42,7 @@ export async function runBuyerAssistant(
   input: { message: string; requestId: string; signal?: AbortSignal },
   deps: BuyerAssistantDeps
 ): Promise<BuyerShoppingTurnResult> {
+  const enabledTools = allowedTools.filter((tool) => deps.toolAllowed?.(tool) ?? true);
   const previous = session.turns.find((turn) => turn.requestId === input.requestId);
   if (previous) return previous.result;
   const record = (reply: string, checkoutId?: string): BuyerShoppingTurnResult => {
@@ -102,7 +105,7 @@ export async function runBuyerAssistant(
     "When the customer wants checkout, propose commerce.checkout with all selected connected and external items in one items array. It only prepares a review here; a separate exact customer confirmation requests the orders.",
     "Connected items must use canonical IDs returned by commerce.search. External items require sourceKind marketplace_connector, sourceId retailer hostname, sourceLabel retailer hostname, title, quantity and websiteUrl from an observed product/cart page. All other IDs may be null. External prices remain unconfirmed and are excluded from totals.",
     'Return JSON: {"type":"tool","toolName":"...","input":{...},"reason":"..."} or {"type":"response","message":"..."}. Only one tool per response.',
-    JSON.stringify(allowedTools.map((name) => runtimeToolRegistry[name]))
+    JSON.stringify(enabledTools.map((name) => runtimeToolRegistry[name]))
   ].join("\n");
   for (let step = 0; step < 6; step++) {
     input.signal?.throwIfAborted();
@@ -124,7 +127,7 @@ export async function runBuyerAssistant(
           .join("\n"),
         conversationHistory: session.history,
         agentInstructions: instructions,
-        allowedTools,
+        allowedTools: enabledTools,
         schemaVersion: "cp11-runtime-model-v1"
       },
       input.signal
@@ -145,7 +148,7 @@ export async function runBuyerAssistant(
       );
     const { proposal, kind } = parsed.output;
     if (kind !== "tool") return record(proposal.reason);
-    if (!allowedTools.includes(proposal.toolName) || !proposal.validation.ok) {
+    if (!enabledTools.includes(proposal.toolName) || !proposal.validation.ok) {
       toolResults.push(
         compileUntrustedWebObservation(
           JSON.stringify({
@@ -156,6 +159,7 @@ export async function runBuyerAssistant(
       );
       continue;
     }
+    deps.assertPermission?.(proposal.toolName);
     if (proposal.toolName === "commerce.checkout") {
       const items = (proposal.input.items as BuyCheckoutItemInput[]).map((item) => ({
         ...item,

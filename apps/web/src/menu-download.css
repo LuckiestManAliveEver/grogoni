@@ -1,0 +1,28 @@
+.menu-drawer-module .stacked-module-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.menu-download-footer {
+  margin-top: auto;
+  padding-top: 1rem;
+}
+
+.menu-download-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 44px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--grogoni-line-strong);
+  border-radius: 999px;
+  color: var(--grogoni-ink-soft);
+  font-size: 0.75rem;
+  text-decoration: none;
+}
+
+.menu-download-button:hover {
+  background: var(--grogoni-paper-dim);
+}

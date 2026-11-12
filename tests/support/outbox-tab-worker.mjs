@@ -36,8 +36,17 @@ function withStorage(work, write) {
   }
 }
 
+let scanSnapshot;
 const storage = {
-  getItem: (key) => withStorage((values) => values[key] ?? null, false),
+  get length() {
+    scanSnapshot = withStorage((values) => values, false);
+    return Object.keys(scanSnapshot).length;
+  },
+  key: (index) => Object.keys(scanSnapshot ?? {})[index] ?? null,
+  getItem: (key) =>
+    key.startsWith("grogoni.messaging-outbox.journal.") && scanSnapshot
+      ? (scanSnapshot[key] ?? null)
+      : withStorage((values) => values[key] ?? null, false),
   setItem: (key, value) =>
     withStorage((values) => {
       values[key] = value;

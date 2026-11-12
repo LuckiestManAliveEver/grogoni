@@ -315,6 +315,14 @@ export function useAuthState(deps: UseAuthStateDeps) {
 
   function rejectDefinitiveAuthenticationFailure(error: unknown): boolean {
     if (!isDefinitiveAuthenticationError(error)) return false;
+    if (
+      readCachedAuthSession()?.account.identityLevel === "device" ||
+      sessionStorage.getItem(guestBrowsingStorageKey) === "true"
+    ) {
+      // Restore the guest's device session without interrupting messaging with a login form.
+      void ensureAuthenticatedSession();
+      return true;
+    }
     requireReauthentication("Your session expired. Sign in to continue.");
     return true;
   }
@@ -481,7 +489,10 @@ export function useAuthState(deps: UseAuthStateDeps) {
       // /signup, or an account-deletion/restoration intent, is a deliberate enough request to show
       // that screen instead of the chat shell.
       const isDeliberateAuthFlow =
-        initialAuthenticationTarget !== null || accountDeletionIntent || accountRestorationIntent;
+        (initialAuthenticationTarget !== null &&
+          sessionStorage.getItem(guestBrowsingStorageKey) !== "true") ||
+        accountDeletionIntent ||
+        accountRestorationIntent;
 
       if (!isDeliberateAuthFlow) {
         const continued = await continueToGrogoni();

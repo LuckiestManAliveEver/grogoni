@@ -192,6 +192,16 @@ export async function apiCloudFetch<T>(
   const base = readApiBaseUrl();
   const url = pathOrUrl.startsWith("http") ? pathOrUrl : `${base}${pathOrUrl}`;
   const method = options?.method ?? "GET";
+  if (
+    changesSignedInAccount(pathOrUrl, method.toUpperCase()) &&
+    typeof document !== "undefined" &&
+    document.querySelector('meta[name="grogoni-native-channel"]')
+  ) {
+    // Best effort: a stale or missing chunk must not block signing in or out.
+    await import("../device-messaging")
+      .then(({ deviceMessagingAdapter }) => deviceMessagingAdapter.call("disconnect"))
+      .catch(() => undefined);
+  }
   const requestId = options?.requestId ?? createRequestId();
   const headers = {
     ...deviceSessionHeaders(),
@@ -352,6 +362,7 @@ function isAuthenticationEntryPoint(pathOrUrl: string): boolean {
       pathname === "/auth/mfa/challenge" ||
       pathname === "/auth/mfa/verify" ||
       pathname.startsWith("/auth/pin/") ||
+      pathname === "/auth/password/verify" ||
       pathname.startsWith("/auth/otp/") ||
       pathname.startsWith("/auth/passkeys/login/") ||
       pathname.startsWith("/auth/oauth/")

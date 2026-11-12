@@ -1,4 +1,8 @@
 import { executeDaemonBusinessSkill } from "./daemon/business-skills.js";
+import {
+  daemonConversationRuntime,
+  loadConversationTaskRuntime
+} from "./daemon/conversation-runtime.js";
 import { loadDaemonConversationHistory } from "./daemon/conversation-history.js";
 import { readWebPushConfiguration } from "./cp2/push.js";
 import { registerCommerceRoutes } from "./cp2/domains/commerce/routes.js";
@@ -74,6 +78,13 @@ import {
   readGuestIntentConfiguration
 } from "./guest-intent/service.js";
 import { createPostgresGuestIntentLimiter } from "./guest-intent/rate-limit.js";
+
+export {
+  androidAttestationProblem,
+  fetchAndroidRevokedSerials,
+  grogoniAndroidPackage,
+  grogoniAndroidSigners
+} from "./cp2/android-key-attestation.js";
 
 export interface EdgeDomainDatabase {
   transaction: <T>(action: (client: PoolClient) => Promise<T>) => Promise<T>;
@@ -395,6 +406,11 @@ export async function createEdgeDomainRoutes(
           await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [
             scope.directPairLock
           ]);
+        // Before the account lock, on every recovery-approval route (edge-snapshot-scope.ts).
+        if (scope.recoveryApprovalLock)
+          await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [
+            scope.recoveryApprovalLock
+          ]);
         if (!isEdgeFastPathWrite(request.method, path)) {
           if (scope.accountId)
             await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [
@@ -661,6 +677,7 @@ export async function createEdgeDomainRoutes(
             }),
             ledger
           ),
+          ...(runtime.waitUntil === undefined ? {} : { waitUntil: runtime.waitUntil }),
           fulfillmentService: fulfillment,
           webPublicUrl: process.env.WEB_PUBLIC_URL ?? "https://grogoni.com",
           realtimeAllowedOrigins: (process.env.WEB_ORIGINS ?? "https://grogoni.com").split(","),
@@ -1041,6 +1058,16 @@ export async function createEdgeDomainRoutes(
             throw new DaemonHttpError(401, "auth_required", "Authentication is required.");
           return user;
         },
+        // The runtime the task's conversation is on now, so a scheduled, recurring or queued
+        // task follows a switch made in My Assistant's details after it was created.
+        currentConversationRuntime: (task) =>
+          task.owner_user_id && task.payload.kind === "agent" && task.payload.conversation
+            ? loadConversationTaskRuntime(
+                { pool: daemonDatabase.queue },
+                task.owner_user_id,
+                task.payload.conversation.id
+              )
+            : Promise.resolve(null),
         deliverConversationTask: async (task) => {
           if (!task.owner_user_id || task.payload.kind !== "agent" || !task.payload.conversation)
             return;
@@ -1130,11 +1157,10 @@ export async function createEdgeDomainRoutes(
               throw new DaemonHttpError(
                 403,
                 "task_conversation_invalid",
-                "Background assistant tasks require your daemon conversation."
+                "Background assistant tasks require one of your assistant conversations."
               );
             try {
-              const runtime = store.resolveRuntimeBinding(conversationId);
-              return { modelId: runtime.selected.model.id };
+              return daemonConversationRuntime(store, conversationId);
             } catch {
               throw new DaemonHttpError(
                 503,

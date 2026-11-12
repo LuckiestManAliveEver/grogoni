@@ -3,11 +3,21 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath, URL } from "node:url";
 import { Pool } from "pg";
-import { databasePoolConfig, readDatabaseUrl } from "./database-connection.mjs";
+import {
+  databasePoolConfig,
+  describeDatabaseTarget,
+  readSchemaChangeDatabaseUrl
+} from "./database-connection.mjs";
 
 const rootDir = resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const rollbacksDir = resolve(rootDir, "infra/db/rollbacks");
-const databaseUrl = readDatabaseUrl();
+let databaseUrl;
+try {
+  databaseUrl = readSchemaChangeDatabaseUrl();
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(1);
+}
 const rollbackEnabled = process.env.ALLOW_DB_ROLLBACK?.trim().toLowerCase() === "true";
 const requestedSteps = Number(process.env.DB_ROLLBACK_STEPS ?? "0");
 
@@ -18,10 +28,11 @@ if (!rollbackEnabled) {
 
 if (databaseUrl === null) {
   console.error(
-    "DATABASE_URL or DIRECT_DATABASE_URL is required to roll back database migrations."
+    "MIGRATION_DATABASE_URL, DIRECT_DATABASE_URL or DATABASE_URL is required to roll back database migrations."
   );
   process.exit(1);
 }
+console.log(`Rolling back ${describeDatabaseTarget(databaseUrl)}`);
 
 if (!Number.isInteger(requestedSteps) || requestedSteps <= 0) {
   console.error("DB_ROLLBACK_STEPS must be a positive integer.");

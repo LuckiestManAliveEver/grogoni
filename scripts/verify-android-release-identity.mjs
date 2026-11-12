@@ -33,14 +33,14 @@ check(
   ["proposed", "approved"].includes(identity.android?.applicationIdStatus),
   "applicationIdStatus is invalid"
 );
-check(identity.android?.wrapper === "trusted-web-activity", "wrapper must be trusted-web-activity");
+check(identity.android?.wrapper === "native-kotlin", "wrapper must be native-kotlin");
 check(identity.android?.distribution === "google-play", "distribution must be google-play");
 check(identity.android?.firstTrack === "internal", "firstTrack must be internal");
 check(identity.android?.versionName === rootPackage.version, "versionName must match package.json");
 check(Number.isInteger(identity.android?.versionCode), "versionCode must be an integer");
 check(identity.android?.versionCode > 0, "versionCode must be positive");
 check(identity.android?.minSdk >= 23, "minSdk must be at least 23");
-check(identity.android?.targetSdk >= 35, "targetSdk must be at least 35");
+check(identity.android?.targetSdk >= 36, "targetSdk must be at least 36");
 check(
   identity.android?.compileSdk >= identity.android?.targetSdk,
   "compileSdk must not be lower than targetSdk"

@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 const registry = readFileSync("apps/web/src/generated-surface-registry.tsx", "utf8");
 const grogoni = readFileSync("apps/web/src/grogoni-application-shared.ts", "utf8");
 const chatRuntime = readFileSync("apps/web/src/hooks/useChatRuntimeState.ts", "utf8");
+const chatToolResults = readFileSync("apps/web/src/hooks/chat-tool-results.ts", "utf8");
 const sharedTypes = readFileSync("packages/shared-types/src/index.ts", "utf8");
 const validation = readFileSync("services/api/src/cp2/domains/messaging/shared.ts", "utf8");
 
@@ -25,12 +26,12 @@ describe("products chat-invokable capability (Phase 4a)", () => {
   });
 
   it("posts the products card into the owner's own conversation after a successful product tool run", () => {
-    expect(chatRuntime).toContain(
-      "const productMutationToolNames: ReadonlySet<string> = new Set<RuntimeToolName>(["
+    expect(chatToolResults).toContain(
+      "export const productMutationToolNames: ReadonlySet<string> = new Set<RuntimeToolName>(["
     );
-    expect(chatRuntime).toContain('"product.create"');
-    expect(chatRuntime).toContain('"product.update"');
-    expect(chatRuntime).toContain('"product.stock_adjust"');
+    expect(chatToolResults).toContain('"product.create"');
+    expect(chatToolResults).toContain('"product.update"');
+    expect(chatToolResults).toContain('"product.stock_adjust"');
     expect(chatRuntime).toContain(
       "productMutationToolNames.has(result.turn.plan.toolName) &&\n        result.turn.plan.executedAt !== null"
     );

@@ -36,23 +36,25 @@ describe("passkey is fallback-only, not a main-flow login method", () => {
     expect(methodsBlock).toContain("Use account PIN");
   });
 
-  it("still lets a phone account recover access with a passkey ceremony when PIN is unusable", () => {
+  it("uses a verified passkey ceremony only for recovery", () => {
     const recoveryBlock = source.slice(
       source.indexOf("async function startRecovery()"),
       source.indexOf("async function verifyAndResetPassword()")
     );
-    expect(recoveryBlock).toContain('purpose: "pin_recovery"');
-    expect(recoveryBlock).toContain("/auth/passkeys/login/options");
-    expect(recoveryBlock).toContain("/auth/passkeys/login/verify");
+    expect(recoveryBlock).toContain(
+      "await recoverWithDeviceSecurity(currentIdentifierBody().identifier)"
+    );
+    expect(recoveryBlock).not.toContain("recoverDeviceAccount");
+
     expect(source).toContain("Trouble logging in?");
   });
 
-  it("requires a password at signup and offers a passkey only as an optional backup afterward", () => {
+  it("requires a password at signup and offers device recovery afterward", () => {
     expect(signupSource).not.toContain("addPassword");
     expect(signupSource).not.toContain("Passkeys are the preferred way to return to Grogoni");
     expect(signupSource).not.toContain("passwordless account needs a passkey");
     expect(signupSource).toContain("password.length < 10");
-    expect(signupSource).toContain("Create a passkey");
+    expect(signupSource).toContain("Secure this device");
     expect(signupSource).toContain("Do this later");
   });
 });
