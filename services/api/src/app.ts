@@ -24,6 +24,28 @@ const authRateLimitMax = 60;
 const rateLimitWindowMs = 60_000;
 const reservedStorefrontSubdomains = new Set(["api", "www"]);
 export const interactiveResponseBudgetMs = 150;
+const priorityOptimizationBudgetMs = 100;
+
+export function normalizePriorityCommand(command?: string | null): "balanced" | "optimized" {
+  const normalized = command?.trim().toLowerCase();
+  if (normalized === "balanced" || normalized === "normal") return "balanced";
+  if (normalized === "optimized" || normalized === "optimize" || normalized === "priority")
+    return "optimized";
+  return "optimized";
+}
+
+export function getEffectiveInteractiveBudgetMs(command?: string | null): number {
+  return normalizePriorityCommand(command ?? process.env.PRIORITY_COMMAND) === "optimized"
+    ? priorityOptimizationBudgetMs
+    : interactiveResponseBudgetMs;
+}
+
+export function getEffectivePersistenceDeadlineMs(command?: string | null): number {
+  const defaultDeadlineMs = Math.max(250, interactiveResponseBudgetMs * 4);
+  if (normalizePriorityCommand(command ?? process.env.PRIORITY_COMMAND) !== "optimized")
+    return defaultDeadlineMs;
+  return Math.min(defaultDeadlineMs, Math.max(150, priorityOptimizationBudgetMs * 2));
+}
 
 export interface BuildApiOptions {
   allowedCorsOrigins?: string[];
@@ -459,6 +481,7 @@ export function buildApi(options: BuildApiOptions = {}) {
   app.addHook("onResponse", async (request, reply) => {
     const elapsedMs = Math.max(0, reply.elapsedTime);
     const budgetClass = responseBudgetClass(request.method, request.url);
+    const effectiveBudgetMs = getEffectiveInteractiveBudgetMs(process.env.PRIORITY_COMMAND);
     reply.log.debug({ event: "http.response_timing", elapsedMs, budgetClass });
     options.metrics?.httpRequestDuration({
       method: request.method,
@@ -479,12 +502,12 @@ export function buildApi(options: BuildApiOptions = {}) {
         "Security control rejected the request."
       );
     }
-    if (budgetClass === "interactive" && elapsedMs > interactiveResponseBudgetMs) {
+    if (budgetClass === "interactive" && elapsedMs > effectiveBudgetMs) {
       request.log.warn(
         {
           event: "http.response_budget_exceeded",
           elapsedMs,
-          budgetMs: interactiveResponseBudgetMs,
+          budgetMs: effectiveBudgetMs,
           method: request.method,
           route: request.routeOptions.url
         },
@@ -510,10 +533,11 @@ export function buildApi(options: BuildApiOptions = {}) {
   app.addHook("onSend", async (request, reply, payload) => {
     const budgetClass = responseBudgetClass(request.method, request.url);
     const elapsedMs = Math.max(0, reply.elapsedTime);
+    const effectiveBudgetMs = getEffectiveInteractiveBudgetMs(process.env.PRIORITY_COMMAND);
     reply.header("server-timing", `app;dur=${elapsedMs.toFixed(1)}`);
     reply.header("x-grogoni-response-budget-class", budgetClass);
     if (budgetClass === "interactive") {
-      reply.header("x-grogoni-response-budget-ms", String(interactiveResponseBudgetMs));
+      reply.header("x-grogoni-response-budget-ms", String(effectiveBudgetMs));
     }
     return payload;
   });
@@ -811,9 +835,12 @@ function withPersistenceFlushDeadline<T>(flush: Promise<T>, request: FastifyRequ
   // Keep the user-facing auth and runtime requests from sitting behind a stalled shared-flush
   // queue for many seconds. The write itself remains allowed to finish in the background, but the
   // HTTP response must fail fast enough to avoid long waits for the client when the queue is jammed.
+  const priorityMode = normalizePriorityCommand(process.env.PRIORITY_COMMAND);
   const deadlineMs = positiveIntegerFromEnv(
     "PERSISTENCE_FLUSH_RESPONSE_DEADLINE_MS",
-    Math.max(250, interactiveResponseBudgetMs * 4)
+    priorityMode === "optimized"
+      ? Math.min(Math.max(250, interactiveResponseBudgetMs * 4), Math.max(150, priorityOptimizationBudgetMs * 2))
+      : Math.max(250, interactiveResponseBudgetMs * 4)
   );
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => {
