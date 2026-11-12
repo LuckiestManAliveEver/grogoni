@@ -6,6 +6,7 @@ import {
   agentTurnResponse,
   claimAgentTurn,
   failAgentTurn,
+  isUnfinishedAgentTurn,
   nextQueuedTurn,
   readAgentTurnForSession,
   recoverConversationTurns,
@@ -189,7 +190,7 @@ export function createAgentTurnWorker(deps: AgentTurnWorkerDeps) {
         { code: "agent_turn_not_found", message: "This agent turn was not found." },
         { status: 404 }
       );
-    if (turn.status === "pending" || turn.status === "running") {
+    if (isUnfinishedAgentTurn(turn.status)) {
       const conversationId = turn.conversationId;
       const restart = await deps.queue((db) => recoverConversationTurns(db, conversationId));
       if (restart !== null) {

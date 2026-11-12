@@ -356,6 +356,11 @@ describe("PhoneFirstAuthentication login methods", () => {
       select.value = "email";
       select.dispatchEvent(new Event("change", { bubbles: true }));
     });
+    await act(async () => {
+      const reset = document.querySelectorAll("select")[1]!;
+      reset.value = "password";
+      reset.dispatchEvent(new Event("change", { bubbles: true }));
+    });
     await change(inputByLabel("Backup email"), "backup@example.test");
     await click(buttonByText("Send email recovery code"));
     await change(inputByLabel("Password"), "secure new password");
@@ -369,5 +374,57 @@ describe("PhoneFirstAuthentication login methods", () => {
     expect(
       mockedApiFetch.mock.calls.filter(([path]) => path === "/auth/recovery/verify")
     ).toHaveLength(1);
+  });
+  it("recovers a PIN through email and retries MFA without reusing the email code", async () => {
+    let resets = 0;
+    const completed = { account: { id: "email-pin-owner" } };
+    mockedApiFetch.mockImplementation(async (path) => {
+      if (path === "/auth/login/methods") return { recoveryAvailable: true };
+      if (path === "/auth/recovery/start")
+        return { transactionId: "pin-proof", message: "Check your email." };
+      if (path === "/auth/recovery/verify") return { verified: true };
+      if (path === "/auth/recovery/reset-pin") {
+        if (++resets === 1)
+          throw new ApiRequestError(401, "Enter your MFA code.", { code: "mfa_required" });
+        return completed;
+      }
+      throw new Error(`Unexpected ${path}`);
+    });
+    renderLogin();
+    await change(inputByLabel("Phone number"), "0712345678");
+    await click(buttonByText("Trouble logging in?"));
+    await act(async () => {
+      const select = document.querySelector("select")!;
+      select.value = "email";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await change(inputByLabel("Backup email"), "backup@example.test");
+    await click(buttonByText("Send email recovery code"));
+    expect(host.textContent).toContain("New 4-digit PIN");
+    expect(host.textContent).not.toContain("Reset password");
+    await change(inputByLabel("Verification code"), "483921");
+    await change(inputByLabel("New 4-digit PIN"), "8246");
+    await change(inputByLabel("Confirm new PIN"), "7392");
+    expect(buttonByText("Reset PIN").disabled).toBe(true);
+    await change(inputByLabel("Confirm new PIN"), "8246");
+    await click(buttonByText("Reset PIN"));
+    expect(onAuthenticated).not.toHaveBeenCalled();
+    await change(inputByLabel("MFA code"), "483921");
+    await click(buttonByText("Reset PIN"));
+    expect(onAuthenticated).toHaveBeenCalledWith(completed);
+    expect(
+      mockedApiFetch.mock.calls.filter(([path]) => path === "/auth/recovery/verify")
+    ).toHaveLength(1);
+    expect(mockedApiFetch).toHaveBeenCalledWith(
+      "/auth/recovery/reset-pin",
+      expect.objectContaining({
+        body: {
+          transactionId: "pin-proof",
+          pin: "8246",
+          pinConfirmation: "8246",
+          mfaCode: "483921"
+        }
+      })
+    );
   });
 });

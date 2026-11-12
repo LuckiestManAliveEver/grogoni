@@ -90,7 +90,7 @@ describe("CP2 auth and business creation", () => {
       payload: JSON.stringify({
         method: "phone",
         contact: "+254700000001",
-        pin: "1234"
+        pin: "3927"
       })
     });
     const sessionCookie = extractSessionCookie(verifyResponse.headers["set-cookie"]);
@@ -210,7 +210,7 @@ describe("CP2 auth and business creation", () => {
       payload: JSON.stringify({
         method: "phone",
         contact: "+254700000099",
-        pin: "1234"
+        pin: "3927"
       })
     });
     const sessionCookie = extractSessionCookie(signup.headers["set-cookie"]);
@@ -408,7 +408,7 @@ describe("CP2 auth and business creation", () => {
       payload: JSON.stringify({
         method: "phone",
         contact: phone,
-        pin: "2468"
+        pin: "7306"
       })
     });
     const signupCookie = extractSessionCookie(signup.headers["set-cookie"]);
@@ -441,7 +441,7 @@ describe("CP2 auth and business creation", () => {
       payload: JSON.stringify({
         method: "phone",
         contact: phone,
-        pin: "2468"
+        pin: "7306"
       })
     });
     expect(duplicate.statusCode).toBe(409);
@@ -459,7 +459,7 @@ describe("CP2 auth and business creation", () => {
       payload: JSON.stringify({
         method: "phone",
         contact: phone,
-        pin: "2468"
+        pin: "7306"
       })
     });
     expect(login.statusCode).toBe(200);
@@ -474,7 +474,7 @@ describe("CP2 auth and business creation", () => {
         method: "phone",
         contact: phone,
         recoveryCode: "0000-0000-0000-0000-0000-0000",
-        pin: "1357"
+        pin: "4902"
       })
     });
     expect(retiredRecovery.statusCode).toBe(404);
@@ -534,7 +534,7 @@ describe("CP2 auth and business creation", () => {
     const store = createCp2Store();
     store.signupWithPhonePin({
       destination: "+254700000089",
-      pin: "2468"
+      pin: "7306"
     });
     const snapshot = store.snapshot();
     const restored = createCp2Store();
@@ -544,7 +544,7 @@ describe("CP2 auth and business creation", () => {
     const login = restored.loginWithAccountPin({
       channel: "phone",
       destination: "+254700000089",
-      pin: "2468"
+      pin: "7306"
     });
     expect(login.account.primaryAuthChannel).toBe("phone");
   });
@@ -571,7 +571,7 @@ describe("CP2 auth and business creation", () => {
         cookie: sessionCookie
       },
       payload: JSON.stringify({
-        pin: "7777"
+        pin: "2951"
       })
     });
 
@@ -587,7 +587,7 @@ describe("CP2 auth and business creation", () => {
       app,
       "/auth/pin/setup",
       {
-        pin: "1234"
+        pin: "3927"
       },
       sessionCookie
     );
@@ -631,7 +631,7 @@ describe("CP2 auth and business creation", () => {
       payload: JSON.stringify({
         method: "phone",
         contact: "+254712345678",
-        pin: "0000"
+        pin: "3826"
       })
     });
 
@@ -647,7 +647,7 @@ describe("CP2 auth and business creation", () => {
       payload: JSON.stringify({
         method: "phone",
         contact: "+254712345678",
-        pin: "1234"
+        pin: "3927"
       })
     });
     expect(pendingLogin.statusCode).toBe(202);
@@ -686,7 +686,7 @@ describe("CP2 auth and business creation", () => {
       method: "POST",
       url: "/auth/pin/recover",
       headers: jsonHeaders(),
-      payload: JSON.stringify({ pin: "7777" })
+      payload: JSON.stringify({ pin: "2951" })
     });
     expect(unauthenticatedRecovery.statusCode).toBe(401);
     expect(unauthenticatedRecovery.headers["set-cookie"]).toBeUndefined();
@@ -699,7 +699,7 @@ describe("CP2 auth and business creation", () => {
       payload: JSON.stringify({
         method: "phone",
         contact: "+254712345678",
-        pin: "1234"
+        pin: "3927"
       })
     });
     expect(recoveryLogin.statusCode).toBe(202);
@@ -714,7 +714,7 @@ describe("CP2 auth and business creation", () => {
       app,
       "/auth/pin/recover",
       {
-        pin: "7777"
+        pin: "2951"
       },
       recoveryCookie
     );
@@ -746,7 +746,7 @@ describe("CP2 auth and business creation", () => {
       payload: JSON.stringify({
         method: "phone",
         contact: "+254712345678",
-        pin: "1234"
+        pin: "3927"
       })
     });
     const newPin = await app.inject({
@@ -756,7 +756,7 @@ describe("CP2 auth and business creation", () => {
       payload: JSON.stringify({
         method: "phone",
         contact: "+254712345678",
-        pin: "7777"
+        pin: "2951"
       })
     });
 
@@ -782,7 +782,7 @@ describe("CP2 auth and business creation", () => {
       payload: JSON.stringify({
         method: "phone",
         contact: "+254700000004",
-        pin: "1234"
+        pin: "3927"
       })
     });
     const sessionCookie = extractSessionCookie(verifyResponse.headers["set-cookie"]);

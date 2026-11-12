@@ -324,7 +324,7 @@ describe.skipIf(!url)("durable exact-action runtime approvals", () => {
       const signup = await app.inject({
         method: "POST",
         url: "/auth/pin/signup",
-        payload: { method: "phone", contact: "254700008817", pin: "1234" }
+        payload: { method: "phone", contact: "254700008817", pin: "3927" }
       });
       expect(signup.statusCode).toBe(200);
       const cookie = String(signup.headers["set-cookie"]).split(";")[0];

@@ -65,7 +65,7 @@ describe("Edge customer shopping", () => {
     const buyer = store.continueWithChannelPin({
       channel: "phone",
       destination: "+254700000723",
-      pin: "1234"
+      pin: "3927"
     });
     state.accountId = buyer.account.id;
     state.snapshot = store.snapshot();

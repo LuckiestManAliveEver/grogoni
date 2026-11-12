@@ -22,13 +22,13 @@ describe("existing account credential management", () => {
       hasPassword: false
     });
     expect(
-      (await post(app, "/auth/pin/setup", { pin: "1234", pinConfirmation: "4321" }, cookie)).json()
+      (await post(app, "/auth/pin/setup", { pin: "3927", pinConfirmation: "6180" }, cookie)).json()
     ).toMatchObject({ code: "pin_confirmation_invalid" });
 
     const created = await post(
       app,
       "/auth/pin/setup",
-      { pin: "1234", pinConfirmation: "1234" },
+      { pin: "3927", pinConfirmation: "3927" },
       cookie
     );
     expect(created.statusCode).toBe(200);
@@ -40,7 +40,7 @@ describe("existing account credential management", () => {
     const unsafeOverwrite = await post(
       app,
       "/auth/pin/setup",
-      { pin: "5678", pinConfirmation: "5678" },
+      { pin: "5193", pinConfirmation: "5193" },
       cookie
     );
     expect(unsafeOverwrite.statusCode).toBe(409);
@@ -49,7 +49,7 @@ describe("existing account credential management", () => {
     const wrongCurrentPin = await post(
       app,
       "/auth/pin/change",
-      { currentPin: "9999", pin: "5678", pinConfirmation: "5678" },
+      { currentPin: "6473", pin: "5193", pinConfirmation: "5193" },
       cookie
     );
     expect(wrongCurrentPin.statusCode).toBe(401);
@@ -58,7 +58,7 @@ describe("existing account credential management", () => {
     const changed = await post(
       app,
       "/auth/pin/change",
-      { currentPin: "1234", pin: "5678", pinConfirmation: "5678" },
+      { currentPin: "3927", pin: "5193", pinConfirmation: "5193" },
       cookie
     );
     expect(changed.statusCode).toBe(200);
@@ -68,14 +68,14 @@ describe("existing account credential management", () => {
         await post(app, "/auth/pin/login", {
           method: "phone",
           contact: "+254712345681",
-          pin: "1234"
+          pin: "3927"
         })
       ).statusCode
     ).toBe(401);
     const login = await post(app, "/auth/pin/login", {
       method: "phone",
       contact: "+254712345681",
-      pin: "5678"
+      pin: "5193"
     });
     expect(login.statusCode).toBe(202);
     expect(login.headers["set-cookie"]).toBeUndefined();
@@ -89,7 +89,7 @@ describe("existing account credential management", () => {
     const signup = await post(app, "/auth/pin/signup", {
       method: "phone",
       contact: "+254712345680",
-      pin: "2468"
+      pin: "7306"
     });
     const cookie = cookies(signup.headers["set-cookie"]);
     const password = "first secure account password";
@@ -107,7 +107,7 @@ describe("existing account credential management", () => {
     const wrongPin = await post(
       app,
       "/auth/password/setup",
-      { currentPin: "1357", password, passwordConfirmation: password },
+      { currentPin: "4902", password, passwordConfirmation: password },
       cookie
     );
     expect(wrongPin.statusCode).toBe(401);
@@ -116,7 +116,7 @@ describe("existing account credential management", () => {
     const created = await post(
       app,
       "/auth/password/setup",
-      { currentPin: "2468", password, passwordConfirmation: password },
+      { currentPin: "7306", password, passwordConfirmation: password },
       cookie
     );
     expect(created.statusCode).toBe(200);
@@ -129,7 +129,7 @@ describe("existing account credential management", () => {
     const duplicate = await post(
       app,
       "/auth/password/setup",
-      { currentPin: "2468", password, passwordConfirmation: password },
+      { currentPin: "7306", password, passwordConfirmation: password },
       cookie
     );
     expect(duplicate.statusCode).toBe(409);

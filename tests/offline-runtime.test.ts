@@ -760,7 +760,7 @@ async function serverFixture() {
   const auth = await app.inject({
     method: "POST",
     url: "/auth/pin/signup",
-    payload: { method: "phone", contact: "254700000997", pin: "1234" }
+    payload: { method: "phone", contact: "254700000997", pin: "3927" }
   });
   expect(auth.statusCode).toBe(200);
   const cookies = auth.headers["set-cookie"];

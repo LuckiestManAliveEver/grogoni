@@ -5,12 +5,12 @@ it("restores only the originating daemon's earlier context and rejects another o
   const a = store.continueWithChannelPin({
     channel: "phone",
     destination: "+442079460571",
-    pin: "1234"
+    pin: "3927"
   });
   const b = store.continueWithChannelPin({
     channel: "phone",
     destination: "+442079460572",
-    pin: "1234"
+    pin: "3927"
   });
   const id = store.getGrogoniSessionContext({ sessionId: a.session.id }).conversationId;
   const other = store.createConversation({

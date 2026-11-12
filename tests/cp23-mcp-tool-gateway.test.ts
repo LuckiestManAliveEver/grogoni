@@ -758,7 +758,7 @@ describe("CP23 MCP tool gateway", () => {
     await postJson(
       app,
       "/auth/pin/change",
-      { currentPin: "1234", pin: "2749", pinConfirmation: "2749" },
+      { currentPin: "3927", pin: "2749", pinConfirmation: "2749" },
       cookie
     );
     const shop = await postJson<{ business: { id: string } }>(
@@ -938,7 +938,7 @@ describe("CP23 MCP tool gateway", () => {
     await postJson(
       app,
       "/auth/pin/change",
-      { currentPin: "1234", pin: "8031", pinConfirmation: "8031" },
+      { currentPin: "3927", pin: "8031", pinConfirmation: "8031" },
       cookie
     );
     const first = await postJson<{ business: { id: string } }>(
@@ -1098,7 +1098,7 @@ describe("CP23 MCP tool gateway", () => {
     await postJson(
       app,
       "/auth/pin/change",
-      { currentPin: "1234", pin: "5170", pinConfirmation: "5170" },
+      { currentPin: "3927", pin: "5170", pinConfirmation: "5170" },
       cookie
     );
     const shop = await postJson<{ business: { id: string } }>(
@@ -1156,7 +1156,7 @@ describe("CP23 MCP tool gateway", () => {
     await postJson(
       app,
       "/auth/pin/change",
-      { currentPin: "1234", pin: "6428", pinConfirmation: "6428" },
+      { currentPin: "3927", pin: "6428", pinConfirmation: "6428" },
       cookies
     );
     const shop = await postJson<{ business: { id: string } }>(
@@ -1292,7 +1292,7 @@ describe("CP23 MCP tool gateway", () => {
     await postJson(
       app,
       "/auth/pin/change",
-      { currentPin: "1234", pin: "9814", pinConfirmation: "9814" },
+      { currentPin: "3927", pin: "9814", pinConfirmation: "9814" },
       cookie
     );
     const shop = await postJson<{ business: { id: string } }>(
@@ -1450,7 +1450,7 @@ async function createSession(app: FastifyInstance, destination: string): Promise
     method: "POST",
     url: "/auth/pin/signup",
     headers: { "content-type": "application/json" },
-    payload: JSON.stringify({ method: "phone", contact: destination, pin: "1234" })
+    payload: JSON.stringify({ method: "phone", contact: destination, pin: "3927" })
   });
   expect(response.statusCode).toBe(200);
   return extractCookie(response.headers["set-cookie"]);

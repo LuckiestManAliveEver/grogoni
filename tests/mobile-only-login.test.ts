@@ -16,9 +16,9 @@ describe("mobile-only account access", () => {
         "/auth/login/password",
         { type: "email", identifier: "owner@example.com", password: "secure account password" }
       ],
-      ["/auth/pin/login", { method: "email", contact: "owner@example.com", pin: "2468" }],
-      ["/auth/pin/continue", { method: "email", contact: "owner@example.com", pin: "2468" }],
-      ["/auth/pin/store-login", { grogoniId: "grogoni.shop", pin: "2468" }],
+      ["/auth/pin/login", { method: "email", contact: "owner@example.com", pin: "7306" }],
+      ["/auth/pin/continue", { method: "email", contact: "owner@example.com", pin: "7306" }],
+      ["/auth/pin/store-login", { grogoniId: "grogoni.shop", pin: "7306" }],
       ["/auth/email/request-otp", { contact: "owner@example.com" }],
       ["/auth/otp/verify", { challengeId: "legacy", code: "123456" }]
     ] as const) {
@@ -48,7 +48,7 @@ describe("mobile-only account access", () => {
 
   it("requires single-use verified email MFA after PIN verification", async () => {
     const source = createCp2Store();
-    const session = source.signupWithPhonePin({ destination: "+254711111111", pin: "2468" });
+    const session = source.signupWithPhonePin({ destination: "+254711111111", pin: "7306" });
     const snapshot = source.snapshot();
     snapshot.accountIdentities = [
       ...(snapshot.accountIdentities ?? []),
@@ -71,7 +71,7 @@ describe("mobile-only account access", () => {
     const login = await app.inject({
       method: "POST",
       url: "/auth/pin/login",
-      payload: { method: "phone", contact: "+254711111111", pin: "2468" }
+      payload: { method: "phone", contact: "+254711111111", pin: "7306" }
     });
     expect(login.statusCode).toBe(202);
     expect(login.headers["set-cookie"]).toBeUndefined();

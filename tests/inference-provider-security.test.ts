@@ -23,7 +23,7 @@ async function signUp(app: ReturnType<typeof buildApi>, contact: string) {
     method: "POST",
     url: "/auth/pin/signup",
     headers: jsonHeaders(),
-    payload: JSON.stringify({ method: "phone", contact, pin: "1234" })
+    payload: JSON.stringify({ method: "phone", contact, pin: "3927" })
   });
   expect(signup.statusCode).toBe(200);
   const setCookie = signup.headers["set-cookie"];

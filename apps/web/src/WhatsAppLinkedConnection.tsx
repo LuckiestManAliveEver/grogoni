@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { isWhatsAppLinkInProgress, type WhatsAppLinkedState } from "@grogoni/shared-types";
 import { fetchFreshJson, postJson, deleteJson } from "./api-helpers";
 import { deviceMessagingAdapter, isNativeDeviceHost } from "./device-messaging";
 import { getUserFacingErrorMessage } from "./user-facing-error";
@@ -6,7 +7,8 @@ import WhatsAppOnDevicePanel from "./WhatsAppOnDevicePanel";
 
 interface Connection {
   enabled: boolean;
-  state: string;
+  /** STATUS_UNAVAILABLE is the client's own: the last poll failed, so the state is unknown. */
+  state: WhatsAppLinkedState | "STATUS_UNAVAILABLE";
   pairingCode: string | null;
   expiresAt: string | null;
   scopes: { chat: string; conversationId: string; automation?: boolean }[];
@@ -59,7 +61,7 @@ const readToolExposure: Record<string, string> = {
   "sales.history": "your whole business's sales history, for all customers, not only their own",
   "purchase.history": "all your purchase records, including suppliers and costs"
 };
-const labels: Record<string, string> = {
+const labels: Record<Connection["state"], string> = {
   DISCONNECTED: "Disconnected",
   PAIRING: "Waiting for WhatsApp approval",
   CONNECTING: "Connecting",
@@ -157,7 +159,7 @@ export default function WhatsAppLinkedConnection({
           if (
             startup &&
             result.state === "CONNECTED" &&
-            ["PAIRING", "CONNECTING", "RECONNECTING"].includes(previousState.current ?? "")
+            isWhatsAppLinkInProgress(previousState.current ?? "")
           )
             setExpanded(false);
           previousState.current = result.state;
@@ -429,7 +431,7 @@ export default function WhatsAppLinkedConnection({
       />
     ) : null;
   if (!connection?.enabled || (startup && (!installed || dismissed))) return devicePanel;
-  if (startup && !expanded && !["PAIRING", "CONNECTING", "RECONNECTING"].includes(connection.state))
+  if (startup && !expanded && !isWhatsAppLinkInProgress(connection.state))
     return (
       <aside aria-label="WhatsApp connection" className="record-form">
         {ownerChange}
@@ -448,7 +450,7 @@ export default function WhatsAppLinkedConnection({
         ) : null}
       </aside>
     );
-  const pairing = ["PAIRING", "CONNECTING", "RECONNECTING"].includes(connection.state);
+  const pairing = isWhatsAppLinkInProgress(connection.state);
   return (
     <>
       {devicePanel}

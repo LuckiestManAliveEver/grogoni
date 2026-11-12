@@ -76,7 +76,7 @@ describe.skipIf(!databaseUrl)("Edge inventory persistence on PostgreSQL", () => 
         const owner = store.continueWithChannelPin({
           channel: "email",
           destination: `edge-inventory-${randomUUID()}@example.invalid`,
-          pin: "1234"
+          pin: "3927"
         });
         const businessId = store.createBusiness({
           sessionId: owner.session.id,
@@ -243,7 +243,7 @@ describe.skipIf(!databaseUrl)("Edge inventory persistence on PostgreSQL", () => 
         store.continueWithChannelPin({
           channel: "phone",
           destination: `+25479${Date.now().toString().slice(-6)}${index}`,
-          pin: "1234"
+          pin: "3927"
         })
       );
       const businesses = owners.map(

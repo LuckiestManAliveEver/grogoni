@@ -394,14 +394,7 @@ export function PhoneFirstAuthentication({
       }
       return;
     }
-    if (!recoveryEmailVerified) {
-      await apiFetch("/auth/recovery/verify", {
-        method: "POST",
-        body: { transactionId, code },
-        skipAuthRefresh: true
-      });
-      setRecoveryEmailVerified(true);
-    }
+    await verifyRecoveryEmail();
     const session = await apiFetch<AuthSessionView>("/auth/recovery/reset-password", {
       method: "POST",
       body: {
@@ -411,6 +404,34 @@ export function PhoneFirstAuthentication({
         ...(recoveryMfaCode ? { mfaCode: recoveryMfaCode } : {})
       }
     });
+    onAuthenticated(session);
+  }
+
+  async function verifyRecoveryEmail() {
+    if (!recoveryEmailVerified) {
+      await apiFetch("/auth/recovery/verify", {
+        method: "POST",
+        body: { transactionId, code },
+        skipAuthRefresh: true
+      });
+      setRecoveryEmailVerified(true);
+    }
+  }
+
+  async function verifyAndResetPinWithEmail() {
+    await verifyRecoveryEmail();
+    const session = await apiFetch<AuthSessionView>("/auth/recovery/reset-pin", {
+      method: "POST",
+      body: {
+        transactionId,
+        pin: password,
+        pinConfirmation: passwordConfirmation,
+        ...(recoveryMfaCode ? { mfaCode: recoveryMfaCode } : {})
+      },
+      skipAuthRefresh: true
+    });
+    setPassword("");
+    setPasswordConfirmation("");
     onAuthenticated(session);
   }
 
@@ -487,10 +508,11 @@ export function PhoneFirstAuthentication({
     !identifier.trim() ||
     (stage === "password" && !password) ||
     (stage === "pin" && pin.length !== 4);
+  const emailPinRecovery = recoveryMethod === "email" && recoveryCredential === "pin";
   const passwordResetBlocked =
     busy ||
     (recoveryMethod === "email" && !code.trim()) ||
-    password.length < 10 ||
+    (emailPinRecovery ? !/^\d{4}$/u.test(password) : password.length < 10) ||
     password !== passwordConfirmation;
   const stepNumber = stage === "entry" ? 1 : 2;
   const stepTotal = 2;
@@ -515,7 +537,9 @@ export function PhoneFirstAuthentication({
                       ? "Approve from another device"
                       : stage === "approval-passkey"
                         ? "Create a passkey"
-                        : "Recover your account";
+                        : emailPinRecovery
+                          ? "Choose a new PIN"
+                          : "Recover your account";
 
   return (
     <main className="auth-onboarding" aria-busy={busy}>
@@ -771,20 +795,21 @@ export function PhoneFirstAuthentication({
                           </p>
                         ) : null}
                       </div>
-                      <label>
-                        Reset
-                        <select
-                          value={recoveryCredential}
-                          onChange={(event) =>
-                            setRecoveryCredential(event.target.value as "pin" | "password")
-                          }
-                        >
-                          <option value="pin">Account PIN</option>
-                          <option value="password">Account password</option>
-                        </select>
-                      </label>
                     </>
                   )}
+
+                  <label>
+                    Reset
+                    <select
+                      value={recoveryCredential}
+                      onChange={(event) =>
+                        setRecoveryCredential(event.target.value as "pin" | "password")
+                      }
+                    >
+                      <option value="pin">Account PIN</option>
+                      <option value="password">Account password</option>
+                    </select>
+                  </label>
 
                   <button
                     className={
@@ -827,7 +852,8 @@ export function PhoneFirstAuthentication({
               className="auth-fields"
               onSubmit={(event) => {
                 event.preventDefault();
-                if (!passwordResetBlocked) void run(verifyAndResetPassword);
+                if (!passwordResetBlocked)
+                  void run(emailPinRecovery ? verifyAndResetPinWithEmail : verifyAndResetPassword);
               }}
             >
               {recoveryMethod === "email" ? (
@@ -842,12 +868,21 @@ export function PhoneFirstAuthentication({
                   />
                 </label>
               ) : null}
-              <PasswordFields
-                password={password}
-                confirmation={passwordConfirmation}
-                setPassword={setPassword}
-                setConfirmation={setPasswordConfirmation}
-              />
+              {emailPinRecovery ? (
+                <PinFields
+                  password={password}
+                  confirmation={passwordConfirmation}
+                  setPassword={setPassword}
+                  setConfirmation={setPasswordConfirmation}
+                />
+              ) : (
+                <PasswordFields
+                  password={password}
+                  confirmation={passwordConfirmation}
+                  setPassword={setPassword}
+                  setConfirmation={setPasswordConfirmation}
+                />
+              )}
               {recoveryMethod === "email" ? (
                 <label>
                   MFA code (if enabled)
@@ -864,7 +899,7 @@ export function PhoneFirstAuthentication({
                 disabled={passwordResetBlocked}
                 aria-busy={busy}
               >
-                {busy ? "Working…" : "Reset password"}
+                {busy ? "Working…" : emailPinRecovery ? "Reset PIN" : "Reset password"}
               </button>
             </form>
           ) : null}
@@ -929,30 +964,12 @@ export function PhoneFirstAuthentication({
                 void run(finishPinRecovery);
               }}
             >
-              <label>
-                New 4-digit PIN
-                <input
-                  type="password"
-                  inputMode="numeric"
-                  maxLength={4}
-                  autoComplete="new-password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value.replace(/\D/gu, ""))}
-                />
-              </label>
-              <label>
-                Confirm new PIN
-                <input
-                  type="password"
-                  inputMode="numeric"
-                  maxLength={4}
-                  autoComplete="new-password"
-                  value={passwordConfirmation}
-                  onChange={(event) =>
-                    setPasswordConfirmation(event.target.value.replace(/\D/gu, ""))
-                  }
-                />
-              </label>
+              <PinFields
+                password={password}
+                confirmation={passwordConfirmation}
+                setPassword={setPassword}
+                setConfirmation={setPasswordConfirmation}
+              />
               <button
                 className="auth-primary-button"
                 type="submit"
@@ -1065,6 +1082,40 @@ export function devicePinMutationEndpoint(
   stage: "create-pin" | "recover-pin"
 ): "/auth/pin/setup" | "/auth/pin/recover/device" {
   return stage === "create-pin" ? "/auth/pin/setup" : "/auth/pin/recover/device";
+}
+
+function PinFields(props: {
+  password: string;
+  confirmation: string;
+  setPassword: (value: string) => void;
+  setConfirmation: (value: string) => void;
+}) {
+  return (
+    <>
+      <label>
+        New 4-digit PIN
+        <input
+          type="password"
+          inputMode="numeric"
+          maxLength={4}
+          autoComplete="new-password"
+          value={props.password}
+          onChange={(event) => props.setPassword(event.target.value.replace(/\D/gu, ""))}
+        />
+      </label>
+      <label>
+        Confirm new PIN
+        <input
+          type="password"
+          inputMode="numeric"
+          maxLength={4}
+          autoComplete="new-password"
+          value={props.confirmation}
+          onChange={(event) => props.setConfirmation(event.target.value.replace(/\D/gu, ""))}
+        />
+      </label>
+    </>
+  );
 }
 
 function PasswordFields(props: {

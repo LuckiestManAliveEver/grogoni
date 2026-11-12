@@ -8,7 +8,7 @@ describe("unified phone + PIN continue flow", () => {
     const response = await post(app, "/auth/pin/continue", {
       contact: "0712345690",
       country: "KE",
-      pin: "1234"
+      pin: "3927"
     });
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
@@ -22,11 +22,11 @@ describe("unified phone + PIN continue flow", () => {
 
   it("logs in a returning account with the correct PIN", async () => {
     const app = buildApi({ cp2: { store: createCp2Store() } });
-    await post(app, "/auth/pin/continue", { contact: "0712345691", country: "KE", pin: "4321" });
+    await post(app, "/auth/pin/continue", { contact: "0712345691", country: "KE", pin: "6180" });
     const response = await post(app, "/auth/pin/continue", {
       contact: "0712345691",
       country: "KE",
-      pin: "4321"
+      pin: "6180"
     });
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
@@ -49,13 +49,13 @@ describe("unified phone + PIN continue flow", () => {
 
   it("rejects a wrong PIN and locks the destination out after repeated failures", async () => {
     const app = buildApi({ cp2: { store: createCp2Store() } });
-    await post(app, "/auth/pin/continue", { contact: "0712345692", country: "KE", pin: "1111" });
+    await post(app, "/auth/pin/continue", { contact: "0712345692", country: "KE", pin: "6704" });
 
     for (let attempt = 0; attempt < 5; attempt += 1) {
       const failed = await post(app, "/auth/pin/continue", {
         contact: "0712345692",
         country: "KE",
-        pin: "9999"
+        pin: "6473"
       });
       expect(failed.statusCode).toBe(401);
       expect(failed.json()).toMatchObject({ code: "auth_credentials_invalid" });
@@ -64,7 +64,7 @@ describe("unified phone + PIN continue flow", () => {
     const lockedOut = await post(app, "/auth/pin/continue", {
       contact: "0712345692",
       country: "KE",
-      pin: "1111"
+      pin: "6704"
     });
     expect(lockedOut.statusCode).toBe(429);
     expect(lockedOut.json()).toMatchObject({ code: "pin_rate_limited" });
@@ -91,7 +91,7 @@ describe("unified phone + PIN continue flow", () => {
     const attempt = await post(app, "/auth/pin/continue", {
       contact: "0712345693",
       country: "KE",
-      pin: "1234"
+      pin: "3927"
     });
     expect(attempt.statusCode).toBe(401);
     expect(attempt.json()).toMatchObject({ code: "pin_not_configured" });
@@ -104,14 +104,14 @@ describe("unified phone + PIN continue flow", () => {
       const response = await post(app, "/auth/pin/continue", {
         contact: `07123457${String(index).padStart(2, "0")}`,
         country: "KE",
-        pin: "1234"
+        pin: "3927"
       });
       expect(response.statusCode).toBe(200);
     }
     const throttled = await post(app, "/auth/pin/continue", {
       contact: "0712345799",
       country: "KE",
-      pin: "1234"
+      pin: "3927"
     });
     expect(throttled.statusCode).toBe(429);
     expect(throttled.json()).toMatchObject({ code: "auth_rate_limited" });
@@ -128,7 +128,7 @@ describe("phone-only login boundaries", () => {
       const response = await post(app, url, {
         method: "email",
         contact: "owner@example.com",
-        pin: "1234"
+        pin: "3927"
       });
       expect(response.statusCode).toBe(400);
       expect(response.json()).toMatchObject({ code: "phone_login_required" });
@@ -140,7 +140,7 @@ describe("phone-only login boundaries", () => {
 
   it.each([
     { grogoniId: "grogoni.unknown-store", pin: "9012" },
-    { grogoniId: "grogoni.real-store", pin: "0000" },
+    { grogoniId: "grogoni.real-store", pin: "3826" },
     {}
   ])("keeps the retired store-ID login endpoint closed: %j", async (payload) => {
     const store = createCp2Store();
@@ -160,7 +160,7 @@ describe("display name updates", () => {
     const signup = await post(app, "/auth/pin/continue", {
       contact: "0712345694",
       country: "KE",
-      pin: "1234"
+      pin: "3927"
     });
     const cookie = cookies(signup.headers["set-cookie"]);
 
@@ -180,7 +180,7 @@ describe("display name updates", () => {
     const signup = await post(app, "/auth/pin/continue", {
       contact: "0712345695",
       country: "KE",
-      pin: "1234"
+      pin: "3927"
     });
     const cookie = cookies(signup.headers["set-cookie"]);
 

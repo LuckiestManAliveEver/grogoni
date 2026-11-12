@@ -1,3 +1,4 @@
+import { canTransitionFulfillment } from "@grogoni/shared-types";
 import {
   type FulfillmentStatus,
   type InvoiceSummary,
@@ -24,6 +25,19 @@ export interface LogisticsSurfaceProps {
   onCreate: () => void;
   onStatusChange: (logisticsId: string, status: FulfillmentStatus) => void;
   onRefresh: () => void;
+}
+
+/**
+ * Whether a Logistics button may move this record to `next`: the server's rule
+ * (canTransitionFulfillment), plus one screen policy — a delivery is dispatched before it is
+ * completed, so the courier step is never skipped from here.
+ */
+export function canChangeFulfillment(
+  item: Pick<LogisticsSummary, "status" | "method">,
+  next: FulfillmentStatus
+): boolean {
+  if (next === "completed" && item.method === "delivery" && item.status === "ready") return false;
+  return canTransitionFulfillment(item.status, next, item.method);
 }
 
 export function LogisticsSurface(props: LogisticsSurfaceProps) {
@@ -157,7 +171,7 @@ export function LogisticsSurface(props: LogisticsSurfaceProps) {
                       className="secondary"
                       type="button"
                       onClick={() => props.onStatusChange(item.id, "ready")}
-                      disabled={item.status !== "pending"}
+                      disabled={!canChangeFulfillment(item, "ready")}
                     >
                       Ready
                     </button>
@@ -165,19 +179,14 @@ export function LogisticsSurface(props: LogisticsSurfaceProps) {
                       className="secondary"
                       type="button"
                       onClick={() => props.onStatusChange(item.id, "out_for_delivery")}
-                      disabled={item.method !== "delivery" || item.status !== "ready"}
+                      disabled={!canChangeFulfillment(item, "out_for_delivery")}
                     >
                       Dispatch
                     </button>
                     <button
                       type="button"
                       onClick={() => props.onStatusChange(item.id, "completed")}
-                      disabled={
-                        item.status === "completed" ||
-                        item.status === "cancelled" ||
-                        (item.method === "delivery" && item.status !== "out_for_delivery") ||
-                        (item.method === "pickup" && item.status !== "ready")
-                      }
+                      disabled={!canChangeFulfillment(item, "completed")}
                     >
                       Complete
                     </button>
@@ -185,7 +194,7 @@ export function LogisticsSurface(props: LogisticsSurfaceProps) {
                       className="secondary"
                       type="button"
                       onClick={() => props.onStatusChange(item.id, "cancelled")}
-                      disabled={item.status === "completed" || item.status === "cancelled"}
+                      disabled={!canChangeFulfillment(item, "cancelled")}
                     >
                       Back
                     </button>

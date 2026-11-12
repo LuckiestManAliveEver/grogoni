@@ -129,7 +129,7 @@ describe("OpenRouter hosted runtime", () => {
       const signup = await app.inject({
         method: "POST",
         url: "/auth/pin/signup",
-        payload: { method: "phone", contact: "+254700009399", pin: "1234" }
+        payload: { method: "phone", contact: "+254700009399", pin: "3927" }
       });
       expect(signup.statusCode).toBe(200);
       const cookies = signup.headers["set-cookie"];

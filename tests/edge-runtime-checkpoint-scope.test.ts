@@ -81,7 +81,7 @@ describe.skipIf(!databaseUrl)("Edge runtime checkpoints on PostgreSQL", () => {
       const owner = store.continueWithChannelPin({
         channel: "email",
         destination: `edge-checkpoints-${randomUUID()}@example.invalid`,
-        pin: "1234"
+        pin: "3927"
       });
       const ownerShop = store.createBusiness({
         sessionId: owner.session.id,
@@ -99,7 +99,7 @@ describe.skipIf(!databaseUrl)("Edge runtime checkpoints on PostgreSQL", () => {
       const outsider = store.continueWithChannelPin({
         channel: "email",
         destination: `edge-outsider-${randomUUID()}@example.invalid`,
-        pin: "1234"
+        pin: "3927"
       });
       const otherShopId = store.createBusiness({
         sessionId: outsider.session.id,
@@ -299,7 +299,7 @@ describe.skipIf(!databaseUrl)("Edge runtime checkpoints on PostgreSQL", () => {
         const owner = store.continueWithChannelPin({
           channel: "email",
           destination: `edge-sequence-${label}-${randomUUID()}@example.invalid`,
-          pin: "1234"
+          pin: "3927"
         });
         const businessId = store.createBusiness({
           sessionId: owner.session.id,
@@ -372,7 +372,7 @@ describe.skipIf(!databaseUrl)("Edge runtime checkpoints on PostgreSQL", () => {
     const owner = store.continueWithChannelPin({
       channel: "email",
       destination: `edge-${label}-${randomUUID()}@example.invalid`,
-      pin: "1234"
+      pin: "3927"
     });
     const businessId = store.createBusiness({
       sessionId: owner.session.id,
@@ -389,7 +389,7 @@ describe.skipIf(!databaseUrl)("Edge runtime checkpoints on PostgreSQL", () => {
     const outsider = store.continueWithChannelPin({
       channel: "email",
       destination: `edge-${label}-outsider-${randomUUID()}@example.invalid`,
-      pin: "1234"
+      pin: "3927"
     });
     await transaction((client) => saveTransactionalCp2Snapshot(client, store.snapshot(), baseline));
     const edge = await createEdgeDomainRoutes({ transaction, approvalTransaction: transaction });

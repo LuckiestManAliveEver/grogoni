@@ -14,21 +14,21 @@ describe("security hardening", () => {
     const store = createCp2Store();
     const signup = store.signupWithPhonePin({
       destination: "+254700000201",
-      pin: "2468"
+      pin: "7306"
     });
     const pinHash = store.snapshot().accountPinHashes[0]?.pinHash;
 
     expect(pinHash).toMatch(/^scrypt\$v2\$16384\$8\$1\$[A-Za-z0-9_-]+\$[A-Za-z0-9_-]+$/u);
     expect(pinHash).not.toContain(signup.account.id);
-    expect(pinHash).not.toContain("2468");
+    expect(pinHash).not.toContain("7306");
   });
 
   it("upgrades legacy SHA-256 PIN hashes after successful authentication", () => {
     const phone = "+254700000202";
     const original = createCp2Store();
-    const signup = original.signupWithPhonePin({ destination: phone, pin: "1357" });
+    const signup = original.signupWithPhonePin({ destination: phone, pin: "4902" });
     const snapshot = original.snapshot();
-    const legacyHash = createHash("sha256").update(`${signup.account.id}:1357`).digest("hex");
+    const legacyHash = createHash("sha256").update(`${signup.account.id}:4902`).digest("hex");
     const record = snapshot.accountPinHashes.find(
       (candidate) => candidate.accountId === signup.account.id
     );
@@ -40,7 +40,7 @@ describe("security hardening", () => {
     restored.loginWithAccountPin({
       channel: "phone",
       destination: phone,
-      pin: "1357"
+      pin: "4902"
     });
 
     expect(restored.snapshot().accountPinHashes[0]?.pinHash).toMatch(/^scrypt\$v2\$/u);
@@ -50,14 +50,14 @@ describe("security hardening", () => {
   it("does not reveal whether a PIN login account exists", () => {
     const store = createCp2Store();
     const phone = "+254700000203";
-    store.signupWithPhonePin({ destination: phone, pin: "8642" });
+    store.signupWithPhonePin({ destination: phone, pin: "5083" });
 
     const capture = (destination: string) => {
       try {
         store.loginWithAccountPin({
           channel: "phone",
           destination,
-          pin: "0000"
+          pin: "3826"
         });
         throw new Error("Expected authentication to fail.");
       } catch (error) {
@@ -90,7 +90,7 @@ describe("security hardening", () => {
         store.loginWithAccountPin({
           channel: "phone",
           destination: phone,
-          pin: "0000",
+          pin: "3826",
           now: new Date(startedAt.getTime() + attempt)
         })
       ).toThrowError(expect.objectContaining({ statusCode: 401 }));
@@ -153,7 +153,7 @@ describe("security hardening", () => {
     const existingPinStore = createCp2Store();
     existingPinStore.signupWithPhonePin({
       destination: "+254700000298",
-      pin: "4321"
+      pin: "6180"
     });
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("OTP_HMAC_SECRET", "");
@@ -171,7 +171,7 @@ describe("security hardening", () => {
     expect(() =>
       failedSignupStore.signupWithPhonePin({
         destination: "+254700000299",
-        pin: "1234"
+        pin: "3927"
       })
     ).toThrowError(
       expect.objectContaining({ statusCode: 503, code: "pin_hash_secret_unconfigured" })
@@ -181,7 +181,7 @@ describe("security hardening", () => {
       existingPinStore.loginWithAccountPin({
         channel: "phone",
         destination: "+254700000298",
-        pin: "4321"
+        pin: "6180"
       })
     ).toThrowError(
       expect.objectContaining({ statusCode: 503, code: "pin_hash_secret_unconfigured" })
@@ -209,7 +209,7 @@ describe("security hardening", () => {
       code: signupOtp.devOtp,
       now
     });
-    store.setAccountPin({ sessionId: signup.session.id, pin: "7531", now });
+    store.setAccountPin({ sessionId: signup.session.id, pin: "8206", now });
     store.createBusiness({
       sessionId: signup.session.id,
       name: "PIN-gated shop",

@@ -39,9 +39,9 @@ export class EmailDeliveryError extends Cp2Error {
   }
 }
 
-interface ResendEmailConfiguration {
+interface BrevoEmailConfiguration {
   apiKey: string;
-  from: string;
+  sender: { email: string; name?: string };
 }
 
 class LocalEmailProvider implements EmailProvider {
@@ -91,11 +91,11 @@ class UnconfiguredEmailProvider implements EmailProvider {
   }
 }
 
-class ResendEmailProvider implements EmailProvider {
-  readonly name = "resend";
+class BrevoEmailProvider implements EmailProvider {
+  readonly name = "brevo";
   readonly exposesDevOtp = false;
 
-  constructor(private readonly configuration: ResendEmailConfiguration) {}
+  constructor(private readonly configuration: BrevoEmailConfiguration) {}
 
   async sendOtp(input: EmailOtpInput): Promise<void> {
     await this.send({
@@ -156,25 +156,39 @@ class ResendEmailProvider implements EmailProvider {
     text: string;
     to: string;
   }): Promise<void> {
-    const response = await fetch("https://api.resend.com/emails", {
+    const response = await fetch("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
       // Bounded: notification jobs send while holding a database lock.
       signal: AbortSignal.timeout(10_000),
       headers: {
-        authorization: `Bearer ${this.configuration.apiKey}`,
-        "content-type": "application/json",
-        "idempotency-key": input.idempotencyKey
+        "api-key": this.configuration.apiKey,
+        "content-type": "application/json"
       },
       body: JSON.stringify({
-        from: this.configuration.from,
-        to: [input.to],
+        sender: this.configuration.sender,
+        to: [{ email: input.to }],
         subject: input.subject,
-        text: input.text
+        textContent: input.text,
+        headers: { IdempotencyKey: input.idempotencyKey }
       })
     });
 
     if (!response.ok) {
-      throw new Cp2Error(502, "email_delivery_failed", "The email API rejected the message.");
+      const detail = (await response.json().catch(() => null)) as { code?: unknown } | null;
+      // Never retain provider message text: it may contain recipient addresses or secrets.
+      const knownCodes = new Set([
+        "invalid_parameter",
+        "missing_parameter",
+        "unauthorized",
+        "permission_denied",
+        "not_enough_credits",
+        "account_under_validation",
+        "too_many_requests",
+        "duplicate_request"
+      ]);
+      const code =
+        typeof detail?.code === "string" && knownCodes.has(detail.code) ? detail.code : "unknown";
+      throw new EmailDeliveryError(response.status, code);
     }
   }
 }
@@ -182,11 +196,15 @@ class ResendEmailProvider implements EmailProvider {
 export function createEmailProviderFromEnvironment(
   env: NodeJS.ProcessEnv = process.env
 ): EmailProvider {
-  const apiKey = env.RESEND_API_KEY?.trim();
+  const apiKey = env.BREVO_API_KEY?.trim();
   const from = env.GROGONI_EMAIL_FROM?.trim();
 
   if (apiKey && from) {
-    return new ResendEmailProvider({ apiKey, from });
+    const match = /^(.*?)\s*<([^<>]+)>$/.exec(from);
+    const sender = match
+      ? { email: match[2]!.trim(), name: match[1]!.trim().replace(/^"|"$/g, "") }
+      : { email: from };
+    return new BrevoEmailProvider({ apiKey, sender });
   }
 
   return env.NODE_ENV?.trim() === "production"

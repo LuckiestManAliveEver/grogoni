@@ -1,5 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
-import type { ChannelCapability, ChannelProviderReadiness } from "@grogoni/shared-types";
+import type {
+  ChannelCapability,
+  ChannelProviderReadiness,
+  WhatsAppLinkedState
+} from "@grogoni/shared-types";
 import type {
   MessagingChannelAdapter,
   OutboundChannelMessage,
@@ -15,16 +19,8 @@ import {
   type LinkedDownloadedMedia
 } from "./media.js";
 
-export type LinkedState =
-  | "DISCONNECTED"
-  | "PAIRING"
-  | "CONNECTING"
-  | "CONNECTED"
-  | "RECONNECTING"
-  | "AUTH_REQUIRED"
-  | "REVOKED"
-  | "SUSPENDED"
-  | "ERROR";
+/** Shared with the web app, which reads it from the status route. */
+export type LinkedState = WhatsAppLinkedState;
 export type LinkedMutation =
   | { kind: "edit"; targetId: string; fromMe: boolean }
   | { kind: "delete"; targetId: string; fromMe: boolean }

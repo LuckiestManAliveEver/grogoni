@@ -104,7 +104,7 @@ export async function createInventoryBenchmarkSandbox(
       const signup = await app.inject({
         method: "POST",
         url: "/auth/pin/signup",
-        payload: { method: "phone", contact: "254700000001", pin: "1234" }
+        payload: { method: "phone", contact: "254700000001", pin: "3927" }
       });
       if (signup.statusCode !== 200) throw new Error("Benchmark owner setup failed.");
       const cookie = String(signup.headers["set-cookie"]).split(";")[0]!;

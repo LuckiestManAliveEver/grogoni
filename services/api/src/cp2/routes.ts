@@ -903,6 +903,37 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
   );
 
   app.post(
+    "/auth/recovery/reset-pin",
+    async (
+      request: FastifyRequest<{
+        Body: {
+          transactionId?: string;
+          pin?: string;
+          pinConfirmation?: string;
+          mfaCode?: string;
+        };
+      }>,
+      reply
+    ) => {
+      try {
+        const pin = parseString(request.body.pin, "pin");
+        if (pin !== request.body.pinConfirmation)
+          throw new Cp2Error(400, "pin_confirmation_invalid", "PINs do not match.");
+        const result = store.resetRecoveredPin({
+          transactionId: parseString(request.body.transactionId, "transactionId"),
+          pin,
+          ...(request.body.mfaCode === undefined ? {} : { mfaCode: request.body.mfaCode })
+        });
+        setAuthSessionCookies(reply, request, store, result.session.id);
+        await notifyAccountRecovery(store, emailProvider, request, result.session.id, "PIN");
+        return result;
+      } catch (error) {
+        return sendCp2Error(reply, error);
+      }
+    }
+  );
+
+  app.post(
     "/auth/recovery/reset-password",
     async (
       request: FastifyRequest<{

@@ -73,7 +73,7 @@ describe("canonical purchase order approval policy", () => {
       const signup = await app.inject({
         method: "POST",
         url: "/auth/pin/signup",
-        payload: { method: "phone", contact: "254700009933", pin: "1234" }
+        payload: { method: "phone", contact: "254700009933", pin: "3927" }
       });
       expect(signup.statusCode).toBe(200);
       const cookie = String(signup.headers["set-cookie"]).split(";")[0];

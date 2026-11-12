@@ -111,7 +111,7 @@ async function setup() {
   const owner = store.continueWithChannelPin({
     channel: "email",
     destination: `edge-async-${randomUUID()}@example.invalid`,
-    pin: "1234"
+    pin: "3927"
   });
   const businessId = store.createBusiness({
     sessionId: owner.session.id,

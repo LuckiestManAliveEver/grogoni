@@ -111,7 +111,7 @@ describe("a guest becomes a shop owner", () => {
 
   it("keeps the 15 minute rule for accounts that have a credential", async () => {
     const store = createCp2Store();
-    const signed = store.signupWithPhonePin({ destination: "+254712000009", pin: "1234" });
+    const signed = store.signupWithPhonePin({ destination: "+254712000009", pin: "3927" });
     const proven = new Date(Date.now() - 20 * 60_000).toISOString();
     const snapshot = store.snapshot();
     Object.assign(
@@ -188,7 +188,7 @@ describe("PIN signup on the guest's own saved phone", () => {
 describe("a phone another account signs in with", () => {
   it("stops a guest becoming a phone account on it, and they can still add a PIN", async () => {
     const { store, app, call, account } = await fixture();
-    const holder = store.signupWithPhonePin({ destination: phone, pin: "1234" });
+    const holder = store.signupWithPhonePin({ destination: phone, pin: "3927" });
     const snapshot = store.snapshot();
     snapshot.users.find((user) => user.id === holder.user.id)!.phoneNumberE164 = "+254700123457";
     Object.assign(
@@ -208,7 +208,7 @@ describe("a phone another account signs in with", () => {
 
   it("refuses the number with a clear error", async () => {
     const { store, app, register } = await fixture();
-    store.signupWithPhonePin({ destination: phone, pin: "1234" });
+    store.signupWithPhonePin({ destination: phone, pin: "3927" });
     const created = await register();
     expect(created.statusCode).toBe(409);
     expect(created.json<{ code: string }>().code).toBe("PHONE_ALREADY_IN_USE");
@@ -223,7 +223,7 @@ describe("a stolen guest session", () => {
     const done = await call("POST", "/auth/pin/signup", {
       method: "phone",
       contact: phone,
-      pin: "1111"
+      pin: "6704"
     });
     expect(done.json<{ account: { id: string } }>().account.id).not.toBe(account.id);
     expect(store.snapshot().accounts.find((item) => item.id === account.id)).toMatchObject({
@@ -353,7 +353,7 @@ describe("signing up from a guest session", () => {
 
   it("still refuses a phone that belongs to someone else", async () => {
     const { store, app, call } = await fixture();
-    store.signupWithPhonePin({ destination: phone, pin: "1234" });
+    store.signupWithPhonePin({ destination: phone, pin: "3927" });
     const started = await call("POST", "/auth/signup/start", {
       type: "phone",
       identifier: phone,

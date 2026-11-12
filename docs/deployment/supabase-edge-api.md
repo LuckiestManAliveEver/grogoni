@@ -94,9 +94,10 @@ TOTP uses the existing SHA-1/six-digit/30-second policy with a one-step clock-sk
 rejects reused time steps. PIN setup for MFA-enabled accounts also requires a second factor.
 MFA enrollment and management routes use the shared domain adapter.
 
-Email-based account recovery is intentionally unavailable: `RESEND_API_KEY` and
-`GROGONI_EMAIL_FROM` are not configured, and the operator confirmed there is no email
-delivery setup yet. Do not enable development OTP exposure in the deployed function.
+Email-based account recovery uses Brevo. Configure `BREVO_API_KEY` and
+`GROGONI_EMAIL_FROM` with a verified Brevo sender; the deployment script forwards both
+settings to the Edge runtime when supplied locally. Do not enable development OTP exposure
+in the deployed function.
 
 Run local coverage with:
 
@@ -211,7 +212,7 @@ purges data and runs only when `ENABLE_ACCOUNT_DELETION_RUNNER=true`.
 Jobs that load the domain store hold the store lock for the whole run, including their outbound
 sends (web push, email, webhooks, mailbox sync), because a store save must not race a request's
 save. Every user request waits on that lock with a 10-second `lock_timeout`. Each send is
-bounded, but a run is not: web push and Resend email time out at 10 seconds, the channel
+bounded, but a run is not: web push and Brevo email time out at 10 seconds, the channel
 gateway at 10 seconds, mailbox and invite calls at 15 seconds, and notification delivery sends
 at most 25 notifications per run (1,500 an hour on the one-minute schedule). A mailbox sync run
 makes several calls per due mailbox, so a run over many mailboxes can still hold the lock for a

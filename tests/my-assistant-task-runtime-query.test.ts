@@ -80,7 +80,7 @@ describe.skipIf(!url)("My Assistant runtime in Postgres", () => {
         const owner = store.continueWithChannelPin({
           channel: "phone",
           destination: `+2547${String(randomInt(0, 100_000_000)).padStart(8, "0")}`,
-          pin: "1234"
+          pin: "3927"
         });
         const id = store.getGrogoniSessionContext({ sessionId: owner.session.id }).conversationId;
         expect(store.getConversationModelSelection(owner.session.id, id)).toMatchObject({
@@ -106,12 +106,12 @@ describe.skipIf(!url)("My Assistant runtime in Postgres", () => {
         const owner = store.continueWithChannelPin({
           channel: "phone",
           destination: phone(),
-          pin: "1234"
+          pin: "3927"
         });
         const stranger = store.continueWithChannelPin({
           channel: "phone",
           destination: phone(),
-          pin: "1234"
+          pin: "3927"
         });
         const id = store.getGrogoniSessionContext({ sessionId: owner.session.id }).conversationId;
         await store.flush();

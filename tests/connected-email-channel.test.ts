@@ -665,7 +665,7 @@ async function createOwner(
     method: "POST",
     url: "/auth/pin/signup",
     headers: { "content-type": "application/json" },
-    payload: JSON.stringify({ method: "phone", contact: phone, pin: "2468" })
+    payload: JSON.stringify({ method: "phone", contact: phone, pin: "7306" })
   });
   expect(signup.statusCode, signup.body).toBe(200);
   const cookie = extractCookie(signup.headers["set-cookie"]);

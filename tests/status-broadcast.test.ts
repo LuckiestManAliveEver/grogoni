@@ -216,7 +216,7 @@ describe("photo capture items and status broadcast", () => {
 async function createOwnerBusiness(
   app: ReturnType<typeof buildApi>,
   destination: string,
-  pin = "1234"
+  pin = "3927"
 ) {
   const signup = await app.inject({
     method: "POST",

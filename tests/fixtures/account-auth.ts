@@ -14,7 +14,7 @@ export function sessionCookie(header: string | string[] | undefined): string {
     .join("; ");
 }
 
-export async function signupPhone(app: FastifyInstance, label: string, pin = "1234") {
+export async function signupPhone(app: FastifyInstance, label: string, pin = "3927") {
   const phone = fixturePhone(label);
   const response = await app.inject({
     method: "POST",

@@ -116,6 +116,7 @@ import {
   repositoryDefaultRuntimePolicy
 } from "@grogoni/shared-types";
 import { Cp2Error, assertValid } from "./cp2-error.js";
+import { assertAcceptablePin } from "./pin-strength.js";
 import { roundMoney } from "./money.js";
 import {
   destinationAccountKey,
@@ -3067,6 +3068,7 @@ export class Cp2Store {
     }
     if (!recovering) this.verifyMfaForCredentialChange(session.account.id, input.mfaCode, now);
     const pin = normalizePin(input.pin);
+    assertAcceptablePin(pin);
     const pinHash = hashPin(session.account.id, pin);
     this.accountPinHashes.set(session.account.id, pinHash);
     // A first PIN created after a purpose-bound passkey ceremony completes that recovery action.
@@ -3111,6 +3113,7 @@ export class Cp2Store {
     this.verifyAccountPinForSession(session, input.currentPin, now);
     this.verifyMfaForCredentialChange(session.account.id, input.mfaCode, now);
     const pin = normalizePin(input.pin);
+    assertAcceptablePin(pin);
     this.accountPinHashes.set(session.account.id, hashPin(session.account.id, pin));
 
     this.recordAuditEvent({
@@ -3179,6 +3182,7 @@ export class Cp2Store {
     }
 
     const pin = normalizePin(rawPin);
+    assertAcceptablePin(pin);
     pinHashSecret();
     const account = this.createAccount(channel, destination, now);
     const user = this.requireUser(this.userByAccount.get(account.id));
@@ -3243,6 +3247,7 @@ export class Cp2Store {
     const holder = this.resolveIdentityAccount("phone", phone);
     if (holder !== undefined && holder !== guest.id) return null;
     const pin = normalizePin(input.pin);
+    assertAcceptablePin(pin);
     const user = this.requireUser(this.userByAccount.get(guest.id));
     const normalizedPhone = normalizeInternationalOwnerPhoneNumber(phone);
     this.clearGuestIdentity(guest, phone);
@@ -3419,6 +3424,7 @@ export class Cp2Store {
     const session = this.requireAnySession(input.sessionId, now);
     this.requireOutsideRecoveryProbation(session, now);
     const pin = normalizePin(input.pin);
+    assertAcceptablePin(pin);
 
     if (!this.accountPinHashes.has(session.account.id)) {
       throw new Cp2Error(409, "pin_not_set", "Login PIN has not been set.");
@@ -11871,6 +11877,66 @@ export class Cp2Store {
     challenge.verifiedAt = now.toISOString();
     transaction.verifiedAt = now.toISOString();
     return { verified: true };
+  }
+
+  resetRecoveredPin(input: {
+    transactionId: string;
+    pin: string;
+    mfaCode?: string;
+    now?: Date;
+  }): AuthSessionView {
+    const now = input.now ?? new Date();
+    const transaction = this.requireAuthTransaction(input.transactionId, "recovery", now, true);
+    const challenge =
+      transaction.providerChallengeId === null
+        ? undefined
+        : this.otpDomain.otpChallengesMap.get(transaction.providerChallengeId);
+    // Only an enrolled email's verified, unexpired recovery OTP authorizes this mutation.
+    if (
+      transaction.accountId === null ||
+      transaction.identifierType !== "email" ||
+      transaction.identifierValue === null ||
+      !challenge ||
+      challenge.channel !== "email" ||
+      challenge.purpose !== "recovery" ||
+      challenge.verifiedAt === null ||
+      challenge.destination !== transaction.identifierValue ||
+      Date.parse(challenge.expiresAt) <= now.getTime() ||
+      ![...this.accountIdentities.values()].some(
+        (identity) =>
+          identity.accountId === transaction.accountId &&
+          identity.type === "email" &&
+          identity.normalizedValue === transaction.identifierValue &&
+          identity.verifiedAt !== null
+      )
+    ) {
+      throw new Cp2Error(401, "recovery_verification_invalid", "Recovery verification failed.");
+    }
+    const account = this.requireAccount(transaction.accountId);
+    this.requireAccountAuthenticationAllowed(account);
+    this.requireAccountNotPendingDeletion(account.id, now);
+    const pin = normalizePin(input.pin);
+    assertAcceptablePin(pin);
+    try {
+      this.verifyMfaForCredentialChange(account.id, input.mfaCode, now);
+    } catch (error) {
+      if (error instanceof Cp2Error && error.code === "mfa_code_invalid") transaction.attempts += 1;
+      throw error;
+    }
+    this.accountPinHashes.set(account.id, hashPin(account.id, pin));
+    transaction.consumedAt = now.toISOString();
+    for (const session of this.sessions.values()) {
+      if (session.accountId === account.id && session.revokedAt === null) {
+        session.revokedAt = now.toISOString();
+        session.revocationReason = "pin_recovery";
+      }
+    }
+    const user = this.requireUser(this.userByAccount.get(account.id));
+    const session = this.createSession(account, user, now);
+    this.markSessionPinVerified(session.id, now);
+    this.recordSecurityEvent("auth.pin_recovered", account.id, "success", now, { method: "email" });
+    this.notifyCredentialRecovery(account.id, "PIN", now);
+    return this.requireAnySession(session.id, now);
   }
 
   resetRecoveredPassword(input: {

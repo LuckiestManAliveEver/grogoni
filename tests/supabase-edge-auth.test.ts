@@ -169,7 +169,7 @@ describe("Edge credential compatibility", () => {
   it.each([true, false])(
     "preserves scrypt formats and verifies secret and credential (PIN=%s)",
     (pin) => {
-      const value = pin ? "1234" : "password-long-enough";
+      const value = pin ? "3927" : "password-long-enough";
       const stored = credentialHash(id, value, secrets.pin, pin);
       expect(
         stored.startsWith(pin ? "scrypt$v2$16384$8$1$" : "scrypt$password-v1$32768$8$1$")
@@ -181,13 +181,13 @@ describe("Edge credential compatibility", () => {
     }
   );
   it("accepts legacy PINs only after verification", () => {
-    const stored = hash(`${id}:1234`);
-    expect(verifyCredential(id, "1234", stored, secrets.pin, true)).toBe("legacy");
-    expect(verifyCredential(id, "4321", stored, secrets.pin, true)).toBe("invalid");
+    const stored = hash(`${id}:3927`);
+    expect(verifyCredential(id, "3927", stored, secrets.pin, true)).toBe("legacy");
+    expect(verifyCredential(id, "6180", stored, secrets.pin, true)).toBe("invalid");
   });
   it("rejects invalid hash parameters and malformed salts", () => {
     for (const stored of ["invalid", "scrypt$v2$999999$8$1$AA$AA", "scrypt$v2$16384$8$1$AA$AA"])
-      expect(verifyCredential(id, "1234", stored, secrets.pin, true)).toBe("invalid");
+      expect(verifyCredential(id, "3927", stored, secrets.pin, true)).toBe("invalid");
   });
   it("encrypts refresh grace tokens with authenticated envelopes", () => {
     const envelope = seal("private-refresh-token", secrets.encryption);
@@ -224,9 +224,9 @@ describe("native Edge authentication routes", () => {
         "/auth/login/password",
         { type: "email", identifier: "backup@example.com", password: "password-long-enough" }
       ],
-      ["/auth/pin/login", { method: "email", contact: "backup@example.com", pin: "2468" }],
+      ["/auth/pin/login", { method: "email", contact: "backup@example.com", pin: "7306" }],
       ["/auth/signup/start", { type: "email", identifier: "backup@example.com" }],
-      ["/auth/pin/store-login", { grogoniId: "grogoni.store", pin: "2468" }]
+      ["/auth/pin/store-login", { grogoniId: "grogoni.store", pin: "7306" }]
     ] as const) {
       const response = await routes(request(path, payload), path);
       expect(response!.status).toBeGreaterThanOrEqual(400);
@@ -238,7 +238,7 @@ describe("native Edge authentication routes", () => {
   it("validates phone input and four-digit PINs before querying", async () => {
     const { routes, transaction } = setup(vi.fn());
     for (const data of [
-      { method: "phone", contact: "bad", pin: "1234" },
+      { method: "phone", contact: "bad", pin: "3927" },
       { method: "phone", contact: "+254712345678", pin: "12345" }
     ]) {
       expect((await routes(request("/auth/pin/login", data), "/auth/pin/login"))!.status).toBe(400);
@@ -268,7 +268,7 @@ describe("native Edge authentication routes", () => {
   it.each([true, false])(
     "creates secure sessions after credential verification (PIN=%s)",
     async (pin) => {
-      const value = pin ? "1234" : "password-long-enough";
+      const value = pin ? "3927" : "password-long-enough";
       const path = pin ? "/auth/pin/login" : "/auth/login/password";
       const query = loginQuery(
         credentialHash(id, value, pin ? secrets.pin : secrets.password, pin)
@@ -294,10 +294,10 @@ describe("native Edge authentication routes", () => {
     }
   );
   it("commits failed-attempt audit rows instead of throwing and rolling them back", async () => {
-    const query = loginQuery(credentialHash(id, "1234", secrets.pin, true));
+    const query = loginQuery(credentialHash(id, "3927", secrets.pin, true));
     const { routes, transaction } = setup(query);
     const r = await routes(
-      request("/auth/pin/login", { method: "phone", contact: "+254712345678", pin: "4321" }),
+      request("/auth/pin/login", { method: "phone", contact: "+254712345678", pin: "6180" }),
       "/auth/pin/login"
     );
     expect(r!.status).toBe(401);
@@ -311,7 +311,7 @@ describe("native Edge authentication routes", () => {
     const query = loginQuery("unused", 5);
     const { routes } = setup(query);
     const r = await routes(
-      request("/auth/pin/login", { method: "phone", contact: "+254712345678", pin: "1234" }),
+      request("/auth/pin/login", { method: "phone", contact: "+254712345678", pin: "3927" }),
       "/auth/pin/login"
     );
     expect(r!.status).toBe(429);
@@ -444,7 +444,7 @@ describe("native Edge authentication routes", () => {
             rows: [{ credential: credentialHash(id, "secure password", secrets.password, false) }]
           };
         if (sql.includes("account_pin_hashes"))
-          return { rows: [{ credential: credentialHash(id, "1234", secrets.pin, true) }] };
+          return { rows: [{ credential: credentialHash(id, "3927", secrets.pin, true) }] };
         if (sql.includes("where a.id = $1")) return { rows: [account] };
         return { rows: [] };
       }) as unknown as SqlClient["query"];
@@ -453,7 +453,7 @@ describe("native Edge authentication routes", () => {
 
     it.each([
       ["/auth/password/verify", { password: "secure password" }],
-      ["/auth/pin/verify", { pin: "1234" }]
+      ["/auth/pin/verify", { pin: "3927" }]
     ])("%s records the proof in both session stores", async (path, body) => {
       const { routes, statements } = stepUp(0);
       const response = await routes(request(path, body, cookie), path);
@@ -482,7 +482,7 @@ describe("native Edge authentication routes", () => {
     it("refuses even the right answer once the durable limit is reached", async () => {
       const { routes, statements } = stepUp(5);
       const response = await routes(
-        request("/auth/pin/verify", { pin: "1234" }, cookie),
+        request("/auth/pin/verify", { pin: "3927" }, cookie),
         "/auth/pin/verify"
       );
       expect(response?.status).toBe(429);
@@ -501,7 +501,7 @@ describe("native Edge authentication routes", () => {
     it("needs a session", async () => {
       const { routes } = stepUp(0);
       const response = await routes(
-        request("/auth/pin/verify", { pin: "1234" }),
+        request("/auth/pin/verify", { pin: "3927" }),
         "/auth/pin/verify"
       );
       expect(response?.status).toBe(401);
@@ -510,13 +510,13 @@ describe("native Edge authentication routes", () => {
 
   it("finds a guest's added phone by the current, unique user phone only", async () => {
     const statements: string[] = [];
-    const query = loginQuery(credentialHash(id, "1234", secrets.pin, true));
+    const query = loginQuery(credentialHash(id, "3927", secrets.pin, true));
     const spy = vi.fn(async (sql: string) => {
       statements.push(sql);
       return query(sql);
     }) as unknown as SqlClient["query"];
     await setup(spy).routes(
-      request("/auth/pin/login", { method: "phone", contact: "+254712345678", pin: "1234" }),
+      request("/auth/pin/login", { method: "phone", contact: "+254712345678", pin: "3927" }),
       "/auth/pin/login"
     );
     const lookup = statements.find((sql) => sql.includes("from accounts a"));
@@ -570,7 +570,7 @@ describe("native Edge authentication routes", () => {
     const query = vi.fn();
     const { routes } = setup(query);
     // PIN setup delegates to the shared store so recovery grants cannot be bypassed on Edge.
-    expect(await routes(request("/auth/pin/setup", { pin: "1234" }), "/auth/pin/setup")).toBeNull();
+    expect(await routes(request("/auth/pin/setup", { pin: "3927" }), "/auth/pin/setup")).toBeNull();
     expect(query).not.toHaveBeenCalled();
   });
 });

@@ -42,7 +42,7 @@ all authentication and session URLs as network-only.
 - `libphonenumber-js` E.164 normalization
 - SimpleWebAuthn registration/authentication validation
 - Fastify origin allowlist and credentialed CORS
-- Resend-compatible email provider
+- Brevo transactional email provider
 - Postgres compatibility snapshot adapter and relational migrations
 
 ## Compatibility and obsolete integrations

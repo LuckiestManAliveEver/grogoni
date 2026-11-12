@@ -623,7 +623,7 @@ async function createOwnerBusiness(
     method: "POST",
     url: "/auth/pin/signup",
     headers: { "content-type": "application/json" },
-    payload: JSON.stringify({ method: "phone", contact, pin: "1234" })
+    payload: JSON.stringify({ method: "phone", contact, pin: "3927" })
   });
   const setCookie = signup.headers["set-cookie"];
   const cookieValue = Array.isArray(setCookie) ? setCookie[0] : setCookie;

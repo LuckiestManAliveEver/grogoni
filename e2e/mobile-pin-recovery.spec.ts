@@ -82,7 +82,7 @@ for (const hasPin of [true, false]) {
       if (path === "/auth/credentials/status") return json({ hasPin, hasPassword: true });
       if (path === "/auth/pin/setup" || path === "/auth/pin/recover/device") {
         mutations.push(path);
-        expect(route.request().postDataJSON()).toEqual({ pin: "6789", pinConfirmation: "6789" });
+        expect(route.request().postDataJSON()).toEqual({ pin: "3140", pinConfirmation: "3140" });
         return json({ code: "device_credential_recovery_required", message: "Verify again." }, 403);
       }
       if (path === "/auth/oauth/providers") return json({ providers: [] });
@@ -93,7 +93,7 @@ for (const hasPin of [true, false]) {
     await page.getByRole("button", { name: "Trouble logging in?", exact: true }).click();
     await expect(page.getByLabel("Recover with")).toBeVisible();
     await page.getByRole("button", { name: "Use account PIN", exact: true }).click();
-    await page.getByLabel("4-digit PIN", { exact: true }).fill("1234");
+    await page.getByLabel("4-digit PIN", { exact: true }).fill("3927");
     await page.getByRole("button", { name: "Log in", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Security check" })).toBeVisible();
     await page.getByRole("button", { name: "Back", exact: true }).click();
@@ -114,10 +114,10 @@ for (const hasPin of [true, false]) {
       name: hasPin ? "Save new PIN" : "Create PIN",
       exact: true
     });
-    await page.getByLabel("New 4-digit PIN", { exact: true }).fill("6789");
+    await page.getByLabel("New 4-digit PIN", { exact: true }).fill("3140");
     await page.getByLabel("Confirm new PIN", { exact: true }).fill("6780");
     await expect(submit).toBeDisabled();
-    await page.getByLabel("Confirm new PIN", { exact: true }).fill("6789");
+    await page.getByLabel("Confirm new PIN", { exact: true }).fill("3140");
     await expect(submit).toBeEnabled();
     if (hasPin) await submit.click();
     else await page.getByLabel("Confirm new PIN", { exact: true }).press("Enter");

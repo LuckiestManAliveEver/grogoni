@@ -65,6 +65,8 @@ if (process.argv.includes("--deploy")) {
   // Forward only explicitly supplied messaging settings. An unset local value
   // must not erase provider authorization already installed in the Edge runtime.
   const messagingNames = [
+    "BREVO_API_KEY",
+    "GROGONI_EMAIL_FROM",
     "EXTERNAL_MESSAGING_SHOP_ID",
     "EXTERNAL_MESSAGING_CONNECTIONS_JSON",
     "META_GRAPH_VERSION",

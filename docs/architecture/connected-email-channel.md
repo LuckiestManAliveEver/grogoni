@@ -5,7 +5,7 @@
 Grogoni's registered email is account identity data. `Cp2Store` normalizes it through the existing
 email identity and OTP flows in `services/api/src/cp2/store.ts`; the routes in
 `services/api/src/cp2/routes.ts` use it for sign-in, verification, recovery, and account linking.
-`services/api/src/cp2/email-provider.ts` is a transactional Resend adapter for OTP and account
+`services/api/src/cp2/email-provider.ts` is a transactional Brevo adapter for OTP and account
 notifications. Neither record authorizes Grogoni to read or send mailbox mail.
 
 Google and Microsoft login OAuth already existed in `services/api/src/cp2/oauth.ts`, but its

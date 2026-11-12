@@ -94,7 +94,7 @@ async function createSession(app: FastifyInstance): Promise<string> {
     payload: {
       method: "phone",
       contact: "+254700000827",
-      pin: "1234"
+      pin: "3927"
     }
   });
   expect(verified.statusCode).toBe(200);

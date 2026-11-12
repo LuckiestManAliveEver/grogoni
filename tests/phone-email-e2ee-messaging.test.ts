@@ -274,7 +274,7 @@ async function createAccountSession(
     const response = await postResponse(app, "/auth/pin/signup", {
       method: "phone",
       contact: destination,
-      pin: "1234"
+      pin: "3927"
     });
     expect(response.statusCode).toBe(200);
     return extractSessionCookie(response.headers["set-cookie"]);

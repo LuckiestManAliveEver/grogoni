@@ -18,7 +18,7 @@ async function account(app: FastifyInstance, contact: string) {
   const response = await app.inject({
     method: "POST",
     url: "/auth/pin/signup",
-    payload: { method: "phone", contact, pin: "1234" }
+    payload: { method: "phone", contact, pin: "3927" }
   });
   expect(response.statusCode).toBe(200);
   const value = response.headers["set-cookie"];
