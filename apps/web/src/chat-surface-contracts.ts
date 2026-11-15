@@ -15,6 +15,7 @@ import type {
 
 import type { ChatAttachment, ChatMessage, ShellView, GrogoniMode } from "./app-shell";
 import type { NetworkConnectionAction } from "./hooks/useNetworkState";
+import type { ReplyVersionDeps } from "./features/reply-versions";
 import type { DevicePhonebookContact } from "./phonebook-directory";
 import type { InviteOutcome } from "./phonebook-sync";
 import type {
@@ -109,6 +110,8 @@ export interface ChatSurfaceProps {
   onDeleteMessage: (messageId: string) => void;
   onReactMessage: (messageId: string, reaction: string | null) => void;
   onAgentFeedback: (messageId: string, correct: boolean) => void;
+  /** Regenerating an agent reply and moving between its versions. */
+  replyVersionDeps: ReplyVersionDeps;
   onForwardMessage: (messageId: string, conversationId: string) => void;
   onRetryMessages: () => void;
   /** Messages waiting in the outbox; the retry control shows only when this is above zero. */

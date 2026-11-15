@@ -77,6 +77,13 @@ export interface ChatMessage {
    * used up; the resend control still works), or "rejected" (the server refused it for good).
    */
   outboxState?: "retrying" | "stopped" | "rejected";
+  /**
+   * An agent reply the server would accept a regenerate request for (reply-versions.ts in
+   * @grogoni/shared-types). The server decides again when asked.
+   */
+  regenerable?: boolean;
+  /** Present when the reply has more than one version; `body` is the selected one. */
+  replyVersions?: { selected: number; count: number };
 }
 
 export interface ChatAttachment {

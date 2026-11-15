@@ -702,6 +702,7 @@ export function OwnerApp() {
     loadRecycleBin,
     emptyRecycleBin,
     updateMessageAction,
+    replyVersionDeps,
     forwardMessage,
     requestMessagingNotifications,
     disableMessagingNotifications,
@@ -2066,6 +2067,7 @@ export function OwnerApp() {
                     submitAgentResponseFeedback(messageId, correct)
                   )
                 }
+                replyVersionDeps={replyVersionDeps}
                 onForwardMessage={(messageId, conversationId) =>
                   void runAction("message-forward", () => forwardMessage(messageId, conversationId))
                 }

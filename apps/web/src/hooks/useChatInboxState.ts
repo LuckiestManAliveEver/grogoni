@@ -15,6 +15,7 @@ import type {
 } from "@grogoni/shared-types";
 
 import { deleteJson, getJson, patchJson, postJson } from "../api-helpers";
+import type { ReplyVersionDeps } from "../features/reply-versions";
 import { conversationForNode, readNodeIdFromRecipient } from "../network-contact-conversations";
 import {
   createInitialChatMessages,
@@ -579,6 +580,42 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
     await loadConversationThread(activeConversationId);
   }
 
+  /** Replaces one message of the open thread with the server's copy of it. */
+  function applyServerMessage(conversationId: string, updated: ConversationMessageSummary) {
+    const view = activeConversationRef.current;
+    const activeSession = sessionRef.current;
+    if (activeConversationIdRef.current !== conversationId || activeSession === null) return;
+    if (view !== null && view.conversation.id === conversationId) {
+      const mapped = mapConversationMessage(updated, view.participants, activeSession);
+      setChatMessages((messages) =>
+        messages.map((message) => (message.id === updated.id ? mapped : message))
+      );
+    }
+    setActiveConversation((conversation) =>
+      conversation === null || conversation.conversation.id !== conversationId
+        ? conversation
+        : {
+            ...conversation,
+            messages: conversation.messages.map((message) =>
+              message.id === updated.id ? updated : message
+            )
+          }
+    );
+  }
+
+  /** For the chat surface's reply-version controls (features/reply-versions). */
+  const replyVersionDeps: ReplyVersionDeps = {
+    conversationId: activeConversationId,
+    // Only a member's own shop: a customer in a storefront thread is never offered Regenerate.
+    businessId:
+      business !== null &&
+      (activeConversation?.conversation.activeShopId ?? business.id) === business.id
+        ? business.id
+        : null,
+    setStatusMessage,
+    applyServerMessage
+  };
+
   async function forwardMessage(messageId: string, targetConversationId: string) {
     if (activeConversation === null || session === null) return;
     const source = activeConversation.messages.find((message) => message.id === messageId);
@@ -925,6 +962,7 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
     loadRecycleBin,
     emptyRecycleBin,
     updateMessageAction,
+    replyVersionDeps,
     forwardMessage,
     requestMessagingNotifications,
     disableMessagingNotifications,

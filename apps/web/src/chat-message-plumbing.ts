@@ -6,7 +6,11 @@ import type {
   ConversationView,
   E2eeDeviceSummary
 } from "@grogoni/shared-types";
-import { permanentDaemonDisplayName } from "@grogoni/shared-types";
+import {
+  permanentDaemonDisplayName,
+  replyRegenerationBlock,
+  replyVersionsOf
+} from "@grogoni/shared-types";
 import { type ChatAttachment, type ChatMessage } from "./app-shell";
 import { parseInventoryTaskObjective } from "@grogoni/tool-core";
 
@@ -173,7 +177,18 @@ export function mapConversationMessage(
     deletedAt: message.deletedAt ?? null,
     replyToMessageId: message.replyToMessageId ?? null,
     forwardedFromMessageId: message.forwardedFromMessageId ?? null,
-    reactions: (message.reactions ?? []).map(({ emoji, actorId }) => ({ emoji, actorId }))
+    reactions: (message.reactions ?? []).map(({ emoji, actorId }) => ({ emoji, actorId })),
+    ...(replyRegenerationBlock(message) === null ? { regenerable: true } : {}),
+    ...(message.author === "agent" &&
+    !message.deletedAt &&
+    (message.replyVersions?.versions.length ?? 0) > 1
+      ? {
+          replyVersions: {
+            selected: replyVersionsOf(message).selected,
+            count: replyVersionsOf(message).versions.length
+          }
+        }
+      : {})
   };
 }
 

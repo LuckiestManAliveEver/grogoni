@@ -146,7 +146,18 @@ import type {
   UserSummary,
   WorkspaceDeliverResult
 } from "@grogoni/shared-types";
-import { permanentDaemonDisplayName } from "@grogoni/shared-types";
+import {
+  appendReplyVersion,
+  isReplyVersionId,
+  permanentDaemonDisplayName,
+  replyRegenerationBlock,
+  replyVersionsOf,
+  selectReplyVersion,
+  strongerAgentTurnEffect,
+  type AgentTurnEffect
+} from "@grogoni/shared-types";
+import { runtimeToolRegistry } from "@grogoni/tool-core";
+import { regenerationAllowsTool } from "../agent-runtime/regeneration.js";
 import type { BusinessPermission } from "@grogoni/business-core";
 import {
   ChannelGatewayError,
@@ -304,6 +315,8 @@ export interface MessagingDomainDeps {
     runtimeSessionId?: string;
     message: string;
     conversationHistory?: RuntimeModelConversationMessage[];
+    /** See AgentRuntimeDomain.executeRuntimeTurn: answer or read only, never act. */
+    regeneration?: boolean;
     signal?: AbortSignal;
     now?: Date;
   }) => Promise<RuntimeTurnResult>;
@@ -3701,6 +3714,8 @@ export class MessagingDomain {
     clientTimestamp?: string | null;
     queuedAt?: string | null;
     selectedChannel?: MessageChannel;
+    /** Server-set only (never read from a request body): see reply-versions.ts. */
+    agentTurnEffect?: AgentTurnEffect;
     now?: Date;
   }): ConversationMessageSummary {
     const now = input.now ?? new Date();
@@ -3744,6 +3759,7 @@ export class MessagingDomain {
       clientTimestamp?: string | null;
       queuedAt?: string | null;
       selectedChannel?: MessageChannel;
+      agentTurnEffect?: AgentTurnEffect;
       now?: Date;
     },
     session: Pick<AuthSessionView, "account" | "user">
@@ -3873,6 +3889,9 @@ export class MessagingDomain {
       replyToMessageId: input.replyToMessageId ?? null,
       forwardedFromMessageId: input.forwardedFromMessageId ?? null,
       reactions: [],
+      ...(author === "agent" && input.agentTurnEffect !== undefined
+        ? { agentTurnEffect: input.agentTurnEffect }
+        : {}),
       clientTimestamp: input.clientTimestamp ?? null,
       createdAt: now.toISOString()
     };
@@ -4266,6 +4285,8 @@ export class MessagingDomain {
           type: "text",
           text: this.deps.agentModelRecoveryGuidance(input.businessId, error)
         },
+        // The model never answered, so nothing ran: asking again is safe.
+        agentTurnEffect: "none",
         replyToMessageId: message.id,
         clientTimestamp: now.toISOString(),
         now: replyAt
@@ -4309,6 +4330,7 @@ export class MessagingDomain {
                 },
                 prompt: runtime.turn.response
               },
+        agentTurnEffect: agentTurnEffectOf(runtime),
         replyToMessageId: message.id,
         clientTimestamp: now.toISOString(),
         now: replyAt
@@ -4394,7 +4416,9 @@ export class MessagingDomain {
 
   private runtimeConversationHistory(
     conversationId: string,
-    currentMessageId: string
+    currentMessageId: string,
+    /** A reply being regenerated: its present answer must not be shown as what was said before. */
+    excludeMessageId?: string
   ): RuntimeModelConversationMessage[] {
     // What was said before the message being answered: a reply that runs after its request (Edge
     // agent turns) must not see, or be asked again because of, messages sent while it ran.
@@ -4404,6 +4428,7 @@ export class MessagingDomain {
       .filter(
         (message) =>
           message.id !== currentMessageId &&
+          message.id !== excludeMessageId &&
           !(Date.parse(message.createdAt) > before) &&
           message.deletedAt === null &&
           (message.content.type === "text" || message.content.type === "confirmation")
@@ -5006,6 +5031,243 @@ export class MessagingDomain {
         now
       });
     }
+  }
+
+  /**
+   * Writes another version of an agent reply (docs/architecture/conversation-reply-versions.md).
+   *
+   * The reply keeps its id, its place in the thread and every earlier answer; the new answer is
+   * appended and selected. Three independent checks keep this from repeating a business action:
+   * 1. `replyRegenerationBlock`: only a plain-text reply whose turn is recorded as having changed
+   *    nothing is eligible (fails closed for replies written before that was recorded).
+   * 2. The runtime turn runs with `regeneration: true`, which refuses any proposal that is not a
+   *    read-only tool before a plan, an approval or an execution exists.
+   * 3. The finished turn is checked again here before anything is written.
+   * The skill, inventory-task and attachment paths of a first answer are never entered.
+   *
+   * Retries are safe: the same `versionId` answers with the version already written.
+   */
+  async regenerateAgentReply(input: {
+    sessionId: string | null;
+    conversationId: string;
+    messageId: string;
+    businessId: string;
+    versionId: string;
+    signal?: AbortSignal;
+    now?: Date;
+  }): Promise<{ message: ConversationMessageSummary; runtime: RuntimeTurnResult | null }> {
+    const now = input.now ?? new Date();
+    const session = this.deps.requirePinVerifiedSession(input.sessionId, now);
+    const conversation = this.requireAccountConversation(input.conversationId, session.account.id);
+    if (conversation.activeShopId !== null && conversation.activeShopId !== input.businessId)
+      throw new Cp2Error(
+        403,
+        "conversation_business_mismatch",
+        "Agent business does not match this conversation."
+      );
+    if (conversation.kind !== "personal" && !conversation.businessAgentEnabled)
+      throw new Cp2Error(
+        409,
+        "business_agent_disabled",
+        "The business owner has not enabled its agent in this conversation."
+      );
+    this.deps.requireAuthorizedSession(input.sessionId, input.businessId, "customer:write", now);
+    if (this.conversationHasHumanRecipient(conversation.id, session.account.id))
+      throw new Cp2Error(
+        409,
+        "agent_processing_requires_agent_conversation",
+        "Encrypted direct messages are not processed by the business agent."
+      );
+    if (!isReplyVersionId(input.versionId))
+      throw new Cp2Error(
+        400,
+        "reply_version_id_invalid",
+        "versionId must be 8 to 64 letters, digits, hyphens or underscores."
+      );
+
+    const reply = this.requireConversationMessage(input.messageId, conversation.id);
+    if (replyVersionsOf(reply).versions.some((version) => version.id === input.versionId))
+      return { message: reply, runtime: null };
+    const question = this.requireRegenerableReply(reply, session.user.id);
+
+    const runtime = await this.deps.createRuntimeTurn({
+      sessionId: input.sessionId,
+      businessId: input.businessId,
+      conversationId: conversation.id,
+      message: question,
+      conversationHistory: this.runtimeConversationHistory(
+        conversation.id,
+        reply.replyToMessageId as string,
+        reply.id
+      ),
+      regeneration: true,
+      ...(input.signal === undefined ? {} : { signal: input.signal }),
+      now
+    });
+    const effect = agentTurnEffectOf(runtime);
+    const delivered = workspaceAttachmentsFromToolResult(runtime.turn.toolResult);
+    if (effect === "action" || delivered.length > 0) {
+      // Unreachable while the runtime honours `regeneration`; kept so a future tool that slips
+      // past that guard still cannot become a reply version.
+      await this.discardUnassociatedWorkspaceAttachments(delivered);
+      throw new Cp2Error(
+        409,
+        "regeneration_would_act",
+        "Another version of this reply would change business records. Send it as a new message instead.",
+        false
+      );
+    }
+
+    // The model call above awaited: read the reply again so a second regenerate that finished
+    // meanwhile is extended, not overwritten.
+    const current = this.requireConversationMessage(input.messageId, conversation.id);
+    const versions = replyVersionsOf(current);
+    if (versions.versions.some((version) => version.id === input.versionId))
+      return { message: current, runtime: null };
+    // The question may have been edited while the model answered its old wording: that answer
+    // must not be filed under the new one.
+    if (this.requireRegenerableReply(current, session.user.id) !== question)
+      throw new Cp2Error(409, "reply_not_regenerable", "This reply cannot be regenerated.", false, {
+        reason: "question_changed"
+      });
+    if (current.content.type !== "text")
+      throw new Cp2Error(409, "reply_not_regenerable", "This reply cannot be regenerated.");
+    const content = { ...current.content, text: runtime.turn.response };
+    validateConversationMessageContent(content);
+    const next: ConversationMessageSummary = {
+      ...current,
+      content,
+      agentTurnEffect: strongerAgentTurnEffect(current.agentTurnEffect ?? "none", effect),
+      replyVersions: appendReplyVersion(versions, {
+        id: input.versionId,
+        text: runtime.turn.response,
+        createdAt: now.toISOString()
+      })
+    };
+    this.conversationMessages.set(next.id, next);
+    this.recordConversationSyncForParticipants(
+      conversation.id,
+      "conversation_messages",
+      next.id,
+      next,
+      now
+    );
+    this.deps.recordAuditEvent({
+      type: "message.regenerated",
+      aggregateType: "conversation_message",
+      aggregateId: next.id,
+      actorId: session.user.id,
+      occurredAt: now.toISOString(),
+      payload: {
+        conversationId: conversation.id,
+        businessId: input.businessId,
+        versionId: input.versionId,
+        versionCount: next.replyVersions?.versions.length ?? 1,
+        runtimeTurnId: runtime.turn.id,
+        toolName: runtime.turn.plan.toolName,
+        effect
+      }
+    });
+    return { message: next, runtime };
+  }
+
+  /** Shows another version of a regenerated reply. Changes which answer is shown, nothing else. */
+  selectAgentReplyVersion(input: {
+    sessionId: string | null;
+    conversationId: string;
+    messageId: string;
+    index: number;
+    now?: Date;
+  }): ConversationMessageSummary {
+    const now = input.now ?? new Date();
+    const session = this.deps.requirePinVerifiedSession(input.sessionId, now);
+    const conversation = this.requireAccountConversation(input.conversationId, session.account.id);
+    const current = this.requireConversationMessage(input.messageId, conversation.id);
+    if (
+      current.author !== "agent" ||
+      current.deletedAt ||
+      current.content.type !== "text" ||
+      current.replyVersions === undefined
+    )
+      throw new Cp2Error(409, "reply_versions_missing", "This reply has no other versions.");
+    const question = current.replyToMessageId
+      ? this.conversationMessages.get(current.replyToMessageId)
+      : undefined;
+    if (question === undefined || question.authorId !== session.user.id)
+      throw new Cp2Error(
+        403,
+        "reply_version_forbidden",
+        "Only the person who asked can choose the version of this reply."
+      );
+    const selected = selectReplyVersion(replyVersionsOf(current), input.index);
+    if (selected === null)
+      throw new Cp2Error(400, "reply_version_invalid", "That reply version does not exist.");
+    if (selected.selected === replyVersionsOf(current).selected) return current;
+    const next: ConversationMessageSummary = {
+      ...current,
+      content: { ...current.content, text: selected.versions[selected.selected]!.text },
+      replyVersions: selected
+    };
+    this.conversationMessages.set(next.id, next);
+    this.recordConversationSyncForParticipants(
+      conversation.id,
+      "conversation_messages",
+      next.id,
+      next,
+      now
+    );
+    this.deps.recordAuditEvent({
+      type: "message.version_selected",
+      aggregateType: "conversation_message",
+      aggregateId: next.id,
+      actorId: session.user.id,
+      occurredAt: now.toISOString(),
+      payload: {
+        conversationId: conversation.id,
+        versionId: selected.versions[selected.selected]!.id,
+        index: selected.selected
+      }
+    });
+    return next;
+  }
+
+  /**
+   * The text of the message a regenerable reply answers. Throws the reason otherwise: the reply
+   * itself (reply-versions.ts) or the message it answers (someone else's, deleted, edited into
+   * something other than plain text, carrying files, or a slash command) rules it out.
+   */
+  private requireRegenerableReply(reply: ConversationMessageSummary, userId: string): string {
+    const block = replyRegenerationBlock(reply);
+    if (block === "version_limit")
+      throw new Cp2Error(
+        409,
+        "reply_version_limit",
+        "This reply already has the most versions it can keep.",
+        false,
+        { reason: block }
+      );
+    const refuse = (reason: string) =>
+      new Cp2Error(409, "reply_not_regenerable", "This reply cannot be regenerated.", false, {
+        reason
+      });
+    if (block !== null) throw refuse(block);
+    const question = this.conversationMessages.get(reply.replyToMessageId as string);
+    if (question === undefined || question.conversationId !== reply.conversationId)
+      throw refuse("question_missing");
+    if (question.deletedAt) throw refuse("question_deleted");
+    if (question.author === "agent" || question.authorId !== userId)
+      throw new Cp2Error(
+        403,
+        "reply_regeneration_forbidden",
+        "Only the person who asked can regenerate this reply."
+      );
+    if (question.content.type !== "text") throw refuse("question_not_text");
+    if ((question.content.attachments?.length ?? 0) > 0) throw refuse("question_has_attachments");
+    // Zero-width characters are stripped too: String.trim() keeps them.
+    const text = question.content.text.replace(/^[\s\u200B-\u200D\u2060\uFEFF]+/u, "").trim();
+    if (text.length === 0) throw refuse("question_empty");
+    if (text.startsWith("/")) throw refuse("question_is_command");
+    return question.content.text;
   }
 
   updateConversationMessage(input: {
@@ -7675,6 +7937,21 @@ export class MessagingDomain {
               : 409;
     return new Cp2Error(status, error.code, error.message);
   }
+}
+
+/**
+ * What a finished runtime turn did, from its plan: an approval it is waiting for and a tool that
+ * changes records are both "action"; an executed low-risk read-only tool is "read"; an answer in words, a
+ * clarification or a refused proposal is "none". An unknown tool name counts
+ * as an action.
+ */
+function agentTurnEffectOf(runtime: RuntimeTurnResult): AgentTurnEffect {
+  const plan = runtime.turn.plan;
+  if (plan.confirmationToken !== null) return "action";
+  // "unknown.clarify" is how an answer in words is planned: it "runs", but it is not a tool.
+  if (plan.executedAt === null || plan.toolName === "unknown.clarify") return "none";
+  const definition = runtimeToolRegistry[plan.toolName];
+  return definition !== undefined && regenerationAllowsTool(definition) ? "read" : "action";
 }
 
 function workspaceAttachmentsFromToolResult(value: unknown): WorkspaceDeliverResult["attachments"] {

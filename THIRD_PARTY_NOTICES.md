@@ -54,3 +54,11 @@ original source headers, the license and pinned provenance are included in that 
   License: `docs/licenses/libsignal-GPL-3.0.txt`. Its distribution requirements must be assessed
   before shipping this optional connector; Baileys' MIT license does not cover every dependency.
 - whatsapp-rust-bridge 0.5.4 — MIT — transitive native protocol dependency.
+
+## Chat interaction patterns
+
+- DeepSeek Chat Demo (https://github.com/deepseek-ai/chat-demo, commit 5d5dd754) — MIT, Copyright
+  (c) 2026 DeepSeek — reference for the sibling reply-version pattern (previous / next, "n of m").
+  No source code from that project is included in Grogoni: reply versions
+  (`docs/architecture/conversation-reply-versions.md`) are an independent implementation with a
+  different data model.

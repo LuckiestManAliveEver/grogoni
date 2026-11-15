@@ -1,6 +1,7 @@
 import { GuestTypingIndicator } from "./GuestTypingIndicator";
 import { DiscussionMembersButton } from "./DiscussionMembersButton";
 import { ChatRecycleBinPanel } from "./ChatRecycleBinPanel";
+import { RegenerateMenuItem, ReplyVersionRow, useReplyVersions } from "./features/reply-versions";
 import { useMobileChatNavigation } from "./hooks/useMobileChatNavigation";
 import { HomeSuggestionChips } from "./HomeSuggestionChips";
 
@@ -162,6 +163,7 @@ export function ChatSurface({
   onReply,
   onCancelReply,
   onEditMessage,
+  replyVersionDeps,
   onDeleteMessage,
   onReactMessage,
   onAgentFeedback,
@@ -249,6 +251,7 @@ export function ChatSurface({
   const deliveryAttempts = useDeliveryAttempts(activeConversationId);
   const [forwardingMessageId, setForwardingMessageId] = useState<string | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const replyVersions = useReplyVersions(replyVersionDeps);
   const [editingMessageText, setEditingMessageText] = useState("");
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
   const [workspaceCardView, setWorkspaceCardView] = useState<
@@ -697,6 +700,7 @@ export function ChatSurface({
                     ))}
                   </div>
                 ) : null}
+                <ReplyVersionRow message={message} thread={messages} controls={replyVersions} />
                 {!message.deletedAt &&
                 message.deviceOnlyIn === undefined &&
                 !message.id.startsWith("welcome") ? (
@@ -742,6 +746,12 @@ export function ChatSurface({
                             </button>
                           </>
                         ) : null}
+                        <RegenerateMenuItem
+                          controls={replyVersions}
+                          message={message}
+                          thread={messages}
+                          onChosen={() => setActiveMessageMenuId(null)}
+                        />
                         {["👍", "❤️", "😂", "😮", "🙏"].map((emoji) => (
                           <button
                             key={emoji}

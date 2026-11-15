@@ -1487,6 +1487,81 @@ export function registerMessagingRoutes(
     }
   );
 
+  // Reply versions (docs/architecture/conversation-reply-versions.md). Regenerating keeps the
+  // reply's id and appends an answer; it can never run a tool that changes business records.
+  app.post(
+    "/v1/conversations/:conversationId/messages/:messageId/regenerate",
+    async (
+      request: FastifyRequest<{
+        Params: MessageParams;
+        Body: { businessId?: string; versionId?: string };
+      }>,
+      reply
+    ) => {
+      const startedAt = Date.now();
+      const conversationId = request.params.conversationId;
+      const messageId = request.params.messageId;
+      try {
+        const body = parseRequestBody(request.body);
+        const businessId = parseString(body.businessId, "businessId");
+        const result = await store.regenerateAgentReply({
+          sessionId: readSessionCookie(request.headers.cookie),
+          conversationId: parseString(conversationId, "conversationId"),
+          messageId: parseString(messageId, "messageId"),
+          businessId,
+          versionId: parseString(body.versionId, "versionId")
+        });
+        request.log.info(
+          {
+            event: "agent_reply_regenerated",
+            tenantId: businessId,
+            conversationId,
+            messageId,
+            versionCount: result.message.replyVersions?.versions.length ?? 1,
+            replayed: result.runtime === null,
+            toolName: result.runtime?.turn.plan.toolName ?? null,
+            modelId: result.runtime?.turn.model?.modelId ?? null,
+            latencyMs: Date.now() - startedAt
+          },
+          "Agent reply regenerated."
+        );
+        return result.message;
+      } catch (error) {
+        request.log.warn(
+          {
+            event: "agent_reply_regeneration_refused",
+            conversationId,
+            messageId,
+            errorCode: error instanceof Cp2Error ? error.code : "INFERENCE_FAILED",
+            reason: error instanceof Cp2Error ? (error.details?.reason ?? null) : null,
+            latencyMs: Date.now() - startedAt
+          },
+          "Agent reply regeneration refused."
+        );
+        return sendCp2Error(reply, error);
+      }
+    }
+  );
+
+  app.put(
+    "/v1/conversations/:conversationId/messages/:messageId/reply-version",
+    async (request: FastifyRequest<{ Params: MessageParams; Body: { index?: number } }>, reply) => {
+      try {
+        const index = parseRequestBody(request.body).index;
+        if (typeof index !== "number" || !Number.isInteger(index))
+          throw new Cp2Error(400, "reply_version_invalid", "index must be a whole number.");
+        return store.selectAgentReplyVersion({
+          sessionId: readSessionCookie(request.headers.cookie),
+          conversationId: parseString(request.params.conversationId, "conversationId"),
+          messageId: parseString(request.params.messageId, "messageId"),
+          index
+        });
+      } catch (error) {
+        return sendCp2Error(reply, error);
+      }
+    }
+  );
+
   app.patch(
     "/v1/conversations/:conversationId/messages/:messageId",
     async (request: FastifyRequest<{ Params: MessageParams; Body: UpdateMessageBody }>, reply) => {

@@ -132,6 +132,7 @@ import {
   validateRuntimeToolInput,
   type BusinessTaskPlanStep
 } from "@grogoni/tool-core";
+import { assertRegenerationInputs, assertRegenerationTool } from "./regeneration.js";
 import { queryCatalogueProducts, roleCan, type BusinessPermission } from "@grogoni/business-core";
 import { Cp2Error } from "../../cp2-error.js";
 import {
@@ -2219,10 +2220,12 @@ export class AgentRuntimeDomain {
     channelEvidence?: string;
     /** Server-only compiled task step; HTTP and MCP parsers never accept this field. */
     plannedStep?: BusinessTaskPlanStep;
+    regeneration?: boolean; // Server-only: answer or read, never act (regeneration.ts).
     signal?: AbortSignal;
     now?: Date;
   }): Promise<RuntimeTurnResult> {
     const now = input.now ?? new Date();
+    assertRegenerationInputs(input);
     const auth = this.deps.requireAuthorizedSession(
       input.sessionId,
       input.businessId,
@@ -2723,6 +2726,7 @@ export class AgentRuntimeDomain {
     if (input.channelDelegation && proposal.toolName !== "unknown.clarify")
       this.deps.channelToolGrants!(input.businessId, input.channelDelegation, proposal.toolName);
     const definition = runtimeToolRegistry[proposal.toolName];
+    assertRegenerationTool(input, definition);
     const roleAllowed = input.channelDelegation
       ? Boolean(
           proposal.toolName === "unknown.clarify" || delegatedTools?.includes(proposal.toolName)

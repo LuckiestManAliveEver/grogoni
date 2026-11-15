@@ -11,6 +11,8 @@ export * from "./purchase-orders.js";
 export * from "./computer-runtime.js";
 export * from "./fulfillment.js";
 export * from "./grams.js";
+export * from "./reply-versions.js";
+import type { AgentTurnEffect, ConversationReplyVersions } from "./reply-versions.js";
 export * from "./recovery-approval.js";
 export * from "./guest-intent.js";
 export * from "./phone-number.js";
@@ -1029,6 +1031,13 @@ export interface ConversationMessageSummary {
   replyToMessageId?: string | null;
   forwardedFromMessageId?: string | null;
   reactions?: ConversationReaction[];
+  /**
+   * What the agent turn behind this reply did. Set by the server only, on replies its own runtime
+   * wrote; absent on every other message. See reply-versions.ts.
+   */
+  agentTurnEffect?: AgentTurnEffect;
+  /** Present once the reply was regenerated; `content.text` mirrors the selected version. */
+  replyVersions?: ConversationReplyVersions;
   clientTimestamp: string | null;
   createdAt: string;
 }

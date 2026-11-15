@@ -6405,6 +6405,16 @@ export class Cp2Store {
   ): ReturnType<MessagingDomain["purgeExpiredRecycleBinConversations"]> {
     return this.messagingDomain.purgeExpiredRecycleBinConversations(...args);
   }
+  regenerateAgentReply(
+    ...args: Parameters<MessagingDomain["regenerateAgentReply"]>
+  ): ReturnType<MessagingDomain["regenerateAgentReply"]> {
+    return this.messagingDomain.regenerateAgentReply(...args);
+  }
+  selectAgentReplyVersion(
+    ...args: Parameters<MessagingDomain["selectAgentReplyVersion"]>
+  ): ReturnType<MessagingDomain["selectAgentReplyVersion"]> {
+    return this.messagingDomain.selectAgentReplyVersion(...args);
+  }
   updateConversationMessage(
     ...args: Parameters<MessagingDomain["updateConversationMessage"]>
   ): ReturnType<MessagingDomain["updateConversationMessage"]> {

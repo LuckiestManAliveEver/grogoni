@@ -435,6 +435,8 @@ const mutatingMethodNames = new Set([
   "updateSupplierImportRow",
   "updateShopSystemOrder",
   "updateConversationMessage",
+  "regenerateAgentReply",
+  "selectAgentReplyVersion",
   "updateConversationSettings",
   "updateTaxConfig",
   "updateVerificationTier",
