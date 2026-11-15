@@ -1,0 +1,35 @@
+# Reviewed historical non-secrets only; no path-wide or pattern-wide exclusions.
+# See docs/testing/secret-scan-triage.json. Historical example credentials remain unignored.
+
+# Source-file SHA-256 checksum in a verification snapshot
+2b4632a57cc73706cc753b689f8b708e4070e002:docs/testing/messenger-release-2026-10-24/context-release-source-snapshot.json:generic-api-key:5
+2b4632a57cc73706cc753b689f8b708e4070e002:docs/testing/messenger-remediation-2026-10-24/source-snapshot.json:generic-api-key:15
+2b4632a57cc73706cc753b689f8b708e4070e002:docs/testing/messenger-remediation-2026-10-24/source-snapshot.json:generic-api-key:17
+2b4632a57cc73706cc753b689f8b708e4070e002:docs/testing/messenger-remediation-2026-10-24/source-snapshot.json:generic-api-key:20
+326d80a4477e4c9c3b954e2aaf2eb90f05a88099:docs/testing/default-messenger-2026-11-03/source-verification.json:generic-api-key:13
+326d80a4477e4c9c3b954e2aaf2eb90f05a88099:docs/testing/default-messenger-2026-11-03/source-verification.json:generic-api-key:14
+326d80a4477e4c9c3b954e2aaf2eb90f05a88099:docs/testing/default-messenger-2026-11-03/source-verification.json:generic-api-key:18
+326d80a4477e4c9c3b954e2aaf2eb90f05a88099:docs/testing/default-messenger-2026-11-03/source-verification.json:generic-api-key:28
+326d80a4477e4c9c3b954e2aaf2eb90f05a88099:docs/testing/default-messenger-2026-11-03/source-verification.json:generic-api-key:31
+326d80a4477e4c9c3b954e2aaf2eb90f05a88099:docs/testing/default-messenger-2026-11-03/source-verification.json:generic-api-key:40
+326d80a4477e4c9c3b954e2aaf2eb90f05a88099:docs/testing/default-messenger-2026-11-03/source-verification.json:generic-api-key:50
+
+# Reviewed deterministic test fixture, public identifier or harness label
+46ffaa3be21d60eb9579a08727ffb8a2d9a1dc81:tests/openai-grogoni-mcp-harness.test.ts:generic-api-key:106
+6767555d9ae0c2d1b6d7b9381f739fba0af5e91d:tests/render-deploy-notifications.test.ts:generic-api-key:8
+7855f95bf6ef5c1c8e42bc321e999df155125665:scripts/test-supabase-auth.mjs:generic-api-key:180
+7855f95bf6ef5c1c8e42bc321e999df155125665:tests/supabase-edge-auth.test.ts:generic-api-key:343
+8c7de326619f2573a135288f8a515b6f0ae50697:tests/edge-job-schedule.test.ts:generic-api-key:48
+9d618b0248a68ae7d415564f2d0c1ad3fb19f0dd:tests/agent-model-runtime.test.ts:generic-api-key:18
+bc68be49bd1c284cc93befccb1b46c4b82383ef5:tests/cp7-offline-sync.test.ts:generic-api-key:310
+e7b00034d001bdd39046068c5e2903a92884d313:scripts/test-openai-soko-mcp.mjs:generic-api-key:458
+e7b00034d001bdd39046068c5e2903a92884d313:tests/openai-soko-mcp-harness.test.ts:generic-api-key:106
+ed2728c012ee7803cdaa32dbca57f9a21a56bf13:tests/edge-runtime-checkpoint-scope.test.ts:generic-api-key:578
+
+# Public local-storage key name, not a stored account value
+46ffaa3be21d60eb9579a08727ffb8a2d9a1dc81:apps/web/src/grogoni-application-shared.ts:generic-api-key:1624
+836609feb5911cdeaf2e15e54829368886cd51cb:apps/web/src/soko-application-shared.ts:generic-api-key:1596
+a1ba9213d4906c2fd52aa30e52884d521ce93373:apps/web/src/SokoApplication.tsx:generic-api-key:1733
+
+# Blank secret followed by a public Web Push contact subject
+036fc880e3645b1ea3d84f9630e9e752d79abb8d:.env.production.example:generic-api-key:74

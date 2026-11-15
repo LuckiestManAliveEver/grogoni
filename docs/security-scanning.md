@@ -16,7 +16,7 @@ counts, never secret values, in the repository.
 For a local historical scan, run:
 
 ```sh
-gitleaks git --redact --no-banner --report-format json --report-path /tmp/grogoni-secrets.json
+gitleaks git --log-opts=HEAD --redact --no-banner --report-format json --report-path /tmp/grogoni-secrets.json
 pnpm audit --prod --audit-level high
 ```
 
@@ -35,3 +35,20 @@ archive checksum was verified against the official release checksums before exec
 
 Sources: [Gitleaks action](https://github.com/gitleaks/gitleaks-action),
 [pnpm audit](https://pnpm.io/cli/audit). No independent security review is claimed.
+
+## Verification and historical triage — 15 November 2026
+
+The fresh production dependency audit reports zero advisories at every severity. The original
+70-match scan included unrelated local checkpoint references; current-branch history is audited
+with `--log-opts=HEAD` for a reproducible scope. The fresh branch scan found 30 matches.
+
+25 were reviewed as source checksums, public browser storage-key names, deterministic test
+fixtures/identifiers, or an empty secret assignment followed by a public Web Push contact subject.
+`.gitleaksignore` contains only their exact historical fingerprints, with no path-wide or
+pattern-wide exemptions. The sanitized [triage record](testing/secret-scan-triage.json) lists
+reasons and fingerprints without values. Future changes are not automatically exempt.
+
+A repeat scan leaves five historical example-file findings associated with the retired inference
+service. Current source removes that service and rejects its former configuration. That does not
+prove old deployments were shut down or their credentials rotated. These findings are deliberately
+unsuppressed; external retirement/rotation verification remains an open release condition.
