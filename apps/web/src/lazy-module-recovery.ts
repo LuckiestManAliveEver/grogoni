@@ -42,6 +42,7 @@ export const ownerModuleKeys = {
 
 /** Lazy panels inside the owner app's workspace drawer. */
 export const workspaceModuleKeys = {
+  ownerWorkspace: "owner-workspace",
   shopHub: "shop-hub",
   phoneContacts: "phone-contacts",
   connectionRequests: "connection-requests",
