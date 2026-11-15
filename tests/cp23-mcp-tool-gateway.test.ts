@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
 import type { FastifyInstance } from "fastify";
-import { buildApi } from "../services/api/src/app";
+import { buildApi, getEffectiveInteractiveBudgetMs } from "../services/api/src/app";
 import { createCp2Store } from "../services/api/src/cp2/store";
 import type { FulfillmentService } from "../services/api/src/cp2/domains/fulfillment/service";
 
@@ -1375,10 +1375,11 @@ function expectInteractiveBudget(response: {
   headers: Record<string, string | string[] | undefined>;
 }): void {
   expect(response.headers["x-grogoni-response-budget-class"]).toBe("interactive");
-  expect(response.headers["x-grogoni-response-budget-ms"]).toBe("150");
+  const budgetMs = getEffectiveInteractiveBudgetMs();
+  expect(response.headers["x-grogoni-response-budget-ms"]).toBe(String(budgetMs));
   const timing = String(response.headers["server-timing"]);
   const duration = Number(timing.match(/dur=([\d.]+)/u)?.[1]);
-  expect(duration).toBeLessThanOrEqual(150);
+  expect(duration).toBeLessThanOrEqual(budgetMs);
 }
 
 function initializeRequest() {
