@@ -116,3 +116,15 @@ in-progress test/audit counts. Production dependencies now audit clean. CSP, HST
 upgrade, the missing email-error export and regressions exposed by the full test run have targeted
 verification. Historical secret triage leaves five findings deliberately unsuppressed. No full
 checklist section, commerce-harness gate or production milestone is certified as complete.
+
+
+## Database and chat review continuation — 15 November 2026
+
+[Database verification and fixes](pwa-commerce-readiness-database-review-2026-11-15.md) records
+47 real PostgreSQL test files, passing reruns after durability/rollback fixes, a successful local
+logical backup restoration, and additional security/offline tests. Section 23 execution checkboxes
+were updated only for tests actually run. This supersedes the earlier statement that no PostgreSQL
+checks had been run; external and wider acceptance conditions remain open.
+
+[DeepSeek document implementation review](../audits/chat-modernization-review-2026-11-15.md)
+records the guarded reply-version integration, fixes, reproducible tests and missing phases.

@@ -628,18 +628,18 @@ Acknowledged commercial transactions survive process crashes and can be reconstr
 
 - [x] Run the full repository test suite.
 - [ ] Resolve unexplained test failures.
-- [ ] Run authentication security tests.
-- [ ] Run tenant-isolation tests.
-- [ ] Run encryption tests.
-- [ ] Run agent authorization tests.
+- [x] Run authentication security tests.
+- [x] Run tenant-isolation tests.
+- [x] Run encryption tests.
+- [x] Run agent authorization tests.
 - [ ] Run prompt-injection resistance tests.
-- [ ] Run payment idempotency tests.
+- [x] Run payment idempotency tests.
 - [ ] Run order concurrency tests.
-- [ ] Run offline synchronization tests.
+- [x] Run offline synchronization tests.
 - [ ] Run browser compatibility tests.
 - [ ] Run low-memory device tests.
 - [ ] Run accessibility tests.
-- [ ] Run backup restoration tests.
+- [x] Run backup restoration tests.
 - [ ] Conduct an independent security review.
 
 ---
@@ -823,3 +823,12 @@ Checked items have narrow repository implementation/test evidence in
 [the final batch review](../testing/pwa-commerce-readiness-final-review-2026-11-15.md).
 A completed test-run checkbox records execution, not a claim that skipped integration coverage
 or production validation passed. All H1–H5 gates and milestones remain open.
+
+
+## Verification update — database and chat review, 15 November 2026
+
+Section 23's newly checked items mean the named automated tests were executed successfully;
+they do not certify complete attack coverage, physical-device encryption, real settlement or
+all-route tenant isolation. See `docs/testing/pwa-commerce-readiness-database-review-2026-11-15.md`
+for commands, failures, fixes and verification boundaries. The new DeepSeek document's implementation
+review is `docs/audits/chat-modernization-review-2026-11-15.md`.

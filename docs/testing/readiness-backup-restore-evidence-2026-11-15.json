@@ -1,0 +1,11 @@
+{
+  "status": "pass",
+  "source": "isolated local readiness test database",
+  "target": "separate local restore database",
+  "tables": 253,
+  "rows": 8274,
+  "archiveBytes": 1434700,
+  "archiveSha256": "7b133bd048993b89f4f5a665492ec9a466aa8b92477f44d85fab2ac83df40fc6",
+  "comparison": "Every user table: row count and order-independent row-content MD5; pg_restore --exit-on-error",
+  "mismatchedTables": []
+}

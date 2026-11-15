@@ -61,18 +61,30 @@ concurrent regeneration, version limits, retries and authorization boundaries.
 | 8: history portability | Existing server export; new import and complete account-scoped history/retry lifecycle not implemented. |
 | 9: shared accessible UI | Native accessible version buttons tested; Vercel adoption matrix and Google guidance report missing. |
 | 10: security | Server-side regeneration guards and tenant/asker tests present; independent complete audit remains open. |
-| 11: performance | Earlier bundle measurements exist; no before/after streaming, long-history or physical-device comparison. |
+| 11: performance | Production payload measured and owner budget repaired by loading workspaces on demand; no streaming, long-history or physical-device comparison. |
 | 12: certification | Targeted unit/API tests and typechecks pass; no new three-browser or physical-device certification. |
 | 13: deliverables | Earlier audit and architecture exist; full upstream audits, compliance/adoption matrices and certifications missing. |
 
 ## Reproduced evidence
 
-- Initial reply-version API/client run: 40 tests passed across two files.
-- Client tests after lifecycle fixes: 17 passed. API tests were unchanged by that client fix.
-- Web and API TypeScript checks passed before the lifecycle tests were added; commit hooks also
-  check the affected workspaces before accepting changes.
+- Final combined reply-version API/client/safety-oracle run: 45 tests passed across three files.
+- Web, API and shared-types TypeScript checks, package builds, ESM import checks and affected-file lint passed in the feature commit hooks.
 - No provider model, credentials, transport or message store was replaced. No DeepSeek source was copied.
 - No paid model evaluation, real commerce transaction or physical-device exercise was performed.
 
 The source checklist's independent security, provider, legal and hardware gates remain separate
 release conditions. Neither this review nor passing scripted-model tests closes them.
+
+
+## Measured bundle correction
+
+The first integrated production build passed compilation but failed the owner-route budget:
+197.50 KiB gzip against 185 KiB. Business workspace rendering now loads only when a workspace is
+opened, through the existing lazy-module recovery/error-boundary mechanism. The budget measures
+all static dependencies, so merely renaming or moving eager chunks cannot pass it.
+
+After rebuilding with the same configuration: initial JavaScript 159.51 KiB gzip (250 KiB limit),
+CSS 24.93 KiB (50 KiB), incremental owner route 182.26 KiB (185 KiB). All budgets pass without
+raising thresholds. Lazy-recovery, error-boundary and workspace coverage: 31 tests passed.
+This measures payload; no latency, memory or physical-device performance improvement is claimed.
+Optional large chunks still produce Vite warnings.
