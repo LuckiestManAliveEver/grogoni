@@ -22,10 +22,10 @@ inside one agent reply.
 Two optional fields on `ConversationMessageSummary` (`packages/shared-types/src/index.ts`), with the
 rules in `packages/shared-types/src/reply-versions.ts`:
 
-| Field             | Set by      | Meaning                                                            |
-| ----------------- | ----------- | ------------------------------------------------------------------ |
-| `agentTurnEffect` | server only | What the turn behind the reply did: `none`, `read` or `action`.    |
-| `replyVersions`   | server only | `{ selected, versions: [{ id, text, createdAt }] }`, oldest first. |
+| Field             | Set by      | Meaning                                                                               |
+| ----------------- | ----------- | ------------------------------------------------------------------------------------- |
+| `agentTurnEffect` | server only | What the turn behind the reply did: `none`, `read` or `action`.                       |
+| `replyVersions`   | server only | `{ selected, versions: [{ id, text, createdAt, questionRevision? }] }`, oldest first. |
 
 `content.text` always equals the selected version. A client that knows nothing about versions sees
 one ordinary reply; sync carries one entity; the history given to the model contains the selected
@@ -33,6 +33,16 @@ answer only. Messages are stored as JSON records (`cp2_conversation_messages`), 
 migration.
 
 Limit: 5 versions per reply (`maxReplyVersions`). Versions are appended, never edited or removed.
+
+Each version records `questionRevision`: the question's `editedAt` marker captured before
+inference, never the question text. `null` means the unedited question; an omitted marker means
+the answered revision is unknown. The original gets `null` on the first regenerate only if the
+question is still unedited. Edits receive strictly increasing timestamps, even within one
+millisecond or after a backwards clock adjustment. A text or revision change during generation
+refuses the answer, including editing away and restoring identical wording.
+
+The client shows "Answered before the message was last edited." when the selected version's
+known marker differs from the current question. No erased wording is duplicated into replies.
 
 ## API
 
@@ -87,12 +97,18 @@ Everything specific to the feature is in `apps/web/src/features/reply-versions/`
   version.
 - `reply-version-requests.ts`: a request whose answer never arrived (stop, timeout, dropped
   connection, 5xx, turn still running) keeps its `versionId`, in memory and in session storage, so
-  asking again after a remount or a reload cannot write the same answer twice. Pending requests are aborted when the conversation or business changes or the surface unmounts; late results cannot update the new context. Regenerate is
+  asking again after a remount or a reload cannot write the same answer twice. Keys are held per
+  account (`grogoni:reply-version-requests:<accountId>`) and all of them are dropped on sign-out
+  (`forgetReplyVersionRequests`, from the chat inbox reset). Pending requests are aborted when the conversation or business changes or the surface unmounts; late results cannot update the new context. Regenerate is
   offered only to the person who asked, in their own shop's conversation (`canOfferRegenerate`);
   other participants see the version position without controls.
 
-Stop ends the wait only. The server may still finish and write the version; it then appears on the
-next thread refresh, and a repeated Regenerate answers with it.
+Stop closes the request. On the Node API that cancels the turn (`observeRequestAbort` in the
+route): the model call is interrupted where the provider allows it, and no version is written even
+if the call runs to its end (`499 regeneration_cancelled`). Asking again is then a fresh request.
+On the Edge API the request is replayed around the model call and this cancellation is not tested:
+there a version may still be written after Stop, it appears on the next thread refresh, and the
+kept retry key makes a repeated Regenerate answer with it.
 
 ## Where it would break
 
@@ -103,16 +119,19 @@ next thread refresh, and a repeated Regenerate answers with it.
 - **Question edited or deleted while the model answers**: refused (`question_changed`,
   `question_deleted`) and no version is written. The turn itself already ran, so its runtime turn
   record (and a read-only tool call, if it made one) stays.
-- **A regenerate holds the conversation's turn lock** until the model answers, Stop included: a
-  message sent meanwhile is stored and gets `409 HANDOFF_IN_PROGRESS`; the outbox resends it.
+- **A regenerate holds the conversation's turn lock** until the turn ends (on the Node API, Stop
+  ends it): a message sent meanwhile is stored and gets `409 HANDOFF_IN_PROGRESS`; the outbox
+  resends it.
 - **Feedback** (Correct / Incorrect) is stored per message, not per version.
 - **Two regenerates racing on different devices**: the conversation's turn lock refuses the second with
   `409 HANDOFF_IN_PROGRESS`. The client keeps its retry key on that answer.
-- **Question edited after the first answer**: the next version answers the edited text. Versions
-  do not record which wording they answered.
+- **Question edited after the first answer**: the next version answers the edited text and stores
+  its revision marker (`questionRevision`). The original version's revision stays unknown if it
+  was not recorded before an edit. The question text is not copied into version metadata.
 - **Edge API**: a regenerate runs inside its request (model call outside the locks, then replay),
-  not on the agent-turn queue. A model slower than the Edge request limit fails the request; the
-  retry key makes the retry safe.
+  not on the durable agent-turn queue. A model slower than the Edge request limit fails the
+  request; the retry key makes the retry safe. Moving regenerate onto that queue (with server
+  cancel and reconnect there) is the open item.
 - **Agent evaluation events**: a regenerated turn records evaluation events like any turn, so
   per-turn quality rates count it.
 

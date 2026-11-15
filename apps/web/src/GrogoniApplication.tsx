@@ -133,13 +133,12 @@ import { WhatsAppLinkedStartupGate } from "./WhatsAppLinkedStartupGate";
 import { MenuDrawer } from "./MenuDrawer";
 
 import { ChatSurface } from "./ChatSurface";
-import type { OwnerWorkspaceBindings } from "./OwnerWorkspace";
+import { LazyOwnerWorkspace, type OwnerWorkspaceBindings } from "./LazyOwnerWorkspace";
 
 import { BuildIdentity, NativeLaunchScreen } from "./BuildIdentity";
 import { OwnerCoreProvider, type OwnerCoreState } from "./hooks/OwnerCoreContext";
 import {
   agentProfileModuleKeys,
-  workspaceModuleKeys,
   hasPendingLazyModuleRecovery,
   loadLazyModuleWithRecovery,
   registerPreReloadFlush
@@ -147,13 +146,6 @@ import {
 
 import ShellNotices from "./ShellNotices";
 import { permissionsForOpenShop } from "./active-shop-permissions";
-
-const OwnerWorkspace = lazy(() =>
-  loadLazyModuleWithRecovery(
-    workspaceModuleKeys.ownerWorkspace,
-    () => import("./OwnerWorkspace")
-  ).then((module) => ({ default: module.renderOwnerWorkspace }))
-);
 
 const AgentProfileSurface = lazy(() =>
   loadLazyModuleWithRecovery(
@@ -2191,14 +2183,7 @@ export function OwnerApp() {
                     </Suspense>
                   </LazyModuleErrorBoundary>
                 ) : view === "chat" || view === "home" || view === "agent" ? null : (
-                  <LazyModuleErrorBoundary
-                    moduleKey={workspaceModuleKeys.ownerWorkspace}
-                    label="Business workspace"
-                  >
-                    <Suspense fallback={<NativeLaunchScreen message="Opening workspace…" />}>
-                      <OwnerWorkspace {...ownerWorkspaceBindings} />
-                    </Suspense>
-                  </LazyModuleErrorBoundary>
+                  <LazyOwnerWorkspace {...ownerWorkspaceBindings} />
                 )}
               </ChatSurface>
             </main>

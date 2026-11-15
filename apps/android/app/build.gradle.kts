@@ -8,6 +8,18 @@ plugins {
 val grogoniApiOrigin = providers.gradleProperty("GROGONI_API_ORIGIN")
     .orElse("https://grogoni.com/api")
 
+// On-phone WhatsApp worker (Node sidecar), in debug and release builds
+// (docs/architecture/whatsapp-linked-devices.md, "Android sidecar"). -PGROGONI_WHATSAPP_SIDECAR=false
+// builds without it, for size comparisons or when the runtime cannot be downloaded.
+val whatsAppSidecar = providers.gradleProperty("GROGONI_WHATSAPP_SIDECAR").orElse("true").get() == "true"
+
+// One APK per ABI for the direct website download (scripts/build-direct-android-release.py sets
+// this), so a phone downloads only its own runtime instead of both (75.7 MB). Play uses the App
+// Bundle, which splits by ABI on its own. 32-bit ABIs carry only a placeholder library: they install
+// and run the app, but not the sidecar.
+val abiSplits = providers.gradleProperty("GROGONI_ABI_SPLITS").orElse("false").get() == "true"
+val releaseAbis = listOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
+
 val keystorePropertiesFile = rootProject.file("keystore.properties")
 val keystoreProperties = if (keystorePropertiesFile.exists()) {
     Properties().apply { keystorePropertiesFile.inputStream().use { load(it) } }
@@ -86,6 +98,32 @@ android {
     testOptions {
         unitTests.isReturnDefaultValues = true
     }
+
+    // The WhatsApp sidecar's Node executable must be extracted to nativeLibraryDir, the only
+    // place an app may execute a file from (W^X for targetSdk >= 29). Extraction also keeps the
+    // runtime compressed inside the APK.
+    packaging {
+        jniLibs.useLegacyPackaging = true
+    }
+
+    sourceSets {
+        // Every build type (the service is in src/main/AndroidManifest.xml). Nothing generated is
+        // committed: the runtime is fetched, pinned and checksum-verified at build time.
+        if (whatsAppSidecar) getByName("main") {
+            jniLibs.srcDir(layout.buildDirectory.dir("generated/node-runtime/jniLibs"))
+            assets.srcDir(layout.buildDirectory.dir("generated/node-runtime/assets"))
+            assets.srcDir(layout.buildDirectory.dir("generated/whatsapp-sidecar-assets"))
+        }
+    }
+
+    splits {
+        abi {
+            isEnable = abiSplits
+            reset()
+            include(*releaseAbis.toTypedArray())
+            isUniversalApk = false
+        }
+    }
 }
 
 dependencies {
@@ -123,3 +161,27 @@ val verifySharedWebBundle by tasks.registering {
     }
 }
 tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(verifySharedWebBundle) }
+
+// Pinned, SHA-256-verified Android Node runtime (apps/android/node-runtime.lock.json) into a
+// git-ignored build directory. Downloads are cached in apps/android/.node-runtime-cache.
+val fetchNodeRuntime by tasks.registering(Exec::class) {
+    val lock = rootProject.file("node-runtime.lock.json")
+    val script = rootProject.file("scripts/node_runtime.py")
+    val out = layout.buildDirectory.dir("generated/node-runtime")
+    inputs.files(lock, script)
+    outputs.dir(out)
+    commandLine("python3", "-I", script.absolutePath, "fetch", "--out", out.get().asFile.absolutePath,
+        "--cache", rootProject.file(".node-runtime-cache").absolutePath)
+}
+
+// The sidecar script, bundled from the API's connector modules on every build (about a second).
+val buildWhatsAppSidecar by tasks.registering(Exec::class) {
+    val out = layout.buildDirectory.dir("generated/whatsapp-sidecar-assets")
+    outputs.dir(out)
+    outputs.upToDateWhen { false }
+    workingDir = rootProject.file("../..")
+    commandLine("node", rootProject.file("scripts/build-whatsapp-sidecar.mjs").absolutePath, "--out", out.get().asFile.absolutePath)
+}
+if (whatsAppSidecar) tasks.matching { it.name == "preDebugBuild" || it.name == "preReleaseBuild" }.configureEach {
+    dependsOn(fetchNodeRuntime, buildWhatsAppSidecar)
+}

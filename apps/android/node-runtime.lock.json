@@ -1,0 +1,122 @@
+{
+  "schema": 1,
+  "comment": "Pinned Android Node.js runtime for the WhatsApp sidecar. Regenerate with scripts/node_runtime.py resolve; never commit the binaries.",
+  "source": "Termux main repository (https://github.com/termux/termux-packages)",
+  "baseUrl": "https://packages.termux.dev/apt/termux-main/",
+  "rootPackage": "nodejs-lts",
+  "node": "24.22.2-1",
+  "packages": {
+    "aarch64": [
+      {
+        "name": "nodejs-lts",
+        "version": "24.22.2-1",
+        "filename": "pool/main/n/nodejs-lts/nodejs-lts_24.22.2-1_aarch64.deb",
+        "sha256": "837bbc7e422ef44583d590b7735c8736916183a185fc6f8c547c42b44cabfd01"
+      },
+      {
+        "name": "libc++",
+        "version": "30",
+        "filename": "pool/main/libc/libc++/libc++_30_aarch64.deb",
+        "sha256": "53d0b84a7ba7459024257cb94d5b136fe13ef858567f65a8064b35950799f2ca"
+      },
+      {
+        "name": "openssl",
+        "version": "1:3.6.5",
+        "filename": "pool/main/o/openssl/openssl_1:3.6.5_aarch64.deb",
+        "sha256": "a2fb7856875e63ef6b90442752e05974813372c3ca86d2513a78ea43c67a0f8b"
+      },
+      {
+        "name": "c-ares",
+        "version": "1.34.9",
+        "filename": "pool/main/c/c-ares/c-ares_1.34.9_aarch64.deb",
+        "sha256": "623d84855e176f3f2a415d24c0e1d2f529356f4b5439bb3313e6d7ff0da4585c"
+      },
+      {
+        "name": "libicu",
+        "version": "79.1",
+        "filename": "pool/main/libi/libicu/libicu_79.1_aarch64.deb",
+        "sha256": "83c980a010e957738e3567127801d66a1b9bd7e404a4fda98788048ee57d606c"
+      },
+      {
+        "name": "libsqlite",
+        "version": "3.54.1-1",
+        "filename": "pool/main/libs/libsqlite/libsqlite_3.54.1-1_aarch64.deb",
+        "sha256": "661fb995f7215845007b222a85266ae99d9443e87e0604f8677edfd738e6b81a"
+      },
+      {
+        "name": "zlib",
+        "version": "1.4",
+        "filename": "pool/main/z/zlib/zlib_1.4_aarch64.deb",
+        "sha256": "e3027565ae50bcd8ba5113c988b589754ae192c9cc3e6afbe3e4ed7c06b2598e"
+      },
+      {
+        "name": "ca-certificates",
+        "version": "1:2026.11.05",
+        "filename": "pool/main/c/ca-certificates/ca-certificates_1:2026.11.05_all.deb",
+        "sha256": "4cf292d604e14ed2878847eec2acea7c24ba10f598a5c5cd75dfc5e3750717da"
+      },
+      {
+        "name": "resolv-conf",
+        "version": "1.3",
+        "filename": "pool/main/r/resolv-conf/resolv-conf_1.3_aarch64.deb",
+        "sha256": "ab541abac8e0c81709cd7ca4a02bcfa0d60ba1f4bfe7fd6dce4a694a4a9dfffa"
+      }
+    ],
+    "x86_64": [
+      {
+        "name": "nodejs-lts",
+        "version": "24.22.2-1",
+        "filename": "pool/main/n/nodejs-lts/nodejs-lts_24.22.2-1_x86_64.deb",
+        "sha256": "7c9a48bae81d469e87b7e9c162acaf2360e70a7e0530fd9d42e47e83d892592d"
+      },
+      {
+        "name": "libc++",
+        "version": "30",
+        "filename": "pool/main/libc/libc++/libc++_30_x86_64.deb",
+        "sha256": "c9bcd9a8067a19c9c0e4893a72d314a2e37d6b67ce8dd05c67b9bbacad044b4f"
+      },
+      {
+        "name": "openssl",
+        "version": "1:3.6.5",
+        "filename": "pool/main/o/openssl/openssl_1:3.6.5_x86_64.deb",
+        "sha256": "540f144592d23d35672976e175ede1b5d8cf464f153f646df5d4e6dcd8491a15"
+      },
+      {
+        "name": "c-ares",
+        "version": "1.34.9",
+        "filename": "pool/main/c/c-ares/c-ares_1.34.9_x86_64.deb",
+        "sha256": "ac96c37fcc9181d1a7095f60485457fe6c3d784a83b0e8e6e7af9b3bfceda237"
+      },
+      {
+        "name": "libicu",
+        "version": "79.1",
+        "filename": "pool/main/libi/libicu/libicu_79.1_x86_64.deb",
+        "sha256": "541410d7b425ebde5d4027c86218081925b15dc1e5cffaa45449bdc4b2256251"
+      },
+      {
+        "name": "libsqlite",
+        "version": "3.54.1-1",
+        "filename": "pool/main/libs/libsqlite/libsqlite_3.54.1-1_x86_64.deb",
+        "sha256": "497471806378934fec8a6f3b5db70cf52a3652828786a241e2e37eebc19112b0"
+      },
+      {
+        "name": "zlib",
+        "version": "1.4",
+        "filename": "pool/main/z/zlib/zlib_1.4_x86_64.deb",
+        "sha256": "55ab8f16e492d6ed03c2e2bf701af52cf54a313442dd7adedd3d6f3e3eba2e4f"
+      },
+      {
+        "name": "ca-certificates",
+        "version": "1:2026.11.05",
+        "filename": "pool/main/c/ca-certificates/ca-certificates_1:2026.11.05_all.deb",
+        "sha256": "4cf292d604e14ed2878847eec2acea7c24ba10f598a5c5cd75dfc5e3750717da"
+      },
+      {
+        "name": "resolv-conf",
+        "version": "1.3",
+        "filename": "pool/main/r/resolv-conf/resolv-conf_1.3_x86_64.deb",
+        "sha256": "0fcf8c5447bc5fbb0d411a47dc5c67d2aced861227e09052fc423220291a22c7"
+      }
+    ]
+  }
+}

@@ -6485,6 +6485,11 @@ details.nested-form-section summary {
   font-size: 11px;
 }
 
+.reply-version-note {
+  font-style: italic;
+  opacity: 0.85;
+}
+
 .reply-version-switcher button,
 .reply-version-progress button {
   background: transparent;

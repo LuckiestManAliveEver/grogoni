@@ -32,6 +32,14 @@ export interface ConversationReplyVersion {
   id: string;
   text: string;
   createdAt: string;
+  /**
+   * Which revision of the question this version answered: the question's `editedAt` when the
+   * version was written, or null when it had never been edited. Never the question's text, so
+   * wording a person edited away is not kept on the reply. Absent on an original answer whose
+   * question had already been edited when its versions were first recorded: which revision it
+   * answered is then not known, and is not guessed.
+   */
+  questionRevision?: string | null;
 }
 
 export interface ConversationReplyVersions {

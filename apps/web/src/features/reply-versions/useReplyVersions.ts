@@ -13,6 +13,8 @@ import {
 
 /** What the hook needs from the chat state that owns the open thread (useChatInboxState). */
 export interface ReplyVersionDeps {
+  /** The signed-in account: retry keys are kept per account. Null when signed out. */
+  accountId: string | null;
   /** The open conversation, or null. */
   conversationId: string | null;
   /** The viewer's own business when its agent answers in this conversation; otherwise null. */
@@ -29,10 +31,9 @@ export interface ReplyVersionDeps {
  * shows the answer, and says why when it is refused.
  */
 export function useReplyVersions(deps: ReplyVersionDeps): ReplyVersionControls {
-  const { conversationId, businessId, setStatusMessage, applyServerMessage } = deps;
+  const { accountId, conversationId, businessId, setStatusMessage, applyServerMessage } = deps;
   const [regeneratingMessageId, setRegeneratingMessageId] = useState<string | null>(null);
   const inFlight = useRef<AbortController | null>(null);
-  const requests = useRef(sharedReplyVersionRequests());
 
   const contextEpoch = useRef(0);
   useEffect(() => {
@@ -42,10 +43,12 @@ export function useReplyVersions(deps: ReplyVersionDeps): ReplyVersionControls {
       inFlight.current?.abort();
       inFlight.current = null;
     };
-  }, [conversationId, businessId]);
+  }, [accountId, conversationId, businessId]);
 
   async function regenerate(messageId: string) {
-    if (conversationId === null || businessId === null || inFlight.current !== null) return;
+    if (accountId === null || conversationId === null || businessId === null) return;
+    if (inFlight.current !== null) return;
+    const requests = sharedReplyVersionRequests(accountId);
     const epoch = contextEpoch.current;
     const controller = new AbortController();
     inFlight.current = controller;
@@ -54,11 +57,11 @@ export function useReplyVersions(deps: ReplyVersionDeps): ReplyVersionControls {
     try {
       const updated = await postJson<ConversationMessageSummary>(
         `/v1/conversations/${conversationId}/messages/${messageId}/regenerate`,
-        { businessId, versionId: requests.current.idFor(messageId) },
+        { businessId, versionId: requests.idFor(messageId) },
         { signal: controller.signal, timeoutMs: 120_000 }
       );
       if (contextEpoch.current !== epoch) return;
-      requests.current.settle(messageId);
+      requests.settle(messageId);
       applyServerMessage(conversationId, updated);
       logClientEvent("chat.reply_regenerated", {
         conversationId,
@@ -68,12 +71,12 @@ export function useReplyVersions(deps: ReplyVersionDeps): ReplyVersionControls {
       });
     } catch (error) {
       if (contextEpoch.current !== epoch) return;
-      // Only a refusal the server will repeat releases the id. A stop, a timeout, a dropped
-      // connection, a 5xx, or "still running" (409 from the turn lock while the first request is
-      // in flight) may all end with the version written: asking again with the same id answers
+      // Only a refusal the server will repeat releases the id. After a stop, a timeout, a dropped
+      // connection, a 5xx, or "still running" (409 from the turn lock) the version may have been
+      // written where the server could not cancel: asking again with the same id then answers
       // with that version instead of writing a second one.
       const code = error instanceof ApiRequestError ? error.code : null;
-      if (regenerationRefusalMessage(code) !== null) requests.current.settle(messageId);
+      if (regenerationRefusalMessage(code) !== null) requests.settle(messageId);
       logClientEvent("chat.reply_regeneration_failed", { conversationId, messageId, code });
       setStatusMessage(
         controller.signal.aborted
@@ -89,7 +92,7 @@ export function useReplyVersions(deps: ReplyVersionDeps): ReplyVersionControls {
   }
 
   async function select(messageId: string, index: number) {
-    if (conversationId === null || inFlight.current !== null) return;
+    if (accountId === null || conversationId === null || inFlight.current !== null) return;
     const epoch = contextEpoch.current;
     try {
       const updated = await putJson<ConversationMessageSummary>(
@@ -104,11 +107,12 @@ export function useReplyVersions(deps: ReplyVersionDeps): ReplyVersionControls {
   }
 
   return {
-    available: conversationId !== null && businessId !== null,
+    available: accountId !== null && conversationId !== null && businessId !== null,
     regeneratingMessageId,
     onRegenerate: (messageId) => void regenerate(messageId),
-    // Ends the wait only. The server may still finish and write the version; the kept retry key
-    // makes the next Regenerate answer with it.
+    // Closes the request. The Node API cancels the turn and writes nothing; where the server
+    // cannot cancel (the Edge API), the kept retry key makes the next Regenerate answer with the
+    // version that was written.
     onCancel: () => inFlight.current?.abort(),
     onSelect: (messageId, index) => void select(messageId, index)
   };

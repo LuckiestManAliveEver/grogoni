@@ -5351,3 +5351,5 @@ export interface ShopCapabilitiesSummary {
   needsAttention: Array<{ moduleId: string; label: ShopHubText; reason: ShopHubText }>;
   checkedAt: string;
 }
+
+export * from "./whatsapp-linked-worker.js";

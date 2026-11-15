@@ -167,6 +167,18 @@ export const normalizedCollections: NormalizedCollection[] = [
   { key: "deliveryRoutes", tableName: "cp2_delivery_routes" },
   { key: "deliveryRouteStops", tableName: "cp2_delivery_route_stops" },
   { key: "dataExports", tableName: "cp2_data_exports" },
+  // 137_whatsapp_linked_delegation_outbox.sql. Written by any API host (Edge or Node) when the
+  // owner resolves a delegated WhatsApp write; settled only by the connector host.
+  {
+    key: "whatsappLinkedDelegationResults",
+    tableName: "cp2_whatsapp_linked_delegation_results"
+  },
+  // 140_whatsapp_linked_owner_states.sql. Written by the connector host (state events) and by
+  // any API host serving the owner's account view (owner-change cleanup).
+  { key: "whatsappLinkedOwnerStates", tableName: "cp2_whatsapp_linked_owner_states" },
+  // 141_whatsapp_linked_device_outbox.sql. Written by any API host (a send or read for a
+  // phone-hosted session); claimed and settled by the owner's phone through the same hosts.
+  { key: "whatsappLinkedDeviceOutbox", tableName: "cp2_whatsapp_linked_device_outbox" },
   { key: "accountDeletionRequests", tableName: "cp2_account_deletion_requests" },
   { key: "accountDeletionProofs", tableName: "cp2_account_deletion_proofs" },
   { key: "shopPresences", tableName: "cp2_shop_presences" },
@@ -223,6 +235,18 @@ export const normalizedCollections: NormalizedCollection[] = [
   { key: "auditEvents", tableName: "cp2_audit_events" }
 ];
 
+/**
+ * Collections other processes insert into while this one runs (the Edge API records delegated
+ * WhatsApp results that only the connector host settles). A full save normally deletes every
+ * row this process does not hold in memory; for these it writes and deletes only against its
+ * own last persisted baseline, so a row another process inserted since boot is never removed.
+ */
+const baselineScopedCollections = new Set<SnapshotCollectionKey>([
+  "whatsappLinkedDelegationResults",
+  "whatsappLinkedOwnerStates",
+  "whatsappLinkedDeviceOutbox"
+]);
+
 // getRuntimeCapabilities/getRuntimeTransfer are deliberately absent: they can expire a stale
 // transfer as an in-memory side effect, but that recompute is idempotent (re-derived from
 // `now` on every call) and self-heals on the next real mutation's snapshot, so forcing a full
@@ -234,9 +258,19 @@ const mutatingMethodNames = new Set([
   "setLinkedToolGrants",
   "executeLinkedToolTurn",
   "deliverLinkedDelegationResult",
+  "drainLinkedDelegationResults",
   "readLinkedWhatsAppEvidence",
   "deliverLinkedWhatsAppReply",
   "recordLinkedWhatsAppState",
+  "reconcileLinkedWhatsAppOwnership",
+  "linkedWhatsAppAccount",
+  "acknowledgeLinkedWhatsAppOwnerChange",
+  "linkLinkedWhatsAppCustomer",
+  "setLinkedReadReceipts",
+  "revokeLinkedWhatsAppDeviceChat",
+  "recordLinkedWhatsAppDeviceState",
+  "pullLinkedWhatsAppDeviceOutbox",
+  "acknowledgeLinkedWhatsAppDeviceOutbox",
   "executeSourceCommerce",
   "describeCommerceCatalogue",
   "refreshCommerceSource",
@@ -545,6 +579,11 @@ export class AccountSyncPersistenceError extends Error {
 export type PostgresCp2Store = Cp2Store & {
   close: () => Promise<void>;
   flush: () => Promise<void>;
+  /**
+   * Pending delegated WhatsApp results as stored now, including rows other processes (the Edge
+   * API) wrote after this process loaded its snapshot. Feeds drainLinkedDelegationResults.
+   */
+  loadPendingLinkedDelegationResults: () => Promise<unknown[]>;
   health: () => Promise<PostgresStoreHealth>;
 };
 
@@ -917,6 +956,16 @@ export async function createPostgresCp2Store(
           scheduleSaveRetry();
         }
       );
+  }
+
+  async function loadPendingLinkedDelegationResults(): Promise<unknown[]> {
+    const result = await pool.query<{ record: unknown }>(
+      `select record from cp2_whatsapp_linked_delegation_results
+       where record->>'status' = 'pending'
+       order by record->>'createdAt', entity_id
+       limit 500`
+    );
+    return result.rows.map((row) => row.record);
   }
 
   function enqueueSave(): void {
@@ -1322,6 +1371,10 @@ export async function createPostgresCp2Store(
 
       if (property === "health") {
         return health;
+      }
+
+      if (property === "loadPendingLinkedDelegationResults") {
+        return loadPendingLinkedDelegationResults;
       }
 
       const value = Reflect.get(target, property, receiver);
@@ -2980,7 +3033,19 @@ async function saveNormalizedSnapshot(
         ) {
           continue;
         }
-        await saveCollectionRecords(client, collection, records);
+        await saveCollectionRecords(
+          client,
+          collection,
+          records,
+          previousSnapshot !== undefined && baselineScopedCollections.has(collection.key)
+            ? getSnapshotCollection(previousSnapshot, collection.key)
+            : undefined,
+          // Baseline scoping preserves rows inserted by another host; expected records also
+          // prevent a stale host from overwriting a claim or settlement it never observed.
+          previousSnapshot !== undefined && baselineScopedCollections.has(collection.key)
+            ? getSnapshotCollection(previousSnapshot, collection.key)
+            : undefined
+        );
       }
 
       await reconcileConversationAttachmentBlobs(client, snapshot.conversationAttachments ?? []);
@@ -5384,6 +5449,9 @@ function emptySnapshot(): Cp2Snapshot {
     deliveryRoutes: [],
     deliveryRouteStops: [],
     dataExports: [],
+    whatsappLinkedDelegationResults: [],
+    whatsappLinkedOwnerStates: [],
+    whatsappLinkedDeviceOutbox: [],
     accountDeletionRequests: [],
     accountDeletionProofs: [],
     shopPresences: [],
