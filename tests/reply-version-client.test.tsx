@@ -427,7 +427,10 @@ describe("retry keys survive what the request might survive", () => {
   it("aborts on unmount and ignores a late server response without losing its retry key", async () => {
     api.calls.length = 0;
     let resolve!: (value: unknown) => void;
-    api.next = () => new Promise((done) => { resolve = done; });
+    api.next = () =>
+      new Promise((done) => {
+        resolve = done;
+      });
     const first = mountHook();
     act(() => first.controls().onRegenerate("reply-unmounted"));
     await settle();

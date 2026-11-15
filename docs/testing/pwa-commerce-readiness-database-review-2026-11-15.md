@@ -28,17 +28,17 @@ on loopback port 5433. All migration/database URL variables were set explicitly 
 database; production settings were not loaded. Migration 108's opt-in flag was enabled only for
 this disposable database. All 136 migrations applied successfully.
 
-| Execution | Result |
-| --- | --- |
-| `node scripts/run-postgres-tests.mjs` | 47 files; 459 passed, 9 failed, 468 total. No PostgreSQL-gated tests skipped. |
-| Initial failure rerun, after durability fix and corrected benchmark target | 5 files; 30 passed, 1 failed. |
-| Final rollback regression rerun | 2 files; 20 passed. Includes fulfillment rollback/reapply over historical data and migration 108. |
-| Authentication, tenant/runtime authorization, encryption and commerce selection | 9 files; 53 passed. |
-| Offline sync/reconciliation/order intents and backup-target safety | 5 files; 32 passed. |
-| Durability deadline and priority budget regressions | 2 files; 12 passed. |
-| Initial reply-version server/client selection | 2 files; 40 passed. |
-| Final combined reply-version API/client/safety-oracle selection | 3 files; 45 passed. |
-| Lazy recovery, error boundaries and workspace coverage | 4 files; 31 passed. |
+| Execution                                                                       | Result                                                                                            |
+| ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `node scripts/run-postgres-tests.mjs`                                           | 47 files; 459 passed, 9 failed, 468 total. No PostgreSQL-gated tests skipped.                     |
+| Initial failure rerun, after durability fix and corrected benchmark target      | 5 files; 30 passed, 1 failed.                                                                     |
+| Final rollback regression rerun                                                 | 2 files; 20 passed. Includes fulfillment rollback/reapply over historical data and migration 108. |
+| Authentication, tenant/runtime authorization, encryption and commerce selection | 9 files; 53 passed.                                                                               |
+| Offline sync/reconciliation/order intents and backup-target safety              | 5 files; 32 passed.                                                                               |
+| Durability deadline and priority budget regressions                             | 2 files; 12 passed.                                                                               |
+| Initial reply-version server/client selection                                   | 2 files; 40 passed.                                                                               |
+| Final combined reply-version API/client/safety-oracle selection                 | 3 files; 45 passed.                                                                               |
+| Lazy recovery, error boundaries and workspace coverage                          | 4 files; 31 passed.                                                                               |
 
 Three initial failures were harness configuration errors: the inventory benchmark requires its
 own `grogoni_*benchmark` database name. The rerun supplied a separate correctly named local database.

@@ -14,9 +14,15 @@ describe("regeneration safety oracle", () => {
   it("detects updates without any collection size change, including runtime business tasks", () => {
     const before = initial();
     for (const change of [
-      (next: ReturnType<typeof initial>) => { next.products[0]!.quantity = 0; },
-      (next: ReturnType<typeof initial>) => { next.memberships[0]!.role = "owner"; },
-      (next: ReturnType<typeof initial>) => { next.runtimeTaskHeads[0]!.status = "executed"; }
+      (next: ReturnType<typeof initial>) => {
+        next.products[0]!.quantity = 0;
+      },
+      (next: ReturnType<typeof initial>) => {
+        next.memberships[0]!.role = "owner";
+      },
+      (next: ReturnType<typeof initial>) => {
+        next.runtimeTaskHeads[0]!.status = "executed";
+      }
     ]) {
       const after = initial();
       change(after);
@@ -28,10 +34,16 @@ describe("regeneration safety oracle", () => {
     const before = initial();
     const after = initial();
     after.conversationMessages[0]!.content.text = "Second";
-    Object.assign(after.conversationMessages[0]!, { replyVersions: { selected: 1 }, agentTurnEffect: "read" });
+    Object.assign(after.conversationMessages[0]!, {
+      replyVersions: { selected: 1 },
+      agentTurnEffect: "read"
+    });
     after.auditEvents.push({ type: "message.regenerated" });
     expect(state(after)).toBe(state(before));
-    after.conversationMessages.push({ id: "unrelated", content: { type: "text", text: "Injected" } });
+    after.conversationMessages.push({
+      id: "unrelated",
+      content: { type: "text", text: "Injected" }
+    });
     expect(state(after)).not.toBe(state(before));
   });
 

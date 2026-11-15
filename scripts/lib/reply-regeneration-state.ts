@@ -34,17 +34,18 @@ export function regenerationBusinessState(
         .filter(([key]) => !turnBookkeeping.has(key))
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([key, value]) => {
-          const normalized = key === "conversationMessages" && Array.isArray(value)
-            ? value.map((message: Record<string, unknown>) => {
-                if (message.id !== replyId) return message;
-                const unchanged = { ...message };
-                delete unchanged.replyVersions;
-                delete unchanged.agentTurnEffect;
-                const content = { ...(message.content as Record<string, unknown>) };
-                delete content.text;
-                return { ...unchanged, content };
-              })
-            : value;
+          const normalized =
+            key === "conversationMessages" && Array.isArray(value)
+              ? value.map((message: Record<string, unknown>) => {
+                  if (message.id !== replyId) return message;
+                  const unchanged = { ...message };
+                  delete unchanged.replyVersions;
+                  delete unchanged.agentTurnEffect;
+                  const content = { ...(message.content as Record<string, unknown>) };
+                  delete content.text;
+                  return { ...unchanged, content };
+                })
+              : value;
           const serialized = Array.isArray(normalized)
             ? `[${normalized.map(canonical).sort().join(",")}]`
             : canonical(normalized);
