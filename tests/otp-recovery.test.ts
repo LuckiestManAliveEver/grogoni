@@ -3,6 +3,32 @@ import { createCp2Store } from "../services/api/src/cp2/store";
 import type { Cp2Error } from "../services/api/src/cp2/store";
 
 describe("OTP recovery purpose", () => {
+  it("supersedes old recovery codes only after an accepted resend", () => {
+    const store = createCp2Store();
+    const destination = "resend@example.test";
+    const now = new Date("2026-11-15T12:00:00Z");
+    const first = store.requestOtp({ channel: "email", destination, purpose: "recovery", now });
+    expect(() =>
+      store.requestOtp({ channel: "email", destination, purpose: "recovery", now })
+    ).toThrowError(expect.objectContaining({ code: "otp_rate_limited" }));
+    expect(
+      store.snapshot().otpChallenges.find((item) => item.id === first.challengeId)?.expiresAt
+    ).toBe(first.expiresAt);
+    const later = new Date(now.getTime() + 61_000);
+    const second = store.requestOtp({
+      channel: "email",
+      destination,
+      purpose: "recovery",
+      now: later
+    });
+    expect(
+      store.snapshot().otpChallenges.find((item) => item.id === second.challengeId)?.expiresAt
+    ).toBe(second.expiresAt);
+    expect(() =>
+      store.verifyOtp({ challengeId: first.challengeId, code: first.devOtp, now: later })
+    ).toThrow();
+  });
+
   it("resumes an existing account and never creates one from a recovery challenge", () => {
     const store = createCp2Store();
     const email = "otp-recovery@example.test";

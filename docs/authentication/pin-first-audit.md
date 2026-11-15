@@ -1,0 +1,17 @@
+# PIN-first authentication audit (2026-11-15)
+
+Pre-change findings, based on source inspection (not production verification):
+
+- `apps/web/src/PhoneFirstAuthentication.tsx`: identifier entry precedes method selection; method discovery automatically triggers WebAuthn. Remembered identifiers are display hints, not device credentials. PIN entry is manual-submit. Recovery lacks resend/change-address controls and repeats a misleading sent claim from the API.
+- `apps/web/src/browser-passkeys.ts`, `passkey-recovery.ts`, `device-recovery.ts`: browser WebAuthn, native screen-lock recovery, and an IndexedDB signing key are distinct mechanisms. The IndexedDB key is not hardware-backed. None should be presented as PIN device binding without server validation.
+- `apps/web/src/auth-bootstrap.ts`, `lib/api.ts`: cached account data is not authentication; cookies are server validated/refreshed. Device ID headers are browser-controlled identifiers, not proof of device possession.
+- `services/api/src/cp2/routes.ts`: recovery is custom backend OTP, not Supabase Auth OTP. Recovery start hides unknown addresses, cooldowns, and provider failures behind the same response. That response incorrectly claims email was sent. Delivery failure diagnostics omit OTP and address. PIN login has network limiting but accepts a phone/PIN without trusted-device proof.
+- `services/api/src/cp2/store.ts`: PIN hashes, account attempt tracker, MFA challenge, credential reset and session management. Email recovery requires a verified linked email and MFA for protected accounts; resets revoke sessions. Legacy remote PIN login is not an eligible device-bound quick-unlock architecture.
+- `services/api/src/cp2/domains/otp/store.ts`: random six-digit OTP, protected hash, expiry, attempt cap, request cooldown. A new recovery request does not supersede old challenges. Request history is process-local and is not restored from snapshots.
+- `services/api/src/cp2/email-provider.ts`: Brevo API is used when BREVO_API_KEY and GROGONI_EMAIL_FROM exist. Production without these fails closed; non-production uses a no-op local sender. Provider HTTP acceptance is not mailbox delivery. Requests have a ten-second timeout.
+- `supabase/functions/api/auth-routes.ts`: separate direct Postgres authentication implementation; method discovery is also passkey-preferred. Email recovery falls through to the custom API. Changes to Fastify PIN policy alone would leave inconsistent behavior.
+- `infra/db/migrations/{001_cp2_auth_business,014_cp2_phase1_auth_security_relational,025_passkeys,026_otp_recovery_purpose,038_auth_retention_policy,042_phone_first_authentication,047_remove_phone_pin_recovery_codes}.sql`: existing account/session/passkey/recovery schema must remain compatible. No schema or credentials should be removed in this repair.
+
+Confirmed code defects: unexpected automatic passkey ceremony, false delivery wording, no recovery resend controls, and overlapping valid recovery challenges. Production non-delivery root cause is unconfirmed. Sender verification, DNS, quotas, suppression, deployment secrets and a controlled mailbox must be inspected before claiming repair.
+
+Security gate: do not promote remembered-identifier remote PIN login to quick unlock. Device-bound enrollment, durable distributed attempt limits and consistent direct-Postgres enforcement remain required before PIN-first rollout. Existing sessions and legacy credentials must remain accessible during migration.
