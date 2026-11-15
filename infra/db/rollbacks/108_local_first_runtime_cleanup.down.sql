@@ -39,6 +39,16 @@ where host.entity_id = '1e113c34-998f-43f2-8f53-a35f0d3d4ed6'
   and not exists (
     select 1 from cp2_native_runtime_binding_models role_row
     where role_row.execution_host_id = host.entity_id
+  )
+  -- Historical checkpoints and transfers keep their host identity after rollback.
+  -- Removing the host would either violate their foreign keys or erase provenance.
+  and not exists (
+    select 1 from cp2_runtime_handoffs handoff
+    where handoff.execution_host_id = host.entity_id
+  )
+  and not exists (
+    select 1 from cp2_runtime_transfers transfer
+    where transfer.source_host_id = host.entity_id or transfer.target_host_id = host.entity_id
   );
 
 -- Roles: disable the backed-up ones first so restoring them never trips the one-enabled-primary

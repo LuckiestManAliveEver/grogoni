@@ -192,9 +192,13 @@ export async function withMigrationsReversed(
     .filter((name) => name.endsWith(".sql") && name >= fromPrefix)
     .sort();
   for (const name of [...migrations].reverse()) {
-    await client.query(
-      readFileSync(`infra/db/rollbacks/${name.replace(/\.sql$/u, ".down.sql")}`, "utf8")
-    );
+    try {
+      await client.query(
+        readFileSync(`infra/db/rollbacks/${name.replace(/\.sql$/u, ".down.sql")}`, "utf8")
+      );
+    } catch (error) {
+      throw new Error(`Rollback ${name} failed: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+    }
   }
   await between();
   for (const name of migrations) {

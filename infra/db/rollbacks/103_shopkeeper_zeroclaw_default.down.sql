@@ -30,12 +30,25 @@ delete from cp2_native_execution_hosts
 where entity_id = 'builtin:provider-router:v1'
   and not exists (
     select 1 from cp2_native_model_installations where parent_id = 'builtin:provider-router:v1'
+  )
+  and not exists (
+    select 1 from cp2_native_runtime_binding_models where execution_host_id = 'builtin:provider-router:v1'
+  )
+  and not exists (
+    select 1 from cp2_runtime_handoffs where execution_host_id = 'builtin:provider-router:v1'
+  )
+  and not exists (
+    select 1 from cp2_runtime_transfers
+    where source_host_id = 'builtin:provider-router:v1' or target_host_id = 'builtin:provider-router:v1'
   );
 
 delete from cp2_native_runtime_agents
 where entity_id = 'builtin:shopkeeper:v1'
   and not exists (
     select 1 from cp2_native_runtime_bindings where parent_id = 'builtin:shopkeeper:v1'
+  )
+  and not exists (
+    select 1 from cp2_runtime_handoffs where agent_id = 'builtin:shopkeeper:v1'
   );
 
 update cp2_agent_catalog
@@ -52,10 +65,16 @@ delete from cp2_native_runtime_models
 where entity_id = 'gpt-6-luna'
   and not exists (
     select 1 from cp2_native_runtime_binding_models where record ->> 'modelId' = 'gpt-6-luna'
+  )
+  and not exists (
+    select 1 from cp2_runtime_handoffs where model_id = 'gpt-6-luna'
   );
 
 delete from cp2_model_catalog
 where entity_id = 'gpt-6-luna'
   and not exists (
     select 1 from cp2_native_runtime_binding_models where record ->> 'modelId' = 'gpt-6-luna'
+  )
+  and not exists (
+    select 1 from cp2_runtime_handoffs where model_id = 'gpt-6-luna'
   );
