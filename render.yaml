@@ -98,7 +98,7 @@ services:
       - key: BREVO_API_KEY
         sync: false
       - key: GROGONI_EMAIL_FROM
-        value: "Grogoni <messages@grogoni.com>"
+        value: "Grogoni <recovery@grogoni.com>"
       - key: CP2_STORE
         value: postgres
       - key: DATABASE_URL
