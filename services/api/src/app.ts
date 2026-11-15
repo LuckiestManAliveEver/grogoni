@@ -827,18 +827,13 @@ function requiresRuntimeDurabilityConfirmation(url: string): boolean {
 // that lands behind a large backlog could otherwise wait indefinitely. This does not cancel the
 // underlying flush - it keeps running - it only stops this response from waiting on it forever.
 function withPersistenceFlushDeadline<T>(flush: Promise<T>, request: FastifyRequest): Promise<T> {
-  // Keep the user-facing auth and runtime requests from sitting behind a stalled shared-flush
-  // queue for many seconds. The write itself remains allowed to finish in the background, but the
-  // HTTP response must fail fast enough to avoid long waits for the client when the queue is jammed.
-  const priorityMode = normalizePriorityCommand(process.env.PRIORITY_COMMAND);
+  // Interactive response targets are not database commit deadlines. Real PostgreSQL
+  // snapshots routinely exceed the optimized 200 ms target; expiring at that target
+  // turns a healthy signup into 503 and withholds its session cookies. Keep a bounded
+  // durability window, independently configurable for deployments with different storage.
   const deadlineMs = positiveIntegerFromEnv(
     "PERSISTENCE_FLUSH_RESPONSE_DEADLINE_MS",
-    priorityMode === "optimized"
-      ? Math.min(
-          Math.max(250, interactiveResponseBudgetMs * 4),
-          Math.max(150, priorityOptimizationBudgetMs * 2)
-        )
-      : Math.max(250, interactiveResponseBudgetMs * 4)
+    Math.max(1000, interactiveResponseBudgetMs * 4)
   );
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => {

@@ -259,3 +259,30 @@ it("returns an unconfirmed result rather than a successful mutation on a flush d
     else process.env.PERSISTENCE_FLUSH_RESPONSE_DEADLINE_MS = previous;
   }
 });
+
+
+it("allows a healthy durable commit beyond the optimized interactive target", async () => {
+  const previousDeadline = process.env.PERSISTENCE_FLUSH_RESPONSE_DEADLINE_MS;
+  const previousPriority = process.env.PRIORITY_COMMAND;
+  delete process.env.PERSISTENCE_FLUSH_RESPONSE_DEADLINE_MS;
+  process.env.PRIORITY_COMMAND = "optimized";
+  const app = buildApi({
+    cp2: { store: createCp2Store() },
+    mutationPersistenceFlush: () => new Promise<void>((resolve) => setTimeout(resolve, 350))
+  });
+  try {
+    const response = await app.inject({
+      method: "POST",
+      url: "/auth/pin/signup",
+      payload: { method: "phone", contact: "+254700200073", pin: "3927" }
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.cookies.map((cookie) => cookie.name)).toContain("grogoni_session");
+  } finally {
+    await app.close();
+    if (previousDeadline === undefined) delete process.env.PERSISTENCE_FLUSH_RESPONSE_DEADLINE_MS;
+    else process.env.PERSISTENCE_FLUSH_RESPONSE_DEADLINE_MS = previousDeadline;
+    if (previousPriority === undefined) delete process.env.PRIORITY_COMMAND;
+    else process.env.PRIORITY_COMMAND = previousPriority;
+  }
+});
