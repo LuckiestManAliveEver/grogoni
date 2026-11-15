@@ -75,11 +75,22 @@ export function PhoneFirstAuthentication({
   const [transactionId, setTransactionId] = useState("");
   const [code, setCode] = useState("");
   const [pin, setPin] = useState("");
+  const [pinFailures, setPinFailures] = useState(0);
   const [password, setPassword] = useState("");
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
   const [recoveryMfaCode, setRecoveryMfaCode] = useState("");
   const [recoveryEmail, setRecoveryEmail] = useState("");
   const [recoveryEmailVerified, setRecoveryEmailVerified] = useState(false);
+  const [resendAt, setResendAt] = useState(0);
+  const [resendSeconds, setResendSeconds] = useState(0);
+
+  useEffect(() => {
+    if (!resendAt) return;
+    const update = () => setResendSeconds(Math.max(0, Math.ceil((resendAt - Date.now()) / 1000)));
+    update();
+    const timer = window.setInterval(update, 1000);
+    return () => window.clearInterval(timer);
+  }, [resendAt]);
   const [deviceAvailable, setDeviceAvailable] = useState<boolean | null>(null);
   const [deviceSecurityReason, setDeviceSecurityReason] = useState("");
   const nativeDevice = isNativeDeviceHost();
@@ -153,6 +164,10 @@ export function PhoneFirstAuthentication({
     if (busy) return;
     setBusy(true);
     try {
+      if (typeof navigator !== "undefined" && navigator.onLine === false) {
+        setMessage("You're offline. Connect to the internet and try again.");
+        return;
+      }
       await action();
     } catch (error) {
       setMessage(getUserFacingErrorMessage(error));
@@ -161,7 +176,7 @@ export function PhoneFirstAuthentication({
     }
   }
 
-  async function continueIdentifier(attemptPasskey = true) {
+  async function continueIdentifier() {
     const methods = await apiFetch<LoginMethods>("/auth/login/methods", {
       method: "POST",
       body: currentIdentifierBody(),
@@ -170,7 +185,7 @@ export function PhoneFirstAuthentication({
     setLoginMethods(methods);
     setStage("methods");
     setMessage("Choose how you'd like to sign in.");
-    if (attemptPasskey && methods.preferred === "passkey") await signInPasskeyFirst();
+    // A passkey ceremony starts only after an explicit user action.
   }
 
   async function signInPasskeyFirst() {
@@ -239,9 +254,8 @@ export function PhoneFirstAuthentication({
       } else await finishLogin(result);
     } catch (error) {
       if (error instanceof ApiRequestError && error.code === "auth_credentials_invalid") {
-        setMessage(
-          "We couldn't sign you in with that PIN. Check your account details and PIN, then try again."
-        );
+        setPinFailures((attempts) => attempts + 1);
+        setMessage("That PIN didn't work. Try your passkey or try again.");
         return;
       }
       throw error;
@@ -319,13 +333,15 @@ export function PhoneFirstAuthentication({
       body: { type: "email", identifier: recoveryEmail }
     });
     setTransactionId(result.transactionId);
+    setResendAt(Date.now() + 60_000);
+    setResendSeconds(60);
     setCode(result.developmentCode ?? "");
     setPassword("");
     setPasswordConfirmation("");
     setRecoveryMfaCode("");
     setRecoveryEmailVerified(false);
     setStage("recovery-reset");
-    setMessage(result.message);
+    setMessage("If this email is registered, we'll send a verification code.");
   }
 
   /** Identity is proven and a recovery grant is held: choose the new PIN or password. */
@@ -573,7 +589,7 @@ export function PhoneFirstAuthentication({
           <div className="auth-onboarding-heading">
             <p className="eyebrow">LOG IN</p>
             <h1 id="auth-onboarding-title">{heading}</h1>
-            <p>
+            <p role="status" aria-live="polite">
               {stage === "entry"
                 ? "Use your mobile phone number to get back to your conversations."
                 : message}
@@ -645,6 +661,11 @@ export function PhoneFirstAuthentication({
                   </span>
                 </label>
               ) : null}
+              {stage === "pin" && pinFailures >= 2 && browserSupportsWebAuthn() ? (
+                <button type="button" disabled={busy} onClick={() => void run(signInPasskeyFirst)}>
+                  Continue with passkey
+                </button>
+              ) : null}
               <div>
                 <button
                   className="auth-primary-button"
@@ -665,7 +686,7 @@ export function PhoneFirstAuthentication({
                     className="auth-text-button"
                     type="button"
                     disabled={!identifier.trim()}
-                    onClick={() => void run(() => continueIdentifier(false))}
+                    onClick={() => void run(() => continueIdentifier())}
                   >
                     Trouble logging in?
                   </button>
@@ -863,10 +884,45 @@ export function PhoneFirstAuthentication({
                     inputMode="numeric"
                     autoComplete="one-time-code"
                     disabled={busy || recoveryEmailVerified}
+                    maxLength={6}
+                    pattern="[0-9]{6}"
                     value={code}
-                    onChange={(event) => setCode(event.target.value)}
+                    onChange={(event) =>
+                      setCode(event.target.value.replace(/\D/gu, "").slice(0, 6))
+                    }
                   />
                 </label>
+              ) : null}
+              {recoveryMethod === "email" ? (
+                <div>
+                  <p role="status">
+                    Check spam or junk. Codes expire after 5 minutes. Requesting a new code replaces
+                    the previous code.
+                  </p>
+                  <button
+                    type="button"
+                    disabled={busy || recoveryEmailVerified || resendSeconds > 0}
+                    onClick={() => void run(startRecovery)}
+                  >
+                    {resendSeconds > 0 ? `Resend code in ${resendSeconds}s` : "Resend code"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      setCode("");
+                      setTransactionId("");
+                      setRecoveryEmailVerified(false);
+                      setPassword("");
+                      setPasswordConfirmation("");
+                      setRecoveryMfaCode("");
+                      setStage("methods");
+                      setMessage("Enter your recovery email.");
+                    }}
+                  >
+                    Change email
+                  </button>
+                </div>
               ) : null}
               {emailPinRecovery ? (
                 <PinFields

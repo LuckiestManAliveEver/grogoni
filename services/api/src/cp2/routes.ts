@@ -798,7 +798,7 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
           );
         }
         const recoveryStartResponse = (transactionId: string = randomUUID()) => ({
-          message: "If an account matches those details, recovery instructions have been sent.",
+          message: "If this email is registered, we'll send a verification code.",
           transactionId
         });
         // Avoid minting an OTP for unknown or unverified addresses so they do not consume the
@@ -831,6 +831,19 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
                 to: otp.destination
               })
             )
+            .then(() => {
+              request.log.info(
+                {
+                  event: emailProvider.exposesDevOtp
+                    ? "auth.recovery_email_simulated"
+                    : "auth.recovery_email_provider_accepted",
+                  provider: emailProvider.name,
+                  challengeId: otp.challengeId,
+                  requestCorrelationId: request.id
+                },
+                "Recovery email request processed; inbox delivery is unconfirmed."
+              );
+            })
             .catch((error: unknown) => {
               // Keep the public response indistinguishable while preserving safe diagnostics for
               // operators. Do not log the destination, OTP, or provider rejection text.
