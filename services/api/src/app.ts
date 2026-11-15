@@ -1,3 +1,4 @@
+import { browserContentSecurityPolicy } from "./browser-security.js";
 import { isValidTurnId, turnContext } from "./inference/turn-stream.js";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import rateLimit from "@fastify/rate-limit";
@@ -720,13 +721,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       decorateReply: true,
       cacheControl: false,
       setHeaders(response, pathName) {
-        response.header(
-          "Content-Security-Policy",
-          "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; " +
-            "form-action 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; " +
-            "font-src 'self' data:; manifest-src 'self'; worker-src 'self'; child-src 'self'; " +
-            "connect-src 'self' https://*.grogoni.com wss://*.grogoni.com; upgrade-insecure-requests"
-        );
+        response.header("Content-Security-Policy", browserContentSecurityPolicy);
         response.header("Cross-Origin-Embedder-Policy", "credentialless");
         response.header("Cross-Origin-Opener-Policy", "same-origin");
         response.header("Referrer-Policy", "strict-origin-when-cross-origin");
@@ -839,7 +834,10 @@ function withPersistenceFlushDeadline<T>(flush: Promise<T>, request: FastifyRequ
   const deadlineMs = positiveIntegerFromEnv(
     "PERSISTENCE_FLUSH_RESPONSE_DEADLINE_MS",
     priorityMode === "optimized"
-      ? Math.min(Math.max(250, interactiveResponseBudgetMs * 4), Math.max(150, priorityOptimizationBudgetMs * 2))
+      ? Math.min(
+          Math.max(250, interactiveResponseBudgetMs * 4),
+          Math.max(150, priorityOptimizationBudgetMs * 2)
+        )
       : Math.max(250, interactiveResponseBudgetMs * 4)
   );
   return new Promise<T>((resolve, reject) => {
