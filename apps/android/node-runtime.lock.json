@@ -4,14 +4,14 @@
   "source": "Termux main repository (https://github.com/termux/termux-packages)",
   "baseUrl": "https://packages.termux.dev/apt/termux-main/",
   "rootPackage": "nodejs-lts",
-  "node": "24.22.2-1",
+  "node": "24.22.3",
   "packages": {
     "aarch64": [
       {
         "name": "nodejs-lts",
-        "version": "24.22.2-1",
-        "filename": "pool/main/n/nodejs-lts/nodejs-lts_24.22.2-1_aarch64.deb",
-        "sha256": "837bbc7e422ef44583d590b7735c8736916183a185fc6f8c547c42b44cabfd01"
+        "version": "24.22.3",
+        "filename": "pool/main/n/nodejs-lts/nodejs-lts_24.22.3_aarch64.deb",
+        "sha256": "80edcc73db025db0baa09be27e3d65a16e6f2a72ab925f1873a1b808ab857c28"
       },
       {
         "name": "libc++",
@@ -51,9 +51,9 @@
       },
       {
         "name": "ca-certificates",
-        "version": "1:2026.11.05",
-        "filename": "pool/main/c/ca-certificates/ca-certificates_1:2026.11.05_all.deb",
-        "sha256": "4cf292d604e14ed2878847eec2acea7c24ba10f598a5c5cd75dfc5e3750717da"
+        "version": "1:2026.11.05-1",
+        "filename": "pool/main/c/ca-certificates/ca-certificates_1:2026.11.05-1_all.deb",
+        "sha256": "12fc350fc5ad638338b06b04835bce897615f8c93f96d30ac396cdb39b850c6b"
       },
       {
         "name": "resolv-conf",
@@ -65,9 +65,9 @@
     "x86_64": [
       {
         "name": "nodejs-lts",
-        "version": "24.22.2-1",
-        "filename": "pool/main/n/nodejs-lts/nodejs-lts_24.22.2-1_x86_64.deb",
-        "sha256": "7c9a48bae81d469e87b7e9c162acaf2360e70a7e0530fd9d42e47e83d892592d"
+        "version": "24.22.3",
+        "filename": "pool/main/n/nodejs-lts/nodejs-lts_24.22.3_x86_64.deb",
+        "sha256": "d73ab1303aa1a8ecca188795f536279c7ef196c4e3f72b645e443501b03247e4"
       },
       {
         "name": "libc++",
@@ -107,9 +107,9 @@
       },
       {
         "name": "ca-certificates",
-        "version": "1:2026.11.05",
-        "filename": "pool/main/c/ca-certificates/ca-certificates_1:2026.11.05_all.deb",
-        "sha256": "4cf292d604e14ed2878847eec2acea7c24ba10f598a5c5cd75dfc5e3750717da"
+        "version": "1:2026.11.05-1",
+        "filename": "pool/main/c/ca-certificates/ca-certificates_1:2026.11.05-1_all.deb",
+        "sha256": "12fc350fc5ad638338b06b04835bce897615f8c93f96d30ac396cdb39b850c6b"
       },
       {
         "name": "resolv-conf",
