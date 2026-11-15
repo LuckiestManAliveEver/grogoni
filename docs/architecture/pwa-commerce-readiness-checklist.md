@@ -824,7 +824,6 @@ Checked items have narrow repository implementation/test evidence in
 A completed test-run checkbox records execution, not a claim that skipped integration coverage
 or production validation passed. All H1–H5 gates and milestones remain open.
 
-
 ## Verification update — database and chat review, 15 November 2026
 
 Section 23's newly checked items mean the named automated tests were executed successfully;

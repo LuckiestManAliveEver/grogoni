@@ -260,7 +260,6 @@ it("returns an unconfirmed result rather than a successful mutation on a flush d
   }
 });
 
-
 it("allows a healthy durable commit beyond the optimized interactive target", async () => {
   const previousDeadline = process.env.PERSISTENCE_FLUSH_RESPONSE_DEADLINE_MS;
   const previousPriority = process.env.PRIORITY_COMMAND;

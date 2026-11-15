@@ -117,7 +117,6 @@ upgrade, the missing email-error export and regressions exposed by the full test
 verification. Historical secret triage leaves five findings deliberately unsuppressed. No full
 checklist section, commerce-harness gate or production milestone is certified as complete.
 
-
 ## Database and chat review continuation — 15 November 2026
 
 [Database verification and fixes](pwa-commerce-readiness-database-review-2026-11-15.md) records
