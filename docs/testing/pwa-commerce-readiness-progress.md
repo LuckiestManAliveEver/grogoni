@@ -106,5 +106,13 @@ only the security graph is staged in this commit.
 
 Verification: 49 targeted tests pass across authentication, persistence acknowledgments, HTTP
 cache privacy, document imports, file delivery and inference-provider security. Workspace packages
-build in the isolated checkout. A stable full-suite run is underway separately; it is not yet a
-passing release gate.
+build in the isolated checkout. The final full-run results and subsequent failure reruns are recorded in the
+15 November review linked below; external release gates remain open.
+
+## Review and closeout — 15 November 2026
+
+[Final implementation review](pwa-commerce-readiness-final-review-2026-11-15.md) supersedes earlier
+in-progress test/audit counts. Production dependencies now audit clean. CSP, HSTS, the static-plugin
+upgrade, the missing email-error export and regressions exposed by the full test run have targeted
+verification. Historical secret triage leaves five findings deliberately unsuppressed. No full
+checklist section, commerce-harness gate or production milestone is certified as complete.

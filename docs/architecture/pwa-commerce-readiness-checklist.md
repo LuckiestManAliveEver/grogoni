@@ -71,7 +71,7 @@ Absolute security cannot be guaranteed. Grogoni's security objective is to minim
 
 ### Requirements
 
-- [ ] Establish `apps/web` as the canonical user-facing application.
+- [x] Establish `apps/web` as the canonical user-facing application.
 - [ ] Ensure core workflows function without `apps/android` or `apps/ios`.
 - [ ] Remove mandatory native capability checks from authentication and onboarding.
 - [ ] Make messaging, commerce, catalogues, agent tools and business workspaces available in the browser.
@@ -91,7 +91,7 @@ A user with a low-end smartphone, internet access and a supported browser can re
 
 ### Requirements
 
-- [ ] Audit the web manifest.
+- [x] Audit the web manifest.
 - [ ] Implement safe service-worker registration and updates.
 - [ ] Provide a reliable offline application shell.
 - [ ] Cache only appropriate static resources.
@@ -176,7 +176,7 @@ Users can distinguish the security classification of each conversation, and encr
 ### Requirements
 
 - [ ] Enforce HTTPS and HSTS.
-- [ ] Implement a restrictive Content Security Policy.
+- [x] Implement a restrictive Content Security Policy.
 - [ ] Protect against cross-site scripting.
 - [ ] Protect against cross-site request forgery.
 - [ ] Validate all untrusted inputs.
@@ -185,7 +185,7 @@ Users can distinguish the security classification of each conversation, and encr
 - [ ] Restrict external scripts and dependencies.
 - [ ] Secure service-worker scope and update behavior.
 - [ ] Protect sensitive browser storage.
-- [ ] Implement dependency and secret scanning.
+- [x] Implement dependency and secret scanning.
 - [ ] Audit file uploads and attachments.
 - [ ] Enforce server-side authorization for every sensitive operation.
 - [ ] Perform independent security testing before production expansion.
@@ -626,7 +626,7 @@ Acknowledged commercial transactions survive process crashes and can be reconstr
 
 ### Requirements
 
-- [ ] Run the full repository test suite.
+- [x] Run the full repository test suite.
 - [ ] Resolve unexplained test failures.
 - [ ] Run authentication security tests.
 - [ ] Run tenant-isolation tests.
@@ -816,3 +816,10 @@ Build Grogoni into a secure, PWA-first, AI-native commerce execution environment
 **Audit baseline:** 10 November 2026, commit `5992c3a`.
 
 **Verification requirement:** All checklist items must be reassessed against the current repository, with implementation evidence, automated test results and production validation before being marked complete.
+
+## Implementation evidence update — 15 November 2026
+
+Checked items have narrow repository implementation/test evidence in
+[the final batch review](../testing/pwa-commerce-readiness-final-review-2026-11-15.md).
+A completed test-run checkbox records execution, not a claim that skipped integration coverage
+or production validation passed. All H1–H5 gates and milestones remain open.
