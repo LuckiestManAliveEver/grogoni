@@ -1,8 +1,10 @@
+import { normalizeTradingExpiry } from "../receipt-commerce/trading-policy.js";
 import { compareCommerceIdentity, readCommerceIdentity } from "./identity.js";
 import { readCommerceWebsite } from "./website.js";
 import { createHash, randomUUID } from "node:crypto";
 import {
   commerceSourceTypes,
+  commerceTransactionKinds,
   type UnifiedCommerceRecord,
   type CommerceSource,
   type CommerceOffer,
@@ -10,6 +12,7 @@ import {
   type CommerceFeedProduct,
   type CommerceSourceCandidate,
   type CommerceOfferOrderSnapshot,
+  type TradingGrant,
   type ProductSummary
 } from "@grogoni/shared-types";
 import type { BusinessPermission } from "@grogoni/business-core";
@@ -22,6 +25,8 @@ export interface CommerceSourceRequest {
 }
 interface Deps {
   authorize: (input: CommerceSourceRequest, permission: BusinessPermission) => string;
+  authorizeOwner?: (input: CommerceSourceRequest) => string;
+  localPartner?: (input: CommerceSourceRequest, type: "supplier" | "customer", id: string) => void;
   products?: (businessId: string) => ProductSummary[];
   createProduct?: (
     input: CommerceSourceRequest,
@@ -449,6 +454,147 @@ export class CommerceSourcesDomain {
     const base = { id: randomUUID(), businessId: input.businessId, createdAt: at, updatedAt: at };
     let record: UnifiedCommerceRecord;
     switch (operation) {
+      case "trading_grant.create": {
+        if (!this.deps.authorizeOwner)
+          throw new Cp2Error(
+            403,
+            "owner_required",
+            "The account owner must issue trading permissions."
+          );
+        const owner = this.deps.authorizeOwner(input);
+        if (values.confirmed !== true)
+          return fail("Confirm this standing trading permission explicitly.");
+        const partnerBusinessId = text(values.partnerBusinessId, "Partner business ID");
+        if (partnerBusinessId === input.businessId || !this.deps.businessName(partnerBusinessId))
+          return fail("Choose an available partner business.");
+        const partnerRole = values.partnerRole;
+        if (
+          partnerRole !== "supplier" &&
+          partnerRole !== "customer" &&
+          partnerRole !== "salesperson"
+        )
+          return fail("Choose supplier, customer or salesperson.");
+        const currency = text(values.currency, "Currency", 3).toUpperCase();
+        if (!/^[A-Z]{3}$/u.test(currency)) return fail("Use a three-letter currency code.");
+        const limit = (value: unknown, label: string): number | null => {
+          if (value === null || value === undefined) return null;
+          if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0)
+            return fail(`${label} must be a non-negative integer in minor units.`);
+          return value;
+        };
+        const maxTransactionMinor = limit(values.maxTransactionMinor, "Transaction ceiling");
+        if (
+          !Array.isArray(values.allowedKinds) ||
+          !values.allowedKinds.length ||
+          values.allowedKinds.some((kind) => !commerceTransactionKinds.includes(kind))
+        )
+          return fail("Choose supported transaction categories.");
+        const expiresAt = normalizeTradingExpiry(text(values.expiresAt, "Permission expiry"));
+        if (expiresAt === null || Date.parse(expiresAt) <= now.getTime())
+          return fail("Permission expiry must be in the future.");
+        const permissionsInput = values.permissions;
+        if (
+          !permissionsInput ||
+          typeof permissionsInput !== "object" ||
+          Array.isArray(permissionsInput)
+        )
+          return fail("Set posting permissions explicitly.");
+        const permission = (key: string): boolean => {
+          const value = (permissionsInput as Record<string, unknown>)[key];
+          if (typeof value !== "boolean")
+            return fail("Posting permissions must be explicit booleans.");
+          return value;
+        };
+        const permissions = {
+          postInventory: permission("postInventory"),
+          recordBalance: permission("recordBalance"),
+          recordPayment: permission("recordPayment"),
+          attributeSales: permission("attributeSales")
+        };
+        const delegation = values.agentDelegation as Record<string, unknown> | undefined;
+        if (!delegation || typeof delegation.enabled !== "boolean")
+          return fail("Set agent delegation explicitly.");
+        const delegationLimit = limit(delegation.maxTransactionMinor, "Agent ceiling");
+        if (
+          delegation.enabled &&
+          (delegationLimit === null ||
+            maxTransactionMinor === null ||
+            delegationLimit > maxTransactionMinor)
+        )
+          return fail("Agent delegation needs a ceiling within the trading limit.");
+        let localPartnerRef: TradingGrant["localPartnerRef"] = null;
+        let representationId: string | null = null;
+        if (partnerRole === "salesperson") {
+          representationId = text(values.representationId, "Representation ID");
+          const representation = this.records.get(representationId);
+          if (
+            !representation ||
+            representation.kind !== "representation" ||
+            representation.status !== "authorized" ||
+            representation.businessId !== partnerBusinessId ||
+            representation.principalBusinessId !== input.businessId
+          )
+            return fail("An active representation for this salesperson is required.");
+        } else {
+          const id = text(values.localPartnerId, "Local trading-partner record");
+          if (!this.deps.localPartner) return fail("Partner records cannot be verified.");
+          this.deps.localPartner(input, partnerRole, id);
+          localPartnerRef = { type: partnerRole, id };
+        }
+        if (
+          [...this.records.values()].some(
+            (r) =>
+              r.kind === "trading_grant" &&
+              r.businessId === input.businessId &&
+              r.partnerBusinessId === partnerBusinessId &&
+              r.partnerRole === partnerRole &&
+              r.status === "active"
+          )
+        )
+          return fail("Revoke the existing permission before replacing its terms.");
+        record = {
+          ...base,
+          kind: "trading_grant",
+          partnerBusinessId,
+          partnerRole,
+          localPartnerRef,
+          status: "active",
+          allowedKinds: [...new Set(values.allowedKinds)],
+          maxTransactionMinor,
+          currency,
+          permissions,
+          agentDelegation: {
+            enabled: delegation.enabled,
+            maxTransactionMinor: delegation.enabled ? delegationLimit : null
+          },
+          representationId,
+          expiresAt: new Date(expiresAt).toISOString(),
+          revokedAt: null,
+          revokedBy: null,
+          createdBy: owner
+        };
+        break;
+      }
+      case "trading_grant.revoke": {
+        if (!this.deps.authorizeOwner)
+          throw new Cp2Error(
+            403,
+            "owner_required",
+            "The account owner must revoke trading permissions."
+          );
+        const owner = this.deps.authorizeOwner(input);
+        const grant = this.owned(input, text(values.id, "Permission ID"));
+        if (grant.kind !== "trading_grant") return fail("Select a trading permission.");
+        record = {
+          ...grant,
+          status: "revoked",
+          revokedAt: grant.revokedAt ?? at,
+          revokedBy: grant.revokedBy ?? owner,
+          updatedAt: at
+        };
+        break;
+      }
+
       case "packaging.verify": {
         if (values.confirmed !== true) return fail("Confirm the packaging definition explicitly.");
         const productId = text(values.productId, "Product ID");

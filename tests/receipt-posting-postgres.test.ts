@@ -34,6 +34,36 @@ describe.skipIf(!databaseUrl)("receipt posting PostgreSQL persistence", () => {
         unitsPerPack: 12,
         confirmed: true
       });
+      const partner = store.signupWithPhonePin({
+        destination: `+2547${randomInt(10000000, 99999999)}`,
+        pin: "3927"
+      });
+      const partnerBusiness = store.createBusiness({
+        sessionId: partner.session.id,
+        name: "Permission counterparty",
+        language: "en"
+      }).business;
+      const localPartner = store.createSupplier({
+        ...input,
+        supplier: { name: "Verified local partner" }
+      });
+      const tradingPermission = store.executeSourceCommerce(input, "trading_grant.create", {
+        partnerBusinessId: partnerBusiness.id,
+        partnerRole: "supplier",
+        localPartnerId: localPartner.id,
+        allowedKinds: ["goods_sale"],
+        currency: "KES",
+        maxTransactionMinor: 1000000,
+        permissions: {
+          postInventory: true,
+          recordBalance: true,
+          recordPayment: false,
+          attributeSales: false
+        },
+        agentDelegation: { enabled: false, maxTransactionMinor: null },
+        expiresAt: "2030-01-01T00:00:00Z",
+        confirmed: true
+      });
       const fields = buildReceiptStructuredExtraction(
         parseReceiptText("Supplier: Acacia\nDate: 2026-11-16\nMilk,5,1200,6000\nTotal: 6000")
       );
@@ -51,6 +81,7 @@ describe.skipIf(!databaseUrl)("receipt posting PostgreSQL persistence", () => {
       await store.flush();
       await store.close();
       store = await createPostgresCp2Store({ databaseUrl: databaseUrl! });
+      expect(store.listCommerceSources(input)).toContainEqual(tradingPermission);
       const receipt = store.confirmReceiptOCRJob({
         ...input,
         ocrJobId: job.id,
@@ -114,6 +145,38 @@ describe.skipIf(!databaseUrl)("receipt posting PostgreSQL persistence", () => {
         )
       ).rejects.toMatchObject({ code: "23514" });
       await client.query("rollback to savepoint invalid_check");
+      const permission = {
+        id: randomUUID(),
+        businessId,
+        kind: "trading_grant",
+        partnerBusinessId: randomUUID(),
+        partnerRole: "supplier",
+        status: "active",
+        createdBy: randomUUID(),
+        currency: "KES",
+        expiresAt: "2030-01-01T00:00:00.000Z",
+        allowedKinds: ["goods_sale"],
+        permissions: {
+          postInventory: true,
+          recordBalance: true,
+          recordPayment: false,
+          attributeSales: false
+        },
+        agentDelegation: { enabled: false, maxTransactionMinor: null }
+      };
+      await client.query(
+        "insert into cp2_unified_commerce_records(entity_id,business_id,record) values($1,$2,$3)",
+        [permission.id, businessId, permission]
+      );
+      await client.query("savepoint duplicate_permission");
+      const duplicatePermission = { ...permission, id: randomUUID() };
+      await expect(
+        client.query(
+          "insert into cp2_unified_commerce_records(entity_id,business_id,record) values($1,$2,$3)",
+          [duplicatePermission.id, businessId, duplicatePermission]
+        )
+      ).rejects.toMatchObject({ code: "23505" });
+      await client.query("rollback to savepoint duplicate_permission");
       await client.query(
         await readFile(
           new URL("../infra/db/rollbacks/137_receipt_verified_packaging.down.sql", import.meta.url),

@@ -1095,7 +1095,8 @@ const probationGuardedCommerceOperations = new Set([
   "source.connect",
   "receipt.connect",
   "relationship.respond",
-  "representation.decide"
+  "representation.decide",
+  "trading_grant.create"
 ]);
 
 export class Cp2Store {
@@ -1396,6 +1397,25 @@ export class Cp2Store {
       }
     });
     this.commerceSources = new CommerceSourcesDomain({
+      authorizeOwner: (input) => {
+        const actor = this.requireAuthorizedActor(
+          input.sessionId,
+          input.businessId,
+          "product:write",
+          input.now
+        );
+        if (this.requireMembership(input.businessId, actor.user.id).role !== "owner")
+          throw new Cp2Error(
+            403,
+            "owner_required",
+            "Only the account owner can manage standing trading permissions."
+          );
+        return actor.user.id;
+      },
+      localPartner: (input, type, id) => {
+        if (type === "supplier") this.supplierDomain.requireSupplier(input.businessId, id);
+        else this.salesDomain.requireCustomer(input.businessId, id);
+      },
       authorize: (input, permission) =>
         this.requireAuthorizedActor(input.sessionId, input.businessId, permission, input.now).user
           .id,

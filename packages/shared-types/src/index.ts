@@ -1,3 +1,4 @@
+import type { ReceiptDocumentType } from "./receipt-commerce.js";
 export * from "./receipt-commerce.js";
 export * from "./commerce-sources.js";
 import type { PublishedCommerceOffer, CommerceOfferOrderSnapshot } from "./commerce-sources.js";
@@ -2415,7 +2416,7 @@ export interface ReceiptMatchCandidateSummary {
 
 export interface ReceiptStructuredExtractionSummary {
   /** Reviewed document class, retained with the draft. Old drafts require classification. */
-  documentType?: import("./receipt-commerce.js").ReceiptDocumentType;
+  documentType?: ReceiptDocumentType;
   fulfillmentStatus?: "unknown" | "pending" | "received";
 
   sourceDocument?: { sha256: string; fileName: string };

@@ -592,7 +592,7 @@ export interface PostgresStoreHealth {
 }
 
 const requiredMigrationFilename = "051_single_identity_single_store.sql";
-const requiredReceiptPackagingMigrationFilename = "137_receipt_verified_packaging.sql";
+const requiredReceiptCommerceMigrationFilename = "138_receipt_trading_permissions.sql";
 const requiredAttachmentBlobMigrationFilename = "059_conversation_attachment_blob_storage.sql";
 const requiredAccountAiAssetsMigrationFilename = "066_account_ai_assets.sql";
 // Without 106 the session retention trigger revokes refreshable sessions, signing users out on
@@ -1578,11 +1578,11 @@ async function assertDatabaseMigrated(pool: Pool): Promise<void> {
 
   const receiptPackagingMigration = await pool.query<{ applied: boolean }>(
     "select exists(select 1 from grogoni_schema_migrations where filename = $1) as applied",
-    [requiredReceiptPackagingMigrationFilename]
+    [requiredReceiptCommerceMigrationFilename]
   );
   if (receiptPackagingMigration.rows[0]?.applied !== true) {
     throw new Error(
-      `Database migrations are not up to date. Run "pnpm db:migrate" before starting the API. Missing ${requiredReceiptPackagingMigrationFilename}.`
+      `Database migrations are not up to date. Run "pnpm db:migrate" before starting the API. Missing ${requiredReceiptCommerceMigrationFilename}.`
     );
   }
 

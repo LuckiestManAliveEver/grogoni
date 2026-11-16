@@ -46,3 +46,11 @@ No cross-account grants, participant resolution/outbox, synchronized AP/AR/commi
 ## Validation
 
 Validation results are recorded in the implementation checklist after the final runs. PostgreSQL tests use a separate local container/database and exercise actual save/reload, uniqueness/invalid-value rejection and rollback retention. The existing multi-party source-order test is regression coverage; it is not the missing scan-driven three-account acceptance test.
+
+## Trading-permission foundation (subsequent checkpoint)
+
+The existing commerce operations API also accepts `trading_grant.create` and `trading_grant.revoke`. Only the business owner can issue/revoke these standing permissions. Creation requires `confirmed: true`, an available partner business id, `partnerRole`, explicit local supplier/customer id (or current principal-approved salesperson `representationId`), allowed transaction kinds, a currency, nullable integer minor-unit ceiling, explicit posting permission booleans, bounded agent delegation and a future UTC ISO expiry. No ceiling means no automatic posting. Terms cannot be edited in place: revoke and replace them.
+
+`receipt-commerce/trading-policy.ts` checks current scope, expiry/revocation, representation, categories, currency, value, individual effects and agent ceiling. Migration 138 stores these records in the existing commerce table and enforces one active permission per account/partner/role. API startup now requires migration 138. Apply migrations 137 and 138 before deploying this checkpoint. Rollbacks retain evidence and expanded kind allowlists.
+
+This API/evaluator is preparatory. There is no receipt participant consumer yet, no two-sided account synchronization or owner policy settings screen. A local receipt confirmation does not consume a grant to write another account. The corresponding checklist item remains open until orchestration invokes the evaluator for each effect and retry. Persisting permission configuration alone is not cross-account authorization acceptance.
