@@ -86,13 +86,19 @@ it("offers passkey creation after PWA signup, retains the step on cancellation, 
   await fill("Phone number", "0712345678");
   await click("Continue");
   await fill("Display name", "Jane");
-  await fill("Password", "secure password");
-  await fill("Confirm password", "secure password");
+  await fill("4-digit PIN", "3927");
+  await fill("Confirm PIN", "3927");
   await act(async () => {
     for (const input of host.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'))
       input.click();
   });
   await click("Create account");
+  expect(apiFetch).toHaveBeenCalledWith(
+    "/auth/signup/complete",
+    expect.objectContaining({
+      body: expect.objectContaining({ credentialType: "pin", pin: "3927", pinConfirmation: "3927" })
+    })
+  );
   expect(onAuthenticated).not.toHaveBeenCalled();
   expect(host.textContent).toContain("Create your passkey");
   expect(host.textContent).not.toContain("Secure this device");
@@ -101,6 +107,45 @@ it("offers passkey creation after PWA signup, retains the step on cancellation, 
   expect(onAuthenticated).not.toHaveBeenCalled();
   await click("Create passkey");
   expect(onAuthenticated).toHaveBeenCalledWith(session);
+});
+it("starts signup with a PIN, flags weak PINs, and offers a password instead", async () => {
+  vi.mocked(apiFetch).mockImplementation(async (path) => {
+    if (path === "/auth/signup/start") return { transactionId: "signup" };
+    if (path === "/auth/signup/complete") return session;
+    throw new Error(`Unexpected ${path}`);
+  });
+  await act(async () =>
+    root.render(
+      <PhoneSignup onAuthenticated={onAuthenticated} onLogIn={vi.fn()} onCancel={vi.fn()} />
+    )
+  );
+  await fill("Phone number", "0712345678");
+  await click("Continue");
+  await fill("Display name", "Jane");
+  await act(async () => {
+    for (const input of host.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'))
+      input.click();
+  });
+  await fill("4-digit PIN", "1234");
+  await fill("Confirm PIN", "1234");
+  expect(host.textContent).toContain("Choose a less predictable PIN");
+  expect(button("Create account").disabled).toBe(true);
+
+  await click("Use a password instead (more secure)");
+  expect(host.textContent).not.toContain("Confirm PIN");
+  await fill("Password", "secure password");
+  await fill("Confirm password", "secure password");
+  await click("Create account");
+  expect(apiFetch).toHaveBeenCalledWith(
+    "/auth/signup/complete",
+    expect.objectContaining({
+      body: expect.objectContaining({
+        credentialType: "password",
+        password: "secure password",
+        passwordConfirmation: "secure password"
+      })
+    })
+  );
 });
 it("lets existing accounts without passkeys create one without a shop", async () => {
   vi.mocked(apiFetch).mockResolvedValue({ passkeys: [] });

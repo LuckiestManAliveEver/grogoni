@@ -94,6 +94,7 @@ test("signup includes a real passkey step", async ({ page }) => {
     "Agree to the Terms of Service."
   );
   await page.getByLabel("Display name").fill("Jane");
+  await page.getByRole("button", { name: "Use a password instead (more secure)" }).click();
   await page.getByLabel("Password", { exact: true }).fill("secure first password");
   await page.getByLabel("Confirm password", { exact: true }).fill("different password");
   await expect(page.locator("#signup-confirmation-help")).toContainText("Passwords do not match.");

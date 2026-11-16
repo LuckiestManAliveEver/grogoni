@@ -7,7 +7,7 @@ during migration.
 
 ## State machine
 
-`mobile phone → signup transaction → profile/password (required) → session`
+`mobile phone → signup transaction → profile + 4-digit PIN (or a password) → session`
 
 `user chooses login → mobile phone → registered passkey first → PIN/password alternatives (or enrolled native Android device key) → session`
 
@@ -15,7 +15,10 @@ during migration.
 
 `mobile phone → "Trouble logging in?" → Device security → user-verified passkey or Android Keystore proof → new PIN or password`
 
-Phone signup requires a password and then offers explicit device-security recovery enrollment.
+Phone signup asks for a 4-digit login PIN by default. Owners who want a stronger secret can choose
+"Use a password instead" (10–256 characters). Predictable PINs (0000, 1234 and similar) are refused
+at signup, using the shared `isWeakPin` rule. Signup then offers explicit device-security recovery
+enrollment.
 Existing accounts can enroll in account security settings. Browser recovery requires a previously
 registered WebAuthn passkey with user verification; ordinary passkey login cannot authorize
 credential resets. Native Android recovery requires authentication to unlock an enrolled Keystore
