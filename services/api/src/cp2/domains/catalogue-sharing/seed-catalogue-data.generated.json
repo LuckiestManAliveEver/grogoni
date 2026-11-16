@@ -1,0 +1,4288 @@
+{
+  "id": "kenyan-commerce-v1",
+  "name": "Kenyan Commerce Seed Catalog",
+  "version": "1.0.0",
+  "country": "KE",
+  "generatedAt": "2026-10-07T21:30:27+00:00",
+  "sourceWorkbookSha256": "c687a3cd6640397c14d9a46791ce5dd4844a146cc96858750decf9ffeed2b387",
+  "products": [
+    {
+      "id": "family-biscuits-72-4",
+      "name": "Family biscuits 72 ×4",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "nuvita-wafers",
+      "name": "Nuvita Wafers",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "goodie-bakers-milk-biscuits",
+      "name": "Goodie Bakers Milk Biscuits",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "caston-battery-led-torch",
+      "name": "Caston battery led torch",
+      "category": null,
+      "department": "lighting_and_electrical"
+    },
+    {
+      "id": "tblpuls-tb66-usb-led-flashlight",
+      "name": "TBlpuls TB66 USB led flashlight",
+      "category": null,
+      "department": "lighting_and_electrical"
+    },
+    {
+      "id": "caston-st-837l-usb-charge-flashlight",
+      "name": "Caston ST-837L USB charge flashlight",
+      "category": null,
+      "department": "lighting_and_electrical"
+    },
+    {
+      "id": "caston-st-245-battery-led-torch",
+      "name": "Caston ST-245 battery led torch",
+      "category": null,
+      "department": "lighting_and_electrical"
+    },
+    {
+      "id": "caston-st-842-led-rechargeable-torch",
+      "name": "Caston ST-842 led rechargeable torch",
+      "category": null,
+      "department": "lighting_and_electrical"
+    },
+    {
+      "id": "caston-st-6486-multifunctional-converter",
+      "name": "Caston ST-6486 multifunctional converter",
+      "category": null,
+      "department": "lighting_and_electrical"
+    },
+    {
+      "id": "yhc-201-battery-led-torch",
+      "name": "Yhc-201 battery led torch",
+      "category": null,
+      "department": "lighting_and_electrical"
+    },
+    {
+      "id": "balloon-xs-card",
+      "name": "Balloon XS card",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "arimis-milking-jelly",
+      "name": "Arimis Milking jelly",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "4u-milking-jelly",
+      "name": "4U milking jelly",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "menengai-milking-jelly",
+      "name": "Menengai milking jelly",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "anchor-milking-jelly",
+      "name": "Anchor Milking Jelly",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "sawa-milking-jelly",
+      "name": "Sawa Milking Jelly",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "happy-doctor-toothbrush",
+      "name": "Happy Doctor Toothbrush",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "ckl-africa-mint",
+      "name": "ckl africa mint",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "ariel-washing-powder",
+      "name": "Ariel washing powder",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "doffi-washing-powder",
+      "name": "Doffi Washing powder",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "menengai-petroleum-jelly",
+      "name": "Menengai Petroleum Jelly",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "valon-petroleum-jelly",
+      "name": "Valon Petroleum Jelly",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "bamsi-hair-food",
+      "name": "Bamsi Hair Food",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "bamsi-hair-gel",
+      "name": "Bamsi Hair Gel",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "movit-curl-activator",
+      "name": "Movit Curl Activator",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "tcb-hair-food",
+      "name": "TCB Hair Food",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "nature-goodness-hair-food",
+      "name": "Nature Goodness Hair Food",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "sleeping-baby",
+      "name": "Sleeping Baby",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "body-luxe-body-cream",
+      "name": "Body luxe Body cream",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "babylove-petroleum-jelly",
+      "name": "Babylove Petroleum Jelly",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "body-luxe-aloevera-body-cream",
+      "name": "Body luxe Aloevera body cream",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "vaseline-petroleum-jelly",
+      "name": "Vaseline Petroleum Jelly",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "ideal-petroleum-jelly",
+      "name": "Ideal Petroleum Jelly",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "baby-care-petroleum-jelly",
+      "name": "Baby care Petroleum Jelly",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "skala-men-body-cream",
+      "name": "Skala Men body cream",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "vestline-lady-jelly",
+      "name": "Vestline lady jelly",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "afro-care-petroleum-jelly",
+      "name": "Afro care Petroleum Jelly",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "stela-petroleum-jelly",
+      "name": "Stela Petroleum Jelly",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "tcb-relaxer",
+      "name": "TCB relaxer",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "vaseline-for-men-petroleum-jelly",
+      "name": "Vaseline For Men Petroleum Jelly",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "toss",
+      "name": "Toss",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "colgate-charcoal",
+      "name": "Colgate Charcoal",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "colgate-herbal",
+      "name": "Colgate Herbal",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "colgate-colgate",
+      "name": "Colgate",
+      "category": "Colgate",
+      "department": "general_retail"
+    },
+    {
+      "id": "colgate-triple-action",
+      "name": "Colgate Triple Action",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "kaluma-herbal-toothpaste",
+      "name": "Kaluma Herbal toothpaste",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "kaluma-toothpaste",
+      "name": "Kaluma toothpaste",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "close-up-toothpaste",
+      "name": "Close-up toothpaste",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "whitedent-toothpaste",
+      "name": "whitedent Toothpaste",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "forache",
+      "name": "Forache",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "max-guard-toothpaste",
+      "name": "Max guard toothpaste",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "max-guard-herbal-toothpaste",
+      "name": "Max guard Herbal toothpaste",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "taohongyu-low-ankle-socks",
+      "name": "Taohongyu low ankle socks",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "naturally-fair",
+      "name": "Naturally Fair",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "t-guard-toothpaste",
+      "name": "T-guard Toothpaste",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "kalumaplast",
+      "name": "kalumaplast",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "sonaplast",
+      "name": "Sonaplast",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "pepsodent-toothpaste",
+      "name": "Pepsodent toothpaste",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "pepsodent-herbal",
+      "name": "Pepsodent herbal",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "gloves",
+      "name": "Gloves",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "strong-face-towel",
+      "name": "Strong Face Towel",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "women-slim-belts",
+      "name": "Women slim belts",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "plastic-hangers",
+      "name": "Plastic hangers",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "big-size-face-towel",
+      "name": "Big size Face towel",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "cotton-handkerchief",
+      "name": "Cotton handkerchief",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "men-socks",
+      "name": "Men socks",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "checked-handkerchief",
+      "name": "Checked Handkerchief",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "handkerchief",
+      "name": "Handkerchief",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "flowered-face-towel",
+      "name": "Flowered face towel",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "nescafe",
+      "name": "Nescafe",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "omo-handwashing-powder",
+      "name": "Omo Handwashing Powder",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "msafi-powder",
+      "name": "Msafi Powder",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "coconut-oil",
+      "name": "Coconut oil",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "fahari-ya-kenya",
+      "name": "Fahari ya Kenya",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "asili-coconut-oil",
+      "name": "Asili coconut oil",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "dabur-herb-l-toothpaste",
+      "name": "Dabur Herb'l toothpaste",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "softcare-wet-wipes",
+      "name": "Softcare Wet wipes",
+      "category": null,
+      "department": "household_and_cleaning"
+    },
+    {
+      "id": "gold-touch-body-cream",
+      "name": "Gold Touch Body cream",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "doom-rat-mouse-glue-snare",
+      "name": "Doom Rat & Mouse Glue Snare",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "indomie",
+      "name": "Indomie",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "proctor-allan-corn-flakes",
+      "name": "Proctor & Allan Corn Flakes",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "weetabix",
+      "name": "Weetabix",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "family-care-petroleum-jelly",
+      "name": "Family Care Petroleum Jelly",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "eden-tea",
+      "name": "Eden Tea",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "onga-cubes",
+      "name": "Onga Cubes",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "onga-satchet",
+      "name": "Onga Satchet",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "simba-mbili-curry-powder",
+      "name": "Simba Mbili Curry Powder",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "spices-royco-mchuzi-mix",
+      "name": "Royco Mchuzi Mix",
+      "category": "Spices",
+      "department": "general_retail"
+    },
+    {
+      "id": "dormans-kenya-kahawa",
+      "name": "Dormans Kenya Kahawa",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "first-cup-coffee",
+      "name": "First Cup Coffee",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "colored-litre-jug",
+      "name": "Colored Litre Jug",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "nescafe-3in1",
+      "name": "Nescafe 3in1",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "cadburry-drinking-chocolate-2in1",
+      "name": "Cadburry Drinking Chocolate 2in1",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "raha-drinking-chocolate",
+      "name": "Raha Drinking Chocolate",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "raha-cocoa",
+      "name": "Raha Cocoa",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "nestle-milo",
+      "name": "Nestle Milo",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "choco-primo-drinking-chocolate",
+      "name": "Choco Primo Drinking Chocolate",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "woolen-marvins",
+      "name": "Woolen Marvins",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "colored-ankle-socks",
+      "name": "Colored ankle Socks",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "heavy-hand-towels",
+      "name": "Heavy hand Towels",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "sossi",
+      "name": "Sossi",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "nala-instant-noodles",
+      "name": "Nala instant Noodles",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "bella-pads",
+      "name": "Bella Pads",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "softcare-pads",
+      "name": "Softcare Pads",
+      "category": null,
+      "department": "household_and_cleaning"
+    },
+    {
+      "id": "clinclear-pads",
+      "name": "Clinclear Pads",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "solove-pads",
+      "name": "Solove Pads",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "marvel-girl-pads",
+      "name": "Marvel Girl Pads",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "sunny-girl-pads",
+      "name": "Sunny Girl Pads",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "jik-regular",
+      "name": "Jik Regular",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "waterguard",
+      "name": "Waterguard",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "topex",
+      "name": "Topex",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "jik-colors",
+      "name": "Jik Colors",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "eden-tea-tangawizi",
+      "name": "Eden Tea Tangawizi",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "aroma-tangawizi",
+      "name": "Aroma Tangawizi",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "envelopes",
+      "name": "Envelopes",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "red-cat",
+      "name": "Red Cat",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "goodnight-insecticide-spray",
+      "name": "Goodnight Insecticide Spray",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "doom-spray",
+      "name": "Doom Spray",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "family-insecticide-spray",
+      "name": "Family Insecticide Spray",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "malimali-smart-baby-feeding-bottle",
+      "name": "Smart Baby Feeding  Bottle",
+      "category": "MaliMali",
+      "department": "general_retail"
+    },
+    {
+      "id": "sukari-nguru",
+      "name": "Sukari  Nguru",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "explode",
+      "name": "Explode",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "prograin-polished-green-grams",
+      "name": "Prograin  Polished Green Grams",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "axmi-green-grams",
+      "name": "Axmi  Green Grams",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "asante-green-grams-polished",
+      "name": "Asante Green Grams Polished",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "sunlight-2in1-tin",
+      "name": "Sunlight 2in1 Tin",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "food-colouring",
+      "name": "Food Colouring",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "tropical-heat-pilau-masala",
+      "name": "Tropical Heat Pilau Masala",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "madax-pilau-masala",
+      "name": "Madax Pilau Masala",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "madax-pilau-mix-whole",
+      "name": "Madax Pilau Mix Whole",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "madax-ground-black-pepper",
+      "name": "Madax Ground Black Pepper",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "betar-pride-uji-mix",
+      "name": "Betar Pride Uji Mix",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "betar-pride-pure-wimbi",
+      "name": "Betar Pride Pure Wimbi",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "sodium-sachrin-sugar",
+      "name": "Sodium Sachrin Sugar",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "madax-yeast",
+      "name": "Madax Yeast",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "blueband",
+      "name": "Blueband",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "tri-cyclic-padlock",
+      "name": "Tri-Cyclic Padlock",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "yongli-padlock",
+      "name": "Yongli Padlock",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "face-masks",
+      "name": "Face Masks",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "straw",
+      "name": "Straw",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "nap",
+      "name": "Nap",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "palatal-junior",
+      "name": "Palatal Junior",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "colored-candles",
+      "name": "Colored Candles",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "aa-battery-torch",
+      "name": "AA Battery Torch",
+      "category": null,
+      "department": "lighting_and_electrical"
+    },
+    {
+      "id": "colgate-anticavity-toothbrush",
+      "name": "Colgate Anticavity Toothbrush",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "pearlwhite-kids-toothbrush",
+      "name": "PearlWhite Kids Toothbrush",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "toothpick",
+      "name": "Toothpick",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "coated-toothpick",
+      "name": "Coated Toothpick",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "nuvita-family-biscuits",
+      "name": "Nuvita Family Biscuits",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "nuvita-family-kumi",
+      "name": "Nuvita Family Kumi",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "nuvita-milk-biscuits",
+      "name": "Nuvita Milk Biscuits",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "baida-lighter",
+      "name": "Baida Lighter",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "olepito-sugar",
+      "name": "Olepito Sugar",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "nutrameal-sugar",
+      "name": "Nutrameal Sugar",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "kabras-sugar",
+      "name": "Kabras Sugar",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "gulf-sugar",
+      "name": "Gulf Sugar",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "delmonte",
+      "name": "Delmonte",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "zesta",
+      "name": "Zesta",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "kaluma-spray",
+      "name": "Kaluma Spray",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "fiance-body-lotion",
+      "name": "Fiance Body Lotion",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "afrocare-body-lotion",
+      "name": "Afrocare  Body Lotion",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "skala-body-milk-lotion",
+      "name": "Skala Body Milk Lotion",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "oud-luxury-lotion",
+      "name": "OUD Luxury Lotion",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "moisturising-body-lotion-oud",
+      "name": "Moisturising Body Lotion OUD",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "skala-carrot-body-lotion",
+      "name": "Skala Carrot Body Lotion",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "aloe-beleza-body-lotion",
+      "name": "Aloe Beleza Body Lotion",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "star-rose-advanced-moisturising-lotion",
+      "name": "Star Rose Advanced Moisturising Lotion",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "zoe-perfumed-glycerine",
+      "name": "Zoe Perfumed Glycerine",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "vestline-men-body-lotion",
+      "name": "Vestline Men Body Lotion",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "skala-for-men-body-lotion",
+      "name": "Skala For Men Body Lotion",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "amara",
+      "name": "Amara",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "nice-lovely-body-lotion",
+      "name": "Nice & Lovely Body Lotion",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "versman-body-lotion",
+      "name": "Versman Body Lotion",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "valon-body-lotion",
+      "name": "Valon Body Lotion",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "prestige-margarine",
+      "name": "Prestige Margarine",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "nuvita-breaktime-tea",
+      "name": "Nuvita Breaktime Tea",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "groundnuts",
+      "name": "Groundnuts",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "famila",
+      "name": "Famila",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "excel-glucose",
+      "name": "Excel Glucose",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "bactoseptic-regular",
+      "name": "Bactoseptic Regular",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "letrax",
+      "name": "Letrax",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "kifaru-matchbox",
+      "name": "Kifaru Matchbox",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "ribena",
+      "name": "Ribena",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "sonadol",
+      "name": "Sonadol",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "eno",
+      "name": "Eno",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "relax",
+      "name": "Relax",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "sonamoja",
+      "name": "Sonamoja",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "painpast",
+      "name": "PainPast",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "rechargeable-torch",
+      "name": "Rechargeable Torch",
+      "category": null,
+      "department": "lighting_and_electrical"
+    },
+    {
+      "id": "liugu-superglue",
+      "name": "Liugu Superglue",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "sparkle-superglue",
+      "name": "Sparkle Superglue",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "liugel-superglue",
+      "name": "Liugel Superglue",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "malimali-tocebal-battery",
+      "name": "Tocebal Battery",
+      "category": "MaliMali",
+      "department": "lighting_and_electrical"
+    },
+    {
+      "id": "getting-battery",
+      "name": "Getting Battery",
+      "category": null,
+      "department": "lighting_and_electrical"
+    },
+    {
+      "id": "eno-tablets",
+      "name": "Eno Tablets",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "apc-tablet",
+      "name": "APC tablet",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "kaluma-king",
+      "name": "Kaluma King",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "cofta",
+      "name": "Cofta",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "maramoja",
+      "name": "MaraMoja",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "action",
+      "name": "Action",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "throatsil",
+      "name": "Throatsil",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "tumbocid",
+      "name": "Tumbocid",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "stomacid",
+      "name": "Stomacid",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "zesta-chilli-sauce",
+      "name": "Zesta Chilli Sauce",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "sunfresh-tomato-sauce",
+      "name": "Sunfresh Tomato Sauce",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "sunfresh-chilli-sauce",
+      "name": "Sunfresh Chilli Sauce",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "executive-tomato-sauce",
+      "name": "Executive Tomato Sauce",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "anchor-mantle",
+      "name": "Anchor Mantle",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "dawn-jumbo",
+      "name": "Dawn Jumbo",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "cowboy",
+      "name": "Cowboy",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "kimbo",
+      "name": "Kimbo",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "kasuku",
+      "name": "Kasuku",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "transparent-dish",
+      "name": "Transparent Dish",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "adix-tea-cups",
+      "name": "Adix Tea Cups",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "bella-tissue-4-pack",
+      "name": "Bella Tissue 4 pack",
+      "category": null,
+      "department": "household_and_cleaning"
+    },
+    {
+      "id": "neptune-tissue-4-pack",
+      "name": "Neptune Tissue 4 pack",
+      "category": null,
+      "department": "household_and_cleaning"
+    },
+    {
+      "id": "dawat-long-grain-rice",
+      "name": "Dawat Long Grain Rice",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "freshfri",
+      "name": "Freshfri",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "salit",
+      "name": "Salit",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "dola",
+      "name": "Dola",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "nylon-hanging-line",
+      "name": "Nylon Hanging Line",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "prumaz-bruleur",
+      "name": "Prumaz Bruleur",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "orgaz",
+      "name": "Orgaz",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "cosco-gas-regulator",
+      "name": "Cosco Gas Regulator",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "cotton-wool",
+      "name": "Cotton Wool",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "malimali-green-slippers",
+      "name": "Green Slippers",
+      "category": "MaliMali",
+      "department": "general_retail"
+    },
+    {
+      "id": "eveready-heavy-duty-battery",
+      "name": "Eveready Heavy Duty Battery",
+      "category": null,
+      "department": "lighting_and_electrical"
+    },
+    {
+      "id": "golden-lion",
+      "name": "Golden Lion",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "alshabaab-twin-blades",
+      "name": "Alshabaab Twin Blades",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "geeleete-2",
+      "name": "Geeleete 2",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "gillette-2",
+      "name": "Gillette 2",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "bic-razor",
+      "name": "Bic Razor",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "dawn-pekee",
+      "name": "Dawn Pekee",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "farsoft-tissue",
+      "name": "Farsoft Tissue",
+      "category": null,
+      "department": "household_and_cleaning"
+    },
+    {
+      "id": "bella-white",
+      "name": "Bella White",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "neptune-colored",
+      "name": "Neptune Colored",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "bic-metal",
+      "name": "Bic Metal",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "kiss-kids-lc",
+      "name": "Kiss kids LC",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "kisskids-hc",
+      "name": "KissKids HC",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "softcare-pads-2",
+      "name": "Softcare Pads",
+      "category": null,
+      "department": "household_and_cleaning"
+    },
+    {
+      "id": "softcare-lc",
+      "name": "Softcare LC",
+      "category": null,
+      "department": "household_and_cleaning"
+    },
+    {
+      "id": "softcare-softcare-hc",
+      "name": "Softcare HC",
+      "category": "Softcare",
+      "department": "household_and_cleaning"
+    },
+    {
+      "id": "bora-baby-diaper",
+      "name": "Bora Baby Diaper",
+      "category": null,
+      "department": "personal_care"
+    },
+    {
+      "id": "butterfly-tip-top-4-ply",
+      "name": "Butterfly Tip Top 4-ply",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "rectangular-lunch-dish",
+      "name": "Rectangular Lunch Dish",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "princess-tissue",
+      "name": "Princess Tissue",
+      "category": null,
+      "department": "household_and_cleaning"
+    },
+    {
+      "id": "envelopes-2",
+      "name": "Envelopes",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "barjot-office-glue",
+      "name": "Barjot Office Glue",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "laser-blade-razor",
+      "name": "Laser Blade Razor",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "darco-blade-razor",
+      "name": "Darco Blade Razor",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "sungura-jumbo-tissue",
+      "name": "Sungura Jumbo Tissue",
+      "category": null,
+      "department": "household_and_cleaning"
+    },
+    {
+      "id": "shaggy-adult-diapers",
+      "name": "Shaggy Adult Diapers",
+      "category": null,
+      "department": "personal_care"
+    },
+    {
+      "id": "shaggy-adult-pants",
+      "name": "Shaggy Adult Pants",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "a5-size-kasuku-half-inch-exercise-book",
+      "name": "A5 size Kasuku Half-inch Exercise Book",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "general-purpose-lubricant",
+      "name": "General Purpose Lubricant",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "scrubber",
+      "name": "Scrubber",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "kensalt",
+      "name": "Kensalt",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "kaysalt",
+      "name": "KaySalt",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "manilla-paper",
+      "name": "Manilla Paper",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "plastic-spring-file",
+      "name": "Plastic Spring File",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "eraser",
+      "name": "Eraser",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "receipt-book",
+      "name": "Receipt Book",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "popco",
+      "name": "Popco",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "a4-plain-book",
+      "name": "A4 Plain Book",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "a4-graph-book",
+      "name": "A4  Graph Book",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "sta-soft",
+      "name": "Sta Soft",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "philips-bulb",
+      "name": "Philips Bulb",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "lyons-bulbs",
+      "name": "Lyons Bulbs",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "pika-cooking-oil",
+      "name": "Pika Cooking Oil",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "a4-kasuku",
+      "name": "A4 Kasuku",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "a5-kasuku",
+      "name": "A5 Kasuku",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "a5-crown-bird",
+      "name": "A5 Crown bird",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "a5-plain",
+      "name": "A5 Plain",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "a5-graph-book",
+      "name": "A5 Graph book",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "report-book",
+      "name": "Report Book",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "upishi-maize-flour",
+      "name": "Upishi Maize Flour",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "cheka-maize-flour",
+      "name": "Cheka Maize Flour",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "kavagara-raha-premium-maize-flour",
+      "name": "Kavagara Raha Premium Maize Flour",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "dola-maize-flour",
+      "name": "Dola Maize Flour",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "simba-xtra-maize-flour",
+      "name": "Simba Xtra Maize Flour",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "hostess-maize-flour",
+      "name": "Hostess Maize Flour",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "ajab-maize-flour",
+      "name": "Ajab Maize Flour",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "hodari-maize-flour",
+      "name": "Hodari Maize Flour",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "tama-maize-flour",
+      "name": "Tama Maize Flour",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "amaize-maize-flour",
+      "name": "Amaize Maize Flour",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "counter-books",
+      "name": "Counter Books",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "nice-one-bulbs",
+      "name": "Nice One Bulbs",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "addison-slippers",
+      "name": "Addison Slippers",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "umoja-slippers",
+      "name": "Umoja Slippers",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "molfix",
+      "name": "Molfix",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "avc-led-bulbs",
+      "name": "AVC LED Bulbs",
+      "category": null,
+      "department": "lighting_and_electrical"
+    },
+    {
+      "id": "dp-light-bulbs",
+      "name": "DP Light Bulbs",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "jwdz-bulbs",
+      "name": "JWDZ Bulbs",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "suntown-bulbs",
+      "name": "Suntown  Bulbs",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "delta-bulbs",
+      "name": "Delta Bulbs",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "dragon-bulbs",
+      "name": "Dragon Bulbs",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "kasuku-mathematical-set",
+      "name": "Kasuku Mathematical Set",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "oxford-mathematical-set",
+      "name": "Oxford Mathematical Set",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "classmate-mathematical-set",
+      "name": "Classmate Mathematical Set",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "m-g-mathematical-set",
+      "name": "M&G Mathematical Set",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "plastic-toy-whistle",
+      "name": "Plastic Toy Whistle",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "sharpener",
+      "name": "Sharpener",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "veda-crayons",
+      "name": "Veda Crayons",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "crayola-crayons",
+      "name": "Crayola Crayons",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "maxbrite-heavy-duty-scouring-pad",
+      "name": "Maxbrite Heavy Duty Scouring Pad",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "hard-hub-scouring-pad",
+      "name": "Hard Hub Scouring Pad",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "mbj-modelling-clay",
+      "name": "MBJ Modelling Clay",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "alpha-flashlight-bulbs",
+      "name": "Alpha Flashlight Bulbs",
+      "category": null,
+      "department": "lighting_and_electrical"
+    },
+    {
+      "id": "watercolor",
+      "name": "WaterColor",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "stove-wick",
+      "name": "Stove Wick",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "flute",
+      "name": "Flute",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "30cm-ruler",
+      "name": "30cm Ruler",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "30cm-flexible-ruler",
+      "name": "30cm Flexible Ruler",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "knitting-needle",
+      "name": "Knitting Needle",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "mason-hammer",
+      "name": "Mason Hammer",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "fork-jembe",
+      "name": "Fork Jembe",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "flat-jembe",
+      "name": "Flat Jembe",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "axe",
+      "name": "Axe",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "sikle",
+      "name": "Sikle",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "stellar-padlock",
+      "name": "Stellar Padlock",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "smart-pick-detergent",
+      "name": "Smart Pick Detergent",
+      "category": null,
+      "department": "household_and_cleaning"
+    },
+    {
+      "id": "sawa-hotel-bathsoap",
+      "name": "Sawa Hotel Bathsoap",
+      "category": null,
+      "department": "household_and_cleaning"
+    },
+    {
+      "id": "camset-mathematical-set",
+      "name": "Camset Mathematical Set",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "camel-mathematical-set",
+      "name": "Camel Mathematical Set",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "dexe-black-hair-shampoo",
+      "name": "Dexe Black Hair Shampoo",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "clipboard",
+      "name": "ClipBoard",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "nzuri-black",
+      "name": "Nzuri Black",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "power-king-extension-socket",
+      "name": "Power King Extension Socket",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "subaru-hair-colorant",
+      "name": "Subaru Hair Colorant",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "skala-men-glycerine",
+      "name": "Skala Men Glycerine",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "body-luxe-aloevera-glycerine",
+      "name": "Body Luxe Aloevera Glycerine",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "olive-oil",
+      "name": "Olive Oil",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "baby-powder",
+      "name": "Baby Powder",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "germol-antiseptic-liquid",
+      "name": "Germol Antiseptic Liquid",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "dettol-antiseptic-liquid",
+      "name": "Dettol Antiseptic Liquid",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "earbuds",
+      "name": "Earbuds",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "cellotape",
+      "name": "Cellotape",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "silky-care-carrot-glycerin",
+      "name": "Silky Care Carrot Glycerin",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "cussons-imperial-leather",
+      "name": "Cussons Imperial Leather",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "lamp-wick",
+      "name": "Lamp Wick",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "skala-body-spray",
+      "name": "Skala Body Spray",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "combat-mosquito-coil",
+      "name": "Combat Mosquito Coil",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "pegs",
+      "name": "Pegs",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "shoebrush",
+      "name": "Shoebrush",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "3in1-comb",
+      "name": "3in1 Comb",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "kiwi-fruit-knife",
+      "name": "Kiwi Fruit Knife",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "afro-comb",
+      "name": "Afro Comb",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "family-bathing-soap",
+      "name": "Family Bathing Soap",
+      "category": null,
+      "department": "household_and_cleaning"
+    },
+    {
+      "id": "kibuyu-washing-soap",
+      "name": "Kibuyu Washing Soap",
+      "category": null,
+      "department": "household_and_cleaning"
+    },
+    {
+      "id": "udi",
+      "name": "Udi",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "dettol-antibacterial-soap",
+      "name": "Dettol Antibacterial Soap",
+      "category": null,
+      "department": "household_and_cleaning"
+    },
+    {
+      "id": "straightening-comb",
+      "name": "Straightening Comb",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "sawa-bathing-soap",
+      "name": "Sawa Bathing Soap",
+      "category": null,
+      "department": "household_and_cleaning"
+    },
+    {
+      "id": "4u-soap",
+      "name": "4U Soap",
+      "category": null,
+      "department": "household_and_cleaning"
+    },
+    {
+      "id": "menengai-bathing-soap",
+      "name": "Menengai Bathing Soap",
+      "category": null,
+      "department": "household_and_cleaning"
+    },
+    {
+      "id": "soaps-geisha-soap",
+      "name": "Geisha Soap",
+      "category": "Soaps",
+      "department": "household_and_cleaning"
+    },
+    {
+      "id": "lunch-dish-flowered-and-round",
+      "name": "Lunch Dish-Flowered and Round",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "detrex-bathing-soap",
+      "name": "Detrex Bathing Soap",
+      "category": null,
+      "department": "household_and_cleaning"
+    },
+    {
+      "id": "ushindi-soap",
+      "name": "Ushindi Soap",
+      "category": null,
+      "department": "household_and_cleaning"
+    },
+    {
+      "id": "soaps-sunlight-laundry-soap",
+      "name": "Sunlight Laundry Soap",
+      "category": "Soaps",
+      "department": "household_and_cleaning"
+    },
+    {
+      "id": "white-wash-soap",
+      "name": "White Wash Soap",
+      "category": null,
+      "department": "household_and_cleaning"
+    },
+    {
+      "id": "stellar-padlock-2",
+      "name": "Stellar Padlock",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "bella-baby-wipes",
+      "name": "Bella Baby Wipes",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "straw-2",
+      "name": "Straw",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "motorbike-bulbs",
+      "name": "Motorbike Bulbs",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "rexona-roll-on",
+      "name": "Rexona Roll-on",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "kangaroo-shoe-cream",
+      "name": "Kangaroo Shoe  Cream",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "water-bottle",
+      "name": "Water Bottle",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "kangaroo-shoe-polish",
+      "name": "Kangaroo Shoe Polish",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "kangaroo-shoe-dye",
+      "name": "Kangaroo Shoe dye",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "super-flamingo-ultramarine-blue",
+      "name": "Super Flamingo Ultramarine Blue",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "safety-pins",
+      "name": "Safety Pins",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "permanent-marker",
+      "name": "Permanent Marker",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "bella-baby-wipes-2",
+      "name": "Bella Baby Wipes",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "powder-killing-cockroach-bait",
+      "name": "Powder Killing Cockroach Bait",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "sewing-thread",
+      "name": "Sewing Thread",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "kaluma-pain-balm",
+      "name": "Kaluma Pain Balm",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "dustless-chalk",
+      "name": "Dustless Chalk",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "kiwi-shoe-polish",
+      "name": "Kiwi Shoe Polish",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "gelx-executive-pen",
+      "name": "Gelx Executive Pen",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "champion-pen",
+      "name": "Champion Pen",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "kaluma-pen",
+      "name": "Kaluma Pen",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "wrist-watch",
+      "name": "Wrist Watch",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "wrist-sports-watch",
+      "name": "Wrist Sports Watch",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "bic-pen",
+      "name": "Bic Pen",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "stedlar-pencils",
+      "name": "Stedlar  Pencils",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "m-g-pencils",
+      "name": "M&G Pencils",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "kangaro-staples",
+      "name": "Kangaro Staples",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "emami-mentho-plus-balm",
+      "name": "Emami Mentho Plus Balm",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "relax-aromatic-mentho-balm",
+      "name": "Relax Aromatic Mentho Balm",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "seven-star-patch-roughen",
+      "name": "Seven Star Patch-roughen",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "platinum-pencils",
+      "name": "Platinum Pencils",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "rk-blades",
+      "name": "RK Blades",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "nacet-blades",
+      "name": "Nacet Blades",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "original-nacet-blades",
+      "name": "Original Nacet Blades",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "plastic-tea-cups-with-lid",
+      "name": "Plastic Tea Cups With Lid",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "jk-copier",
+      "name": "JK Copier",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "super-max-blades",
+      "name": "Super Max Blades",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "methylated-spirit",
+      "name": "Methylated Spirit",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "shoe-sewing-threads",
+      "name": "Shoe Sewing Threads",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "plastic-coffee-cups",
+      "name": "Plastic Coffee Cups",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "water-jugs",
+      "name": "Water Jugs",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "steel-wool",
+      "name": "Steel Wool",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "steel-scrubber",
+      "name": "Steel Scrubber",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "mindy-padlock",
+      "name": "Mindy Padlock",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "nimdy-padlock",
+      "name": "Nimdy Padlock",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "wooven-carrier-bags",
+      "name": "Wooven Carrier Bags",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "non-wooven-carrier-bags",
+      "name": "Non Wooven Carrier Bags",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "quencher",
+      "name": "Quencher",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "shoe-sewing-needles",
+      "name": "Shoe Sewing Needles",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "wringleys-pk",
+      "name": "Wringleys Pk",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "wringleys-juicy-fruit",
+      "name": "Wringleys Juicy Fruit",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "wringleys-orbit",
+      "name": "Wringleys Orbit",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "big-g",
+      "name": "Big G",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "avery-day",
+      "name": "Avery Day",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "tofibol",
+      "name": "Tofibol",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "3d-soft-candy",
+      "name": "3D Soft Candy",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "fresh-chewing-gum",
+      "name": "Fresh Chewing Gum",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "tajiri-pop",
+      "name": "Tajiri Pop",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "gomba",
+      "name": "Gomba",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "super-drink",
+      "name": "Super Drink",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "toffee-chocolaire",
+      "name": "Toffee Chocolaire",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "toogoody-toffee",
+      "name": "Toogoody Toffee",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "xplode-mr-berry",
+      "name": "Xplode Mr. Berry",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "royco-cubes",
+      "name": "Royco Cubes",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "patco",
+      "name": "Patco",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "koh-kubwa",
+      "name": "Koh Kubwa",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "cough-drops",
+      "name": "Cough Drops",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "ballgum",
+      "name": "Ballgum",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "toy-guns",
+      "name": "Toy guns",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "toy-cars",
+      "name": "Toy Cars",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "card-padlock",
+      "name": "Card Padlock",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "tungsten-gas-burner",
+      "name": "Tungsten Gas Burner",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "toy-mask",
+      "name": "Toy Mask",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "sack-sewing-needle",
+      "name": "Sack Sewing Needle",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "opener",
+      "name": "Opener",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "crotchet",
+      "name": "Crotchet",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "traditional-bowl-key-holders",
+      "name": "Traditional Bowl Key Holders",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "spring-key-holders",
+      "name": "Spring Key Holders",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "sweets-mabuyuz",
+      "name": "Mabuyuz",
+      "category": "Sweets",
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "zing-bubble-gum",
+      "name": "Zing Bubble Gum",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "crisps",
+      "name": "Crisps",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "spoons",
+      "name": "Spoons",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "toy-spectacles",
+      "name": "Toy Spectacles",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "scissors",
+      "name": "Scissors",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "mara-moja-advance",
+      "name": "Mara Moja Advance",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "techpak-white-pp-sleeves",
+      "name": "Techpak White PP Sleeves",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "swan-safety-pins",
+      "name": "Swan Safety Pins",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "tomatoes",
+      "name": "Tomatoes",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "numbers",
+      "name": "Numbers",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "edible-pipes",
+      "name": "Edible Pipes",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "sieves",
+      "name": "Sieves",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "american-cola",
+      "name": "American Cola",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "brava-pineaple",
+      "name": "Brava Pineaple",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "brava-mango",
+      "name": "Brava Mango",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "bubble-up",
+      "name": "Bubble Up",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "bravado",
+      "name": "Bravado",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "afia",
+      "name": "Afia",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "lemonade",
+      "name": "Lemonade",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "lato-milk",
+      "name": "Lato Milk",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "kifaru-kubwa",
+      "name": "Kifaru Kubwa",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "ice-ice-sweet",
+      "name": "Ice Ice Sweet",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "planet",
+      "name": "Planet",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "suntop",
+      "name": "Suntop",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "lucozade",
+      "name": "Lucozade",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "rtd",
+      "name": "Rtd",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "yoghurt",
+      "name": "Yoghurt",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "cetrizin",
+      "name": "Cetrizin",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "diclofenac",
+      "name": "Diclofenac",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "piriton",
+      "name": "Piriton",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "bourbon-biscuits",
+      "name": "Bourbon Biscuits",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "cool-cow",
+      "name": "Cool Cow",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "toffee-sweets",
+      "name": "Toffee Sweets",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "ksl-sweets",
+      "name": "KSL Sweets",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "cosmag",
+      "name": "Cosmag",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "nail-cutter",
+      "name": "Nail Cutter",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "niramin",
+      "name": "Niramin",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "sodamint",
+      "name": "Sodamint",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "ashton-parsons",
+      "name": "Ashton & Parsons",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "golden-lion-2",
+      "name": "Golden Lion",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "ckl-sweets",
+      "name": "CKL Sweets",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "butter-sweets",
+      "name": "Butter Sweets",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "f-seal-silicone",
+      "name": "F-Seal Silicone",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "candles",
+      "name": "Candles",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "kinbar-alarm-lock",
+      "name": "Kinbar Alarm Lock",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "auddy-padlock",
+      "name": "Auddy Padlock",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "piroxicam",
+      "name": "Piroxicam",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "ibucap",
+      "name": "Ibucap",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "baby-shakers",
+      "name": "Baby Shakers",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "lemon-soda",
+      "name": "Lemon Soda",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "scones",
+      "name": "Scones",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "marbles",
+      "name": "Marbles",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "seven-star-rubber-solution",
+      "name": "Seven Star Rubber Solution",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "tropical-heat-potato-crisps",
+      "name": "Tropical Heat Potato Crisps",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "masking-tape",
+      "name": "Masking Tape",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "insulation-tape",
+      "name": "Insulation Tape",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "tropical-mint",
+      "name": "Tropical Mint",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "big-daddy",
+      "name": "Big Daddy",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "big-giant",
+      "name": "Big Giant",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "big-mama",
+      "name": "Big Mama",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "toy-water-gun",
+      "name": "Toy Water Gun",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "queen-cakes",
+      "name": "Queen Cakes",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "cling-film",
+      "name": "Cling Film",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "jinice-disposable-cups",
+      "name": "Jinice Disposable Cups",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "hangers",
+      "name": "Hangers",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "coca-cola-soda",
+      "name": "Coca-Cola Soda",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "1l-water-bottle",
+      "name": "1L Water Bottle",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "mirror-comb",
+      "name": "Mirror Comb",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "princess",
+      "name": "Princess",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "yummy",
+      "name": "Yummy",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "ringoz",
+      "name": "Ringoz",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "chocolate-tru-bytes-biscuit",
+      "name": "Chocolate Tru-Bytes Biscuit",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "fun-girl",
+      "name": "Fun Girl",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "funtime",
+      "name": "Funtime",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "nuvita-corn-puffs",
+      "name": "Nuvita Corn Puffs",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "bitez",
+      "name": "Bitez",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "office-glue",
+      "name": "Office Glue",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "kids-fun-balloon-joy",
+      "name": "Kids Fun Balloon Joy",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "wow",
+      "name": "Wow",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "toto-biskuit",
+      "name": "Toto Biskuit",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "coriander",
+      "name": "Coriander",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "cinnamon-powder",
+      "name": "Cinnamon Powder",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "bay-leaves",
+      "name": "Bay Leaves",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "garlic-powder",
+      "name": "Garlic Powder",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "cayenne-pepper",
+      "name": "Cayenne Pepper",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "turmeric",
+      "name": "Turmeric",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "oregano",
+      "name": "Oregano",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "cardamoms",
+      "name": "Cardamoms",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "paprika-spices",
+      "name": "Paprika Spices",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "cloves",
+      "name": "Cloves",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "zenta-barsoap",
+      "name": "Zenta Barsoap",
+      "category": null,
+      "department": "household_and_cleaning"
+    },
+    {
+      "id": "ushindi-barsoap",
+      "name": "Ushindi Barsoap",
+      "category": null,
+      "department": "household_and_cleaning"
+    },
+    {
+      "id": "jamaa-barsoap",
+      "name": "Jamaa Barsoap",
+      "category": null,
+      "department": "household_and_cleaning"
+    },
+    {
+      "id": "tiger-barsoap",
+      "name": "Tiger Barsoap",
+      "category": null,
+      "department": "household_and_cleaning"
+    },
+    {
+      "id": "upendo-barsoap",
+      "name": "Upendo Barsoap",
+      "category": null,
+      "department": "household_and_cleaning"
+    },
+    {
+      "id": "meta-barsoap",
+      "name": "Meta Barsoap",
+      "category": null,
+      "department": "household_and_cleaning"
+    },
+    {
+      "id": "ndume-barsoap",
+      "name": "Ndume Barsoap",
+      "category": null,
+      "department": "household_and_cleaning"
+    },
+    {
+      "id": "coffeebee-kazuri-kenyan-coffee",
+      "name": "Coffeebee Kazuri Kenyan Coffee",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "kensafi-mandazy",
+      "name": "Kensafi Mandazy",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "afya-lala",
+      "name": "Afya Lala",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "winners-lala",
+      "name": "Winners Lala",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "kcc-gold-crown-milk",
+      "name": "KCC Gold Crown Milk",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "ravine-milk",
+      "name": "Ravine Milk",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "sumo-candles",
+      "name": "Sumo Candles",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "pride-of-cows-uht-full-cream-milk",
+      "name": "Pride of Cows UHT Full Cream Milk",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "summer-candles",
+      "name": "Summer Candles",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "mazpoa-maziwa",
+      "name": "Mazpoa Maziwa",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "dairy-top-milk",
+      "name": "Dairy Top Milk",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "milk-mt-kenya-milk",
+      "name": "Mt.Kenya Milk",
+      "category": "Milk",
+      "department": "general_retail"
+    },
+    {
+      "id": "fresh-zait-cooking-oil",
+      "name": "Fresh Zait Cooking oil",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "golden-drop-cooking-oil",
+      "name": "Golden Drop Cooking oil",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "sugar",
+      "name": "Sugar",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "simsek-choco-bien",
+      "name": "Simsek Choco Bien",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "umbrellas",
+      "name": "Umbrellas",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "measuring-tape",
+      "name": "Measuring Tape",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "cook-star-cooking-fat",
+      "name": "Cook Star Cooking Fat",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "halisi-cooking-oil",
+      "name": "Halisi Cooking Oil",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "ufuta-cooking-oil",
+      "name": "Ufuta Cooking Oil",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "porridge-flour",
+      "name": "Porridge Flour",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "mara-666-rice",
+      "name": "Mara 666 Rice",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "rice-mara-777-rice",
+      "name": "Mara 777 Rice",
+      "category": "Rice",
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "indus-gold-rice",
+      "name": "Indus Gold Rice",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "mara-111",
+      "name": "Mara 111",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "mara-222",
+      "name": "Mara 222",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "mara-888",
+      "name": "Mara 888",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "pishori-rice",
+      "name": "Pishori Rice",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "parboil-rice",
+      "name": "Parboil Rice",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "soko-atta",
+      "name": "Soko Atta",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "pembe-wheat-flour",
+      "name": "Pembe Wheat Flour",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "ajab-wheat-flour",
+      "name": "Ajab Wheat Flour",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "exe-mandazi",
+      "name": "Exe Mandazi",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "lea-wheat-flour",
+      "name": "Lea Wheat Flour",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "lea-premium-maize-flour",
+      "name": "Lea Premium Maize Flour",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "diplomat-maize-flour",
+      "name": "Diplomat Maize Flour",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "wheat-flour-pendo-wheat-flour",
+      "name": "Pendo Wheat Flour",
+      "category": "Wheat Flour",
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "mara-gold",
+      "name": "Mara Gold",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "umi-wheat-flour",
+      "name": "Umi Wheat Flour",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "ranee-sphagetti",
+      "name": "Ranee Sphagetti",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "flashlight-key-button",
+      "name": "Flashlight Key Button",
+      "category": null,
+      "department": "lighting_and_electrical"
+    },
+    {
+      "id": "pasta-sarah-spaghetti",
+      "name": "Pasta Sarah Spaghetti",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "bread-kingsmill",
+      "name": "Bread Kingsmill",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "ring-cake",
+      "name": "Ring Cake",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "half-pound-cake",
+      "name": "Half Pound Cake",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "bread-festive",
+      "name": "Bread Festive",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "bread-supaloaf",
+      "name": "Bread Supaloaf",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "supa-butter-toast",
+      "name": "Supa Butter Toast",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "bread-broadways",
+      "name": "Bread Broadways",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "bread-kenblest",
+      "name": "Bread Kenblest",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "lemon-cakes",
+      "name": "Lemon Cakes",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "ngumu",
+      "name": "Ngumu",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "bazuu",
+      "name": "Bazuu",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "predator",
+      "name": "Predator",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "power-play",
+      "name": "Power Play",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "sugar-2",
+      "name": "Sugar",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "bread-sandwich-bakers",
+      "name": "Bread Sandwich Bakers",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "planet-water",
+      "name": "Planet Water",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "delmonte-2",
+      "name": "Delmonte",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "delmonte-fruitini",
+      "name": "Delmonte Fruitini",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "eggs",
+      "name": "Eggs",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "kienyeji-eggs",
+      "name": "Kienyeji Eggs",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "sunveat-biscuits",
+      "name": "Sunveat Biscuits",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "treatos-ginger-biscuits",
+      "name": "Treatos Ginger Biscuits",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "chapa-mandashi-baking-powder",
+      "name": "Chapa Mandashi Baking Powder",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "handmade-dishwashing-soap",
+      "name": "Handmade Dishwashing Soap",
+      "category": null,
+      "department": "household_and_cleaning"
+    },
+    {
+      "id": "sawa-bodywash",
+      "name": "Sawa Bodywash",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "prolite-club-large-white-non-drip-candles",
+      "name": "ProLite Club Large White Non Drip Candles",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "brookside-milk",
+      "name": "Brookside Milk",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "taifa-milk",
+      "name": "Taifa Milk",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "fresha-milk",
+      "name": "Fresha Milk",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "kenstar-arm-chair",
+      "name": "Kenstar Arm Chair",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "kenpoly-arm-chair",
+      "name": "KenPoly Arm Chair",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "kenpoly-non-arm-chair",
+      "name": "Kenpoly Non Arm Chair",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "npl-arm-chair",
+      "name": "NPL Arm Chair",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "kensafi-baking-powder",
+      "name": "Kensafi Baking Powder",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "ken-baking-powder",
+      "name": "Ken Baking Powder",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "menendazi-baking-powder",
+      "name": "Menendazi Baking Powder",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "scouts-whistle",
+      "name": "Scouts whistle",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "jik-colors-2",
+      "name": "Jik Colors",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "tembo-pp-agricultural-twine-no-660",
+      "name": "Tembo PP Agricultural Twine No. 660",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "nigeria-bags",
+      "name": "Nigeria Bags",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "football",
+      "name": "Football",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "large-size-plastic-jug",
+      "name": "Large Size Plastic Jug",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "mason-twine-rope",
+      "name": "Mason Twine Rope",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "tomato-sauce",
+      "name": "Tomato Sauce",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "gold-colored-scrubber",
+      "name": "Gold Colored Scrubber",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "classic-jug-no-1",
+      "name": "Classic Jug No.1",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "scour-power-scouring-pad",
+      "name": "Scour Power Scouring Pad.",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "sumo-x-large-candles",
+      "name": "Sumo X -Large Candles",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "sc-duma-43",
+      "name": "SC Duma-43",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "pioneer-8253",
+      "name": "Pioneer 8253",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "panar",
+      "name": "Panar",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "we-4141-tsavo-seed",
+      "name": "WE 4141 Tsavo Seed",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "haraka-wh-101",
+      "name": "Haraka WH 101",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "dh-04",
+      "name": "DH 04",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "dh-02",
+      "name": "DH 02",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "dekalb-8031",
+      "name": "DeKalb 8031",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "piwa-delight-water",
+      "name": "Piwa Delight  Water",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "water-solai-water",
+      "name": "Solai Water",
+      "category": "Water",
+      "department": "general_retail"
+    },
+    {
+      "id": "dasani-water",
+      "name": "Dasani Water",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "soko-baking-flour",
+      "name": "Soko Baking Flour",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "kilimambogo-drinking-water",
+      "name": "Kilimambogo Drinking Water",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "king-africa-rice",
+      "name": "King Africa Rice",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "sania-rice",
+      "name": "Sania Rice",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "pk-386-white-rice",
+      "name": "PK-386 White Rice",
+      "category": null,
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "kenpoly-table",
+      "name": "Kenpoly Table",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "complast-arm-chair",
+      "name": "Complast Arm Chair",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "kenpoly-coffee-table",
+      "name": "Kenpoly Coffee Table",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "kenpoly-kenstool-4001",
+      "name": "Kenpoly Kenstool 4001",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "kenpoly-kenchair-2014",
+      "name": "Kenpoly Kenchair 2014",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "pulita-serviette",
+      "name": "Pulita Serviette",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "pekee-poa-tissue",
+      "name": "Pekee Poa Tissue",
+      "category": null,
+      "department": "household_and_cleaning"
+    },
+    {
+      "id": "safari-straws",
+      "name": "Safari Straws",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "queenb-tissue",
+      "name": "QueenB Tissue",
+      "category": null,
+      "department": "household_and_cleaning"
+    },
+    {
+      "id": "tissue-tulip-tissue",
+      "name": "Tulip Tissue",
+      "category": "Tissue",
+      "department": "household_and_cleaning"
+    },
+    {
+      "id": "fair-soft-tissue",
+      "name": "Fair  Soft Tissue",
+      "category": null,
+      "department": "household_and_cleaning"
+    },
+    {
+      "id": "fair-soft-serviette",
+      "name": "Fair Soft Serviette",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "tp-tissue",
+      "name": "Tp Tissue",
+      "category": null,
+      "department": "household_and_cleaning"
+    },
+    {
+      "id": "sifa-tissue",
+      "name": "Sifa  Tissue",
+      "category": null,
+      "department": "household_and_cleaning"
+    },
+    {
+      "id": "fly-tissue",
+      "name": "Fly Tissue",
+      "category": null,
+      "department": "household_and_cleaning"
+    },
+    {
+      "id": "transparent-bucket",
+      "name": "Transparent bucket",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "flowered-plastic-dish-set",
+      "name": "Flowered Plastic Dish Set",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "basin",
+      "name": "Basin",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "shower-cap",
+      "name": "Shower Cap",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "adix-prestige-thermos-flask",
+      "name": "Adix Prestige Thermos Flask",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "aml-thermos-flask",
+      "name": "AMĹ Thermos Flask",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "complast-bucket",
+      "name": "Complast Bucket",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "toughe-polythene-ply-ropes",
+      "name": "Toughe Polythene Ply Ropes",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "ndovu-pot-sufurias",
+      "name": "Ndovu Pot Sufurias",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "boxers",
+      "name": "Boxers",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "unique-pan",
+      "name": "Unique Pan",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "plastic-weaning-basket",
+      "name": "Plastic Weaning Basket",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "transparent-litre-jug",
+      "name": "Transparent Litre Jug",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "colored-litre-jugs",
+      "name": "Colored Litre Jugs",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "kenpoly-utensil-stand",
+      "name": "Kenpoly Utensil Stand",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "drum",
+      "name": "Drum",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "rolling-stick",
+      "name": "Rolling Stick",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "mwiko",
+      "name": "Mwiko",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "kenpoly-kiddy-cup",
+      "name": "Kenpoly Kiddy Cup",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "alarm-lock",
+      "name": "Alarm Lock",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "picks-axe",
+      "name": "Picks Axe",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "axe-2",
+      "name": "Axe",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "hinges",
+      "name": "Hinges",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "door-locks",
+      "name": "Door Locks",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "inner-door-locks",
+      "name": "Inner Door Locks",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "water-bottle-2",
+      "name": "Water Bottle",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "mason-hammer-2",
+      "name": "Mason Hammer",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "rake",
+      "name": "Rake",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "spade",
+      "name": "Spade",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "bulb-holder",
+      "name": "Bulb Holder",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "frying-pan",
+      "name": "Frying Pan",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "slasher",
+      "name": "Slasher",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "sickel",
+      "name": "Sickel",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "fork-jembe-2",
+      "name": "Fork Jembe",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "jembe",
+      "name": "Jembe",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "jembe-stick",
+      "name": "Jembe Stick",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "caps",
+      "name": "Caps",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "shoe-brush",
+      "name": "Shoe Brush",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "washing-brush",
+      "name": "Washing Brush",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "curved-panga",
+      "name": "Curved Panga",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "straight-panga",
+      "name": "Straight Panga",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "plies",
+      "name": "Plies",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "malimali-padlock-264",
+      "name": "Padlock 264",
+      "category": "MaliMali",
+      "department": "general_retail"
+    },
+    {
+      "id": "malimali-scoring-pad-strong",
+      "name": "Scoring Pad Strong",
+      "category": "MaliMali",
+      "department": "general_retail"
+    },
+    {
+      "id": "tea-leaves-ketepa-500g-5-4",
+      "name": "Ketepa 500g (5 * 4)",
+      "category": "Tea Leaves",
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "sweets-wrestle-ball-gum-12-200",
+      "name": "Wrestle Ball Gum (12 * 200)",
+      "category": "Sweets",
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "blue-band-500g",
+      "name": "500g",
+      "category": "Blue Band",
+      "department": "household_and_cleaning"
+    },
+    {
+      "id": "blue-band-100g",
+      "name": "100g",
+      "category": "Blue Band",
+      "department": "household_and_cleaning"
+    },
+    {
+      "id": "wheat-flour-softie-2kg",
+      "name": "Softie 2kg",
+      "category": "Wheat Flour",
+      "department": "food_and_grocery"
+    },
+    {
+      "id": "vegetable-fats-samli-10kg",
+      "name": "Samli 10kg",
+      "category": "Vegetable Fats",
+      "department": "general_retail"
+    },
+    {
+      "id": "unidentified-item-from-original-list",
+      "name": "(unidentified item from original list)",
+      "category": null,
+      "department": "general_retail"
+    },
+    {
+      "id": "softcare-large-l-c-8-12",
+      "name": "Large L/C (8 * 12)",
+      "category": "Softcare",
+      "department": "household_and_cleaning"
+    },
+    {
+      "id": "softcare-small-l-c-10-12",
+      "name": "Small L/C (10 * 12)",
+      "category": "Softcare",
+      "department": "household_and_cleaning"
+    },
+    {
+      "id": "tea-leaves-ketepa-50g-20-10",
+      "name": "Ketepa 50g (20 * 10)",
+      "category": "Tea Leaves",
+      "department": "food_and_grocery"
+    }
+  ]
+}

@@ -15,7 +15,7 @@ import type {
 } from "@grogoni/shared-types";
 
 import { deleteJson, getJson, patchJson, postJson } from "../api-helpers";
-import type { ReplyVersionDeps } from "../features/reply-versions";
+import { forgetReplyVersionRequests, type ReplyVersionDeps } from "../features/reply-versions";
 import { conversationForNode, readNodeIdFromRecipient } from "../network-contact-conversations";
 import {
   createInitialChatMessages,
@@ -605,6 +605,7 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
 
   /** For the chat surface's reply-version controls (features/reply-versions). */
   const replyVersionDeps: ReplyVersionDeps = {
+    accountId: session?.account.id ?? null,
     conversationId: activeConversationId,
     // Only a member's own shop: a customer in a storefront thread is never offered Regenerate.
     businessId:
@@ -931,6 +932,7 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
   }
 
   deps.registerReset("chat-inbox", () => {
+    forgetReplyVersionRequests();
     setConversationInbox([]);
     setActiveConversationId(null);
     setActiveConversation(null);

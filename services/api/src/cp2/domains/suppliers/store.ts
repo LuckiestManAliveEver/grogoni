@@ -58,9 +58,7 @@ import {
   normalizeReceiptName,
   parseReceiptText,
   readReceiptContactMatchThresholds,
-  readReceiptOCRConfig,
   receiptIdentifierConfidence,
-  receiptOCRDefaultFallbackEngine,
   receiptSalesAgentMatchedBy,
   receiptSupplierMatchedBy,
   selectReceiptCandidate,
@@ -608,9 +606,7 @@ export class SupplierDomain {
             parsed.phone
           );
     const hasContent = extractedText.trim().length > 0;
-    const ocrConfig = readReceiptOCRConfig();
-    const blocks =
-      input.extraction?.blocks ?? buildReceiptOCRBlocks(extractedText, hasContent ? 0.9 : 0);
+    const blocks = input.extraction?.blocks ?? buildReceiptOCRBlocks(extractedText, 0);
     const warnings = [
       ...(input.extraction?.warnings ?? []),
       ...buildReceiptOCRWarnings(parsed, hasContent)
@@ -654,14 +650,12 @@ export class SupplierDomain {
           : "MATCHING",
       sourceFileName,
       contentType,
-      engine: input.extraction?.engine ?? ocrConfig.primaryEngine,
-      engineVersion: input.extraction?.engineVersion ?? ocrConfig.engineVersion,
-      modelVersion: input.extraction?.modelVersion ?? ocrConfig.modelVersion,
-      profile: input.extraction?.profile ?? ocrConfig.profile,
-      fallbackUsed:
-        input.extraction?.fallbackUsed ??
-        ocrConfig.primaryEngine === receiptOCRDefaultFallbackEngine,
-      languageHints: ocrConfig.languageHints,
+      engine: input.extraction?.engine ?? "provided_text",
+      engineVersion: input.extraction?.engineVersion ?? "not-applicable",
+      modelVersion: input.extraction?.modelVersion ?? "not-applicable",
+      profile: input.extraction?.profile ?? "balanced",
+      fallbackUsed: input.extraction?.fallbackUsed ?? false,
+      languageHints: input.extraction?.engine === "tesseract" ? ["eng"] : [],
       blocks,
       fullText: extractedText,
       averageConfidence:
@@ -909,7 +903,8 @@ export class SupplierDomain {
             parsed.salesAgentName,
             parsed.phone
           );
-    const blocks = buildReceiptOCRBlocks(extractedText, 1);
+    const textChanged = extractedText !== job.fullText.trim();
+    const blocks = textChanged ? buildReceiptOCRBlocks(extractedText, 0) : job.blocks;
     const warnings = buildReceiptOCRWarnings(parsed, true);
     const contactMatchingResult = this.createReceiptContactMatchingResult({
       businessId: input.businessId,
@@ -921,11 +916,20 @@ export class SupplierDomain {
     });
     const corrected: ReceiptOCRJobSummary = {
       ...job,
+      ...(textChanged
+        ? {
+            engine: "provided_text" as const,
+            engineVersion: "not-applicable",
+            modelVersion: "not-applicable",
+            fallbackUsed: false,
+            languageHints: []
+          }
+        : {}),
       status:
         matchedSupplier === null || parsed.items.length === 0 ? "REVIEW_REQUIRED" : "MATCHING",
       blocks,
       fullText: extractedText,
-      averageConfidence: averageReceiptBlockConfidence(blocks),
+      averageConfidence: textChanged ? 0 : job.averageConfidence,
       warnings,
       fieldEvidence: buildReceiptFieldEvidence(parsed, extractedText),
       structuredExtraction: {

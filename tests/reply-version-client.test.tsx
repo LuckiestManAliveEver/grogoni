@@ -19,7 +19,10 @@ vi.mock("../apps/web/src/api-helpers", () => ({
     api.calls.push(call);
     return api.next(call);
   },
-  putJson: async () => ({})
+  putJson: async (path: string, body: Record<string, unknown>) => {
+    api.calls.push({ path, body });
+    return {};
+  }
 }));
 
 import type { ChatMessage } from "../apps/web/src/app-shell";
@@ -34,7 +37,10 @@ import {
 import {
   canOfferRegenerate,
   createReplyVersionRequests,
+  forgetReplyVersionRequests,
   regenerationRefusalMessage,
+  replyVersionStorageKey,
+  sharedReplyVersionRequests,
   type ReplyVersionControls
 } from "../apps/web/src/features/reply-versions/reply-version-requests";
 
@@ -310,7 +316,8 @@ describe("retry keys survive what the request might survive", () => {
     const saved = new Map<string, string>();
     const store = {
       getItem: (key: string) => saved.get(key) ?? null,
-      setItem: (key: string, value: string) => void saved.set(key, value)
+      setItem: (key: string, value: string) => void saved.set(key, value),
+      removeItem: (key: string) => void saved.delete(key)
     };
     let next = 0;
     const newId = () => `version-id-${(next += 1)}`;
@@ -324,16 +331,18 @@ describe("retry keys survive what the request might survive", () => {
       getItem: () => "{not json",
       setItem: () => {
         throw new Error("QuotaExceededError");
-      }
+      },
+      removeItem: () => undefined
     };
     const inMemory = createReplyVersionRequests(newId, broken);
     expect(inMemory.idFor("reply-b")).toBe(inMemory.idFor("reply-b"));
   });
 
-  function mountHook(businessId: string | null = "shop-1") {
+  function mountHook(businessId: string | null = "shop-1", accountId: string | null = "account-1") {
     let controls!: ReplyVersionControls;
     const status: string[] = [];
     const deps = {
+      accountId,
       conversationId: "conversation-1",
       businessId,
       setStatusMessage: (message: string) => void status.push(message),
@@ -350,6 +359,10 @@ describe("retry keys survive what the request might survive", () => {
       applied: deps.applyServerMessage,
       changeConversation: (id: string) => {
         deps.conversationId = id;
+        act(() => mounted.root.render(createElement(Harness)));
+      },
+      changeAccount: (id: string | null) => {
+        deps.accountId = id;
         act(() => mounted.root.render(createElement(Harness)));
       },
       unmount: mounted.unmount
@@ -427,7 +440,10 @@ describe("retry keys survive what the request might survive", () => {
   it("aborts on unmount and ignores a late server response without losing its retry key", async () => {
     api.calls.length = 0;
     let resolve!: (value: unknown) => void;
-    api.next = () => new Promise((done) => { resolve = done; });
+    api.next = () =>
+      new Promise((done) => {
+        resolve = done;
+      });
     const first = mountHook();
     act(() => first.controls().onRegenerate("reply-unmounted"));
     await settle();
@@ -445,6 +461,65 @@ describe("retry keys survive what the request might survive", () => {
     second.unmount();
   });
 
+  it("is unavailable, and sends nothing, when signed out", async () => {
+    api.calls.length = 0;
+    const hook = mountHook("shop-1", null);
+    expect(hook.controls().available).toBe(false);
+    act(() => hook.controls().onRegenerate("reply-1"));
+    act(() => hook.controls().onSelect("reply-1", 0));
+    await settle();
+    expect(api.calls).toHaveLength(0);
+    hook.unmount();
+  });
+
+  it("aborts the request in flight when the account changes under a mounted surface", async () => {
+    api.calls.length = 0;
+    api.next = hang;
+    const hook = mountHook("shop-1", "account-m");
+    act(() => hook.controls().onRegenerate("reply-1"));
+    await settle();
+    hook.changeAccount("account-n");
+    await settle();
+    expect(api.calls[0]!.signal?.aborted).toBe(true);
+    expect(hook.controls().regeneratingMessageId).toBeNull();
+    expect(hook.status).toEqual([]);
+    hook.unmount();
+  });
+
+  it("ignores a late answer from another account without clearing the new request", async () => {
+    api.calls.length = 0;
+    const pending: Array<(value: unknown) => void> = [];
+    api.next = () => new Promise((resolve) => pending.push(resolve));
+    const hook = mountHook("shop-1", "account-late-a");
+    act(() => hook.controls().onRegenerate("reply-same"));
+    await settle();
+    hook.changeAccount("account-late-b");
+    act(() => hook.controls().onRegenerate("reply-same"));
+    await settle();
+    expect(sentIds()[1]).not.toBe(sentIds()[0]);
+    await act(async () => pending[0]({ id: "from-a" }));
+    expect(hook.applied).not.toHaveBeenCalled();
+    expect(hook.controls().regeneratingMessageId).toBe("reply-same");
+    await act(async () => pending[1]({ id: "from-b" }));
+    expect(hook.applied).toHaveBeenCalledWith("conversation-1", { id: "from-b" });
+    hook.unmount();
+  });
+
+  it("sends a different id for the same reply after the account changes", async () => {
+    api.calls.length = 0;
+    api.next = hang;
+    const first = mountHook("shop-1", "account-x");
+    act(() => first.controls().onRegenerate("reply-shared"));
+    await settle();
+    first.unmount();
+    const second = mountHook("shop-1", "account-y");
+    act(() => second.controls().onRegenerate("reply-shared"));
+    await settle();
+    second.unmount();
+    expect(sentIds()).toHaveLength(2);
+    expect(sentIds()[1]).not.toBe(sentIds()[0]);
+  });
+
   it("is unavailable, and sends nothing, without the viewer's own shop", async () => {
     api.calls.length = 0;
     const hook = mountHook(null);
@@ -453,6 +528,187 @@ describe("retry keys survive what the request might survive", () => {
     await settle();
     expect(api.calls).toHaveLength(0);
     hook.unmount();
+  });
+});
+
+describe("retry keys belong to one account", () => {
+  it("keeps each account's ids apart, in memory and in session storage", () => {
+    forgetReplyVersionRequests();
+    const first = sharedReplyVersionRequests("account-a").idFor("reply-1");
+    const second = sharedReplyVersionRequests("account-b").idFor("reply-1");
+    expect(second).not.toBe(first);
+    expect(sharedReplyVersionRequests("account-a").idFor("reply-1")).toBe(first);
+    expect(JSON.parse(sessionStorage.getItem(replyVersionStorageKey("account-a"))!)).toEqual({
+      "reply-1": first
+    });
+    expect(JSON.parse(sessionStorage.getItem(replyVersionStorageKey("account-b"))!)).toEqual({
+      "reply-1": second
+    });
+  });
+
+  it("forgets every account's ids on sign-out, including ones only in storage", () => {
+    forgetReplyVersionRequests();
+    const before = sharedReplyVersionRequests("account-a").idFor("reply-1");
+    sessionStorage.setItem(replyVersionStorageKey("account-old"), '{"reply-9":"left-behind-id"}');
+    sessionStorage.setItem("grogoni:unrelated", "kept");
+    forgetReplyVersionRequests();
+    expect(sessionStorage.getItem(replyVersionStorageKey("account-a"))).toBeNull();
+    expect(sessionStorage.getItem(replyVersionStorageKey("account-old"))).toBeNull();
+    expect(sessionStorage.getItem("grogoni:unrelated")).toBe("kept");
+    expect(sharedReplyVersionRequests("account-a").idFor("reply-1")).not.toBe(before);
+    sessionStorage.removeItem("grogoni:unrelated");
+  });
+
+  it("does not write an account's ids back when an answer arrives after sign-out", () => {
+    forgetReplyVersionRequests();
+    const held = sharedReplyVersionRequests("account-late");
+    held.idFor("reply-earlier");
+    held.idFor("reply-in-flight");
+    forgetReplyVersionRequests();
+    held.settle("reply-in-flight");
+    held.idFor("reply-after");
+    expect(sessionStorage.getItem(replyVersionStorageKey("account-late"))).toBeNull();
+  });
+
+  it("removes the single key an earlier build used, and survives storage that throws", () => {
+    sessionStorage.setItem("grogoni:reply-version-requests", '{"reply-1":"old-build-id"}');
+    forgetReplyVersionRequests();
+    expect(sessionStorage.getItem("grogoni:reply-version-requests")).toBeNull();
+    const throwing = {
+      length: 1,
+      key: () => {
+        throw new Error("SecurityError");
+      },
+      getItem: () => null,
+      setItem: () => undefined,
+      removeItem: () => {
+        throw new Error("SecurityError");
+      }
+    };
+    sharedReplyVersionRequests("account-a").idFor("reply-1");
+    expect(() => forgetReplyVersionRequests(throwing)).not.toThrow();
+    expect(sharedReplyVersionRequests("account-a").idFor("reply-1")).toBeTruthy();
+    forgetReplyVersionRequests();
+  });
+
+  it("removes known keys when enumeration throws and keeps held maps disposed", () => {
+    forgetReplyVersionRequests();
+    const held = sharedReplyVersionRequests("account-enumeration");
+    held.idFor("in-flight");
+    sessionStorage.setItem("grogoni:reply-version-requests", "legacy");
+    const store = {
+      get length(): number {
+        throw new Error("Enumeration blocked");
+      },
+      key: () => null,
+      getItem: (key: string) => sessionStorage.getItem(key),
+      setItem: (key: string, value: string) => sessionStorage.setItem(key, value),
+      removeItem: (key: string) => sessionStorage.removeItem(key)
+    };
+    forgetReplyVersionRequests(store);
+    held.idFor("late");
+    held.settle("in-flight");
+    expect(sessionStorage.getItem(replyVersionStorageKey("account-enumeration"))).toBeNull();
+    expect(sessionStorage.getItem("grogoni:reply-version-requests")).toBeNull();
+  });
+
+  it("still removes other account entries when one removal throws", () => {
+    forgetReplyVersionRequests();
+    sharedReplyVersionRequests("account-remove-a").idFor("reply");
+    sharedReplyVersionRequests("account-remove-b").idFor("reply");
+    const store = {
+      getItem: (key: string) => sessionStorage.getItem(key),
+      setItem: (key: string, value: string) => sessionStorage.setItem(key, value),
+      removeItem: (key: string) => {
+        if (key === "grogoni:reply-version-requests") throw new Error("Blocked key");
+        sessionStorage.removeItem(key);
+      }
+    };
+    expect(() => forgetReplyVersionRequests(store)).not.toThrow();
+    expect(sessionStorage.getItem(replyVersionStorageKey("account-remove-a"))).toBeNull();
+    expect(sessionStorage.getItem(replyVersionStorageKey("account-remove-b"))).toBeNull();
+  });
+
+  it("runs the cleanup from the chat inbox reset that sign-out triggers", () => {
+    const inbox = readFileSync("apps/web/src/hooks/useChatInboxState.ts", "utf8");
+    const reset = inbox.indexOf('deps.registerReset("chat-inbox"');
+    expect(reset).toBeGreaterThan(-1);
+    expect(inbox.slice(reset, reset + 120)).toContain("forgetReplyVersionRequests();");
+    expect(inbox).toContain("accountId: session?.account.id ?? null");
+  });
+});
+
+describe("a version says which revision of the question it answered", () => {
+  const versioned = (questionRevision?: string | null): ChatMessage => ({
+    ...answerMessage,
+    replyVersions: {
+      selected: 0,
+      count: 2,
+      ...(questionRevision === undefined ? {} : { questionRevision })
+    }
+  });
+  const edited: ChatMessage = { ...question, editedAt: "2026-11-13T09:00:00.000Z" };
+  const noteIn = (message: ChatMessage, thread: ChatMessage[]) => {
+    const view = mount(
+      createElement(ReplyVersionRow, { message, thread, controls: controlsFor() })
+    );
+    const note = view.container.querySelector(".reply-version-note")?.textContent ?? null;
+    view.unmount();
+    return note;
+  };
+
+  it("notes an answer written before the last edit, and stays silent otherwise", () => {
+    const note = "Answered before the message was last edited.";
+    expect(noteIn(versioned(null), [edited])).toBe(note);
+    expect(noteIn(versioned("2026-11-13T08:30:00.000Z"), [edited])).toBe(note);
+    expect(noteIn(versioned(null), [question])).toBeNull();
+    expect(noteIn(versioned("2026-11-13T09:00:00.000Z"), [edited])).toBeNull();
+    // Unknown revision, question not loaded, question deleted: nothing is claimed.
+    expect(noteIn(versioned(), [edited])).toBeNull();
+    expect(noteIn(versioned(null), [])).toBeNull();
+    expect(noteIn(versioned(null), [{ ...edited, deletedAt: "2026-11-13" }])).toBeNull();
+  });
+
+  it("maps the selected version's recorded revision, and nothing when it is unknown", () => {
+    const session = { account: { id: "account-1" }, user: { id: "user-1" } } as Parameters<
+      typeof mapConversationMessage
+    >[2];
+    const reply: ConversationMessageSummary = {
+      id: "reply-1",
+      conversationId: "conversation-1",
+      clientMessageId: "agent-reply-question-1",
+      idempotencyKey: "grogoni-agent-reply:question-1",
+      author: "agent",
+      authorId: "account-account-1-agent",
+      content: { type: "text", text: "First answer." },
+      replyToMessageId: "question-1",
+      agentTurnEffect: "none",
+      clientTimestamp: null,
+      createdAt: "2026-11-13T08:00:00.000Z",
+      replyVersions: {
+        selected: 0,
+        versions: [
+          { id: "original", text: "First answer.", createdAt: "x", questionRevision: null },
+          {
+            id: "version-0002",
+            text: "Second answer.",
+            createdAt: "x",
+            questionRevision: "2026-11-13T09:00:00.000Z"
+          }
+        ]
+      }
+    };
+    expect(mapConversationMessage(reply, [], session).replyVersions).toEqual({
+      selected: 0,
+      count: 2,
+      questionRevision: null
+    });
+    const unknown = structuredClone(reply);
+    delete unknown.replyVersions!.versions[0]!.questionRevision;
+    expect(mapConversationMessage(unknown, [], session).replyVersions).toEqual({
+      selected: 0,
+      count: 2
+    });
   });
 });
 

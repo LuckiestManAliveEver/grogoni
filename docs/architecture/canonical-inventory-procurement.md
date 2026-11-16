@@ -1,5 +1,7 @@
 # Canonical inventory procurement
 
+> Historical preparation-stage scope. Supplier order submission and response were subsequently added in `services/api/src/cp2/domains/agent-runtime/purchase-order-store.ts` (migration `122_purchase_order_delivery.sql`). Statements below that submission is unavailable describe the earlier stage. Neither stage implements receipt-driven multi-account synchronization; see [the current receipt checklist](../audits/receipt-to-commerce-checklist-2026-11-16.md).
+
 ## Implemented Scope
 
 Two capabilities extend runtimeToolRegistry and executeRuntimeCapability:

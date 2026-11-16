@@ -1,5 +1,7 @@
 # Local-First Cloud Audit
 
+> Historical migration audit. Later work restored configured OpenRouter inference and explicit device-local models. This document records retirement decisions at its original date, not the current provider/deployment contract. Use `services/api/src/inference/openrouter-runtime.ts`, the current runtime ADRs and [receipt processing](receipt-ocr.md) for present behavior.
+
 Status: implementation inventory for `GROGONI_RUNTIME_MODE=local`.
 
 ## KEEP_REQUIRED

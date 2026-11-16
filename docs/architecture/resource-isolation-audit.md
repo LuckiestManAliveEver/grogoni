@@ -1,5 +1,7 @@
 # Resource isolation audit (as of 2026-09-21)
 
+> Historical audit: this records the architecture at its original audit date, not the current deployment. Server OCR-worker and earlier inference references below are historical evidence only. Current receipt behavior is documented in [../receipt-ocr.md](../receipt-ocr.md); implementation gaps are tracked in [the receipt checklist](../audits/receipt-to-commerce-checklist-2026-11-16.md).
+
 Status: audit of the _current_ implementation, written before the resource-isolation changes in
 this same pass. See [`resource-isolation.md`](./resource-isolation.md) for what changed and why.
 

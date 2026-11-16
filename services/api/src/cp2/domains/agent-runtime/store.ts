@@ -132,7 +132,7 @@ import {
   validateRuntimeToolInput,
   type BusinessTaskPlanStep
 } from "@grogoni/tool-core";
-import { assertRegenerationInputs, assertRegenerationTool } from "./regeneration.js";
+import * as regeneration from "./regeneration.js";
 import { queryCatalogueProducts, roleCan, type BusinessPermission } from "@grogoni/business-core";
 import { Cp2Error } from "../../cp2-error.js";
 import {
@@ -2225,7 +2225,7 @@ export class AgentRuntimeDomain {
     now?: Date;
   }): Promise<RuntimeTurnResult> {
     const now = input.now ?? new Date();
-    assertRegenerationInputs(input);
+    regeneration.assertRegenerationInputs(input);
     const auth = this.deps.requireAuthorizedSession(
       input.sessionId,
       input.businessId,
@@ -2726,7 +2726,7 @@ export class AgentRuntimeDomain {
     if (input.channelDelegation && proposal.toolName !== "unknown.clarify")
       this.deps.channelToolGrants!(input.businessId, input.channelDelegation, proposal.toolName);
     const definition = runtimeToolRegistry[proposal.toolName];
-    assertRegenerationTool(input, definition);
+    regeneration.assertRegenerationTool(input, definition);
     const roleAllowed = input.channelDelegation
       ? Boolean(
           proposal.toolName === "unknown.clarify" || delegatedTools?.includes(proposal.toolName)
@@ -2761,12 +2761,12 @@ export class AgentRuntimeDomain {
     const skillBinding = shopRuntime.skills.find(
       (binding) => binding.skillId === proposal.toolName
     );
-    const runtimeRequiresConfirmation =
-      (input.channelDelegation !== undefined && !definition.readOnly) ||
-      (input.portableSkill !== undefined && !definition.readOnly) ||
-      definition.requiresConfirmation ||
-      shopRuntime.instructions.ownerApprovalRequiredFor.includes(proposal.toolName) ||
-      (skillBinding !== undefined && skillBinding.requiredConfirmationLevel !== "none");
+    const runtimeRequiresConfirmation = regeneration.assertRegenerationApproval({
+      ...input,
+      definition,
+      ownerApprovalRequiredFor: shopRuntime.instructions.ownerApprovalRequiredFor,
+      skillBinding
+    });
     const proposalAllowed = proposal.validation.ok && policyErrors.length === 0;
     const confirmationToken =
       proposalAllowed && roleAllowed && runtimeRequiresConfirmation ? randomUUID() : null;

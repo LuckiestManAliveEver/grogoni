@@ -1,3 +1,61 @@
+import {
+  deferLinkedDelegationResult,
+  isLinkedDelegationResultEntry,
+  linkedAutomatedAdmission,
+  linkedDelegationOutboxLimits,
+  linkedDelegationResultAbandoned,
+  linkedDelegationResultDue,
+  linkedDelegationResultExpired,
+  linkedDelegationResultKey,
+  mergeLinkedDelegationResult,
+  newLinkedDelegationResultEntry,
+  prunableLinkedDelegationResult,
+  retryLinkedDelegationResult,
+  settleLinkedDelegationResult,
+  type LinkedDelegationDrainReport,
+  type LinkedDelegationResultEntry
+} from "../messaging/whatsapp-linked/delegation-outbox.js";
+import {
+  isLinkedOwnerStateRecord,
+  linkedOwnerChangeNotice,
+  mergeLinkedOwnerChange,
+  newLinkedOwnerStateRecord,
+  type LinkedOwnerChange,
+  type LinkedOwnerStateRecord
+} from "../messaging/whatsapp-linked/owner-transfer.js";
+import {
+  batchLinkedReadReceipts,
+  linkedReadReceiptLimits,
+  type LinkedReadReceiptBatch,
+  type LinkedReadReceiptEntry
+} from "../messaging/whatsapp-linked/read-receipts.js";
+import {
+  linkedVoiceNoteEvidence,
+  type LinkedTranscriber
+} from "../messaging/whatsapp-linked/transcriber.js";
+import {
+  claimLinkedDeviceSend,
+  isLinkedDeviceOutboxEntry,
+  linkedDeviceEntrySettled,
+  linkedDeviceOutboxLimits,
+  linkedDeviceReadId,
+  linkedDeviceSendId,
+  newLinkedDeviceRead,
+  newLinkedDeviceSend,
+  prunableLinkedDeviceEntry,
+  retryLinkedDeviceSend,
+  settleLinkedDeviceEntry,
+  type LinkedDeviceAck,
+  type LinkedDeviceOutboxEntry,
+  type LinkedDeviceReceiptBatch,
+  type LinkedDeviceSendCommand
+} from "../messaging/whatsapp-linked/device-outbox.js";
+import {
+  createLinkedDeviceChannelAdapter,
+  linkedDeviceHosting,
+  linkedHostRouter,
+  type LinkedDeviceHosting
+} from "../messaging/whatsapp-linked/device-channel-adapter.js";
 import { readLinkedDocument } from "../messaging/whatsapp-linked/document-reader.js";
 import { readChatImage } from "./chat-image-reader.js";
 import { parseLinkedToolGrants } from "../messaging/whatsapp-linked/tool-grants.js";
@@ -441,8 +499,10 @@ import type {
 import {
   createChannelGatewayFromEnvironment,
   type ChannelGateway,
-  type MessagingChannelAdapter
+  type MessagingChannelAdapter,
+  type OutboundChannelMessage
 } from "../messaging/channel-gateway.js";
+import { ChannelGatewayError } from "../messaging/channel-errors.js";
 import {
   createEmailMailboxProviderClient,
   type EmailMailboxProviderClient
@@ -493,6 +553,15 @@ import type { BusinessTaskEvaluationReader } from "./domains/agent-runtime/busin
 import type { InventoryTaskController } from "./domains/agent-runtime/inventory-task-controller.js";
 import type { AgentTurnQueue } from "./domains/messaging/shared.js";
 import type { LinkedDownloadedMedia } from "../messaging/whatsapp-linked/media.js";
+import {
+  linkedInboundOverQuota,
+  linkedInboundQuotaFromEnvironment,
+  linkedInboundUsage,
+  linkedMediaOverQuotaText,
+  linkedMessageWindowMs,
+  type LinkedInboundQuota
+} from "../messaging/whatsapp-linked/inbound-quota.js";
+import { linkedOptOutCommand } from "../messaging/whatsapp-linked/opt-out.js";
 import {
   createMemoryConversationAttachmentBlobStore,
   createCipherAwareAttachmentBlobStore,
@@ -740,6 +809,23 @@ export interface RoleCheckResult {
   permission: BusinessPermission;
 }
 
+/** States the phone may report for its own session (connector.ts LinkedState). */
+const linkedDeviceReportedStates = new Set([
+  "DISCONNECTED",
+  "PAIRING",
+  "CONNECTING",
+  "CONNECTED",
+  "RECONNECTING",
+  "AUTH_REQUIRED",
+  "REVOKED",
+  "SUSPENDED",
+  "ERROR"
+]);
+/** A pull refreshes the phone's check-in at most this often. */
+const linkedDeviceSeenThrottleMs = 2 * 60_000;
+/** Server connector states that mean the server, not the phone, now hosts the session. */
+const serverLiveStates = new Set(["PAIRING", "CONNECTING", "CONNECTED", "RECONNECTING"]);
+
 export interface Cp2Snapshot
   extends ModelTemplatesSnapshot, VocabularySnapshot, ComputerRuntimeSnapshot {
   unifiedCommerceRecords?: UnifiedCommerceRecord[];
@@ -823,6 +909,12 @@ export interface Cp2Snapshot
   deliveryRoutes?: DeliveryRouteSummary[];
   deliveryRouteStops?: DeliveryRouteStopSummary[];
   dataExports: DataExportBundleSummary[];
+  /** WhatsApp Linked Devices delegated-result outbox (delegation-outbox.ts). */
+  whatsappLinkedDelegationResults?: LinkedDelegationResultEntry[];
+  /** WhatsApp Linked Devices owner state and owner-change notice (owner-transfer.ts). */
+  whatsappLinkedOwnerStates?: LinkedOwnerStateRecord[];
+  /** WhatsApp Linked Devices outbox for phone-hosted sessions (device-outbox.ts). */
+  whatsappLinkedDeviceOutbox?: LinkedDeviceOutboxEntry[];
   accountDeletionRequests: AccountDeletionRequestSummary[];
   accountDeletionProofs?: AccountDeletionProof[];
   shopPresences?: ShopPresenceSummary[];
@@ -954,8 +1046,7 @@ export interface NetworkInviteDeliveryInput {
 }
 
 export type NetworkInviteDeliveryResult =
-  | { status: "sent" }
-  | { status: "failed"; failureReason: string };
+  { status: "sent" } | { status: "failed"; failureReason: string };
 
 export type NetworkInviteSender = (
   input: NetworkInviteDeliveryInput
@@ -1745,6 +1836,15 @@ export class Cp2Store {
         ? {}
         : { workspaceDeliveryMaxFileBytes: this.options.workspaceDeliveryMaxFileBytes })
     });
+    // Phone-hosted WhatsApp sessions send through the durable device outbox on every host; a
+    // server connector registered later is wrapped around it (registerMessagingAdapter).
+    this.linkedDeviceAdapter = createLinkedDeviceChannelAdapter({
+      hosting: (businessId) => this.linkedWhatsAppDeviceHosting(businessId),
+      queue: (request) => this.queueLinkedDeviceSend(request)
+    });
+    this.registerMessagingAdapter(
+      this.channelGateway.adapterFor("whatsapp_linked") ?? this.linkedDeviceAdapter
+    );
     this.modelTemplatesDomain = new ModelTemplatesDomain({
       requireAccess: (sessionId, businessId, permission, now) =>
         this.requireAuthorizedActor(sessionId, businessId, permission, now),
@@ -1955,7 +2055,13 @@ export class Cp2Store {
           });
         const sourceBusinessId = String(action.input.sourceBusinessId);
         if (action.toolName === "catalogue.marketplace.products")
-          return this.listShareableCatalogueProducts({ ...context, sourceBusinessId });
+          return this.listShareableCatalogueProducts({
+            ...context,
+            sourceBusinessId,
+            ...(typeof action.input.search === "string" ? { search: action.input.search } : {}),
+            ...(typeof action.input.offset === "number" ? { offset: action.input.offset } : {}),
+            limit: typeof action.input.limit === "number" ? action.input.limit : 50
+          });
         return this.duplicateCatalogueProducts({
           ...context,
           sourceBusinessId,
@@ -2397,6 +2503,27 @@ export class Cp2Store {
   private readonly logisticsDomain: LogisticsDomain;
   private readonly commercialRecordsDomain: CommercialRecordsDomain;
   private readonly dataExports = new Map<string, DataExportBundle>();
+  // WhatsApp Linked Devices: durable delegated-result outbox, keyed by idempotency key.
+  private readonly linkedDelegationResults = new Map<string, LinkedDelegationResultEntry>();
+  // In-flight automatic-reply admissions (never persisted: a crash means nothing was sent).
+  private readonly linkedAutomatedReservations = new Map<string, Map<string, number>>();
+  private readonly linkedDelegationListeners = new Set<(businessId: string) => void>();
+  private linkedDelegationDrain: Promise<LinkedDelegationDrainReport> | null = null;
+  private linkedTranscriber: LinkedTranscriber | undefined;
+  /** Inbound WhatsApp quota (inbound-quota.ts); environment overrides are read once here. */
+  private linkedInboundQuota: LinkedInboundQuota = linkedInboundQuotaFromEnvironment();
+  // WhatsApp Linked Devices: one owner-state record per business (owner-transfer.ts).
+  private readonly linkedOwnerStates = new Map<string, LinkedOwnerStateRecord>();
+  // WhatsApp read receipts waiting for the connector host, keyed by canonical message id. Never
+  // persisted: delivery is at most once (read-receipts.ts).
+  private readonly linkedReadReceipts = new Map<string, LinkedReadReceiptEntry>();
+  private readonly linkedReadReceiptListeners = new Set<
+    (businessId: string, ownerId: string) => void
+  >();
+  // WhatsApp sends and read receipts waiting for the owner's phone (device-outbox.ts). Durable:
+  // persisted on Edge and Node alike, keyed by `send:` / `read:` plus the canonical message id.
+  private readonly linkedDeviceOutbox = new Map<string, LinkedDeviceOutboxEntry>();
+  private linkedDeviceAdapter!: MessagingChannelAdapter;
   private readonly accountDeletionRequests = new Map<string, AccountDeletionRequestSummary>();
   private readonly accountDeletionProofs = new Map<string, AccountDeletionProof>();
   private readonly shopPresences = new Map<string, ShopPresenceSummary>();
@@ -4826,6 +4953,27 @@ export class Cp2Store {
     return this.messagingDomain.channelWebhookChallenge(...args);
   }
   recordLinkedWhatsAppState(businessId: string, ownerId: string, state: string): void {
+    const now = new Date();
+    // A REVOKED event of a former owner is the connector erasing their session after the shop
+    // changed owner; the cleanup records the notice. A current owner's state is remembered so a
+    // later owner change is noticed even when no chat was ever approved.
+    this.reconcileLinkedWhatsAppOwnership(businessId, now);
+    if (this.isCurrentLinkedWhatsAppOwner(businessId, ownerId)) {
+      const record =
+        this.linkedOwnerStates.get(businessId) ?? newLinkedOwnerStateRecord(businessId, now);
+      this.linkedOwnerStates.set(businessId, {
+        ...record,
+        ownerId,
+        // A live server session takes over from the phone; a server-side DISCONNECTED for a
+        // business the phone hosts says nothing about the phone, so it leaves the record alone.
+        ...(serverLiveStates.has(state) || record.host !== "android"
+          ? { state, host: "server" as const }
+          : {}),
+        // Linking again is the resolution the notice asks for.
+        ...(state === "CONNECTED" ? { ownerChange: null, acknowledgedAt: null } : {}),
+        updatedAt: now.toISOString()
+      });
+    }
     this.recordAuditEvent({
       type: "whatsapp_linked.connection_state",
       aggregateType: "whatsapp_linked_connection",
@@ -4846,6 +4994,8 @@ export class Cp2Store {
     chat: string;
     text: string;
     idempotencyKey: string;
+    /** Canonical inbound message to quote in WhatsApp. */
+    replyToMessageId?: string;
   }) {
     this.validateLinkedWhatsAppOwner(input.businessId, input.ownerId);
     return this.messagingDomain.deliverLinkedWhatsAppReply(input);
@@ -4977,7 +5127,8 @@ export class Cp2Store {
     if (!source || source.content.type !== "text") return undefined;
     const attachment = source.content.attachments?.find(
       (attachment) =>
-        attachment.source === "managed" && ["image", "document"].includes(attachment.category)
+        attachment.source === "managed" &&
+        ["image", "document", "audio"].includes(attachment.category)
     );
     const record = attachment
       ? this.messagingDomain.conversationAttachmentsMap.get(attachment.id)
@@ -5026,6 +5177,16 @@ export class Cp2Store {
         { modelId: runtime.modelId, ...(input.signal ? { signal: input.signal } : {}) }
       );
       text = result.text.slice(0, 12000);
+    } else if (attachment!.category === "audio") {
+      // Fails closed: without a transcript the message keeps the driver's "transcription is
+      // unavailable" placeholder, and nothing is cached so a later read can try again.
+      const transcript = await linkedVoiceNoteEvidence(this.linkedTranscriber, {
+        bytes,
+        mimeType: record.mimeType,
+        ...(input.signal ? { signal: input.signal } : {})
+      });
+      if (transcript === undefined) return undefined;
+      text = transcript;
     } else if (record.mimeType === "application/pdf")
       text = await readLinkedDocument(
         { filename: record.filename, mimeType: record.mimeType, bytes },
@@ -5165,70 +5326,1401 @@ export class Cp2Store {
     };
   }
 
+  /** Replaces the inbound WhatsApp quota (tests and operators); returns the restore function. */
+  setLinkedInboundQuota(quota: LinkedInboundQuota): () => void {
+    const previous = this.linkedInboundQuota;
+    this.linkedInboundQuota = quota;
+    return () => {
+      if (this.linkedInboundQuota === quota) this.linkedInboundQuota = previous;
+    };
+  }
+
+  /** Node connector host only: speech-to-text for voice notes (transcriber.ts). */
+  setLinkedWhatsAppTranscriber(transcriber: LinkedTranscriber | undefined): () => void {
+    this.linkedTranscriber = transcriber;
+    return () => {
+      if (this.linkedTranscriber === transcriber) this.linkedTranscriber = undefined;
+    };
+  }
+
+  /** Lets the connector host start a drain as soon as a delegated result is queued. */
+  onLinkedDelegationResultQueued(listener: (businessId: string) => void): () => void {
+    this.linkedDelegationListeners.add(listener);
+    return () => this.linkedDelegationListeners.delete(listener);
+  }
+
   /**
-   * Owner resolved a WhatsApp-delegated action: send one bounded outcome to the originating chat.
-   * Authority is re-checked at send time, because the grant, the conversation approval or the
-   * recipient's STOP can change while the approval card waits. Nothing is sent when they no longer
-   * allow it; every outcome is audited.
+   * Owner resolved a WhatsApp-delegated action. This only records one durable outbox entry, keyed
+   * `whatsapp-result:<turnId>`; it never touches WhatsApp, so it works on hosts with no connector
+   * (the Edge API) and the owner's request never waits on a send. The connector host drains it
+   * (drainLinkedDelegationResults). A second resolution of the same turn is a no-op.
    */
   async deliverLinkedDelegationResult(resolution: ChannelDelegationResolution): Promise<void> {
-    const { businessId, delegation: ref, turnId } = resolution;
-    const channel = this.messagingDomain.conversationChannelsMap.get(ref.channelId);
-    const audit = (type: string, payload: Record<string, unknown>) =>
-      this.recordAuditEvent({
-        type,
-        aggregateType: "runtime_turn",
-        aggregateId: turnId,
-        actorId: resolution.resolvedBy,
-        occurredAt: new Date().toISOString(),
-        payload: {
-          businessId,
-          channelId: ref.channelId,
-          grantId: ref.grantId,
-          tool: resolution.toolName,
-          outcome: resolution.outcome,
-          ...payload
-        }
+    const key = linkedDelegationResultKey(resolution.turnId);
+    if (this.linkedDelegationResults.has(key)) return;
+    const entry = newLinkedDelegationResultEntry(resolution, new Date());
+    this.linkedDelegationResults.set(key, entry);
+    this.auditLinkedDelegationResult(entry, "whatsapp_linked.delegated_result_queued", {});
+    for (const listener of this.linkedDelegationListeners) {
+      try {
+        listener(entry.businessId);
+      } catch {
+        // A wake-up hint only: the interval drain picks the entry up regardless.
+      }
+    }
+  }
+
+  /** Read-only copy of the outbox, for operators and tests. */
+  linkedDelegationResultEntries(businessId?: string): LinkedDelegationResultEntry[] {
+    return [...this.linkedDelegationResults.values()]
+      .filter((entry) => businessId === undefined || entry.businessId === businessId)
+      .map((entry) => structuredClone(entry));
+  }
+
+  /**
+   * Shared rolling-hour budget for every automatic WhatsApp send of one business: assistant
+   * replies (whatsapp-reply:*) and delegated results (whatsapp-result:*). Counts sent or pending
+   * canonical messages plus in-flight reservations; an admitted key stays reserved until its
+   * message exists or the window passes. The connector keeps its own 60/hour admission for
+   * assistant replies too, so this only ever makes the combined total stricter.
+   */
+  admitLinkedAutomatedReply(
+    businessId: string,
+    key: string,
+    now = Date.now()
+  ): ReturnType<typeof linkedAutomatedAdmission> {
+    const cutoff = now - linkedDelegationOutboxLimits.admissionWindowMs;
+    const conversations = new Set(
+      [...this.messagingDomain.conversationChannelsMap.values()]
+        .filter(
+          (channel) => channel.businessId === businessId && channel.provider === "whatsapp_linked"
+        )
+        .map((channel) => channel.conversationId)
+    );
+    const ledger = new Map<string, number>();
+    for (const message of this.messagingDomain.conversationMessagesMap.values()) {
+      if (
+        !conversations.has(message.conversationId) ||
+        message.direction !== "outbound" ||
+        message.provider !== "whatsapp_linked" ||
+        message.status === "failed" ||
+        !/^whatsapp-(?:reply|result):/.test(message.idempotencyKey)
+      )
+        continue;
+      const time = Date.parse(message.createdAt);
+      if (time > cutoff) ledger.set(message.idempotencyKey, time);
+    }
+    const reservations = this.linkedAutomatedReservations.get(businessId) ?? new Map();
+    for (const [reserved, time] of reservations) {
+      if (time <= cutoff || ledger.has(reserved)) reservations.delete(reserved);
+      else ledger.set(reserved, time);
+    }
+    const decision = linkedAutomatedAdmission(ledger, key, now);
+    if (decision.admitted && !ledger.has(key)) reservations.set(key, now);
+    if (reservations.size) this.linkedAutomatedReservations.set(businessId, reservations);
+    else this.linkedAutomatedReservations.delete(businessId);
+    return decision;
+  }
+
+  /** Return a reserved slot when nothing reached the channel gateway. */
+  releaseLinkedAutomatedReply(businessId: string, key: string): void {
+    this.linkedAutomatedReservations.get(businessId)?.delete(key);
+  }
+
+  /**
+   * Connector host only. Settles due outbox entries of the businesses `ready` says this process
+   * currently serves (connected, holding the lease). Other businesses' entries are never touched,
+   * so two workers never write the same entry. `stored` is what shared storage holds (rows other
+   * processes such as the Edge API wrote); it is merged in first.
+   *
+   * Per entry: authority is re-checked right before the send, exactly as for any delegated reply
+   * (channel ownership, STOP, grant, source message); the reply counts toward the shared
+   * automatic-reply budget and waits while it is spent; the send quotes the original request and
+   * uses the entry's idempotency key, so a crash between send and settle can never produce a
+   * second WhatsApp message (the connector's journal and the canonical message both dedupe it).
+   * Concurrent callers share one pass.
+   */
+  async drainLinkedDelegationResults(input: {
+    ready: (businessId: string) => boolean;
+    stored?: readonly unknown[];
+    now?: () => Date;
+  }): Promise<LinkedDelegationDrainReport> {
+    if (this.linkedDelegationDrain) return this.linkedDelegationDrain;
+    const run = (async () => {
+      const clock = input.now ?? (() => new Date());
+      const report: LinkedDelegationDrainReport = {
+        sent: 0,
+        suppressed: 0,
+        failed: 0,
+        deferred: 0
+      };
+      // Rows of businesses this host serves, plus rows abandoned by businesses nobody serves:
+      // those are settled below so they stop filling the bounded pending load.
+      for (const row of input.stored ?? [])
+        if (
+          isLinkedDelegationResultEntry(row) &&
+          (input.ready(row.businessId) || linkedDelegationResultAbandoned(row, clock()))
+        )
+          this.linkedDelegationResults.set(
+            row.id,
+            mergeLinkedDelegationResult(this.linkedDelegationResults.get(row.id), row)
+          );
+      const candidates = [...this.linkedDelegationResults.values()]
+        .filter((entry) => entry.status === "pending" && input.ready(entry.businessId))
+        .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+        .slice(0, linkedDelegationOutboxLimits.drainBatch);
+      for (const candidate of candidates) {
+        const outcome = await this.drainLinkedDelegationResult(candidate.id, input.ready, clock());
+        if (outcome) report[outcome] += 1;
+      }
+      const now = clock();
+      report.failed += this.sweepAbandonedLinkedDelegationResults(input.ready, now);
+      // Settled rows are past any send, so any connector host may prune them.
+      for (const [id, entry] of this.linkedDelegationResults)
+        if (prunableLinkedDelegationResult(entry, now)) this.linkedDelegationResults.delete(id);
+      return report;
+    })();
+    this.linkedDelegationDrain = run;
+    try {
+      return await run;
+    } finally {
+      this.linkedDelegationDrain = null;
+    }
+  }
+
+  /**
+   * Settles pending entries of businesses this host does not serve once they are past their
+   * deadline plus a grace margin (linkedDelegationResultAbandoned). Served businesses expire in
+   * drainLinkedDelegationResult, right before a send. Bounded per pass.
+   */
+  private sweepAbandonedLinkedDelegationResults(
+    ready: (businessId: string) => boolean,
+    now: Date
+  ): number {
+    let settled = 0;
+    for (const [id, entry] of this.linkedDelegationResults) {
+      if (settled >= linkedDelegationOutboxLimits.sweepBatch) break;
+      if (ready(entry.businessId) || !linkedDelegationResultAbandoned(entry, now)) continue;
+      const failed = settleLinkedDelegationResult(entry, "failed", now, {
+        reason: "expired_unserved"
       });
-    let suppressed: string | null = null;
+      this.linkedDelegationResults.set(id, failed);
+      this.auditLinkedDelegationResult(failed, "whatsapp_linked.delegated_result_failed", {
+        reason: "expired_unserved",
+        attempts: failed.attempts
+      });
+      settled += 1;
+    }
+    return settled;
+  }
+
+  private async drainLinkedDelegationResult(
+    id: string,
+    ready: (businessId: string) => boolean,
+    now: Date
+  ): Promise<keyof LinkedDelegationDrainReport | null> {
+    const entry = this.linkedDelegationResults.get(id);
+    if (!entry || entry.status !== "pending" || !ready(entry.businessId)) return null;
+    const settle = (
+      status: "sent" | "suppressed" | "failed",
+      details: { reason?: string; messageId?: string; errorCode?: string }
+    ): keyof LinkedDelegationDrainReport => {
+      const settled = settleLinkedDelegationResult(
+        this.linkedDelegationResults.get(id) ?? entry,
+        status,
+        now,
+        details
+      );
+      this.linkedDelegationResults.set(id, settled);
+      this.auditLinkedDelegationResult(settled, `whatsapp_linked.delegated_result_${status}`, {
+        ...details,
+        attempts: settled.attempts
+      });
+      return status;
+    };
+    if (linkedDelegationResultExpired(entry, now)) return settle("failed", { reason: "expired" });
+    if (!linkedDelegationResultDue(entry, now)) return null;
+    const suppressed = this.linkedDelegationSuppression(entry);
+    if (suppressed !== null) return settle("suppressed", { reason: suppressed });
+    const channel = this.messagingDomain.conversationChannelsMap.get(entry.delegation.channelId)!;
+    const admission = this.admitLinkedAutomatedReply(
+      entry.businessId,
+      entry.idempotencyKey,
+      now.getTime()
+    );
+    if (!admission.admitted) {
+      this.linkedDelegationResults.set(
+        id,
+        deferLinkedDelegationResult(entry, new Date(admission.retryAt), now)
+      );
+      return "deferred";
+    }
+    try {
+      const sent = await this.deliverLinkedWhatsAppReply({
+        businessId: entry.businessId,
+        ownerId: entry.delegation.ownerId,
+        chat: channel.externalConversationId,
+        text: linkedDelegationResultText(entry.outcome, entry.toolName),
+        idempotencyKey: entry.idempotencyKey,
+        replyToMessageId: entry.delegation.sourceMessageId
+      });
+      // An earlier attempt with this key already reached the gateway and failed: never resend.
+      if (sent.message.status === "failed")
+        return settle("failed", {
+          reason: "delivery_failed",
+          errorCode: sent.message.failureCode ?? "delivery_failed",
+          messageId: sent.message.id
+        });
+      return settle("sent", { messageId: sent.message.id });
+    } catch (error) {
+      const errorCode = error instanceof Cp2Error ? error.code : "delivery_failed";
+      // Once the canonical message exists the gateway was reached and the key is spent: the
+      // outcome may already be on WhatsApp, so it is settled, never retried.
+      const attempted = [...this.messagingDomain.conversationMessagesMap.values()].some(
+        (message) =>
+          message.conversationId === channel.conversationId &&
+          message.idempotencyKey === entry.idempotencyKey
+      );
+      if (attempted) return settle("failed", { reason: "delivery_failed", errorCode });
+      this.releaseLinkedAutomatedReply(entry.businessId, entry.idempotencyKey);
+      const retried = retryLinkedDelegationResult(
+        this.linkedDelegationResults.get(id) ?? entry,
+        now,
+        errorCode
+      );
+      this.linkedDelegationResults.set(id, retried);
+      if (retried.status !== "failed") return "deferred";
+      this.auditLinkedDelegationResult(retried, "whatsapp_linked.delegated_result_failed", {
+        reason: "retries_exhausted",
+        errorCode,
+        attempts: retried.attempts
+      });
+      return "failed";
+    }
+  }
+
+  /**
+   * Why a delegated result may no longer be sent, or null when it may. The grant, the
+   * conversation approval or the recipient's STOP can all change while the entry waits.
+   */
+  private linkedDelegationSuppression(entry: LinkedDelegationResultEntry): string | null {
+    const { businessId, delegation: ref } = entry;
+    const channel = this.messagingDomain.conversationChannelsMap.get(ref.channelId);
     if (
       !channel ||
       channel.provider !== "whatsapp_linked" ||
       channel.businessId !== businessId ||
       channel.metadata.linkedDeviceOwnerId !== ref.ownerId
     )
-      suppressed = "channel_unavailable";
-    else if (
+      return "channel_unavailable";
+    if (
       this.messagingDomain.platformIdentitiesMap.get(channel.platformIdentityId)?.optInStatus ===
       "revoked"
     )
-      suppressed = "recipient_opted_out";
-    else
-      try {
-        this.validateLinkedToolDelegation(businessId, ref, resolution.toolName);
-      } catch (error) {
-        suppressed = error instanceof Cp2Error ? error.code : "delegation_invalid";
+      return "recipient_opted_out";
+    try {
+      this.validateLinkedToolDelegation(businessId, ref, entry.toolName);
+    } catch (error) {
+      return error instanceof Cp2Error ? error.code : "delegation_invalid";
+    }
+    return null;
+  }
+
+  private auditLinkedDelegationResult(
+    entry: LinkedDelegationResultEntry,
+    type: string,
+    payload: Record<string, unknown>
+  ): void {
+    this.recordAuditEvent({
+      type,
+      aggregateType: "runtime_turn",
+      aggregateId: entry.turnId,
+      actorId: entry.resolvedBy,
+      occurredAt: new Date().toISOString(),
+      payload: {
+        businessId: entry.businessId,
+        channelId: entry.delegation.channelId,
+        grantId: entry.delegation.grantId,
+        tool: entry.toolName,
+        outcome: entry.outcome,
+        ...payload
       }
-    if (suppressed !== null || !channel) {
-      audit("whatsapp_linked.delegated_result_suppressed", {
-        reason: suppressed ?? "channel_unavailable"
+    });
+  }
+
+  // ---- WhatsApp Linked Devices: shop owner change (owner-transfer.ts) ----
+
+  /** Whether `userId` is an owner of the business right now (not quarantine or deletion). */
+  private isCurrentLinkedWhatsAppOwner(businessId: string, userId: string): boolean {
+    if (!this.users.has(userId)) return false;
+    for (const membership of this.memberships.values())
+      if (
+        membership.businessId === businessId &&
+        membership.userId === userId &&
+        membership.role === "owner"
+      )
+        return true;
+    return false;
+  }
+
+  /**
+   * Removes everything a former owner's WhatsApp link still carries once the shop has a different
+   * owner. The connector already erased that owner's vault and logged the device out; here the
+   * canonical side follows:
+   *
+   * - each approved chat still bound to a former owner is detached: its grant, read-receipt
+   *   opt-in, assistant flag and owner binding are removed from the channel row. The row stays
+   *   (one per chat); re-approval by the new owner binds it to a fresh conversation in their own
+   *   account (messaging/store.ts upsertProviderConversation), so the former owner's history is
+   *   not handed over and nothing new reaches them;
+   * - pending delegated-result replies resolved under a former owner's grant are suppressed with
+   *   reason `owner_changed`;
+   * - queued read receipts of a former owner are dropped;
+   * - the business's owner-state record keeps a notice for the new owner until they link again
+   *   or dismiss it.
+   *
+   * Idempotent, cheap when nothing changed, and called on every connector state event and every
+   * owner read of the account view. Returns the unacknowledged notice, if any.
+   */
+  reconcileLinkedWhatsAppOwnership(businessId: string, now = new Date()): LinkedOwnerChange | null {
+    const current = (userId: string) => this.isCurrentLinkedWhatsAppOwner(businessId, userId);
+    const record = this.linkedOwnerStates.get(businessId);
+    const formerOwners = new Set<string>();
+    if (record?.ownerId && !current(record.ownerId)) formerOwners.add(record.ownerId);
+    const change: LinkedOwnerChange = {
+      previousOwnerId: record?.ownerId ?? "",
+      detectedAt: now.toISOString(),
+      channelsDetached: 0,
+      grantsRevoked: 0,
+      resultsSuppressed: 0,
+      readReceiptsDropped: 0
+    };
+    for (const channel of this.messagingDomain.conversationChannelsMap.values()) {
+      const ownerId = channel.metadata.linkedDeviceOwnerId;
+      if (
+        channel.provider !== "whatsapp_linked" ||
+        channel.businessId !== businessId ||
+        typeof ownerId !== "string" ||
+        current(ownerId)
+      )
+        continue;
+      formerOwners.add(ownerId);
+      const grant = this.parseStoredLinkedGrant(channel.metadata.linkedToolGrant);
+      if (grant?.enabled && grant.tools.length) change.grantsRevoked += 1;
+      const metadata: Record<string, string | number | boolean | null> = {
+        automaticRepliesEnabled: false,
+        linkedDeviceFormerOwnerId: ownerId,
+        linkedDeviceDetachedAt: now.toISOString()
+      };
+      this.messagingDomain.conversationChannelsMap.set(channel.id, {
+        ...channel,
+        metadata,
+        updatedAt: now.toISOString()
       });
+      change.channelsDetached += 1;
+      this.recordAuditEvent({
+        type: "whatsapp_linked.channel_detached",
+        aggregateType: "conversation_channel",
+        aggregateId: channel.id,
+        actorId: ownerId,
+        occurredAt: now.toISOString(),
+        payload: { businessId, reason: "owner_changed" }
+      });
+    }
+    for (const [id, entry] of this.linkedDelegationResults) {
+      if (
+        entry.businessId !== businessId ||
+        entry.status !== "pending" ||
+        current(entry.delegation.ownerId)
+      )
+        continue;
+      formerOwners.add(entry.delegation.ownerId);
+      const suppressed = settleLinkedDelegationResult(entry, "suppressed", now, {
+        reason: "owner_changed"
+      });
+      this.linkedDelegationResults.set(id, suppressed);
+      this.auditLinkedDelegationResult(suppressed, "whatsapp_linked.delegated_result_suppressed", {
+        reason: "owner_changed",
+        attempts: suppressed.attempts
+      });
+      change.resultsSuppressed += 1;
+    }
+    for (const [id, entry] of this.linkedReadReceipts)
+      if (entry.businessId === businessId && !current(entry.ownerId)) {
+        formerOwners.add(entry.ownerId);
+        this.linkedReadReceipts.delete(id);
+        change.readReceiptsDropped += 1;
+      }
+    for (const [id, entry] of this.linkedDeviceOutbox) {
+      if (entry.businessId !== businessId || current(entry.ownerId)) continue;
+      if (entry.kind === "read") {
+        formerOwners.add(entry.ownerId);
+        this.linkedDeviceOutbox.delete(id);
+        change.readReceiptsDropped += 1;
+      } else if (!linkedDeviceEntrySettled(entry)) {
+        formerOwners.add(entry.ownerId);
+        // A claimed send may already be on its way: uncertain, never resent.
+        this.settleLinkedDeviceSend(
+          entry,
+          entry.status === "claimed" ? "uncertain" : "suppressed",
+          now,
+          { reason: "owner_changed" }
+        );
+      }
+    }
+    if (!formerOwners.size) return this.pendingLinkedOwnerChange(businessId);
+    change.previousOwnerId = change.previousOwnerId || [...formerOwners][0]!;
+    const base = record ?? newLinkedOwnerStateRecord(businessId, now);
+    const unacknowledged = base.acknowledgedAt === null ? base.ownerChange : null;
+    const next: LinkedOwnerStateRecord = {
+      ...base,
+      ownerId: null,
+      state: "REVOKED",
+      ownerChange: mergeLinkedOwnerChange(unacknowledged, change),
+      acknowledgedAt: null,
+      updatedAt: now.toISOString()
+    };
+    this.linkedOwnerStates.set(businessId, next);
+    this.recordAuditEvent({
+      type: "whatsapp_linked.owner_changed",
+      aggregateType: "whatsapp_linked_connection",
+      aggregateId: businessId,
+      actorId: change.previousOwnerId,
+      occurredAt: now.toISOString(),
+      payload: {
+        businessId,
+        channelsDetached: change.channelsDetached,
+        grantsRevoked: change.grantsRevoked,
+        resultsSuppressed: change.resultsSuppressed,
+        readReceiptsDropped: change.readReceiptsDropped
+      }
+    });
+    return next.ownerChange;
+  }
+
+  private pendingLinkedOwnerChange(businessId: string): LinkedOwnerChange | null {
+    const record = this.linkedOwnerStates.get(businessId);
+    return record?.acknowledgedAt === null ? record.ownerChange : null;
+  }
+
+  private parseStoredLinkedGrant(value: unknown): { enabled: boolean; tools: string[] } | null {
+    if (typeof value !== "string") return null;
+    try {
+      const grant = JSON.parse(value) as { enabled?: unknown; tools?: unknown };
+      return {
+        enabled: grant.enabled === true,
+        tools: Array.isArray(grant.tools) ? grant.tools.map(String) : []
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  /** The current owner dismissed the owner-change notice. */
+  acknowledgeLinkedWhatsAppOwnerChange(businessId: string, ownerId: string, now = new Date()) {
+    this.validateLinkedWhatsAppOwner(businessId, ownerId);
+    const record = this.linkedOwnerStates.get(businessId);
+    if (record?.ownerChange && record.acknowledgedAt === null)
+      this.linkedOwnerStates.set(businessId, {
+        ...record,
+        acknowledgedAt: now.toISOString(),
+        updatedAt: now.toISOString()
+      });
+    return { ownerChange: null };
+  }
+
+  /** Read-only copy of the owner-state records, for operators and tests. */
+  linkedWhatsAppOwnerStates(businessId?: string): LinkedOwnerStateRecord[] {
+    return [...this.linkedOwnerStates.values()]
+      .filter((record) => businessId === undefined || record.businessId === businessId)
+      .map((record) => structuredClone(record));
+  }
+
+  /** WhatsApp channels approved by this owner and not detached, one per chat. */
+  private linkedWhatsAppChannels(businessId: string, ownerId: string) {
+    return [...this.messagingDomain.conversationChannelsMap.values()].filter(
+      (channel) =>
+        channel.businessId === businessId &&
+        channel.provider === "whatsapp_linked" &&
+        channel.metadata.linkedDeviceOwnerId === ownerId
+    );
+  }
+
+  private requireLinkedWhatsAppChannel(businessId: string, ownerId: string, chat: string) {
+    const channel = this.linkedWhatsAppChannels(businessId, ownerId).find(
+      (entry) => entry.externalConversationId === chat
+    );
+    if (!channel)
+      throw new Cp2Error(
+        404,
+        "conversation_channel_not_found",
+        "Approve this WhatsApp conversation first."
+      );
+    return channel;
+  }
+
+  /**
+   * The owner's view of their WhatsApp link beyond the connector's own status: the owner-change
+   * notice, and per approved chat its customer record and read-receipt setting. Runs the
+   * owner-change cleanup first, so the new owner sees a consistent state on the first read.
+   */
+  linkedWhatsAppAccount(businessId: string, ownerId: string, now = new Date()) {
+    this.validateLinkedWhatsAppOwner(businessId, ownerId);
+    const ownerChange = this.reconcileLinkedWhatsAppOwnership(businessId, now);
+    const chats = this.linkedWhatsAppChannels(businessId, ownerId)
+      .map((channel) => {
+        const identity = this.messagingDomain.platformIdentitiesMap.get(channel.platformIdentityId);
+        const customerId = identity?.customerId ?? null;
+        const customer = customerId ? this.salesDomain.customersMap.get(customerId) : undefined;
+        return {
+          chat: channel.externalConversationId,
+          conversationId: channel.conversationId,
+          group: channel.externalConversationId.endsWith("@g.us"),
+          optedOut: identity?.optInStatus === "revoked",
+          readReceipts: channel.metadata.linkedReadReceipts === true,
+          customer:
+            customer && customer.businessId === businessId
+              ? {
+                  id: customer.id,
+                  name: customer.name,
+                  linked: typeof identity?.metadata.linkedCustomerAt === "string"
+                }
+              : null
+        };
+      })
+      .sort((left, right) => left.chat.localeCompare(right.chat));
+    return {
+      ownerChange: ownerChange ? { ...ownerChange, notice: linkedOwnerChangeNotice } : null,
+      chats
+    };
+  }
+
+  // ---- WhatsApp Linked Devices: explicit existing-customer linking ----
+
+  /** Revokes server authority for a phone chat, including work queued before revocation. */
+  revokeLinkedWhatsAppDeviceChat(input: {
+    businessId: string;
+    ownerId: string;
+    chat: string;
+    now?: Date;
+  }): void {
+    const now = input.now ?? new Date();
+    this.validateLinkedWhatsAppOwner(input.businessId, input.ownerId);
+    const channel = this.requireLinkedWhatsAppChannel(input.businessId, input.ownerId, input.chat);
+    this.setLinkedToolGrants({ ...input, tools: [], enabled: false });
+    const metadata: Record<string, string | number | boolean | null> = {
+      ...channel.metadata,
+      linkedDeviceDetachedAt: now.toISOString()
+    };
+    delete metadata.linkedDeviceOwnerId;
+    delete metadata.linkedReadReceipts;
+    metadata.linkedToolGrant = JSON.stringify({ id: randomUUID(), enabled: false, tools: [] });
+    this.messagingDomain.conversationChannelsMap.set(channel.id, {
+      ...channel,
+      status: "blocked",
+      metadata,
+      updatedAt: now.toISOString()
+    });
+    for (const [id, receipt] of this.linkedReadReceipts)
+      if (receipt.channelId === channel.id) this.linkedReadReceipts.delete(id);
+    for (const [id, entry] of this.linkedDeviceOutbox) {
+      if (entry.channelId !== channel.id) continue;
+      if (entry.kind === "read") this.linkedDeviceOutbox.delete(id);
+      else if (!linkedDeviceEntrySettled(entry))
+        this.settleLinkedDeviceSend(
+          entry,
+          entry.status === "claimed" ? "uncertain" : "suppressed",
+          now,
+          {
+            reason: "approval_revoked"
+          }
+        );
+    }
+    this.recordAuditEvent({
+      type: "whatsapp_linked.device_chat_revoked",
+      aggregateType: "conversation_channel",
+      aggregateId: channel.id,
+      actorId: input.ownerId,
+      occurredAt: now.toISOString(),
+      payload: { businessId: input.businessId }
+    });
+  }
+
+  /**
+   * Links an approved WhatsApp contact to an existing customer record, or (customerId null)
+   * unlinks it again. Approval creates a guest customer for the contact; linking points the
+   * contact's provider identity at the chosen customer instead, and unlinking points it back at
+   * that original guest (re-created if it was removed). Only an explicit customer id is accepted:
+   * nothing is ever matched or merged by display name, phone text or any other heuristic, and no
+   * customer record is merged, edited or deleted. Groups cannot be linked: a group is not a
+   * customer.
+   */
+  linkLinkedWhatsAppCustomer(input: {
+    businessId: string;
+    ownerId: string;
+    chat: string;
+    customerId: string | null;
+    now?: Date;
+  }) {
+    const now = input.now ?? new Date();
+    this.validateLinkedWhatsAppOwner(input.businessId, input.ownerId);
+    const channel = this.requireLinkedWhatsAppChannel(input.businessId, input.ownerId, input.chat);
+    if (input.chat.endsWith("@g.us"))
+      throw new Cp2Error(
+        400,
+        "whatsapp_group_not_linkable",
+        "A WhatsApp group cannot be linked to one customer."
+      );
+    const identity = this.messagingDomain.platformIdentitiesMap.get(channel.platformIdentityId);
+    if (!identity || identity.businessId !== input.businessId)
+      throw new Cp2Error(404, "conversation_channel_not_found", "WhatsApp contact not found.");
+    const linked = typeof identity.metadata.linkedCustomerAt === "string";
+    const guestId =
+      typeof identity.metadata.linkedGuestCustomerId === "string"
+        ? identity.metadata.linkedGuestCustomerId
+        : identity.customerId;
+    let customerId: string;
+    let type: string;
+    let metadata: Record<string, string | number | boolean | null>;
+    if (input.customerId !== null) {
+      const customer = this.salesDomain.requireCustomer(input.businessId, input.customerId);
+      if (identity.customerId === customer.id)
+        return this.linkedWhatsAppAccount(input.businessId, input.ownerId, now);
+      customerId = customer.id;
+      type = "whatsapp_linked.customer_linked";
+      metadata = {
+        ...identity.metadata,
+        ...(guestId ? { linkedGuestCustomerId: guestId } : {}),
+        linkedCustomerBy: input.ownerId,
+        linkedCustomerAt: now.toISOString()
+      };
+    } else {
+      if (!linked) return this.linkedWhatsAppAccount(input.businessId, input.ownerId, now);
+      const guest = guestId ? this.salesDomain.customersMap.get(guestId) : undefined;
+      customerId =
+        guest && guest.businessId === input.businessId
+          ? guest.id
+          : this.createGuestCustomer({
+              businessId: input.businessId,
+              displayName: identity.displayName,
+              provider: "whatsapp_linked",
+              externalUserId: identity.externalUserId,
+              now
+            }).id;
+      type = "whatsapp_linked.customer_unlinked";
+      metadata = { ...identity.metadata, linkedGuestCustomerId: customerId };
+      delete metadata.linkedCustomerBy;
+      delete metadata.linkedCustomerAt;
+    }
+    const previousCustomerId = identity.customerId;
+    this.messagingDomain.platformIdentitiesMap.set(identity.id, {
+      ...identity,
+      customerId,
+      metadata,
+      updatedAt: now.toISOString()
+    });
+    this.recordAuditEvent({
+      type,
+      aggregateType: "platform_identity",
+      aggregateId: identity.id,
+      actorId: input.ownerId,
+      occurredAt: now.toISOString(),
+      payload: {
+        businessId: input.businessId,
+        channelId: channel.id,
+        customerId,
+        previousCustomerId
+      }
+    });
+    return this.linkedWhatsAppAccount(input.businessId, input.ownerId, now);
+  }
+
+  // ---- WhatsApp Linked Devices: read receipts back to WhatsApp (read-receipts.ts) ----
+
+  /** Per approved chat; off unless the owner turns it on. Turning it off drops queued receipts. */
+  setLinkedReadReceipts(input: {
+    businessId: string;
+    ownerId: string;
+    chat: string;
+    enabled: boolean;
+    now?: Date;
+  }) {
+    const now = input.now ?? new Date();
+    this.validateLinkedWhatsAppOwner(input.businessId, input.ownerId);
+    if (typeof input.enabled !== "boolean")
+      throw new Cp2Error(400, "whatsapp_read_receipts_invalid", "Choose on or off.");
+    const channel = this.requireLinkedWhatsAppChannel(input.businessId, input.ownerId, input.chat);
+    const metadata = { ...channel.metadata };
+    if (input.enabled) metadata.linkedReadReceipts = true;
+    else delete metadata.linkedReadReceipts;
+    this.messagingDomain.conversationChannelsMap.set(channel.id, {
+      ...channel,
+      metadata,
+      updatedAt: now.toISOString()
+    });
+    if (!input.enabled) {
+      for (const [id, entry] of this.linkedReadReceipts)
+        if (entry.channelId === channel.id) this.linkedReadReceipts.delete(id);
+      for (const [id, entry] of this.linkedDeviceOutbox)
+        if (entry.kind === "read" && entry.channelId === channel.id)
+          this.linkedDeviceOutbox.delete(id);
+    }
+    this.recordAuditEvent({
+      type: "whatsapp_linked.read_receipts_changed",
+      aggregateType: "conversation_channel",
+      aggregateId: channel.id,
+      actorId: input.ownerId,
+      occurredAt: now.toISOString(),
+      payload: { businessId: input.businessId, enabled: input.enabled }
+    });
+    return this.linkedWhatsAppAccount(input.businessId, input.ownerId, now);
+  }
+
+  /** Lets the connector host send receipts as soon as some are queued. */
+  onLinkedReadReceiptsQueued(listener: (businessId: string, ownerId: string) => void): () => void {
+    this.linkedReadReceiptListeners.add(listener);
+    return () => this.linkedReadReceiptListeners.delete(listener);
+  }
+
+  /** Why a receipt for this channel may not be sent now, or null when it may. */
+  private linkedReadReceiptBlocked(channelId: string, ownerId: string): string | null {
+    const channel = this.messagingDomain.conversationChannelsMap.get(channelId);
+    if (
+      !channel ||
+      channel.provider !== "whatsapp_linked" ||
+      channel.metadata.linkedDeviceOwnerId !== ownerId
+    )
+      return "channel_unavailable";
+    if (channel.metadata.linkedReadReceipts !== true) return "read_receipts_off";
+    if (
+      this.messagingDomain.platformIdentitiesMap.get(channel.platformIdentityId)?.optInStatus ===
+      "revoked"
+    )
+      return "recipient_opted_out";
+    try {
+      this.validateLinkedWhatsAppOwner(channel.businessId, ownerId);
+    } catch {
+      return "owner_unauthorized";
+    }
+    return null;
+  }
+
+  /** Inbound WhatsApp messages of a conversation nobody in Grogoni has read yet. */
+  private unreadLinkedWhatsAppMessageIds(conversationId: string): string[] {
+    const conversation = this.messagingDomain.conversationsMap.get(conversationId);
+    if (!conversation?.activeShopId) return [];
+    const linked = [...this.messagingDomain.conversationChannelsMap.values()].some(
+      (channel) =>
+        channel.conversationId === conversationId &&
+        channel.provider === "whatsapp_linked" &&
+        channel.metadata.linkedReadReceipts === true
+    );
+    if (!linked) return [];
+    const ids: string[] = [];
+    for (const message of this.messagingDomain.conversationMessagesMap.values())
+      if (
+        message.conversationId === conversationId &&
+        message.provider === "whatsapp_linked" &&
+        message.direction === "inbound" &&
+        !message.readAt &&
+        !message.deletedAt
+      )
+        ids.push(message.id);
+    return ids;
+  }
+
+  /**
+   * Queues one receipt per message that was unread before and is read now. That transition
+   * happens once per message (readAt is persisted), which is what deduplicates receipts across
+   * reads, refreshes and restarts; the queue map adds deduplication within one process.
+   */
+  private queueLinkedReadReceipts(conversationId: string, messageIds: string[], now: Date): void {
+    const linked = [...this.messagingDomain.conversationChannelsMap.values()].filter(
+      (entry) => entry.conversationId === conversationId && entry.provider === "whatsapp_linked"
+    );
+    // Messages carry no channel id. With two WhatsApp chats in one conversation a receipt could
+    // reach the wrong chat, so none is sent.
+    const channel = linked.length === 1 ? linked[0] : undefined;
+    const ownerId = channel?.metadata.linkedDeviceOwnerId;
+    if (
+      !channel ||
+      typeof ownerId !== "string" ||
+      this.linkedReadReceiptBlocked(channel.id, ownerId)
+    )
+      return;
+    if (this.linkedWhatsAppDeviceHosting(channel.businessId, now).hosted) {
+      this.queueLinkedDeviceReadReceipts(channel, ownerId, messageIds, now);
       return;
     }
-    try {
-      const sent = await this.deliverLinkedWhatsAppReply({
-        businessId,
-        ownerId: ref.ownerId,
+    let queued = 0;
+    for (const id of messageIds) {
+      const message = this.messagingDomain.conversationMessagesMap.get(id);
+      if (
+        !message?.readAt ||
+        message.deletedAt ||
+        !message.providerMessageId ||
+        !message.senderAddress ||
+        this.linkedReadReceipts.has(id) ||
+        now.getTime() - Date.parse(message.clientTimestamp ?? message.createdAt) >
+          linkedReadReceiptLimits.maxMessageAgeMs
+      )
+        continue;
+      this.linkedReadReceipts.set(id, {
+        messageId: id,
+        businessId: channel.businessId,
+        ownerId,
+        channelId: channel.id,
         chat: channel.externalConversationId,
-        text: linkedDelegationResultText(resolution.outcome, resolution.toolName),
-        idempotencyKey: `whatsapp-result:${turnId}`
+        sender: message.senderAddress,
+        providerMessageId: message.providerMessageId,
+        queuedAt: now.toISOString()
       });
-      audit("whatsapp_linked.delegated_result_sent", { messageId: sent.message.id });
-    } catch (error) {
-      audit("whatsapp_linked.delegated_result_failed", {
-        errorCode: error instanceof Cp2Error ? error.code : "delivery_failed"
+      queued += 1;
+    }
+    if (!queued) return;
+    const business = [...this.linkedReadReceipts.values()]
+      .filter((entry) => entry.businessId === channel.businessId)
+      .sort((left, right) => left.queuedAt.localeCompare(right.queuedAt));
+    for (const entry of business.slice(
+      0,
+      Math.max(0, business.length - linkedReadReceiptLimits.maxQueuedPerBusiness)
+    ))
+      this.linkedReadReceipts.delete(entry.messageId);
+    for (const listener of this.linkedReadReceiptListeners) {
+      try {
+        listener(channel.businessId, ownerId);
+      } catch {
+        // A wake-up hint only.
+      }
+    }
+  }
+
+  /**
+   * Phone-hosted chats: receipts go to the durable device outbox, because the Edge store that saw
+   * the read is gone after the request. Same eligibility as the server queue; the phone takes them
+   * on its next pull (pullLinkedWhatsAppDeviceOutbox). Bounded per business, oldest dropped.
+   */
+  private queueLinkedDeviceReadReceipts(
+    channel: ConversationChannelSummary,
+    ownerId: string,
+    messageIds: string[],
+    now: Date
+  ): void {
+    let queued = 0;
+    for (const id of messageIds) {
+      const message = this.messagingDomain.conversationMessagesMap.get(id);
+      if (
+        !message?.readAt ||
+        message.deletedAt ||
+        !message.providerMessageId ||
+        !message.senderAddress ||
+        this.linkedDeviceOutbox.has(linkedDeviceReadId(id)) ||
+        now.getTime() - Date.parse(message.clientTimestamp ?? message.createdAt) >
+          linkedReadReceiptLimits.maxMessageAgeMs
+      )
+        continue;
+      const entry = newLinkedDeviceRead(
+        {
+          businessId: channel.businessId,
+          ownerId,
+          channelId: channel.id,
+          conversationId: channel.conversationId,
+          chat: channel.externalConversationId,
+          messageId: id,
+          providerMessageId: message.providerMessageId,
+          sender: message.senderAddress
+        },
+        now
+      );
+      this.linkedDeviceOutbox.set(entry.id, entry);
+      queued += 1;
+    }
+    if (!queued) return;
+    const reads = [...this.linkedDeviceOutbox.values()]
+      .filter((entry) => entry.kind === "read" && entry.businessId === channel.businessId)
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+    for (const entry of reads.slice(
+      0,
+      Math.max(0, reads.length - linkedDeviceOutboxLimits.maxPendingReads)
+    ))
+      this.linkedDeviceOutbox.delete(entry.id);
+  }
+
+  /**
+   * Connector host only: removes this owner's queued receipts and returns those still allowed,
+   * grouped per chat. Each is re-checked now: chat still bound to this owner and approved on the
+   * connector (`approved`), opt-in still on, no STOP, owner still authorized, message not deleted
+   * and not too old. Everything else is dropped, never kept for later.
+   */
+  takeLinkedReadReceipts(input: {
+    businessId: string;
+    ownerId: string;
+    approved: (chat: string) => boolean;
+    now?: Date;
+  }): LinkedReadReceiptBatch[] {
+    const now = input.now ?? new Date();
+    const allowed: LinkedReadReceiptEntry[] = [];
+    for (const [id, entry] of this.linkedReadReceipts) {
+      if (entry.businessId !== input.businessId || entry.ownerId !== input.ownerId) continue;
+      this.linkedReadReceipts.delete(id);
+      const message = this.messagingDomain.conversationMessagesMap.get(entry.messageId);
+      if (
+        !message ||
+        message.deletedAt ||
+        now.getTime() - Date.parse(entry.queuedAt) > linkedReadReceiptLimits.maxQueuedAgeMs ||
+        this.linkedReadReceiptBlocked(entry.channelId, entry.ownerId) !== null ||
+        !input.approved(entry.chat)
+      )
+        continue;
+      allowed.push(entry);
+    }
+    return batchLinkedReadReceipts(allowed);
+  }
+
+  // ---- WhatsApp Linked Devices: the owner's phone as host (device-outbox.ts) ----
+
+  /** Where this business's linked session lives right now (device-channel-adapter.ts). */
+  linkedWhatsAppDeviceHosting(businessId: string, now = new Date()): LinkedDeviceHosting {
+    const record = this.linkedOwnerStates.get(businessId);
+    return linkedDeviceHosting(
+      record,
+      !!record?.ownerId && this.isCurrentLinkedWhatsAppOwner(businessId, record.ownerId),
+      now
+    );
+  }
+
+  /**
+   * The phone that holds a claim: one sign-in on one device. The session family survives token
+   * refresh; signing in again makes a new family, which the claim rule treats as another device.
+   */
+  private linkedDeviceClaimant(sessionId: string | null): string {
+    const family = sessionId ? this.sessions.get(sessionId)?.sessionFamilyId : undefined;
+    if (!family)
+      throw new Cp2Error(401, "authentication_required", "Sign in to Grogoni on this phone.");
+    return `family:${family}`;
+  }
+
+  /**
+   * The phone reports its session state for one business. This is what makes the business
+   * phone-hosted: sends from then on queue in the device outbox until a server connector reports
+   * a live session again (recordLinkedWhatsAppState).
+   */
+  recordLinkedWhatsAppDeviceState(input: {
+    businessId: string;
+    ownerId: string;
+    state: string;
+    now?: Date;
+  }) {
+    const now = input.now ?? new Date();
+    this.validateLinkedWhatsAppOwner(input.businessId, input.ownerId);
+    if (!linkedDeviceReportedStates.has(input.state))
+      throw new Cp2Error(400, "whatsapp_state_invalid", "Unknown WhatsApp connection state.");
+    this.reconcileLinkedWhatsAppOwnership(input.businessId, now);
+    const record =
+      this.linkedOwnerStates.get(input.businessId) ??
+      newLinkedOwnerStateRecord(input.businessId, now);
+    const changed =
+      record.host !== "android" || record.state !== input.state || record.ownerId !== input.ownerId;
+    this.linkedOwnerStates.set(input.businessId, {
+      ...record,
+      ownerId: input.ownerId,
+      state: input.state,
+      host: "android",
+      deviceSeenAt: now.toISOString(),
+      ...(input.state === "CONNECTED" ? { ownerChange: null, acknowledgedAt: null } : {}),
+      updatedAt: now.toISOString()
+    });
+    if (changed)
+      this.recordAuditEvent({
+        type: "whatsapp_linked.connection_state",
+        aggregateType: "whatsapp_linked_connection",
+        aggregateId: input.businessId,
+        actorId: input.ownerId,
+        occurredAt: now.toISOString(),
+        payload: { businessId: input.businessId, state: input.state, host: "android" }
+      });
+    return this.linkedWhatsAppDeviceStatus(input.businessId, input.ownerId, now);
+  }
+
+  /** The owner's view of the phone path: host, last check-in and what waits in the outbox. */
+  linkedWhatsAppDeviceStatus(businessId: string, ownerId: string, now = new Date()) {
+    this.validateLinkedWhatsAppOwner(businessId, ownerId);
+    const record = this.linkedOwnerStates.get(businessId);
+    const hosting = this.linkedWhatsAppDeviceHosting(businessId, now);
+    let waiting = 0;
+    let uncertain = 0;
+    for (const entry of this.linkedDeviceOutbox.values()) {
+      if (entry.businessId !== businessId || entry.kind !== "send") continue;
+      if (!linkedDeviceEntrySettled(entry)) waiting += 1;
+      else if (entry.status === "uncertain") uncertain += 1;
+    }
+    return {
+      host: record?.ownerId === ownerId ? (record.host ?? "server") : null,
+      state: record?.ownerId === ownerId ? record.state : null,
+      deviceSeenAt: record?.ownerId === ownerId ? (record.deviceSeenAt ?? null) : null,
+      status: hosting.status,
+      waiting,
+      uncertain
+    };
+  }
+
+  /** Gateway queue callback (device-channel-adapter.ts): one outbox entry per canonical message. */
+  private queueLinkedDeviceSend(request: OutboundChannelMessage): string {
+    const now = new Date();
+    const record = this.linkedOwnerStates.get(request.businessId);
+    const ownerId = record?.ownerId;
+    const hosting = this.linkedWhatsAppDeviceHosting(request.businessId, now);
+    if (!ownerId || !hosting.hosted || hosting.status === "unavailable")
+      throw new ChannelGatewayError(
+        "CHANNEL_UNAVAILABLE",
+        "WhatsApp is not running on the owner's phone."
+      );
+    const channel = this.messagingDomain.conversationChannelsMap.get(request.endpoint.channelId);
+    if (
+      !channel ||
+      channel.provider !== "whatsapp_linked" ||
+      channel.businessId !== request.businessId ||
+      channel.conversationId !== request.conversationId ||
+      channel.metadata.linkedDeviceOwnerId !== ownerId
+    )
+      throw new ChannelGatewayError(
+        "CHANNEL_UNAVAILABLE",
+        "This WhatsApp conversation is not approved on the owner's phone."
+      );
+    if (request.idempotencyKey.length > linkedDeviceOutboxLimits.maxIdempotencyKeyLength)
+      throw new ChannelGatewayError("CHANNEL_SEND_FAILED", "The delivery key is too long.");
+    const messageId = this.messagingDomain.messageIdForIdempotencyKey(
+      request.conversationId,
+      request.idempotencyKey
+    );
+    if (!messageId)
+      throw new ChannelGatewayError("CHANNEL_SEND_FAILED", "Canonical message is unavailable.");
+    const existing = this.linkedDeviceOutbox.get(linkedDeviceSendId(messageId));
+    if (existing) return existing.id;
+    let waiting = 0;
+    for (const entry of this.linkedDeviceOutbox.values())
+      if (
+        entry.businessId === request.businessId &&
+        entry.kind === "send" &&
+        !linkedDeviceEntrySettled(entry)
+      )
+        waiting += 1;
+    // Full: refuse rather than evict, so nothing queued is silently lost.
+    if (waiting >= linkedDeviceOutboxLimits.maxPendingSends)
+      throw new ChannelGatewayError(
+        "CHANNEL_RATE_LIMITED",
+        "Too many WhatsApp messages are waiting for your phone. Open Grogoni on it, then try again.",
+        true
+      );
+    const entry = newLinkedDeviceSend(
+      {
+        businessId: request.businessId,
+        ownerId,
+        channelId: channel.id,
+        conversationId: channel.conversationId,
+        chat: channel.externalConversationId,
+        messageId,
+        idempotencyKey: request.idempotencyKey
+      },
+      now
+    );
+    this.linkedDeviceOutbox.set(entry.id, entry);
+    this.auditLinkedDeviceEntry(entry, "whatsapp_linked.device_send_queued");
+    return entry.id;
+  }
+
+  private auditLinkedDeviceEntry(
+    entry: LinkedDeviceOutboxEntry,
+    type: string,
+    extra: Record<string, string | number | null> = {}
+  ): void {
+    this.recordAuditEvent({
+      type,
+      aggregateType: "whatsapp_linked_device_outbox",
+      aggregateId: entry.id,
+      actorId: entry.ownerId,
+      occurredAt: entry.updatedAt,
+      payload: {
+        businessId: entry.businessId,
+        messageId: entry.messageId,
+        status: entry.status,
+        claims: entry.claims,
+        attempts: entry.attempts,
+        ...(entry.reason ? { reason: entry.reason } : {}),
+        ...extra
+      }
+    });
+  }
+
+  /** Settles a send and its canonical message together; audits the outcome. */
+  private settleLinkedDeviceSend(
+    entry: LinkedDeviceOutboxEntry,
+    status: "sent" | "failed" | "uncertain" | "suppressed",
+    now: Date,
+    details: { reason?: string; errorCode?: string; deliveredId?: string } = {}
+  ): LinkedDeviceOutboxEntry {
+    const settled = settleLinkedDeviceEntry(entry, status, now, details);
+    this.linkedDeviceOutbox.set(settled.id, settled);
+    this.messagingDomain.settleLinkedDeviceDelivery({
+      messageId: entry.messageId,
+      outcome: status === "sent" ? "sent" : status === "uncertain" ? "uncertain" : "failed",
+      deliveredId: details.deliveredId ?? null,
+      failureCode:
+        status === "suppressed"
+          ? "CHANNEL_UNAVAILABLE"
+          : (details.errorCode ?? "CHANNEL_SEND_FAILED"),
+      now
+    });
+    this.auditLinkedDeviceEntry(settled, `whatsapp_linked.device_send_${status}`);
+    return settled;
+  }
+
+  /** Why a queued send may not go out now, or null: the same authority the gateway checked. */
+  private linkedDeviceSendBlocked(entry: LinkedDeviceOutboxEntry, ownerId: string): string | null {
+    if (entry.ownerId !== ownerId || !this.isCurrentLinkedWhatsAppOwner(entry.businessId, ownerId))
+      return "owner_changed";
+    const channel = this.messagingDomain.conversationChannelsMap.get(entry.channelId);
+    if (
+      !channel ||
+      channel.provider !== "whatsapp_linked" ||
+      channel.businessId !== entry.businessId ||
+      channel.metadata.linkedDeviceOwnerId !== ownerId ||
+      channel.externalConversationId !== entry.chat ||
+      channel.status === "blocked"
+    )
+      return "channel_unavailable";
+    const identity = this.messagingDomain.platformIdentitiesMap.get(channel.platformIdentityId);
+    if (identity?.optInStatus === "revoked" || (identity?.optOutAt ?? null) !== null)
+      return "recipient_opted_out";
+    return null;
+  }
+
+  /**
+   * The phone's pull: hands it the sends it may perform now and takes the queued read receipts.
+   * Every entry is re-checked here (owner, approval binding, STOP) because hours may have passed
+   * since it was queued; the phone's connector re-checks its own approval list before sending.
+   * Delegated results of this business are drained first, so they join the same pull.
+   */
+  async pullLinkedWhatsAppDeviceOutbox(input: {
+    sessionId: string | null;
+    businessId: string;
+    ownerId: string;
+    now?: Date;
+  }): Promise<{
+    sends: LinkedDeviceSendCommand[];
+    receipts: LinkedDeviceReceiptBatch[];
+    more: boolean;
+    status: ReturnType<Cp2Store["linkedWhatsAppDeviceStatus"]>;
+  }> {
+    let now = input.now ?? new Date();
+    this.validateLinkedWhatsAppOwner(input.businessId, input.ownerId);
+    const claimant = this.linkedDeviceClaimant(input.sessionId);
+    this.reconcileLinkedWhatsAppOwnership(input.businessId, now);
+    const record = this.linkedOwnerStates.get(input.businessId);
+    if (record?.host !== "android" || record.ownerId !== input.ownerId)
+      throw new Cp2Error(
+        409,
+        "whatsapp_device_not_hosting",
+        "Report this phone's WhatsApp connection before pulling messages."
+      );
+    // Check-ins are throttled so an idle pull loop does not write a row every few seconds.
+    if (
+      !record.deviceSeenAt ||
+      now.getTime() - Date.parse(record.deviceSeenAt) >= linkedDeviceSeenThrottleMs
+    )
+      this.linkedOwnerStates.set(input.businessId, {
+        ...record,
+        deviceSeenAt: now.toISOString(),
+        updatedAt: now.toISOString()
+      });
+    if (this.linkedWhatsAppDeviceHosting(input.businessId, now).status !== "unavailable")
+      await this.drainLinkedDelegationResults({
+        ready: (businessId) => businessId === input.businessId,
+        now: () => now
+      });
+    // The drain may have queued sends a moment after `now`: claim against the time after it.
+    if (!input.now) now = new Date();
+
+    const sends: LinkedDeviceSendCommand[] = [];
+    let more = false;
+    const pending = [...this.linkedDeviceOutbox.values()]
+      .filter(
+        (entry) =>
+          entry.kind === "send" &&
+          entry.businessId === input.businessId &&
+          !linkedDeviceEntrySettled(entry)
+      )
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+    for (const entry of pending) {
+      if (sends.length >= linkedDeviceOutboxLimits.pullSends) {
+        more = true;
+        break;
+      }
+      const blocked = this.linkedDeviceSendBlocked(entry, input.ownerId);
+      if (blocked) {
+        // A claimed send may already be on its way to WhatsApp: it is uncertain, not suppressed.
+        if (entry.status === "claimed")
+          this.settleLinkedDeviceSend(entry, "uncertain", now, { reason: blocked });
+        else this.settleLinkedDeviceSend(entry, "suppressed", now, { reason: blocked });
+        continue;
+      }
+      const decision = claimLinkedDeviceSend(entry, claimant, randomUUID(), now);
+      if (decision.action === "wait") continue;
+      if (decision.action === "settle") {
+        this.settleLinkedDeviceSend(entry, decision.status, now, {
+          reason: decision.reason,
+          ...(decision.status === "failed" ? { errorCode: "CHANNEL_UNAVAILABLE" } : {})
+        });
+        continue;
+      }
+      const payload = this.messagingDomain.linkedDeviceSendPayload(entry.messageId);
+      if (!payload) {
+        const settled = settleLinkedDeviceEntry(entry, "suppressed", now, {
+          reason: "message_unavailable"
+        });
+        this.linkedDeviceOutbox.set(settled.id, settled);
+        this.auditLinkedDeviceEntry(settled, "whatsapp_linked.device_send_suppressed");
+        continue;
+      }
+      this.linkedDeviceOutbox.set(decision.entry.id, decision.entry);
+      this.auditLinkedDeviceEntry(decision.entry, "whatsapp_linked.device_send_claimed");
+      sends.push({
+        id: decision.entry.id,
+        claimId: decision.entry.claimId!,
+        chat: decision.entry.chat,
+        conversationId: decision.entry.conversationId,
+        idempotencyKey: decision.entry.idempotencyKey!,
+        text: payload.text,
+        ...(payload.quotedMessage ? { quotedMessage: payload.quotedMessage } : {})
       });
     }
+
+    // Read receipts: taken once (at most once, like the server path), re-checked now.
+    const taken: LinkedReadReceiptEntry[] = [];
+    for (const [id, entry] of this.linkedDeviceOutbox) {
+      if (entry.kind !== "read" || entry.businessId !== input.businessId) continue;
+      if (entry.ownerId !== input.ownerId) continue;
+      if (taken.length >= linkedDeviceOutboxLimits.pullReads) {
+        more = true;
+        break;
+      }
+      this.linkedDeviceOutbox.delete(id);
+      const message = this.messagingDomain.conversationMessagesMap.get(entry.messageId);
+      if (
+        !message ||
+        message.deletedAt ||
+        Date.parse(entry.expiresAt) <= now.getTime() ||
+        this.linkedReadReceiptBlocked(entry.channelId, entry.ownerId) !== null
+      )
+        continue;
+      taken.push({
+        messageId: entry.messageId,
+        businessId: entry.businessId,
+        ownerId: entry.ownerId,
+        channelId: entry.channelId,
+        chat: entry.chat,
+        sender: entry.sender!,
+        providerMessageId: entry.providerMessageId!,
+        queuedAt: entry.createdAt
+      });
+    }
+    for (const [id, entry] of this.linkedDeviceOutbox)
+      if (entry.businessId === input.businessId && prunableLinkedDeviceEntry(entry, now))
+        this.linkedDeviceOutbox.delete(id);
+    return {
+      sends,
+      receipts: batchLinkedReadReceipts(taken),
+      more,
+      status: this.linkedWhatsAppDeviceStatus(input.businessId, input.ownerId, now)
+    };
+  }
+
+  /**
+   * The phone's outcome for sends it pulled. `sent` is accepted under any claim (it is the truth
+   * about WhatsApp). `failed` and `uncertain` count only for the current claim; a stale one is
+   * ignored. A retryable failure, reported only when nothing reached WhatsApp, backs off and
+   * stays queued. Settled entries answer with their status, so a repeated ack is harmless.
+   */
+  acknowledgeLinkedWhatsAppDeviceOutbox(input: {
+    businessId: string;
+    ownerId: string;
+    acks: LinkedDeviceAck[];
+    now?: Date;
+  }): { results: Array<{ id: string; status: string }> } {
+    const now = input.now ?? new Date();
+    this.validateLinkedWhatsAppOwner(input.businessId, input.ownerId);
+    const results: Array<{ id: string; status: string }> = [];
+    for (const ack of input.acks) {
+      const entry = this.linkedDeviceOutbox.get(ack.id);
+      if (
+        !entry ||
+        entry.kind !== "send" ||
+        entry.businessId !== input.businessId ||
+        entry.ownerId !== input.ownerId
+      ) {
+        results.push({ id: ack.id, status: "unknown" });
+        continue;
+      }
+      if (linkedDeviceEntrySettled(entry)) {
+        results.push({ id: ack.id, status: entry.status });
+        continue;
+      }
+      const current = entry.status === "claimed" && entry.claimId === ack.claimId;
+      if (ack.outcome === "sent") {
+        results.push({
+          id: ack.id,
+          status: this.settleLinkedDeviceSend(entry, "sent", now, { deliveredId: ack.deliveredId! })
+            .status
+        });
+      } else if (!current) {
+        results.push({ id: ack.id, status: entry.status });
+      } else if (ack.outcome === "uncertain") {
+        results.push({
+          id: ack.id,
+          status: this.settleLinkedDeviceSend(entry, "uncertain", now, {
+            reason: "phone_uncertain",
+            ...(ack.code ? { errorCode: ack.code } : {})
+          }).status
+        });
+      } else if (ack.retryable) {
+        const retried = retryLinkedDeviceSend(entry, now, ack.code ?? "CHANNEL_UNAVAILABLE");
+        if (retried.status === "pending") {
+          this.linkedDeviceOutbox.set(retried.id, retried);
+          this.auditLinkedDeviceEntry(retried, "whatsapp_linked.device_send_deferred");
+          results.push({ id: ack.id, status: "pending" });
+        } else
+          results.push({
+            id: ack.id,
+            status: this.settleLinkedDeviceSend(entry, "failed", now, {
+              reason: "retries_exhausted",
+              errorCode: ack.code ?? "CHANNEL_UNAVAILABLE"
+            }).status
+          });
+      } else {
+        results.push({
+          id: ack.id,
+          status: this.settleLinkedDeviceSend(entry, "failed", now, {
+            reason: "phone_failed",
+            errorCode: ack.code ?? "CHANNEL_SEND_FAILED"
+          }).status
+        });
+      }
+    }
+    return { results };
+  }
+
+  /** Read-only copy of the device outbox, for tests and operators. */
+  linkedDeviceOutboxEntries(businessId?: string): LinkedDeviceOutboxEntry[] {
+    return [...this.linkedDeviceOutbox.values()]
+      .filter((entry) => businessId === undefined || entry.businessId === businessId)
+      .map((entry) => ({ ...entry }));
+  }
+
+  /** Read-only copy of the read-receipt queue, for tests. */
+  linkedReadReceiptEntries(businessId?: string): LinkedReadReceiptEntry[] {
+    return [...this.linkedReadReceipts.values()]
+      .filter((entry) => businessId === undefined || entry.businessId === businessId)
+      .map((entry) => ({ ...entry }));
   }
 
   ensureLinkedWhatsAppRuntime(businessId: string, ownerId: string, conversationId: string) {
@@ -5270,7 +6762,17 @@ export class Cp2Store {
   }
 
   registerMessagingAdapter(adapter: MessagingChannelAdapter): void {
-    this.channelGateway.registerAdapter(adapter);
+    // A server connector never hides the phone path: businesses whose session the owner's phone
+    // hosts keep sending through the device outbox (device-channel-adapter.ts).
+    this.channelGateway.registerAdapter(
+      adapter.provider === "whatsapp_linked" && adapter !== this.linkedDeviceAdapter
+        ? linkedHostRouter(
+            adapter,
+            this.linkedDeviceAdapter,
+            (businessId) => this.linkedWhatsAppDeviceHosting(businessId).hosted
+          )
+        : adapter
+    );
   }
 
   /** Worker event boundary: a revoked business owner cannot keep ingesting messages. */
@@ -5300,35 +6802,143 @@ export class Cp2Store {
     media?: LinkedDownloadedMedia[];
     replyTo?: string;
     mutation?: LinkedMutation;
+    now?: Date;
   }) {
     this.validateLinkedWhatsAppOwner(input.businessId, input.ownerId);
     if (input.mutation)
       return this.messagingDomain.ingestLinkedMutation(
         input as typeof input & { mutation: NonNullable<typeof input.mutation> }
       );
-    if (input.media?.length)
+    const now = input.now ?? new Date();
+    const externalUpdateId = JSON.stringify([input.businessId, input.chat, input.sender, input.id]);
+    let body = input.text;
+    let media = input.media;
+    const duplicate = [...this.messagingDomain.providerUpdateReceiptsMap.values()].some(
+      (receipt) =>
+        receipt.provider === "whatsapp_linked" && receipt.externalUpdateId === externalUpdateId
+    );
+    const channel = this.linkedWhatsAppChannels(input.businessId, input.ownerId).find(
+      (entry) => entry.externalConversationId === input.chat
+    );
+    // A replay keeps its first outcome, and an unapproved chat fails below as before.
+    if (!duplicate && channel) {
+      const incomingBytes = (media ?? []).reduce((total, item) => total + item.bytes.length, 0);
+      const verdict = linkedInboundOverQuota(
+        this.linkedInboundQuota,
+        linkedInboundUsage(
+          {
+            channels: this.messagingDomain.conversationChannelsMap.values(),
+            messages: this.messagingDomain.conversationMessagesMap.values(),
+            attachments: this.messagingDomain.conversationAttachmentsMap.values()
+          },
+          input.businessId,
+          channel.conversationId,
+          now
+        ),
+        incomingBytes
+      );
+      // STOP and START are always honoured: a quota must never keep someone subscribed.
+      if (verdict.messages && linkedOptOutCommand(input.text) === null) {
+        this.recordLinkedInboundThrottle(channel, input.ownerId, verdict.messages, now);
+        return { receipt: null, message: null, throttled: true as const };
+      }
+      if (verdict.media && media?.length) {
+        this.recordAuditEvent({
+          type: "whatsapp_linked.inbound_media_over_quota",
+          aggregateType: "conversation",
+          aggregateId: channel.conversationId,
+          actorId: input.ownerId,
+          occurredAt: now.toISOString(),
+          payload: {
+            businessId: input.businessId,
+            conversationId: channel.conversationId,
+            scope: verdict.media,
+            bytes: incomingBytes,
+            limit:
+              verdict.media === "chat"
+                ? this.linkedInboundQuota.chatMediaBytesPerDay
+                : this.linkedInboundQuota.businessMediaBytesPerDay
+          }
+        });
+        media = undefined;
+        body = `${body}\n${linkedMediaOverQuotaText}`.slice(0, 4000);
+      }
+    }
+    if (media?.length)
       return this.messagingDomain.ingestLinkedMediaMessage({
         businessId: input.businessId,
         ownerId: input.ownerId,
         externalConversationId: input.chat,
-        externalUpdateId: JSON.stringify([input.businessId, input.chat, input.sender, input.id]),
-        body: input.text,
+        externalUpdateId,
+        body,
         ...(input.replyTo ? { replyToProviderMessageId: input.replyTo } : {}),
         providerMessageId: input.id,
         senderAddress: input.sender,
         clientTimestamp: new Date(input.timestamp).toISOString(),
-        media: input.media
+        media
       });
+    // Text must land only in a chat this owner approved. Media and mutations already check the
+    // binding; after a shop owner change a detached chat must not take a message into the former
+    // owner's conversation.
+    if (!channel)
+      throw new Cp2Error(
+        404,
+        "conversation_channel_not_found",
+        "This WhatsApp conversation is not approved."
+      );
     return this.messagingDomain.ingestProviderMessage({
       provider: "whatsapp_linked",
       businessId: input.businessId,
       externalConversationId: input.chat,
-      externalUpdateId: JSON.stringify([input.businessId, input.chat, input.sender, input.id]),
-      body: input.text,
+      externalUpdateId,
+      body,
       ...(input.replyTo ? { replyToProviderMessageId: input.replyTo } : {}),
       providerMessageId: input.id,
       senderAddress: input.sender,
-      clientTimestamp: new Date(input.timestamp).toISOString()
+      clientTimestamp: new Date(input.timestamp).toISOString(),
+      now
+    });
+  }
+
+  /**
+   * One audit event when a chat starts being throttled, not one per refused message: a flood
+   * must not turn into an audit flood. The start time is kept on the channel, so it is durable.
+   */
+  private recordLinkedInboundThrottle(
+    channel: ConversationChannelSummary,
+    ownerId: string,
+    scope: "chat" | "business",
+    now: Date
+  ): void {
+    const since = channel.metadata.linkedInboundThrottledAt;
+    const refused = Number(channel.metadata.linkedInboundThrottledCount ?? 0);
+    const fresh =
+      typeof since !== "string" || Date.parse(since) < now.getTime() - linkedMessageWindowMs;
+    this.messagingDomain.conversationChannelsMap.set(channel.id, {
+      ...channel,
+      metadata: {
+        ...channel.metadata,
+        linkedInboundThrottledAt: fresh ? now.toISOString() : since,
+        linkedInboundThrottledCount: fresh ? 1 : refused + 1
+      },
+      updatedAt: now.toISOString()
+    });
+    if (!fresh) return;
+    this.recordAuditEvent({
+      type: "whatsapp_linked.inbound_throttled",
+      aggregateType: "conversation",
+      aggregateId: channel.conversationId,
+      actorId: ownerId,
+      occurredAt: now.toISOString(),
+      payload: {
+        businessId: channel.businessId,
+        conversationId: channel.conversationId,
+        scope,
+        limit:
+          scope === "chat"
+            ? this.linkedInboundQuota.chatMessagesPerHour
+            : this.linkedInboundQuota.businessMessagesPerHour
+      }
     });
   }
 
@@ -6392,7 +8002,13 @@ export class Cp2Store {
   updateConversationSettings(
     ...args: Parameters<MessagingDomain["updateConversationSettings"]>
   ): ReturnType<MessagingDomain["updateConversationSettings"]> {
-    return this.messagingDomain.updateConversationSettings(...args);
+    const [input] = args;
+    // WhatsApp Linked Devices read receipts: what was unread before this read and is read after.
+    const unread = input.read ? this.unreadLinkedWhatsAppMessageIds(input.conversationId) : [];
+    const view = this.messagingDomain.updateConversationSettings(...args);
+    if (unread.length)
+      this.queueLinkedReadReceipts(input.conversationId, unread, input.now ?? new Date());
+    return view;
   }
   deleteConversation(
     ...args: Parameters<MessagingDomain["deleteConversation"]>
@@ -9311,9 +10927,8 @@ export class Cp2Store {
               try {
                 extraction = parseOfflineReceiptOcrExtraction(payload.extraction);
               } catch {
-                // A malformed client-supplied scan is this device's bad input, not our OCR
-                // worker's fault (parseExtractionResult's own 502 is for that trust boundary) -
-                // reject just this operation instead of failing the whole sync batch.
+                // Reject malformed client-supplied extraction for this operation without
+                // failing the whole sync batch. No server OCR worker processes this payload.
                 throw new Cp2Error(
                   400,
                   "offline_receipt_extraction_invalid",
@@ -10747,6 +12362,9 @@ export class Cp2Store {
       deliveryRoutes: [...this.commercialRecordsDomain.routesMap.values()],
       deliveryRouteStops: [...this.commercialRecordsDomain.routeStopsMap.values()],
       dataExports: [...this.dataExports.values()].map(dataExportSummary),
+      whatsappLinkedDelegationResults: [...this.linkedDelegationResults.values()],
+      whatsappLinkedOwnerStates: [...this.linkedOwnerStates.values()],
+      whatsappLinkedDeviceOutbox: [...this.linkedDeviceOutbox.values()],
       accountDeletionRequests: [...this.accountDeletionRequests.values()],
       accountDeletionProofs: [...this.accountDeletionProofs.values()],
       shopPresences: [...this.shopPresences.values()],
@@ -10846,6 +12464,10 @@ export class Cp2Store {
     this.logisticsDomain.clear();
     this.commercialRecordsDomain.clear();
     this.dataExports.clear();
+    this.linkedDelegationResults.clear();
+    this.linkedOwnerStates.clear();
+    this.linkedReadReceipts.clear();
+    this.linkedDeviceOutbox.clear();
     this.accountDeletionRequests.clear();
     this.accountDeletionProofs.clear();
     this.shopPresences.clear();
@@ -11034,6 +12656,12 @@ export class Cp2Store {
     for (const dataExport of snapshot.dataExports) {
       this.dataExports.set(dataExport.id, dataExport as DataExportBundle);
     }
+    for (const entry of snapshot.whatsappLinkedDelegationResults ?? [])
+      if (isLinkedDelegationResultEntry(entry)) this.linkedDelegationResults.set(entry.id, entry);
+    for (const record of snapshot.whatsappLinkedOwnerStates ?? [])
+      if (isLinkedOwnerStateRecord(record)) this.linkedOwnerStates.set(record.id, record);
+    for (const entry of snapshot.whatsappLinkedDeviceOutbox ?? [])
+      if (isLinkedDeviceOutboxEntry(entry)) this.linkedDeviceOutbox.set(entry.id, entry);
 
     for (const item of snapshot.accountDeletionRequests) {
       this.accountDeletionRequests.set(item.id, item);
@@ -15040,6 +16668,17 @@ export class Cp2Store {
       }
     }
 
+    for (const [id, entry] of this.linkedDelegationResults.entries()) {
+      if (entry.businessId === businessId) this.linkedDelegationResults.delete(id);
+    }
+    this.linkedOwnerStates.delete(businessId);
+    for (const [id, entry] of this.linkedReadReceipts.entries()) {
+      if (entry.businessId === businessId) this.linkedReadReceipts.delete(id);
+    }
+    for (const [id, entry] of this.linkedDeviceOutbox.entries()) {
+      if (entry.businessId === businessId) this.linkedDeviceOutbox.delete(id);
+    }
+
     this.shopPresences.delete(businessId);
     for (const [id, invite] of this.networkInvites.entries()) {
       if (invite.businessId === businessId) this.networkInvites.delete(id);
@@ -15310,6 +16949,9 @@ export class Cp2Store {
         scope
       );
       deletedRecordCount += deleteScopedMapRecords(this.dataExports, scope);
+      deletedRecordCount += deleteScopedMapRecords(this.linkedDelegationResults, scope);
+      deletedRecordCount += deleteScopedMapRecords(this.linkedOwnerStates, scope);
+      deletedRecordCount += deleteScopedMapRecords(this.linkedDeviceOutbox, scope);
       deletedRecordCount += deleteScopedMapRecords(this.accountDeletionRequests, scope);
       deletedRecordCount += deleteScopedMapRecords(this.shopPresences, scope);
       deletedRecordCount += deleteScopedMapRecords(this.networkInvites, scope);

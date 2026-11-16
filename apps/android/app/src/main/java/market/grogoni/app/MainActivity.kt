@@ -32,6 +32,7 @@ open class MainActivity : ComponentActivity() {
         private set
     private val executor = Executors.newSingleThreadExecutor()
     private val adapter by lazy { DeviceMessagingAdapter(this) }
+    private val sidecarBridge by lazy { market.grogoni.app.whatsapp.sidecar.WhatsAppSidecarBridge(this) }
     private val deviceUnlock = market.grogoni.app.auth.DeviceUnlockGate(this)
     private var port: WebMessagePort? = null
     private var generation = 0
@@ -227,7 +228,10 @@ open class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); loadIntent(intent) }
     // Pausing the WebView lets the page see visibility changes (the checklist re-reads grants on return from Settings).
-    override fun onResume() { super.onResume(); webView.onResume(); IncomingSmsJournal.schedule(this) }
+    override fun onResume() {
+        super.onResume(); webView.onResume(); IncomingSmsJournal.schedule(this)
+        market.grogoni.app.whatsapp.sidecar.WhatsAppSidecarService.resumeIfEnabled(this)
+    }
     override fun onPause() { webView.onPause(); super.onPause() }
     override fun onDestroy() { deviceUnlock.close(); port?.close(); webView.destroy(); executor.shutdown(); super.onDestroy() }
     protected fun unlockDeviceKey(callback: (String?) -> Unit) { deviceUnlock.unlock(callback) }
@@ -319,6 +323,10 @@ open class MainActivity : ComponentActivity() {
                 if (pendingPicker != null) { callback(null, "The attachment picker is already open."); return }
                 pendingPicker = callback
                 picker.launch(arrayOf("image/jpeg", "image/png", "image/gif", "video/mp4", "audio/mpeg", "audio/ogg", "audio/amr"))
+            }
+            in market.grogoni.app.whatsapp.sidecar.WhatsAppSidecarBridge.METHODS -> executor.execute {
+                val result = runCatching { sidecarBridge.execute(method, request.optJSONObject("params") ?: JSONObject()) }
+                runOnUiThread { callback(result.getOrNull(), result.exceptionOrNull()?.message ?: if (result.isFailure) "WhatsApp on this phone failed." else null) }
             }
             else -> {
                 val cookie = CookieManager.getInstance().getCookie("${BuildConfig.GROGONI_API_ORIGIN}/")

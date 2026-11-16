@@ -15,6 +15,7 @@ interface CatalogueMarketplaceParams extends BusinessParams {
 interface CatalogueMarketplaceSearchQuery {
   search?: string;
   limit?: string;
+  offset?: string;
 }
 
 interface CatalogueDuplicateBody {
@@ -51,12 +52,25 @@ export function registerCatalogueSharingRoutes(app: FastifyInstance, store: Cp2S
 
   app.get(
     "/businesses/:businessId/catalogue-marketplace/shops/:sourceBusinessId/products",
-    async (request: FastifyRequest<{ Params: CatalogueMarketplaceParams }>, reply) => {
+    async (
+      request: FastifyRequest<{
+        Params: CatalogueMarketplaceParams;
+        Querystring: CatalogueMarketplaceSearchQuery;
+      }>,
+      reply
+    ) => {
       try {
         return store.listShareableCatalogueProducts({
           sessionId: readSessionCookie(request.headers.cookie),
           viewerBusinessId: request.params.businessId,
-          sourceBusinessId: request.params.sourceBusinessId
+          sourceBusinessId: request.params.sourceBusinessId,
+          ...(request.query.search === undefined
+            ? {}
+            : { search: parseOptionalString(request.query.search) ?? "" }),
+          ...(request.query.offset === undefined ? {} : { offset: Number(request.query.offset) }),
+          ...(request.query.limit === undefined
+            ? {}
+            : { limit: parseIntegerString(request.query.limit, "limit") })
         });
       } catch (error) {
         return sendCp2Error(reply, error);

@@ -86,11 +86,24 @@ test("signup includes a real passkey step", async ({ page }) => {
   await page.goto("http://localhost:5173/signup");
   await page.getByLabel("Phone number", { exact: true }).fill("712345678");
   await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Create account", exact: true })).toBeDisabled();
+  await expect(page.locator("#signup-password-help")).toHaveText(
+    "Required. Use between 10 and 256 characters."
+  );
+  await expect(page.locator("#signup-requirements")).toContainText(
+    "Agree to the Terms of Service."
+  );
   await page.getByLabel("Display name").fill("Jane");
   await page.getByRole("button", { name: "Use a password instead (more secure)" }).click();
   await page.getByLabel("Password", { exact: true }).fill("secure first password");
+  await page.getByLabel("Confirm password", { exact: true }).fill("different password");
+  await expect(page.locator("#signup-confirmation-help")).toContainText("Passwords do not match.");
   await page.getByLabel("Confirm password").fill("secure first password");
   for (const box of await page.getByRole("checkbox").all()) await box.check();
+  await expect(page.locator("#signup-requirements")).toContainText(
+    "All required fields are complete."
+  );
+  await expect(page.getByRole("button", { name: "Create account", exact: true })).toBeEnabled();
   await page.getByRole("button", { name: "Create account", exact: true }).click();
 
   await expect(page.getByRole("heading", { name: "Create your passkey" })).toBeVisible();

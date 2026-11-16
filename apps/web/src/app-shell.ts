@@ -83,7 +83,12 @@ export interface ChatMessage {
    */
   regenerable?: boolean;
   /** Present when the reply has more than one version; `body` is the selected one. */
-  replyVersions?: { selected: number; count: number };
+  replyVersions?: {
+    selected: number;
+    count: number;
+    /** The question revision (its editedAt, or null) the selected version answered, when recorded. */
+    questionRevision?: string | null;
+  };
 }
 
 export interface ChatAttachment {

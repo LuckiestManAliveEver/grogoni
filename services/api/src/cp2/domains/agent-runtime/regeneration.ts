@@ -45,6 +45,25 @@ export function assertRegenerationTool(
     throw regenerationWouldAct();
 }
 
+/** A regenerated turn cannot create a plan that requires shop or skill approval. */
+export function assertRegenerationApproval(input: {
+  regeneration?: boolean;
+  channelDelegation?: unknown;
+  portableSkill?: unknown;
+  definition: { name: string; readOnly: boolean; requiresConfirmation: boolean };
+  ownerApprovalRequiredFor: readonly string[];
+  skillBinding?: { requiredConfirmationLevel: string } | undefined;
+}): boolean {
+  const requiresConfirmation =
+    (input.channelDelegation !== undefined && !input.definition.readOnly) ||
+    (input.portableSkill !== undefined && !input.definition.readOnly) ||
+    input.definition.requiresConfirmation ||
+    input.ownerApprovalRequiredFor.includes(input.definition.name) ||
+    (input.skillBinding !== undefined && input.skillBinding.requiredConfirmationLevel !== "none");
+  if (input.regeneration === true && requiresConfirmation) throw regenerationWouldAct();
+  return requiresConfirmation;
+}
+
 /**
  * Called first in a turn. A regenerated turn never carries an approval being confirmed, a compiled
  * task step, a portable skill or a channel delegation: each of those exists to act.

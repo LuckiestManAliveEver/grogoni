@@ -2,17 +2,15 @@
 
 ## Receipt OCR
 
-The receipt OCR worker is self-hosted and uses the following third-party components:
+The active on-device scanner uses these pinned packages (licenses from their package manifests):
 
-- PaddleOCR 2.8.1 — Apache 2.0 — primary OCR engine.
-- PaddlePaddle 2.6.2 — Apache 2.0 — PaddleOCR runtime.
-- Tesseract OCR — Apache 2.0 — fallback OCR engine.
-- pytesseract 0.3.13 — Apache 2.0 package wrapper — Python integration for Tesseract.
-- Pillow 10.4.0 — HPND-style Pillow license — image loading for fallback OCR.
-- OpenCV Python headless 4.10.0.84 — Apache 2.0 — image processing dependency.
-- redis-py 5.0.8 — MIT — queue/client support.
+- Tesseract.js 7.0.0: Apache-2.0.
+- tesseract.js-core 7.0.0: Apache-2.0.
+- @tesseract.js-data/eng 1.0.0: MIT package, distributing the selected English data assets.
 
-No required paid OCR API is used by the default production receipt OCR flow.
+Preserve upstream notices for worker/WASM/language assets when publishing them. Asset provenance and version markers live in `apps/web/src/offline-ocr-assets.ts` and `apps/web/vite.config.ts`; see `docs/ocr-licensing.md`.
+
+The retired Python OCR-worker dependencies are no longer part of the receipt scanner. Online receipt images use the existing OpenRouter-backed model and may incur provider charges; its terms are separate from these open-source OCR packages.
 
 ## Authentication
 

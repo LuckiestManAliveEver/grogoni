@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { LinkedLeaseStore } from "./lease.js";
+import type { LinkedLeaseDirectory, LinkedLeaseStore } from "./lease.js";
 
 /**
  * Test support only. One behavioural contract, run against both MemoryLinkedLeaseStore (fake
@@ -14,6 +14,9 @@ export interface LeaseStoreHarness {
   expire(): Promise<void>;
   /** Unique business id per case, so cases never share rows. */
   business(): string;
+  /** The same store's read side; `holderUrl` is the URL it writes for holder "worker-a". */
+  directory?: LinkedLeaseDirectory;
+  holderUrl?: string;
 }
 
 export function describeLinkedLeaseStoreContract(
@@ -144,6 +147,43 @@ export function describeLinkedLeaseStoreContract(
         ]);
         expect(late).toBe(false);
         expect(takeover).toBe(String(BigInt(generation) + 1n));
+      },
+      timeout
+    );
+
+    it(
+      "names the unexpired holder with its URL, and takes state only from the current generation",
+      async () => {
+        const h = await make();
+        const directory = h.directory;
+        if (!directory) return;
+        const business = h.business();
+        expect(await directory.holder(business)).toBeNull();
+        const first = (await h.store.acquire(business, "worker-a", h.ttlMs))!;
+        expect(await directory.holder(business)).toEqual({
+          businessId: business,
+          holderId: "worker-a",
+          generation: first,
+          holderUrl: h.holderUrl ?? null,
+          holderState: null
+        });
+        expect(await directory.publish(business, "worker-a", first, "CONNECTED")).toBe(true);
+        expect(await directory.publish(business, "worker-b", first, "ERROR")).toBe(false);
+        expect(await directory.publish(business, "worker-a", "999", "ERROR")).toBe(false);
+        await expect(directory.publish(business, "worker-a", first, "BOGUS")).rejects.toThrow(
+          "state"
+        );
+        expect((await directory.holder(business))?.holderState).toBe("CONNECTED");
+        expect((await directory.live()).some((row) => row.businessId === business)).toBe(true);
+        // A new generation starts without the predecessor's published state.
+        const second = (await h.store.acquire(business, "worker-a", h.ttlMs))!;
+        expect((await directory.holder(business))?.holderState).toBeNull();
+        expect(await directory.publish(business, "worker-a", first, "CONNECTED")).toBe(false);
+        expect(await directory.publish(business, "worker-a", second, "CONNECTED")).toBe(true);
+        await h.expire();
+        expect(await directory.holder(business)).toBeNull();
+        expect((await directory.live()).some((row) => row.businessId === business)).toBe(false);
+        expect(await directory.publish(business, "worker-a", second, "CONNECTED")).toBe(false);
       },
       timeout
     );

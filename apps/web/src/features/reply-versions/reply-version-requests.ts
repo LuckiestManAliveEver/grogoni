@@ -24,19 +24,27 @@ export interface ReplyVersionRequests {
   idFor: (messageId: string) => string;
   /** The server answered (a version, or a refusal that will not change): forget the id. */
   settle: (messageId: string) => void;
+  /** Sign-out: forgets every id and never writes to storage again, even for a late answer. */
+  dispose: () => void;
 }
 
 /** Where unsettled ids are kept. Session storage in the browser; a plain map in tests. */
 export interface ReplyVersionKeyStore {
   getItem: (key: string) => string | null;
   setItem: (key: string, value: string) => void;
+  removeItem: (key: string) => void;
 }
 
-const storageKey = "grogoni:reply-version-requests";
+/** The single key an earlier build used for every account; only ever removed now. */
+const legacyStorageKey = "grogoni:reply-version-requests";
+const storageKeyPrefix = `${legacyStorageKey}:`;
+/** One storage entry per account: ids asked for by one account are never offered to another. */
+export const replyVersionStorageKey = (accountId: string) => `${storageKeyPrefix}${accountId}`;
 
 export function createReplyVersionRequests(
   newId: () => string = () => crypto.randomUUID(),
-  store: ReplyVersionKeyStore | null = null
+  store: ReplyVersionKeyStore | null = null,
+  storageKey: string = replyVersionStorageKey("unscoped")
 ): ReplyVersionRequests {
   const read = (): Record<string, string> => {
     try {
@@ -52,7 +60,9 @@ export function createReplyVersionRequests(
   const unsettled = new Map<string, string>(
     Object.entries(read()).filter(([, id]) => typeof id === "string")
   );
+  let disposed = false;
   const save = () => {
+    if (disposed) return;
     try {
       store?.setItem(storageKey, JSON.stringify(Object.fromEntries(unsettled)));
     } catch {
@@ -70,28 +80,72 @@ export function createReplyVersionRequests(
     },
     settle(messageId) {
       if (unsettled.delete(messageId)) save();
+    },
+    dispose() {
+      disposed = true;
+      unsettled.clear();
     }
   };
 }
 
-let shared: ReplyVersionRequests | null = null;
+const shared = new Map<string, ReplyVersionRequests>();
+
+function sessionKeyStore(): ReplyVersionKeyStore | null {
+  try {
+    return globalThis.sessionStorage ?? null;
+  } catch {
+    return null;
+  }
+}
 
 /**
- * The page's one set of retry keys. It outlives the chat surface (which unmounts when another
- * panel replaces it) and, through session storage, a reload: a version that may still be written
- * is asked for again with the id it was first asked with.
+ * One account's retry keys for this page. They outlive the chat surface (which unmounts when
+ * another panel replaces it) and, through session storage, a reload: a version that may still be
+ * written is asked for again with the id it was first asked with. Keys are held per account, so
+ * switching accounts in the same tab never sends one account's id for another's reply.
  */
-export function sharedReplyVersionRequests(): ReplyVersionRequests {
-  if (shared === null) {
-    let store: ReplyVersionKeyStore | null = null;
-    try {
-      store = globalThis.sessionStorage ?? null;
-    } catch {
-      store = null;
-    }
-    shared = createReplyVersionRequests(undefined, store);
+export function sharedReplyVersionRequests(accountId: string): ReplyVersionRequests {
+  let requests = shared.get(accountId);
+  if (requests === undefined) {
+    requests = createReplyVersionRequests(
+      undefined,
+      sessionKeyStore(),
+      replyVersionStorageKey(accountId)
+    );
+    shared.set(accountId, requests);
   }
-  return shared;
+  return requests;
+}
+
+/**
+ * Sign-out and account reset: drops every account's retry keys from memory and from session
+ * storage. A version still being written then simply arrives on the next thread load.
+ */
+export function forgetReplyVersionRequests(
+  store:
+    | (ReplyVersionKeyStore & { length?: number; key?: (index: number) => string | null })
+    | null = sessionKeyStore()
+): void {
+  const keys = [legacyStorageKey, ...[...shared.keys()].map(replyVersionStorageKey)];
+  // A request still in flight holds its account's set: disposing it stops a late answer from
+  // writing that account's ids back after sign-out.
+  for (const requests of shared.values()) requests.dispose();
+  shared.clear();
+  try {
+    for (let index = 0; index < (store?.length ?? 0); index += 1) {
+      const key = store?.key?.(index);
+      if (typeof key === "string" && key.startsWith(storageKeyPrefix)) keys.push(key);
+    }
+  } catch {
+    // Enumeration can fail even when removal of known account keys still works.
+  }
+  for (const key of new Set(keys)) {
+    try {
+      store?.removeItem(key);
+    } catch {
+      // One blocked entry must not prevent removing the remaining account keys.
+    }
+  }
 }
 
 /** The parts of a thread message that decide what the viewer is offered. */
