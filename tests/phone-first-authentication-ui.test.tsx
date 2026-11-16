@@ -109,7 +109,35 @@ afterEach(() => {
 });
 
 describe("PhoneFirstAuthentication login methods", () => {
-  it("waits for login to begin, then tries the passkey before PIN", async () => {
+  it("offers email resend with cooldown and clears proof when changing address", async () => {
+    mockedApiFetch.mockImplementation(async (path) => {
+      if (path === "/auth/login/methods") return { recoveryAvailable: true };
+      if (path === "/auth/recovery/start") return { transactionId: "recovery-1" };
+      throw new Error(`Unexpected ${path}`);
+    });
+    renderLogin();
+    await change(inputByLabel("Phone number"), "0712345678");
+    await click(buttonByText("Trouble logging in?"));
+    const select = document.querySelector("select");
+    await act(async () => {
+      select!.value = "email";
+      select!.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await change(inputByLabel("Backup email"), "owner@example.test");
+    await click(buttonByText("Send email recovery code"));
+    expect(document.body.textContent).toContain(
+      "If this email is registered, we'll send a verification code."
+    );
+    expect(buttonByText("Resend code in 60s").disabled).toBe(true);
+    await change(inputByLabel("Verification code"), "12a34567");
+    expect(inputByLabel("Verification code").maxLength).toBe(6);
+    await click(buttonByText("Change email"));
+    expect(inputByLabel("Backup email").value).toBe("owner@example.test");
+    expect(document.body.textContent).not.toContain("Verification code");
+    expect(onAuthenticated).not.toHaveBeenCalled();
+  });
+
+  it("starts a passkey ceremony only after an explicit selection", async () => {
     vi.mocked(browserSupportsWebAuthn).mockReturnValue(true);
     const completed = { account: { primaryAuthDestination: "+254712345678" } };
     vi.mocked(loginWithBrowserPasskey).mockResolvedValue(completed as never);
@@ -123,6 +151,8 @@ describe("PhoneFirstAuthentication login methods", () => {
     expect(loginWithBrowserPasskey).not.toHaveBeenCalled();
     await change(inputByLabel("Phone number"), "0712345678");
     await click(buttonByText("Continue to log in"));
+    expect(loginWithBrowserPasskey).not.toHaveBeenCalled();
+    await click(buttonByText("Log in with passkey"));
     expect(loginWithBrowserPasskey).toHaveBeenCalledWith("+254712345678");
     expect(onAuthenticated).toHaveBeenCalledWith(completed);
     expect(deviceMessagingAdapter.call).not.toHaveBeenCalled();
@@ -131,7 +161,6 @@ describe("PhoneFirstAuthentication login methods", () => {
   it("falls back to native device security when browser passkeys are unsupported", async () => {
     vi.mocked(isNativeDeviceHost).mockReturnValue(true);
     vi.mocked(deviceMessagingAdapter.call)
-      .mockResolvedValueOnce({ screenLock: true })
       .mockResolvedValueOnce({ screenLock: true })
       .mockResolvedValueOnce({ accountId: "native", credentialId: "key" })
       .mockResolvedValueOnce({ signature: "proof" });
@@ -146,6 +175,8 @@ describe("PhoneFirstAuthentication login methods", () => {
     await change(inputByLabel("Phone number"), "0712345678");
     await click(buttonByText("Continue to log in"));
     expect(loginWithBrowserPasskey).not.toHaveBeenCalled();
+    expect(onAuthenticated).not.toHaveBeenCalled();
+    await click(buttonByText("Log in with device security"));
     expect(onAuthenticated).toHaveBeenCalledWith(completed);
   });
 
@@ -249,7 +280,7 @@ describe("PhoneFirstAuthentication login methods", () => {
     await click(buttonByText("Log in"));
 
     expect(document.body.textContent).toContain(
-      "We couldn't sign you in with that PIN. Check your account details and PIN, then try again."
+      "That PIN didn't work. Try your passkey or try again."
     );
     expect(inputByLabel("4-digit PIN").value).toBe("1234");
     expect(document.body.textContent).not.toContain("Log in with password");

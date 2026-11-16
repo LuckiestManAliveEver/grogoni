@@ -137,6 +137,20 @@ export class OtpDomain {
     const expiresAt = new Date(now.getTime() + otpTtlMs).toISOString();
     const createdAt = now.toISOString();
 
+    // Only the newest recovery code may authorize recovery. Do this after rate checks,
+    // so a throttled resend cannot invalidate the code already in the user's inbox.
+    if (purpose === "recovery") {
+      for (const challenge of this.otpChallenges.values()) {
+        if (
+          challenge.purpose === purpose &&
+          challenge.channel === input.channel &&
+          challenge.destination === destination
+        ) {
+          challenge.expiresAt = createdAt;
+        }
+      }
+    }
+
     this.otpChallenges.set(challengeId, {
       id: challengeId,
       channel: input.channel,
