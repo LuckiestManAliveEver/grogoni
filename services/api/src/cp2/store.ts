@@ -9297,9 +9297,8 @@ export class Cp2Store {
               try {
                 extraction = parseOfflineReceiptOcrExtraction(payload.extraction);
               } catch {
-                // A malformed client-supplied scan is this device's bad input, not our OCR
-                // worker's fault (parseExtractionResult's own 502 is for that trust boundary) -
-                // reject just this operation instead of failing the whole sync batch.
+                // Reject malformed client-supplied extraction for this operation without
+                // failing the whole sync batch. No server OCR worker processes this payload.
                 throw new Cp2Error(
                   400,
                   "offline_receipt_extraction_invalid",

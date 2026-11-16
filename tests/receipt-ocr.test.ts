@@ -151,7 +151,7 @@ describe("Receipt OCR", () => {
     await app.close();
   });
 
-  it("uses PaddleOCR metadata, matches suppliers, saves structured data, and deletes image metadata", async () => {
+  it("labels supplied text honestly, matches suppliers and saves structured data without retaining images", async () => {
     const store = createCp2Store();
     const app = buildApi({ cp2: { store } });
     const { businessId, sessionCookie } = await createOwnerBusiness(app);
@@ -183,7 +183,11 @@ describe("Receipt OCR", () => {
 
     expect(job).toMatchObject({
       status: "MATCHING",
-      engine: "paddleocr",
+      engine: "provided_text",
+      engineVersion: "not-applicable",
+      modelVersion: "not-applicable",
+      languageHints: [],
+      averageConfidence: 0,
       profile: "balanced",
       fallbackUsed: false,
       matchedSupplierId: supplier.id,

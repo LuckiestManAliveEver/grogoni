@@ -2354,11 +2354,8 @@ export interface PurchaseReceiptSummary {
   lineItems: ReceiptLineItemSummary[];
 }
 
-/**
- * Generic OCR capability shared by receipt parsing, chat document extraction, and camera product
- * capture - not receipt-specific. See services/api/src/cp2/ocr-provider.ts.
- */
-export type OcrEngine = "paddleocr" | "tesseract" | "gpt-6-luna";
+/** Engine provenance. Historical PaddleOCR records remain readable; plain text is not OCR. */
+export type OcrEngine = "provided_text" | "paddleocr" | "tesseract" | "gpt-6-luna";
 export type OcrProfile = "mobile" | "balanced" | "accurate";
 
 export type ReceiptOCRJobStatus =

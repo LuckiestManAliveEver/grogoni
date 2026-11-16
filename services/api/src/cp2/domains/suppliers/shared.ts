@@ -8,10 +8,6 @@ import type {
 import { roundMoney } from "../../money.js";
 import { normalizeDestination } from "../../phone-identity.js";
 
-export const receiptOCRDefaultPrimaryEngine = "paddleocr";
-export const receiptOCRDefaultFallbackEngine = "tesseract";
-export const receiptOCRDefaultProfile = "balanced";
-export const receiptOCRDefaultLanguageHints = ["en", "sw"];
 export const receiptOCRSupportedContentTypes = new Set([
   "image/jpeg",
   "image/png",
@@ -634,35 +630,6 @@ function receiptSignatureMatches(contentType: string, signature: string): boolea
   }
 
   return contentType.startsWith("text/") || contentType === "application/vnd.ms-excel";
-}
-
-export function readReceiptOCRConfig(): {
-  primaryEngine: ReceiptOCRJobSummary["engine"];
-  engineVersion: string;
-  modelVersion: string;
-  profile: ReceiptOCRJobSummary["profile"];
-  languageHints: string[];
-} {
-  const primaryEngine =
-    process.env.OCR_ENGINE_PRIMARY === receiptOCRDefaultFallbackEngine
-      ? receiptOCRDefaultFallbackEngine
-      : receiptOCRDefaultPrimaryEngine;
-  const profile =
-    process.env.OCR_PROFILE === "mobile" || process.env.OCR_PROFILE === "accurate"
-      ? process.env.OCR_PROFILE
-      : receiptOCRDefaultProfile;
-  const languageHints = (process.env.OCR_LANGUAGE_HINTS ?? receiptOCRDefaultLanguageHints.join(","))
-    .split(",")
-    .map((language) => language.trim())
-    .filter((language) => language.length > 0);
-
-  return {
-    primaryEngine,
-    engineVersion: process.env.OCR_ENGINE_VERSION ?? "paddleocr-2.8.1",
-    modelVersion: process.env.OCR_MODEL_VERSION ?? `${profile}-cpu`,
-    profile,
-    languageHints
-  };
 }
 
 function readPositiveIntegerEnv(name: string, fallback: number): number {

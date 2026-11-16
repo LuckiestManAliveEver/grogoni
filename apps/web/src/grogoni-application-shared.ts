@@ -1038,7 +1038,7 @@ export interface DocumentExtractionResponse {
   warnings: string[];
   sizeBytes: number;
   checksum: string;
-  engine?: "paddleocr" | "tesseract" | "gpt-6-luna";
+  engine?: "provided_text" | "paddleocr" | "tesseract" | "gpt-6-luna";
   averageConfidence?: number;
 }
 

@@ -1,5 +1,7 @@
 # Client-first inference audit
 
+> Historical audit: this records the architecture at its original audit date, not the current deployment. Server OCR-worker and earlier inference references below are historical evidence only. Current receipt behavior is documented in [../receipt-ocr.md](../receipt-ocr.md); implementation gaps are tracked in [the receipt checklist](../audits/receipt-to-commerce-checklist-2026-11-16.md).
+
 > **Superseded.** The client-first inference architecture this audit examines was retired — see
 > ADR-device-independent-runtime-and-registry-discovery.md. Kept as historical record.
 
