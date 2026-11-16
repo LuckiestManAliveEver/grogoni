@@ -270,9 +270,10 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
           ) : stage === "profile" ? (
             <div className="auth-fields">
               <label>
-                Display name
+                <span id="signup-name-label">Display name</span>
                 <input
                   required
+                  aria-labelledby="signup-name-label"
                   aria-describedby="signup-name-help"
                   autoFocus
                   type="text"
@@ -287,9 +288,12 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
                 <small id="signup-name-help">Required. Use between 2 and 100 characters.</small>
               </label>
               <label>
-                Backup email <span className="auth-optional-label">Optional</span>
+                <span id="signup-email-label">
+                  Backup email <span className="auth-optional-label">Optional</span>
+                </span>
                 <input
                   type="email"
+                  aria-labelledby="signup-email-label"
                   aria-describedby="signup-email-help"
                   autoComplete="email"
                   placeholder="you@example.com"
@@ -304,9 +308,10 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
               </label>
 
               <label>
-                Password
+                <span id="signup-password-label">Password</span>
                 <input
                   required
+                  aria-labelledby="signup-password-label"
                   aria-describedby="signup-password-help"
                   type="password"
                   autoComplete="new-password"
@@ -321,9 +326,10 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
                 </small>
               </label>
               <label>
-                Confirm password
+                <span id="signup-confirmation-label">Confirm password</span>
                 <input
                   required
+                  aria-labelledby="signup-confirmation-label"
                   aria-describedby="signup-confirmation-help"
                   aria-invalid={
                     passwordConfirmation.length > 0 && password !== passwordConfirmation
