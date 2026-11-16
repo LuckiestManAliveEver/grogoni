@@ -1,5 +1,7 @@
 # Receipt-to-commerce repository audit
 
+> Historical contract-only audit at `acfd72b5`. Subsequent cleanup and posting safeguards supersede its OCR defaults, validation and packaging findings. Planned migration numbers and engine decisions below were proposals, not completed code. See [current checklist](receipt-to-commerce-checklist-2026-11-16.md) and [implemented safeguards](../implementation/receipt-posting-safeguards.md).
+
 Date: 2026-11-16. Base: `origin/main` at `dda6928a`. Every finding below was checked against code,
 not documentation. Where a document disagrees with the code, the document is listed as stale.
 

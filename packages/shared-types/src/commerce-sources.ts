@@ -63,13 +63,19 @@ export interface DistributionRelationship extends CommerceRecordBase {
   status: "requested" | "accepted" | "rejected" | "revoked";
   respondedBy: string | null;
 }
+export interface VerifiedProductPackaging extends importPackagingBase {
+  kind: "packaging";
+  status: "active" | "revoked";
+}
+type importPackagingBase = import("./receipt-commerce.js").ProductPackaging;
 export type UnifiedCommerceRecord =
   | CommerceSource
   | ProductSourceBinding
   | CommerceOffer
   | DistributionRelationship
   | CommerceSourceCandidate
-  | CommerceRepresentation;
+  | CommerceRepresentation
+  | VerifiedProductPackaging;
 export interface PublishedCommerceOffer {
   id: string;
   businessId: string;

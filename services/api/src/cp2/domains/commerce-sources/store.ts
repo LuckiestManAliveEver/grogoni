@@ -449,6 +449,51 @@ export class CommerceSourcesDomain {
     const base = { id: randomUUID(), businessId: input.businessId, createdAt: at, updatedAt: at };
     let record: UnifiedCommerceRecord;
     switch (operation) {
+      case "packaging.verify": {
+        if (values.confirmed !== true) return fail("Confirm the packaging definition explicitly.");
+        const productId = text(values.productId, "Product ID");
+        const product = this.deps.product(input.businessId, productId);
+        const packUnit = text(values.packUnit, "Pack unit", 80).normalize("NFKC").toLowerCase();
+        const baseUnit = (product.unit ?? "").normalize("NFKC").trim().toLowerCase();
+        if (!baseUnit || packUnit === baseUnit)
+          return fail("Select a distinct pack unit and a known stock unit.");
+        const unitsPerPack = values.unitsPerPack;
+        if (
+          typeof unitsPerPack !== "number" ||
+          !Number.isSafeInteger(unitsPerPack) ||
+          unitsPerPack < 1 ||
+          unitsPerPack > 1000000
+        )
+          return fail("Units per pack must be an integer between 1 and 1000000.");
+        const existing = [...this.records.values()].find(
+          (r) =>
+            r.kind === "packaging" &&
+            r.businessId === input.businessId &&
+            r.productId === productId &&
+            r.packUnit === packUnit &&
+            r.baseUnit === baseUnit
+        );
+        record = {
+          ...base,
+          ...(existing ? { id: existing.id, createdAt: existing.createdAt } : {}),
+          kind: "packaging",
+          status: "active",
+          productId,
+          packUnit,
+          baseUnit,
+          unitsPerPack,
+          verifiedBy: actor,
+          verifiedAt: at
+        };
+        break;
+      }
+      case "packaging.revoke": {
+        const existing = this.owned(input, text(values.id, "Packaging ID"));
+        if (existing.kind !== "packaging") return fail("Select a packaging definition.");
+        record = { ...existing, status: "revoked", updatedAt: at };
+        break;
+      }
+
       case "source.connect": {
         const type = text(values.type, "Source type");
         if (!(commerceSourceTypes as readonly string[]).includes(type))

@@ -441,8 +441,23 @@ describe("Offline runtime API integration", () => {
           `/businesses/${fixture.scope.storeId}/receipt-ocr/jobs/${cloudJob.id}/confirm`,
           { createSupplier: true }
         );
+      expect((await confirm()).statusCode).toBe(409);
+      const review = await fixture.request(
+        "PATCH",
+        `/businesses/${fixture.scope.storeId}/receipt-ocr/jobs/${cloudJob.id}`,
+        {
+          extractedText: cloudJob.fullText,
+          structuredExtraction: {
+            ...cloudJob.structuredExtraction,
+            documentType: "invoice",
+            fulfillmentStatus: "pending",
+            receipt: { ...cloudJob.structuredExtraction.receipt, purchaseDate: "2026-11-16" }
+          }
+        }
+      );
+      expect(review.statusCode, review.body).toBe(200);
       const receipt = await confirm();
-      expect(receipt.statusCode).toBe(200);
+      expect(receipt.statusCode, receipt.body).toBe(200);
       expect(receipt.json()).toMatchObject({
         supplierName: "Acme Supplies",
         total: 500,

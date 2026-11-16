@@ -13,6 +13,8 @@ import {
 
 function fields() {
   const f = buildReceiptStructuredExtraction(parseReceiptText(""));
+  f.documentType = "delivery_note";
+  f.fulfillmentStatus = "received";
   Object.assign(f.supplier, {
     supplierName: "Acacia Wholesale",
     phoneNumber: "+254712345678",

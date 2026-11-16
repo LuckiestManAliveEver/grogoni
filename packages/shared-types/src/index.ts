@@ -2414,6 +2414,10 @@ export interface ReceiptMatchCandidateSummary {
 }
 
 export interface ReceiptStructuredExtractionSummary {
+  /** Reviewed document class, retained with the draft. Old drafts require classification. */
+  documentType?: import("./receipt-commerce.js").ReceiptDocumentType;
+  fulfillmentStatus?: "unknown" | "pending" | "received";
+
   sourceDocument?: { sha256: string; fileName: string };
   deliveryBinding?: {
     purchaseReceiptId: string;
@@ -2423,6 +2427,10 @@ export interface ReceiptStructuredExtractionSummary {
       receiptLineItemId: string;
       productId: string;
       movementId: string | null;
+      receiptQuantity?: number;
+      stockQuantity?: number;
+      stockUnit?: string | null;
+      packagingId?: string | null;
     }>;
   };
 
@@ -2458,6 +2466,7 @@ export interface ReceiptStructuredExtractionSummary {
     subtotal: number | null;
     discount: number | null;
     tax: number | null;
+    taxBasis?: "exclusive" | "inclusive" | "unknown";
     total: number | null;
     amountPaid: number | null;
     balance: number | null;
@@ -2474,6 +2483,8 @@ export interface ReceiptStructuredExtractionSummary {
     unit: string | null;
     unitPrice: number;
     lineTotal: number;
+    lineDiscount?: number | null;
+    lineTotalSource?: "printed" | "derived" | "reviewed" | "unknown";
     batchNumber: string | null;
     expiryDate: string | null;
   }>;

@@ -1,3 +1,6 @@
+import { requirePurchaseDocument } from "./domains/receipt-commerce/document-policy.js";
+import { validateReceiptFinances } from "./domains/receipt-commerce/financial-validation.js";
+import { convertReceiptQuantity } from "./domains/receipt-commerce/unit-conversion.js";
 import { readLinkedDocument } from "../messaging/whatsapp-linked/document-reader.js";
 import { readChatImage } from "./chat-image-reader.js";
 import { parseLinkedToolGrants } from "../messaging/whatsapp-linked/tool-grants.js";
@@ -7956,6 +7959,14 @@ export class Cp2Store {
       throw new Cp2Error(404, "receipt_not_found", "Receipt draft not found.");
     if (job.structuredExtraction.deliveryBinding)
       return this.supplierDomain.confirmReceiptOCRJob(input);
+    requirePurchaseDocument(job.structuredExtraction, true);
+    const financialFindings = validateReceiptFinances(job.structuredExtraction);
+    if (financialFindings.length)
+      throw new Cp2Error(
+        409,
+        "receipt_financial_review_required",
+        financialFindings.map((finding) => `${finding.field}: ${finding.message}`).join(" ")
+      );
     const products = job.structuredExtraction.products;
     if (
       !products.length ||
@@ -7988,15 +7999,36 @@ export class Cp2Store {
           "delivery_product_ambiguous",
           `More than one product matches ${item.itemName}. Add a unique SKU before confirming.`
         );
+      if (!item.unit?.trim())
+        throw new Cp2Error(
+          409,
+          "receipt_unit_review_required",
+          `Confirm the unit of ${item.itemName} before adding inventory.`
+        );
+      const matched = matches[0];
+      const conversion = matched
+        ? convertReceiptQuantity({
+            businessId: input.businessId,
+            productId: matched.id,
+            receiptUnit: item.unit,
+            stockUnit: matched.unit,
+            quantity: item.quantity,
+            packaging: [...this.commerceSources.records.values()].filter(
+              (r) => r.kind === "packaging"
+            )
+          })
+        : null;
+      if (conversion?.basis === "unresolved")
+        throw new Cp2Error(409, "receipt_unit_conversion_required", conversion.detail);
       this.requireAuthorizedActor(input.sessionId, input.businessId, "inventory:adjust", input.now);
       if (!matches.length)
         this.requireAuthorizedActor(input.sessionId, input.businessId, "product:write", input.now);
-      return { item, existing: matches[0] };
+      return { item, existing: matches[0], conversion };
     });
     const before = this.snapshot();
     try {
       const receipt = this.supplierDomain.confirmReceiptOCRJob(input);
-      const bindings = plan.map(({ item, existing }, lineIndex) => {
+      const bindings = plan.map(({ item, existing, conversion }, lineIndex) => {
         // A repeated line may refer to a product created earlier in this same delivery.
         const product =
           existing ??
@@ -8025,7 +8057,11 @@ export class Cp2Store {
           businessId: input.businessId,
           productId: product.id,
           adjustment: {
-            quantityAfter: current.quantity + item.quantity,
+            quantityAfter:
+              current.quantity +
+              (conversion?.baseQuantityMilli !== null && conversion?.baseQuantityMilli !== undefined
+                ? conversion.baseQuantityMilli / 1000
+                : item.quantity),
             reason: `Delivery receipt ${receipt.id}`
           },
           ...(input.now ? { now: input.now } : {})
@@ -8034,7 +8070,14 @@ export class Cp2Store {
           lineIndex,
           receiptLineItemId: receipt.lineItems[lineIndex]!.id,
           productId: product.id,
-          movementId: result.movement.id
+          movementId: result.movement.id,
+          receiptQuantity: item.quantity,
+          stockQuantity:
+            conversion?.baseQuantityMilli != null
+              ? conversion.baseQuantityMilli / 1000
+              : item.quantity,
+          stockUnit: current.unit,
+          packagingId: conversion?.packagingId ?? null
         };
       });
       const confirmed = this.supplierDomain.receiptOCRJobsMap.get(job.id)!;

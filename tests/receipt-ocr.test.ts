@@ -208,6 +208,21 @@ describe("Receipt OCR", () => {
       total: 200
     });
 
+    const review = await app.inject({
+      method: "PATCH",
+      url: `/businesses/${businessId}/receipt-ocr/jobs/${job.id}`,
+      headers: { cookie: sessionCookie },
+      payload: {
+        extractedText:
+          "Supplier: Wholesale Depot\nAgent: Mary Wanjiku\nPhone: +254700000010\nDate: 2026-07-09\nMaize,2,100,200\nTotal: 200",
+        structuredExtraction: {
+          ...job.structuredExtraction,
+          documentType: "invoice",
+          fulfillmentStatus: "pending"
+        }
+      }
+    });
+    expect(review.statusCode, review.body).toBe(200);
     const receipt = await postJson<PurchaseReceiptResponse>(
       app,
       `/businesses/${businessId}/receipt-ocr/jobs/${job.id}/confirm`,

@@ -1,3 +1,4 @@
+import { receiptDocumentTypes } from "@grogoni/shared-types";
 import { useState } from "react";
 import type {
   ReceiptOCRJobSummary,
@@ -51,6 +52,53 @@ export function ReceiptFieldsForm({
         The receipt connects the wholesaler, sales agent and delivered products. Review the fields,
         save corrections, then confirm the delivery.
       </p>
+      <fieldset disabled={!editable || busy}>
+        <legend>Document and delivery verification</legend>
+        <label>
+          Document type
+          <select
+            aria-label="Document type"
+            value={fields.documentType ?? "unknown"}
+            onChange={(event) =>
+              updateFields((current) => ({
+                ...current,
+                documentType: event.target.value as NonNullable<
+                  ReceiptStructuredExtractionSummary["documentType"]
+                >
+              }))
+            }
+          >
+            {receiptDocumentTypes.map((type) => (
+              <option key={type} value={type}>
+                {type.replaceAll("_", " ")}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Goods received
+          <select
+            aria-label="Goods received"
+            value={fields.fulfillmentStatus ?? "unknown"}
+            onChange={(event) =>
+              updateFields((current) => ({
+                ...current,
+                fulfillmentStatus: event.target.value as NonNullable<
+                  ReceiptStructuredExtractionSummary["fulfillmentStatus"]
+                >
+              }))
+            }
+          >
+            <option value="unknown">Not verified</option>
+            <option value="pending">Awaiting delivery</option>
+            <option value="received">I confirm the goods were received</option>
+          </select>
+        </label>
+        <p>
+          Recording an invoice does not record payment. Only confirm delivery after checking the
+          goods.
+        </p>
+      </fieldset>
       {(["supplier", "salesAgent", "receipt"] as const).map((section) => (
         <fieldset key={section} disabled={!editable || busy}>
           <legend>
@@ -63,31 +111,53 @@ export function ReceiptFieldsForm({
           {Object.entries(fields[section]).map(([key, value]) => (
             <label key={key}>
               {key.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase())}
-              <input
-                aria-label={`${section} ${key}`}
-                value={value ?? ""}
-                type={
-                  typeof value === "number" ||
-                  ["subtotal", "discount", "tax", "total", "amountPaid", "balance"].includes(key)
-                    ? "number"
-                    : "text"
-                }
-                step="any"
-                min="0"
-                onChange={(event) => {
-                  const raw = event.target.value;
-                  const next =
-                    event.target.type === "number"
-                      ? raw === ""
-                        ? null
-                        : Number(raw)
-                      : raw || null;
-                  updateFields((current) => ({
-                    ...current,
-                    [section]: { ...current[section], [key]: next }
-                  }));
-                }}
-              />
+              {section === "receipt" && key === "taxBasis" ? (
+                <select
+                  aria-label="receipt taxBasis"
+                  value={value ?? "unknown"}
+                  onChange={(event) =>
+                    updateFields((current) => ({
+                      ...current,
+                      receipt: {
+                        ...current.receipt,
+                        taxBasis: event.target.value as NonNullable<
+                          ReceiptStructuredExtractionSummary["receipt"]["taxBasis"]
+                        >
+                      }
+                    }))
+                  }
+                >
+                  <option value="unknown">Not verified</option>
+                  <option value="exclusive">Tax added to subtotal</option>
+                  <option value="inclusive">Tax already included</option>
+                </select>
+              ) : (
+                <input
+                  aria-label={`${section} ${key}`}
+                  value={value ?? ""}
+                  type={
+                    typeof value === "number" ||
+                    ["subtotal", "discount", "tax", "total", "amountPaid", "balance"].includes(key)
+                      ? "number"
+                      : "text"
+                  }
+                  step="any"
+                  min="0"
+                  onChange={(event) => {
+                    const raw = event.target.value;
+                    const next =
+                      event.target.type === "number"
+                        ? raw === ""
+                          ? null
+                          : Number(raw)
+                        : raw || null;
+                    updateFields((current) => ({
+                      ...current,
+                      [section]: { ...current[section], [key]: next }
+                    }));
+                  }}
+                />
+              )}
             </label>
           ))}
         </fieldset>
@@ -100,24 +170,55 @@ export function ReceiptFieldsForm({
             {Object.entries(product).map(([key, value]) => (
               <label key={key}>
                 {key.replace(/([A-Z])/g, " $1")}
-                <input
-                  aria-label={`Product ${index + 1} ${key}`}
-                  value={value ?? ""}
-                  type={["quantity", "unitPrice", "lineTotal"].includes(key) ? "number" : "text"}
-                  step="any"
-                  min={key === "quantity" ? "0.000001" : "0"}
-                  required={["itemName", "quantity", "unitPrice", "lineTotal"].includes(key)}
-                  onChange={(event) => {
-                    const raw = event.target.value;
-                    const next = event.target.type === "number" ? Number(raw) : raw || null;
-                    updateFields((current) => ({
-                      ...current,
-                      products: current.products.map((p, i) =>
-                        i === index ? { ...p, [key]: next } : p
-                      )
-                    }));
-                  }}
-                />
+                {key === "lineTotalSource" ? (
+                  <select
+                    aria-label={`Product ${index + 1} ${key}`}
+                    value={value ?? "unknown"}
+                    onChange={(event) =>
+                      updateFields((current) => ({
+                        ...current,
+                        products: current.products.map((p, i) =>
+                          i === index
+                            ? {
+                                ...p,
+                                lineTotalSource: event.target.value as NonNullable<
+                                  ReceiptStructuredExtractionSummary["products"][number]["lineTotalSource"]
+                                >
+                              }
+                            : p
+                        )
+                      }))
+                    }
+                  >
+                    <option value="unknown">Source unknown</option>
+                    <option value="printed">Printed on receipt</option>
+                    <option value="derived">Calculated; needs review</option>
+                    <option value="reviewed">I checked this calculated total</option>
+                  </select>
+                ) : (
+                  <input
+                    aria-label={`Product ${index + 1} ${key}`}
+                    value={value ?? ""}
+                    type={
+                      ["quantity", "unitPrice", "lineTotal", "lineDiscount"].includes(key)
+                        ? "number"
+                        : "text"
+                    }
+                    step="any"
+                    min={key === "quantity" ? "0.000001" : "0"}
+                    required={["itemName", "quantity", "unitPrice", "lineTotal"].includes(key)}
+                    onChange={(event) => {
+                      const raw = event.target.value;
+                      const next = event.target.type === "number" ? Number(raw) : raw || null;
+                      updateFields((current) => ({
+                        ...current,
+                        products: current.products.map((p, i) =>
+                          i === index ? { ...p, [key]: next } : p
+                        )
+                      }));
+                    }}
+                  />
+                )}
               </label>
             ))}
             <button

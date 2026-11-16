@@ -1,3 +1,6 @@
+import { receiptPostingIdentity } from "../receipt-commerce/receipt-identity.js";
+import { requirePurchaseDocument } from "../receipt-commerce/document-policy.js";
+import { validateReceiptFinances } from "../receipt-commerce/financial-validation.js";
 import { parseReceiptFields, receiptFieldsToParsed } from "./receipt-fields.js";
 /**
  * Fourth slice of in-process domain modularization for the Cp2Store monolith (see
@@ -41,7 +44,6 @@ import type {
   SupplierSummary
 } from "@grogoni/shared-types";
 import { Cp2Error, assertValid } from "../../cp2-error.js";
-import { roundMoney } from "../../money.js";
 import { normalizeDestination } from "../../phone-identity.js";
 import { sanitizeNetworkNode } from "../../network-node-view.js";
 import {
@@ -737,6 +739,15 @@ export class SupplierDomain {
       throw new Cp2Error(409, "receipt_ocr_failed", job.errorMessage ?? "Receipt OCR failed.");
     }
 
+    requirePurchaseDocument(job.structuredExtraction, input.receiveInventory === true);
+    const financialFindings = validateReceiptFinances(job.structuredExtraction);
+    if (financialFindings.length)
+      throw new Cp2Error(
+        409,
+        "receipt_financial_review_required",
+        financialFindings.map((finding) => `${finding.field}: ${finding.message}`).join(" ")
+      );
+
     let supplier =
       input.supplierId === null || input.supplierId === undefined
         ? job.matchedSupplierId === null
@@ -760,6 +771,29 @@ export class SupplierDomain {
 
     if (supplier === null) {
       throw new Cp2Error(409, "receipt_supplier_required", "Confirm or create a supplier first.");
+    }
+
+    const postingIdentity = receiptPostingIdentity(supplier.id, job.structuredExtraction);
+    if (postingIdentity !== null) {
+      const prior = [...this.purchaseReceipts.values()].find((receipt) => {
+        if (
+          receipt.businessId !== input.businessId ||
+          receipt.supplierId !== supplier!.id ||
+          receipt.ocrJobId === job.id
+        )
+          return false;
+        const priorJob = receipt.ocrJobId ? this.receiptOCRJobs.get(receipt.ocrJobId) : undefined;
+        return (
+          priorJob !== undefined &&
+          receiptPostingIdentity(supplier!.id, priorJob.structuredExtraction) === postingIdentity
+        );
+      });
+      if (prior)
+        throw new Cp2Error(
+          409,
+          "receipt_duplicate_review_required",
+          "A purchase with this supplier and document number is already recorded. Review the existing receipt instead of posting it again."
+        );
     }
 
     let salesAgent =
@@ -812,12 +846,8 @@ export class SupplierDomain {
       supplierName: supplier.name,
       salesAgentId: salesAgent?.id ?? null,
       salesAgentName: salesAgent?.name ?? job.salesAgentName,
-      receiptDate: job.receiptDate ?? now.toISOString(),
-      total:
-        job.total ??
-        lineItems.reduce((sum, item) => {
-          return roundMoney(sum + item.total);
-        }, 0),
+      receiptDate: job.structuredExtraction.receipt.purchaseDate!,
+      total: job.structuredExtraction.receipt.total!,
       sourceFileName: job.sourceFileName,
       ocrJobId: job.id,
       imageStored: false,
