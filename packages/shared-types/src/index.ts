@@ -16,6 +16,7 @@ import type { AgentTurnEffect, ConversationReplyVersions } from "./reply-version
 export * from "./recovery-approval.js";
 export * from "./guest-intent.js";
 export * from "./phone-number.js";
+export * from "./pin-strength.js";
 export * from "./portable-agent.js";
 export * from "./runtime-handoff.js";
 export * from "./runtime-registry.js";

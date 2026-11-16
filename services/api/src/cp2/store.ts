@@ -954,7 +954,8 @@ export interface NetworkInviteDeliveryInput {
 }
 
 export type NetworkInviteDeliveryResult =
-  { status: "sent" } | { status: "failed"; failureReason: string };
+  | { status: "sent" }
+  | { status: "failed"; failureReason: string };
 
 export type NetworkInviteSender = (
   input: NetworkInviteDeliveryInput
@@ -3635,6 +3636,8 @@ export class Cp2Store {
     sessionId?: string | null;
     transactionId: string;
     displayName: string;
+    /** A new account signs in with a 4-digit PIN by default, or a password if the owner prefers. */
+    pin?: string;
     password?: string;
     email?: string;
     termsAccepted: boolean;
@@ -3643,6 +3646,13 @@ export class Cp2Store {
   }): AuthSessionView {
     const now = input.now ?? new Date();
     const transaction = this.requireAuthTransaction(input.transactionId, "signup", now);
+    if ((input.pin === undefined) === (input.password === undefined)) {
+      throw new Cp2Error(
+        400,
+        "signup_credential_required",
+        "Create either a 4-digit PIN or a password."
+      );
+    }
     if (!input.termsAccepted || !input.privacyAccepted) {
       throw new Cp2Error(
         400,
@@ -3661,6 +3671,8 @@ export class Cp2Store {
       throw new Cp2Error(409, "account_exists", "Continue to sign in.");
     }
     if (input.password !== undefined) validatePassword(input.password);
+    const pin = input.pin === undefined ? undefined : normalizePin(input.pin);
+    if (pin !== undefined) assertAcceptablePin(pin);
     const email =
       input.email === undefined || input.email.trim() === ""
         ? undefined
@@ -3696,6 +3708,7 @@ export class Cp2Store {
         createPasswordCredential(account.id, input.password, now)
       );
     }
+    if (pin !== undefined) this.accountPinHashes.set(account.id, hashPin(account.id, pin));
     transaction.accountId = account.id;
     transaction.consumedAt = now.toISOString();
     const guestSession = guest === null ? undefined : this.sessions.get(input.sessionId ?? "");
@@ -3706,7 +3719,8 @@ export class Cp2Store {
     this.markSessionPinVerified(session.id, now);
     this.recordSecurityEvent("auth.signup_completed", account.id, "success", now, {
       emailAdded: email !== undefined,
-      phoneVerified: false
+      phoneVerified: false,
+      credential: pin === undefined ? "password" : "pin"
     });
     return this.requireAnySession(session.id, now);
   }

@@ -85,6 +85,36 @@ function pin(value: unknown): string {
     throw new AuthError(400, "pin_invalid", "PIN must be exactly 4 digits.");
   return value;
 }
+// Copy of isWeakPin in packages/shared-types/src/pin-strength.ts: this function is deployed as
+// standalone files and cannot import workspace packages. tests/edge-pin-strength.test.ts keeps
+// the two in step.
+const weakPins = new Set([
+  "1212",
+  "1004",
+  "2000",
+  "6969",
+  "1122",
+  "1313",
+  "2001",
+  "1010",
+  "2580",
+  "0852",
+  "1123",
+  "1324"
+]);
+export function isWeakPin(value: string): boolean {
+  if (!/^\d{4}$/.test(value)) return true;
+  if (value[0] === value[1] && value[1] === value[2] && value[2] === value[3]) return true;
+  const step = value.charCodeAt(1) - value.charCodeAt(0);
+  if (
+    Math.abs(step) <= 2 &&
+    step !== 0 &&
+    value.charCodeAt(2) - value.charCodeAt(1) === step &&
+    value.charCodeAt(3) - value.charCodeAt(2) === step
+  )
+    return true;
+  return weakPins.has(value);
+}
 function email(value: unknown): string {
   const result = text(value, "email").trim().toLowerCase();
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(result))
@@ -897,10 +927,12 @@ export function createAuthRoutes({
   }
 
   return async (request: Request, path: string): Promise<Response | null> => {
-    if (!(
-      (request.method === "POST" && postPaths.has(path)) ||
-      (request.method === "GET" && getPaths.has(path))
-    ))
+    if (
+      !(
+        (request.method === "POST" && postPaths.has(path)) ||
+        (request.method === "GET" && getPaths.has(path))
+      )
+    )
       return null;
     try {
       if (path === "/auth/continue") {
@@ -1169,7 +1201,10 @@ export function createAuthRoutes({
         });
       }
       if (path === "/auth/signup/complete") {
-        if (!passwordEnabled)
+        // New accounts sign in with a 4-digit PIN by default, or a password for owners who want a
+        // stronger secret. Older clients send only a password, so no credentialType means password.
+        const usePin = data.credentialType === "pin";
+        if (!usePin && !passwordEnabled)
           return error(403, "password_fallback_disabled", "Password fallback is disabled.");
         const transactionId = text(data.transactionId, "transactionId", 36);
         if (!uuid.test(transactionId))
@@ -1177,15 +1212,29 @@ export function createAuthRoutes({
         const displayName = text(data.displayName, "displayName", 100).trim();
         if (displayName.length < 2)
           throw new AuthError(400, "display_name_invalid", "Enter your display name.");
-        const password = text(data.password, "password");
-        if (password.length < 10)
-          throw new AuthError(
-            400,
-            "password_invalid",
-            "Use a password between 10 and 256 characters."
-          );
-        if (password !== data.passwordConfirmation)
-          throw new AuthError(400, "password_confirmation_invalid", "Passwords do not match.");
+        let password: string | null = null;
+        let signupPin: string | null = null;
+        if (usePin) {
+          signupPin = pin(data.pin);
+          if (isWeakPin(signupPin))
+            throw new AuthError(
+              400,
+              "pin_weak",
+              "Choose a less predictable PIN. Avoid repeated digits (like 0000), simple sequences (like 1234), and common patterns."
+            );
+          if (signupPin !== data.pinConfirmation)
+            throw new AuthError(400, "pin_confirmation_invalid", "PINs do not match.");
+        } else {
+          password = text(data.password, "password");
+          if (password.length < 10)
+            throw new AuthError(
+              400,
+              "password_invalid",
+              "Use a password between 10 and 256 characters."
+            );
+          if (password !== data.passwordConfirmation)
+            throw new AuthError(400, "password_confirmation_invalid", "Passwords do not match.");
+        }
         if (data.termsAccepted !== true || data.privacyAccepted !== true)
           throw new AuthError(
             400,
@@ -1221,27 +1270,30 @@ export function createAuthRoutes({
             ? await upgradeGuestAccount(client, guest, id, displayName)
             : await newAccount(client, id, displayName);
           if (extraEmail) await addIdentity(client, account, "email", extraEmail, false);
-          const passwordHash = credentialHash(
-            String(account.account_id),
-            password,
-            secrets.password,
-            false
-          );
           const now = new Date().toISOString();
-          await client.query(
-            `insert into password_credentials (account_id, password_hash, password_changed_at, created_at, updated_at)
-            values ($1,$2,$3,$3,$3)
-            on conflict (account_id) do update set password_hash = excluded.password_hash,
-              password_changed_at = excluded.password_changed_at, updated_at = excluded.updated_at`,
-            [account.account_id, passwordHash, now]
-          );
-          await mirror(client, "cp2_password_credentials", String(account.account_id), {
-            accountId: account.account_id,
-            passwordHash,
-            passwordChangedAt: now,
-            createdAt: now,
-            updatedAt: now
-          });
+          if (signupPin !== null) await setPin(client, String(account.account_id), signupPin);
+          else if (password !== null) {
+            const passwordHash = credentialHash(
+              String(account.account_id),
+              password,
+              secrets.password,
+              false
+            );
+            await client.query(
+              `insert into password_credentials (account_id, password_hash, password_changed_at, created_at, updated_at)
+              values ($1,$2,$3,$3,$3)
+              on conflict (account_id) do update set password_hash = excluded.password_hash,
+                password_changed_at = excluded.password_changed_at, updated_at = excluded.updated_at`,
+              [account.account_id, passwordHash, now]
+            );
+            await mirror(client, "cp2_password_credentials", String(account.account_id), {
+              accountId: account.account_id,
+              passwordHash,
+              passwordChangedAt: now,
+              createdAt: now,
+              updatedAt: now
+            });
+          }
           await client.query(
             "update auth_transactions set consumed_at = now(), account_id = $2 where id = $1",
             [row.id, account.account_id]

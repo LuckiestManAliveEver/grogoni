@@ -137,6 +137,55 @@ describe("phone-first authentication", () => {
     await app.close();
   });
 
+  it("creates a PIN account at signup and logs in with that PIN", async () => {
+    const store = createCp2Store();
+    const app = buildApi({ cp2: { store } });
+    const start = await post(app, "/auth/signup/start", {
+      type: "phone",
+      identifier: "0712 345 611",
+      country: "KE"
+    });
+    const transaction = start.json<{ transactionId: string }>();
+    const base = {
+      transactionId: transaction.transactionId,
+      displayName: "Jane",
+      credentialType: "pin",
+      termsAccepted: true,
+      privacyAccepted: true
+    };
+    const weak = await post(app, "/auth/signup/complete", {
+      ...base,
+      pin: "1234",
+      pinConfirmation: "1234"
+    });
+    expect(weak.statusCode).toBe(400);
+    expect(weak.json()).toMatchObject({ code: "pin_weak" });
+    const mismatch = await post(app, "/auth/signup/complete", {
+      ...base,
+      pin: "3927",
+      pinConfirmation: "3928"
+    });
+    expect(mismatch.statusCode).toBe(400);
+
+    const signup = await post(app, "/auth/signup/complete", {
+      ...base,
+      pin: "3927",
+      pinConfirmation: "3927"
+    });
+    expect(signup.statusCode).toBe(200);
+    expect(store.snapshot().passwordCredentials ?? []).toHaveLength(0);
+    expect(store.snapshot().accountPinHashes).toHaveLength(1);
+
+    const login = await post(app, "/auth/pin/login", {
+      method: "phone",
+      contact: "0712345611",
+      country: "KE",
+      pin: "3927"
+    });
+    expect(login.statusCode).toBe(200);
+    await app.close();
+  });
+
   it("creates a password account with a normalized, unverified phone identifier", async () => {
     const store = createCp2Store();
     const app = buildApi({ cp2: { store } });

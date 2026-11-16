@@ -134,6 +134,7 @@ test("signs up with a profile and later logs in from the menu", async ({ page })
   await expect(page.getByRole("heading", { name: "Finish your profile" })).toBeVisible();
   await page.getByLabel("Display name").fill("Jane Trader");
   await page.getByPlaceholder("you@example.com").fill("jane@example.com");
+  await page.getByRole("button", { name: "Use a password instead (more secure)" }).click();
   await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByLabel("Confirm password").fill(password);
   await page.getByLabel(/I agree to the Terms of Service/u).check();

@@ -87,6 +87,7 @@ test("signup includes a real passkey step", async ({ page }) => {
   await page.getByLabel("Phone number", { exact: true }).fill("712345678");
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await page.getByLabel("Display name").fill("Jane");
+  await page.getByRole("button", { name: "Use a password instead (more secure)" }).click();
   await page.getByLabel("Password", { exact: true }).fill("secure first password");
   await page.getByLabel("Confirm password").fill("secure first password");
   for (const box of await page.getByRole("checkbox").all()) await box.check();
