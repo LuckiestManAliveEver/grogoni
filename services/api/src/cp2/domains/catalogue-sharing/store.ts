@@ -25,6 +25,12 @@ import {
 } from "@grogoni/business-core";
 import type { AuthenticatedActorView } from "@grogoni/shared-types";
 import { assertValid, Cp2Error } from "../../cp2-error.js";
+import {
+  seedCatalogue,
+  seedCatalogueSourceId,
+  seedCatalogueSummary,
+  seedCatalogueMatches
+} from "./seed-catalogue.js";
 
 export interface CatalogueSharingDomainDeps {
   requireAuthorizedSession: (
@@ -51,6 +57,7 @@ export interface CatalogueSharingDomainDeps {
     sessionId: string | null;
     businessId: string;
     product: ProductInput;
+    catalogueSource?: NonNullable<ProductSummary["catalogueSource"]>;
     now?: Date;
   }) => ProductSummary;
 }
@@ -76,7 +83,7 @@ export class CatalogueSharingDomain {
     const search = input.search?.trim().toLowerCase().slice(0, 120) ?? "";
     const limit = Math.min(50, Math.max(1, input.limit ?? 24));
 
-    return [...this.deps.businesses.values()]
+    const shops = [...this.deps.businesses.values()]
       .filter((business) => business.id !== input.viewerBusinessId)
       .filter((business) => !this.deps.quarantinedBusinessIds.has(business.id))
       .filter((business) => this.deps.shopPresenceForBusiness(business.id).catalogueShareable)
@@ -89,12 +96,19 @@ export class CatalogueSharingDomain {
       })
       .sort((left, right) => left.businessName.localeCompare(right.businessName))
       .slice(0, limit);
+    return [...(seedCatalogueMatches(search) ? [seedCatalogueSummary()] : []), ...shops].slice(
+      0,
+      limit
+    );
   }
 
   listCatalogueProducts(input: {
     sessionId: string | null;
     viewerBusinessId: string;
     sourceBusinessId: string;
+    search?: string;
+    offset?: number;
+    limit?: number;
     now?: Date;
   }): ShareableCatalogueProductSummary[] {
     this.deps.requireAuthorizedSession(
@@ -103,17 +117,59 @@ export class CatalogueSharingDomain {
       "product:read",
       input.now
     );
+    if (input.sourceBusinessId === seedCatalogueSourceId) {
+      const search = input.search?.trim().toLowerCase().slice(0, 120) ?? "";
+      const offset = input.offset ?? 0;
+      const limit = input.limit ?? seedCatalogue.products.length;
+      if (
+        !Number.isInteger(offset) ||
+        offset < 0 ||
+        offset > 10000 ||
+        !Number.isInteger(limit) ||
+        limit < 1 ||
+        limit > 1000
+      )
+        throw new Cp2Error(400, "catalogue_page_invalid", "Choose a valid catalogue page.");
+      return seedCatalogue.products
+        .filter((product) =>
+          [product.name, product.category ?? "", product.department].some((value) =>
+            value.toLowerCase().includes(search)
+          )
+        )
+        .slice(offset, offset + limit)
+        .map((product) => ({
+          id: product.id,
+          name: product.name,
+          unit: "unit",
+          sellingPrice: null,
+          image: null
+        }));
+    }
     const business = this.requireShareableSourceBusiness(
       input.sourceBusinessId,
       input.viewerBusinessId
     );
-    return this.deps.productsForBusiness(business.id).map((product) => ({
-      id: product.id,
-      name: product.name,
-      unit: product.unit,
-      sellingPrice: product.sellingPrice,
-      image: this.deps.publicProductImage(product)
-    }));
+    const search = input.search?.trim().toLowerCase().slice(0, 120) ?? "";
+    const offset = input.offset ?? 0;
+    if (
+      !Number.isInteger(offset) ||
+      offset < 0 ||
+      offset > 10000 ||
+      (input.limit !== undefined &&
+        (!Number.isInteger(input.limit) || input.limit < 1 || input.limit > 1000))
+    )
+      throw new Cp2Error(400, "catalogue_page_invalid", "Choose a valid catalogue page.");
+    return this.deps
+      .productsForBusiness(business.id)
+      .filter((product) => product.name.toLowerCase().includes(search))
+      .slice(offset, input.limit === undefined ? undefined : offset + input.limit)
+      .map((product) => ({
+        id: product.id,
+        name: product.name,
+        unit: product.unit,
+        sellingPrice: product.sellingPrice,
+        image: this.deps.publicProductImage(product)
+      }));
   }
 
   duplicateProducts(input: {
@@ -130,6 +186,9 @@ export class CatalogueSharingDomain {
       "product:write",
       now
     );
+    if (input.sourceBusinessId === seedCatalogueSourceId) {
+      return this.importSeedProducts(input, session.user.id, now);
+    }
     const business = this.requireShareableSourceBusiness(
       input.sourceBusinessId,
       input.viewerBusinessId
@@ -189,6 +248,88 @@ export class CatalogueSharingDomain {
     });
 
     return created;
+  }
+
+  private importSeedProducts(
+    input: {
+      sessionId: string | null;
+      viewerBusinessId: string;
+      productIds: string[];
+    },
+    actorId: string,
+    now: Date
+  ): ProductSummary[] {
+    const ids = [...new Set(input.productIds)];
+    if (ids.length < 1 || input.productIds.length > maximumDuplicateProductsPerRequest)
+      throw new Cp2Error(400, "duplicate_product_ids_invalid", "Select between 1 and 50 products.");
+    // Resolve the entire selection before making any writes.
+    const selected = ids.map((id) => {
+      const product = seedCatalogue.products.find((candidate) => candidate.id === id);
+      if (!product)
+        throw new Cp2Error(
+          404,
+          "seed_product_not_found",
+          "Select products returned by the seed catalogue."
+        );
+      return product;
+    });
+    for (const source of selected)
+      assertValid(
+        validateProductInput({
+          name: source.name,
+          unit: "unit",
+          quantity: 0,
+          buyingPrice: null,
+          sellingPrice: null
+        })
+      );
+    const existing = this.deps.productsForBusiness(input.viewerBusinessId);
+    let createdCount = 0;
+    const result = selected.map((source) => {
+      const previous = existing.find(
+        (product) =>
+          product.catalogueSource?.datasetId === seedCatalogue.id &&
+          product.catalogueSource.sourceProductId === source.id
+      );
+      if (previous) return previous;
+      const product = this.deps.createProduct({
+        sessionId: input.sessionId,
+        businessId: input.viewerBusinessId,
+        now,
+        product: {
+          name: source.name,
+          unit: "unit",
+          quantity: 0,
+          buyingPrice: null,
+          sellingPrice: null
+        },
+        catalogueSource: {
+          datasetId: seedCatalogue.id,
+          datasetVersion: seedCatalogue.version,
+          sourceProductId: source.id
+        }
+      });
+      createdCount += 1;
+      return product;
+    });
+    this.deps.recordAuditEvent({
+      type: "catalogue.seed_products_imported",
+      aggregateType: "business",
+      aggregateId: input.viewerBusinessId,
+      actorId,
+      occurredAt: now.toISOString(),
+      payload: {
+        datasetId: seedCatalogue.id,
+        datasetVersion: seedCatalogue.version,
+        sourceWorkbookSha256: seedCatalogue.sourceWorkbookSha256,
+        createdCount,
+        products: result.map((product, index) => ({
+          productId: product.id,
+          sourceProductId: selected[index]!.id
+        }))
+      }
+    });
+    return result;
   }
 
   private shareableCatalogueSummary(business: BusinessSummary): ShareableCatalogueSummary {

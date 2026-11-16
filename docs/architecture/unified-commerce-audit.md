@@ -1,5 +1,7 @@
 # Unified commerce audit and implementation
 
+> Historical source/offer foundation report. Later extensions include authenticated representation/territory decisions, barcode/namespaced-SKU identity review, source refresh candidates and source-linked canonical invoice fulfillment (migrations `130` and `131`; `tests/unified-commerce-complete.test.ts`). Old outstanding-work lists below are not current status. Receipt-driven three-account posting remains incomplete; use [the current receipt checklist](../audits/receipt-to-commerce-checklist-2026-11-16.md).
+
 Baseline: `8976d82a2a719828756081ec16d42ba3ed7b24f2`.
 Audit date: 2026-10-25. No production data or deployment changes were authorized or performed.
 

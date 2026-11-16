@@ -54,6 +54,19 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
   const [message, setMessage] = useState("");
   const [accountExists, setAccountExists] = useState(false);
   const [createdSession, setCreatedSession] = useState<AuthSessionView | null>(null);
+  const profileRequirements = [
+    ...(displayName.trim().length < 2 || displayName.trim().length > 100
+      ? ["Enter a display name between 2 and 100 characters."]
+      : []),
+    ...(password.length < 10 || password.length > 256
+      ? ["Use a password between 10 and 256 characters."]
+      : []),
+    ...(!passwordConfirmation || password !== passwordConfirmation
+      ? ["Confirm your password with an exact match."]
+      : []),
+    ...(!termsAccepted ? ["Agree to the Terms of Service."] : []),
+    ...(!privacyAccepted ? ["Acknowledge the Privacy Policy."] : [])
+  ];
   const enrollment = usePasskeyEnrollment({
     onCreated: () => {
       if (createdSession !== null) onAuthenticated(createdSession);
@@ -259,6 +272,8 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
               <label>
                 Display name
                 <input
+                  required
+                  aria-describedby="signup-name-help"
                   autoFocus
                   type="text"
                   autoComplete="name"
@@ -269,25 +284,30 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
                   disabled={busy}
                   onChange={(event) => setDisplayName(event.target.value)}
                 />
+                <small id="signup-name-help">Required. Use between 2 and 100 characters.</small>
               </label>
               <label>
                 Backup email <span className="auth-optional-label">Optional</span>
                 <input
                   type="email"
+                  aria-describedby="signup-email-help"
                   autoComplete="email"
                   placeholder="you@example.com"
                   value={email}
                   disabled={busy}
                   onChange={(event) => setEmail(event.target.value)}
                 />
-                <small>
-                  Verify this email in account security to use it for backup recovery and MFA.
+                <small id="signup-email-help">
+                  Leave blank or enter a valid email address. Verify it in account security to use
+                  it for backup recovery and MFA.
                 </small>
               </label>
 
               <label>
                 Password
                 <input
+                  required
+                  aria-describedby="signup-password-help"
                   type="password"
                   autoComplete="new-password"
                   minLength={10}
@@ -296,10 +316,18 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
                   disabled={busy}
                   onChange={(event) => setPassword(event.target.value)}
                 />
+                <small id="signup-password-help">
+                  Required. Use between 10 and 256 characters.
+                </small>
               </label>
               <label>
                 Confirm password
                 <input
+                  required
+                  aria-describedby="signup-confirmation-help"
+                  aria-invalid={
+                    passwordConfirmation.length > 0 && password !== passwordConfirmation
+                  }
                   type="password"
                   autoComplete="new-password"
                   minLength={10}
@@ -308,13 +336,21 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
                   disabled={busy}
                   onChange={(event) => setPasswordConfirmation(event.target.value)}
                 />
+                <small id="signup-confirmation-help" aria-live="polite">
+                  {passwordConfirmation.length > 0
+                    ? password === passwordConfirmation
+                      ? "Passwords match."
+                      : "Passwords do not match. Enter the same password in both fields."
+                    : "Required. Enter the same password again."}
+                </small>
               </label>
 
               <fieldset className="auth-consent-group">
-                <legend>Account agreements</legend>
+                <legend>Account agreements — both required</legend>
                 <label className="auth-option-row">
                   <input
                     type="checkbox"
+                    required
                     checked={termsAccepted}
                     disabled={busy}
                     onChange={(event) => setTermsAccepted(event.target.checked)}
@@ -326,6 +362,7 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
                 <label className="auth-option-row">
                   <input
                     type="checkbox"
+                    required
                     checked={privacyAccepted}
                     disabled={busy}
                     onChange={(event) => setPrivacyAccepted(event.target.checked)}
@@ -336,17 +373,25 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
                 </label>
               </fieldset>
 
+              <div id="signup-requirements" aria-live="polite">
+                {profileRequirements.length > 0 ? (
+                  <>
+                    <small>To enable Create account:</small>
+                    <ul>
+                      {profileRequirements.map((requirement) => (
+                        <li key={requirement}>{requirement}</li>
+                      ))}
+                    </ul>
+                  </>
+                ) : (
+                  <small>All required fields are complete. You can create your account.</small>
+                )}
+              </div>
               <button
                 className="auth-primary-button"
                 type="button"
-                disabled={
-                  busy ||
-                  displayName.trim().length < 2 ||
-                  !termsAccepted ||
-                  !privacyAccepted ||
-                  password.length < 10 ||
-                  password !== passwordConfirmation
-                }
+                aria-describedby="signup-requirements"
+                disabled={busy || profileRequirements.length > 0}
                 aria-busy={busy}
                 onClick={() => void run(completeSignup)}
               >

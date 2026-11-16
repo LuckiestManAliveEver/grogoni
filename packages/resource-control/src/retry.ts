@@ -3,7 +3,7 @@
  * delay is drawn uniformly from [0, min(maxDelayMs, initialDelayMs * 2^(attempt-1))]), the
  * standard defense against synchronized retry storms (resource-isolation.md §9). Replaces the
  * immediate, no-delay retry loop that used to live in
- * services/api/src/cp2/ocr-provider.ts's `process()`.
+ * the retired server OCR adapter's `process()`.
  */
 export interface RetryOptions {
   /** Total attempts including the first, so 1 means "no retry." Must be a positive integer. */

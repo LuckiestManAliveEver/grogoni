@@ -1618,6 +1618,8 @@ export interface OAuthSessionSummary {
 }
 
 export interface ProductSummary {
+  /** Import provenance; survives edits, persistence and repeat import requests. */
+  catalogueSource?: { datasetId: string; datasetVersion: string; sourceProductId: string };
   id: string;
   businessId: string;
   name: string;
@@ -2354,11 +2356,8 @@ export interface PurchaseReceiptSummary {
   lineItems: ReceiptLineItemSummary[];
 }
 
-/**
- * Generic OCR capability shared by receipt parsing, chat document extraction, and camera product
- * capture - not receipt-specific. See services/api/src/cp2/ocr-provider.ts.
- */
-export type OcrEngine = "paddleocr" | "tesseract" | "gpt-6-luna";
+/** Engine provenance. Historical PaddleOCR records remain readable; plain text is not OCR. */
+export type OcrEngine = "provided_text" | "paddleocr" | "tesseract" | "gpt-6-luna";
 export type OcrProfile = "mobile" | "balanced" | "accurate";
 
 export type ReceiptOCRJobStatus =
@@ -2987,6 +2986,9 @@ export type PublicShopPresenceSummary = Pick<ShopPresenceSummary, "status" | "up
 
 /** A shop whose owner opted its catalogue in to being browsed and duplicated by other shops. */
 export interface ShareableCatalogueSummary {
+  /** Seed sources use a dataset: identifier in the legacy businessId field. */
+  sourceKind?: "seed";
+  datasetVersion?: string;
   businessId: string;
   grogoniId: string;
   businessName: string;

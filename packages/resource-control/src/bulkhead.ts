@@ -83,7 +83,7 @@ interface QueueEntry {
 }
 
 /** Creates a bounded-concurrency, bounded-queue gate for one named workload. Generalizes the
- *  private per-file semaphore that used to live in services/api/src/cp2/ocr-provider.ts into one
+ *  private per-file semaphore that used to live in the retired server OCR adapter into one
  *  reusable primitive, shared by every bounded workload (see resource-isolation.md §10). */
 export function createBulkhead(options: BulkheadOptions): Bulkhead {
   if (!Number.isSafeInteger(options.maxConcurrency) || options.maxConcurrency < 1) {

@@ -2055,7 +2055,13 @@ export class Cp2Store {
           });
         const sourceBusinessId = String(action.input.sourceBusinessId);
         if (action.toolName === "catalogue.marketplace.products")
-          return this.listShareableCatalogueProducts({ ...context, sourceBusinessId });
+          return this.listShareableCatalogueProducts({
+            ...context,
+            sourceBusinessId,
+            ...(typeof action.input.search === "string" ? { search: action.input.search } : {}),
+            ...(typeof action.input.offset === "number" ? { offset: action.input.offset } : {}),
+            limit: typeof action.input.limit === "number" ? action.input.limit : 50
+          });
         return this.duplicateCatalogueProducts({
           ...context,
           sourceBusinessId,
@@ -10908,9 +10914,8 @@ export class Cp2Store {
               try {
                 extraction = parseOfflineReceiptOcrExtraction(payload.extraction);
               } catch {
-                // A malformed client-supplied scan is this device's bad input, not our OCR
-                // worker's fault (parseExtractionResult's own 502 is for that trust boundary) -
-                // reject just this operation instead of failing the whole sync batch.
+                // Reject malformed client-supplied extraction for this operation without
+                // failing the whole sync batch. No server OCR worker processes this payload.
                 throw new Cp2Error(
                   400,
                   "offline_receipt_extraction_invalid",

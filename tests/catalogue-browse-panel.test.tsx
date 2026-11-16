@@ -142,6 +142,54 @@ describe("CatalogueBrowsePanel", () => {
     });
     await flush();
 
-    expect(host.textContent).toContain("No shops have shared their catalogue for duplication yet.");
+    expect(host.textContent).toContain("No matching catalogues are available.");
+  });
+
+  it("explains starter defaults and limits imports to 50 while allowing deselection", async () => {
+    const seed = {
+      ...shop,
+      businessId: "dataset:kenyan-commerce-v1",
+      businessName: "Starter catalogue",
+      sourceKind: "seed" as const,
+      datasetVersion: "1",
+      productCount: 51
+    };
+    getJson.mockResolvedValueOnce([seed]).mockResolvedValueOnce(
+      Array.from({ length: 51 }, (_, index) => ({
+        ...shareableProduct,
+        id: `seed-${index}`,
+        sellingPrice: null
+      }))
+    );
+    await act(async () => {
+      root = createRoot(host);
+      root.render(<CatalogueBrowsePanel businessId="shop-b" />);
+    });
+    const open = [...host.querySelectorAll("button")].find((button) =>
+      button.textContent?.includes("Starter catalogue")
+    )!;
+    await act(async () => open.click());
+    expect(getJson).toHaveBeenLastCalledWith(
+      "/businesses/shop-b/catalogue-marketplace/shops/dataset%3Akenyan-commerce-v1/products"
+    );
+    expect(host.textContent).toContain("Starter items have zero stock and no prices.");
+    const checkboxes = [...host.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')];
+    for (const checkbox of checkboxes.slice(0, 50)) act(() => checkbox.click());
+    expect(host.textContent).toContain("50 of 50 selected.");
+    expect(checkboxes[50]!.disabled).toBe(true);
+    expect(checkboxes[0]!.disabled).toBe(false);
+    act(() => checkboxes[0]!.click());
+    expect(checkboxes[50]!.disabled).toBe(false);
+    act(() => checkboxes[50]!.click());
+    postJson.mockResolvedValue([duplicatedProduct]);
+    const add = [...host.querySelectorAll("button")].find((button) =>
+      button.textContent?.startsWith("Add")
+    )!;
+    await act(async () => add.click());
+    expect(postJson).toHaveBeenCalledWith(
+      "/businesses/shop-b/catalogue-marketplace/shops/dataset%3Akenyan-commerce-v1/duplicate",
+      { productIds: Array.from({ length: 50 }, (_, index) => `seed-${index + 1}`) }
+    );
+    expect(host.textContent).toContain("Previously imported items were kept.");
   });
 });

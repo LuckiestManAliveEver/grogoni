@@ -1,31 +1,17 @@
-# OCR licensing
+# OCR dependencies and provenance
 
-This project uses self-hosted open-source OCR by default. No paid OCR API is required for production receipt processing.
+Verified from pinned repository package manifests on 2026-11-16. The current browser scanner uses these packages:
 
-## Packages and licenses
+| Package                  | Version | Declared package license | Use                                          |
+| ------------------------ | ------- | ------------------------ | -------------------------------------------- |
+| `tesseract.js`           | 7.0.0   | Apache-2.0               | Browser worker and JavaScript OCR interface  |
+| `tesseract.js-core`      | 7.0.0   | Apache-2.0               | Browser WASM engine                          |
+| `@tesseract.js-data/eng` | 1.0.0   | MIT                      | Distribution package for cached English data |
 
-| Component              |    Version | Purpose                        | License status             | Commercial use |
-| ---------------------- | ---------: | ------------------------------ | -------------------------- | -------------- |
-| PaddleOCR              |      2.8.1 | Primary OCR engine             | Apache 2.0                 | Allowed        |
-| PaddlePaddle           |      2.6.2 | PaddleOCR runtime              | Apache 2.0                 | Allowed        |
-| Tesseract OCR          | OS package | Fallback OCR engine            | Apache 2.0                 | Allowed        |
-| pytesseract            |     0.3.13 | Python wrapper for Tesseract   | Apache 2.0 package wrapper | Allowed        |
-| Pillow                 |     10.4.0 | Image loading for fallback OCR | HPND-style Pillow license  | Allowed        |
-| OpenCV Python headless |  4.10.0.84 | Image processing dependency    | Apache 2.0                 | Allowed        |
-| redis-py               |      5.0.8 | Queue/client support           | MIT                        | Allowed        |
+Pinned assets are listed in `apps/web/src/offline-ocr-assets.ts`. The English data marker is `eng-4.0.0_best_int`; `apps/web/vite.config.ts` publishes the selected language, worker and WASM assets. Installation validates the generated manifest and SHA-256 hashes. Package license metadata is not a blanket legal determination about arbitrary replacement models or assets: preserve upstream license/provenance when changing them.
 
-## Model policy
+The old Python OCR worker, PaddlePaddle/PaddleOCR, pytesseract, Pillow, OpenCV and redis-py are not current receipt-worker dependencies. Do not add them to a deployment or infer that a historical PaddleOCR metadata label proves execution.
 
-Use PaddleOCR models distributed for the selected PaddleOCR release/profile. Record the model source, model version, and license in this document whenever the deployed model set changes.
+Online image reading uses the existing OpenRouter-backed Luna model rather than this browser OCR engine. Hosted inference requires the configured provider account and may incur charges; it is not covered by Tesseract's open-source package licenses.
 
-Current configured model marker:
-
-- `OCR_MODEL_VERSION=balanced-cpu`
-- `OCR_ENGINE_VERSION=paddleocr-2.8.1`
-
-## Operational rules
-
-- Do not add paid OCR APIs as required production dependencies.
-- Keep OCR package versions pinned in `services/receipt-ocr-service/requirements.txt`.
-- Update `THIRD_PARTY_NOTICES.md` whenever OCR dependencies change.
-- Record fallback usage in each OCR job with `fallbackUsed=true`.
+Update [third-party notices](../THIRD_PARTY_NOTICES.md), pinned asset versions and the installer manifest together when changing scanner dependencies. See [receipt processing](receipt-ocr.md) for actual supported paths and limits.

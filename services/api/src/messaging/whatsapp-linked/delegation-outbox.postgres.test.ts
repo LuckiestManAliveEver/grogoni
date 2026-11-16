@@ -3,6 +3,10 @@ import { Pool } from "pg";
 import { afterAll, describe, expect, it } from "vitest";
 import { createPostgresCp2Store, type PostgresCp2Store } from "../../cp2/postgres-store.js";
 import type { ChannelDelegationResolution } from "../../cp2/domains/agent-runtime/channel-delegation-result.js";
+import {
+  newLinkedDelegationResultEntry,
+  settleLinkedDelegationResult
+} from "./delegation-outbox.js";
 
 // Two real CP2 Postgres stores on the migrated test database stand in for two processes: the Edge
 // API that records a delegated result and the Node connector host that settles it.
@@ -129,5 +133,36 @@ describe.skipIf(!url)("delegated-result outbox on PostgreSQL", { timeout: 60_000
         ]
       )
     ).rejects.toMatchObject({ code: "23514" });
+  });
+
+  it("does not let an adopting host overwrite a result another host already settled", async () => {
+    const pending = newLinkedDelegationResultEntry(
+      resolution(servedBusiness, `adopt-${run}`),
+      new Date()
+    );
+    const node = await createPostgresCp2Store({ databaseUrl: url! });
+    try {
+      await pool!.query(
+        "insert into cp2_whatsapp_linked_delegation_results (entity_id, business_id, record) values ($1, $2, $3::jsonb)",
+        [pending.id, servedBusiness, JSON.stringify(pending)]
+      );
+      const stored = await node.loadPendingLinkedDelegationResults();
+      const sent = settleLinkedDelegationResult(pending, "sent", new Date(), {
+        messageId: "already-delivered"
+      });
+      await pool!.query(
+        "update cp2_whatsapp_linked_delegation_results set record = $2::jsonb where entity_id = $1",
+        [pending.id, JSON.stringify(sent)]
+      );
+      await node.drainLinkedDelegationResults({
+        ready: (businessId) => businessId === servedBusiness,
+        stored
+      });
+      await expect(node.flush()).rejects.toMatchObject({ code: "40001" });
+      const saved = (await rows()).find((row) => row.entity_id === pending.id);
+      expect(saved?.record).toMatchObject({ status: "sent", messageId: "already-delivered" });
+    } finally {
+      await node.close().catch(() => undefined);
+    }
   });
 });

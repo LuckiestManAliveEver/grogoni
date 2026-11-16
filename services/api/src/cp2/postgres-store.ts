@@ -3508,6 +3508,9 @@ export async function saveCollectionRecords(
   for (let offset = 0; offset < rows.length; offset += collectionUpsertChunkSize) {
     const chunk = rows.slice(offset, offset + collectionUpsertChunkSize);
     if (expected) {
+      // A connector may adopt a pending delegated result created after its initial snapshot.
+      // Permit that first save only for the same immutable resolution and forward progress.
+      // Keep optimistic checks for known rows, settled results and device send claims.
       const placeholders = chunk
         .map((_row, index) => {
           const base = index * 7;
@@ -3522,6 +3525,18 @@ export async function saveCollectionRecords(
           user_id=excluded.user_id,parent_id=excluded.parent_id,record=excluded.record,updated_at=now()
         where ${collection.tableName}.record = (select expected from input where input.entity_id = excluded.entity_id)
            or ${collection.tableName}.record = excluded.record
+           ${
+             collection.key === "whatsappLinkedDelegationResults"
+               ? `or (
+                   (select expected from input where input.entity_id = excluded.entity_id) = 'null'::jsonb
+                   and ${collection.tableName}.record->>'status' = 'pending'
+                   and (${collection.tableName}.record - array['status','attempts','nextAttemptAt','lastErrorCode','reason','messageId','updatedAt','settledAt'])
+                     = (excluded.record - array['status','attempts','nextAttemptAt','lastErrorCode','reason','messageId','updatedAt','settledAt'])
+                   and (${collection.tableName}.record->>'attempts')::int <= (excluded.record->>'attempts')::int
+                   and ${collection.tableName}.record->>'updatedAt' <= excluded.record->>'updatedAt'
+                 )`
+               : ""
+           }
         returning entity_id`,
         chunk.flatMap((row) => [...row, JSON.stringify(expectedById.get(String(row[0])) ?? null)])
       );

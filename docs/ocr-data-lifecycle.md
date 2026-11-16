@@ -1,75 +1,27 @@
-# OCR data lifecycle
+# Receipt data lifecycle
 
-Receipt OCR follows a privacy-first data lifecycle.
+Verified against repository code on 2026-11-16. See [receipt processing](receipt-ocr.md) and [remaining implementation work](audits/receipt-to-commerce-checklist-2026-11-16.md).
 
-## States
+## Capture and extraction
 
-Receipt OCR jobs use these lifecycle states:
+Online images are sent to the authenticated OpenRouter-backed image reader for transcription. The API validates size, encoding and image signatures, returns `Cache-Control: no-store`, and keeps provider credentials server-side. Business receipt creation is a separate authorized request. Supplying bytes to the draft route does not itself trigger OCR. The configured binary upload pipeline processes bytes with `retain: false`; malware scanning depends on deployment configuration and must not be assumed enabled everywhere.
 
-- `UPLOADED`
-- `QUEUED`
-- `VALIDATING`
-- `PREPROCESSING`
-- `OCR_RUNNING`
-- `FIELDS_EXTRACTED`
-- `CONTACT_MATCHING`
-- `PARSING`
-- `MATCHING`
-- `REVIEW_REQUIRED`
-- `CONFIRMED`
-- `PURCHASE_RECORDED`
-- `COMPLETED`
-- `FAILED`
-- `CANCELLED`
-- `CLEANUP_PENDING`
-- `IMAGE_DELETED`
+Offline Tesseract runs in a browser worker using verified locally cached assets. Receipt text and extraction metadata, not original image bytes, are saved with a pending operation in IndexedDB. This local receipt store is not application-level encrypted by the chat E2EE feature.
 
-Legacy lowercase states remain accepted for compatibility.
+## Retained records
 
-## Image storage rule
+Receipt jobs keep structured fields, extracted text/blocks, engine provenance, warnings, heuristic field evidence, consent-scoped match candidates and source checksum/filename. Confirmed local purchases retain supplier/agent references, line items and product/movement bindings. New supplied text is labeled `provided_text` with no model confidence; historical engine labels remain readable.
 
-- Receipt images are in-memory/API and worker temporary-file processing inputs.
-- Images are not permanently stored by default.
-- Worker temporary files are deleted when each scan request completes; only structured data remains.
-- Failed uploads are not silently discarded. The user sees failed status and can retry or enter the receipt manually.
+The receipt-job pipeline does not retain original source images. `imageStorageKey` is null, `imageRetained` is false and cleanup/expiry fields do not imply an active temporary-file deletion worker. Former worker image-TTL/deletion settings are not implemented controls. Separately saved chat attachments and retained document imports have independent storage/access/retention paths; do not infer their deletion from a receipt job's flags.
 
-## Structured data retained
+## State and access
 
-The system keeps:
+Jobs can require review, fail, be cancelled, or complete a local purchase. Corrections are refused after confirmation/cancellation. `COMPLETED` is not a statement that other accounts committed stock, sales, commissions or financial projections. Those receipt-driven updates are not implemented.
 
-- supplier and sales agent references
-- receipt date and total
-- line items
-- OCR engine metadata
-- raw OCR text blocks and full text
-- confidence values
-- field evidence and warnings
-- image hash/storage key metadata, not the original image
+Every private receipt read/write is business-authorized. Contact matching uses the current owner's visible, active, non-revoked sources. Documentary supplier/agent matches never grant another account's authority.
 
-## Cleanup
+Same-source draft reuse and same-job confirmation protect ordinary retries. Different photographs/OCR of the same commercial receipt still need semantic replay controls. Post-commit financial/stock reversals need a separate auditable implementation; deleting a draft is not a reversal.
 
-Temporary image retention is controlled by:
+## Required operational evidence
 
-- `OCR_TEMP_IMAGE_TTL_HOURS`
-- `OCR_FAILED_IMAGE_TTL_HOURS`
-- `OCR_DELETE_AFTER_CONFIRM`
-
-Because the current worker bridge does not retain source files, jobs set:
-
-- `imageRetained=false`
-- `imageDeletedAt=null`
-- `cleanupPending=false`
-
-Receipt processing can continue when contact matching fails. In that case the OCR job remains
-reviewable, the user can manually select or create supplier/agent records, and image deletion still
-occurs after confirmation or cancellation according to retention policy.
-
-## Security and limits
-
-Receipt upload handling validates:
-
-- MIME type
-- file signature where available
-- upload size
-
-Production deployments should also enforce request body limits at the reverse proxy/API gateway layer.
+Before advertising full receipt synchronization, verify protected source-evidence retention, account/device isolation, semantic duplicate handling, unit conversions, participant grants, committed per-account projections, compensation and restart recovery. The current implementation checklist records these gaps explicitly.
