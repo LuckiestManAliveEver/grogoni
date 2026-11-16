@@ -1618,6 +1618,8 @@ export interface OAuthSessionSummary {
 }
 
 export interface ProductSummary {
+  /** Import provenance; survives edits, persistence and repeat import requests. */
+  catalogueSource?: { datasetId: string; datasetVersion: string; sourceProductId: string };
   id: string;
   businessId: string;
   name: string;
@@ -2987,6 +2989,9 @@ export type PublicShopPresenceSummary = Pick<ShopPresenceSummary, "status" | "up
 
 /** A shop whose owner opted its catalogue in to being browsed and duplicated by other shops. */
 export interface ShareableCatalogueSummary {
+  /** Seed sources use a dataset: identifier in the legacy businessId field. */
+  sourceKind?: "seed";
+  datasetVersion?: string;
   businessId: string;
   grogoniId: string;
   businessName: string;

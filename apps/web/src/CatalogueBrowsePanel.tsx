@@ -83,7 +83,9 @@ export default function CatalogueBrowsePanel({
     );
     onDuplicated?.(created);
     setMessage(
-      `${created.length} ${created.length === 1 ? "product" : "products"} added to your catalogue from ${activeShop.businessName}.`
+      activeShop.sourceKind === "seed"
+        ? `${created.length} selected starter items are ready in your catalogue. Review units and set stock and prices. Previously imported items were kept.`
+        : `${created.length} ${created.length === 1 ? "product" : "products"} added to your catalogue from ${activeShop.businessName}.`
     );
     setSelectedProductIds(new Set());
   }
@@ -92,7 +94,9 @@ export default function CatalogueBrowsePanel({
     <div className="record-form catalogue-browse-panel" aria-label="Browse shared catalogues">
       <div className="section-heading">
         <p className="eyebrow">Shared catalogues</p>
-        <h3>{activeShop === null ? "Browse other shops' catalogues" : activeShop.businessName}</h3>
+        <h3>
+          {activeShop === null ? "Browse starter and shared catalogues" : activeShop.businessName}
+        </h3>
       </div>
       {message.length > 0 ? <p className="shell-note">{message}</p> : null}
 
@@ -106,7 +110,7 @@ export default function CatalogueBrowsePanel({
             }}
           >
             <label>
-              Search shops
+              Search catalogues
               <input
                 value={searchDraft}
                 placeholder="Shop name or Grogoni ID"
@@ -118,7 +122,7 @@ export default function CatalogueBrowsePanel({
           {shops === null ? (
             <p className="shell-note">Loading shared catalogues…</p>
           ) : shops.length === 0 ? (
-            <p className="shell-note">No shops have shared their catalogue for duplication yet.</p>
+            <p className="shell-note">No matching catalogues are available.</p>
           ) : (
             <div className="marketplace-directory" aria-label="Shops sharing their catalogue">
               {shops.map((shop) => (
@@ -138,7 +142,11 @@ export default function CatalogueBrowsePanel({
                   }
                 >
                   <strong>{shop.businessName}</strong>
-                  <small>{commerceAddressFromGrogoniId(shop.grogoniId)}</small>
+                  <small>
+                    {shop.sourceKind === "seed"
+                      ? `Starter dataset · v${shop.datasetVersion}`
+                      : commerceAddressFromGrogoniId(shop.grogoniId)}
+                  </small>
                   <p>
                     {shop.productCount} catalogue {shop.productCount === 1 ? "item" : "items"}
                   </p>

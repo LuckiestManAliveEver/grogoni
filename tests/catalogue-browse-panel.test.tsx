@@ -142,6 +142,6 @@ describe("CatalogueBrowsePanel", () => {
     });
     await flush();
 
-    expect(host.textContent).toContain("No shops have shared their catalogue for duplication yet.");
+    expect(host.textContent).toContain("No matching catalogues are available.");
   });
 });

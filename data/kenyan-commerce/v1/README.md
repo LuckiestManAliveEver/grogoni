@@ -40,3 +40,10 @@ interaction that produced them. Promote approved candidates into a later dataset
 - Products with supplier: 25
 - Source workbook SHA-256:
   `c687a3cd6640397c14d9a46791ce5dd4844a146cc96858750decf9ffeed2b387`
+
+## Runtime access
+
+The server exposes this release through the existing catalogue search/read/import tools as
+`dataset:kenyan-commerce-v1`. See [global starter catalogue access](../../../docs/implementation/global-seed-catalogue.md).
+Run `node scripts/build-seed-catalogue.mjs` after updating the canonical release to refresh the bundled
+server projection. API and Supabase builds reject a stale projection.

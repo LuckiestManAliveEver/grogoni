@@ -1954,7 +1954,13 @@ export class Cp2Store {
           });
         const sourceBusinessId = String(action.input.sourceBusinessId);
         if (action.toolName === "catalogue.marketplace.products")
-          return this.listShareableCatalogueProducts({ ...context, sourceBusinessId });
+          return this.listShareableCatalogueProducts({
+            ...context,
+            sourceBusinessId,
+            ...(typeof action.input.search === "string" ? { search: action.input.search } : {}),
+            ...(typeof action.input.offset === "number" ? { offset: action.input.offset } : {}),
+            limit: typeof action.input.limit === "number" ? action.input.limit : 50
+          });
         return this.duplicateCatalogueProducts({
           ...context,
           sourceBusinessId,

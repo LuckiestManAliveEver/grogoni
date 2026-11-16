@@ -341,6 +341,7 @@ export class SalesDomain {
     sessionId: string | null;
     businessId: string;
     product: ProductInput;
+    catalogueSource?: NonNullable<ProductSummary["catalogueSource"]>;
     now?: Date;
   }): ProductSummary {
     const now = input.now ?? new Date();
@@ -354,6 +355,9 @@ export class SalesDomain {
     const normalized = normalizeProductInput(input.product);
     const product: ProductSummary = {
       id: randomUUID(),
+      ...(input.catalogueSource === undefined
+        ? {}
+        : { catalogueSource: { ...input.catalogueSource } }),
       businessId: input.businessId,
       name: normalized.name,
       sku: normalized.sku,
