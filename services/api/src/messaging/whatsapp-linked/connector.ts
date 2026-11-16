@@ -1,9 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
-import type {
-  ChannelCapability,
-  ChannelProviderReadiness,
-  WhatsAppLinkedState
-} from "@grogoni/shared-types";
+import type { LinkedReadReceiptKey, LinkedReadReceiptSocket } from "./read-receipts.js";
+import type { ChannelCapability, ChannelProviderReadiness } from "@grogoni/shared-types";
 import type {
   MessagingChannelAdapter,
   OutboundChannelMessage,
@@ -12,6 +9,7 @@ import type {
 import { ChannelGatewayError } from "../channel-errors.js";
 import type { LinkedSessionVault } from "./vault.js";
 import type { LinkedLeaseGuard } from "./lease.js";
+import { linkedOptOutCommand } from "./opt-out.js";
 import {
   LinkedMediaRejected,
   validateLinkedMedia,
@@ -19,8 +17,16 @@ import {
   type LinkedDownloadedMedia
 } from "./media.js";
 
-/** Shared with the web app, which reads it from the status route. */
-export type LinkedState = WhatsAppLinkedState;
+export type LinkedState =
+  | "DISCONNECTED"
+  | "PAIRING"
+  | "CONNECTING"
+  | "CONNECTED"
+  | "RECONNECTING"
+  | "AUTH_REQUIRED"
+  | "REVOKED"
+  | "SUSPENDED"
+  | "ERROR";
 export type LinkedMutation =
   | { kind: "edit"; targetId: string; fromMe: boolean }
   | { kind: "delete"; targetId: string; fromMe: boolean }
@@ -59,6 +65,8 @@ export interface LinkedSocket {
 }
 export interface LinkedDriver {
   open(input: {
+    /** The business this socket serves. Drivers that pick a remote worker route on it. */
+    businessId?: string;
     auth: string | null;
     expectedPhone?: string;
     approvedContacts?: () => string[];
@@ -82,10 +90,19 @@ interface RecordData {
   scopes: Scope[];
   inbox: LinkedInbound[];
   admissions?: Record<string, number>;
-  sent: Record<
-    string,
-    { fingerprint: string; id: string; status: "pending" | "sent"; automated?: boolean }
-  >;
+  sent: Record<string, LinkedSentEntry>;
+}
+/**
+ * One outbound delivery key. `pending` is handed to WhatsApp without a confirmed answer (an
+ * uncertain delivery, never resent); `sent` is settled. `at` is when the entry last changed
+ * (epoch ms); entries written before it existed get it the first time the journal is pruned.
+ */
+interface LinkedSentEntry {
+  fingerprint: string;
+  id: string;
+  status: "pending" | "sent";
+  automated?: boolean;
+  at?: number;
 }
 interface Active {
   data: RecordData;
@@ -101,6 +118,15 @@ interface Active {
   mediaFetch?: { chat: string; controller: AbortController };
   /** Lease generation the current socket runs under (multi-worker mode only). */
   lease?: string;
+  /**
+   * Inbound backpressure: the journal reached `inboxPauseAt`, so the socket was closed to stop
+   * intake while the journal drains. The session reconnects by itself (see `pauseIntake`).
+   */
+  paused?: boolean;
+  /** Consecutive pauses without the journal emptying; drives the reconnect backoff. */
+  pauses?: number;
+  /** The pause's backoff has elapsed; reconnect as soon as the drain needs the socket. */
+  resumeDue?: boolean;
 }
 const LIVE_STATES: ReadonlySet<LinkedState> = new Set([
   "PAIRING",
@@ -126,6 +152,46 @@ export class LinkedLeaseUnavailable extends ChannelGatewayError {
     );
   }
 }
+/**
+ * Raised by a driver when this business's socket must run on an enrolled remote worker that is
+ * not connected to this host. The session waits (SUSPENDED) and retries; nothing runs locally.
+ */
+export class LinkedWorkerOffline extends ChannelGatewayError {
+  constructor() {
+    super(
+      "CHANNEL_UNAVAILABLE",
+      "This business's WhatsApp worker is offline. Start it, then try again.",
+      true
+    );
+  }
+}
+/** Accounts one worker runs at once. Not an experimentally certified capacity. */
+const HOST_SESSION_LIMIT = 8;
+/**
+ * Inbound journal bounds (docs: "Inbound backpressure"). At `pauseAt` queued events the socket is
+ * closed so WhatsApp holds further messages server-side; the journal drains and the session
+ * reconnects once it is down to `resumeAt` (or its head needs the socket), after a backoff of
+ * 2 s doubling per consecutive pause, capped at 60 s. Events a closing socket still delivers are
+ * journaled up to `hardLimit`; only beyond that is an event refused, and that is reported.
+ */
+export const linkedInboxLimits = { pauseAt: 64, resumeAt: 16, hardLimit: 128 } as const;
+/**
+ * Delivery journal bounds (docs: "Delivery journal retention"). Settled sends are kept for the
+ * same 7 days the delegated-result and device outboxes keep settled entries for duplicate
+ * suppression; every caller that can re-present a delivery key gives up long before (outbox
+ * expiry is 24 hours). Pending (uncertain) sends are never pruned; only they can fill the journal.
+ */
+export const linkedSentJournalLimits = {
+  settledRetainMs: 7 * 24 * 60 * 60_000,
+  settledMax: 2_000,
+  pendingMax: 1_000
+} as const;
+/** Media download attempts before the attachment is replaced by a placeholder. */
+const MEDIA_DEFAULTS = { attempts: 3, retryDelayMs: 2_000, timeoutMs: 30_000 };
+export const linkedMediaUnavailableText = "[Attachment could not be downloaded.]";
+export const linkedMediaRejectedText = "[Attachment rejected: unsupported or invalid media.]";
+/** What the canonical store did with one inbound event; `throttled` was not stored (quota). */
+export type LinkedReceiveOutcome = void | "throttled";
 export function validLinkedChat(chat: string): boolean {
   return /^(?:[0-9]{5,20}@(?:s\.whatsapp\.net|lid)|[0-9]{5,20}(?:-[0-9]{1,20})?@g\.us)$/.test(chat);
 }
@@ -159,14 +225,32 @@ export class LinkedWhatsAppConnector implements MessagingChannelAdapter {
       driver: LinkedDriver;
       authorize: (businessId: string, ownerId: string) => void;
       alreadyReceived?: (businessId: string, ownerId: string, message: LinkedInbound) => boolean;
+      /** Resolves `"throttled"` when the store refused the event under its inbound quota. */
       receive: (
         businessId: string,
         ownerId: string,
         generation: string,
         message: LinkedInbound,
         media?: LinkedDownloadedMedia[]
-      ) => Promise<void>;
-      event?: (event: { businessId: string; ownerId: string; state: LinkedState }) => void;
+      ) => Promise<LinkedReceiveOutcome>;
+      /**
+       * Operational notices that are not state changes: intake paused for backpressure, an event
+       * refused beyond the hard journal limit, an attachment replaced by a placeholder.
+       */
+      notice?: (event: {
+        businessId: string;
+        type: "intake_paused" | "inbound_refused" | "media_unavailable" | "media_rejected";
+        queued: number;
+      }) => void;
+      /** Media download retry policy; tests shorten it. */
+      media?: { attempts?: number; retryDelayMs?: number; timeoutMs?: number };
+      /** `lease` is the generation the session runs under, when it holds one. */
+      event?: (event: {
+        businessId: string;
+        ownerId: string;
+        state: LinkedState;
+        lease?: string;
+      }) => void;
       respond?: (
         businessId: string,
         ownerId: string,
@@ -184,9 +268,26 @@ export class LinkedWhatsAppConnector implements MessagingChannelAdapter {
       now?: () => number;
       /** Multi-worker ownership. Omit for single-process deployments. Stopped by `stop()`. */
       lease?: LinkedLeaseGuard;
+      /**
+       * Several workers share this vault directory (requires `lease`). The index becomes one
+       * entry file per business, written only under that business's lease, and the directory
+       * is rescanned every `lease.retryMs` so a standby learns about sessions linked elsewhere.
+       */
+      sharedVolume?: boolean;
+      /**
+       * The business's shared automatic-reply budget (store `admitLinkedAutomatedReply`), which
+       * also counts delegated results. Without it the connector keeps its own 60/hour count.
+       */
+      admit?: (businessId: string, key: string) => boolean;
+      /** Returns an admitted slot when nothing reached the channel gateway. */
+      releaseAdmission?: (businessId: string, key: string) => void;
     }
   ) {
-    this.index = JSON.parse(options.vault.read("$index") ?? "{}");
+    if (options.sharedVolume && !options.lease)
+      throw new Error("A shared WhatsApp session volume requires multi-worker leasing.");
+    this.index = options.sharedVolume
+      ? options.vault.indexEntries()
+      : JSON.parse(options.vault.read("$index") ?? "{}");
     this.unsubscribeLease = options.lease?.onLost((businessId, generation) =>
       this.leaseLost(businessId, generation)
     );
@@ -200,8 +301,14 @@ export class LinkedWhatsAppConnector implements MessagingChannelAdapter {
       }
     }, 30_000);
     this.authorizationTimer.unref?.();
+    if (options.sharedVolume && options.lease) {
+      this.rescanTimer = setInterval(() => this.rescan(), options.lease.retryMs);
+      this.rescanTimer.unref?.();
+    }
   }
+  private readonly rescanTimer: ReturnType<typeof setInterval> | undefined;
   async restore(): Promise<void> {
+    if (this.options.sharedVolume) this.index = this.options.vault.indexEntries();
     for (const [businessId, ownerId] of Object.entries(this.index)) {
       try {
         const active = this.load(businessId, ownerId);
@@ -214,12 +321,79 @@ export class LinkedWhatsAppConnector implements MessagingChannelAdapter {
       }
     }
   }
+  /** Shared volume: pick up sessions another worker linked, as standbys of their own. */
+  private rescan(): void {
+    if (!this.enabled) return;
+    let entries: Record<string, string>;
+    try {
+      entries = this.options.vault.indexEntries();
+    } catch {
+      return; // Volume unreadable right now; the next pass retries.
+    }
+    this.index = entries;
+    for (const [businessId, ownerId] of Object.entries(entries)) {
+      if (this.active.has(businessId)) continue;
+      try {
+        const active = this.load(businessId, ownerId);
+        if (active?.data.auth) this.standby(active);
+      } catch {
+        this.active.delete(businessId);
+      }
+    }
+  }
+  private addIndex(businessId: string, ownerId: string): void {
+    this.index[businessId] = ownerId;
+    if (this.options.sharedVolume) this.options.vault.writeIndexEntry(businessId, ownerId);
+    else this.options.vault.write("$index", JSON.stringify(this.index));
+  }
+  private removeIndex(businessId: string): void {
+    delete this.index[businessId];
+    if (this.options.sharedVolume) this.options.vault.deleteIndexEntry(businessId);
+    else this.options.vault.write("$index", JSON.stringify(this.index));
+  }
+  /** Sessions this worker runs right now (lease held), for the per-host limit. */
+  private runningCount(): number {
+    let count = 0;
+    for (const active of this.active.values())
+      if (active.lease !== undefined && this.leased(active)) count++;
+    return count;
+  }
+  /**
+   * True while this worker holds the business's lease (always in single-process mode). Request
+   * routing uses it to decide between handling a request here and forwarding it to the holder.
+   */
+  servesLocally(businessId: string): boolean {
+    if (!this.options.lease) return true;
+    const active = this.active.get(businessId);
+    return Boolean(
+      active && this.current(active) && active.lease !== undefined && this.leased(active)
+    );
+  }
+  /**
+   * Retry a restorable session now instead of at its next timer, e.g. when its remote worker
+   * has just connected to this host. No-op for live, unauthorized or unknown sessions.
+   */
+  async wake(businessId: string): Promise<void> {
+    const ownerId = this.index[businessId];
+    if (!ownerId || !this.enabled) return;
+    const active = this.load(businessId, ownerId);
+    if (!active?.data.auth || LIVE_STATES.has(active.state) || active.opening) return;
+    clearTimeout(active.timer);
+    try {
+      await this.connect(businessId, ownerId);
+    } catch (error) {
+      const current = this.active.get(businessId);
+      if (current && error instanceof LinkedLeaseUnavailable) this.standby(current);
+    }
+  }
   private now() {
     return this.options.now?.() ?? Date.now();
   }
   private persist(active: Active) {
     // A worker that lost its lease must never overwrite its successor's record.
     if (!this.leased(active)) throw new Error("This worker no longer holds the WhatsApp session.");
+    // Every write is a full record rewrite: keep the delivery journal bounded before each one.
+    pruneLinkedSentJournal(active.data.sent, this.now());
     this.options.vault.write(active.data.businessId, JSON.stringify(active.data));
   }
   /**
@@ -246,7 +420,8 @@ export class LinkedWhatsAppConnector implements MessagingChannelAdapter {
     this.options.event?.({
       businessId: active.data.businessId,
       ownerId: active.data.ownerId,
-      state
+      state,
+      ...(active.lease !== undefined ? { lease: active.lease } : {})
     });
   }
   private erase(active: Active): void {
@@ -272,8 +447,7 @@ export class LinkedWhatsAppConnector implements MessagingChannelAdapter {
     }
     try {
       this.options.vault.delete(active.data.businessId);
-      delete this.index[active.data.businessId];
-      this.options.vault.write("$index", JSON.stringify(this.index));
+      this.removeIndex(active.data.businessId);
     } finally {
       this.transition(active, "REVOKED");
     }
@@ -288,6 +462,19 @@ export class LinkedWhatsAppConnector implements MessagingChannelAdapter {
   }
   private load(businessId: string, ownerId: string): Active | undefined {
     let active = this.active.get(businessId);
+    if (
+      active &&
+      this.options.sharedVolume &&
+      !active.opening &&
+      !this.leased(active) &&
+      !this.options.vault.has(businessId)
+    ) {
+      // The holder erased it from the shared volume: this standby's copy is gone too.
+      clearTimeout(active.timer);
+      this.active.delete(businessId);
+      delete this.index[businessId];
+      active = undefined;
+    }
     if (!active) {
       const raw = this.options.vault.read(businessId);
       if (!raw) return undefined;
@@ -333,7 +520,11 @@ export class LinkedWhatsAppConnector implements MessagingChannelAdapter {
     if (!this.enabled)
       throw new ChannelGatewayError("CHANNEL_UNAVAILABLE", "WhatsApp connections are disabled.");
     let active = this.load(businessId, ownerId);
-    if (!active && Object.keys(this.index).length >= 8)
+    if (
+      !active &&
+      (this.options.sharedVolume ? this.runningCount() : Object.keys(this.index).length) >=
+        HOST_SESSION_LIMIT
+    )
       throw new ChannelGatewayError(
         "CHANNEL_UNAVAILABLE",
         "This host has reached its eight-account WhatsApp limit."
@@ -384,8 +575,7 @@ export class LinkedWhatsAppConnector implements MessagingChannelAdapter {
         };
         this.active.set(businessId, active);
         this.persist(active);
-        this.index[businessId] = ownerId;
-        this.options.vault.write("$index", JSON.stringify(this.index));
+        this.addIndex(businessId, ownerId);
       }
       if (lease !== undefined) active.lease = lease;
     } catch (error) {
@@ -414,6 +604,10 @@ export class LinkedWhatsAppConnector implements MessagingChannelAdapter {
   private async claim(businessId: string): Promise<string | undefined> {
     const lease = this.options.lease;
     if (!lease) return undefined;
+    // A shared volume lets every worker restore every session; the per-host limit keeps one
+    // worker from taking all of them. The others stay standbys until a worker has room.
+    if (this.options.sharedVolume && this.runningCount() >= HOST_SESSION_LIMIT)
+      throw new LinkedLeaseUnavailable();
     let generation: string | null;
     try {
       generation = await lease.acquire(businessId);
@@ -434,6 +628,22 @@ export class LinkedWhatsAppConnector implements MessagingChannelAdapter {
     delete active.lease;
     void this.options.lease.release(active.data.businessId, generation).catch(() => undefined);
   }
+  /**
+   * The socket must run on a remote worker that is not attached here. Hand the lease back and
+   * retry later (or on `wake`); an unfinished pairing ends instead, the owner restarts it.
+   */
+  private park(active: Active): void {
+    clearTimeout(active.timer);
+    if (!active.data.auth) {
+      this.transition(active, "AUTH_REQUIRED");
+      return;
+    }
+    this.transition(active, "SUSPENDED");
+    active.timer = setTimeout(() => {
+      void this.open(active).catch(() => this.transition(active, "ERROR"));
+    }, this.options.lease?.retryMs ?? 10_000);
+    active.timer.unref?.();
+  }
   /** Wait without a socket and retry acquisition: the failover path for restorable sessions. */
   private standby(active: Active): void {
     const lease = this.options.lease;
@@ -451,6 +661,7 @@ export class LinkedWhatsAppConnector implements MessagingChannelAdapter {
     const active = this.active.get(businessId);
     if (!active || active.lease !== generation) return;
     delete active.lease;
+    active.paused = false;
     active.mediaFetch?.controller.abort();
     clearTimeout(active.timer);
     active.data.generation = randomUUID();
@@ -506,11 +717,15 @@ export class LinkedWhatsAppConnector implements MessagingChannelAdapter {
     const leaseGeneration = active.lease;
     const epoch = leaseGeneration ? `${leaseGeneration}:${randomUUID()}` : randomUUID();
     let live = true;
+    // A new socket ends any backpressure pause: its socket epoch is gone.
+    active.paused = false;
+    active.resumeDue = false;
     const valid = () =>
       live && this.current(active) && active.data.generation === epoch && this.leased(active);
     active.data.generation = epoch;
     try {
       const socket = await this.options.driver.open({
+        businessId: active.data.businessId,
         auth: active.data.auth,
         ...(active.data.phone ? { expectedPhone: active.data.phone } : {}),
         approvedContacts: () => active.data.scopes.map((scope) => scope.chat),
@@ -533,7 +748,8 @@ export class LinkedWhatsAppConnector implements MessagingChannelAdapter {
           }
         },
         state: (state, reason) => {
-          if (!valid()) return;
+          // A socket closed for backpressure reports nothing more; the pause owns the reconnect.
+          if (!valid() || active.paused) return;
           try {
             if (state === "open") {
               active.attempts = 0;
@@ -582,7 +798,9 @@ export class LinkedWhatsAppConnector implements MessagingChannelAdapter {
         inbound: (message) => {
           if (
             !valid() ||
-            active.state !== "CONNECTED" ||
+            // A socket paused for backpressure may still hand over events it already took from
+            // WhatsApp; they are journaled, never dropped.
+            (active.state !== "CONNECTED" && !active.paused) ||
             (message.fromMe && !message.mutation) ||
             !validLinkedChat(message.chat) ||
             message.text.length === 0 ||
@@ -603,13 +821,17 @@ export class LinkedWhatsAppConnector implements MessagingChannelAdapter {
             active.socket?.close();
             return;
           }
-          if (active.data.inbox.length >= 64) {
-            this.transition(active, "SUSPENDED");
-            active.socket?.close();
+          if (active.data.inbox.length >= linkedInboxLimits.hardLimit) {
+            // Unreachable with a driver that stops delivering after close(); reported if not.
+            this.options.notice?.({
+              businessId: active.data.businessId,
+              type: "inbound_refused",
+              queued: active.data.inbox.length
+            });
             return;
           }
           const scope = active.data.scopes.find((entry) => entry.chat === message.chat)!;
-          if (/^(?:stop|unsubscribe)$/i.test(message.text.trim())) {
+          if (!message.mutation && linkedOptOutCommand(message.text) === "stop") {
             scope.automation = false;
             scope.grantId = randomUUID();
           }
@@ -626,6 +848,8 @@ export class LinkedWhatsAppConnector implements MessagingChannelAdapter {
             active.socket?.close();
             return;
           }
+          if (!active.paused && active.data.inbox.length >= linkedInboxLimits.pauseAt)
+            this.pauseIntake(active);
           void this.drain(active);
         }
       });
@@ -643,6 +867,14 @@ export class LinkedWhatsAppConnector implements MessagingChannelAdapter {
         if (valid() && active.state === "PAIRING") active.code = code;
       }
     } catch (error) {
+      if (valid() && error instanceof LinkedWorkerOffline && !active.socket) {
+        live = false;
+        active.data.generation = randomUUID();
+        this.park(active);
+        // Background reconnects wait quietly; an owner's pairing attempt learns why it failed.
+        if (phone !== undefined && !active.data.auth) throw error;
+        return;
+      }
       if (valid()) {
         live = false;
         active.socket?.close();
@@ -660,7 +892,7 @@ export class LinkedWhatsAppConnector implements MessagingChannelAdapter {
       !scope?.automation ||
       !scope.grantId ||
       message.automationGrant !== scope.grantId ||
-      /^(?:stop|start|unsubscribe)$/i.test(message.text.trim())
+      linkedOptOutCommand(message.text) !== null
     )
       return false;
     if (!message.chat.endsWith("@g.us")) return true;
@@ -681,115 +913,224 @@ export class LinkedWhatsAppConnector implements MessagingChannelAdapter {
   private inboundKey(message: LinkedInbound): string {
     return JSON.stringify([message.chat, message.sender, message.id]);
   }
+  /**
+   * Inbound backpressure. Closing the socket stops intake (WhatsApp keeps later messages for this
+   * linked device and delivers them on reconnect); the journal keeps draining without it. Items
+   * that need the socket (a media download or an automatic reply) wait for the reconnect. An
+   * in-flight download is left to finish: it does not need the closed socket.
+   */
+  private pauseIntake(active: Active): void {
+    active.paused = true;
+    active.resumeDue = false;
+    active.pauses = (active.pauses ?? 0) + 1;
+    const socket = active.socket;
+    delete active.socket;
+    socket?.close();
+    clearTimeout(active.timer);
+    this.transition(active, "RECONNECTING");
+    this.options.notice?.({
+      businessId: active.data.businessId,
+      type: "intake_paused",
+      queued: active.data.inbox.length
+    });
+    active.timer = setTimeout(
+      () => {
+        active.resumeDue = true;
+        this.maybeResume(active);
+      },
+      Math.min(60_000, 1000 * 2 ** active.pauses)
+    );
+    active.timer.unref?.();
+  }
+  /** Reconnect a paused session once its backoff elapsed and the drain needs the socket. */
+  private maybeResume(active: Active): void {
+    if (!active.paused || !active.resumeDue || active.draining || !this.current(active)) return;
+    const head = active.data.inbox[0];
+    if (
+      head &&
+      active.data.inbox.length > linkedInboxLimits.resumeAt &&
+      !this.needsSocket(active, head)
+    )
+      return; // Still draining without the socket; the drain calls back when it stops.
+    active.paused = false;
+    active.resumeDue = false;
+    void this.open(active).catch(() => this.transition(active, "ERROR"));
+  }
+  private needsSocket(active: Active, message: LinkedInbound): boolean {
+    return Boolean(message.media?.length) || this.shouldAutomate(active, message);
+  }
+  /** The drain may keep working: same socket epoch, lease held, connected or paused. */
+  private drainable(active: Active, epoch: string): boolean {
+    return (
+      this.current(active) &&
+      this.leased(active) &&
+      active.data.generation === epoch &&
+      (active.state === "CONNECTED" || active.paused === true)
+    );
+  }
+  /**
+   * Downloads one attachment with bounded retries. Any failure other than the connection going
+   * away ends as `failed` after the last attempt, so one bad attachment can never hold the
+   * journal's head: the message is stored with a placeholder instead. `interrupted` (socket
+   * closed or paused, lease lost, scope removed, shutdown) leaves the event journaled for replay.
+   */
+  private async downloadAttachment(
+    active: Active,
+    message: LinkedInbound,
+    attachment: LinkedMedia,
+    epoch: string
+  ): Promise<LinkedDownloadedMedia | "rejected" | "failed" | "interrupted"> {
+    const policy = { ...MEDIA_DEFAULTS, ...this.options.media };
+    const inScope = () => active.data.scopes.some((scope) => scope.chat === message.chat);
+    for (let attempt = 1; ; attempt++) {
+      const socket = active.socket;
+      // Connected without a socket is a broken session, not a bad attachment: reconnect.
+      if (!socket && !active.paused && this.drainable(active, epoch) && inScope())
+        throw new Error("Media download is unavailable.");
+      if (!socket || !this.drainable(active, epoch) || !inScope()) return "interrupted";
+      if (!socket.downloadMedia) return "failed";
+      const controller = new AbortController();
+      active.mediaFetch = { chat: message.chat, controller };
+      let timedOut = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        // Raced rather than trusted: a driver that ignores the abort signal still times out.
+        const bytes = await Promise.race([
+          socket.downloadMedia(
+            attachment,
+            AbortSignal.any([this.shutdown.signal, controller.signal])
+          ),
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(() => {
+              timedOut = true;
+              controller.abort();
+              reject(new Error("Media download timed out."));
+            }, policy.timeoutMs);
+            timer.unref?.();
+          })
+        ]);
+        return validateLinkedMedia(attachment, bytes);
+      } catch (error) {
+        if (error instanceof LinkedMediaRejected) return "rejected";
+        if (
+          this.shutdown.signal.aborted ||
+          (controller.signal.aborted && !timedOut) ||
+          !inScope() ||
+          !this.drainable(active, epoch) ||
+          active.paused
+        )
+          return "interrupted";
+        if (attempt >= policy.attempts) return "failed";
+      } finally {
+        clearTimeout(timer);
+        if (active.mediaFetch?.controller === controller) delete active.mediaFetch;
+      }
+      await delay(policy.retryDelayMs * attempt, this.shutdown.signal);
+    }
+  }
   /** Acknowledge the private journal only after canonical persistence crosses its barrier. */
   private async drain(active: Active): Promise<void> {
     if (active.draining) return;
     active.draining = true;
     const epoch = active.data.generation;
     try {
-      while (
-        this.current(active) &&
-        this.leased(active) &&
-        active.state === "CONNECTED" &&
-        active.data.inbox.length
-      ) {
+      while (this.drainable(active, epoch) && active.data.inbox.length) {
         const message = active.data.inbox[0]!;
         this.authorizeActive(active);
         if (active.data.scopes.some((scope) => scope.chat === message.chat)) {
+          // Paused: what needs the socket waits for the reconnect, still journaled.
+          if (active.paused && !active.socket && this.needsSocket(active, message)) return;
           let received = message;
-          const media: LinkedDownloadedMedia[] = [];
+          let media: LinkedDownloadedMedia[] | undefined;
           if (message.media?.length) {
-            const controller = new AbortController();
-            active.mediaFetch = { chat: message.chat, controller };
-            try {
-              if (!active.socket?.downloadMedia) throw new Error("Media download is unavailable.");
-              for (const attachment of message.media)
-                media.push(
-                  validateLinkedMedia(
-                    attachment,
-                    await active.socket.downloadMedia(
-                      attachment,
-                      AbortSignal.any([this.shutdown.signal, controller.signal])
-                    )
-                  )
-                );
-            } catch (error) {
-              if (!active.data.scopes.some((scope) => scope.chat === message.chat)) continue;
-              if (!(error instanceof LinkedMediaRejected)) throw error;
-              received = {
-                ...message,
-                media: [],
-                text: `${message.text}\n[Attachment rejected: unsupported or invalid media.]`.slice(
-                  0,
-                  4000
-                )
-              };
-            } finally {
-              delete active.mediaFetch;
+            media = [];
+            let unavailable: "rejected" | "failed" | undefined;
+            for (const attachment of message.media) {
+              const outcome = await this.downloadAttachment(active, message, attachment, epoch);
+              if (outcome === "interrupted") break;
+              if (outcome === "rejected" || outcome === "failed") unavailable = outcome;
+              else media.push(outcome);
             }
             if (!this.current(active) || active.data.generation !== epoch) return;
             if (!active.data.scopes.some((scope) => scope.chat === message.chat)) continue;
+            if (media.length + (unavailable ? 1 : 0) < message.media.length) return;
+            if (unavailable) {
+              media = [];
+              received = {
+                ...message,
+                media: [],
+                text: `${message.text}\n${
+                  unavailable === "rejected" ? linkedMediaRejectedText : linkedMediaUnavailableText
+                }`.slice(0, 4000)
+              };
+              this.options.notice?.({
+                businessId: active.data.businessId,
+                type: unavailable === "rejected" ? "media_rejected" : "media_unavailable",
+                queued: active.data.inbox.length
+              });
+            }
           }
           // A lost lease leaves the event journaled (unacknowledged) for the next tenure.
           if (!this.leased(active) || active.data.generation !== epoch) return;
-          if (message.media?.length)
-            await this.options.receive(
-              active.data.businessId,
-              active.data.ownerId,
-              active.data.generation,
-              received,
-              media
-            );
-          else
-            await this.options.receive(
-              active.data.businessId,
-              active.data.ownerId,
-              active.data.generation,
-              message
-            );
+          const outcome = media
+            ? await this.options.receive(
+                active.data.businessId,
+                active.data.ownerId,
+                active.data.generation,
+                received,
+                media
+              )
+            : await this.options.receive(
+                active.data.businessId,
+                active.data.ownerId,
+                active.data.generation,
+                message
+              );
           if (
+            outcome !== "throttled" &&
             this.shouldAutomate(active, message) &&
             this.options.respond &&
             this.options.deliver
           ) {
+            // Paused while this message was stored: reply after the reconnect (receive is
+            // idempotent, so the replay stores nothing twice).
+            if (active.paused && !active.socket) return;
             const scope = active.data.scopes.find((entry) => entry.chat === message.chat)!;
             const key =
               "whatsapp-reply:" +
               createHash("sha256").update(this.inboundKey(message)).digest("hex");
-            const admissions = (active.data.admissions ??= {});
-            let admitted = Boolean(admissions[key]);
-            if (!admitted) {
-              const cutoff = this.now() - 3_600_000;
-              if (Object.values(admissions).filter((time) => time >= cutoff).length < 60) {
-                for (const [id, time] of Object.entries(admissions))
-                  if (time < cutoff) delete admissions[id];
-                admissions[key] = this.now();
-                this.persist(active);
-                admitted = true;
-              }
-            }
+            const admitted = this.admit(active, key);
             if (admitted && this.leased(active)) {
-              const response = await this.options.respond(
-                active.data.businessId,
-                active.data.ownerId,
-                message,
-                scope.conversationId,
-                this.shutdown.signal
-              );
-              if (
-                response &&
-                this.current(active) &&
-                this.leased(active) &&
-                active.state === "CONNECTED" &&
-                this.shouldAutomate(active, message)
-              )
-                await this.options.deliver(
+              let delivered = false;
+              try {
+                const response = await this.options.respond(
                   active.data.businessId,
                   active.data.ownerId,
                   message,
-                  response,
-                  key
+                  scope.conversationId,
+                  this.shutdown.signal
                 );
+                if (
+                  response &&
+                  this.current(active) &&
+                  this.leased(active) &&
+                  active.state === "CONNECTED" &&
+                  this.shouldAutomate(active, message)
+                ) {
+                  await this.options.deliver(
+                    active.data.businessId,
+                    active.data.ownerId,
+                    message,
+                    response,
+                    key
+                  );
+                  delivered = true;
+                }
+              } finally {
+                // A reply that never reached the gateway gives its budget slot back. One that did
+                // is counted by its canonical message, so releasing the reservation is harmless.
+                if (!delivered) this.options.releaseAdmission?.(active.data.businessId, key);
+              }
             }
           }
         }
@@ -807,14 +1148,18 @@ export class LinkedWhatsAppConnector implements MessagingChannelAdapter {
             throw error;
           }
         }
+        if (!active.data.inbox.length && active.state === "CONNECTED") active.pauses = 0;
       }
     } catch {
       if (this.current(active) && active.data.generation === epoch) {
+        active.paused = false;
+        active.resumeDue = false;
         active.socket?.close();
+        delete active.socket;
         const failures = (active.ingressFailures = (active.ingressFailures ?? 0) + 1);
         this.transition(active, failures > 8 ? "ERROR" : "RECONNECTING");
+        clearTimeout(active.timer);
         if (failures <= 8) {
-          clearTimeout(active.timer);
           active.timer = setTimeout(
             () => void this.open(active).catch(() => this.transition(active, "ERROR")),
             Math.min(60_000, 1000 * 2 ** failures)
@@ -824,14 +1169,29 @@ export class LinkedWhatsAppConnector implements MessagingChannelAdapter {
       }
     } finally {
       active.draining = false;
-      if (
-        this.current(active) &&
-        this.leased(active) &&
-        active.state === "CONNECTED" &&
-        active.data.inbox.length
-      )
-        setImmediate(() => void this.drain(active));
+      if (this.drainable(active, epoch) && active.data.inbox.length) {
+        const head = active.data.inbox[0]!;
+        if (!active.paused || active.socket || !this.needsSocket(active, head))
+          setImmediate(() => void this.drain(active));
+      }
+      this.maybeResume(active);
     }
+  }
+  /**
+   * One automatic reply per inbound message, at most 60 per business per rolling hour. With
+   * `admit` the budget is the store's, shared with delegated results; a replayed message reuses
+   * its own admission in both modes.
+   */
+  private admit(active: Active, key: string): boolean {
+    if (this.options.admit) return this.options.admit(active.data.businessId, key);
+    const admissions = (active.data.admissions ??= {});
+    if (admissions[key]) return true;
+    const cutoff = this.now() - 3_600_000;
+    if (Object.values(admissions).filter((time) => time >= cutoff).length >= 60) return false;
+    for (const [id, time] of Object.entries(admissions)) if (time < cutoff) delete admissions[id];
+    admissions[key] = this.now();
+    this.persist(active);
+    return true;
   }
   private expire(active: Active) {
     clearTimeout(active.timer);
@@ -896,9 +1256,94 @@ export class LinkedWhatsAppConnector implements MessagingChannelAdapter {
       .filter((group) => validLinkedChat(group.chat) && group.chat.endsWith("@g.us"))
       .slice(0, 100);
   }
-  async disconnect(businessId: string, ownerId: string) {
+  /**
+   * Read receipts (read-receipts.ts): only for a chat approved on this host's connected session,
+   * for this owner, while this worker holds the lease.
+   */
+  readReceiptApproved(businessId: string, ownerId: string, chat: string): boolean {
+    try {
+      this.options.authorize(businessId, ownerId);
+    } catch {
+      return false;
+    }
     const active = this.load(businessId, ownerId);
+    return (
+      active !== undefined &&
+      active.state === "CONNECTED" &&
+      this.current(active) &&
+      this.leased(active) &&
+      active.data.scopes.some((scope) => scope.chat === chat)
+    );
+  }
+
+  /**
+   * What the delivery journal knows about one idempotency key: never handed to WhatsApp
+   * (`none`), handed over without a confirmed answer (`pending`, an uncertain delivery), or
+   * `sent`. Read-only; the Android sidecar uses it to report outcomes to the device outbox
+   * without matching error text.
+   */
+  deliveryState(
+    businessId: string,
+    ownerId: string,
+    idempotencyKey: string
+  ): "none" | "pending" | "sent" {
+    const active = this.load(businessId, ownerId);
+    if (!active) return "none";
+    const key = createHash("sha256").update(idempotencyKey).digest("hex");
+    return active.data.sent[key]?.status ?? "none";
+  }
+
+  /** Sends read receipts on the live socket. Returns how many keys were sent; 0 when not allowed. */
+  async markRead(
+    businessId: string,
+    ownerId: string,
+    chat: string,
+    keys: LinkedReadReceiptKey[]
+  ): Promise<number> {
+    if (!this.readReceiptApproved(businessId, ownerId, chat)) return 0;
+    const active = this.load(businessId, ownerId)!;
+    const socket = active.socket as Partial<LinkedReadReceiptSocket> | undefined;
+    if (!socket?.markRead) return 0;
+    if (this.options.lease) {
+      // An external effect, like a send: confirm the generation against the database first.
+      const generation = active.lease!;
+      const held = await this.options.lease.verify(active.data.businessId, generation);
+      if (!held || active.lease !== generation || active.socket !== socket) return 0;
+    }
+    if (!this.readReceiptApproved(businessId, ownerId, chat) || active.socket !== socket) return 0;
+    return socket.markRead(chat, keys);
+  }
+
+  async disconnect(businessId: string, ownerId: string) {
+    let active = this.load(businessId, ownerId);
     if (!active) return;
+    if (this.options.lease && !this.leased(active)) {
+      // Nobody may erase a record another worker is running: take the lease first. When another
+      // worker holds it, this throws LinkedLeaseUnavailable and the request goes to that worker.
+      const generation = (await this.claim(businessId))!;
+      const current = this.active.get(businessId);
+      if (current && this.leased(current)) {
+        this.releaseUnused(businessId, generation);
+        active = current;
+      } else {
+        active = current ?? active;
+        this.active.set(businessId, active);
+        active.lease = generation;
+        let present: boolean;
+        try {
+          present = this.refresh(active);
+        } catch (error) {
+          this.releaseLease(active);
+          throw error;
+        }
+        if (!present) {
+          // Already disconnected by its previous holder.
+          this.active.delete(businessId);
+          this.releaseLease(active);
+          return;
+        }
+      }
+    }
     this.active.delete(businessId);
     active.mediaFetch?.controller.abort();
     clearTimeout(active.timer);
@@ -917,8 +1362,7 @@ export class LinkedWhatsAppConnector implements MessagingChannelAdapter {
       clearTimeout(timer);
       active.socket?.close();
       this.options.vault.delete(businessId);
-      delete this.index[businessId];
-      this.options.vault.write("$index", JSON.stringify(this.index));
+      this.removeIndex(businessId);
       // DISCONNECTED hands the lease back so another worker is never blocked for a full TTL.
       this.transition(active, "DISCONNECTED");
     }
@@ -927,7 +1371,9 @@ export class LinkedWhatsAppConnector implements MessagingChannelAdapter {
     this.enabled = false;
     this.shutdown.abort();
     clearInterval(this.authorizationTimer);
+    clearInterval(this.rescanTimer);
     for (const active of this.active.values()) {
+      active.paused = false;
       active.mediaFetch?.controller.abort();
       clearTimeout(active.timer);
       active.data.generation = randomUUID();
@@ -1064,9 +1510,17 @@ export class LinkedWhatsAppConnector implements MessagingChannelAdapter {
         );
       return { accepted: true, providerMessageId: existing.id, status: "sent" };
     }
-    // Never evict a delivery key and silently resend. Rotation requires a new connection.
-    if (Object.keys(active.data.sent).length >= 10_000)
-      throw new ChannelGatewayError("CHANNEL_SEND_FAILED", "Connection delivery journal is full.");
+    // Settled keys age out (pruneLinkedSentJournal); an uncertain one is never evicted, because
+    // forgetting it could resend. Only a backlog of uncertain deliveries can refuse a send.
+    pruneLinkedSentJournal(active.data.sent, this.now());
+    if (
+      Object.values(active.data.sent).filter((entry) => entry.status === "pending").length >=
+      linkedSentJournalLimits.pendingMax
+    )
+      throw new ChannelGatewayError(
+        "CHANNEL_SEND_FAILED",
+        "Too many WhatsApp deliveries are uncertain. Check WhatsApp, then reconnect this account."
+      );
     const id = createHash("sha256")
       .update(`${active.data.businessId}:${key}`)
       .digest("hex")
@@ -1076,7 +1530,8 @@ export class LinkedWhatsAppConnector implements MessagingChannelAdapter {
       fingerprint,
       id,
       status: "pending",
-      automated: request.idempotencyKey.startsWith("whatsapp-reply:")
+      automated: request.idempotencyKey.startsWith("whatsapp-reply:"),
+      at: this.now()
     };
     this.persist(active);
     const deliveredId = await socket.send(
@@ -1092,9 +1547,53 @@ export class LinkedWhatsAppConnector implements MessagingChannelAdapter {
       fingerprint,
       id: deliveredId,
       status: "sent",
-      automated: request.idempotencyKey.startsWith("whatsapp-reply:")
+      automated: request.idempotencyKey.startsWith("whatsapp-reply:"),
+      at: this.now()
     };
     this.persist(active);
     return { accepted: true, providerMessageId: deliveredId, status: "sent" };
   }
+}
+
+/**
+ * Bounds the delivery journal in place. Settled (`sent`) entries older than the retention window
+ * go first; if more than `settledMax` remain, the oldest settled ones go too. Pending entries are
+ * uncertain deliveries and are never removed here: forgetting one could resend a message the
+ * customer already has. Returns how many entries were removed.
+ */
+export function pruneLinkedSentJournal(sent: Record<string, LinkedSentEntry>, now: number): number {
+  const cutoff = now - linkedSentJournalLimits.settledRetainMs;
+  const settled: Array<[string, number]> = [];
+  let removed = 0;
+  for (const [key, entry] of Object.entries(sent)) {
+    // Entries from before `at` existed start their retention now rather than living forever.
+    if (typeof entry.at !== "number" || !Number.isFinite(entry.at)) entry.at = now;
+    if (entry.status !== "sent") continue;
+    if (entry.at < cutoff) {
+      delete sent[key];
+      removed++;
+    } else settled.push([key, entry.at]);
+  }
+  if (settled.length > linkedSentJournalLimits.settledMax) {
+    settled.sort((left, right) => left[1] - right[1]);
+    for (const [key] of settled.slice(0, settled.length - linkedSentJournalLimits.settledMax)) {
+      delete sent[key];
+      removed++;
+    }
+  }
+  return removed;
+}
+
+function delay(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal.aborted) return resolve();
+    const timer = setTimeout(done, ms);
+    timer.unref?.();
+    signal.addEventListener("abort", done, { once: true });
+    function done() {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", done);
+      resolve();
+    }
+  });
 }

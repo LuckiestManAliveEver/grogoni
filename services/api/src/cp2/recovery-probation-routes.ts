@@ -91,6 +91,8 @@ export const probationAllowedWrites: ReadonlySet<string> = new Set([
   "POST /businesses/:businessId/beta/telemetry",
   "POST /businesses/:businessId/catalogue-marketplace/shops/:sourceBusinessId/duplicate",
   "POST /businesses/:businessId/channel-messages",
+  // Dismissing the owner-change notice only hides a message; it grants nothing.
+  "POST /businesses/:businessId/channels/whatsapp-linked/account/owner-change/acknowledge",
   "POST /businesses/:businessId/commerce-sources/:sourceId/refresh",
   "POST /businesses/:businessId/commerce-sources/describe",
   "POST /businesses/:businessId/commerce-sources/match",
@@ -289,6 +291,9 @@ export const probationRefusedWrites: Readonly<Record<string, string>> = {
   "DELETE /auth/passkeys/:credentialId": "sign-in, credentials and sessions",
   "DELETE /auth/sessions/:sessionId": "sign-in, credentials and sessions",
   "DELETE /businesses/:businessId/channels/whatsapp-linked": "linking an outside messaging account",
+  // Revoking a remote WhatsApp worker also unlinks the WhatsApp session.
+  "DELETE /businesses/:businessId/channels/whatsapp-linked/workers/:workerId":
+    "linking an outside messaging account",
   "DELETE /businesses/:businessId/mailboxes/:mailboxId": "linking outside accounts",
   "DELETE /businesses/:businessId/social-accounts/:identityId": "linking outside accounts",
   "DELETE /businesses/:businessId/staff/members/:membershipId": "staff and roles",
@@ -359,12 +364,35 @@ export const probationRefusedWrites: Readonly<Record<string, string>> = {
   "POST /auth/signup/complete": "sign-in, credentials and sessions",
   "POST /auth/signup/start": "sign-in, credentials and sessions",
   "POST /auth/social/login": "sign-in, credentials and sessions",
+  "POST /businesses/:businessId/channels/whatsapp-linked/chats/customer": "identity links",
+  "POST /businesses/:businessId/channels/whatsapp-linked/chats/read-receipts":
+    "linking an outside messaging account",
   "POST /businesses/:businessId/channels/whatsapp-linked/connect":
+    "linking an outside messaging account",
+  // The owner's phone (Android sidecar) approving a chat and forwarding its messages: both give
+  // that phone lasting access to the business inbox.
+  "POST /businesses/:businessId/channels/whatsapp-linked/device/ingress":
+    "linking an outside messaging account",
+  "POST /businesses/:businessId/channels/whatsapp-linked/device/scopes":
+    "linking an outside messaging account",
+  // The phone hosting the session: reporting it makes sends queue for that phone, pulling hands it
+  // message text and read receipts to send as the business, and acknowledging settles them.
+  "POST /businesses/:businessId/channels/whatsapp-linked/device/outbox/ack":
+    "linking an outside messaging account",
+  "POST /businesses/:businessId/channels/whatsapp-linked/device/outbox/pull":
+    "linking an outside messaging account",
+  "POST /businesses/:businessId/channels/whatsapp-linked/device/state":
     "linking an outside messaging account",
   "POST /businesses/:businessId/channels/whatsapp-linked/scopes":
     "linking an outside messaging account",
   "POST /businesses/:businessId/channels/whatsapp-linked/tools":
     "linking an outside messaging account",
+  // Remote WhatsApp worker enrollment: a credential that carries the business's WhatsApp device
+  // keys for up to 90 days.
+  "POST /businesses/:businessId/channels/whatsapp-linked/workers":
+    "issues a lasting worker credential for a messaging account",
+  "POST /businesses/:businessId/channels/whatsapp-linked/workers/:workerId/rotate":
+    "issues a lasting worker credential for a messaging account",
   "POST /businesses/:businessId/compliance/account-deletion": "deletion and bulk export",
   "POST /businesses/:businessId/compliance/export": "deletion and bulk export",
   "POST /businesses/:businessId/customers/:customerId/account-link": "identity links",

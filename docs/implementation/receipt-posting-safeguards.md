@@ -25,12 +25,12 @@ Existing `GET /businesses/:businessId/commerce-sources` returns scoped packaging
 - `services/api/src/cp2/domains/commerce-sources/store.ts`: packaging verification/revocation through existing authorization, persistence and audit mechanisms.
 - `packages/shared-types/src/{index,commerce-sources,receipt-commerce}.ts`: additive contracts; the receipt-commerce contract was reused from existing local work.
 - `apps/web/src/{ReceiptFieldsForm,CommerceSourcesPanel}.tsx`: document/delivery review and packaging controls.
-- Migration/rollback `137_receipt_verified_packaging`: extend existing metadata constraints; no second product, inventory or invoice ledger.
+- Migration/rollback `140_receipt_verified_packaging`: extend existing metadata constraints; no second product, inventory or invoice ledger.
 - `tests/receipt-posting-{validation,postgres}.test.ts`: adversarial numeric/document/stock tests, evaluation grid, restart and PostgreSQL constraints. Existing receipt/offline fixtures now include explicit review where posting is expected.
 
 ## Rollout
 
-1. Back up the target database under the existing deployment procedure. Apply migration 137 with the existing `pnpm db:migrate` tooling before deploying the new API. This phase has only been migrated on an isolated local PostgreSQL database.
+1. Back up the target database under the existing deployment procedure. Apply migration 140 with the existing `pnpm db:migrate` tooling before deploying the new API. This phase has only been migrated on an isolated local PostgreSQL database.
 2. Deploy API/Edge and frontend together. No new daemon schedule or inference provider is required. Build/deploy the API and frontend through the existing release pipeline; locally restart their normal dev processes after rebuilding shared contracts.
 3. Verify old drafts load as unclassified and cannot post until reviewed. Verify a known packaging conversion and repeated confirmation against test accounts before any production acceptance claim.
 4. To roll back, deploy the prior application and apply the provided non-destructive rollback only if required. It removes the packaging index/validation but deliberately retains the expanded kind allowlist and evidence. Older code ignores packaging metadata. Application rollback restores its previous, weaker receipt posting behavior; account for that operationally.
@@ -51,6 +51,6 @@ Validation results are recorded in the implementation checklist after the final 
 
 The existing commerce operations API also accepts `trading_grant.create` and `trading_grant.revoke`. Only the business owner can issue/revoke these standing permissions. Creation requires `confirmed: true`, an available partner business id, `partnerRole`, explicit local supplier/customer id (or current principal-approved salesperson `representationId`), allowed transaction kinds, a currency, nullable integer minor-unit ceiling, explicit posting permission booleans, bounded agent delegation and a future UTC ISO expiry. No ceiling means no automatic posting. Terms cannot be edited in place: revoke and replace them.
 
-`receipt-commerce/trading-policy.ts` checks current scope, expiry/revocation, representation, categories, currency, value, individual effects and agent ceiling. Migration 138 stores these records in the existing commerce table and enforces one active permission per account/partner/role. API startup now requires migration 138. Apply migrations 137 and 138 before deploying this checkpoint. Rollbacks retain evidence and expanded kind allowlists.
+`receipt-commerce/trading-policy.ts` checks current scope, expiry/revocation, representation, categories, currency, value, individual effects and agent ceiling. Migration 141 stores these records in the existing commerce table and enforces one active permission per account/partner/role. API startup now requires migration 141. Apply migrations 140 and 141 before deploying this checkpoint. Rollbacks retain evidence and expanded kind allowlists.
 
 This API/evaluator is preparatory. There is no receipt participant consumer yet, no two-sided account synchronization or owner policy settings screen. A local receipt confirmation does not consume a grant to write another account. The corresponding checklist item remains open until orchestration invokes the evaluator for each effect and retry. Persisting permission configuration alone is not cross-account authorization acceptance.

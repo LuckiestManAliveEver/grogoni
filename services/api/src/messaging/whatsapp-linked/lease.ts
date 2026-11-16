@@ -32,6 +32,75 @@ export interface LinkedLeaseStore {
   verify(businessId: string, holderId: string, generation: string): Promise<boolean>;
 }
 
+/** Who holds a business's lease right now, for routing requests to it (migration 138). */
+export interface LinkedLeaseHolder {
+  businessId: string;
+  holderId: string;
+  generation: string;
+  /** The holder's internal base URL; null for a holder that runs without forwarding. */
+  holderUrl: string | null;
+  /** Connection state the holder last published for this generation. */
+  holderState: string | null;
+}
+
+/**
+ * Read side of the lease table plus the holder's state publication. Advisory routing data only:
+ * ownership decisions still go through `LinkedLeaseStore` compare-and-sets.
+ */
+export interface LinkedLeaseDirectory {
+  /** The unexpired holder of one business, by the database clock; null when nobody holds it. */
+  holder(businessId: string): Promise<LinkedLeaseHolder | null>;
+  /** Every unexpired lease. One row per business, so this stays small. */
+  live(): Promise<LinkedLeaseHolder[]>;
+  /** Records the holder's connection state; only the current holder + generation can write. */
+  publish(
+    businessId: string,
+    holderId: string,
+    generation: string,
+    state: string
+  ): Promise<boolean>;
+}
+
+const HOLDER_STATES = new Set([
+  "DISCONNECTED",
+  "PAIRING",
+  "CONNECTING",
+  "CONNECTED",
+  "RECONNECTING",
+  "AUTH_REQUIRED",
+  "REVOKED",
+  "SUSPENDED",
+  "ERROR"
+]);
+/** An internal base URL other workers can reach: http(s), no credentials, query or fragment. */
+export function validLinkedHolderUrl(value: string): boolean {
+  if (value.length > 500) return false;
+  try {
+    const url = new URL(value);
+    return (
+      (url.protocol === "http:" || url.protocol === "https:") &&
+      !url.username &&
+      !url.password &&
+      !url.search &&
+      !url.hash
+    );
+  } catch {
+    return false;
+  }
+}
+function holderRow(row: unknown): LinkedLeaseHolder | null {
+  const value = row as Record<string, unknown> | undefined;
+  if (!value || typeof value.business_id !== "string" || typeof value.holder_id !== "string")
+    return null;
+  return {
+    businessId: value.business_id,
+    holderId: value.holder_id,
+    generation: String(value.generation),
+    holderUrl: typeof value.holder_url === "string" ? value.holder_url : null,
+    holderState: typeof value.holder_state === "string" ? value.holder_state : null
+  };
+}
+
 const GENERATION = /^[1-9][0-9]{0,18}$/;
 const MAX_ID = 200;
 
@@ -46,28 +115,43 @@ function checkTtl(ttlMs: number): void {
     throw new Error("Invalid lease TTL.");
 }
 
-/** Postgres implementation. `sql` is a `pg.Pool`; each statement runs in its own transaction. */
-export class PostgresLinkedLeaseStore implements LinkedLeaseStore {
-  constructor(private readonly sql: LinkedLeaseSql) {}
+/**
+ * Postgres implementation. `sql` is a `pg.Pool`; each statement runs in its own transaction.
+ * `holderUrl` is written with every acquire so other workers can forward requests here.
+ */
+export class PostgresLinkedLeaseStore implements LinkedLeaseStore, LinkedLeaseDirectory {
+  private readonly holderUrl: string | null;
+  constructor(
+    private readonly sql: LinkedLeaseSql,
+    options: { holderUrl?: string } = {}
+  ) {
+    if (options.holderUrl !== undefined && !validLinkedHolderUrl(options.holderUrl))
+      throw new Error("Invalid lease holder URL.");
+    this.holderUrl = options.holderUrl ?? null;
+  }
 
   async acquire(businessId: string, holderId: string, ttlMs: number): Promise<string | null> {
     checkIds(businessId, holderId);
     checkTtl(ttlMs);
     // INSERT .. ON CONFLICT serializes concurrent acquirers on the primary key: the loser waits
     // for the winner's commit, then re-evaluates the WHERE against the winner's unexpired row.
+    // A new generation starts with no published state: readers never see the predecessor's.
     const result = await this.sql.query(
       `insert into whatsapp_linked_leases as lease
-         (business_id, holder_id, generation, expires_at, heartbeat_at, acquired_at)
-       values ($1, $2, 1, now() + $3::integer * interval '1 millisecond', now(), now())
+         (business_id, holder_id, generation, expires_at, heartbeat_at, acquired_at, holder_url,
+          holder_state)
+       values ($1, $2, 1, now() + $3::integer * interval '1 millisecond', now(), now(), $4, null)
        on conflict (business_id) do update
          set holder_id = excluded.holder_id,
              generation = lease.generation + 1,
              expires_at = excluded.expires_at,
              heartbeat_at = excluded.heartbeat_at,
-             acquired_at = excluded.acquired_at
+             acquired_at = excluded.acquired_at,
+             holder_url = excluded.holder_url,
+             holder_state = null
          where lease.expires_at <= now() or lease.holder_id = excluded.holder_id
        returning generation::text as generation`,
-      [businessId, holderId, ttlMs]
+      [businessId, holderId, ttlMs, this.holderUrl]
     );
     const row = result.rows[0] as { generation?: unknown } | undefined;
     return typeof row?.generation === "string" ? row.generation : null;
@@ -114,6 +198,43 @@ export class PostgresLinkedLeaseStore implements LinkedLeaseStore {
     );
     return result.rows.length === 1;
   }
+
+  async holder(businessId: string): Promise<LinkedLeaseHolder | null> {
+    if (!businessId || businessId.length > MAX_ID) throw new Error("Invalid lease business id.");
+    const result = await this.sql.query(
+      `select business_id, holder_id, generation::text as generation, holder_url, holder_state
+         from whatsapp_linked_leases where business_id = $1 and expires_at > now()`,
+      [businessId]
+    );
+    return holderRow(result.rows[0]);
+  }
+
+  async live(): Promise<LinkedLeaseHolder[]> {
+    const result = await this.sql.query(
+      `select business_id, holder_id, generation::text as generation, holder_url, holder_state
+         from whatsapp_linked_leases where expires_at > now() limit 10000`,
+      []
+    );
+    return result.rows.map(holderRow).filter((row): row is LinkedLeaseHolder => row !== null);
+  }
+
+  async publish(
+    businessId: string,
+    holderId: string,
+    generation: string,
+    state: string
+  ): Promise<boolean> {
+    checkIds(businessId, holderId, generation);
+    if (!HOLDER_STATES.has(state)) throw new Error("Invalid lease holder state.");
+    const result = await this.sql.query(
+      `update whatsapp_linked_leases set holder_state = $4
+        where business_id = $1 and holder_id = $2 and generation = $3::bigint
+          and expires_at > now()
+        returning 1 as published`,
+      [businessId, holderId, generation, state]
+    );
+    return result.rows.length === 1;
+  }
 }
 
 /**
@@ -121,12 +242,23 @@ export class PostgresLinkedLeaseStore implements LinkedLeaseStore {
  * Used by unit tests (the same conformance suite runs against Postgres) and by single-host tests
  * of several connectors sharing one store. It is not a production lease: it is per process.
  */
-export class MemoryLinkedLeaseStore implements LinkedLeaseStore {
+export class MemoryLinkedLeaseStore implements LinkedLeaseStore, LinkedLeaseDirectory {
   private readonly rows = new Map<
     string,
-    { holderId: string; generation: number; expiresAt: number; heartbeatAt: number }
+    {
+      holderId: string;
+      generation: number;
+      expiresAt: number;
+      heartbeatAt: number;
+      holderUrl: string | null;
+      holderState: string | null;
+    }
   >();
-  constructor(private readonly clock: () => number = Date.now) {}
+  /** `holderUrls` maps holder id to URL: one memory store models several workers. */
+  constructor(
+    private readonly clock: () => number = Date.now,
+    private readonly holderUrls: Record<string, string> = {}
+  ) {}
 
   async acquire(businessId: string, holderId: string, ttlMs: number): Promise<string | null> {
     checkIds(businessId, holderId);
@@ -135,8 +267,47 @@ export class MemoryLinkedLeaseStore implements LinkedLeaseStore {
     const row = this.rows.get(businessId);
     if (row && row.expiresAt > now && row.holderId !== holderId) return null;
     const generation = (row?.generation ?? 0) + 1;
-    this.rows.set(businessId, { holderId, generation, expiresAt: now + ttlMs, heartbeatAt: now });
+    this.rows.set(businessId, {
+      holderId,
+      generation,
+      expiresAt: now + ttlMs,
+      heartbeatAt: now,
+      holderUrl: this.holderUrls[holderId] ?? null,
+      holderState: null
+    });
     return String(generation);
+  }
+  async holder(businessId: string): Promise<LinkedLeaseHolder | null> {
+    const row = this.rows.get(businessId);
+    if (!row || row.expiresAt <= this.clock()) return null;
+    return {
+      businessId,
+      holderId: row.holderId,
+      generation: String(row.generation),
+      holderUrl: row.holderUrl,
+      holderState: row.holderState
+    };
+  }
+  async live(): Promise<LinkedLeaseHolder[]> {
+    const rows: LinkedLeaseHolder[] = [];
+    for (const businessId of this.rows.keys()) {
+      const row = await this.holder(businessId);
+      if (row) rows.push(row);
+    }
+    return rows;
+  }
+  async publish(
+    businessId: string,
+    holderId: string,
+    generation: string,
+    state: string
+  ): Promise<boolean> {
+    checkIds(businessId, holderId, generation);
+    if (!HOLDER_STATES.has(state)) throw new Error("Invalid lease holder state.");
+    const row = this.current(businessId, holderId, generation, this.clock());
+    if (!row) return false;
+    row.holderState = state;
+    return true;
   }
   async renew(
     businessId: string,
@@ -194,6 +365,14 @@ export interface LinkedLeaseSettings {
   retryMs: number;
 }
 
+/** Lease mode also needs the forwarding endpoint other workers use to reach this one. */
+export interface LinkedLeaseForwarding {
+  /** This worker's internal base URL (WHATSAPP_LINKED_INTERNAL_URL). */
+  holderUrl: string;
+  /** Shared by every API worker (WHATSAPP_LINKED_INTERNAL_TOKEN), at least 32 characters. */
+  token: string;
+}
+
 export const defaultLinkedLeaseSettings = {
   ttlMs: 30_000,
   heartbeatMs: 8_000,
@@ -237,7 +416,9 @@ export function defaultLinkedWorkerId(): string {
  */
 export function linkedLeaseSettingsFromEnvironment(
   environment: Record<string, string | undefined>
-): { mode: "off" } | { mode: "postgres"; settings: LinkedLeaseSettings } {
+):
+  | { mode: "off" }
+  | { mode: "postgres"; settings: LinkedLeaseSettings; forwarding: LinkedLeaseForwarding } {
   const mode = (environment.WHATSAPP_LINKED_LEASE_MODE ?? "off").trim() || "off";
   if (mode === "off") return { mode };
   if (mode !== "postgres") throw new Error("WHATSAPP_LINKED_LEASE_MODE must be off or postgres.");
@@ -248,8 +429,19 @@ export function linkedLeaseSettingsFromEnvironment(
     return Number(raw);
   };
   const ttlMs = integer("WHATSAPP_LINKED_LEASE_TTL_MS", defaultLinkedLeaseSettings.ttlMs);
+  const holderUrl = environment.WHATSAPP_LINKED_INTERNAL_URL?.trim() ?? "";
+  if (!validLinkedHolderUrl(holderUrl))
+    throw new Error(
+      "WHATSAPP_LINKED_LEASE_MODE=postgres requires WHATSAPP_LINKED_INTERNAL_URL: this worker's http(s) base URL that other workers can reach."
+    );
+  const token = environment.WHATSAPP_LINKED_INTERNAL_TOKEN ?? "";
+  if (token.length < 32 || token !== token.trim())
+    throw new Error(
+      "WHATSAPP_LINKED_LEASE_MODE=postgres requires WHATSAPP_LINKED_INTERNAL_TOKEN (at least 32 characters, the same on every worker)."
+    );
   return {
     mode,
+    forwarding: { holderUrl: holderUrl.replace(/\/+$/, ""), token },
     settings: validateLinkedLeaseSettings({
       holderId: environment.WHATSAPP_LINKED_WORKER_ID?.trim() || defaultLinkedWorkerId(),
       ttlMs,
@@ -514,9 +706,29 @@ export function createLinkedLeaseKeeper(
   sql: LinkedLeaseSql | undefined,
   options: ConstructorParameters<typeof LinkedLeaseKeeper>[2] = {}
 ): LinkedLeaseKeeper | undefined {
+  return createLinkedLeasing(environment, sql, options)?.keeper;
+}
+
+/** Lease mode in full: the keeper, the directory other workers read, and the forwarding setup. */
+export interface LinkedLeasing {
+  keeper: LinkedLeaseKeeper;
+  directory: LinkedLeaseDirectory;
+  forwarding: LinkedLeaseForwarding;
+}
+
+export function createLinkedLeasing(
+  environment: Record<string, string | undefined>,
+  sql: LinkedLeaseSql | undefined,
+  options: ConstructorParameters<typeof LinkedLeaseKeeper>[2] = {}
+): LinkedLeasing | undefined {
   const config = linkedLeaseSettingsFromEnvironment(environment);
   if (config.mode === "off") return undefined;
   if (!sql)
     throw new Error("WHATSAPP_LINKED_LEASE_MODE=postgres requires a Postgres database connection.");
-  return new LinkedLeaseKeeper(new PostgresLinkedLeaseStore(sql), config.settings, options);
+  const store = new PostgresLinkedLeaseStore(sql, { holderUrl: config.forwarding.holderUrl });
+  return {
+    keeper: new LinkedLeaseKeeper(store, config.settings, options),
+    directory: store,
+    forwarding: config.forwarding
+  };
 }

@@ -19,6 +19,14 @@
     <uses-permission android:name="android.permission.RECEIVE_WAP_PUSH" />
     <uses-permission android:name="android.permission.SEND_SMS" />
     <uses-permission android:name="android.permission.READ_SMS" />
+    <!-- On-phone WhatsApp worker (docs/architecture/whatsapp-linked-devices.md, "Android sidecar").
+         The owner turns it on; a visible foreground service of type remoteMessaging keeps their
+         linked WhatsApp session on this phone and relays messages to and from the Grogoni inbox.
+         The boot receiver restarts it only when that owner had it on and is still signed in.
+         Reviewed in config/android-play-policy.json. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <queries>
         <package android:name="com.whatsapp" />
@@ -85,6 +93,20 @@
             <intent-filter>
                 <action android:name="android.provider.Telephony.WAP_PUSH_DELIVER" />
                 <data android:mimeType="application/vnd.wap.mms-message" />
+            </intent-filter>
+        </receiver>
+
+        <service
+            android:name=".whatsapp.sidecar.WhatsAppSidecarService"
+            android:exported="false"
+            android:foregroundServiceType="remoteMessaging" />
+
+        <receiver
+            android:name=".whatsapp.sidecar.WhatsAppSidecarBootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
 

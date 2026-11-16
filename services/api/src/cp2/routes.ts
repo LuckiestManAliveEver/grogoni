@@ -452,6 +452,9 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
         Body: {
           transactionId?: string;
           displayName?: string;
+          credentialType?: "pin" | "password";
+          pin?: string;
+          pinConfirmation?: string;
           password?: string;
           passwordConfirmation?: string;
           email?: string;
@@ -462,22 +465,33 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
       reply
     ) => {
       try {
-        requireAuthFeature(
-          authRuntime.passwordFallbackEnabled,
-          "password_fallback_disabled",
-          "Password fallback is disabled."
-        );
-        // A real credential is required at signup - passkeys are an optional, later backup, not
-        // the only way back into a new account. See docs/authentication/phone-first-authentication.md.
-        const password = parseString(request.body.password, "password");
-        const passwordConfirmation = parseOptionalString(request.body.passwordConfirmation);
-        if (password !== passwordConfirmation)
-          throw new Cp2Error(400, "password_confirmation_invalid", "Passwords do not match.");
+        // A real credential is required at signup: a 4-digit PIN by default, or a password for
+        // owners who want a stronger secret. Passkeys are an optional, later backup, not the only
+        // way back into a new account. See docs/authentication/phone-first-authentication.md.
+        // Older clients send only a password, so a missing credentialType means password.
+        const usePin = request.body.credentialType === "pin";
+        let credential: { pin: string } | { password: string };
+        if (usePin) {
+          const pin = parseString(request.body.pin, "pin");
+          if (pin !== parseOptionalString(request.body.pinConfirmation))
+            throw new Cp2Error(400, "pin_confirmation_invalid", "PINs do not match.");
+          credential = { pin };
+        } else {
+          requireAuthFeature(
+            authRuntime.passwordFallbackEnabled,
+            "password_fallback_disabled",
+            "Password fallback is disabled."
+          );
+          const password = parseString(request.body.password, "password");
+          if (password !== parseOptionalString(request.body.passwordConfirmation))
+            throw new Cp2Error(400, "password_confirmation_invalid", "Passwords do not match.");
+          credential = { password };
+        }
         const result = store.completePhoneSignup({
           sessionId: readSessionCookie(request.headers.cookie),
           transactionId: parseString(request.body.transactionId, "transactionId"),
           displayName: parseString(request.body.displayName, "displayName"),
-          password,
+          ...credential,
           ...(request.body.email === undefined ? {} : { email: request.body.email }),
           termsAccepted: request.body.termsAccepted === true,
           privacyAccepted: request.body.privacyAccepted === true

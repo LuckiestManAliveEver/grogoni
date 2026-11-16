@@ -35,7 +35,7 @@
     "db:rollback": "node --env-file-if-exists=../../.env --env-file-if-exists=../../.env.local scripts/rollback-db.mjs",
     "db:restore": "node scripts/restore-db.mjs",
     "db:store-lock": "node --env-file-if-exists=../../.env --env-file-if-exists=../../.env.local scripts/store-lock.mjs",
-    "build": "pnpm clean && tsc -p tsconfig.build.json && node scripts/write-build-manifest.mjs",
+    "build": "node ../../scripts/build-seed-catalogue.mjs --check && pnpm clean && tsc -p tsconfig.build.json && node scripts/write-build-manifest.mjs",
     "clean": "rm -rf dist",
     "dev": "tsx watch --env-file-if-exists=../../.env --env-file-if-exists=../../.env.local --env-file-if-exists=../../.env.openrouter src/index.ts",
     "start": "node --env-file-if-exists=../../.env --env-file-if-exists=../../.env.openrouter dist/index.js",

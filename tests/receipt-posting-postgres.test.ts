@@ -179,7 +179,7 @@ describe.skipIf(!databaseUrl)("receipt posting PostgreSQL persistence", () => {
       await client.query("rollback to savepoint duplicate_permission");
       await client.query(
         await readFile(
-          new URL("../infra/db/rollbacks/137_receipt_verified_packaging.down.sql", import.meta.url),
+          new URL("../infra/db/rollbacks/140_receipt_verified_packaging.down.sql", import.meta.url),
           "utf8"
         )
       );

@@ -65,6 +65,7 @@
  *   `sendEmailTransport`, all of which live here now.
  */
 import type { LinkedMutation } from "../../../messaging/whatsapp-linked/connector.js";
+import { linkedOptOutCommand } from "../../../messaging/whatsapp-linked/opt-out.js";
 import { isDeepStrictEqual } from "node:util";
 import { contactIsBlocked } from "../network/shared.js";
 import { helpConversationId, helpGuides, helpGuideText } from "./help-guides.js";
@@ -1160,13 +1161,33 @@ export class MessagingDomain {
         candidate.businessId === input.businessId &&
         candidate.externalConversationId === input.externalConversationId
     );
-    if (channel === undefined) {
-      const existingCustomerChannel = [...this.conversationChannels.values()].find((candidate) => {
-        const candidateIdentity = this.platformIdentities.get(candidate.platformIdentityId);
-        return (
-          candidate.businessId === input.businessId && candidateIdentity?.customerId === customer.id
-        );
-      });
+    // A WhatsApp Linked Devices channel detached by a shop owner change keeps its row (one row per
+    // chat), but its conversation belongs to the former owner's account. Re-approving the chat
+    // binds the row to a new conversation for the approving owner, so nothing new reaches the
+    // former owner and their history is not handed over (cp2/store.ts,
+    // reconcileLinkedWhatsAppOwnership).
+    const detached =
+      channel !== undefined &&
+      channel.provider === "whatsapp_linked" &&
+      typeof channel.metadata.linkedDeviceDetachedAt === "string";
+    if (detached && channel!.platformIdentityId !== identity.id)
+      throw new Cp2Error(
+        409,
+        "CHANNEL_IDENTITY_ALREADY_LINKED",
+        "This provider conversation is already linked to another customer."
+      );
+    if (channel === undefined || detached) {
+      // A rebound chat always gets a fresh conversation: another channel of the same customer may
+      // still live in the former owner's account.
+      const existingCustomerChannel = detached
+        ? undefined
+        : [...this.conversationChannels.values()].find((candidate) => {
+            const candidateIdentity = this.platformIdentities.get(candidate.platformIdentityId);
+            return (
+              candidate.businessId === input.businessId &&
+              candidateIdentity?.customerId === customer.id
+            );
+          });
       const conversation =
         existingCustomerChannel === undefined
           ? this.createAccountConversation({
@@ -1198,7 +1219,7 @@ export class MessagingDomain {
         createdAt: now.toISOString()
       });
       channel = {
-        id: randomUUID(),
+        id: detached ? channel!.id : randomUUID(),
         conversationId: conversation.id,
         businessId: input.businessId,
         provider: input.provider,
@@ -1213,7 +1234,7 @@ export class MessagingDomain {
         lastInboundAt: null,
         lastOutboundAt: null,
         metadata: { ...(input.metadata ?? {}) },
-        createdAt: now.toISOString(),
+        createdAt: detached ? channel!.createdAt : now.toISOString(),
         updatedAt: now.toISOString()
       };
       this.conversationChannels.set(channel.id, channel);
@@ -2818,6 +2839,8 @@ export class MessagingDomain {
     chat: string;
     text: string;
     idempotencyKey: string;
+    /** Canonical inbound message to quote; the connector sends it as a WhatsApp reply. */
+    replyToMessageId?: string;
   }) {
     const channel = [...this.conversationChannels.values()].find(
       (entry) =>
@@ -2835,6 +2858,7 @@ export class MessagingDomain {
       provider: "whatsapp_linked",
       text: input.text,
       idempotencyKey: input.idempotencyKey,
+      ...(input.replyToMessageId === undefined ? {} : { replyToMessageId: input.replyToMessageId }),
       [systemChannelDelivery]: true
     });
     const message: ConversationMessageSummary = {
@@ -2851,6 +2875,96 @@ export class MessagingDomain {
       new Date()
     );
     return { ...result, message };
+  }
+
+  /**
+   * What the owner's phone sends for a queued `whatsapp_linked` message
+   * (whatsapp-linked/device-outbox.ts): the canonical text and, for a reply, the quoted message,
+   * read at pull time so the outbox row never copies message content. Null when the message is
+   * gone, deleted, not text, or no longer waiting to be sent.
+   */
+  /** The canonical message a channel send created for this conversation and idempotency key. */
+  messageIdForIdempotencyKey(conversationId: string, idempotencyKey: string): string | undefined {
+    return this.messageByIdempotencyKey.get(`${conversationId}:${idempotencyKey}`);
+  }
+
+  linkedDeviceSendPayload(messageId: string): {
+    text: string;
+    quotedMessage?: { id: string; sender: string | null; fromMe: boolean; text: string };
+  } | null {
+    const message = this.conversationMessages.get(messageId);
+    if (
+      !message ||
+      message.provider !== "whatsapp_linked" ||
+      message.direction !== "outbound" ||
+      message.deletedAt ||
+      message.content.type !== "text" ||
+      !["queued", "sending", "retrying", "pending"].includes(message.status ?? "queued")
+    )
+      return null;
+    const replyTo = message.replyToMessageId
+      ? this.conversationMessages.get(message.replyToMessageId)
+      : undefined;
+    return {
+      text: message.content.text,
+      ...(replyTo?.providerMessageId
+        ? {
+            quotedMessage: {
+              id: replyTo.providerMessageId,
+              sender: replyTo.senderAddress ?? null,
+              fromMe: replyTo.direction === "outbound",
+              text:
+                replyTo.content.type === "text" ? replyTo.content.text.slice(0, 2000) : "[Message]"
+            }
+          }
+        : {})
+    };
+  }
+
+  /**
+   * The phone's outcome for a queued `whatsapp_linked` message. `sent` records the WhatsApp id;
+   * `failed` and `uncertain` mark the message failed with a code the inbox shows (uncertain: check
+   * WhatsApp before sending again). A message already sent or failed is left as it is.
+   */
+  settleLinkedDeviceDelivery(input: {
+    messageId: string;
+    outcome: "sent" | "failed" | "uncertain";
+    deliveredId?: string | null;
+    failureCode?: string | null;
+    now?: Date;
+  }): ConversationMessageSummary | null {
+    const now = input.now ?? new Date();
+    const message = this.conversationMessages.get(input.messageId);
+    if (!message || message.provider !== "whatsapp_linked" || message.direction !== "outbound")
+      return null;
+    if (["sent", "delivered", "read", "failed"].includes(message.status ?? "")) return message;
+    const sent = input.outcome === "sent";
+    const settled: ConversationMessageSummary = {
+      ...message,
+      status: sent ? "sent" : "failed",
+      sentAt: sent ? (message.sentAt ?? now.toISOString()) : (message.sentAt ?? null),
+      providerMessageId: sent
+        ? (input.deliveredId ?? message.providerMessageId ?? null)
+        : (message.providerMessageId ?? null),
+      failureCode: sent
+        ? null
+        : input.outcome === "uncertain"
+          ? "WHATSAPP_DELIVERY_UNCERTAIN"
+          : (input.failureCode ?? "CHANNEL_SEND_FAILED"),
+      nextRetryAt: null
+    };
+    this.conversationMessages.set(settled.id, settled);
+    this.finishChannelDeliveryAttempt(
+      settled,
+      sent
+        ? "succeeded"
+        : input.outcome === "uncertain"
+          ? "transient_failure"
+          : "permanent_failure",
+      settled.failureCode ?? null,
+      now
+    );
+    return settled;
   }
 
   async deliverFulfillmentNotification(input: {
@@ -2956,27 +3070,8 @@ export class MessagingDomain {
       );
     }
     if (input.provider === "whatsapp_linked") {
-      const identity = this.platformIdentities.get(channel.platformIdentityId);
-      const stopped = /^(?:stop|unsubscribe)$/i.test(input.body.trim());
-      const started = /^start$/i.test(input.body.trim());
-      if (stopped)
-        this.conversationChannels.set(channel.id, {
-          ...channel,
-          metadata: {
-            ...channel.metadata,
-            linkedToolGrant: JSON.stringify({ id: randomUUID(), enabled: false, tools: [] })
-          },
-          updatedAt: now.toISOString()
-        });
-      if (identity && (stopped || started))
-        this.platformIdentities.set(identity.id, {
-          ...identity,
-          optInStatus: stopped ? "revoked" : "granted",
-          optInSource: "provider_message",
-          optInAt: started ? now.toISOString() : identity.optInAt,
-          optOutAt: stopped ? now.toISOString() : null,
-          updatedAt: now.toISOString()
-        });
+      const command = linkedOptOutCommand(input.body);
+      if (command) this.applyLinkedOptOut(channel, command, input.senderAddress ?? null, now);
     }
     const quoted = input.replyToProviderMessageId
       ? [...this.conversationMessages.values()].filter(
@@ -3157,6 +3252,58 @@ export class MessagingDomain {
     };
     this.providerUpdateReceipts.set(receipt.id, receipt);
     return { receipt, message };
+  }
+
+  /**
+   * STOP/START for a WhatsApp Linked chat. The chat is opted out while anyone who sent STOP has
+   * not sent START since: in a group that is tracked per sender, so one member's START never
+   * undoes another member's STOP. A direct chat has one counterpart, keyed by the chat itself
+   * (its sender may arrive as a phone or a LID address). Every STOP also disables the chat's
+   * delegated tools; only the owner can grant them again.
+   */
+  private applyLinkedOptOut(
+    channel: ConversationChannelSummary,
+    command: "stop" | "start",
+    sender: string | null,
+    now: Date
+  ): void {
+    const group = channel.externalConversationId?.endsWith("@g.us") === true;
+    const who = group ? (sender ?? "") : (channel.externalConversationId ?? "");
+    if (!who) return;
+    let senders: string[] = [];
+    try {
+      const stored: unknown = JSON.parse(String(channel.metadata.linkedOptOutSenders ?? "[]"));
+      if (Array.isArray(stored)) senders = stored.filter((entry) => typeof entry === "string");
+    } catch {
+      senders = [];
+    }
+    const remaining = senders.filter((entry) => entry !== who);
+    // Bounded: a WhatsApp group has at most 1,024 members.
+    const next = command === "stop" ? [...remaining, who].slice(-1024) : remaining;
+    this.conversationChannels.set(channel.id, {
+      ...channel,
+      metadata: {
+        ...channel.metadata,
+        linkedOptOutSenders: JSON.stringify(next),
+        ...(command === "stop"
+          ? { linkedToolGrant: JSON.stringify({ id: randomUUID(), enabled: false, tools: [] }) }
+          : {})
+      },
+      updatedAt: now.toISOString()
+    });
+    const identity = this.platformIdentities.get(channel.platformIdentityId);
+    if (!identity) return;
+    const optedOut = next.length > 0;
+    const wasOptedOut = identity.optInStatus === "revoked";
+    if (optedOut === wasOptedOut && command === "start") return;
+    this.platformIdentities.set(identity.id, {
+      ...identity,
+      optInStatus: optedOut ? "revoked" : "granted",
+      optInSource: "provider_message",
+      optInAt: optedOut ? identity.optInAt : now.toISOString(),
+      optOutAt: optedOut ? (command === "stop" ? now.toISOString() : identity.optOutAt) : null,
+      updatedAt: now.toISOString()
+    });
   }
 
   async ingestLinkedMediaMessage(input: {
@@ -5089,21 +5236,42 @@ export class MessagingDomain {
     if (replyVersionsOf(reply).versions.some((version) => version.id === input.versionId))
       return { message: reply, runtime: null };
     const question = this.requireRegenerableReply(reply, session.user.id);
+    const answeredQuestionRevision =
+      this.conversationMessages.get(reply.replyToMessageId as string)?.editedAt ?? null;
 
-    const runtime = await this.deps.createRuntimeTurn({
-      sessionId: input.sessionId,
-      businessId: input.businessId,
-      conversationId: conversation.id,
-      message: question,
-      conversationHistory: this.runtimeConversationHistory(
-        conversation.id,
-        reply.replyToMessageId as string,
-        reply.id
-      ),
-      regeneration: true,
-      ...(input.signal === undefined ? {} : { signal: input.signal }),
-      now
-    });
+    // The person stopped, or their connection closed (the route's abort signal): no version is
+    // written, whether the model call was interrupted or ran to its end regardless.
+    const cancelled = () =>
+      new Cp2Error(
+        499,
+        "regeneration_cancelled",
+        "Regeneration was stopped before a new version was written.",
+        true
+      );
+    let runtime: RuntimeTurnResult;
+    try {
+      runtime = await this.deps.createRuntimeTurn({
+        sessionId: input.sessionId,
+        businessId: input.businessId,
+        conversationId: conversation.id,
+        message: question,
+        conversationHistory: this.runtimeConversationHistory(
+          conversation.id,
+          reply.replyToMessageId as string,
+          reply.id
+        ),
+        regeneration: true,
+        ...(input.signal === undefined ? {} : { signal: input.signal }),
+        now
+      });
+    } catch (error) {
+      // A refusal (the runtime guard, the turn lock) is still the answer; anything else thrown by
+      // an interrupted model call is the cancellation.
+      if (input.signal?.aborted && (!(error instanceof Cp2Error) || error.statusCode >= 500))
+        throw cancelled();
+      throw error;
+    }
+    if (input.signal?.aborted) throw cancelled();
     const effect = agentTurnEffectOf(runtime);
     const delivered = workspaceAttachmentsFromToolResult(runtime.turn.toolResult);
     if (effect === "action" || delivered.length > 0) {
@@ -5126,7 +5294,11 @@ export class MessagingDomain {
       return { message: current, runtime: null };
     // The question may have been edited while the model answered its old wording: that answer
     // must not be filed under the new one.
-    if (this.requireRegenerableReply(current, session.user.id) !== question)
+    if (
+      this.requireRegenerableReply(current, session.user.id) !== question ||
+      (this.conversationMessages.get(current.replyToMessageId as string)?.editedAt ?? null) !==
+        answeredQuestionRevision
+    )
       throw new Cp2Error(409, "reply_not_regenerable", "This reply cannot be regenerated.", false, {
         reason: "question_changed"
       });
@@ -5134,15 +5306,28 @@ export class MessagingDomain {
       throw new Cp2Error(409, "reply_not_regenerable", "This reply cannot be regenerated.");
     const content = { ...current.content, text: runtime.turn.response };
     validateConversationMessageContent(content);
+    // The revision of the question this version answers: its editedAt, never its text.
+    const questionRevision = answeredQuestionRevision;
     const next: ConversationMessageSummary = {
       ...current,
       content,
       agentTurnEffect: strongerAgentTurnEffect(current.agentTurnEffect ?? "none", effect),
-      replyVersions: appendReplyVersion(versions, {
-        id: input.versionId,
-        text: runtime.turn.response,
-        createdAt: now.toISOString()
-      })
+      replyVersions: appendReplyVersion(
+        // First regenerate: the original answer is marked as answering the unedited question,
+        // unless the question was edited before now (which revision it answered is then unknown).
+        current.replyVersions === undefined && questionRevision === null
+          ? {
+              ...versions,
+              versions: versions.versions.map((version) => ({ ...version, questionRevision }))
+            }
+          : versions,
+        {
+          id: input.versionId,
+          text: runtime.turn.response,
+          createdAt: now.toISOString(),
+          questionRevision
+        }
+      )
     };
     this.conversationMessages.set(next.id, next);
     this.recordConversationSyncForParticipants(
@@ -5285,6 +5470,12 @@ export class MessagingDomain {
     this.requireAccountConversation(input.conversationId, session.account.id);
     const current = this.requireConversationMessage(input.messageId, input.conversationId);
     let next = current;
+    // editedAt is also the public revision marker. Preserve a distinct revision when
+    // two edits share a millisecond or the wall clock moves backwards.
+    const previousEditMs = current.editedAt ? Date.parse(current.editedAt) : Number.NaN;
+    const editedAt = new Date(
+      Math.max(now.getTime(), Number.isFinite(previousEditMs) ? previousEditMs + 1 : 0)
+    ).toISOString();
     if (input.content !== undefined) {
       if (current.authorId !== session.user.id || current.deletedAt) {
         throw new Cp2Error(
@@ -5295,7 +5486,7 @@ export class MessagingDomain {
       }
       validateConversationMessageContent(input.content);
       this.validateConversationEncryption(input.conversationId, input.content);
-      next = { ...next, content: input.content, editedAt: now.toISOString() };
+      next = { ...next, content: input.content, editedAt };
     }
     if (input.text !== undefined) {
       if (current.authorId !== session.user.id || current.deletedAt)
@@ -5308,7 +5499,7 @@ export class MessagingDomain {
         throw new Cp2Error(400, "message_edit_invalid", "Only text messages can be edited.");
       const content = { ...current.content, text: input.text };
       validateConversationMessageContent(content);
-      next = { ...next, content, editedAt: now.toISOString() };
+      next = { ...next, content, editedAt };
     }
     if (input.deleted) {
       if (current.authorId !== session.user.id)

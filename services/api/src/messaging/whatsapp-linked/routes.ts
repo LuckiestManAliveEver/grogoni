@@ -1,4 +1,10 @@
 import { createHash, timingSafeEqual } from "node:crypto";
+import { dispatchLinkedReadReceipts } from "./read-receipts.js";
+import { readFileSync } from "node:fs";
+import { Pool } from "pg";
+import { buildPgPoolConfig } from "../../db-pool-config.js";
+import { guardPgPoolErrors } from "../../pg-pool-errors.js";
+import { ChannelGatewayError } from "../channel-errors.js";
 import { linkedToolChoices } from "./tool-grants.js";
 import { LinkedDaemonClient } from "./daemon-client.js";
 import { LinkedDataCipher } from "./cipher.js";
@@ -17,6 +23,31 @@ import {
 } from "./connector.js";
 import { LinkedSessionVault } from "./vault.js";
 import { baileysLinkedDriver } from "./baileys-driver.js";
+import { createLinkedTranscriber, type LinkedTranscriber } from "./transcriber.js";
+import type { LinkedDelegationDrainReport } from "./delegation-outbox.js";
+import {
+  createLinkedLeasing,
+  defaultLinkedWorkerId,
+  linkedLeaseSettingsFromEnvironment,
+  type LinkedLeaseSql,
+  type LinkedLeasing
+} from "./lease.js";
+import { LinkedConnectorRouter, registerLinkedForwardRoute } from "./forwarding.js";
+import {
+  LinkedWorkerHub,
+  linkedDriverSelector,
+  linkedHubListenFromEnvironment
+} from "./remote-driver.js";
+import {
+  MemoryLinkedWorkerRegistry,
+  PostgresLinkedWorkerRegistry,
+  linkedWorkerCredentialTtlMs,
+  type LinkedWorkerRegistry
+} from "./worker-registry.js";
+import {
+  registerLinkedWorkerEnrollmentRoutes,
+  type LinkedWorkerEnrollmentService
+} from "./worker-enrollment-routes.js";
 
 /** The one call the assistant bridge makes on the Daemon. LinkedDaemonClient is the only
  *  production implementation. */
@@ -29,7 +60,61 @@ export interface LinkedWhatsAppRouteOptions {
    * leave it unset, so the bridge stays off unless the URL is configured.
    */
   daemonClient?: LinkedAssistantDaemon;
+  /**
+   * Replaces the OpenRouter transcriber built from the environment (tests pass a fake). `null`
+   * turns transcription off.
+   */
+  transcriber?: LinkedTranscriber | null;
+  /**
+   * Replaces the pool built from WHATSAPP_LINKED_DATABASE_URL / DATABASE_URL for leases and the
+   * worker registry (tests pass a pool pinned to a private schema). Not closed on shutdown.
+   */
+  database?: LinkedLeaseSql;
+  /** Replaces the worker registry (tests). Production uses Postgres whenever a database exists. */
+  workerRegistry?: LinkedWorkerRegistry;
 }
+
+/** Settings checked before anything is locked or opened. */
+function sharedVolumeSetting(environment: NodeJS.ProcessEnv): boolean {
+  const raw = (environment.WHATSAPP_LINKED_SHARED_VOLUME ?? "false").trim() || "false";
+  if (raw !== "true" && raw !== "false")
+    throw new Error("WHATSAPP_LINKED_SHARED_VOLUME must be true or false.");
+  return raw === "true";
+}
+
+/** Channel failures from the connector or the holder answer as a 503 the client can retry. */
+function sendLinkedError(reply: Parameters<typeof sendCp2Error>[0], error: unknown) {
+  if (error instanceof ChannelGatewayError && error.code === "CHANNEL_UNAVAILABLE")
+    return sendCp2Error(
+      reply,
+      new Cp2Error(503, "whatsapp_linked_unavailable", error.message, true)
+    );
+  return sendCp2Error(reply, error);
+}
+
+/** Handles the connector host exposes; undefined when the connector is disabled. */
+export interface LinkedWhatsAppRoutesHandle {
+  /** One delegated-result outbox pass (shared storage merged in first). Never rejects. */
+  drainDelegationResults(): Promise<LinkedDelegationDrainReport | null>;
+}
+
+/** The connector's automatic-reply idempotency key for an inbound message (connector.ts). */
+export function linkedAutomaticReplyKey(message: Pick<LinkedInbound, "chat" | "sender" | "id">) {
+  return (
+    "whatsapp-reply:" +
+    createHash("sha256")
+      .update(JSON.stringify([message.chat, message.sender, message.id]))
+      .digest("hex")
+  );
+}
+
+/** Interval between outbox passes; connect/restore and new entries also start a pass. */
+const defaultResultDrainIntervalMs = 30_000;
+
+type DurableStore = Cp2Store & {
+  flush?: () => Promise<void>;
+  loadPendingLinkedDelegationResults?: () => Promise<unknown[]>;
+};
 
 /** Persistent Node API only. Edge/serverless deployments leave this feature disabled. */
 export function registerLinkedWhatsAppRoutes(
@@ -38,7 +123,7 @@ export function registerLinkedWhatsAppRoutes(
   environment = process.env,
   driver: LinkedDriver = baileysLinkedDriver,
   options: LinkedWhatsAppRouteOptions = {}
-): void {
+): LinkedWhatsAppRoutesHandle | undefined {
   const enabled = environment.WHATSAPP_LINKED_ENABLED === "true";
   const attachmentKey = environment.WHATSAPP_LINKED_SESSION_KEY ?? "";
   const attachmentPrevious = (environment.WHATSAPP_LINKED_PREVIOUS_SESSION_KEYS ?? "")
@@ -63,6 +148,11 @@ export function registerLinkedWhatsAppRoutes(
     });
   }
   let connector: LinkedWhatsAppConnector | undefined;
+  /** What routes and the store call: the connector itself, or in lease mode its router. */
+  let api: LinkedWhatsAppConnector | LinkedConnectorRouter | undefined;
+  let drain: ReturnType<typeof delegatedResultDrain> | undefined;
+  let sendReadReceipts: ((businessId: string, ownerId: string) => Promise<unknown>) | undefined;
+  let enrollment: LinkedWorkerEnrollmentService | undefined;
   if (enabled) {
     const root = environment.WHATSAPP_LINKED_SESSION_DIR;
     const key = environment.WHATSAPP_LINKED_SESSION_KEY ?? "";
@@ -93,13 +183,89 @@ export function registerLinkedWhatsAppRoutes(
     const vault = new LinkedSessionVault(
       root,
       Buffer.from(key, "hex"),
-      previous.map((entry) => Buffer.from(entry, "hex"))
+      previous.map((entry) => Buffer.from(entry, "hex")),
+      // On a shared volume only the lease holder may write a record, so reads never rewrap.
+      { rewrapOnRead: !sharedVolumeSetting(environment) }
     );
-    const releaseLock = acquireLinkedWorkerLock(root);
+    // Configuration errors surface before the session volume is locked.
+    const transcriber =
+      options.transcriber === undefined
+        ? createLinkedTranscriber(environment)
+        : (options.transcriber ?? undefined);
+    const resultDrainMs = Number(
+      environment.WHATSAPP_LINKED_RESULT_DRAIN_MS ?? defaultResultDrainIntervalMs
+    );
+    if (!Number.isSafeInteger(resultDrainMs) || resultDrainMs < 1000 || resultDrainMs > 3_600_000)
+      throw new Error("WHATSAPP_LINKED_RESULT_DRAIN_MS must be between 1000 and 3600000.");
+    // Multi-worker settings, all validated before the volume is locked: a misconfiguration
+    // refuses startup instead of running unfenced.
+    const leaseMode = linkedLeaseSettingsFromEnvironment(environment).mode;
+    const sharedVolume = sharedVolumeSetting(environment);
+    if (sharedVolume && leaseMode !== "postgres")
+      throw new Error(
+        "WHATSAPP_LINKED_SHARED_VOLUME=true requires WHATSAPP_LINKED_LEASE_MODE=postgres: the lease is what keeps two workers off one session."
+      );
+    const hubListen = linkedHubListenFromEnvironment(environment, (file) => readFileSync(file));
+    const credentialTtlMs = linkedWorkerCredentialTtlMs(environment);
+    const databaseUrl =
+      environment.WHATSAPP_LINKED_DATABASE_URL?.trim() || environment.DATABASE_URL?.trim() || "";
+    let ownPool: Pool | undefined;
+    let database: LinkedLeaseSql | undefined = options.database;
+    if (!database && (leaseMode === "postgres" || (hubListen && !options.workerRegistry))) {
+      if (databaseUrl) {
+        ownPool = new Pool(buildPgPoolConfig(databaseUrl, { max: 3 }));
+        guardPgPoolErrors(ownPool, (error) =>
+          app.log.error({ event: "whatsapp_linked.pool_error", err: error }, "WhatsApp pool error.")
+        );
+        database = ownPool;
+      } else if (leaseMode === "postgres" || environment.NODE_ENV === "production")
+        throw new Error(
+          "WhatsApp multi-worker leasing and remote workers require WHATSAPP_LINKED_DATABASE_URL or DATABASE_URL."
+        );
+    }
+    let leasing: LinkedLeasing | undefined;
+    try {
+      leasing = createLinkedLeasing(environment, database, {
+        log: (event) => app.log.info(event, "WhatsApp lease changed.")
+      });
+    } catch (error) {
+      void ownPool?.end();
+      throw error;
+    }
+    const holderId = leasing?.keeper.holderId ?? defaultLinkedWorkerId();
+    const registry: LinkedWorkerRegistry | undefined = hubListen
+      ? (options.workerRegistry ??
+        (database ? new PostgresLinkedWorkerRegistry(database) : new MemoryLinkedWorkerRegistry()))
+      : undefined;
+    let hub: LinkedWorkerHub | undefined;
+    if (hubListen && registry)
+      hub = new LinkedWorkerHub({
+        registry,
+        authorize: (businessId, ownerId) => store.validateLinkedWhatsAppOwner(businessId, ownerId),
+        holderId,
+        holderUrl: leasing?.forwarding.holderUrl ?? null,
+        // Its socket can open now: retry the session here instead of at its next timer.
+        onAttach: (businessId) => void connector?.wake(businessId),
+        log: (event) => app.log.info(event, "WhatsApp remote worker changed.")
+      });
+    const socketDriver =
+      hub && registry ? linkedDriverSelector({ local: driver, hub, registry }) : driver;
+    let releaseLock: () => void;
+    try {
+      releaseLock = acquireLinkedWorkerLock(root, { shared: sharedVolume });
+    } catch (error) {
+      void ownPool?.end();
+      throw error;
+    }
     try {
       connector = new LinkedWhatsAppConnector({
         vault,
-        driver,
+        driver: socketDriver,
+        ...(leasing ? { lease: leasing.keeper } : {}),
+        sharedVolume,
+        // Assistant replies count against the same 60/hour budget as delegated results.
+        admit: (businessId, key) => store.admitLinkedAutomatedReply(businessId, key).admitted,
+        releaseAdmission: (businessId, key) => store.releaseLinkedAutomatedReply(businessId, key),
         ...(daemon
           ? {
               respond: async (
@@ -109,6 +275,7 @@ export function registerLinkedWhatsAppRoutes(
                 conversationId: string,
                 signal: AbortSignal
               ) => {
+                // The connector admitted this reply against the shared budget (`admit` above).
                 const grant = store.linkedToolGrant(businessId, ownerId, message.chat);
                 const runtime = store.linkedWhatsAppRuntime(businessId, ownerId, conversationId);
                 let evidence: string | undefined;
@@ -159,7 +326,7 @@ export function registerLinkedWhatsAppRoutes(
                   text,
                   idempotencyKey
                 });
-                await (store as Cp2Store & { flush?: () => Promise<void> }).flush?.();
+                await (store as DurableStore).flush?.();
               }
             }
           : {}),
@@ -167,7 +334,7 @@ export function registerLinkedWhatsAppRoutes(
         alreadyReceived: (businessId, ownerId, message) =>
           store.hasLinkedWhatsAppMessage(businessId, ownerId, message),
         receive: async (businessId, ownerId, _generation, message, media) => {
-          await store.ingestLinkedWhatsAppMessage({
+          const result = await store.ingestLinkedWhatsAppMessage({
             businessId,
             ownerId,
             chat: message.chat,
@@ -180,9 +347,26 @@ export function registerLinkedWhatsAppRoutes(
             ...(media ? { media } : {})
           });
           await (store as Cp2Store & { flush?: () => Promise<void> }).flush?.();
+          // Refused under the inbound quota: acknowledged, never stored, never answered.
+          return "throttled" in result && result.throttled ? "throttled" : undefined;
         },
-        event: ({ businessId, ownerId, state }) => {
+        notice: ({ businessId, type, queued }) =>
+          app.log.warn(
+            { event: `whatsapp_linked.${type}`, businessId, queued },
+            "WhatsApp inbound notice."
+          ),
+        event: ({ businessId, ownerId, state, lease }) => {
           store.recordLinkedWhatsAppState(businessId, ownerId, state);
+          // Lets other workers answer readiness for this business without asking us.
+          if (leasing && lease)
+            void leasing.directory
+              .publish(businessId, holderId, lease, state)
+              .catch(() => undefined);
+          // Connect and restore both end in CONNECTED: deliver what waited while offline.
+          if (state === "CONNECTED") {
+            setImmediate(() => void drain?.drainDelegationResults());
+            setImmediate(() => void sendReadReceipts?.(businessId, ownerId));
+          }
           app.log.info(
             { event: "whatsapp_linked.state", businessId, state },
             "WhatsApp connection state changed."
@@ -191,17 +375,94 @@ export function registerLinkedWhatsAppRoutes(
       });
     } catch (error) {
       releaseLock();
+      void ownPool?.end();
       throw error;
     }
-    store.registerMessagingAdapter(connector);
+    const local = connector;
+    const router = leasing
+      ? new LinkedConnectorRouter({
+          connector: local,
+          directory: leasing.directory,
+          holderId,
+          token: leasing.forwarding.token,
+          ...(registry
+            ? {
+                attachment: async (businessId: string) => {
+                  const attached = await registry.attachment(businessId);
+                  return attached?.url ? { holderId: attached.holderId, url: attached.url } : null;
+                }
+              }
+            : {}),
+          log: (event) => app.log.info(event, "WhatsApp request forwarded.")
+        })
+      : undefined;
+    api = router ?? local;
+    if (leasing)
+      registerLinkedForwardRoute(app, {
+        connector: local,
+        holderId,
+        token: leasing.forwarding.token
+      });
+    if (registry && hub) {
+      const routedApi = api;
+      enrollment = {
+        registry,
+        credentialTtlMs,
+        disconnectWorker: (workerId) => hub.disconnect(workerId),
+        unlinkSession: (businessId, ownerId) => routedApi.disconnect(businessId, ownerId)
+      };
+    }
+    store.registerMessagingAdapter(api);
+    const removeTranscriber = store.setLinkedWhatsAppTranscriber(transcriber);
+    const results = (drain = delegatedResultDrain(
+      app,
+      store as DurableStore,
+      connector,
+      resultDrainMs
+    ));
+    // Read receipts queued by the store when the shop reads a message (read-receipts.ts).
+    const receiptTarget = {
+      approved: (businessId: string, ownerId: string, chat: string) =>
+        connector?.readReceiptApproved(businessId, ownerId, chat) ?? false,
+      markRead: (
+        businessId: string,
+        ownerId: string,
+        chat: string,
+        keys: Parameters<LinkedWhatsAppConnector["markRead"]>[3]
+      ) => connector?.markRead(businessId, ownerId, chat, keys) ?? Promise.resolve(0)
+    };
+    sendReadReceipts = (businessId, ownerId) =>
+      dispatchLinkedReadReceipts(store, receiptTarget, businessId, ownerId);
+    const removeReceiptListener = store.onLinkedReadReceiptsQueued((businessId, ownerId) =>
+      setImmediate(() => void sendReadReceipts?.(businessId, ownerId))
+    );
     app.addHook("onReady", async () => {
-      await connector!.restore();
+      if (hub && hubListen) {
+        const port = await hub.listen(hubListen);
+        app.log.info(
+          { event: "whatsapp_linked.hub_listening", port, tls: Boolean(hubListen.tls) },
+          "WhatsApp remote worker hub listening."
+        );
+      }
+      router?.startPolling();
+      await local.restore();
+      void results.drainDelegationResults();
     });
     app.addHook("onClose", async () => {
       try {
-        await connector!.stop();
+        removeTranscriber();
+        removeReceiptListener();
+        sendReadReceipts = undefined;
+        results.stop();
+        router?.stop();
+        await hub?.stop();
+        await local.stop();
+        // Closing the sockets fails any send still in flight; give that pass a bounded moment to
+        // settle and flush rather than hanging shutdown on a provider call.
+        await results.idle(5000);
       } finally {
         releaseLock();
+        await ownPool?.end().catch(() => undefined);
       }
     });
   }
@@ -250,13 +511,13 @@ export function registerLinkedWhatsAppRoutes(
     return { businessId, sessionId, ownerId: actor.userId };
   }
   function available() {
-    if (!connector)
+    if (!api)
       throw new Cp2Error(
         503,
         "whatsapp_linked_unavailable",
         "WhatsApp linking is not available on this host."
       );
-    return connector;
+    return api;
   }
   const path = "/businesses/:businessId/channels/whatsapp-linked";
   app.get<{ Params: Params }>(path, async (request, reply) => {
@@ -264,7 +525,7 @@ export function registerLinkedWhatsAppRoutes(
       const actor = principal(request);
       reply.header("cache-control", "no-store");
       return (
-        connector?.status(actor.businessId, actor.ownerId) ?? {
+        (await api?.status(actor.businessId, actor.ownerId)) ?? {
           enabled: false,
           state: "DISCONNECTED",
           pairingCode: null,
@@ -274,14 +535,14 @@ export function registerLinkedWhatsAppRoutes(
         }
       );
     } catch (error) {
-      return sendCp2Error(reply, error);
+      return sendLinkedError(reply, error);
     }
   });
   app.get<{ Params: Params }>(`${path}/tools`, async (request, reply) => {
     try {
       const actor = principal(request);
       reply.header("cache-control", "no-store");
-      const scopes = available().status(actor.businessId, actor.ownerId).scopes;
+      const scopes = (await available().status(actor.businessId, actor.ownerId)).scopes;
       return {
         choices: linkedToolChoices,
         grants: scopes.map((scope) => ({
@@ -290,7 +551,7 @@ export function registerLinkedWhatsAppRoutes(
         }))
       };
     } catch (error) {
-      return sendCp2Error(reply, error);
+      return sendLinkedError(reply, error);
     }
   });
   app.post<{ Params: Params; Body: unknown }>(`${path}/tools`, async (request, reply) => {
@@ -298,9 +559,9 @@ export function registerLinkedWhatsAppRoutes(
       const actor = principal(request),
         body = parseRequestBody(request.body);
       const chat = parseString(body.chat, "chat");
-      const scope = available()
-        .status(actor.businessId, actor.ownerId)
-        .scopes.find((scope) => scope.chat === chat);
+      const scope = (await available().status(actor.businessId, actor.ownerId)).scopes.find(
+        (scope) => scope.chat === chat
+      );
       if (body.consent !== true || !scope?.automation)
         throw new Cp2Error(
           403,
@@ -318,7 +579,7 @@ export function registerLinkedWhatsAppRoutes(
       reply.header("cache-control", "no-store");
       return grant;
     } catch (error) {
-      return sendCp2Error(reply, error);
+      return sendLinkedError(reply, error);
     }
   });
   app.get<{ Params: Params }>(`${path}/groups`, async (request, reply) => {
@@ -327,7 +588,7 @@ export function registerLinkedWhatsAppRoutes(
       reply.header("cache-control", "no-store");
       return { groups: await available().groups(actor.businessId, actor.ownerId) };
     } catch (error) {
-      return sendCp2Error(reply, error);
+      return sendLinkedError(reply, error);
     }
   });
   app.post<{ Params: Params; Body: unknown }>(`${path}/connect`, async (request, reply) => {
@@ -350,7 +611,10 @@ export function registerLinkedWhatsAppRoutes(
       const worker = available();
       try {
         await worker.connect(actor.businessId, actor.ownerId, phone);
-      } catch {
+      } catch (error) {
+        // Another worker, or this business's remote worker, cannot take the request right now.
+        if (error instanceof ChannelGatewayError && error.code === "CHANNEL_UNAVAILABLE")
+          throw new Cp2Error(503, "whatsapp_linked_unavailable", error.message, true);
         throw new Cp2Error(
           502,
           "whatsapp_pairing_failed",
@@ -358,9 +622,9 @@ export function registerLinkedWhatsAppRoutes(
         );
       }
       reply.header("cache-control", "no-store");
-      return worker.status(actor.businessId, actor.ownerId);
+      return await worker.status(actor.businessId, actor.ownerId);
     } catch (error) {
-      return sendCp2Error(reply, error);
+      return sendLinkedError(reply, error);
     }
   });
   app.post<{ Params: Params; Body: unknown }>(`${path}/scopes`, async (request, reply) => {
@@ -376,7 +640,7 @@ export function registerLinkedWhatsAppRoutes(
           "Enter a valid WhatsApp contact or group identifier."
         );
       if (body.approved === false) {
-        worker.revoke(actor.businessId, actor.ownerId, chat);
+        await worker.revoke(actor.businessId, actor.ownerId, chat);
         store.setLinkedToolGrants({
           businessId: actor.businessId,
           ownerId: actor.ownerId,
@@ -384,7 +648,7 @@ export function registerLinkedWhatsAppRoutes(
           tools: [],
           enabled: false
         });
-        return worker.status(actor.businessId, actor.ownerId);
+        return await worker.status(actor.businessId, actor.ownerId);
       }
       if (body.approved !== true)
         throw new Cp2Error(
@@ -392,7 +656,8 @@ export function registerLinkedWhatsAppRoutes(
           "whatsapp_scope_consent_required",
           "Explicit conversation approval is required."
         );
-      if (worker.status(actor.businessId, actor.ownerId).state !== "CONNECTED")
+      const current = await worker.status(actor.businessId, actor.ownerId);
+      if (current.state !== "CONNECTED")
         throw new Cp2Error(409, "whatsapp_not_connected", "Connect WhatsApp first.");
       if (body.automation !== undefined && typeof body.automation !== "boolean")
         throw new Cp2Error(
@@ -400,10 +665,7 @@ export function registerLinkedWhatsAppRoutes(
           "whatsapp_automation_invalid",
           "Assistant reply permission must be a boolean."
         );
-      if (
-        body.automation === true &&
-        !worker.status(actor.businessId, actor.ownerId).automationAvailable
-      )
+      if (body.automation === true && !current.automationAvailable)
         throw new Cp2Error(
           503,
           "whatsapp_assistant_unavailable",
@@ -435,24 +697,25 @@ export function registerLinkedWhatsAppRoutes(
         tools: [],
         enabled: body.automation === true
       });
-      worker.approve(
+      await worker.approve(
         actor.businessId,
         actor.ownerId,
         chat,
         linked.channel.conversationId,
         body.automation === true
       );
-      return worker.status(actor.businessId, actor.ownerId);
+      return await worker.status(actor.businessId, actor.ownerId);
     } catch (error) {
-      return sendCp2Error(reply, error);
+      return sendLinkedError(reply, error);
     }
   });
   app.delete<{ Params: Params }>(path, async (request, reply) => {
     try {
       const actor = principal(request);
       const worker = available();
-      // Local deletion is guaranteed even when WhatsApp's logout request fails.
-      for (const scope of worker.status(actor.businessId, actor.ownerId).scopes)
+      // Local deletion is guaranteed even when WhatsApp's logout request fails. In lease mode
+      // the call runs on the worker holding the socket, so its logout really reaches WhatsApp.
+      for (const scope of (await worker.status(actor.businessId, actor.ownerId)).scopes)
         store.setLinkedToolGrants({
           businessId: actor.businessId,
           ownerId: actor.ownerId,
@@ -461,9 +724,92 @@ export function registerLinkedWhatsAppRoutes(
           enabled: false
         });
       await worker.disconnect(actor.businessId, actor.ownerId);
-      return worker.status(actor.businessId, actor.ownerId);
+      return await worker.status(actor.businessId, actor.ownerId);
     } catch (error) {
-      return sendCp2Error(reply, error);
+      return sendLinkedError(reply, error);
     }
   });
+  registerLinkedWorkerEnrollmentRoutes(app, store, () => enrollment);
+  return drain && { drainDelegationResults: drain.drainDelegationResults };
+}
+
+/**
+ * The delegated-result outbox drain for this connector host (delegation-outbox.ts). Passes run
+ * one at a time; a request during a pass schedules exactly one more. Only businesses this
+ * connector serves right now (connected and holding the lease) are drained.
+ */
+function delegatedResultDrain(
+  app: FastifyInstance,
+  store: DurableStore,
+  connector: LinkedWhatsAppConnector,
+  intervalMs: number
+): LinkedWhatsAppRoutesHandle & { stop(): void; idle(timeoutMs: number): Promise<void> } {
+  const ready = (businessId: string) => connector.readiness({ businessId }).status === "available";
+  let running: Promise<LinkedDelegationDrainReport | null> | null = null;
+  let again = false;
+  let stopped = false;
+  const pass = async (): Promise<LinkedDelegationDrainReport | null> => {
+    try {
+      const stored = await store.loadPendingLinkedDelegationResults?.();
+      const report = await store.drainLinkedDelegationResults({
+        ready,
+        ...(stored ? { stored } : {})
+      });
+      await store.flush?.();
+      if (report.sent + report.suppressed + report.failed > 0)
+        app.log.info(
+          { event: "whatsapp_linked.delegated_results_drained", ...report },
+          "Delegated WhatsApp results settled."
+        );
+      return report;
+    } catch (error) {
+      app.log.warn(
+        {
+          event: "whatsapp_linked.delegated_results_drain_failed",
+          errorCode: error instanceof Cp2Error ? error.code : "drain_failed"
+        },
+        "Delegated WhatsApp result drain failed; it will be retried."
+      );
+      return null;
+    }
+  };
+  const drainDelegationResults = (): Promise<LinkedDelegationDrainReport | null> => {
+    if (stopped) return Promise.resolve(null);
+    if (running) {
+      again = true;
+      return running;
+    }
+    running = (async () => {
+      let report: LinkedDelegationDrainReport | null;
+      do {
+        again = false;
+        report = await pass();
+      } while (again && !stopped);
+      return report;
+    })().finally(() => {
+      running = null;
+    });
+    return running;
+  };
+  const unsubscribe = store.onLinkedDelegationResultQueued(() =>
+    setImmediate(() => void drainDelegationResults())
+  );
+  const timer = setInterval(() => void drainDelegationResults(), intervalMs);
+  timer.unref();
+  return {
+    drainDelegationResults,
+    stop() {
+      stopped = true;
+      clearInterval(timer);
+      unsubscribe();
+    },
+    async idle(timeoutMs: number) {
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      await Promise.race([
+        running,
+        new Promise<void>((resolve) => (timeout = setTimeout(resolve, timeoutMs)))
+      ]);
+      clearTimeout(timeout);
+    }
+  };
 }

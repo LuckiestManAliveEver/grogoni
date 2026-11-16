@@ -8,6 +8,7 @@ import type {
 import { createHash } from "node:crypto";
 import type { LinkedDriver, LinkedMutation } from "./connector.js";
 import { linkedMediaMaxBytes, LinkedMediaRejected, type LinkedMedia } from "./media.js";
+import { linkedReadReceiptMessageKeys, type LinkedReadReceiptSocket } from "./read-receipts.js";
 
 /** Lazy import keeps native protocol dependencies out of disabled/serverless routes. */
 export function createBaileysLinkedDriver(
@@ -426,10 +427,35 @@ export function createBaileysLinkedDriver(
           } else deliver();
         }
       });
-      return {
+      const linked: LinkedReadReceiptSocket = {
+        /**
+         * Sends WhatsApp read receipts for inbound messages of one chat (read-receipts.ts). Keys
+         * are validated, deduplicated and capped before Baileys sees them. Baileys sends
+         * `read-self` instead of `read` when the account's own read-receipt privacy setting is
+         * off, so this never overrides that setting. Returns how many keys were sent.
+         */
+        async markRead(chat, receipts) {
+          if (closed) throw new Error("Connection changed.");
+          const messageKeys = linkedReadReceiptMessageKeys(chat, receipts);
+          if (!messageKeys.length) return 0;
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          try {
+            await Promise.race([
+              socket.readMessages(messageKeys),
+              new Promise<never>((_, reject) => {
+                timer = setTimeout(() => reject(new Error("Read receipt timed out.")), 15_000);
+              })
+            ]);
+          } finally {
+            clearTimeout(timer);
+          }
+          return messageKeys.length;
+        },
         async downloadMedia(media, signal) {
+          // A closed socket is a connection problem, not a bad attachment: the connector keeps
+          // the event journaled for the next socket instead of storing a "rejected" placeholder.
+          if (closed) throw new Error("Connection changed.");
           if (
-            closed ||
             media.size < 1 ||
             media.size > linkedMediaMaxBytes ||
             !media.directPath.startsWith("/") ||
@@ -537,6 +563,7 @@ export function createBaileysLinkedDriver(
           await socket.logout();
         }
       };
+      return linked;
     }
   };
 }

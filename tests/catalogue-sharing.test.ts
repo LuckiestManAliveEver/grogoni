@@ -74,6 +74,7 @@ describe("catalogue sharing", () => {
       buyer.sessionCookie
     );
     expect(listing).toEqual([
+      expect.objectContaining({ businessId: "dataset:kenyan-commerce-v1", productCount: 713 }),
       {
         businessId: sharer.business.id,
         grogoniId: sharer.business.grogoniId,

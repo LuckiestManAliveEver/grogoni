@@ -24,7 +24,23 @@ export function validateRuntimeToolInput(
     case "catalogue.marketplace.products":
     case "catalogue.marketplace.import": {
       if (typeof input.sourceBusinessId !== "string" || !input.sourceBusinessId.trim())
-        return invalid("Choose a source shop from market catalogue search results.");
+        return invalid("Choose a source shop or dataset from catalogue search results.");
+      if (
+        toolName === "catalogue.marketplace.products" &&
+        ((input.search !== undefined &&
+          (typeof input.search !== "string" || input.search.length > 120)) ||
+          (input.offset !== undefined &&
+            (typeof input.offset !== "number" ||
+              !Number.isInteger(input.offset) ||
+              input.offset < 0 ||
+              input.offset > 10000)) ||
+          (input.limit !== undefined &&
+            (typeof input.limit !== "number" ||
+              !Number.isInteger(input.limit) ||
+              input.limit < 1 ||
+              input.limit > 100)))
+      )
+        return invalid("Use a text search, nonnegative offset, and a limit between 1 and 100.");
       if (
         toolName === "catalogue.marketplace.import" &&
         (!Array.isArray(input.productIds) ||

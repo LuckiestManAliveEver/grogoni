@@ -77,13 +77,8 @@ function normalizeWhatsAppChat(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) return "";
   const compact = trimmed.replace(/[ ()-]/g, "");
-  if (/^\+?[1-9][0-9]{6,14}$/.test(compact))
-    return `${compact.replace(/^\+/, "")}@s.whatsapp.net`;
-  if (
-    /^(?:[0-9]{5,20}@(?:s\.whatsapp\.net|lid)|[0-9]{5,20}(?:-[0-9]{1,20})?@g\.us)$/.test(
-      trimmed
-    )
-  )
+  if (/^\+?[1-9][0-9]{6,14}$/.test(compact)) return `${compact.replace(/^\+/, "")}@s.whatsapp.net`;
+  if (/^(?:[0-9]{5,20}@(?:s\.whatsapp\.net|lid)|[0-9]{5,20}(?:-[0-9]{1,20})?@g\.us)$/.test(trimmed))
     return trimmed;
   return trimmed;
 }
