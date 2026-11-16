@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type {
   ConversationMessageSummary,
   ModelExecutionTarget
@@ -14,6 +14,7 @@ import {
   type ReplyVersionSubject
 } from "../packages/shared-types/src/reply-versions";
 import { buildApi } from "../services/api/src/app";
+import { Cp2Error } from "../services/api/src/cp2/cp2-error";
 import {
   assertRegenerationInputs,
   regenerationAllowsTool
@@ -266,6 +267,46 @@ describe("regenerating an agent reply (API)", () => {
     await t.close();
   });
 
+  it.each(["shop", "skill"])(
+    "creates no approval when %s policy gates an otherwise read-only tool",
+    async (policy) => {
+      const put = vi.fn(async () => {});
+      const t = await setup([answer("First answer."), listProducts], put);
+      const first = await t.ask(`ask-policy-${policy}`, "What products should I focus on?");
+      const sessionId = decodeURIComponent(t.cookie.split("=")[1]!);
+      const profile = t.store.getAgentProfile({ sessionId, businessId: t.businessId });
+      t.store.updateAgentProfile({
+        sessionId,
+        businessId: t.businessId,
+        profile: {
+          ...profile,
+          ...(policy === "shop"
+            ? {
+                instructionPolicy: {
+                  ...profile.instructionPolicy,
+                  ownerApprovalRequiredFor: ["products.list"]
+                }
+              }
+            : {
+                skillBindings: profile.skillBindings.map((binding) =>
+                  binding.skillId === "products.list"
+                    ? { ...binding, requiredConfirmationLevel: "explicit" as const }
+                    : binding
+                )
+              })
+        }
+      });
+      const turns = t.snapshot().runtimeTurns.length;
+      const response = await t.regenerate(first.agentMessage.id, `version-policy-${policy}`);
+      expect(response.statusCode).toBe(409);
+      expect(response.json()).toMatchObject({ code: "regeneration_would_act" });
+      expect(put).not.toHaveBeenCalled();
+      expect(t.snapshot().runtimeTurns).toHaveLength(turns);
+      expect(JSON.stringify(t.snapshot())).not.toContain("needs_confirmation");
+      await t.close();
+    }
+  );
+
   it("stores no turn and no approval when the new version proposes an approval-gated tool", async () => {
     const t = await setup([
       answer("Nothing to remove yet."),
@@ -472,7 +513,17 @@ describe("regenerating an agent reply (API)", () => {
     expect((await regenerate(staff, "version-staff-001")).json()).toMatchObject({
       code: "reply_regeneration_forbidden"
     });
-    expect((await regenerate(customer, "version-cust-0001")).statusCode).toBe(403);
+    const byCustomer = await regenerate(customer, "version-cust-0001");
+    expect(byCustomer.statusCode).toBe(403);
+    expect(byCustomer.json()).toMatchObject({ code: "membership_required" });
+    // Naming any shop other than the one this conversation belongs to is refused outright.
+    const otherShop = await createOwnerBusiness(t.app, "+254700077077", "Second Shop");
+    const wrongShop = await t.post(`/v1/conversations/${shared}/messages/${reply.id}/regenerate`, {
+      businessId: otherShop.businessId,
+      versionId: "version-shop-0002"
+    });
+    expect(wrongShop.statusCode).toBe(403);
+    expect(wrongShop.json()).toMatchObject({ code: "conversation_business_mismatch" });
     expect(t.model.calls).toBe(callsBefore);
 
     expect((await regenerate(t.cookie, "version-owner-001")).statusCode).toBe(200);
@@ -489,6 +540,233 @@ describe("regenerating an agent reply (API)", () => {
     const disabled = await regenerate(t.cookie, "version-owner-002");
     expect(disabled.statusCode).toBe(409);
     expect(disabled.json()).toMatchObject({ code: "business_agent_disabled" });
+    await t.close();
+  });
+
+  it("rejects an edit-and-restore race even when every edit uses the same timestamp", async () => {
+    const t = await setup([answer("First."), answer("Late.")]);
+    const first = await t.ask("ask-revision-race", "Original question.");
+    const sessionId = decodeURIComponent(t.cookie.split("=")[1]!);
+    const now = new Date();
+    const edit = (text: string) =>
+      t.store.updateConversationMessage({
+        sessionId,
+        conversationId: t.conversationId,
+        messageId: first.id,
+        text,
+        now
+      });
+    const initial = edit("Original question.");
+    t.model.onCall = async () => {
+      const middle = edit("Changed question.");
+      const restored = edit("Original question.");
+      expect(middle.editedAt).not.toBe(initial.editedAt);
+      expect(restored.editedAt).not.toBe(middle.editedAt);
+    };
+    const refused = await t.regenerate(first.agentMessage.id, "version-race-0001");
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json()).toMatchObject({
+      code: "reply_not_regenerable",
+      details: { reason: "question_changed" }
+    });
+    expect(
+      (await t.thread()).find((message) => message.id === first.agentMessage.id)?.replyVersions
+    ).toBeUndefined();
+    await t.close();
+  });
+
+  it("records which revision of the question each version answered, never its text", async () => {
+    const t = await setup([
+      answer("A1."),
+      answer("A2."),
+      answer("A3."),
+      answer("B1."),
+      answer("B2.")
+    ]);
+    const first = await t.ask(
+      "ask-wording-0001",
+      "My card PIN is 4471, what sells best on Mondays?"
+    );
+    await t.regenerate(first.agentMessage.id, "version-word-0001");
+    const edit = await t.editQuestion(first.id, "What sells best on Fridays?");
+    expect(edit.statusCode).toBe(200);
+    const editedAt = edit.json<ConversationMessageSummary>().editedAt;
+    expect(editedAt).toBeTruthy();
+    const third = await t.regenerate(first.agentMessage.id, "version-word-0002");
+    expect(
+      third
+        .json<ConversationMessageSummary>()
+        .replyVersions?.versions.map((version) => [version.text, version.questionRevision])
+    ).toEqual([
+      ["A1.", null],
+      ["A2.", null],
+      ["A3.", editedAt]
+    ]);
+    // Wording the person edited away is kept nowhere on the reply.
+    const stored = JSON.stringify((await t.thread()).find((m) => m.id === first.agentMessage.id));
+    expect(stored).not.toContain("4471");
+    expect(stored).not.toContain("Mondays");
+    expect(stored).not.toContain("Fridays");
+
+    // Edited before its versions were first recorded: which revision the original answered is unknown.
+    const second = await t.ask("ask-wording-0002", "Any slow movers?");
+    const secondEdit = await t.editQuestion(second.id, "Any slow movers this month?");
+    const regenerated = await t.regenerate(second.agentMessage.id, "version-word-0003");
+    const versions = regenerated.json<ConversationMessageSummary>().replyVersions!.versions;
+    expect(versions[0]).not.toHaveProperty("questionRevision");
+    expect(versions[1]).toMatchObject({
+      text: "B2.",
+      questionRevision: secondEdit.json<ConversationMessageSummary>().editedAt
+    });
+    await t.close();
+  });
+
+  it("answers a stopped request with 499, and a refusal with the refusal, when called with a signal", async () => {
+    const t = await setup([answer("First answer."), answer("Late."), createProduct("Sugar 2kg")]);
+    const first = await t.ask("ask-signal-00001", "Should I start selling sugar?");
+    const sessionId = decodeURIComponent(t.cookie.split("=")[1]!);
+    const attempt = async (versionId: string) => {
+      const stop = new AbortController();
+      t.model.onCall = async () => stop.abort();
+      return t.store
+        .regenerateAgentReply({
+          sessionId,
+          conversationId: t.conversationId,
+          messageId: first.agentMessage.id,
+          businessId: t.businessId,
+          versionId,
+          signal: stop.signal
+        })
+        .then(
+          () => ({ statusCode: 200, code: null as string | null }),
+          (error: { statusCode?: number; code?: string }) => ({
+            statusCode: error.statusCode ?? 500,
+            code: error.code ?? null
+          })
+        );
+    };
+    // The model answered in words, but the person had stopped: cancelled, nothing written.
+    expect(await attempt("version-sig-00001")).toEqual({
+      statusCode: 499,
+      code: "regeneration_cancelled"
+    });
+    // An authoritative runtime refusal remains the answer even if abort races with it.
+    // The live runtime maps an interrupted inference to 503 before parsing its proposal,
+    // so exercise an actual 409 rejection at the runtime boundary rather than faking
+    // that an aborted model output reached the proposal guard.
+    const runtime = vi.spyOn(t.store, "createRuntimeTurn").mockImplementation(async (input) => {
+      await t.model.onCall?.();
+      expect(input.signal?.aborted).toBe(true);
+      throw new Cp2Error(409, "regeneration_would_act", "Refused by the runtime guard.", false);
+    });
+    expect(await attempt("version-sig-00002")).toEqual({
+      statusCode: 409,
+      code: "regeneration_would_act"
+    });
+    runtime.mockRestore();
+    expect((await t.thread())[1]?.replyVersions).toBeUndefined();
+    expect(t.products()).toHaveLength(0);
+    await t.close();
+  });
+
+  it("writes no version when the client disconnects, even if the model call runs to its end", async () => {
+    const t = await setup([
+      answer("First answer."),
+      answer("Late answer."),
+      answer("Asked again.")
+    ]);
+    const first = await t.ask("ask-cancel-00001", "Give me a slogan for the shop.");
+    const address = await t.app.listen({ port: 0, host: "127.0.0.1" });
+    const url = `${address}/v1/conversations/${t.conversationId}/messages/${first.agentMessage.id}/regenerate`;
+    const body = (versionId: string) => ({
+      method: "POST",
+      headers: jsonHeaders(t.cookie),
+      body: JSON.stringify({ businessId: t.businessId, versionId })
+    });
+    const stop = new AbortController();
+    let modelFinished!: () => void;
+    const finished = new Promise<void>((resolve) => (modelFinished = resolve));
+    // The scripted model ignores the abort signal, like a provider that cannot be interrupted.
+    t.model.onCall = async () => {
+      stop.abort();
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      modelFinished();
+    };
+    await expect(
+      fetch(url, { ...body("version-stop-0001"), signal: stop.signal })
+    ).rejects.toThrow();
+    await finished;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(t.model.calls).toBe(2);
+    const reply = (await t.thread())[1]!;
+    expect(reply.content).toMatchObject({ text: "First answer." });
+    expect(reply.replyVersions).toBeUndefined();
+    expect(t.audit("message.regenerated")).toHaveLength(0);
+
+    // Asking again with the same id is a fresh, complete request.
+    t.model.onCall = null;
+    const again = await fetch(url, body("version-stop-0001"));
+    expect(again.status).toBe(200);
+    expect(
+      ((await again.json()) as ConversationMessageSummary).replyVersions?.versions
+    ).toHaveLength(2);
+    await t.close();
+  });
+
+  it("refuses when the question was edited to carry a file or into something other than text", async () => {
+    const t = await setup([answer("First answer."), answer("Never used.")]);
+    const first = await t.ask("ask-shape-000001", "What sells best on Mondays?");
+    const patch = (content: unknown) =>
+      t.app.inject({
+        method: "PATCH",
+        url: `/v1/conversations/${t.conversationId}/messages/${first.id}`,
+        headers: jsonHeaders(t.cookie),
+        payload: JSON.stringify({ content })
+      });
+    const cases: Array<[unknown, string]> = [
+      [
+        {
+          type: "text",
+          text: "See the attached list.",
+          attachments: [
+            {
+              id: "attachment-1",
+              name: "list.txt",
+              mimeType: "text/plain",
+              size: 3,
+              category: "document",
+              url: "data:text/plain;base64,YWJj"
+            }
+          ]
+        },
+        "question_has_attachments"
+      ],
+      [{ type: "storefront", shopId: t.businessId }, "question_not_text"]
+    ];
+    for (const [content, reason] of cases) {
+      expect((await patch(content)).statusCode).toBe(200);
+      const refused = await t.regenerate(first.agentMessage.id, "version-shape-001");
+      expect(refused.statusCode).toBe(409);
+      expect(refused.json()).toMatchObject({ code: "reply_not_regenerable", details: { reason } });
+    }
+    expect(t.model.calls).toBe(1);
+    await t.close();
+  });
+
+  it("has no version to select on a reply never regenerated, or on a message that is not a reply", async () => {
+    const t = await setup([answer("First answer.")]);
+    const first = await t.ask("ask-select-00001", "What sells best on Mondays?");
+    for (const messageId of [first.agentMessage.id, first.id]) {
+      const refused = await t.app.inject({
+        method: "PUT",
+        url: `/v1/conversations/${t.conversationId}/messages/${messageId}/reply-version`,
+        headers: jsonHeaders(t.cookie),
+        payload: JSON.stringify({ index: 0 })
+      });
+      expect(refused.statusCode).toBe(409);
+      expect(refused.json()).toMatchObject({ code: "reply_versions_missing" });
+    }
+    expect(t.audit("message.version_selected")).toHaveLength(0);
     await t.close();
   });
 
@@ -602,7 +880,10 @@ describe("regenerating an agent reply (API)", () => {
   });
 });
 
-async function setup(script: string[]) {
+async function setup(
+  script: string[],
+  approvalPut?: (token: string, pending: unknown) => Promise<void>
+) {
   const model = {
     calls: 0,
     prompts: [] as unknown[],
@@ -620,6 +901,21 @@ async function setup(script: string[]) {
     }
   };
   const store = createCp2Store({
+    ...(approvalPut === undefined
+      ? {}
+      : {
+          runtimeApprovalStore: {
+            put: approvalPut,
+            deleteScope: async () => 0,
+            purgeExpired: async () => 0,
+            claim: async () => {
+              throw new Error("No approval expected");
+            },
+            reject: async () => {
+              throw new Error("No approval expected");
+            }
+          }
+        }),
     modelRuntimeAdapterResolver: ({ modelId: requested }) =>
       requested === modelId ? adapter : undefined
   });
@@ -701,6 +997,7 @@ async function setup(script: string[]) {
         payload: JSON.stringify({ text })
       }),
     snapshot: () => store.snapshot(),
+    store,
     products: () =>
       store.snapshot().products.filter((product) => product.businessId === owner.businessId),
     audit: (type: string) => store.snapshot().auditEvents.filter((event) => event.type === type),

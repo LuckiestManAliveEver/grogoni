@@ -68,6 +68,15 @@ export function ReplyVersionRow({
 }) {
   const writing = controls.regeneratingMessageId === message.id;
   if (message.replyVersions === undefined && !writing) return null;
+  // The selected version records which revision of the question it answered; say so when the
+  // question has been edited since, so an answer is never read as a reply to words it never saw.
+  const answered = message.replyVersions?.questionRevision;
+  const asked = thread.find((item) => item.id === message.replyToMessageId);
+  const earlierWording =
+    answered !== undefined &&
+    asked !== undefined &&
+    !asked.deletedAt &&
+    (asked.editedAt ?? null) !== answered;
   return (
     <div className="reply-version-row">
       {message.replyVersions !== undefined ? (
@@ -81,6 +90,9 @@ export function ReplyVersionRow({
           }
           onSelect={(index) => controls.onSelect(message.id, index)}
         />
+      ) : null}
+      {earlierWording ? (
+        <span className="reply-version-note">Answered before the message was last edited.</span>
       ) : null}
       {writing ? (
         <span className="reply-version-progress" role="status">

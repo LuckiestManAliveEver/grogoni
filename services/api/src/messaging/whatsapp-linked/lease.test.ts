@@ -15,8 +15,11 @@ import { describeLinkedLeaseStoreContract } from "./lease-conformance.test-suppo
 let sequence = 0;
 describeLinkedLeaseStoreContract("in-memory", () => {
   let clock = 0;
+  const store = new MemoryLinkedLeaseStore(() => clock, { "worker-a": "http://worker-a:4000" });
   return {
-    store: new MemoryLinkedLeaseStore(() => clock),
+    store,
+    directory: store,
+    holderUrl: "http://worker-a:4000",
     ttlMs: 30_000,
     expire: async () => {
       clock += 30_000;
@@ -270,21 +273,54 @@ describe("LinkedLeaseKeeper", () => {
   });
 });
 
+/** Forwarding settings every postgres-mode worker must have. */
+const forwarding = {
+  WHATSAPP_LINKED_INTERNAL_URL: "http://10.0.0.5:4000/",
+  WHATSAPP_LINKED_INTERNAL_TOKEN: "i".repeat(32)
+};
+
 describe("lease settings", () => {
   it("defaults to off (single process) and to safe postgres timings", () => {
     expect(linkedLeaseSettingsFromEnvironment({})).toEqual({ mode: "off" });
     expect(createLinkedLeaseKeeper({}, undefined)).toBeUndefined();
-    const config = linkedLeaseSettingsFromEnvironment({ WHATSAPP_LINKED_LEASE_MODE: "postgres" });
+    const config = linkedLeaseSettingsFromEnvironment({
+      WHATSAPP_LINKED_LEASE_MODE: "postgres",
+      ...forwarding
+    });
     expect(config.mode).toBe("postgres");
     if (config.mode !== "postgres") return;
     expect(config.settings).toMatchObject(defaultLinkedLeaseSettings);
     expect(config.settings.holderId).toMatch(/^[A-Za-z0-9._-]+:[0-9]+:[0-9a-f]{8}$/);
     const { ttlMs, heartbeatMs, skewMs } = config.settings;
     expect(heartbeatMs * 3).toBeLessThanOrEqual(ttlMs - skewMs);
+    // The trailing slash is dropped so forwarded paths join cleanly.
+    expect(config.forwarding).toEqual({
+      holderUrl: "http://10.0.0.5:4000",
+      token: "i".repeat(32)
+    });
+  });
+
+  it("refuses postgres mode without a reachable internal URL and a shared token", () => {
+    const env = (extra: Record<string, string>) => () =>
+      linkedLeaseSettingsFromEnvironment({ WHATSAPP_LINKED_LEASE_MODE: "postgres", ...extra });
+    expect(env({ WHATSAPP_LINKED_INTERNAL_TOKEN: "i".repeat(32) })).toThrow("INTERNAL_URL");
+    expect(
+      env({ ...forwarding, WHATSAPP_LINKED_INTERNAL_URL: "http://user:pw@10.0.0.5:4000" })
+    ).toThrow("INTERNAL_URL");
+    expect(env({ ...forwarding, WHATSAPP_LINKED_INTERNAL_URL: "ftp://10.0.0.5" })).toThrow(
+      "INTERNAL_URL"
+    );
+    expect(env({ WHATSAPP_LINKED_INTERNAL_URL: forwarding.WHATSAPP_LINKED_INTERNAL_URL })).toThrow(
+      "INTERNAL_TOKEN"
+    );
+    expect(env({ ...forwarding, WHATSAPP_LINKED_INTERNAL_TOKEN: "short" })).toThrow(
+      "INTERNAL_TOKEN"
+    );
   });
 
   it("generates a distinct worker id per process instance", () => {
-    const id = () => linkedLeaseSettingsFromEnvironment({ WHATSAPP_LINKED_LEASE_MODE: "postgres" });
+    const id = () =>
+      linkedLeaseSettingsFromEnvironment({ WHATSAPP_LINKED_LEASE_MODE: "postgres", ...forwarding });
     const [a, b] = [id(), id()];
     expect(a.mode === "postgres" && b.mode === "postgres").toBe(true);
     if (a.mode === "postgres" && b.mode === "postgres")
@@ -293,7 +329,11 @@ describe("lease settings", () => {
 
   it("refuses unsafe or malformed configuration", () => {
     const env = (extra: Record<string, string>) => () =>
-      linkedLeaseSettingsFromEnvironment({ WHATSAPP_LINKED_LEASE_MODE: "postgres", ...extra });
+      linkedLeaseSettingsFromEnvironment({
+        WHATSAPP_LINKED_LEASE_MODE: "postgres",
+        ...forwarding,
+        ...extra
+      });
     expect(() =>
       linkedLeaseSettingsFromEnvironment({ WHATSAPP_LINKED_LEASE_MODE: "redis" })
     ).toThrow("off or postgres");
@@ -305,7 +345,7 @@ describe("lease settings", () => {
     expect(env({ WHATSAPP_LINKED_LEASE_RETRY_MS: "10" })).toThrow("RETRY");
     expect(env({ WHATSAPP_LINKED_WORKER_ID: "bad id with spaces" })).toThrow("WORKER_ID");
     expect(() =>
-      createLinkedLeaseKeeper({ WHATSAPP_LINKED_LEASE_MODE: "postgres" }, undefined)
+      createLinkedLeaseKeeper({ WHATSAPP_LINKED_LEASE_MODE: "postgres", ...forwarding }, undefined)
     ).toThrow("requires a Postgres");
     expect(
       validateLinkedLeaseSettings(

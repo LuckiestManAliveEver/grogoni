@@ -1,14 +1,20 @@
 {
-  "description": "Google Play facts the Android build is checked against. Recheck against the sources before each first upload after a policy date; Play raises minTargetSdk every August. WAKE_LOCK, ACCESS_NETWORK_STATE, RECEIVE_BOOT_COMPLETED and FOREGROUND_SERVICE are merged from WorkManager; the app starts no foreground service.",
-  "verifiedOn": "2026-11-05",
+  "description": "Google Play facts the Android build is checked against. Recheck against the sources before each first upload after a policy date; Play raises minTargetSdk every August. WAKE_LOCK and ACCESS_NETWORK_STATE are merged from WorkManager. The app starts one foreground service, the owner-enabled on-phone WhatsApp worker (foregroundServices below).",
+  "verifiedOn": "2026-11-10",
   "sources": [
     "https://developer.android.com/google/play/requirements/target-sdk",
-    "https://support.google.com/googleplay/android-developer/answer/16558241"
+    "https://support.google.com/googleplay/android-developer/answer/16558241",
+    "https://support.google.com/googleplay/android-developer/answer/13392821",
+    "https://developer.android.com/develop/background-work/services/fg-service-types#remote-messaging",
+    "https://developer.android.com/about/versions/15/behavior-changes-15#fgs-boot-completed"
   ],
-  "policy": { "minTargetSdk": 36 },
+  "policy": {
+    "minTargetSdk": 36
+  },
   "lastPlayVersionCode": 0,
   "allowedPermissions": [
     "android.permission.USE_BIOMETRIC",
+    "android.permission.USE_FINGERPRINT",
     "android.permission.INTERNET",
     "android.permission.CAMERA",
     "android.permission.ACCESS_COARSE_LOCATION",
@@ -23,8 +29,32 @@
     "android.permission.READ_SMS",
     "android.permission.ACCESS_NETWORK_STATE",
     "android.permission.FOREGROUND_SERVICE",
+    "android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING",
     "android.permission.WAKE_LOCK",
     "android.permission.RECEIVE_BOOT_COMPLETED",
     "market.grogoni.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+  ],
+  "permissionJustifications": {
+    "android.permission.FOREGROUND_SERVICE": "Runs the owner-enabled on-phone WhatsApp worker as a visible foreground service (also merged from WorkManager).",
+    "android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING": "The on-phone WhatsApp worker relays the owner's own messages between their linked WhatsApp account on this phone and their Grogoni inbox: the remoteMessaging use case.",
+    "android.permission.RECEIVE_BOOT_COMPLETED": "Restarts the on-phone WhatsApp worker after a reboot, only when the signed-in owner had turned it on (also merged from WorkManager for SMS recovery).",
+    "android.permission.USE_FINGERPRINT": "Normal, deprecated permission merged from androidx.biometric (pulled in by androidx.credentials). The device-unlock prompt needs it for fingerprint on Android 6 to 8.1 (minSdk 23)."
+  },
+  "foregroundServices": {
+    "market.grogoni.app.whatsapp.sidecar.WhatsAppSidecarService": {
+      "type": "remoteMessaging",
+      "permission": "android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING",
+      "startedBy": "The owner's explicit 'Run WhatsApp on this phone' action, app launch while it is on, and BOOT_COMPLETED / MY_PACKAGE_REPLACED while it is on",
+      "userVisible": "Ongoing low-importance notification with a Stop action for as long as it runs",
+      "declaration": "docs/android/play-console-submission.md#foreground-service-declaration-remote-messaging"
+    }
+  },
+  "ownerDecisions": [
+    {
+      "id": "libsignal-gpl-3.0",
+      "status": "pending",
+      "summary": "The on-phone WhatsApp worker bundles libsignal@6.0.0 (GPL-3.0) inside the APK and App Bundle. Distribution licence review is the owner's decision; the notice ships in assets/whatsapp-sidecar/THIRD-PARTY-NOTICES.txt.",
+      "notice": "assets/whatsapp-sidecar/THIRD-PARTY-NOTICES.txt"
+    }
   ]
 }

@@ -30,6 +30,9 @@ export default function CommerceSourcesPanel({
   const [query, setQuery] = useState("");
   const [offers, setOffers] = useState<PublishedCommerceOffer[]>([]);
   const [target, setTarget] = useState("");
+  const [packUnit, setPackUnit] = useState("");
+  const [packCount, setPackCount] = useState("");
+  const [packProductId, setPackProductId] = useState("");
   useEffect(() => {
     let cancelled = false;
     setRecords([]);
@@ -80,6 +83,79 @@ export default function CommerceSourcesPanel({
         spreadsheet or document, shop description, or existing website. Review before publishing.
       </p>
       <p role="status">{message}</p>
+      <form
+        aria-label="Verify product packaging"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void operation("packaging.verify", {
+            productId: packProductId,
+            packUnit,
+            unitsPerPack: Number(packCount),
+            confirmed: true
+          });
+        }}
+      >
+        <h4>Verified packaging for receipt stock</h4>
+        <p>Check the packaging before saving. Receipt text alone cannot establish a conversion.</p>
+        <label>
+          Product
+          <select
+            required
+            value={packProductId}
+            onChange={(event) => setPackProductId(event.target.value)}
+          >
+            <option value="">Choose a product</option>
+            {products.map((product) => (
+              <option key={product.id} value={product.id}>
+                {product.name} ({product.unit})
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Pack unit
+          <input
+            required
+            maxLength={80}
+            placeholder="carton"
+            value={packUnit}
+            onChange={(event) => setPackUnit(event.target.value)}
+          />
+        </label>
+        <label>
+          Stock units per pack
+          <input
+            required
+            type="number"
+            min="1"
+            max="1000000"
+            step="1"
+            value={packCount}
+            onChange={(event) => setPackCount(event.target.value)}
+          />
+        </label>
+        <button type="submit" disabled={busy}>
+          I verified this packaging
+        </button>
+        {records
+          .filter((r) => r.kind === "packaging" && r.status === "active")
+          .map(
+            (record) =>
+              record.kind === "packaging" && (
+                <p key={record.id}>
+                  {products.find((p) => p.id === record.productId)?.name ?? "Product"}: 1{" "}
+                  {record.packUnit} = {record.unitsPerPack} {record.baseUnit}
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void operation("packaging.revoke", { id: record.id })}
+                  >
+                    Revoke conversion
+                  </button>
+                </p>
+              )
+          )}
+      </form>
       <CommerceSourceReviewPanel
         businessId={businessId}
         records={records}

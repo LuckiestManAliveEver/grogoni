@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Readable } from "node:stream";
 import { createHash } from "node:crypto";
 import { baileysLinkedDriver } from "./baileys-driver.js";
+import { LinkedMediaRejected } from "./media.js";
 const protocol = vi.hoisted(() => ({
   listeners: new Map<string, (event: unknown) => void>(),
   make: vi.fn(),
@@ -9,6 +10,9 @@ const protocol = vi.hoisted(() => ({
   sendMessage: vi.fn(async () => ({ key: { id: "sent-id" } })),
   end: vi.fn(),
   logout: vi.fn(async () => undefined),
+  readMessages: vi.fn(async (keys: unknown[]) => {
+    void keys;
+  }),
   downloadContent: vi.fn(),
   groups: vi.fn(async () => ({
     "123456789@g.us": {
@@ -63,7 +67,8 @@ beforeEach(() => {
     sendMessage: protocol.sendMessage,
     groupFetchAllParticipating: protocol.groups,
     end: protocol.end,
-    logout: protocol.logout
+    logout: protocol.logout,
+    readMessages: protocol.readMessages
   }));
 });
 async function fixture(auth: string | null = null, approved: string[] = []) {
@@ -241,6 +246,15 @@ describe("Baileys protocol boundary (mocked, not live compatibility)", () => {
       "declared size"
     );
     expect(oversized.destroyed).toBe(true);
+    // After close a download fails as a connection problem, not a rejected attachment: the
+    // connector must keep the event for the next socket rather than store a placeholder.
+    f.socket.close();
+    const closed = await f.socket.downloadMedia!(media, new AbortController().signal).catch(
+      (error: unknown) => error
+    );
+    expect(closed).toBeInstanceOf(Error);
+    expect(closed).not.toBeInstanceOf(LinkedMediaRejected);
+    expect((closed as Error).message).toBe("Connection changed.");
   });
   it("uses only protocol-supplied phone aliases for LID-addressed contacts", async () => {
     const f = await fixture();
@@ -351,5 +365,52 @@ describe("Baileys protocol boundary (mocked, not live compatibility)", () => {
     f.socket.close();
     f.emit("connection.update", { connection: "open" });
     expect(f.input.state).not.toHaveBeenCalled();
+  });
+});
+
+describe("WhatsApp read receipts", () => {
+  const contact = "254711111111@s.whatsapp.net";
+  const member = "254722222222@s.whatsapp.net";
+  it("sends validated, deduplicated keys; names the participant only in groups", async () => {
+    const { socket } = await fixture();
+    const linked = socket as unknown as {
+      markRead(chat: string, keys: Array<{ id: string; sender: string }>): Promise<number>;
+    };
+    expect(
+      await linked.markRead(contact, [
+        { id: "A1", sender: contact },
+        { id: "A1", sender: contact },
+        { id: "bad id with spaces", sender: contact },
+        { id: "A2", sender: "not-a-jid" }
+      ])
+    ).toBe(1);
+    expect(protocol.readMessages).toHaveBeenLastCalledWith([
+      { remoteJid: contact, id: "A1", fromMe: false }
+    ]);
+    expect(await linked.markRead("123456789@g.us", [{ id: "G1", sender: member }])).toBe(1);
+    expect(protocol.readMessages).toHaveBeenLastCalledWith([
+      { remoteJid: "123456789@g.us", id: "G1", fromMe: false, participant: member }
+    ]);
+    // Nothing valid, or an invalid chat: Baileys is never called.
+    protocol.readMessages.mockClear();
+    expect(await linked.markRead("status@broadcast", [{ id: "S1", sender: contact }])).toBe(0);
+    expect(await linked.markRead(contact, [])).toBe(0);
+    expect(protocol.readMessages).not.toHaveBeenCalled();
+    // At most 100 keys per call.
+    const many = Array.from({ length: 150 }, (_, index) => ({ id: `M${index}`, sender: contact }));
+    expect(await linked.markRead(contact, many)).toBe(100);
+    expect((protocol.readMessages.mock.calls[0]![0] as unknown[]).length).toBe(100);
+  });
+
+  it("refuses after the socket closed", async () => {
+    const { socket } = await fixture();
+    const linked = socket as unknown as {
+      markRead(chat: string, keys: Array<{ id: string; sender: string }>): Promise<number>;
+    };
+    socket.close();
+    await expect(linked.markRead(contact, [{ id: "A1", sender: contact }])).rejects.toThrow(
+      "Connection changed."
+    );
+    expect(protocol.readMessages).not.toHaveBeenCalled();
   });
 });

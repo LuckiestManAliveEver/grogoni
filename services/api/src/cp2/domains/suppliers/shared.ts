@@ -1,3 +1,4 @@
+import { validateReceiptFinances } from "../receipt-commerce/financial-validation.js";
 import { randomUUID } from "node:crypto";
 import type {
   NetworkNodeSummary,
@@ -48,6 +49,7 @@ export interface ParsedReceiptText {
   subtotal: number | null;
   discount: number | null;
   tax: number | null;
+  taxBasis?: "exclusive" | "inclusive" | "unknown";
   total: number | null;
   amountPaid: number | null;
   balance: number | null;
@@ -63,6 +65,8 @@ export interface ParsedReceiptText {
     unit: string | null;
     unitPrice: number;
     total: number;
+    lineDiscount?: number | null;
+    totalSource?: "printed" | "derived" | "reviewed" | "unknown";
     batchNumber: string | null;
     expiryDate: string | null;
   }>;
@@ -158,20 +162,20 @@ function normalizeReceiptPhone(value: string | null): string | null {
     return null;
   }
 
-  const match = value.match(/\+?[0-9][0-9\s-]{6,18}[0-9]/u);
-
-  if (match === null) {
-    return null;
+  for (const match of value.matchAll(/\+?[0-9][0-9 \t()-]{6,22}[0-9]/gu)) {
+    const compact = match[0].replace(/[ \t()-]+/gu, "");
+    const normalized = /^0[17]\d{8}$/u.test(compact)
+      ? `+254${compact.slice(1)}`
+      : /^254[17]\d{8}$/u.test(compact)
+        ? `+${compact}`
+        : compact;
+    try {
+      return normalizeDestination("phone", normalized);
+    } catch {
+      // Dates, account numbers and unreadable OCR are evidence to review, not a fatal phone error.
+    }
   }
-
-  const compact = match[0].replace(/[\s-]+/gu, "");
-  const kenyanNormalized = /^0[17]\d{8}$/u.test(compact)
-    ? `+254${compact.slice(1)}`
-    : /^254[17]\d{8}$/u.test(compact)
-      ? `+${compact}`
-      : compact;
-
-  return normalizeDestination("phone", kenyanNormalized);
+  return null;
 }
 
 function normalizeReceiptEmail(value: string | null): string | null {
@@ -192,25 +196,40 @@ function normalizeReceiptEmail(value: string | null): string | null {
   }
 }
 
-function normalizeReceiptDate(value: string | null): string | null {
-  if (value === null) {
-    return null;
-  }
-
-  const match = value.match(/\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4}/u);
-  const parsed = match === null ? NaN : Date.parse(match[0]);
-
-  return Number.isNaN(parsed) ? null : new Date(parsed).toISOString();
+export function normalizeReceiptDate(value: string | null): string | null {
+  if (value === null) return null;
+  const iso = value.match(/\b(\d{4})-(\d{2})-(\d{2})(?=$|[T\s])/u);
+  const local = value.match(/\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/u);
+  const parts = iso
+    ? [Number(iso[1]), Number(iso[2]), Number(iso[3])]
+    : local
+      ? [Number(local[3]), Number(local[2]), Number(local[1])]
+      : null;
+  if (!parts) return null;
+  const [year, month, day] = parts as [number, number, number];
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+    ? date.toISOString()
+    : null;
 }
 
 function parseReceiptMoney(value: string | null): number | null {
-  if (value === null) {
-    return null;
-  }
-
-  const match = value.match(/[0-9]+(?:[.,][0-9]{1,2})?/u);
-
-  return match === null ? null : roundMoney(Number(match[0].replace(",", ".")));
+  if (value === null) return null;
+  const token = value.match(/[+-]?[0-9][0-9,.]*/u)?.[0];
+  if (!token || token.startsWith("-")) return null;
+  const unsigned = token.replace(/^\+/u, "");
+  const canonical = /^(?:[0-9]+|[0-9]{1,3}(?:,[0-9]{3})+)(?:\.[0-9]{1,2})?$/u.test(unsigned)
+    ? unsigned.replaceAll(",", "")
+    : /^[0-9]+,[0-9]{1,2}$/u.test(unsigned)
+      ? unsigned.replace(",", ".")
+      : null;
+  if (canonical === null) return null;
+  const amount = Number(canonical);
+  return Number.isFinite(amount) && Number.isSafeInteger(Math.round(amount * 100))
+    ? roundMoney(amount)
+    : null;
 }
 
 function normalizeReceiptTime(value: string | null): string | null {
@@ -260,6 +279,7 @@ function parseReceiptLineItems(lines: string[]): ParsedReceiptText["items"] {
       unit: null,
       unitPrice: roundMoney(unitPrice),
       total: roundMoney(total),
+      totalSource: match[4] === undefined ? "derived" : "printed",
       batchNumber: null,
       expiryDate: null
     });
@@ -272,6 +292,8 @@ export function buildReceiptStructuredExtraction(
   parsed: ParsedReceiptText
 ): ReceiptOCRJobSummary["structuredExtraction"] {
   return {
+    documentType: "unknown",
+    fulfillmentStatus: "unknown",
     supplier: {
       supplierName: parsed.supplierName,
       tradingName: parsed.supplierTradingName,
@@ -304,6 +326,7 @@ export function buildReceiptStructuredExtraction(
       subtotal: parsed.subtotal,
       discount: parsed.discount,
       tax: parsed.tax,
+      taxBasis: parsed.taxBasis ?? "unknown",
       total: parsed.total,
       amountPaid: parsed.amountPaid,
       balance: parsed.balance,
@@ -320,6 +343,8 @@ export function buildReceiptStructuredExtraction(
       unit: item.unit,
       unitPrice: item.unitPrice,
       lineTotal: item.total,
+      lineDiscount: item.lineDiscount ?? null,
+      lineTotalSource: item.totalSource ?? "unknown",
       batchNumber: item.batchNumber,
       expiryDate: item.expiryDate
     }))
@@ -725,13 +750,11 @@ export function buildReceiptOCRWarnings(parsed: ParsedReceiptText, hasContent: b
     warnings.push("No line items were parsed. Review and correct the receipt before saving.");
   }
 
-  if (parsed.total !== null && parsed.items.length > 0) {
-    const itemTotal = roundMoney(parsed.items.reduce((sum, item) => sum + item.total, 0));
-
-    if (Math.abs(itemTotal - parsed.total) > 1) {
-      warnings.push("Line item total does not match the receipt total.");
-    }
-  }
+  warnings.push(
+    ...validateReceiptFinances(buildReceiptStructuredExtraction(parsed)).map(
+      (finding) => `${finding.field}: ${finding.message}`
+    )
+  );
 
   return warnings;
 }

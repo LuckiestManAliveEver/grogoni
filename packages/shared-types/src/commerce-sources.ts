@@ -1,3 +1,4 @@
+import type { ProductPackaging, TradingGrant } from "./receipt-commerce.js";
 export const commerceSourceTypes = [
   "DEVICE_GALLERY",
   "PURCHASE_RECEIPT",
@@ -63,13 +64,22 @@ export interface DistributionRelationship extends CommerceRecordBase {
   status: "requested" | "accepted" | "rejected" | "revoked";
   respondedBy: string | null;
 }
+export interface VerifiedProductPackaging extends ProductPackaging {
+  kind: "packaging";
+  status: "active" | "revoked";
+}
+export interface ReceiptTradingGrant extends TradingGrant {
+  kind: "trading_grant";
+}
 export type UnifiedCommerceRecord =
   | CommerceSource
   | ProductSourceBinding
   | CommerceOffer
   | DistributionRelationship
   | CommerceSourceCandidate
-  | CommerceRepresentation;
+  | CommerceRepresentation
+  | VerifiedProductPackaging
+  | ReceiptTradingGrant;
 export interface PublishedCommerceOffer {
   id: string;
   businessId: string;

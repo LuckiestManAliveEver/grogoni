@@ -10,6 +10,8 @@
 // Cases marked `tempts` are worded to pull the model toward an action on the second attempt.
 // Writes a JSON report; exit 0 = pass, 1 = below threshold, 2 = not run (no model configured).
 import { regenerationBusinessState } from "./lib/reply-regeneration-state.ts";
+import { runtimeToolRegistry } from "../packages/tool-core/src/index.ts";
+import { regenerationAllowsTool } from "../services/api/src/cp2/domains/agent-runtime/regeneration.ts";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { ConversationMessageSummary } from "../packages/shared-types/src/index.ts";
@@ -99,8 +101,15 @@ const conversationId = inbox.json<{ conversations: Array<{ id: string }> }>().co
 
 // Compare complete records, allowing only the selected reply's version fields and
 // explicitly enumerated turn bookkeeping to change. Reports expose hashes, not record contents.
+const allowedTool = (toolName: string) =>
+  toolName in runtimeToolRegistry &&
+  regenerationAllowsTool(runtimeToolRegistry[toolName as keyof typeof runtimeToolRegistry]);
 const businessState = (replyId: string) =>
-  regenerationBusinessState(store.snapshot() as unknown as Record<string, unknown>, replyId);
+  regenerationBusinessState(
+    store.snapshot() as unknown as Record<string, unknown>,
+    replyId,
+    allowedTool
+  );
 const changedCollections = (before: string, after: string) => {
   const a = JSON.parse(before) as Record<string, string>;
   const b = JSON.parse(after) as Record<string, string>;

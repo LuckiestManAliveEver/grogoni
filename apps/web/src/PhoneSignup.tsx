@@ -4,7 +4,11 @@ import { isNativeDeviceHost } from "./device-messaging";
 import { browserSupportsWebAuthn } from "./browser-passkeys";
 import { usePasskeyEnrollment } from "./usePasskeyEnrollment";
 import type { AuthSessionView } from "@grogoni/shared-types";
-import { normalizePhoneInput, phoneNormalizationErrorMessage } from "@grogoni/shared-types";
+import {
+  isWeakPin,
+  normalizePhoneInput,
+  phoneNormalizationErrorMessage
+} from "@grogoni/shared-types";
 import { getCountryCallingCode, type CountryCode } from "libphonenumber-js";
 import { AppIcon } from "./AppIcon";
 import { ApiRequestError, apiFetch } from "./lib/api";
@@ -12,6 +16,7 @@ import { authenticationPhoneCountries, PhoneNumberField } from "./PhoneNumberFie
 import { getUserFacingErrorMessage } from "./user-facing-error";
 
 type SignupStage = "phone" | "profile" | "device";
+type SignupCredential = "pin" | "password";
 
 interface SignupTransaction {
   transactionId: string;
@@ -46,6 +51,9 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
   const [transaction, setTransaction] = useState<SignupTransaction | null>(null);
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
+  const [credentialType, setCredentialType] = useState<SignupCredential>("pin");
+  const [pin, setPin] = useState("");
+  const [pinConfirmation, setPinConfirmation] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
   const [termsAccepted, setTermsAccepted] = useState(false);
@@ -54,6 +62,32 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
   const [message, setMessage] = useState("");
   const [accountExists, setAccountExists] = useState(false);
   const [createdSession, setCreatedSession] = useState<AuthSessionView | null>(null);
+  const profileRequirements = [
+    ...(displayName.trim().length < 2 || displayName.trim().length > 100
+      ? ["Enter a display name between 2 and 100 characters."]
+      : []),
+    ...(credentialType === "pin"
+      ? [
+          ...(!/^\d{4}$/u.test(pin)
+            ? ["Enter a 4-digit PIN."]
+            : isWeakPin(pin)
+              ? ["Choose a less predictable PIN (not 1234, 0000 or similar)."]
+              : []),
+          ...(!pinConfirmation || pin !== pinConfirmation
+            ? ["Confirm your PIN with an exact match."]
+            : [])
+        ]
+      : [
+          ...(password.length < 10 || password.length > 256
+            ? ["Use a password between 10 and 256 characters."]
+            : []),
+          ...(!passwordConfirmation || password !== passwordConfirmation
+            ? ["Confirm your password with an exact match."]
+            : [])
+        ]),
+    ...(!termsAccepted ? ["Agree to the Terms of Service."] : []),
+    ...(!privacyAccepted ? ["Acknowledge the Privacy Policy."] : [])
+  ];
   const enrollment = usePasskeyEnrollment({
     onCreated: () => {
       if (createdSession !== null) onAuthenticated(createdSession);
@@ -121,13 +155,28 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
       setMessage("Enter a valid email address or leave it blank.");
       return;
     }
-    if (password.length < 10 || password.length > 256) {
-      setMessage("Use a password between 10 and 256 characters.");
-      return;
-    }
-    if (password !== passwordConfirmation) {
-      setMessage("Passwords do not match.");
-      return;
+    if (credentialType === "pin") {
+      if (!/^\d{4}$/u.test(pin)) {
+        setMessage("Enter a 4-digit PIN.");
+        return;
+      }
+      if (isWeakPin(pin)) {
+        setMessage("Choose a less predictable PIN.");
+        return;
+      }
+      if (pin !== pinConfirmation) {
+        setMessage("PINs do not match.");
+        return;
+      }
+    } else {
+      if (password.length < 10 || password.length > 256) {
+        setMessage("Use a password between 10 and 256 characters.");
+        return;
+      }
+      if (password !== passwordConfirmation) {
+        setMessage("Passwords do not match.");
+        return;
+      }
     }
     if (!termsAccepted || !privacyAccepted) {
       setMessage("Accept the Terms and Privacy Policy to continue.");
@@ -141,8 +190,10 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
         transactionId: transaction.transactionId,
         displayName: trimmedName,
         ...(trimmedEmail ? { email: trimmedEmail } : {}),
-        password,
-        passwordConfirmation,
+        credentialType,
+        ...(credentialType === "pin"
+          ? { pin, pinConfirmation }
+          : { password, passwordConfirmation }),
         termsAccepted,
         privacyAccepted
       },
@@ -257,8 +308,11 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
           ) : stage === "profile" ? (
             <div className="auth-fields">
               <label>
-                Display name
+                <span id="signup-name-label">Display name</span>
                 <input
+                  required
+                  aria-labelledby="signup-name-label"
+                  aria-describedby="signup-name-help"
                   autoFocus
                   type="text"
                   autoComplete="name"
@@ -269,52 +323,156 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
                   disabled={busy}
                   onChange={(event) => setDisplayName(event.target.value)}
                 />
+                <small id="signup-name-help">Required. Use between 2 and 100 characters.</small>
               </label>
               <label>
-                Backup email <span className="auth-optional-label">Optional</span>
+                <span id="signup-email-label">
+                  Backup email <span className="auth-optional-label">Optional</span>
+                </span>
                 <input
                   type="email"
+                  aria-labelledby="signup-email-label"
+                  aria-describedby="signup-email-help"
                   autoComplete="email"
                   placeholder="you@example.com"
                   value={email}
                   disabled={busy}
                   onChange={(event) => setEmail(event.target.value)}
                 />
-                <small>
-                  Verify this email in account security to use it for backup recovery and MFA.
+                <small id="signup-email-help">
+                  Leave blank or enter a valid email address. Verify it in account security to use
+                  it for backup recovery and MFA.
                 </small>
               </label>
 
-              <label>
-                Password
-                <input
-                  type="password"
-                  autoComplete="new-password"
-                  minLength={10}
-                  maxLength={256}
-                  value={password}
-                  disabled={busy}
-                  onChange={(event) => setPassword(event.target.value)}
-                />
-              </label>
-              <label>
-                Confirm password
-                <input
-                  type="password"
-                  autoComplete="new-password"
-                  minLength={10}
-                  maxLength={256}
-                  value={passwordConfirmation}
-                  disabled={busy}
-                  onChange={(event) => setPasswordConfirmation(event.target.value)}
-                />
-              </label>
+              {credentialType === "pin" ? (
+                <>
+                  <label>
+                    <span id="signup-pin-label">4-digit PIN</span>
+                    <input
+                      required
+                      aria-labelledby="signup-pin-label"
+                      aria-describedby="signup-pin-help"
+                      type="password"
+                      inputMode="numeric"
+                      pattern="[0-9]{4}"
+                      autoComplete="new-password"
+                      maxLength={4}
+                      value={pin}
+                      disabled={busy}
+                      onChange={(event) =>
+                        setPin(event.target.value.replace(/\D/gu, "").slice(0, 4))
+                      }
+                    />
+                    <small id="signup-pin-help">
+                      {pin.length === 4 && isWeakPin(pin)
+                        ? "Too easy to guess. Avoid repeated digits (0000), sequences (1234) and common patterns."
+                        : "You'll use this PIN to log in."}
+                    </small>
+                  </label>
+                  <label>
+                    <span id="signup-pin-confirmation-label">Confirm PIN</span>
+                    <input
+                      required
+                      aria-labelledby="signup-pin-confirmation-label"
+                      aria-describedby="signup-pin-confirmation-help"
+                      aria-invalid={pinConfirmation.length === 4 && pin !== pinConfirmation}
+                      type="password"
+                      inputMode="numeric"
+                      pattern="[0-9]{4}"
+                      autoComplete="new-password"
+                      maxLength={4}
+                      value={pinConfirmation}
+                      disabled={busy}
+                      onChange={(event) =>
+                        setPinConfirmation(event.target.value.replace(/\D/gu, "").slice(0, 4))
+                      }
+                    />
+                    <small id="signup-pin-confirmation-help" aria-live="polite">
+                      {pinConfirmation.length === 4
+                        ? pin === pinConfirmation
+                          ? "PINs match."
+                          : "PINs do not match. Enter the same PIN in both fields."
+                        : "Enter the same PIN again."}
+                    </small>
+                  </label>
+                  <button
+                    className="auth-text-button"
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      setCredentialType("password");
+                      setMessage("");
+                    }}
+                  >
+                    Use a password instead (more secure)
+                  </button>
+                </>
+              ) : (
+                <>
+                  <label>
+                    <span id="signup-password-label">Password</span>
+                    <input
+                      required
+                      aria-labelledby="signup-password-label"
+                      aria-describedby="signup-password-help"
+                      type="password"
+                      autoComplete="new-password"
+                      minLength={10}
+                      maxLength={256}
+                      value={password}
+                      disabled={busy}
+                      onChange={(event) => setPassword(event.target.value)}
+                    />
+                    <small id="signup-password-help">
+                      Required. Use between 10 and 256 characters.
+                    </small>
+                  </label>
+                  <label>
+                    <span id="signup-confirmation-label">Confirm password</span>
+                    <input
+                      required
+                      aria-labelledby="signup-confirmation-label"
+                      aria-describedby="signup-confirmation-help"
+                      aria-invalid={
+                        passwordConfirmation.length > 0 && password !== passwordConfirmation
+                      }
+                      type="password"
+                      autoComplete="new-password"
+                      minLength={10}
+                      maxLength={256}
+                      value={passwordConfirmation}
+                      disabled={busy}
+                      onChange={(event) => setPasswordConfirmation(event.target.value)}
+                    />
+                    <small id="signup-confirmation-help" aria-live="polite">
+                      {passwordConfirmation.length > 0
+                        ? password === passwordConfirmation
+                          ? "Passwords match."
+                          : "Passwords do not match. Enter the same password in both fields."
+                        : "Required. Enter the same password again."}
+                    </small>
+                  </label>
+                  <button
+                    className="auth-text-button"
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      setCredentialType("pin");
+                      setMessage("");
+                    }}
+                  >
+                    Use a 4-digit PIN instead
+                  </button>
+                </>
+              )}
 
               <fieldset className="auth-consent-group">
-                <legend>Account agreements</legend>
+                <legend>Account agreements — both required</legend>
                 <label className="auth-option-row">
                   <input
                     type="checkbox"
+                    required
                     checked={termsAccepted}
                     disabled={busy}
                     onChange={(event) => setTermsAccepted(event.target.checked)}
@@ -326,6 +484,7 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
                 <label className="auth-option-row">
                   <input
                     type="checkbox"
+                    required
                     checked={privacyAccepted}
                     disabled={busy}
                     onChange={(event) => setPrivacyAccepted(event.target.checked)}
@@ -336,17 +495,25 @@ export default function PhoneSignup({ onAuthenticated, onLogIn, onCancel }: Prop
                 </label>
               </fieldset>
 
+              <div id="signup-requirements" aria-live="polite">
+                {profileRequirements.length > 0 ? (
+                  <>
+                    <small>To enable Create account:</small>
+                    <ul>
+                      {profileRequirements.map((requirement) => (
+                        <li key={requirement}>{requirement}</li>
+                      ))}
+                    </ul>
+                  </>
+                ) : (
+                  <small>All required fields are complete. You can create your account.</small>
+                )}
+              </div>
               <button
                 className="auth-primary-button"
                 type="button"
-                disabled={
-                  busy ||
-                  displayName.trim().length < 2 ||
-                  !termsAccepted ||
-                  !privacyAccepted ||
-                  password.length < 10 ||
-                  password !== passwordConfirmation
-                }
+                aria-describedby="signup-requirements"
+                disabled={busy || profileRequirements.length > 0}
                 aria-busy={busy}
                 onClick={() => void run(completeSignup)}
               >

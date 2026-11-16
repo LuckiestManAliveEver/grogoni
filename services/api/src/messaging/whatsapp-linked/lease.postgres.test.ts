@@ -16,6 +16,15 @@ const rollbackUrl = new URL(
   "../../../../../infra/db/rollbacks/136_whatsapp_linked_leases.down.sql",
   import.meta.url
 );
+// Holder URL and published state (138), applied on top of 136 as the migration runner does.
+const holdersUrl = new URL(
+  "../../../../../infra/db/migrations/138_whatsapp_linked_lease_holders.sql",
+  import.meta.url
+);
+const holdersRollbackUrl = new URL(
+  "../../../../../infra/db/rollbacks/138_whatsapp_linked_lease_holders.down.sql",
+  import.meta.url
+);
 const schema = `wa_lease_${randomUUID().replaceAll("-", "")}`;
 const TTL = 400;
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -30,6 +39,7 @@ describe.skipIf(!url)("WhatsApp linked leases on PostgreSQL", () => {
     try {
       await client.query(`set search_path to ${schema}`);
       await client.query(await readFile(migrationUrl, "utf8"));
+      await client.query(await readFile(holdersUrl, "utf8"));
       await client.query("reset search_path");
     } finally {
       client.release();
@@ -46,13 +56,20 @@ describe.skipIf(!url)("WhatsApp linked leases on PostgreSQL", () => {
   let sequence = 0;
   describeLinkedLeaseStoreContract(
     "PostgreSQL",
-    () => ({
+    () => {
       // pg.Pool satisfies the narrow SQL interface without adapters.
-      store: new PostgresLinkedLeaseStore(pool satisfies LinkedLeaseSql),
-      ttlMs: TTL,
-      expire: () => sleep(TTL + 100),
-      business: () => `business-${++sequence}-${randomUUID().slice(0, 8)}`
-    }),
+      const store = new PostgresLinkedLeaseStore(pool satisfies LinkedLeaseSql, {
+        holderUrl: "http://worker-a:4000"
+      });
+      return {
+        store,
+        directory: store,
+        holderUrl: "http://worker-a:4000",
+        ttlMs: TTL,
+        expire: () => sleep(TTL + 100),
+        business: () => `business-${++sequence}-${randomUUID().slice(0, 8)}`
+      };
+    },
     { concurrency: 10, timeout: 15_000 }
   );
 
@@ -96,8 +113,23 @@ describe.skipIf(!url)("WhatsApp linked leases on PostgreSQL", () => {
       await client.query(`create schema ${scratch}`);
       await client.query(`set search_path to ${scratch}`);
       await client.query(await readFile(migrationUrl, "utf8"));
-      // Idempotent: a re-run of the migration is harmless.
+      await client.query(await readFile(holdersUrl, "utf8"));
+      // Idempotent: a re-run of either migration is harmless.
       await client.query(await readFile(migrationUrl, "utf8"));
+      await client.query(await readFile(holdersUrl, "utf8"));
+      await client.query(await readFile(holdersRollbackUrl, "utf8"));
+      const columns = await client.query(
+        "select column_name from information_schema.columns where table_schema = $1 and table_name = 'whatsapp_linked_leases' order by column_name",
+        [scratch]
+      );
+      expect(columns.rows.map((row) => row.column_name)).toEqual([
+        "acquired_at",
+        "business_id",
+        "expires_at",
+        "generation",
+        "heartbeat_at",
+        "holder_id"
+      ]);
       await client.query(await readFile(rollbackUrl, "utf8"));
       const left = await client.query(
         "select count(*)::int as n from information_schema.tables where table_schema = $1",

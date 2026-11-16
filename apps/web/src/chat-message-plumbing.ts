@@ -185,11 +185,21 @@ export function mapConversationMessage(
       ? {
           replyVersions: {
             selected: replyVersionsOf(message).selected,
-            count: replyVersionsOf(message).versions.length
+            count: replyVersionsOf(message).versions.length,
+            ...selectedReplyQuestion(message)
           }
         }
       : {})
   };
+}
+
+/** The question revision the selected version of a reply answered, when the server recorded it. */
+function selectedReplyQuestion(message: ConversationMessageSummary): {
+  questionRevision?: string | null;
+} {
+  const versions = replyVersionsOf(message);
+  const questionRevision = versions.versions[versions.selected]?.questionRevision;
+  return questionRevision === undefined ? {} : { questionRevision };
 }
 
 export function mergePersistedEncryptedMessage(

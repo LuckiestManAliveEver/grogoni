@@ -525,6 +525,57 @@ describe("native Edge authentication routes", () => {
     expect(lookup).toContain("order by (u.phone_number_e164 = $2) is true desc");
   });
 
+  it("rejects weak, malformed, or mismatched signup PINs before accessing Neon", async () => {
+    const { routes, transaction } = setup(vi.fn(), false);
+    const base = {
+      transactionId: id,
+      displayName: "Test",
+      credentialType: "pin",
+      pin: "3927",
+      pinConfirmation: "3927",
+      termsAccepted: true,
+      privacyAccepted: true
+    };
+    for (const data of [
+      { ...base, pin: "1234", pinConfirmation: "1234" },
+      { ...base, pin: "39a7", pinConfirmation: "39a7" },
+      { ...base, pinConfirmation: "3928" }
+    ]) {
+      expect(
+        (await routes(request("/auth/signup/complete", data), "/auth/signup/complete"))!.status
+      ).toBe(400);
+    }
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
+  it("creates the account with a PIN and no password when the PIN is chosen", async () => {
+    const statements: string[] = [];
+    const query = vi.fn(async (sql: string) => {
+      statements.push(sql);
+      if (sql.includes("from auth_transactions"))
+        return { rows: [{ id, metadata: { identifierValue: "+254712345678" } }] };
+      if (sql.includes("where a.id = $1")) return { rows: [account] };
+      if (sql.includes("insert into sessions")) return { rows: [session] };
+      return { rows: [] };
+    }) as unknown as SqlClient["query"];
+    // Password fallback disabled: a PIN signup must not depend on it.
+    const response = await setup(query, false).routes(
+      request("/auth/signup/complete", {
+        transactionId: id,
+        displayName: "Jane",
+        credentialType: "pin",
+        pin: "3927",
+        pinConfirmation: "3927",
+        termsAccepted: true,
+        privacyAccepted: true
+      }),
+      "/auth/signup/complete"
+    );
+    expect(response?.status).toBe(200);
+    expect(statements.some((sql) => sql.includes("insert into account_pin_hashes"))).toBe(true);
+    expect(statements.some((sql) => sql.includes("insert into password_credentials"))).toBe(false);
+  });
+
   it("upgrades a guest in place at signup instead of creating an account", async () => {
     const statements: string[] = [];
     const guest = {

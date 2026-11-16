@@ -1,3 +1,5 @@
+import { registerLinkedWhatsAppDeviceRoutes } from "../../../messaging/whatsapp-linked/device-worker-routes.js";
+import { registerLinkedWhatsAppAccountRoutes } from "../../../messaging/whatsapp-linked/account-routes.js";
 /**
  * Thirteenth domain slice of in-process modularization for services/api/src/cp2/routes.ts (see
  * docs/architecture/routes-modularization-roadmap.md). Owns conversations, messages, E2EE
@@ -37,6 +39,7 @@ import type {
 import { Cp2Error } from "../../cp2-error.js";
 import { type Cp2Store, readSessionCookie } from "../../store.js";
 import { parseRuntimeTurnBody, type RuntimeTurnBody } from "../agent-runtime/routes.js";
+import { observeRequestAbort } from "../agent-runtime/route-body-parsers.js";
 import { defaultOAuthRedirectUri } from "../oauth/routes.js";
 import { contentDispositionHeader } from "../../workspace-file-delivery.js";
 import {
@@ -227,6 +230,8 @@ export function registerMessagingRoutes(
   vapidPublicKey: string | undefined
 ): void {
   registerLinkedWhatsAppRoutes(app, store);
+  registerLinkedWhatsAppDeviceRoutes(app, store);
+  registerLinkedWhatsAppAccountRoutes(app, store);
   app.post("/v1/help", async (request, reply) => {
     try {
       return store.ensureHelpConversations({
@@ -1501,6 +1506,8 @@ export function registerMessagingRoutes(
       const startedAt = Date.now();
       const conversationId = request.params.conversationId;
       const messageId = request.params.messageId;
+      // Stop in the app closes the connection: that cancels the model call and the version.
+      const requestAbort = observeRequestAbort(request, reply);
       try {
         const body = parseRequestBody(request.body);
         const businessId = parseString(body.businessId, "businessId");
@@ -1509,7 +1516,8 @@ export function registerMessagingRoutes(
           conversationId: parseString(conversationId, "conversationId"),
           messageId: parseString(messageId, "messageId"),
           businessId,
-          versionId: parseString(body.versionId, "versionId")
+          versionId: parseString(body.versionId, "versionId"),
+          signal: requestAbort.signal
         });
         request.log.info(
           {
@@ -1539,6 +1547,8 @@ export function registerMessagingRoutes(
           "Agent reply regeneration refused."
         );
         return sendCp2Error(reply, error);
+      } finally {
+        requestAbort.cleanup();
       }
     }
   );

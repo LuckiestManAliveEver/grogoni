@@ -4,4 +4,4 @@
  */
 export { RegenerateMenuItem, ReplyVersionRow, ReplyVersionSwitcher } from "./ReplyVersionSwitcher";
 export { useReplyVersions, type ReplyVersionDeps } from "./useReplyVersions";
-export type { ReplyVersionControls } from "./reply-version-requests";
+export { forgetReplyVersionRequests, type ReplyVersionControls } from "./reply-version-requests";

@@ -64,8 +64,11 @@ describe("registered-user purge script", () => {
     // cp2_discovery_budgets, classified DELETE - per-user spending records.
     // Agent Skills (infra/db/migrations/125_agent_skills.sql) added cp2_agent_skills,
     // classified DELETE - business/account-owned skill installations and publications.
-    expect(plan.size).toBe(206);
-    expect([...plan.values()].filter((value) => value === "DELETE")).toHaveLength(199);
+    // WhatsApp Linked Devices adds three normalized outboxes/state tables, plus the business
+    // connector lease and remote-worker registry; all five contain business-owned state or
+    // credential material and must be removed with the registered users.
+    expect(plan.size).toBe(211);
+    expect([...plan.values()].filter((value) => value === "DELETE")).toHaveLength(204);
     expect(
       [...plan.entries()]
         .filter(([, classification]) => classification === "PRESERVE")

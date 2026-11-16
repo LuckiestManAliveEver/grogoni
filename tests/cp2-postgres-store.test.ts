@@ -2095,10 +2095,11 @@ describePostgres("CP2 Postgres store", () => {
         contentType: "text/plain",
         contentBase64: null,
         extractedText:
-          "Supplier: Postgres Wholesale Ltd\nPhone: +254711222333\nTotal: 500\nItem A, 2, 100, 200"
+          "Supplier: Postgres Wholesale Ltd\nPhone: +254711222333\nDate: 2026-11-16\nTotal: 200\nItem A, 2, 100, 200"
       },
       owner.sessionCookie
     );
+    await markReceiptReviewedAsInvoice(app, businessId, ocrJob, owner.sessionCookie);
     const receipt = await postJson<PurchaseReceiptSummary>(
       app,
       `/businesses/${businessId}/receipt-ocr/jobs/${ocrJob.id}/confirm`,
@@ -3278,10 +3279,11 @@ describePostgres("CP2 Postgres store", () => {
           contentType: "text/plain",
           contentBase64: null,
           extractedText:
-            "Supplier: Two Item Wholesale\nPhone: +254711222336\nTotal: 500\nItem A, 2, 100, 200\nItem B, 1, 300, 300"
+            "Supplier: Two Item Wholesale\nPhone: +254711222336\nDate: 2026-11-16\nTotal: 500\nItem A, 2, 100, 200\nItem B, 1, 300, 300"
         },
         owner.sessionCookie
       );
+      await markReceiptReviewedAsInvoice(app, businessId, ocrJob, owner.sessionCookie);
       const receipt = await postJson<PurchaseReceiptSummary>(
         app,
         `/businesses/${businessId}/receipt-ocr/jobs/${ocrJob.id}/confirm`,
@@ -4537,6 +4539,24 @@ async function putJson<T>(
   expect(response.statusCode).toBeGreaterThanOrEqual(200);
   expect(response.statusCode).toBeLessThan(300);
   return response.json<T>();
+}
+
+/** Receipt posting safeguards: the owner reviews the document type before confirmation. */
+async function markReceiptReviewedAsInvoice(
+  app: ReturnType<typeof buildApi>,
+  businessId: string,
+  job: ReceiptOCRJobSummary,
+  cookie: string
+): Promise<void> {
+  await patchJson(
+    app,
+    `/businesses/${businessId}/receipt-ocr/jobs/${job.id}`,
+    {
+      extractedText: job.fullText,
+      structuredExtraction: { ...job.structuredExtraction, documentType: "invoice" }
+    },
+    cookie
+  );
 }
 
 async function patchJson<T>(

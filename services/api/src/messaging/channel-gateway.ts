@@ -119,6 +119,11 @@ export class ChannelGateway {
     this.adapters.set(adapter.provider, adapter);
   }
 
+  /** The adapter currently registered for a provider, if any. */
+  adapterFor(provider: ChannelProvider): MessagingChannelAdapter | undefined {
+    return this.adapters.get(provider);
+  }
+
   providerReadiness(context?: { businessId?: string }): ChannelProviderReadiness[] {
     return [...this.adapters.values()].map((adapter) => adapter.readiness(context));
   }

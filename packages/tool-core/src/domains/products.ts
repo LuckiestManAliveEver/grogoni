@@ -5,21 +5,27 @@ export const productsRuntimeTools = {
     name: "catalogue.marketplace.search",
     hub: null,
     description:
-      "Find market catalogues shared by other shops to prepopulate inventory. Search matches shop names or Grogoni IDs.",
+      "Find global starter datasets and catalogues shared by other shops to prepopulate inventory. Search by dataset, product, shop name or Grogoni ID.",
     risk: "low",
     requiresConfirmation: false,
     readOnly: true,
     requiredPermission: "product:read",
     inputSchema: {
       type: "object",
-      properties: { search: { type: "string", description: "Optional shop name or Grogoni ID." } }
+      properties: {
+        search: {
+          type: "string",
+          description: "Optional dataset, product, shop name or Grogoni ID."
+        }
+      }
     },
     mcpExposable: false
   },
   "catalogue.marketplace.products": {
     name: "catalogue.marketplace.products",
     hub: null,
-    description: "Read products in a shared market catalogue before selecting items to import.",
+    description:
+      "Read products in a shared catalogue or global starter dataset before importing. Seed products use generic units and require owner review. Results are bounded; use search and offset to find more.",
     risk: "low",
     requiresConfirmation: false,
     readOnly: true,
@@ -30,8 +36,12 @@ export const productsRuntimeTools = {
         sourceBusinessId: {
           type: "string",
           required: true,
-          description: "Source shop ID returned by catalogue.marketplace.search."
-        }
+          description:
+            "Source identifier returned by catalogue.marketplace.search; may be a dataset: ID."
+        },
+        search: { type: "string", description: "Filter seed products by name or category." },
+        offset: { type: "number", description: "Zero-based seed product offset (default 0)." },
+        limit: { type: "number", description: "Maximum results (1–100, default 50)." }
       }
     },
     mcpExposable: false
@@ -40,7 +50,7 @@ export const productsRuntimeTools = {
     name: "catalogue.marketplace.import",
     hub: null,
     description:
-      "Prepopulate inventory with 1–50 selected market catalogue products. Creates products with zero stock and no buying cost; copies source selling prices as starting values. Ask the owner to review selections and prices. Never invent source IDs.",
+      "Prepopulate inventory with 1–50 selected shared or global seed catalogue products. Imports start at zero stock and no buying cost. Seed imports also leave selling price unset and reuse products already imported from that dataset. Ask the owner to review units, selections and prices. Never invent source IDs.",
     risk: "high",
     requiresConfirmation: true,
     readOnly: false,
@@ -48,7 +58,11 @@ export const productsRuntimeTools = {
     inputSchema: {
       type: "object",
       properties: {
-        sourceBusinessId: { type: "string", required: true, description: "Source shop ID." },
+        sourceBusinessId: {
+          type: "string",
+          required: true,
+          description: "Source shop or dataset: identifier returned by search."
+        },
         productIds: {
           type: "array",
           required: true,

@@ -121,10 +121,17 @@ await check("Native login routes are available and validate requests", async () 
   const discovery = await get(`${api}/auth/login/methods`, {
     method: "POST",
     headers: { Origin: frontend, "Content-Type": "application/json" },
-    body: JSON.stringify({ type: "email", identifier: "route-check@example.invalid" })
+    body: JSON.stringify({ type: "phone", identifier: "+442079460999" })
   });
   const methods = await discovery.json();
-  if (discovery.status !== 200 || methods.preferred !== "pin")
+  if (
+    discovery.status !== 200 ||
+    typeof methods.passkeyAvailable !== "boolean" ||
+    methods.preferred !== (methods.passkeyAvailable ? "passkey" : "pin") ||
+    typeof methods.passwordFallback !== "boolean" ||
+    methods.recoveryAvailable !== true ||
+    methods.smsLogin !== false
+  )
     throw new Error(`Login methods HTTP ${discovery.status}`);
   for (const path of [
     "/auth/pin/login",

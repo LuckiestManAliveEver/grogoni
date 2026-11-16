@@ -1,3 +1,4 @@
+import { receiptDocumentTypes } from "@grogoni/shared-types";
 import type {
   ReceiptStructuredExtractionSummary,
   ReceiptContactMatchingResultSummary
@@ -6,6 +7,7 @@ import { Cp2Error } from "../../cp2-error.js";
 import {
   buildReceiptStructuredExtraction,
   parseReceiptText,
+  normalizeReceiptDate,
   type ParsedReceiptText
 } from "./shared.js";
 
@@ -16,11 +18,30 @@ export function parseReceiptFields(value: unknown): ReceiptStructuredExtractionS
     throw new Cp2Error(400, "receipt_fields_invalid", "Receipt fields must be an object.");
   const source = value as Record<string, unknown>;
   const fields = buildReceiptStructuredExtraction(parseReceiptText(""));
+  const documentType = source.documentType ?? "unknown";
+  if (!receiptDocumentTypes.includes(documentType as (typeof receiptDocumentTypes)[number]))
+    throw new Cp2Error(400, "receipt_fields_invalid", "Choose a supported document type.");
+  fields.documentType = documentType as (typeof receiptDocumentTypes)[number];
+  const fulfillment = source.fulfillmentStatus ?? "unknown";
+  if (!["unknown", "pending", "received"].includes(fulfillment as string))
+    throw new Cp2Error(400, "receipt_fields_invalid", "Choose a supported fulfillment status.");
+  fields.fulfillmentStatus = fulfillment as "unknown" | "pending" | "received";
+  const receiptInput = source.receipt as Record<string, unknown> | undefined;
+  const taxBasis = receiptInput?.taxBasis ?? "unknown";
+  if (!["exclusive", "inclusive", "unknown"].includes(taxBasis as string))
+    throw new Cp2Error(
+      400,
+      "receipt_fields_invalid",
+      "Choose whether tax is included in the subtotal."
+    );
+  fields.receipt.taxBasis = taxBasis as "exclusive" | "inclusive" | "unknown";
+
   for (const section of ["supplier", "salesAgent", "receipt"] as const) {
     const input = source[section];
     if (!input || typeof input !== "object" || Array.isArray(input))
       throw new Cp2Error(400, "receipt_fields_invalid", `Missing receipt section: ${section}.`);
     for (const key of Object.keys(fields[section])) {
+      if (section === "receipt" && key === "taxBasis") continue;
       const item = (input as Record<string, unknown>)[key] ?? null;
       if (
         item !== null &&
@@ -58,7 +79,19 @@ export function parseReceiptFields(value: unknown): ReceiptStructuredExtractionS
         throw new Cp2Error(400, "receipt_fields_invalid", `Check product ${key}.`);
       return raw.trim() || null;
     };
+    if (
+      item.lineDiscount != null &&
+      (typeof item.lineDiscount !== "number" ||
+        !Number.isFinite(item.lineDiscount) ||
+        item.lineDiscount < 0)
+    )
+      throw new Cp2Error(400, "receipt_fields_invalid", "Check the line discount.");
+    const totalSource = item.lineTotalSource ?? "unknown";
+    if (!["printed", "derived", "reviewed", "unknown"].includes(totalSource as string))
+      throw new Cp2Error(400, "receipt_fields_invalid", "Check the line total source.");
     return {
+      lineTotalSource: totalSource as "printed" | "derived" | "reviewed" | "unknown",
+      lineDiscount: typeof item.lineDiscount === "number" ? item.lineDiscount : null,
       itemName: item.itemName.trim(),
       itemCode: text("itemCode"),
       sku: text("sku"),
@@ -70,7 +103,7 @@ export function parseReceiptFields(value: unknown): ReceiptStructuredExtractionS
       expiryDate: text("expiryDate")
     };
   });
-  if (fields.receipt.purchaseDate && !Number.isFinite(Date.parse(fields.receipt.purchaseDate)))
+  if (fields.receipt.purchaseDate && normalizeReceiptDate(fields.receipt.purchaseDate) === null)
     throw new Cp2Error(400, "receipt_fields_invalid", "Check the receipt date before saving.");
   return fields;
 }
@@ -104,6 +137,7 @@ export function receiptFieldsToParsed(f: ReceiptStructuredExtractionSummary): Pa
     subtotal: f.receipt.subtotal,
     discount: f.receipt.discount,
     tax: f.receipt.tax,
+    taxBasis: f.receipt.taxBasis ?? "unknown",
     total: f.receipt.total,
     amountPaid: f.receipt.amountPaid,
     balance: f.receipt.balance,
@@ -119,6 +153,8 @@ export function receiptFieldsToParsed(f: ReceiptStructuredExtractionSummary): Pa
       unit: p.unit,
       unitPrice: p.unitPrice,
       total: p.lineTotal,
+      lineDiscount: p.lineDiscount ?? null,
+      totalSource: p.lineTotalSource ?? "unknown",
       batchNumber: p.batchNumber,
       expiryDate: p.expiryDate
     }))

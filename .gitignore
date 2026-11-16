@@ -35,3 +35,6 @@ apps/android/app/src/main/assets/web-bundle.json
 # Kotlin incremental build state
 apps/android/.kotlin/
 apps/android/build/
+
+# Downloaded, checksum-verified Android Node runtime cache.
+apps/android/.node-runtime-cache/

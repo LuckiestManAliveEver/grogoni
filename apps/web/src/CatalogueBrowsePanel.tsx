@@ -56,7 +56,7 @@ export default function CatalogueBrowsePanel({
 
   async function openShop(shop: ShareableCatalogueSummary) {
     const products = await getJson<ShareableCatalogueProductSummary[]>(
-      `/businesses/${businessId}/catalogue-marketplace/shops/${shop.businessId}/products`
+      `/businesses/${businessId}/catalogue-marketplace/shops/${encodeURIComponent(shop.businessId)}/products`
     );
     setActiveShop(shop);
     setShopProducts(products);
@@ -68,7 +68,7 @@ export default function CatalogueBrowsePanel({
       const next = new Set(current);
       if (next.has(productId)) {
         next.delete(productId);
-      } else {
+      } else if (next.size < 50) {
         next.add(productId);
       }
       return next;
@@ -78,12 +78,14 @@ export default function CatalogueBrowsePanel({
   async function duplicateSelected() {
     if (activeShop === null || selectedProductIds.size === 0) return;
     const created = await postJson<ProductSummary[]>(
-      `/businesses/${businessId}/catalogue-marketplace/shops/${activeShop.businessId}/duplicate`,
+      `/businesses/${businessId}/catalogue-marketplace/shops/${encodeURIComponent(activeShop.businessId)}/duplicate`,
       { productIds: [...selectedProductIds] }
     );
     onDuplicated?.(created);
     setMessage(
-      `${created.length} ${created.length === 1 ? "product" : "products"} added to your catalogue from ${activeShop.businessName}.`
+      activeShop.sourceKind === "seed"
+        ? `${created.length} selected starter items are ready in your catalogue. Review units and set stock and prices. Previously imported items were kept.`
+        : `${created.length} ${created.length === 1 ? "product" : "products"} added to your catalogue from ${activeShop.businessName}.`
     );
     setSelectedProductIds(new Set());
   }
@@ -92,7 +94,9 @@ export default function CatalogueBrowsePanel({
     <div className="record-form catalogue-browse-panel" aria-label="Browse shared catalogues">
       <div className="section-heading">
         <p className="eyebrow">Shared catalogues</p>
-        <h3>{activeShop === null ? "Browse other shops' catalogues" : activeShop.businessName}</h3>
+        <h3>
+          {activeShop === null ? "Browse starter and shared catalogues" : activeShop.businessName}
+        </h3>
       </div>
       {message.length > 0 ? <p className="shell-note">{message}</p> : null}
 
@@ -106,10 +110,10 @@ export default function CatalogueBrowsePanel({
             }}
           >
             <label>
-              Search shops
+              Search catalogues
               <input
                 value={searchDraft}
-                placeholder="Shop name or Grogoni ID"
+                placeholder="Dataset, product, shop name or Grogoni ID"
                 onChange={(event) => setSearchDraft(event.target.value)}
               />
             </label>
@@ -118,7 +122,7 @@ export default function CatalogueBrowsePanel({
           {shops === null ? (
             <p className="shell-note">Loading shared catalogues…</p>
           ) : shops.length === 0 ? (
-            <p className="shell-note">No shops have shared their catalogue for duplication yet.</p>
+            <p className="shell-note">No matching catalogues are available.</p>
           ) : (
             <div className="marketplace-directory" aria-label="Shops sharing their catalogue">
               {shops.map((shop) => (
@@ -138,7 +142,11 @@ export default function CatalogueBrowsePanel({
                   }
                 >
                   <strong>{shop.businessName}</strong>
-                  <small>{commerceAddressFromGrogoniId(shop.grogoniId)}</small>
+                  <small>
+                    {shop.sourceKind === "seed"
+                      ? `Starter dataset · v${shop.datasetVersion}`
+                      : commerceAddressFromGrogoniId(shop.grogoniId)}
+                  </small>
                   <p>
                     {shop.productCount} catalogue {shop.productCount === 1 ? "item" : "items"}
                   </p>
@@ -159,7 +167,7 @@ export default function CatalogueBrowsePanel({
                 setSelectedProductIds(new Set());
               }}
             >
-              Back to shops
+              Back to catalogues
             </button>
           </div>
           {shopProducts === null ? (
@@ -168,11 +176,22 @@ export default function CatalogueBrowsePanel({
             <p className="shell-note">This shop hasn&apos;t added any products yet.</p>
           ) : (
             <>
+              <p className="shell-note" id="catalogue-selection-help" aria-live="polite">
+                Select up to 50 products per import. {selectedProductIds.size} of 50 selected.
+                {activeShop.sourceKind === "seed"
+                  ? " Starter items have zero stock and no prices. Review units and set stock and prices after importing."
+                  : " Imported items start with zero stock. Review prices after importing."}
+              </p>
               {shopProducts.map((product) => (
                 <label className="product-management-item catalogue-browse-item" key={product.id}>
                   <input
                     type="checkbox"
                     checked={selectedProductIds.has(product.id)}
+                    aria-describedby="catalogue-selection-help"
+                    disabled={
+                      isPending("catalogue-browse-duplicate") ||
+                      (selectedProductIds.size >= 50 && !selectedProductIds.has(product.id))
+                    }
                     onChange={() => toggleProduct(product.id)}
                   />
                   <span>

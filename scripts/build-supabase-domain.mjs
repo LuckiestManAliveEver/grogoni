@@ -1,6 +1,12 @@
 import { createRequire } from "node:module";
+import { execFileSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { URL } from "node:url";
+execFileSync(
+  process.execPath,
+  [fileURLToPath(new URL("./build-seed-catalogue.mjs", import.meta.url)), "--check"],
+  { stdio: "inherit" }
+);
 const require = createRequire(import.meta.url);
 const viteRequire = createRequire(require.resolve("vite"));
 const { build } = viteRequire("esbuild");

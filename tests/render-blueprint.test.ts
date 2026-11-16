@@ -54,7 +54,7 @@ describe("Render Blueprint", () => {
     // The passkey RP ID must be the registrable domain of every expected origin, or
     // readAuthRuntimeConfig refuses to boot (regression: the rename left it as "grogoni").
     expect(api).toContain("WEBAUTHN_RP_ID\n        value: grogoni.com\n");
-    expect(api).toContain('GROGONI_EMAIL_FROM\n        value: "Grogoni <messages@grogoni.com>"');
+    expect(api).toContain('GROGONI_EMAIL_FROM\n        value: "Grogoni <recovery@grogoni.com>"');
   });
 
   it("runs inference through local Ollama defaults and provisions no hosted inference", async () => {
