@@ -122,7 +122,7 @@ describe.skipIf(!url)("WhatsApp device outbox on PostgreSQL", { timeout: 90_000 
     await insert(pool!, initial as unknown as Record<string, unknown>);
     const first = await createPostgresCp2Store({ databaseUrl: url! });
     const stale = await createPostgresCp2Store({ databaseUrl: url! });
-    const claim = (store: PostgresCp2Store) => {
+    const claim = async (store: PostgresCp2Store) => {
       const decision = claimLinkedDeviceSend(initial, randomUUID(), randomUUID(), new Date());
       if (decision.action !== "offer") throw new Error("Expected a fresh claim");
       const snapshot = store.snapshot();
@@ -130,14 +130,28 @@ describe.skipIf(!url)("WhatsApp device outbox on PostgreSQL", { timeout: 90_000 
         (row) => (row.id === initial.id ? decision.entry : row)
       );
       store.hydrateSnapshot(snapshot);
-      // A real mutation queues the snapshot save, as a device pull does in production.
-      store.recordLinkedWhatsAppState(business, `owner-${run}`, "DISCONNECTED");
+      // Queue a real snapshot save without reconciling this deliberately synthetic owner.
+      // A connection-state mutation would invalidate its claim before persistence is tested.
+      await store.deliverLinkedDelegationResult({
+        businessId: business,
+        turnId: `claim-${decision.entry.claimId}`,
+        delegation: {
+          channelId: "c",
+          grantId: "g",
+          ownerId: "o",
+          sourceMessageId: "claim",
+          actorId: "254711111111@s.whatsapp.net"
+        },
+        toolName: "product.create",
+        outcome: "rejected",
+        resolvedBy: "o"
+      });
       return decision.entry;
     };
     try {
-      const winner = claim(first);
+      const winner = await claim(first);
       await first.flush();
-      claim(stale);
+      await claim(stale);
       await expect(stale.flush()).rejects.toMatchObject({ code: "40001" });
       const persisted = (await rows()).find((row) => row.id === initial.id);
       expect(persisted).toMatchObject({ status: "claimed", claimId: winner.claimId });
