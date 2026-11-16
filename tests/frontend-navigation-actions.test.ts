@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import ts from "typescript";
 import {
   pathForOwnerRoute,
   pathForOwnerView,
@@ -75,12 +76,19 @@ describe("frontend navigation and action contracts", () => {
   });
 
   it("has no enabled non-submit button without an action handler", () => {
-    const source = readFrontendSource();
-    const openingButtons = source.match(/<button\b[\s\S]*?>/g) ?? [];
-    const actionless = openingButtons.filter(
-      (button) => !/onClick\s*=/.test(button) && !/type\s*=\s*["{]submit/.test(button)
+    const actionless = readFrontendFiles().flatMap((file) =>
+      actionlessButtons(file, readFileSync(file, "utf8"))
     );
     expect(actionless).toEqual([]);
+  });
+
+  it("reads complete JSX attributes when disabled expressions contain comparison operators", () => {
+    expect(
+      actionlessButtons(
+        "fixture.tsx",
+        '<><button disabled={count > 0} onClick={() => save()}>Save</button><button type="submit">Submit</button><button type="button">Missing action</button></>'
+      )
+    ).toEqual(['fixture.tsx: <button type="button">']);
   });
 
   it("does not ship temporary logs, blocking alerts, placeholder links, or silent stubs", () => {
@@ -99,12 +107,47 @@ describe("frontend navigation and action contracts", () => {
   });
 });
 
-function readFrontendSource(directory = "apps/web/src"): string {
-  return readdirSync(directory, { withFileTypes: true })
-    .flatMap((entry) => {
-      const path = join(directory, entry.name);
-      if (entry.isDirectory()) return [readFrontendSource(path)];
-      return /\.(?:ts|tsx)$/.test(entry.name) ? [readFileSync(path, "utf8")] : [];
-    })
+function readFrontendFiles(directory = "apps/web/src"): string[] {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) return readFrontendFiles(path);
+    return /\.(?:ts|tsx)$/.test(entry.name) ? [path] : [];
+  });
+}
+
+function readFrontendSource(): string {
+  return readFrontendFiles()
+    .map((file) => readFileSync(file, "utf8"))
     .join("\n");
+}
+
+function actionlessButtons(file: string, source: string): string[] {
+  const parsed = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
+  const actionless: string[] = [];
+  function visit(node: ts.Node) {
+    if (
+      (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) &&
+      node.tagName.getText(parsed) === "button"
+    ) {
+      const attributes = node.attributes.properties.filter(ts.isJsxAttribute);
+      const submit = attributes.find(
+        (attribute) => attribute.name.getText(parsed) === "type"
+      )?.initializer;
+      const isSubmit =
+        submit !== undefined &&
+        ((ts.isStringLiteral(submit) && submit.text === "submit") ||
+          (ts.isJsxExpression(submit) &&
+            submit.expression !== undefined &&
+            ts.isStringLiteral(submit.expression) &&
+            submit.expression.text === "submit"));
+      if (
+        !isSubmit &&
+        !attributes.some((attribute) => attribute.name.getText(parsed) === "onClick")
+      )
+        actionless.push(`${file}: ${node.getText(parsed)}`);
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(parsed);
+  return actionless;
 }

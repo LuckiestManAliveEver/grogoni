@@ -307,7 +307,7 @@ describe("phone-first authentication", () => {
     vi.unstubAllEnvs();
     await backgroundTasks.at(-1);
     expect(recovery.json()).toMatchObject({
-      message: "If an account matches those details, recovery instructions have been sent."
+      message: "If this email is registered, we'll send a verification code."
     });
     expect(recovery.json()).not.toHaveProperty("developmentCode");
     const recoveryData = recovery.json<{ transactionId: string }>();
