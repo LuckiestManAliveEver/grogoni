@@ -197,7 +197,10 @@ export async function withMigrationsReversed(
         readFileSync(`infra/db/rollbacks/${name.replace(/\.sql$/u, ".down.sql")}`, "utf8")
       );
     } catch (error) {
-      throw new Error(`Rollback ${name} failed: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+      throw new Error(
+        `Rollback ${name} failed: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error }
+      );
     }
   }
   await between();

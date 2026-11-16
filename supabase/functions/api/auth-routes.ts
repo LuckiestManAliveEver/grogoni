@@ -927,12 +927,10 @@ export function createAuthRoutes({
   }
 
   return async (request: Request, path: string): Promise<Response | null> => {
-    if (
-      !(
-        (request.method === "POST" && postPaths.has(path)) ||
-        (request.method === "GET" && getPaths.has(path))
-      )
-    )
+    if (!(
+      (request.method === "POST" && postPaths.has(path)) ||
+      (request.method === "GET" && getPaths.has(path))
+    ))
       return null;
     try {
       if (path === "/auth/continue") {

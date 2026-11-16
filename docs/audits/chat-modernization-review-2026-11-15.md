@@ -48,22 +48,22 @@ concurrent regeneration, version limits, retries and authorization boundaries.
 
 ## Document coverage
 
-| Phase | Assessment |
-| --- | --- |
-| 0: complete source baseline | Partial historical inventory; no independently reproduced full-file baseline here. |
-| 1: DeepSeek audit | Earlier report: 6 full reads, 39 structural inspections, 95 unopened source files. Not complete. |
-| 2: existing Grogoni chat | Partial mapping exists; streaming is explicitly not fully audited. |
-| 3: unified engine | Sibling reply versions implemented using existing messages, networking and sync; full conversation branches and question revisions missing. |
-| 4: streaming and recovery | Existing preview/polling paths; queued regeneration, server cancel and reconnect certification missing. |
-| 5: multimodal | Existing attachment/product-capture paths; new paste/drop/type-validation work deferred. |
-| 6: voice | Existing capability-detected speech input; new recording-state/transcript-review/read-aloud work deferred. |
-| 7: rich rendering | Chat remains plain text; safe lazy Markdown/math/diagram work deferred. |
-| 8: history portability | Existing server export; new import and complete account-scoped history/retry lifecycle not implemented. |
-| 9: shared accessible UI | Native accessible version buttons tested; Vercel adoption matrix and Google guidance report missing. |
-| 10: security | Server-side regeneration guards and tenant/asker tests present; independent complete audit remains open. |
-| 11: performance | Production payload measured and owner budget repaired by loading workspaces on demand; no streaming, long-history or physical-device comparison. |
-| 12: certification | Targeted unit/API tests and typechecks pass; no new three-browser or physical-device certification. |
-| 13: deliverables | Earlier audit and architecture exist; full upstream audits, compliance/adoption matrices and certifications missing. |
+| Phase                       | Assessment                                                                                                                                       |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 0: complete source baseline | Partial historical inventory; no independently reproduced full-file baseline here.                                                               |
+| 1: DeepSeek audit           | Earlier report: 6 full reads, 39 structural inspections, 95 unopened source files. Not complete.                                                 |
+| 2: existing Grogoni chat    | Partial mapping exists; streaming is explicitly not fully audited.                                                                               |
+| 3: unified engine           | Sibling reply versions implemented using existing messages, networking and sync; full conversation branches and question revisions missing.      |
+| 4: streaming and recovery   | Existing preview/polling paths; queued regeneration, server cancel and reconnect certification missing.                                          |
+| 5: multimodal               | Existing attachment/product-capture paths; new paste/drop/type-validation work deferred.                                                         |
+| 6: voice                    | Existing capability-detected speech input; new recording-state/transcript-review/read-aloud work deferred.                                       |
+| 7: rich rendering           | Chat remains plain text; safe lazy Markdown/math/diagram work deferred.                                                                          |
+| 8: history portability      | Existing server export; new import and complete account-scoped history/retry lifecycle not implemented.                                          |
+| 9: shared accessible UI     | Native accessible version buttons tested; Vercel adoption matrix and Google guidance report missing.                                             |
+| 10: security                | Server-side regeneration guards and tenant/asker tests present; independent complete audit remains open.                                         |
+| 11: performance             | Production payload measured and owner budget repaired by loading workspaces on demand; no streaming, long-history or physical-device comparison. |
+| 12: certification           | Targeted unit/API tests and typechecks pass; no new three-browser or physical-device certification.                                              |
+| 13: deliverables            | Earlier audit and architecture exist; full upstream audits, compliance/adoption matrices and certifications missing.                             |
 
 ## Reproduced evidence
 
@@ -74,7 +74,6 @@ concurrent regeneration, version limits, retries and authorization boundaries.
 
 The source checklist's independent security, provider, legal and hardware gates remain separate
 release conditions. Neither this review nor passing scripted-model tests closes them.
-
 
 ## Measured bundle correction
 

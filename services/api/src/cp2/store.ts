@@ -954,8 +954,7 @@ export interface NetworkInviteDeliveryInput {
 }
 
 export type NetworkInviteDeliveryResult =
-  | { status: "sent" }
-  | { status: "failed"; failureReason: string };
+  { status: "sent" } | { status: "failed"; failureReason: string };
 
 export type NetworkInviteSender = (
   input: NetworkInviteDeliveryInput

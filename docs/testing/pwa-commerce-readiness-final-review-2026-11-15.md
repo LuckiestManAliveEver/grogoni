@@ -49,7 +49,6 @@ or safe multi-instance commerce. Installation/CSP tests are not proof of every b
 Only narrowly verified requirements are checked in the source checklist. Unchecked requirements
 remain open or unassessed; the feature's presence in older code is not evidence that it passes.
 
-
 ## Subsequent verification
 
 The [database continuation](pwa-commerce-readiness-database-review-2026-11-15.md) adds real local
