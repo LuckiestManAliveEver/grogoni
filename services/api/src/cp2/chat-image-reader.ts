@@ -7,15 +7,40 @@ import { parseReceiptFields } from "./domains/suppliers/receipt-fields.js";
 import { buildReceiptStructuredExtraction, parseReceiptText } from "./domains/suppliers/shared.js";
 const maxImageBytes = 10_000_000;
 
+/**
+ * The OpenRouter settings for the default receipt reader: a larger output allowance for long
+ * receipts. Its reasoning setting needs nothing here: every call that carries images uses
+ * LUNA_RECEIPT_REASONING_EFFORT (provider default unless set), on this path and on shared
+ * resolvers alike (openrouter-model-runtime.ts).
+ */
+export function receiptReaderEnvironment(environment: NodeJS.ProcessEnv = process.env) {
+  return {
+    ...environment,
+    OPENROUTER_MAX_OUTPUT_TOKENS: environment.LUNA_RECEIPT_MAX_OUTPUT_TOKENS?.trim() || "8192"
+  };
+}
+
 /** Pure model work: callers authenticate first and release database transactions before awaiting it. */
 export async function readChatImage(
   input: unknown,
   accountId?: string,
-  resolveModel: () => ModelRuntimeAdapter | undefined = () =>
-    createOpenRouterRuntime({
-      ...process.env,
-      OPENROUTER_MAX_OUTPUT_TOKENS: process.env.LUNA_RECEIPT_MAX_OUTPUT_TOKENS ?? "8192"
-    }).resolve({ modelId: "gpt-6-luna", executionTarget: "backend" }),
+  resolveModel: () => ModelRuntimeAdapter | undefined = () => {
+    try {
+      return createOpenRouterRuntime(receiptReaderEnvironment()).resolve({
+        modelId: "gpt-6-luna",
+        executionTarget: "backend"
+      });
+    } catch (error) {
+      // An invalid provider setting answers 503 image_reader_unavailable below, not a 500.
+      console.error(
+        JSON.stringify({
+          event: "openrouter_configuration_invalid",
+          message: error instanceof Error ? error.message : "Invalid OpenRouter configuration."
+        })
+      );
+      return undefined;
+    }
+  },
   options: { modelId?: string; signal?: AbortSignal } = {}
 ) {
   const body = parseRequestBody(input);

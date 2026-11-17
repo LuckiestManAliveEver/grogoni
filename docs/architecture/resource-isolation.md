@@ -18,7 +18,7 @@ Before changing concurrency, inspect current pool and query-timeout configuratio
 
 ## 3. Inference
 
-Hosted model work uses the configured adapters in `services/api/src/inference/`; receipt image reading uses the existing OpenRouter reader. Authentication precedes image inference. On Edge, image model work is detached from snapshot transactions, so a slow provider call does not hold the receipt store lock. Validate provider availability, per-call timeout/output limits and exact model configuration in the active adapter. Never add silent provider fallbacks, invent results or replay a consequential action on a model timeout.
+Hosted model work uses the configured adapters in `services/api/src/inference/`; receipt image reading uses the existing OpenRouter reader. Authentication precedes image inference. On Edge, image model work is detached from snapshot transactions, so a slow provider call does not hold the receipt store lock. Validate provider availability, per-call timeout/output limits and exact model configuration in the active adapter. Never add silent provider fallbacks, invent results or replay a consequential action on a model timeout. OpenRouter host fallback between hosts of one model is allowed because it is not silent: the answering host is recorded as `providerHost` and the model identity is checked.
 
 ## 4. Receipt OCR
 

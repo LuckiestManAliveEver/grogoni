@@ -9,7 +9,7 @@ function respond(body: unknown, status = 200) {
 }
 
 describe("OpenRouter JSON completion", () => {
-  it("asks the mapped model for JSON with no provider fallback, using the server key", async () => {
+  it("asks the mapped model for JSON, host fallback on, using the server key", async () => {
     const request = respond({
       model: "openai/gpt-6-luna",
       choices: [{ message: { content: '{"intent":"greeting","query":null}' } }],
@@ -40,7 +40,7 @@ describe("OpenRouter JSON completion", () => {
       ],
       max_tokens: 512,
       response_format: { type: "json_object" },
-      provider: { allow_fallbacks: false }
+      provider: { allow_fallbacks: true }
     });
   });
 

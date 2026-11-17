@@ -31,3 +31,24 @@ it("keeps account inboxes available when hosted provider configuration is invali
     })
   ).rejects.toMatchObject({ code: "MODEL_CONFIGURATION_INVALID" });
 });
+
+it("logs an invalid speed setting loudly and disables only inference", async () => {
+  const logged: string[] = [];
+  const original = console.error;
+  console.error = (line: unknown) => void logged.push(String(line));
+  try {
+    const runtime = createEdgeModelRuntime({
+      OPENROUTER_API_KEY: "k",
+      OPENROUTER_PROVIDER_SORT: "fastest"
+    });
+    const adapter = runtime.resolve({ modelId: "gpt-6-luna", executionTarget: "backend" })!;
+    expect(
+      await adapter.canRun({ modelId: "gpt-6-luna", shopId: "shop", agentId: "agent" })
+    ).toMatchObject({ available: false, errorCode: "MODEL_CONFIGURATION_INVALID" });
+  } finally {
+    console.error = original;
+  }
+  expect(logged.some((line) => line.includes("openrouter_configuration_invalid"))).toBe(true);
+  expect(logged.some((line) => line.includes("OPENROUTER_PROVIDER_SORT"))).toBe(true);
+  expect(logged.join("\n")).not.toContain('"k"');
+});

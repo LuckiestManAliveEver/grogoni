@@ -271,6 +271,15 @@ export function modelTraceFromCompletion(
     ...(typeof completion.metadata.promptTokens === "number"
       ? { promptTokens: completion.metadata.promptTokens }
       : {}),
+    ...(typeof completion.metadata.cachedPromptTokens === "number"
+      ? { cachedPromptTokens: completion.metadata.cachedPromptTokens }
+      : {}),
+    ...(typeof completion.metadata.firstTokenMs === "number"
+      ? { firstTokenMs: completion.metadata.firstTokenMs }
+      : {}),
+    ...(typeof completion.metadata.providerHost === "string"
+      ? { providerHost: completion.metadata.providerHost }
+      : {}),
     ...(typeof completion.metadata.completionTokens === "number"
       ? { completionTokens: completion.metadata.completionTokens }
       : {})

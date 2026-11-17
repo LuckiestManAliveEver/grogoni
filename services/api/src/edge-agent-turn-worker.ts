@@ -45,9 +45,26 @@ export interface AgentTurnWorkerDeps {
   leaseMs?: number;
   /** The whole run, inside Supabase's 150 s wall clock. */
   deadlineMs?: number;
+  /** Test hooks: agentTurnPollRecheckMs, agentTurnPollMaxRecheckMs. */
+  pollRecheckMs?: number;
+  pollMaxRecheckMs?: number;
 }
 
 export const agentTurnDeadlineMs = 120_000;
+/**
+ * Longest a poll holds open while its turn runs (GET /v1/agent-turns/:id?waitMs=). Well inside
+ * Supabase's 150 s request wall clock and the client's poll timeout (the hold plus 15 s).
+ */
+export const agentTurnPollMaxWaitMs = 10_000;
+/**
+ * While a poll waits on a turn run by another isolate it re-reads the turn's row, first after
+ * 400 ms, then doubling up to every 2 s: about 7 short reads over a full 10 s hold, most of them
+ * early, when replies usually land. A turn this isolate runs wakes its polls the moment its
+ * result commits; while it runs, the row is re-read only every agentTurnPollMaxRecheckMs, as a
+ * bound on a wake missed between two reads.
+ */
+export const agentTurnPollRecheckMs = 400;
+export const agentTurnPollMaxRecheckMs = 2_000;
 const maxSaveConflicts = 3;
 
 function failureOf(error: unknown, timedOut: boolean): { errorCode: string; retryable: boolean } {
@@ -66,7 +83,36 @@ function failureOf(error: unknown, timedOut: boolean): { errorCode: string; retr
 export function createAgentTurnWorker(deps: AgentTurnWorkerDeps) {
   const leaseMs = deps.leaseMs ?? agentTurnLeaseMs;
   const deadlineMs = deps.deadlineMs ?? agentTurnDeadlineMs;
+  const recheckMs = deps.pollRecheckMs ?? agentTurnPollRecheckMs;
+  const maxRecheckMs = Math.max(recheckMs, deps.pollMaxRecheckMs ?? agentTurnPollMaxRecheckMs);
   const inFlight = new Set<Promise<void>>();
+  /** Turns whose run is live in this isolate: their polls wait for the wake, re-reading only every
+   * agentTurnPollMaxRecheckMs as a bound on a missed wake. */
+  const runningHere = new Map<string, number>();
+  /** Polls waiting in this isolate, woken when a run here ends (completed, failed or lost). */
+  const waiters = new Map<string, Set<() => void>>();
+  const wake = (turnId: string) => {
+    const waiting = waiters.get(turnId);
+    if (waiting === undefined) return;
+    waiters.delete(turnId);
+    for (const resolve of waiting) resolve();
+  };
+  /** Resolves on a wake for this turn, after `ms`, or on abort, whichever comes first. */
+  const waitForChange = (turnId: string, ms: number, signal: AbortSignal | undefined) =>
+    new Promise<void>((resolve) => {
+      let waiting = waiters.get(turnId);
+      if (waiting === undefined) waiters.set(turnId, (waiting = new Set()));
+      const done = () => {
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", done);
+        waiting.delete(done);
+        if (waiting.size === 0 && waiters.get(turnId) === waiting) waiters.delete(turnId);
+        resolve();
+      };
+      const timer = setTimeout(done, ms);
+      waiting.add(done);
+      signal?.addEventListener("abort", done, { once: true });
+    });
 
   function dispatch(turnId: string): void {
     const work = run(turnId).catch((error: unknown) =>
@@ -77,7 +123,14 @@ export function createAgentTurnWorker(deps: AgentTurnWorkerDeps) {
       })
     );
     inFlight.add(work);
-    void work.finally(() => inFlight.delete(work));
+    runningHere.set(turnId, (runningHere.get(turnId) ?? 0) + 1);
+    void work.finally(() => {
+      inFlight.delete(work);
+      const left = (runningHere.get(turnId) ?? 1) - 1;
+      if (left === 0) runningHere.delete(turnId);
+      else runningHere.set(turnId, left);
+      wake(turnId);
+    });
     deps.waitUntil?.(work);
   }
 
@@ -114,6 +167,9 @@ export function createAgentTurnWorker(deps: AgentTurnWorkerDeps) {
         attempts += 1;
         try {
           await deps.attempt(turn, leaseToken, ledger);
+          // The reply and the turn's completion committed: answer waiting polls now, not after
+          // this run's cleanup (lease timers, starting the conversation's next turn).
+          wake(turnId);
           deps.report({
             event: "agent_turn_completed",
             turnId,
@@ -149,6 +205,7 @@ export function createAgentTurnWorker(deps: AgentTurnWorkerDeps) {
       const recorded = await deps
         .queue((db) => failAgentTurn(db, turnId, leaseToken, failure))
         .catch(() => false);
+      wake(turnId);
       deps.report({
         event: "agent_turn_failed",
         turnId,
@@ -171,8 +228,16 @@ export function createAgentTurnWorker(deps: AgentTurnWorkerDeps) {
     }
   }
 
-  /** GET /v1/agent-turns/:turnId. Also restarts a dead or never-started run of its conversation. */
+  /**
+   * GET /v1/agent-turns/:turnId[?waitMs=N]. Also restarts a dead or never-started run of its
+   * conversation. With waitMs (capped at agentTurnPollMaxWaitMs) an unfinished turn is held open
+   * until it finishes or the wait ends, so the reply goes out the moment it is saved instead of at
+   * the client's next poll. Without it the poll answers at once, as before.
+   */
   async function poll(request: Request, turnId: string): Promise<Response> {
+    // The hold is measured from arrival, so recovery work before it never pushes the answer past
+    // the client's timeout (agentTurnLongPollWaitMs + 15 s in apps/web/src/messaging/agent-turn.ts).
+    const arrived = Date.now();
     const sessionId = readSessionCookie(request.headers.get("cookie") ?? undefined);
     if (
       sessionId === null ||
@@ -199,6 +264,31 @@ export function createAgentTurnWorker(deps: AgentTurnWorkerDeps) {
       }
       turn = (await deps.read((db) => readAgentTurnForSession(db, turnId, sessionId))) ?? turn;
     }
+    const waitMs = readPollWaitMs(request.url);
+    if (waitMs > 0 && isUnfinishedAgentTurn(turn.status)) {
+      const until = arrived + waitMs;
+      let interval = recheckMs;
+      while (isUnfinishedAgentTurn(turn.status) && !request.signal.aborted) {
+        const left = until - Date.now();
+        if (left <= 0) break;
+        if (runningHere.has(turnId)) {
+          // Its result wakes us. The cap only bounds a wake missed between two reads.
+          await waitForChange(turnId, Math.min(maxRecheckMs, left), request.signal);
+        } else {
+          await waitForChange(turnId, Math.min(interval, left), request.signal);
+          interval = Math.min(interval * 2, maxRecheckMs);
+        }
+        if (request.signal.aborted) break;
+        const current = await deps.read((db) => readAgentTurnForSession(db, turnId, sessionId));
+        // The session ended or the turn was removed mid-wait: answer that, not a stale row.
+        if (current === null)
+          return Response.json(
+            { code: "agent_turn_not_found", message: "This agent turn was not found." },
+            { status: 404 }
+          );
+        turn = current;
+      }
+    }
     return Response.json(agentTurnResponse(turn), { headers: { "Cache-Control": "no-store" } });
   }
 
@@ -213,3 +303,15 @@ export function createAgentTurnWorker(deps: AgentTurnWorkerDeps) {
 }
 
 export type AgentTurnWorker = ReturnType<typeof createAgentTurnWorker>;
+
+/** The poll's waitMs: 0 when absent or malformed, never above agentTurnPollMaxWaitMs. */
+export function readPollWaitMs(url: string): number {
+  let raw: string | null;
+  try {
+    raw = new URL(url).searchParams.get("waitMs");
+  } catch {
+    return 0;
+  }
+  if (raw === null || !/^\d{1,6}$/u.test(raw)) return 0;
+  return Math.min(Number(raw), agentTurnPollMaxWaitMs);
+}

@@ -1,10 +1,20 @@
-import { createOpenRouterModelAdapter, lunaModel } from "./openrouter-model-runtime.js";
+import {
+  createOpenRouterModelAdapter,
+  defaultOpenRouterImageReasoningEffort,
+  defaultOpenRouterProviderSort,
+  defaultOpenRouterReasoningEffort,
+  lunaModel,
+  openRouterProviderSorts,
+  openRouterReasoningEfforts
+} from "./openrouter-model-runtime.js";
 import {
   createOpenRouterJsonCompletion,
   type JsonCompletion
 } from "./openrouter-json-completion.js";
 
 import type { ModelRuntimeAdapter } from "./model-runtime.js";
+
+const loggedImageConfigurationErrors = new Set<string>();
 
 /** A server-held key serves only operator-configured model IDs, never arbitrary request URLs. */
 export function createOpenRouterRuntime(environment: NodeJS.ProcessEnv = process.env) {
@@ -21,6 +31,41 @@ export function createOpenRouterRuntime(environment: NodeJS.ProcessEnv = process
   const maxOutputTokens = Number(environment.OPENROUTER_MAX_OUTPUT_TOKENS ?? 2048);
   if (!Number.isSafeInteger(maxOutputTokens) || maxOutputTokens < 128 || maxOutputTokens > 16384)
     throw new Error("OPENROUTER_MAX_OUTPUT_TOKENS must be between 128 and 16384.");
+  const reasoningEffort = readSetting(
+    environment,
+    "OPENROUTER_REASONING_EFFORT",
+    openRouterReasoningEfforts,
+    defaultOpenRouterReasoningEffort
+  );
+  // Only image calls read this, so a bad value fails image calls alone, never chat or daemons.
+  let imageReasoningEffort = defaultOpenRouterImageReasoningEffort;
+  let imageConfigurationError: string | undefined;
+  try {
+    imageReasoningEffort = readSetting(
+      environment,
+      "LUNA_RECEIPT_REASONING_EFFORT",
+      openRouterReasoningEfforts,
+      defaultOpenRouterImageReasoningEffort
+    );
+  } catch (error) {
+    imageConfigurationError = (error as Error).message;
+    // Once per process: the receipt reader builds a runtime per request.
+    if (!loggedImageConfigurationErrors.has(imageConfigurationError)) {
+      loggedImageConfigurationErrors.add(imageConfigurationError);
+      console.error(
+        JSON.stringify({
+          event: "openrouter_image_configuration_invalid",
+          message: imageConfigurationError
+        })
+      );
+    }
+  }
+  const providerSort = readSetting(
+    environment,
+    "OPENROUTER_PROVIDER_SORT",
+    openRouterProviderSorts,
+    defaultOpenRouterProviderSort
+  );
   const adapters = new Map<string, ModelRuntimeAdapter>();
   return {
     catalog() {
@@ -46,7 +91,11 @@ export function createOpenRouterRuntime(environment: NodeJS.ProcessEnv = process
           modelId: input.modelId,
           providerModelId: models[input.modelId]!,
           apiKey: environment.OPENROUTER_API_KEY?.trim() ?? "",
-          maxOutputTokens
+          maxOutputTokens,
+          reasoningEffort,
+          imageReasoningEffort,
+          ...(imageConfigurationError === undefined ? {} : { imageConfigurationError }),
+          providerSort
         });
         adapters.set(input.modelId, adapter);
       }
@@ -61,8 +110,26 @@ export function createOpenRouterRuntime(environment: NodeJS.ProcessEnv = process
       return createOpenRouterJsonCompletion({
         modelId,
         providerModelId: models[modelId]!,
-        apiKey: environment.OPENROUTER_API_KEY?.trim() ?? ""
+        apiKey: environment.OPENROUTER_API_KEY?.trim() ?? "",
+        providerSort
       });
     }
   };
+}
+
+/**
+ * One enumerated setting: trimmed and lower-cased; unset or blank means the default (a blank
+ * secret never silently picks some other value); anything else outside the list fails at startup.
+ */
+function readSetting<T extends string>(
+  environment: NodeJS.ProcessEnv,
+  name: string,
+  allowed: readonly T[],
+  fallback: T
+): T {
+  const raw = environment[name]?.trim().toLowerCase() ?? "";
+  if (raw === "") return fallback;
+  if (!(allowed as readonly string[]).includes(raw))
+    throw new Error(`${name} must be one of ${allowed.join(", ")}.`);
+  return raw as T;
 }

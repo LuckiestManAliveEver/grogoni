@@ -394,12 +394,25 @@ Now:
    race reruns the attempt (its model calls replayed, not repeated) up to three times, then fails
    the turn with `AGENT_TURN_CONFLICT` (retryable). The inventory recipe still commits its own
    records independently; an attempt that did so is never rerun.
-5. **The client gets the reply by polling** `GET /v1/agent-turns/:turnId` (1 s, 1 s, 1 s, 2 s,
-   2 s, 2 s, then every 4 s, for at most 3 minutes; `apps/web/src/messaging/agent-turn.ts`). The
-   poll reads one row, so it works whichever isolate answers. It answers the body the synchronous
+5. **The client gets the reply by long-polling** `GET /v1/agent-turns/:turnId?waitMs=10000`
+   (`apps/web/src/messaging/agent-turn.ts`, for at most 3 minutes). The server holds an
+   unfinished turn's poll open for up to 10 s from the request's arrival
+   (`agentTurnPollMaxWaitMs`) and answers the moment the turn completes or fails. When this isolate
+   runs the turn, the run wakes its polls right after the reply commits; while it runs the poll
+   re-reads the row only every 2 s, as a bound on a missed wake. Otherwise the poll re-reads the turn's row after 400 ms, then
+   doubling up to every 2 s (`agentTurnPollRecheckMs`, `agentTurnPollMaxRecheckMs`): about seven
+   short reads over a full hold, so a held poll costs a handful of transactions, not one per tick.
+   No connection is held between re-reads; each re-read checks the session again, and a turn that
+   stops being visible answers 404. The client's poll timeout is the hold plus 15 s, a margin for a
+   slow pool connect or a cold start. The
+   client asks again right after a held poll; when a poll answers `pending` quickly (a deployment
+   that ignores `waitMs`) it waits what is left of the backoff step (1 s, 1 s, 1 s, 2 s, 2 s, 2 s,
+   then 4 s, counted from the start of the ask); after a failed ask it waits the full step. Before this, a finished reply waited up to one backoff step (1 to
+   4 s) for the client's next poll. Without `waitMs` the route answers at once. It answers the body the synchronous
    API answers (`agentMessage`, `runtime`, `processing`). The reply is saved with its message's
    `createdAt` + 1 ms, so it sorts right under the message it answers. In-memory turn-stream
-   previews (`/v1/ai/turn-stream`) still work only within one isolate.
+   previews (`/v1/ai/turn-stream`, now also fed by streamed Luna calls) still work only within
+   one isolate.
 6. **A dead run never stays pending.** A run that dies (isolate killed, the 150 s wall clock, a
    crash) stops renewing its lease. The next poll of any turn in that conversation finds it and,
    with an attempt left (two per queueing), starts it again; otherwise it marks it `failed` with
