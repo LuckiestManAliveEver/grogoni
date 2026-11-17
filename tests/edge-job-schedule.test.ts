@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { edgeApiUploadFiles } from "../scripts/edge-api-upload.mjs";
 import { edgeJobDefinitions } from "../services/api/src/edge-job-runner";
 import {
   buildSupabaseCronSql,
@@ -96,10 +97,7 @@ describe("Supabase Cron schedule for Edge background jobs", () => {
 
 describe("Supabase function deploy bundle", () => {
   it("uploads every module the Edge entry point imports", () => {
-    const deploy = readFileSync("scripts/deploy-supabase-api.mjs", "utf8");
-    const uploaded = new Set(
-      [...deploy.matchAll(/^\s+"([a-z0-9-]+\.(?:ts|mjs))",?$/gmu)].map((match) => match[1])
-    );
+    const uploaded = new Set<string>(edgeApiUploadFiles);
     const pending = ["index.ts"];
     const seen = new Set<string>();
     while (pending.length > 0) {

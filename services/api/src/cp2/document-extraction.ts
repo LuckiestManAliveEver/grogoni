@@ -117,9 +117,15 @@ export async function extractDocumentBuffer(input: {
 
   if (isPdf(extension, contentType)) {
     const { PDFParse } = await import("pdf-parse");
-    const edgeWorkerUrl = (globalThis as typeof globalThis & { __edgePdfWorkerUrl?: string })
-      .__edgePdfWorkerUrl;
-    if (edgeWorkerUrl) PDFParse.setWorker(edgeWorkerUrl);
+    // Supabase Edge: run pdf.js's worker in-thread, loaded from npm on first use.
+    const edge = globalThis as typeof globalThis & {
+      __edgeLoadPdfWorker?: () => Promise<{ WorkerMessageHandler: unknown }>;
+      pdfjsWorker?: { WorkerMessageHandler: unknown };
+    };
+    if (edge.__edgeLoadPdfWorker && !edge.pdfjsWorker) {
+      const { WorkerMessageHandler } = await edge.__edgeLoadPdfWorker();
+      edge.pdfjsWorker = { WorkerMessageHandler };
+    }
     const parser = new PDFParse({ data: new Uint8Array(input.buffer) });
 
     try {

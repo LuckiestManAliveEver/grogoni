@@ -3,7 +3,9 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { URL } from "node:url";
 import { dirname, resolve } from "node:path";
-import { readFile } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
+import { checkEdgeUploadBudget, measureEdgeUpload } from "./edge-api-upload.mjs";
+import { edgeBundleBanner } from "./edge-bundle-banner.mjs";
 execFileSync(
   process.execPath,
   [fileURLToPath(new URL("./build-seed-catalogue.mjs", import.meta.url)), "--check"],
@@ -19,6 +21,10 @@ const pdfRequire = createRequire(apiRequire.resolve("pdf-parse"));
 const pdfBrowserEntry = fileURLToPath(
   new URL("../web/pdf-parse.es.js", pathToFileURL(apiRequire.resolve("pdf-parse")))
 );
+const pdfjsVersion = JSON.parse(
+  await readFile(pdfRequire.resolve("pdfjs-dist/package.json"), "utf8")
+).version;
+const banner = edgeBundleBanner(pdfjsVersion);
 const externalPackages = new Map([
   // Loaded only by the linked-WhatsApp daemon; keep its protocol/native dependencies
   // out of the Edge upload, where the management API enforces a 5 MB limit.
@@ -41,9 +47,7 @@ await build({
   format: "esm",
   target: "es2022",
   minify: true,
-  banner: {
-    js: 'import { WorkerMessageHandler as EdgePdfWorker } from "./pdf-worker.mjs"; import { createRequire as edgeCreateRequire } from "node:module"; import EdgeDOMMatrix from "npm:@thednp/dommatrix@2.0.12"; import edgeProcess from "node:process"; import { Buffer as EdgeBuffer } from "node:buffer"; import { setImmediate as edgeSetImmediate, clearImmediate as edgeClearImmediate } from "node:timers"; globalThis.pdfjsWorker = { WorkerMessageHandler: EdgePdfWorker }; globalThis.global ??= globalThis; globalThis.DOMMatrix ??= EdgeDOMMatrix; globalThis.process ??= edgeProcess; globalThis.Buffer ??= EdgeBuffer; globalThis.setImmediate ??= edgeSetImmediate; globalThis.clearImmediate ??= edgeClearImmediate; globalThis.__edgePdfWorkerUrl = new URL("./pdf-worker.mjs", import.meta.url).href; const require = edgeCreateRequire(import.meta.url);'
-  },
+  banner: { js: banner },
   plugins: [
     {
       name: "deno-npm-dependencies",
@@ -87,13 +91,15 @@ const domainBundle = await readFile(
 );
 if (/npm:baileys@/.test(domainBundle))
   throw new Error("The Edge bundle must not include the Node-only WhatsApp socket driver.");
-await build({
-  entryPoints: [pdfRequire.resolve("pdfjs-dist/legacy/build/pdf.worker.mjs")],
-  outfile: fileURLToPath(new URL("../supabase/functions/api/pdf-worker.mjs", import.meta.url)),
-  bundle: true,
-  platform: "node",
-  format: "esm",
-  target: "es2022",
-  minify: true,
-  logLevel: "info"
-});
+if (!domainBundle.startsWith(banner))
+  throw new Error("The Edge bundle must start with the Edge runtime banner.");
+// Older builds wrote a local copy of the worker; never let a stale one linger.
+await rm(new URL("../supabase/functions/api/pdf-worker.mjs", import.meta.url), { force: true });
+const upload = checkEdgeUploadBudget(
+  await measureEdgeUpload(fileURLToPath(new URL("../supabase/functions/api", import.meta.url)))
+);
+console.log(upload.message);
+if (!upload.ok)
+  throw new Error(
+    `${upload.message} Externalize a dependency or shrink the bundle before deploying.`
+  );
