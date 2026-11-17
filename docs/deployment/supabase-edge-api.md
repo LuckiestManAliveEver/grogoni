@@ -160,6 +160,12 @@ suppliers, staff invitations/roles, invoices/payments, fulfillment, reports,
 documents, marketplace, conversations/messages, and integration routes. The
 adapter keeps the original validation and authorization rather than substituting
 generic table CRUD. Deployment builds the domain bundle and PDF worker automatically.
+`pnpm check:edge-bundle` runs the same build in CI. The Edge artifact substitutes a host-required
+driver for the Node-only WhatsApp socket driver and rejects accidental Baileys npm imports;
+Android-hosted outboxes and enrolled connector workflows remain available. Node connector and
+Android sidecar builds retain the real driver. If the Management API's 5 MB server-side bundling
+limit is exceeded, deploy this generated source through the Supabase CLI with `--use-docker`
+and the existing function entrypoint and `verify_jwt = false` configuration.
 Apply migrations `109_edge_protocol_state.sql` and `110_edge_rate_limits.sql` before
 deployment: MCP sessions, checkout confirmations and one-use OAuth grants must survive
 worker changes, and the rate limiter counts in `cp2_edge_rate_limits` (it fails open,

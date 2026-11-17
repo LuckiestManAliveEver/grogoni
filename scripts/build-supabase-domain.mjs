@@ -2,6 +2,8 @@ import { createRequire } from "node:module";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { URL } from "node:url";
+import { dirname, resolve } from "node:path";
+import { readFile } from "node:fs/promises";
 execFileSync(
   process.execPath,
   [fileURLToPath(new URL("./build-seed-catalogue.mjs", import.meta.url)), "--check"],
@@ -46,6 +48,23 @@ await build({
     {
       name: "deno-npm-dependencies",
       setup(builder) {
+        builder.onResolve({ filter: /baileys-driver\.js$/ }, (args) => {
+          const driver = fileURLToPath(
+            new URL(
+              "../services/api/src/messaging/whatsapp-linked/baileys-driver.js",
+              import.meta.url
+            )
+          );
+          if (resolve(dirname(args.importer), args.path) !== driver) return null;
+          return {
+            path: fileURLToPath(
+              new URL(
+                "../services/api/src/messaging/whatsapp-linked/edge-driver.ts",
+                import.meta.url
+              )
+            )
+          };
+        });
         builder.onResolve(
           {
             filter:
@@ -62,6 +81,12 @@ await build({
   ],
   logLevel: "info"
 });
+const domainBundle = await readFile(
+  new URL("../supabase/functions/api/domain-bundle.mjs", import.meta.url),
+  "utf8"
+);
+if (/npm:baileys@/.test(domainBundle))
+  throw new Error("The Edge bundle must not include the Node-only WhatsApp socket driver.");
 await build({
   entryPoints: [pdfRequire.resolve("pdfjs-dist/legacy/build/pdf.worker.mjs")],
   outfile: fileURLToPath(new URL("../supabase/functions/api/pdf-worker.mjs", import.meta.url)),
