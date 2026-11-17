@@ -172,14 +172,13 @@ HTTP 413. That limit applies to the files we upload, not to `npm:` packages, whi
 resolves on its side. It is not a stable 5,000,000 bytes: on 2026-11-17 a 4,791,393-byte upload
 was refused three times, 13 minutes after byte-identical sources had been accepted. The upload
 file list lives in `scripts/edge-api-upload.mjs`, and the build fails when the total exceeds the
-4,000,000-byte budget set there, so an oversized bundle fails in CI rather than in a production
-deploy. The build prints the current total and the largest files. If a change crosses the budget,
-move a dependency to an `npm:` import in `scripts/build-supabase-domain.mjs` and prove it on
-the candidate before raising the budget. The Supabase CLI with `--use-docker` remains the fallback.
+5,000,000-byte budget set there. The build prints the total and largest files.
+Use the Supabase CLI with `--use-docker` if the Management API rejects the upload.
 
-The pdf.js worker (about 1 MB) is not uploaded. It loads as
-`npm:pdfjs-dist@<version pdf-parse bundles>/legacy/build/pdf.worker.mjs` on the first PDF
-an isolate parses (`scripts/edge-bundle-banner.mjs`, `services/api/src/cp2/document-extraction.ts`).
+The matching pdf.js worker is minified locally into `pdf-worker.mjs` and loaded on
+first PDF parsing. Importing its full npm package expanded the local deployment to
+35 MB and caused HTTP 413; retaining the minified worker keeps the complete bundle
+under 5 MB. The candidate must pass the live business smoke, including PDF extraction.
 
 ### Floating npm: dependencies
 

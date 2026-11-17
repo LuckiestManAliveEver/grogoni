@@ -72,20 +72,16 @@ describe("Edge bundle banner", () => {
   })();
 
   it("pins the pdf.js worker to the release pdf-parse bundles", () => {
-    expect(pdfWorkerSpecifier(pdfjsVersion)).toBe(
-      `npm:pdfjs-dist@${pdfjsVersion}/legacy/build/pdf.worker.mjs`
-    );
+    expect(pdfWorkerSpecifier(pdfjsVersion)).toBe("./pdf-worker.mjs");
     expect(() => pdfWorkerSpecifier("^5.4.0")).toThrow(/Unexpected pdfjs-dist version/);
   });
 
   it("loads the worker lazily through a literal import and installs the body default", () => {
     const banner = edgeBundleBanner(pdfjsVersion);
-    expect(banner).toContain(
-      `globalThis.__edgeLoadPdfWorker = () => import("npm:pdfjs-dist@${pdfjsVersion}/legacy/build/pdf.worker.mjs");`
-    );
+    expect(banner).toContain(`globalThis.__edgeLoadPdfWorker = () => import("./pdf-worker.mjs");`);
     expect(banner).toContain(serverResponseBodyDefault);
     expect(banner).not.toMatch(/import \{[^}]*\} from "npm:pdfjs-dist/);
-    expect(banner).not.toContain("pdf-worker.mjs");
+    expect(banner).not.toContain("npm:pdfjs-dist@");
   });
 });
 
@@ -98,8 +94,10 @@ describe("Edge upload file set and budget", () => {
       .trim()
       .split("\n")
       .map((path) => path.slice("supabase/functions/api/".length));
-    expect([...edgeApiUploadFiles].sort()).toEqual([...tracked, "domain-bundle.mjs"].sort());
-    expect(edgeApiUploadFiles).not.toContain("pdf-worker.mjs");
+    expect([...edgeApiUploadFiles].sort()).toEqual(
+      [...tracked, "domain-bundle.mjs", "pdf-worker.mjs"].sort()
+    );
+    expect(edgeApiUploadFiles).toContain("pdf-worker.mjs");
   });
 
   it("passes at the budget and fails one byte over it", () => {
@@ -110,13 +108,13 @@ describe("Edge upload file set and budget", () => {
     expect(over.message).toContain("b.mjs 11");
   });
 
-  it("rejects the 4,791,393-byte upload Supabase refused on 2026-11-17", () => {
+  it("accepts the locally bundled worker within the nominal deployment budget", () => {
     expect(
       checkEdgeUploadBudget({
         "domain-bundle.mjs": 3_624_385,
         "pdf-worker.mjs": 1_043_521,
         rest: 123_487
       }).ok
-    ).toBe(false);
+    ).toBe(true);
   });
 });

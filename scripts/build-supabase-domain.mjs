@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { URL } from "node:url";
 import { dirname, resolve } from "node:path";
-import { readFile, rm } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { checkEdgeUploadBudget, measureEdgeUpload } from "./edge-api-upload.mjs";
 import { edgeBundleBanner } from "./edge-bundle-banner.mjs";
 execFileSync(
@@ -93,8 +93,16 @@ if (/npm:baileys@/.test(domainBundle))
   throw new Error("The Edge bundle must not include the Node-only WhatsApp socket driver.");
 if (!domainBundle.startsWith(banner))
   throw new Error("The Edge bundle must start with the Edge runtime banner.");
-// Older builds wrote a local copy of the worker; never let a stale one linger.
-await rm(new URL("../supabase/functions/api/pdf-worker.mjs", import.meta.url), { force: true });
+await build({
+  entryPoints: [pdfRequire.resolve("pdfjs-dist/legacy/build/pdf.worker.mjs")],
+  outfile: fileURLToPath(new URL("../supabase/functions/api/pdf-worker.mjs", import.meta.url)),
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  target: "es2022",
+  minify: true,
+  logLevel: "info"
+});
 const upload = checkEdgeUploadBudget(
   await measureEdgeUpload(fileURLToPath(new URL("../supabase/functions/api", import.meta.url)))
 );

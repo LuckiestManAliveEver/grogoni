@@ -1,19 +1,12 @@
-// The exact set of files POSTed to the Supabase management API for the `api`
-// Edge function, and the size budget that upload must stay under.
-//
-// Supabase rejects uploads over its "maximum deployment size (5 MB)" with HTTP
-// 413. On 2026-11-17 a 4,791,393-byte upload was rejected three times in a row
-// after byte-identical sources had been accepted 13 minutes earlier, so the
-// enforced threshold is not a stable 5,000,000 bytes of uploaded source. The
-// budget keeps a 20% margin below the nominal limit and fails the build, not
-// the production deploy, when a change pushes the upload over it.
-//
+// Exact deployment sources, including the locally minified PDF worker.
+// Use the local Supabase CLI bundler if the server-side upload endpoint rejects
+// a source upload under the nominal 5 MB limit.
 // npm: dependencies (pg, fastify, mammoth, pdfjs-dist, ...) are resolved by
 // Supabase on its side and are not part of this upload.
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
 
-export const edgeUploadBudgetBytes = 4_000_000;
+export const edgeUploadBudgetBytes = 5_000_000;
 
 export const edgeApiUploadFiles = Object.freeze([
   "index.ts",
@@ -27,6 +20,7 @@ export const edgeApiUploadFiles = Object.freeze([
   "job-transaction.ts",
   "store-coordination.ts",
   "domain-bundle.mjs",
+  "pdf-worker.mjs",
   "credentials.ts"
 ]);
 

@@ -13,16 +13,12 @@
 export const serverResponseBodyDefault =
   'if (!("_hasBody" in EdgeServerResponse.prototype)) EdgeServerResponse.prototype._hasBody = true;';
 
-// pdf-parse bundles pdf.js into its browser entry and needs the worker from the
-// same release. The worker is ~1 MB minified, so it is an npm: import that
-// Supabase resolves on its side, outside the size-limited source upload. The
-// import is a string literal so Supabase includes it in the deployed graph, and
-// it only evaluates when a PDF is parsed, so isolates that never see a PDF skip
-// loading it. document-extraction.ts installs it as globalThis.pdfjsWorker.
+// Keep the matching minified worker local: importing its npm package pulls a
+// 35 MB graph into the local Supabase bundle and exceeds the deployment limit.
 export function pdfWorkerSpecifier(pdfjsVersion) {
   if (!/^\d+\.\d+\.\d+$/.test(pdfjsVersion))
     throw new Error(`Unexpected pdfjs-dist version ${pdfjsVersion}.`);
-  return `npm:pdfjs-dist@${pdfjsVersion}/legacy/build/pdf.worker.mjs`;
+  return "./pdf-worker.mjs";
 }
 
 export function pdfWorkerLoader(specifier) {
