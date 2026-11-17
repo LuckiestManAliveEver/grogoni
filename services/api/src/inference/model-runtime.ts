@@ -57,6 +57,12 @@ export interface ModelRuntimeGenerationResult {
   executionTarget: ModelExecutionTarget;
   promptTokens?: number;
   completionTokens?: number;
+  /** Prompt tokens the provider served from its prompt cache (OpenRouter usage details). */
+  cachedPromptTokens?: number;
+  /** Streamed calls: time from the request to the first output token. */
+  firstTokenMs?: number;
+  /** Hosted calls: the host that served it (OpenRouter provider name), so fallbacks are visible. */
+  providerHost?: string;
   latencyMs: number;
   finishReason?: string;
   inferenceRequestId?: string;
@@ -456,6 +462,11 @@ export function runtimeProviderFromAdapter(input: {
             modelId: result.modelId,
             executionTarget: result.executionTarget,
             ...(result.promptTokens === undefined ? {} : { promptTokens: result.promptTokens }),
+            ...(result.cachedPromptTokens === undefined
+              ? {}
+              : { cachedPromptTokens: result.cachedPromptTokens }),
+            ...(result.firstTokenMs === undefined ? {} : { firstTokenMs: result.firstTokenMs }),
+            ...(result.providerHost === undefined ? {} : { providerHost: result.providerHost }),
             ...(result.completionTokens === undefined
               ? {}
               : { completionTokens: result.completionTokens }),

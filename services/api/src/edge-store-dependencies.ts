@@ -21,7 +21,15 @@ import { createEmailMailboxProviderClient } from "./messaging/email-provider-cli
 export function createEdgeModelRuntime(environment: NodeJS.ProcessEnv) {
   try {
     return createOpenRouterRuntime(environment);
-  } catch {
+  } catch (error) {
+    // Loud on purpose: every model call answers MODEL_CONFIGURATION_INVALID until this is fixed.
+    // The message names the variable and its allowed values, never a secret.
+    console.error(
+      JSON.stringify({
+        event: "openrouter_configuration_invalid",
+        message: error instanceof Error ? error.message : "Invalid OpenRouter configuration."
+      })
+    );
     const unavailable = {
       available: false,
       errorCode: "MODEL_CONFIGURATION_INVALID",

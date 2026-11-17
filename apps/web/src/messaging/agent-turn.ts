@@ -6,10 +6,16 @@ import { apiFetch } from "../lib/api";
 /**
  * Agent replies that run after their message was accepted (the Edge API: docs/deployment/
  * supabase-edge-api.md, "Agent turns"). POST /v1/messages answers at once with
- * `processing.status = "pending"` and a `turnId`; the reply arrives by polling
- * GET /v1/agent-turns/:turnId, which answers the body the synchronous API answers (agentMessage,
- * runtime, processing) once the turn completed or failed. The Node API answers `completed`
- * directly, and `waitForAgentTurn` passes that through untouched.
+ * `processing.status = "pending"` and a `turnId`; the reply arrives by long-polling
+ * GET /v1/agent-turns/:turnId?waitMs=N, which holds open while the turn runs and answers the body
+ * the synchronous API answers (agentMessage, runtime, processing) the moment the turn completed or
+ * failed. The Node API answers `completed` directly, and `waitForAgentTurn` passes that through
+ * untouched.
+ *
+ * The first ask goes out at once. After a pending answer the client waits only what is left of
+ * the backoff step: a server that held the poll open (agentTurnLongPollWaitMs) already waited
+ * longer than any step, so the next ask follows at once; a server that answers pending right away
+ * (an older deployment ignoring waitMs) is still asked on the 1 s / 2 s / 4 s schedule.
  */
 
 interface AgentTurnProcessing {
@@ -20,8 +26,10 @@ interface AgentTurnProcessing {
   turnId?: string;
 }
 
-/** The poll waits 1 s, then 2 s, then 4 s between asks. */
+/** The backoff between asks, counted from the start of the previous ask: 1 s, then 2 s, then 4 s. */
 export const agentTurnPollDelaysMs = [1000, 1000, 1000, 2000, 2000, 2000, 4000];
+/** How long the server may hold one poll open (its cap is agentTurnPollMaxWaitMs, 10 s). */
+export const agentTurnLongPollWaitMs = 10_000;
 /** Longer than the server's own limit for a turn (120 s) plus one recovery. */
 export const agentTurnWaitLimitMs = 180_000;
 
@@ -41,22 +49,30 @@ export async function waitForAgentTurn<T extends { id?: string; processing?: Age
   const poll =
     options.poll ??
     ((id: string) =>
-      apiFetch<Partial<T>>(`/v1/agent-turns/${encodeURIComponent(id)}`, { timeoutMs: 15_000 }));
+      apiFetch<Partial<T>>(
+        `/v1/agent-turns/${encodeURIComponent(id)}?waitMs=${agentTurnLongPollWaitMs}`,
+        // The hold plus a margin for a slow pool connect or a cold start: a reply that is ready
+        // is never dropped as a timed-out ask.
+        { timeoutMs: agentTurnLongPollWaitMs + 15_000 }
+      ));
   const sleep =
     options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const now = options.now ?? Date.now;
   const deadline = now() + (options.limitMs ?? agentTurnWaitLimitMs);
   for (let ask = 0; now() < deadline; ask += 1) {
-    await sleep(agentTurnPollDelaysMs[Math.min(ask, agentTurnPollDelaysMs.length - 1)]!);
-    let turn: Partial<T>;
+    const step = agentTurnPollDelaysMs[Math.min(ask, agentTurnPollDelaysMs.length - 1)]!;
+    const asked = now();
+    let turn: Partial<T> | null = null;
     try {
       turn = await poll(turnId);
     } catch {
       // A dropped poll is asked again; the turn keeps running on the server either way.
-      continue;
     }
-    if (turn.processing !== undefined && turn.processing.status !== "pending")
+    if (turn?.processing !== undefined && turn.processing.status !== "pending")
       return { ...response, ...turn, id: response.id ?? turn.id } as T;
+    // A failed ask always backs off fully, so a network outage never turns into a tight loop.
+    const rest = turn === null ? step : step - (now() - asked);
+    if (rest > 0) await sleep(rest);
   }
   // Still running after the wait: the outbox resends the same message later, which answers with
   // this same turn (never a second one) or its reply.

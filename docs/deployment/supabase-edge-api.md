@@ -159,13 +159,41 @@ includes user profiles/security, businesses, shops, products/inventory, customer
 suppliers, staff invitations/roles, invoices/payments, fulfillment, reports,
 documents, marketplace, conversations/messages, and integration routes. The
 adapter keeps the original validation and authorization rather than substituting
-generic table CRUD. Deployment builds the domain bundle and PDF worker automatically.
+generic table CRUD. Deployment builds the domain bundle automatically.
 `pnpm check:edge-bundle` runs the same build in CI. The Edge artifact substitutes a host-required
 driver for the Node-only WhatsApp socket driver and rejects accidental Baileys npm imports;
 Android-hosted outboxes and enrolled connector workflows remain available. Node connector and
-Android sidecar builds retain the real driver. If the Management API's 5 MB server-side bundling
-limit is exceeded, deploy this generated source through the Supabase CLI with `--use-docker`
-and the existing function entrypoint and `verify_jwt = false` configuration.
+Android sidecar builds retain the real driver.
+
+### Upload size budget
+
+The Management API rejects function source over its "maximum deployment size (5 MB)" with
+HTTP 413. That limit applies to the files we upload, not to `npm:` packages, which Supabase
+resolves on its side. It is not a stable 5,000,000 bytes: on 2026-11-17 a 4,791,393-byte upload
+was refused three times, 13 minutes after byte-identical sources had been accepted. The upload
+file list lives in `scripts/edge-api-upload.mjs`, and the build fails when the total exceeds the
+5,000,000-byte budget set there. The build prints the total and largest files.
+Use the Supabase CLI with `--use-docker` if the Management API rejects the upload.
+
+The matching pdf.js worker is minified locally into `pdf-worker.mjs` and loaded on
+first PDF parsing. Importing its full npm package expanded the local deployment to
+35 MB and caused HTTP 413; retaining the minified worker keeps the complete bundle
+under 5 MB. The candidate must pass the live business smoke, including PDF extraction.
+
+### Floating npm: dependencies
+
+Supabase resolves each `npm:` package's own dependency ranges at deploy time, not from our
+lockfile, so a fresh deploy can pick up transitive releases the Node lane never ran.
+`light-my-request` 6.8.1 (2026-11-14, pulled in by `npm:fastify` through `^6.0.0`) dropped every
+Fastify-injected response body on Edge because it reads Node's internal
+`ServerResponse._hasBody`, which Deno's `node:http` never sets. Domain routes kept their status
+codes and returned empty bodies. The Edge banner restores Node's default of `true`
+(`tests/edge-upload-budget.test.ts` covers it). Always run `pnpm test:business:supabase` against
+the candidate before deploying production: health checks do not load the domain bundle and will
+not catch this class of failure.
+
+Supabase's deploy endpoint also returns intermittent HTTP 500 "internal error" responses.
+Retrying the same upload succeeded within one to three attempts on 2026-11-17.
 Apply migrations `109_edge_protocol_state.sql` and `110_edge_rate_limits.sql` before
 deployment: MCP sessions, checkout confirmations and one-use OAuth grants must survive
 worker changes, and the rate limiter counts in `cp2_edge_rate_limits` (it fails open,
@@ -394,12 +422,25 @@ Now:
    race reruns the attempt (its model calls replayed, not repeated) up to three times, then fails
    the turn with `AGENT_TURN_CONFLICT` (retryable). The inventory recipe still commits its own
    records independently; an attempt that did so is never rerun.
-5. **The client gets the reply by polling** `GET /v1/agent-turns/:turnId` (1 s, 1 s, 1 s, 2 s,
-   2 s, 2 s, then every 4 s, for at most 3 minutes; `apps/web/src/messaging/agent-turn.ts`). The
-   poll reads one row, so it works whichever isolate answers. It answers the body the synchronous
+5. **The client gets the reply by long-polling** `GET /v1/agent-turns/:turnId?waitMs=10000`
+   (`apps/web/src/messaging/agent-turn.ts`, for at most 3 minutes). The server holds an
+   unfinished turn's poll open for up to 10 s from the request's arrival
+   (`agentTurnPollMaxWaitMs`) and answers the moment the turn completes or fails. When this isolate
+   runs the turn, the run wakes its polls right after the reply commits; while it runs the poll
+   re-reads the row only every 2 s, as a bound on a missed wake. Otherwise the poll re-reads the turn's row after 400 ms, then
+   doubling up to every 2 s (`agentTurnPollRecheckMs`, `agentTurnPollMaxRecheckMs`): about seven
+   short reads over a full hold, so a held poll costs a handful of transactions, not one per tick.
+   No connection is held between re-reads; each re-read checks the session again, and a turn that
+   stops being visible answers 404. The client's poll timeout is the hold plus 15 s, a margin for a
+   slow pool connect or a cold start. The
+   client asks again right after a held poll; when a poll answers `pending` quickly (a deployment
+   that ignores `waitMs`) it waits what is left of the backoff step (1 s, 1 s, 1 s, 2 s, 2 s, 2 s,
+   then 4 s, counted from the start of the ask); after a failed ask it waits the full step. Before this, a finished reply waited up to one backoff step (1 to
+   4 s) for the client's next poll. Without `waitMs` the route answers at once. It answers the body the synchronous
    API answers (`agentMessage`, `runtime`, `processing`). The reply is saved with its message's
    `createdAt` + 1 ms, so it sorts right under the message it answers. In-memory turn-stream
-   previews (`/v1/ai/turn-stream`) still work only within one isolate.
+   previews (`/v1/ai/turn-stream`, now also fed by streamed Luna calls) still work only within
+   one isolate.
 6. **A dead run never stays pending.** A run that dies (isolate killed, the 150 s wall clock, a
    crash) stops renewing its lease. The next poll of any turn in that conversation finds it and,
    with an attempt left (two per queueing), starts it again; otherwise it marks it `failed` with

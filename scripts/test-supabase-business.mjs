@@ -170,6 +170,7 @@ try {
       "Conversation and message restore"
     );
     assert.ok(JSON.stringify(restoredConversation).includes(message.id));
+    if (process.env.SMOKE_AGENT_TURN === "1") await agentTurnSmoke(owner, businessId);
     const denied = await call(`/businesses/${businessId}/products`, "GET", undefined, other.cookie);
     assert.ok([403, 404].includes(denied.status), "Another account must not read products");
     const publicView = ok(
@@ -273,6 +274,130 @@ try {
   throw error;
 } finally {
   await cleanupWithContext(workflowFailure);
+}
+
+/**
+ * Opt-in (SMOKE_AGENT_TURN=1, one small billed model call): one real agent turn the way the chat
+ * runs it. Opens the turn's live reply stream, sends the message with x-grogoni-turn-id, then
+ * long-polls GET /v1/agent-turns/:id?waitMs=10000 until the reply. Reports time to the reply, the
+ * number of polls, and whether streamed reply text arrived (it reaches this client only when its
+ * stream request lands on the isolate running the turn).
+ */
+async function agentTurnSmoke(owner, businessId) {
+  const chat = ok(
+    await call(
+      "/v1/conversations",
+      "POST",
+      { kind: "personal", activeShopId: businessId },
+      owner.cookie
+    ),
+    "Agent chat create"
+  );
+  const turnId = randomUUID();
+  const started = Date.now();
+  let previewText = "";
+  let firstPreviewMs = null;
+  const streamAbort = new globalThis.AbortController();
+  const streaming = (async () => {
+    try {
+      const response = await fetch(`${base}/v1/ai/turn-stream/${turnId}`, {
+        headers: {
+          Origin: "https://grogoni.com",
+          accept: "text/event-stream",
+          "x-grogoni-device-id": device,
+          cookie: owner.cookie
+        },
+        signal: streamAbort.signal
+      });
+      if (!response.ok || !response.body) return;
+      const reader = response.body.getReader();
+      const decoder = new globalThis.TextDecoder();
+      let buffer = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) return;
+        buffer += decoder.decode(value, { stream: true });
+        let boundary = buffer.indexOf("\n\n");
+        while (boundary !== -1) {
+          for (const line of buffer.slice(0, boundary).split("\n")) {
+            if (!line.startsWith("data: ")) continue;
+            const event = JSON.parse(line.slice(6));
+            if (event.type === "text") {
+              firstPreviewMs ??= Date.now() - started;
+              previewText += event.text;
+            }
+          }
+          buffer = buffer.slice(boundary + 2);
+          boundary = buffer.indexOf("\n\n");
+        }
+      }
+    } catch {
+      // Aborted when the turn finished; the preview is best effort.
+    }
+  })();
+  const accepted = ok(
+    await call(
+      "/v1/messages",
+      "POST",
+      {
+        conversationId: chat.conversation.id,
+        clientMessageId: randomUUID(),
+        content: { type: "text", text: "In one short sentence, what can you help my shop with?" },
+        agent: {
+          businessId,
+          message: "In one short sentence, what can you help my shop with?"
+        }
+      },
+      owner.cookie,
+      { "x-grogoni-turn-id": turnId }
+    ),
+    "Agent turn accepted"
+  );
+  let reply = accepted;
+  let polls = 0;
+  const pendingTurn = accepted.processing?.status === "pending" ? accepted.processing.turnId : null;
+  while (
+    pendingTurn !== null &&
+    reply.processing?.status === "pending" &&
+    Date.now() - started < 90_000
+  ) {
+    polls += 1;
+    const asked = Date.now();
+    const polled = await call(
+      `/v1/agent-turns/${pendingTurn}?waitMs=10000`,
+      "GET",
+      undefined,
+      owner.cookie
+    );
+    assert.equal(polled.status, 200, `Agent turn poll: ${JSON.stringify(polled.result)}`);
+    reply = polled.result;
+    // A server that ignores waitMs answers pending at once: back off instead of spinning.
+    if (reply.processing?.status === "pending" && Date.now() - asked < 500)
+      await new Promise((resolve) => globalThis.setTimeout(resolve, 1000));
+  }
+  const replyMs = Date.now() - started;
+  streamAbort.abort();
+  await streaming;
+  assert.equal(
+    reply.processing?.status,
+    "completed",
+    `Agent turn: ${JSON.stringify(reply.processing)}`
+  );
+  const text = reply.agentMessage?.content?.text ?? "";
+  assert.ok(text.trim() !== "", "The agent turn returned a reply");
+  console.log(
+    JSON.stringify({
+      event: "smoke_agent_turn",
+      asyncTurn: pendingTurn !== null,
+      replyMs,
+      polls,
+      previewSeen: previewText !== "",
+      firstPreviewMs,
+      modelId: reply.runtime?.model?.modelId ?? reply.runtime?.modelId ?? null,
+      replyChars: text.length
+    })
+  );
+  console.log("PASS Agent turn reply (long poll)");
 }
 
 async function cleanupWithContext(failure) {

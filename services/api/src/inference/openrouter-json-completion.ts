@@ -1,5 +1,9 @@
 import { hostedJsonRequest } from "./hosted-http.js";
 import { ModelRuntimeError } from "./model-runtime.js";
+import {
+  defaultOpenRouterProviderSort,
+  type OpenRouterProviderSort
+} from "./openrouter-model-runtime.js";
 
 /**
  * One short structured call to an operator-configured OpenRouter model: a system prompt, one user
@@ -30,8 +34,10 @@ export function createOpenRouterJsonCompletion(input: {
   modelId: string;
   providerModelId: string;
   apiKey: string;
+  providerSort?: OpenRouterProviderSort;
   request?: typeof fetch;
 }): JsonCompletion {
+  const providerSort = input.providerSort ?? defaultOpenRouterProviderSort;
   return async (call) => {
     if (input.apiKey.trim() === "")
       throw new ModelRuntimeError("CREDENTIAL_MISSING", "OpenRouter is not configured.", false);
@@ -54,9 +60,12 @@ export function createOpenRouterJsonCompletion(input: {
           max_tokens: call.maxOutputTokens,
           response_format: { type: "json_object" },
           // A routing decision, not an essay: keep reasoning short so the answer fits the
-          // caller's latency budget. Same model, no fallback to another one.
+          // caller's latency budget. Same model; a failing host hands off to another host of it.
           reasoning: { effort: "minimal", exclude: true },
-          provider: { allow_fallbacks: false }
+          provider: {
+            allow_fallbacks: true,
+            ...(providerSort === "none" ? {} : { sort: providerSort })
+          }
         })
       }
     })) as {

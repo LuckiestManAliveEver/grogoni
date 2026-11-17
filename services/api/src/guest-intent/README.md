@@ -53,7 +53,8 @@ iphone"}` in the 2026-10-24 eval. The rules never search such a message either
 The model call goes through the existing OpenRouter runtime
 (`createOpenRouterRuntime(env).jsonCompletion(modelId)`,
 `inference/openrouter-json-completion.ts`): the same server-held `OPENROUTER_API_KEY`, the same
-`OPENROUTER_MODELS` mapping and model identity check, no provider fallback. The model is the
+`OPENROUTER_MODELS` mapping and model identity check, and host fallback between hosts of that one
+model (`allow_fallbacks: true`, never another model). The model is the
 platform default: `PLATFORM_DEFAULT_MODEL_ID`, else `gpt-6-luna` (the repository default). The
 call asks for minimal reasoning effort so it fits the latency budget; it is the same model.
 Measured on 2026-10-23 with minimal reasoning: p50 2.7s, p95 4.1s. Julien kept GPT-6 Luna and set

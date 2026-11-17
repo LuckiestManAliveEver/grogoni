@@ -56,13 +56,100 @@ describe("waiting for an agent reply that runs after its message", () => {
       onPending,
       sleep: async (ms) => {
         sleeps.push(ms);
-      }
+      },
+      now: () => 0
     });
     expect(onPending).toHaveBeenCalledTimes(1);
     expect(poll).toHaveBeenCalledWith("t1");
     expect(result).toMatchObject({ id: "m1", agentMessage: { id: "r1" } });
     expect(result.processing?.status).toBe("completed");
-    expect(sleeps).toEqual([1000, 1000, 1000]);
+    // The first ask goes out at once; a quick pending answer and a dropped ask each back off.
+    expect(sleeps).toEqual([1000, 1000]);
+  });
+
+  it("asks again at once after a server held the poll open (long poll)", async () => {
+    let clock = 0;
+    const answers = [
+      pending,
+      pending,
+      {
+        agentMessage: { id: "r1" },
+        processing: { ...pending.processing, status: "completed" as const }
+      }
+    ];
+    const sleeps: number[] = [];
+    const result = await waitForAgentTurn(pending, {
+      poll: async () => {
+        clock += 10_000; // the server held each ask for its full wait
+        return answers.shift() as never;
+      },
+      sleep: async (ms) => {
+        sleeps.push(ms);
+        clock += ms;
+      },
+      now: () => clock
+    });
+    expect(result).toMatchObject({ agentMessage: { id: "r1" } });
+    expect(sleeps).toEqual([]);
+  });
+
+  it("backs off the full step after a failed ask, however long it took", async () => {
+    let clock = 0;
+    const answers: unknown[] = [
+      new Error("timeout"),
+      { processing: { ...pending.processing, status: "completed" as const } }
+    ];
+    const sleeps: number[] = [];
+    await waitForAgentTurn(pending, {
+      poll: async () => {
+        clock += 900; // the failed ask took most of its step
+        const next = answers.shift();
+        if (next instanceof Error) throw next;
+        return next as never;
+      },
+      sleep: async (ms) => {
+        sleeps.push(ms);
+        clock += ms;
+      },
+      now: () => clock
+    });
+    expect(sleeps).toEqual([1000]);
+  });
+
+  it("only sleeps what is left of the step after a partial hold", async () => {
+    let clock = 0;
+    const answers = [
+      pending,
+      { processing: { ...pending.processing, status: "completed" as const } }
+    ];
+    const sleeps: number[] = [];
+    await waitForAgentTurn(pending, {
+      poll: async () => {
+        clock += 300;
+        return answers.shift() as never;
+      },
+      sleep: async (ms) => {
+        sleeps.push(ms);
+        clock += ms;
+      },
+      now: () => clock
+    });
+    expect(sleeps).toEqual([700]);
+  });
+
+  it("long-polls the turn route with a wait the client timeout outlasts", async () => {
+    vi.resetModules();
+    const apiFetch = vi.fn(async () => ({
+      processing: { ...pending.processing, status: "completed" as const }
+    }));
+    vi.doMock("../apps/web/src/lib/api", () => ({ apiFetch }));
+    const fresh = await import("../apps/web/src/messaging/agent-turn");
+    await fresh.waitForAgentTurn(pending, { sleep: async () => {} });
+    expect(apiFetch).toHaveBeenCalledWith(
+      `/v1/agent-turns/t1?waitMs=${fresh.agentTurnLongPollWaitMs}`,
+      { timeoutMs: fresh.agentTurnLongPollWaitMs + 15_000 }
+    );
+    vi.doUnmock("../apps/web/src/lib/api");
   });
 
   it("returns a failed turn as failed, with its code", async () => {

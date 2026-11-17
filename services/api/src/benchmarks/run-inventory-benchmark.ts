@@ -6,6 +6,10 @@ import {
   inventoryBenchmarkQualityPassed
 } from "./inventory-benchmark-config.js";
 import { assertInventoryBenchmarkDatabase } from "./inventory-fixtures.js";
+import {
+  defaultOpenRouterProviderSort,
+  defaultOpenRouterReasoningEffort
+} from "../inference/openrouter-model-runtime.js";
 
 const databaseUrl = process.env.INVENTORY_BENCHMARK_DATABASE_URL ?? "";
 assertInventoryBenchmarkDatabase(databaseUrl);
@@ -31,6 +35,15 @@ const report = {
     hostedMaxOutputTokens:
       process.env.INVENTORY_BENCHMARK_PROVIDER === "openrouter"
         ? Number(process.env.OPENROUTER_MAX_OUTPUT_TOKENS ?? 2048)
+        : null,
+    // The speed settings a hosted run used (openrouter-model-runtime.ts defaults when unset).
+    hostedReasoningEffort:
+      process.env.INVENTORY_BENCHMARK_PROVIDER === "openrouter"
+        ? process.env.OPENROUTER_REASONING_EFFORT?.trim() || defaultOpenRouterReasoningEffort
+        : null,
+    hostedProviderSort:
+      process.env.INVENTORY_BENCHMARK_PROVIDER === "openrouter"
+        ? process.env.OPENROUTER_PROVIDER_SORT?.trim() || defaultOpenRouterProviderSort
         : null
   },
   modelQualityGate: { required: requireModels, passed: modelQualityPassed }

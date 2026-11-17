@@ -4353,6 +4353,12 @@ export interface RuntimeModelTrace {
   providerModelId?: string;
   inferenceRequestId?: string;
   promptTokens?: number;
+  /** Of promptTokens, how many the provider served from its prompt cache (hosted OpenRouter). */
+  cachedPromptTokens?: number;
+  /** Streamed hosted calls: milliseconds from the request to the first output token. */
+  firstTokenMs?: number;
+  /** Hosted calls: the host that served the call (OpenRouter provider name), so fallbacks show. */
+  providerHost?: string;
   completionTokens?: number;
   executionTarget?: ModelExecutionTarget;
   executionHostId?: string | null;

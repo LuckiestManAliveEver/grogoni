@@ -143,7 +143,8 @@ async function setup() {
         },
         ...(body === undefined ? {} : { body: JSON.stringify(body) })
       }),
-      path
+      // The Edge entry routes on the pathname; the query (e.g. ?waitMs=) stays on the request.
+      path.split("?")[0]!
     );
     if (response === null) throw new Error(`No route for ${method} ${path}`);
     return { response, ms: Date.now() - started, json: () => response.clone().json() };
@@ -351,6 +352,15 @@ describe.skipIf(!databaseUrl)("Edge async agent turns and fast paths on PostgreS
 
       const pendingPoll = await t.call(`/v1/agent-turns/${turnId}`, "GET");
       expect((await pendingPoll.json()).processing.status).toBe("pending");
+
+      // A long poll holds open while the model answers and returns the reply as soon as it is
+      // saved, not at the end of its wait (the model still has most of its 4 s to go here).
+      const held = await t.call(`/v1/agent-turns/${turnId}?waitMs=10000`, "GET");
+      const heldBody = await held.json();
+      expect(heldBody.processing.status).toBe("completed");
+      expect(heldBody.agentMessage.content.text).toContain("Hello from the fixture model.");
+      expect(held.ms).toBeLessThan(6000);
+      console.log(JSON.stringify({ event: "edge_agent_turn_long_poll", heldMs: held.ms }));
 
       await t.edge.settled();
       expect(duringModel).toEqual([

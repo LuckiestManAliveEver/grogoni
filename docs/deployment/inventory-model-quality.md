@@ -64,3 +64,13 @@ The default runtime allowance is separately configured by
 `OPENROUTER_MAX_OUTPUT_TOKENS`; a future evaluation with a different allowance
 must record its actual results before claiming readiness. The weak local
 smollm2 results likewise remain experimental, not certified.
+
+## Speed settings result (2026-11-17)
+
+After adding `OPENROUTER_REASONING_EFFORT` (default `low`) and
+`OPENROUTER_PROVIDER_SORT` (default `latency`), the gate passed 14/14 hosted
+fixtures and 7/7 baseline cases in every lane, both before and after, over two runs
+each, and in each setting alone. Model latency p50 fell from about 5.2 s to about
+2.4 s. Figures and the comparison command are in
+`docs/deployment/grogoni-openrouter.md`, "Response speed". Private reports:
+`/tmp/agent-latency/*.json` (local evidence, not a durable backup).

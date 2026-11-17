@@ -1,6 +1,7 @@
 import Fastify from "fastify";
 import { describe, expect, it, vi } from "vitest";
 import { registerChatImageRoutes } from "./chat-image-routes.js";
+import { readChatImage } from "./chat-image-reader.js";
 import { createOpenRouterModelAdapter } from "../inference/openrouter-model-runtime.js";
 import type { Cp2Store } from "./store.js";
 
@@ -53,7 +54,9 @@ describe("Luna chat image reader", () => {
       });
       expect(result.headers["cache-control"]).toBe("no-store");
       const body = JSON.parse(request.mock.calls[0]![1]!.body as string);
-      expect(body.provider).toEqual({ allow_fallbacks: false });
+      expect(body.provider).toEqual({ allow_fallbacks: true, sort: "latency" });
+      // Image transcription keeps the provider's default reasoning (no reasoning setting sent).
+      expect(body).not.toHaveProperty("reasoning");
       expect(body.messages.at(-1).content).toContainEqual({
         type: "image_url",
         image_url: { url: `data:image/png;base64,${contentBase64}`, detail: "high" }
@@ -105,6 +108,22 @@ describe("Luna chat image reader", () => {
       ).toBeGreaterThanOrEqual(500);
     } finally {
       await app.close();
+    }
+  });
+  it("answers 503, not 500, when the default reader's provider settings are invalid", async () => {
+    const saved = process.env.OPENROUTER_PROVIDER_SORT;
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    process.env.OPENROUTER_PROVIDER_SORT = "fastest";
+    try {
+      await expect(readChatImage(payload)).rejects.toMatchObject({
+        statusCode: 503,
+        code: "image_reader_unavailable"
+      });
+      expect(error).toHaveBeenCalledWith(expect.stringContaining("OPENROUTER_PROVIDER_SORT"));
+    } finally {
+      if (saved === undefined) delete process.env.OPENROUTER_PROVIDER_SORT;
+      else process.env.OPENROUTER_PROVIDER_SORT = saved;
+      error.mockRestore();
     }
   });
 });

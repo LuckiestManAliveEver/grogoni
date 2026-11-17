@@ -1,6 +1,6 @@
 # Receipt images and delivery records
 
-Online buyer and seller chats send private receipt images to Luna through authenticated `POST /v1/chat/images/read`. No scanner installation is required. The server holds the OpenRouter key, sends actual pixels as a private base64 image input, verifies the returned model identity, and disables provider fallback.
+Online buyer and seller chats send private receipt images to Luna through authenticated `POST /v1/chat/images/read`. No scanner installation is required. The server holds the OpenRouter key, sends actual pixels as a private base64 image input, verifies the returned model identity, and allows fallback only between hosts of that same model, recording the host that answered (`providerHost`).
 
 Luna returns both a transcription and structured receipt fields: wholesaler contacts, sales-agent contacts, receipt references/dates/currency/totals, and delivered products with quantities, units, SKUs, prices, batches and expiry dates where readable. Missing values remain empty. Wholesaler and sales-agent phone numbers are kept separate. The model cannot select record IDs or run tools through extraction output.
 
