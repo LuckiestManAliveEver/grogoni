@@ -159,13 +159,42 @@ includes user profiles/security, businesses, shops, products/inventory, customer
 suppliers, staff invitations/roles, invoices/payments, fulfillment, reports,
 documents, marketplace, conversations/messages, and integration routes. The
 adapter keeps the original validation and authorization rather than substituting
-generic table CRUD. Deployment builds the domain bundle and PDF worker automatically.
+generic table CRUD. Deployment builds the domain bundle automatically.
 `pnpm check:edge-bundle` runs the same build in CI. The Edge artifact substitutes a host-required
 driver for the Node-only WhatsApp socket driver and rejects accidental Baileys npm imports;
 Android-hosted outboxes and enrolled connector workflows remain available. Node connector and
-Android sidecar builds retain the real driver. If the Management API's 5 MB server-side bundling
-limit is exceeded, deploy this generated source through the Supabase CLI with `--use-docker`
-and the existing function entrypoint and `verify_jwt = false` configuration.
+Android sidecar builds retain the real driver.
+
+### Upload size budget
+
+The Management API rejects function source over its "maximum deployment size (5 MB)" with
+HTTP 413. That limit applies to the files we upload, not to `npm:` packages, which Supabase
+resolves on its side. It is not a stable 5,000,000 bytes: on 2026-11-17 a 4,791,393-byte upload
+was refused three times, 13 minutes after byte-identical sources had been accepted. The upload
+file list lives in `scripts/edge-api-upload.mjs`, and the build fails when the total exceeds the
+4,000,000-byte budget set there, so an oversized bundle fails in CI rather than in a production
+deploy. The build prints the current total and the largest files. If a change crosses the budget,
+move a dependency to an `npm:` import in `scripts/build-supabase-domain.mjs` and prove it on
+the candidate before raising the budget. The Supabase CLI with `--use-docker` remains the fallback.
+
+The pdf.js worker (about 1 MB) is not uploaded. It loads as
+`npm:pdfjs-dist@<version pdf-parse bundles>/legacy/build/pdf.worker.mjs` on the first PDF
+an isolate parses (`scripts/edge-bundle-banner.mjs`, `services/api/src/cp2/document-extraction.ts`).
+
+### Floating npm: dependencies
+
+Supabase resolves each `npm:` package's own dependency ranges at deploy time, not from our
+lockfile, so a fresh deploy can pick up transitive releases the Node lane never ran.
+`light-my-request` 6.8.1 (2026-11-14, pulled in by `npm:fastify` through `^6.0.0`) dropped every
+Fastify-injected response body on Edge because it reads Node's internal
+`ServerResponse._hasBody`, which Deno's `node:http` never sets. Domain routes kept their status
+codes and returned empty bodies. The Edge banner restores Node's default of `true`
+(`tests/edge-upload-budget.test.ts` covers it). Always run `pnpm test:business:supabase` against
+the candidate before deploying production: health checks do not load the domain bundle and will
+not catch this class of failure.
+
+Supabase's deploy endpoint also returns intermittent HTTP 500 "internal error" responses.
+Retrying the same upload succeeded within one to three attempts on 2026-11-17.
 Apply migrations `109_edge_protocol_state.sql` and `110_edge_rate_limits.sql` before
 deployment: MCP sessions, checkout confirmations and one-use OAuth grants must survive
 worker changes, and the rate limiter counts in `cp2_edge_rate_limits` (it fails open,

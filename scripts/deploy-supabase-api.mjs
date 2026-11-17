@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { URL } from "node:url";
 import { Blob } from "node:buffer";
 import { execFileSync } from "node:child_process";
+import { edgeApiUploadFiles } from "./edge-api-upload.mjs";
 
 const projectRef = "gnmndzsughifhboqvsgd";
 const slug = process.argv.find((arg) => arg.startsWith("--slug="))?.slice(7) ?? "api";
@@ -116,21 +117,7 @@ if (process.argv.includes("--deploy")) {
       verify_jwt: false
     })
   );
-  for (const filename of [
-    "index.ts",
-    "database-connection.ts",
-    "handler.ts",
-    "session-routes.ts",
-    "auth-routes.ts",
-    "application-routes.ts",
-    "public-routes.ts",
-    "rate-limit.ts",
-    "job-transaction.ts",
-    "store-coordination.ts",
-    "domain-bundle.mjs",
-    "pdf-worker.mjs",
-    "credentials.ts"
-  ]) {
+  for (const filename of edgeApiUploadFiles) {
     const source = await readFile(
       new URL(`../supabase/functions/api/${filename}`, import.meta.url)
     );
