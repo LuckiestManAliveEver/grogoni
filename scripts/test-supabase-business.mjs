@@ -297,7 +297,7 @@ async function agentTurnSmoke(owner, businessId) {
   const started = Date.now();
   let previewText = "";
   let firstPreviewMs = null;
-  const streamAbort = new AbortController();
+  const streamAbort = new globalThis.AbortController();
   const streaming = (async () => {
     try {
       const response = await fetch(`${base}/v1/ai/turn-stream/${turnId}`, {
@@ -311,7 +311,7 @@ async function agentTurnSmoke(owner, businessId) {
       });
       if (!response.ok || !response.body) return;
       const reader = response.body.getReader();
-      const decoder = new TextDecoder();
+      const decoder = new globalThis.TextDecoder();
       let buffer = "";
       for (;;) {
         const { done, value } = await reader.read();
@@ -373,7 +373,7 @@ async function agentTurnSmoke(owner, businessId) {
     reply = polled.result;
     // A server that ignores waitMs answers pending at once: back off instead of spinning.
     if (reply.processing?.status === "pending" && Date.now() - asked < 500)
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await new Promise((resolve) => globalThis.setTimeout(resolve, 1000));
   }
   const replyMs = Date.now() - started;
   streamAbort.abort();
