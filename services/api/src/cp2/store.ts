@@ -181,6 +181,7 @@ import {
   hashMatches,
   hashOtp,
   isReservedGrogoniHandle,
+  suffixableReservedGrogoniHandles,
   isGrogoniStorefrontId,
   maximumGrogoniHandleLength,
   minimumGrogoniHandleLength,
@@ -256,6 +257,13 @@ import {
 import { SalesDomain } from "./domains/sales/store.js";
 import { type ProductMediaRecord } from "./domains/sales/shared.js";
 import { CatalogueSharingDomain } from "./domains/catalogue-sharing/store.js";
+import { SystemShopDomain, type SystemShopProvisionReport } from "./domains/system-shop/store.js";
+import {
+  isSystemShopBusinessId,
+  systemShop,
+  systemShopProductPlan
+} from "./domains/system-shop/catalogue.js";
+import { systemShopAgentProfile } from "./domains/system-shop/agent-profile.js";
 import { StaffDomain } from "./domains/staff/store.js";
 import { McpTokensDomain } from "./domains/mcp-tokens/store.js";
 import { type McpAccessTokenRecord } from "./domains/mcp-tokens/shared.js";
@@ -621,6 +629,10 @@ export interface PublicStorefrontSummary {
   /** The friendlier public-facing "handle@grogoni.com" address - see commerceAddressFromGrogoniId. */
   commerceAddress: string;
   businessName: string;
+  /** Pinned to the top of the marketplace (Jane's Shop). Absent for ordinary shops. */
+  pinned?: true;
+  /** Set when no human runs the shop: the Marketplace Agent operates it end to end. */
+  operatedBy?: "marketplace_agent";
   presence: PublicShopPresenceSummary;
   products: PublicStorefrontProductSummary[];
 }
@@ -976,6 +988,12 @@ export interface Cp2Snapshot
 }
 
 export interface Cp2StoreOptions {
+  /**
+   * The deployment knows Jane's Shop (domains/system-shop) is provisioned even though this store
+   * may not have loaded it. Edge marketplace requests never load the shop; they show it from its
+   * deterministic seed plan instead. Node loads it and does not need this.
+   */
+  systemShopProvisioned?: boolean;
   /**
    * Storefront IDs taken by shops this store has not loaded (normalized lookup form). The Edge API
    * loads only the requesting tenant's data, so without this a shop named like another account's
@@ -1456,7 +1474,12 @@ export class Cp2Store {
       recordPurchasePriceMutation: (input) =>
         this.commercialRecordsDomain.recordProductPriceMutation(input),
       onInvoiceConfirmed: (invoice, actorId) =>
-        this.notifyFulfillmentIntake(invoice.businessId, invoice.id, actorId)
+        this.notifyFulfillmentIntake(invoice.businessId, invoice.id, actorId),
+      onPublicOrderCreated: (order, now) => {
+        this.systemShopDomain.completePublicOrder(order, now);
+      },
+      publicOrderRefusal: (businessId, visitorId, lines, now) =>
+        this.systemShopDomain.orderRefusal({ businessId, visitorId, lines, now })
     });
     this.staffDomain = new StaffDomain({
       requireAuthorizedSession: (sessionId, businessId, permission, now) =>
@@ -1516,7 +1539,9 @@ export class Cp2Store {
       requireProduct: (businessId, productId) =>
         this.salesDomain.requireProduct(businessId, productId),
       publicProductImage: (product) => this.salesDomain.publicProductImage(product),
-      createProduct: (input) => this.salesDomain.createProduct(input)
+      createProduct: (input) => this.salesDomain.createProduct(input),
+      systemShopListed: () =>
+        this.businesses.has(systemShop.businessId) || this.options.systemShopProvisioned === true
     });
     this.mcpTokensDomain = new McpTokensDomain({
       requirePinVerifiedSession: (sessionId, now) => this.requirePinVerifiedSession(sessionId, now),
@@ -1695,7 +1720,12 @@ export class Cp2Store {
       networkNodes: this.networkDomain.networkNodesMap,
       users: this.users,
       businesses: this.businesses,
-      invoices: this.salesDomain.invoicesMap
+      invoices: this.salesDomain.invoicesMap,
+      onCatalogueOrdersCreated: (orders, now) => {
+        this.systemShopDomain.completeBuyOrders(orders, now);
+      },
+      catalogueOrderRefusal: (businessId, buyerAccountId, lines, now) =>
+        this.systemShopDomain.orderRefusal({ businessId, buyerAccountId, lines, now })
     });
     this.compliance = new ComplianceDomain({
       requireAuthorizedSession: (sessionId, businessId, permission, now) =>
@@ -2393,7 +2423,156 @@ export class Cp2Store {
       },
       recordAuditEvent: (input) => this.recordAuditEvent(input)
     });
+    this.systemShopDomain = new SystemShopDomain({
+      businesses: this.businesses,
+      products: this.salesDomain.productsMap,
+      productsForBusiness: (businessId) => this.salesDomain.productsForBusiness(businessId),
+      grogoniIdTakenByAnotherShop: (grogoniId) => this.hasGlobalShopId(grogoniId),
+      installOperator: ({ account, user, membership }) => {
+        this.accounts.set(account.id, account);
+        this.accountByDestination.set(
+          destinationAccountKey(account.primaryAuthChannel, account.primaryAuthDestination),
+          account.id
+        );
+        this.users.set(user.id, user);
+        this.userByAccount.set(account.id, user.id);
+        this.memberships.set(membership.id, membership);
+      },
+      storedShopPresence: (businessId) => this.shopPresences.get(businessId),
+      setShopPresence: (presence) => {
+        this.shopPresences.set(presence.businessId, presence);
+      },
+      hasAgentProfile: (businessId) => this.agentRuntimeDomain.hasStoredAgentProfile(businessId),
+      installAgentProfile: ({ businessId, actorId, now }) => {
+        this.agentRuntimeDomain.installTrustedAgentProfile({
+          businessId,
+          actorId,
+          now,
+          profile: systemShopAgentProfile
+        });
+      },
+      confirmInvoice: (input) => {
+        this.salesDomain.confirmInvoiceForTrustedActor(input);
+      },
+      invoiceStatus: (invoiceId) => this.salesDomain.invoicesMap.get(invoiceId)?.status,
+      countRecentOrders: ({ buyerAccountId, visitorId, since }) => {
+        const after = since.toISOString();
+        const isRecent = (order: { businessId: string; createdAt: string }) =>
+          order.businessId === systemShop.businessId && order.createdAt >= after;
+        const buy = [...this.commerce.buyOrdersMap.values()].filter(isRecent);
+        const visits = [...this.salesDomain.publicOrdersMap.values()].filter(isRecent);
+        if (buyerAccountId !== undefined)
+          return buy.filter((order) => order.buyerAccountId === buyerAccountId).length;
+        if (visitorId !== undefined)
+          return visits.filter((order) => order.visitorId === visitorId).length;
+        return buy.length + visits.length;
+      },
+      restockProduct: (input) => {
+        this.salesDomain.restockProductForTrustedActor(input);
+      },
+      setBuyOrder: (order) => {
+        this.commerce.buyOrdersMap.set(order.id, order);
+      },
+      pruneHistory: ({ before, limit }) => this.pruneSystemShopHistory(before, limit),
+      setPublicOrderStatus: (input) => this.salesDomain.setPublicOrderStatusForTrustedActor(input),
+      recordAuditEvent: (input) => this.recordAuditEvent(input)
+    });
     this.seedCatalogDefaultsIfEmpty();
+  }
+
+  /**
+   * Creates Jane's Shop, the marketplace demo shop run by the Marketplace Agent, or adds catalogue
+   * products it is missing. Idempotent and never rewrites stock or prices. Deployments call it
+   * explicitly (Node at boot, Edge on marketplace routes) because a scoped Edge snapshot cannot
+   * tell "absent" from "not loaded"; see domains/system-shop/README.md.
+   */
+  provisionSystemShop(now?: Date): SystemShopProvisionReport {
+    return this.systemShopDomain.provision(now);
+  }
+
+  /** See SystemShopDomainDeps.pruneHistory. Only ever touches the system shop's records. */
+  private pruneSystemShopHistory(before: Date, limit: number): number {
+    const cutoff = before.toISOString();
+    const shopId = systemShop.businessId;
+    // Capture ownership before removing the aggregates used by the audit lookup.
+    const shopEvents = new Set(this.auditEventsForBusiness(shopId));
+    const oldest = <T extends { createdAt: string }>(
+      values: Iterable<[string, T]>,
+      keep: (v: T) => boolean
+    ) =>
+      [...values]
+        .filter(([, value]) => keep(value) && value.createdAt < cutoff)
+        .sort(([, a], [, b]) => a.createdAt.localeCompare(b.createdAt))
+        .slice(0, limit)
+        .map(([key]) => key);
+    // Settled orders only: a requested order is never removed under a buyer.
+    const settled = (status: string) => status !== "requested";
+    const buyOrders = oldest(
+      this.commerce.buyOrdersMap.entries(),
+      (order) => order.businessId === shopId && settled(order.status)
+    );
+    const publicOrders = oldest(
+      this.salesDomain.publicOrdersMap.entries(),
+      (order) => order.businessId === shopId && settled(order.status)
+    );
+    const invoiceIds = new Set([
+      ...buyOrders.map((id) => this.commerce.buyOrdersMap.get(id)!.invoiceId),
+      ...publicOrders.map((id) => this.salesDomain.publicOrdersMap.get(id)!.invoiceId)
+    ]);
+    const movements = oldest(
+      this.salesDomain.inventoryMovementsMap.entries(),
+      (movement) => movement.businessId === shopId
+    );
+    for (const id of buyOrders) this.commerce.buyOrdersMap.delete(id);
+    for (const id of publicOrders) this.salesDomain.publicOrdersMap.delete(id);
+    for (const id of movements) this.salesDomain.inventoryMovementsMap.delete(id);
+    let invoices = 0;
+    for (const id of invoiceIds) {
+      const invoice = this.salesDomain.invoicesMap.get(id);
+      if (invoice?.businessId !== shopId) continue;
+      this.salesDomain.invoicesMap.delete(id);
+      invoices += 1;
+    }
+    // The shop has no devices: keep only the latest offline change per product, and none for
+    // invoices that no longer exist.
+    let changes = 0;
+    const latestProductChange = new Map<string, { id: string; sequence: number }>();
+    for (const change of this.offlineJournal.changes.values()) {
+      if (change.businessId !== shopId || change.collection !== "products") continue;
+      const current = latestProductChange.get(change.entityId);
+      if (current === undefined || change.sequence > current.sequence)
+        latestProductChange.set(change.entityId, { id: change.id, sequence: change.sequence });
+    }
+    for (const change of [...this.offlineJournal.changes.values()]) {
+      if (change.businessId !== shopId) continue;
+      const stale =
+        (change.collection === "products" &&
+          latestProductChange.get(change.entityId)?.id !== change.id) ||
+        (change.collection === "invoices" && !this.salesDomain.invoicesMap.has(change.entityId)) ||
+        (change.collection === "orders" && !this.salesDomain.publicOrdersMap.has(change.entityId));
+      if (!stale || changes >= limit) continue;
+      this.offlineJournal.changes.delete(change.id);
+      changes += 1;
+    }
+    let events = 0;
+    for (let i = this.auditEvents.length - 1; i >= 0 && events < limit; i -= 1) {
+      const event = this.auditEvents[i]!;
+      const embedded = [event.payload.invoice, event.payload.product, event.payload.movement];
+      const owned =
+        shopEvents.has(event) ||
+        event.actorId === systemShop.userId ||
+        embedded.some(
+          (value) =>
+            value !== null &&
+            typeof value === "object" &&
+            (value as { businessId?: unknown }).businessId === shopId
+        );
+      if (owned && event.occurredAt < cutoff) {
+        this.auditEvents.splice(i, 1);
+        events += 1;
+      }
+    }
+    return buyOrders.length + publicOrders.length + movements.length + invoices + changes + events;
   }
 
   private readonly accounts = new Map<string, AccountSummary>();
@@ -2492,6 +2671,7 @@ export class Cp2Store {
   // Reads businesses/shopPresences/products live off the maps above and delegates every product
   // creation back to salesDomain.createProduct - it persists nothing of its own.
   private readonly catalogueSharing: CatalogueSharingDomain;
+  private readonly systemShopDomain: SystemShopDomain;
   private readonly staffDomain: StaffDomain;
   // productCaptureJobs/statusBroadcasts/buyOrders/statusOrders/unifiedCheckouts now live inside
   // `commerce` (services/api/src/cp2/domains/commerce/store.ts) - accessed via its map getters for
@@ -8473,10 +8653,15 @@ export class Cp2Store {
     const search = input?.search?.trim().toLowerCase().slice(0, 120) ?? "";
     const limit = Math.min(50, Math.max(1, input?.limit ?? 24));
 
+    const virtualSystemShop =
+      !this.businesses.has(systemShop.businessId) && this.options.systemShopProvisioned === true
+        ? [systemShopPlanStorefront()]
+        : [];
     return [...this.businesses.values()]
       .filter((business) => !this.quarantinedBusinessIds.has(business.id))
       .filter((business) => this.shopPresenceForBusiness(business.id).status !== "private")
       .map((business) => this.publicStorefrontForBusiness(business))
+      .concat(virtualSystemShop)
       .filter((storefront) => {
         if (search.length === 0) return true;
         return [
@@ -8485,7 +8670,11 @@ export class Cp2Store {
           ...storefront.products.map((product) => product.name)
         ].some((value) => value.toLowerCase().includes(search));
       })
-      .sort((left, right) => left.businessName.localeCompare(right.businessName))
+      .sort(
+        (left, right) =>
+          Number(right.pinned === true) - Number(left.pinned === true) ||
+          left.businessName.localeCompare(right.businessName)
+      )
       .slice(0, limit);
   }
 
@@ -15435,6 +15624,9 @@ export class Cp2Store {
       grogoniId: business.grogoniId,
       commerceAddress: commerceAddressFromGrogoniId(business.grogoniId),
       businessName: business.name,
+      ...(isSystemShopBusinessId(business.id)
+        ? { pinned: true, operatedBy: "marketplace_agent" as const }
+        : {}),
       presence: { status: presence.status, updatedAt: presence.updatedAt },
       products: this.salesDomain
         .productsForBusiness(business.id)
@@ -17240,6 +17432,11 @@ export class Cp2Store {
     occurredAt: string;
     payload: Record<string, unknown>;
   }): void {
+    if (input.type === "system_shop.product_synced") {
+      const product = this.salesDomain.productsMap.get(input.aggregateId);
+      if (product?.businessId === systemShop.businessId)
+        this.offlineJournal.append(product.businessId, "products", product.id, { ...product });
+    }
     if (input.type === "product.fields_updated") {
       const fields = this.salesDomain.productFieldSchemasMap.get(input.aggregateId);
       if (fields)
@@ -17297,7 +17494,12 @@ export class Cp2Store {
       if (!this.hasGlobalShopId(candidate)) return candidate;
     }
 
-    const fallbackHandle = candidateHandles.at(-1) ?? "store";
+    const fallbackHandle =
+      candidateHandles.at(-1) ??
+      [createGrogoniHandle(input.businessName)].find((handle) =>
+        suffixableReservedGrogoniHandles.has(handle)
+      ) ??
+      "store";
     for (let suffix = 2; suffix <= 10_000; suffix += 1) {
       const suffixText = `-${suffix}`;
       const candidate = `grogoni.${fallbackHandle.slice(0, 48 - suffixText.length)}${suffixText}`;
@@ -18234,4 +18436,30 @@ function matchOfflineOrderProduct(
   }
   const candidates = matchOfflineOrderProducts(products, item.name);
   return candidates.length === 1 ? candidates[0]! : null;
+}
+
+/**
+ * Jane's Shop's storefront from its seed plan, for a scoped store that did not load it. Exact for
+ * every field a storefront shows: names, IDs and demo prices never change (no human can edit the
+ * shop), and every product is always in stock because a sale that leaves it at or below the
+ * restock threshold restocks it in the same transaction.
+ */
+function systemShopPlanStorefront(): PublicStorefrontSummary {
+  return {
+    agentId: systemShop.grogoniId,
+    grogoniId: systemShop.grogoniId,
+    commerceAddress: commerceAddressFromGrogoniId(systemShop.grogoniId),
+    businessName: systemShop.name,
+    pinned: true,
+    operatedBy: "marketplace_agent",
+    presence: { status: "online", updatedAt: new Date(0).toISOString() },
+    products: systemShopProductPlan().map((product) => ({
+      id: product.id,
+      name: product.name,
+      unit: "unit",
+      available: true,
+      sellingPrice: product.sellingPrice,
+      image: null
+    }))
+  };
 }

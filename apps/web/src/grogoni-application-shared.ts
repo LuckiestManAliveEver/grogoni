@@ -451,6 +451,10 @@ export interface PublicStorefrontSummary {
   grogoniId: string;
   commerceAddress: string;
   businessName: string;
+  /** Pinned to the top of the marketplace (Jane's Shop). */
+  pinned?: true;
+  /** The Marketplace Agent runs this shop with no human owner. */
+  operatedBy?: "marketplace_agent";
   presence: Pick<ShopPresenceSummary, "status" | "updatedAt">;
   products: PublicStorefrontProductSummary[];
 }

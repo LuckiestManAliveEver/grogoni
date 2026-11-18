@@ -107,6 +107,15 @@ export interface SalesDomainDeps {
   quarantinedBusinessIds: Set<string>;
   /** Called after an invoice is confirmed, on every confirmation path (fulfillment intake). */
   onInvoiceConfirmed?: (invoice: InvoiceSummary, actorId: string) => void;
+  /** Called once a storefront visitor's order is stored (system shop automation). */
+  onPublicOrderCreated?: (order: PublicOrderSummary, now: Date) => void;
+  /** A reason to refuse a storefront visitor's order (system shop daily cap). */
+  publicOrderRefusal?: (
+    businessId: string,
+    visitorId: string,
+    lines: number,
+    now: Date
+  ) => string | null;
   recordPurchasePriceMutation?: (input: {
     businessId: string;
     product: ProductSummary;
@@ -821,6 +830,69 @@ export class SalesDomain {
     });
   }
 
+  /**
+   * Trusted entry point for a system operator (the Marketplace Agent running Jane's Shop).
+   * Authorization happened upstream: the caller is in-process code, never a request body.
+   */
+  confirmInvoiceForTrustedActor(input: {
+    businessId: string;
+    invoiceId: string;
+    actorId: string;
+    now: Date;
+  }): { invoice: InvoiceSummary; movements: InventoryMovementSummary[] } {
+    return this.confirmInvoiceAsActor(input);
+  }
+
+  /** Trusted restock to an absolute quantity, recorded as a normal stock movement. */
+  restockProductForTrustedActor(input: {
+    businessId: string;
+    productId: string;
+    quantity: number;
+    actorId: string;
+    reason: string;
+    now: Date;
+  }): InventoryMovementSummary | null {
+    const product = this.requireProduct(input.businessId, input.productId);
+    if (!Number.isInteger(input.quantity) || input.quantity < 0)
+      throw new Cp2Error(400, "restock_quantity_invalid", "Restock quantity is invalid.");
+    if (product.quantity === input.quantity) return null;
+    this.products.set(product.id, {
+      ...product,
+      quantity: input.quantity,
+      updatedAt: input.now.toISOString()
+    });
+    return this.createInventoryMovement({
+      businessId: input.businessId,
+      productId: product.id,
+      type: "manual_adjustment",
+      quantityBefore: product.quantity,
+      quantityAfter: input.quantity,
+      reason: input.reason,
+      actorId: input.actorId,
+      now: input.now
+    });
+  }
+
+  /** Trusted status change for a storefront order; the payment view is rebuilt from its invoice. */
+  setPublicOrderStatusForTrustedActor(input: {
+    orderId: string;
+    status: PublicOrderSummary["status"];
+    now: Date;
+  }): PublicOrderSummary {
+    const order = this.publicOrders.get(input.orderId);
+    if (order === undefined)
+      throw new Cp2Error(404, "public_order_not_found", "Order was not found.");
+    const invoice = this.invoices.get(order.invoiceId);
+    const updated: PublicOrderSummary = {
+      ...order,
+      status: input.status,
+      ...(invoice === undefined ? {} : { payment: this.buildInvoicePaymentSummary(invoice) }),
+      updatedAt: input.now.toISOString()
+    };
+    this.publicOrders.set(updated.id, updated);
+    return updated;
+  }
+
   /** Trusted channel adapter entry point. Authorization and identity resolution happen upstream. */
   createAndConfirmChannelInvoice(input: {
     businessId: string;
@@ -1200,6 +1272,13 @@ export class SalesDomain {
     if (input.items.length === 0 || input.items.length > 100) {
       throw new Cp2Error(400, "order_items_invalid", "An order needs between 1 and 100 items.");
     }
+    const refusal = this.deps.publicOrderRefusal?.(
+      business.id,
+      identity.externalUserId,
+      input.items.length,
+      now
+    );
+    if (refusal) throw new Cp2Error(429, "order_limit_reached", refusal);
     const resolvedItems = input.items.map((item) => {
       const product = this.products.get(item.productId);
       if (product === undefined || product.businessId !== business.id || product.quantity <= 0) {
@@ -1278,7 +1357,8 @@ export class SalesDomain {
         itemCount: order.items.length
       }
     });
-    return order;
+    this.deps.onPublicOrderCreated?.(order, now);
+    return this.publicOrders.get(order.id) ?? order;
   }
 
   listPublicOrders(input: {

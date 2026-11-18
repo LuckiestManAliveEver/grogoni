@@ -121,7 +121,8 @@ describe("CP2 auth and business creation", () => {
     );
 
     expect(business.business.language).toBe("sw");
-    expect(business.business.grogoniId).toBe("grogoni.janes-shop");
+    // "janes-shop" is reserved for the system demo shop (domains/system-shop).
+    expect(business.business.grogoniId).toBe("grogoni.janes-shop-2");
     expect(business.membership.role).toBe("owner");
 
     const ownerRole = await postJson<RoleCheckResponse>(

@@ -2995,6 +2995,10 @@ export interface ShareableCatalogueSummary {
   businessName: string;
   productCount: number;
   updatedAt: string;
+  /** Pinned to the top of the marketplace (Jane's Shop). Absent for ordinary shops. */
+  pinned?: true;
+  /** Set when no human runs the shop: the Marketplace Agent operates it end to end. */
+  operatedBy?: "marketplace_agent";
 }
 
 /**

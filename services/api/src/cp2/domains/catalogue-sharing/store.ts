@@ -31,6 +31,11 @@ import {
   seedCatalogueSummary,
   seedCatalogueMatches
 } from "./seed-catalogue.js";
+import {
+  isSystemShopBusinessId,
+  systemShop,
+  systemShopProductPlan
+} from "../system-shop/catalogue.js";
 
 export interface CatalogueSharingDomainDeps {
   requireAuthorizedSession: (
@@ -60,6 +65,8 @@ export interface CatalogueSharingDomainDeps {
     catalogueSource?: NonNullable<ProductSummary["catalogueSource"]>;
     now?: Date;
   }) => ProductSummary;
+  /** Jane's Shop exists (loaded here, or known provisioned by the deployment). */
+  systemShopListed?: () => boolean;
 }
 
 const maximumDuplicateProductsPerRequest = 50;
@@ -85,6 +92,7 @@ export class CatalogueSharingDomain {
 
     const shops = [...this.deps.businesses.values()]
       .filter((business) => business.id !== input.viewerBusinessId)
+      .filter((business) => !isSystemShopBusinessId(business.id))
       .filter((business) => !this.deps.quarantinedBusinessIds.has(business.id))
       .filter((business) => this.deps.shopPresenceForBusiness(business.id).catalogueShareable)
       .map((business) => this.shareableCatalogueSummary(business))
@@ -94,12 +102,21 @@ export class CatalogueSharingDomain {
           value.toLowerCase().includes(search)
         );
       })
-      .sort((left, right) => left.businessName.localeCompare(right.businessName))
-      .slice(0, limit);
-    return [...(seedCatalogueMatches(search) ? [seedCatalogueSummary()] : []), ...shops].slice(
-      0,
-      limit
-    );
+      .sort((left, right) => left.businessName.localeCompare(right.businessName));
+    // Jane's Shop leads the list, then the starter dataset, then other shops.
+    const janeMatches =
+      this.deps.systemShopListed?.() === true &&
+      input.viewerBusinessId !== systemShop.businessId &&
+      (search.length === 0 ||
+        [systemShop.name, systemShop.grogoniId].some((value) =>
+          value.toLowerCase().includes(search)
+        ) ||
+        seedCatalogueMatches(search));
+    return [
+      ...(janeMatches ? [systemShopCatalogueSummary()] : []),
+      ...(seedCatalogueMatches(search) ? [seedCatalogueSummary()] : []),
+      ...shops
+    ].slice(0, limit);
   }
 
   listCatalogueProducts(input: {
@@ -131,6 +148,37 @@ export class CatalogueSharingDomain {
       )
         throw new Cp2Error(400, "catalogue_page_invalid", "Choose a valid catalogue page.");
       return seedCatalogue.products
+        .filter((product) =>
+          [product.name, product.category ?? "", product.department].some((value) =>
+            value.toLowerCase().includes(search)
+          )
+        )
+        .slice(offset, offset + limit)
+        .map((product) => ({
+          id: product.id,
+          name: product.name,
+          unit: "unit",
+          sellingPrice: null,
+          image: null
+        }));
+    }
+    if (isSystemShopBusinessId(input.sourceBusinessId)) {
+      this.requireSystemShopListed();
+      const search = input.search?.trim().toLowerCase().slice(0, 120) ?? "";
+      const offset = input.offset ?? 0;
+      const plan = systemShopProductPlan();
+      const limit = input.limit ?? plan.length;
+      if (
+        !Number.isInteger(offset) ||
+        offset < 0 ||
+        offset > 10000 ||
+        !Number.isInteger(limit) ||
+        limit < 1 ||
+        limit > 1000
+      )
+        throw new Cp2Error(400, "catalogue_page_invalid", "Choose a valid catalogue page.");
+      // Demo prices are never shown here: copies do not carry them.
+      return plan
         .filter((product) =>
           [product.name, product.category ?? "", product.department].some((value) =>
             value.toLowerCase().includes(search)
@@ -188,6 +236,12 @@ export class CatalogueSharingDomain {
     );
     if (input.sourceBusinessId === seedCatalogueSourceId) {
       return this.importSeedProducts(input, session.user.id, now);
+    }
+    if (isSystemShopBusinessId(input.sourceBusinessId)) {
+      this.requireSystemShopListed();
+      if (input.viewerBusinessId === systemShop.businessId)
+        throw new Cp2Error(400, "catalogue_self_duplicate", "You already own this catalogue.");
+      return this.importSystemShopProducts(input, session.user.id, now);
     }
     const business = this.requireShareableSourceBusiness(
       input.sourceBusinessId,
@@ -250,6 +304,49 @@ export class CatalogueSharingDomain {
     return created;
   }
 
+  /**
+   * Jane's Shop mirrors the seed catalogue at demo prices. Copying from it imports the matching
+   * seed products, so the copy gets the seed path's guarantees: no demo price leaks into a real
+   * shop, stock starts at zero, and a repeated copy reuses products instead of duplicating them.
+   */
+  private importSystemShopProducts(
+    input: {
+      sessionId: string | null;
+      viewerBusinessId: string;
+      sourceBusinessId: string;
+      productIds: string[];
+    },
+    actorId: string,
+    now: Date
+  ): ProductSummary[] {
+    const ids = [...new Set(input.productIds)];
+    if (ids.length < 1 || ids.length > maximumDuplicateProductsPerRequest)
+      throw new Cp2Error(
+        400,
+        "duplicate_product_ids_invalid",
+        `Select between 1 and ${maximumDuplicateProductsPerRequest} products.`
+      );
+    // Jane's product IDs are derived from the seed plan, so they resolve without loading her
+    // records (which an Edge catalogue request never does).
+    const sourceById = new Map(systemShopProductPlan().map((p) => [p.id, p.sourceProductId]));
+    const seedIds = ids.map((productId) => {
+      const sourceProductId = sourceById.get(productId);
+      if (sourceProductId === undefined)
+        throw new Cp2Error(
+          404,
+          "system_shop_product_not_found",
+          "Select products returned by Jane's Shop's catalogue."
+        );
+      return sourceProductId;
+    });
+    return this.importSeedProducts(
+      { ...input, productIds: seedIds },
+      actorId,
+      now,
+      input.sourceBusinessId
+    );
+  }
+
   private importSeedProducts(
     input: {
       sessionId: string | null;
@@ -257,7 +354,8 @@ export class CatalogueSharingDomain {
       productIds: string[];
     },
     actorId: string,
-    now: Date
+    now: Date,
+    viaSourceBusinessId?: string
   ): ProductSummary[] {
     const ids = [...new Set(input.productIds)];
     if (ids.length < 1 || input.productIds.length > maximumDuplicateProductsPerRequest)
@@ -322,6 +420,7 @@ export class CatalogueSharingDomain {
         datasetId: seedCatalogue.id,
         datasetVersion: seedCatalogue.version,
         sourceWorkbookSha256: seedCatalogue.sourceWorkbookSha256,
+        ...(viaSourceBusinessId === undefined ? {} : { viaSourceBusinessId }),
         createdCount,
         products: result.map((product, index) => ({
           productId: product.id,
@@ -341,6 +440,16 @@ export class CatalogueSharingDomain {
       productCount: this.deps.productsForBusiness(business.id).length,
       updatedAt: presence.updatedAt
     };
+  }
+
+  /** Jane's Shop is browsable and copyable only once it exists (or is known to on Edge). */
+  private requireSystemShopListed(): void {
+    if (this.deps.systemShopListed?.() !== true)
+      throw new Cp2Error(
+        404,
+        "shareable_catalogue_not_found",
+        "This shop's catalogue isn't available to duplicate."
+      );
   }
 
   private requireShareableSourceBusiness(
@@ -366,4 +475,17 @@ export class CatalogueSharingDomain {
 
     return business;
   }
+}
+
+/** Jane's Shop as a shared catalogue, from the seed plan alone (see listShareableCatalogues). */
+function systemShopCatalogueSummary(): ShareableCatalogueSummary {
+  return {
+    businessId: systemShop.businessId,
+    grogoniId: systemShop.grogoniId,
+    businessName: systemShop.name,
+    productCount: systemShopProductPlan().length,
+    updatedAt: seedCatalogue.generatedAt,
+    pinned: true,
+    operatedBy: "marketplace_agent"
+  };
 }

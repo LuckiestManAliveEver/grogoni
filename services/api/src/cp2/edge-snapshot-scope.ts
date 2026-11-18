@@ -4,6 +4,7 @@ import { escapeLiteral, type PoolClient } from "pg";
 import { retainedRuntimeCheckpointSql } from "./domains/runtime-handoff/checkpoint-retention.js";
 import { runtimeOperationDedupCutoffSql } from "./domains/runtime-handoff/operation-dedup-retention.js";
 import type { Cp2Snapshot } from "./store.js";
+import { systemShop } from "./domains/system-shop/catalogue.js";
 import {
   createChannelGatewayFromEnvironment,
   type CanonicalInboundChannelMessage
@@ -222,6 +223,7 @@ export async function createEdgeSnapshotScope(
   // could take that number or become a phone account on it, and hit the unique index.
   const claimedPhone = escapeLiteral(canonicalClaimedPhone(path, input));
   const requestedBusiness = escapeLiteral(businessId && uuid.test(businessId) ? businessId : "");
+  const systemShopInScope = systemShopScopedRoute(request.method, path);
   const storefront = escapeLiteral(publicAgent ? decodeURIComponent(publicAgent) : recipient);
   const search = escapeLiteral(
     new URL(request.url).searchParams.get("query")?.trim().slice(0, 120) ?? ""
@@ -317,9 +319,17 @@ export async function createEdgeSnapshotScope(
       union select record->>'targetBusinessId' from edge_commerce_records where record->>'targetBusinessId' is not null
       ${targetBusinesses.length ? `union select id::text from public.businesses where id::text in (${sqlList(targetBusinesses)})` : ""}
       ${webhookScope}
+      ${
+        systemShopInScope
+          ? // The id is a literal, so the tenant lock is taken even before the shop exists and two
+            // first provisionings serialize. Any shop already holding the reserved Grogoni ID loads
+            // too, so provisioning sees the collision instead of failing on the unique index.
+            `union select ${escapeLiteral(systemShop.businessId)} union select id::text from public.businesses where grogoni_id = ${escapeLiteral(systemShop.grogoniId)}`
+          : ""
+      }
       ${path === "/buy/assistant" && typeof input.shoppingSessionId === "string" && uuid.test(input.shoppingSessionId) ? `union select b.id::text from public.businesses b join public.buyer_shopping_sessions shopping on shopping.account_id = ${actorAccount} and shopping.entity_id = ${escapeLiteral(input.shoppingSessionId)} cross join lateral jsonb_array_elements(coalesce(shopping.record->'pendingCheckout'->'items', '[]'::jsonb)) item where b.grogoni_id = item->>'sourceId' or b.id::text = item->>'sourceId'` : ""}
       ${checkoutShops.length ? `union select id::text from public.businesses where grogoni_id in (${checkoutShops.join(",")}) or id::text in (${checkoutShops.join(",")})` : ""}
-      ${path === "/buy/search" || path === "/buy/assistant" ? `union select id from (select b.id::text as id from public.businesses b where position(lower(${search}) in lower(b.name)) > 0 or position(lower(${search}) in lower(b.grogoni_id)) > 0 or exists (select 1 from public.products p where p.business_id = b.id and position(lower(${search}) in lower(p.name)) > 0) order by b.name, b.id limit 50) searched_businesses` : ""}`
+      ${path === "/buy/search" || path === "/buy/assistant" ? `union select id from (select b.id::text as id from public.businesses b where b.id <> ${escapeLiteral(systemShop.businessId)}::uuid and (position(lower(${search}) in lower(b.name)) > 0 or position(lower(${search}) in lower(b.grogoni_id)) > 0 or exists (select 1 from public.products p where p.business_id = b.id and position(lower(${search}) in lower(p.name)) > 0)) order by b.name, b.id limit 50) searched_businesses` : ""}`
     ],
     [
       "edge_conversation_ids",
@@ -505,6 +515,8 @@ export async function createEdgeSnapshotScope(
   return {
     directPairLock,
     modelSelectionLock,
+    /** Jane's Shop's dedicated provisioning transaction; see systemShopScopedRoute. */
+    systemShopInScope,
     recoveryApprovalLock: recoveryApprovalLockKey(path, input, actor?.primary_auth_destination),
     accountId: actor?.account_id as string | undefined,
     withClause,
@@ -571,6 +583,14 @@ export async function createEdgeSnapshotScope(
         or parent_id in (select id from edge_parent_ids)
         ${conversationChildren.has(key) ? "or record->>'conversationId' in (select id from edge_conversation_ids)" : ""}
         ${taskColumn.has(key) ? `or ${taskColumn.get(key)} in (select id from edge_task_conversation_ids)` : ""}
+        ${
+          key === "auditEvents"
+            ? `or record->'payload'->>'businessId' in (select id from edge_business_ids)
+        or record->'payload'->'invoice'->>'businessId' in (select id from edge_business_ids)
+        or record->'payload'->'product'->>'businessId' in (select id from edge_business_ids)
+        or record->'payload'->'movement'->>'businessId' in (select id from edge_business_ids)`
+            : ""
+        }
         ${key === "networkInvites" ? `or record->>'fromUserId' = nullif(${actorUser}, '') or record->>'toUserId' = nullif(${actorUser}, '')` : ""}
         ${key === "staffInvitations" ? `or record->>'destination' = nullif(${destination}, '')` : ""}`;
     }
@@ -799,4 +819,18 @@ function canonicalClaimedPhone(path: string, input: Record<string, unknown>): st
   } catch {
     return ""; // The route refuses this number itself.
   }
+}
+
+/** The internal request path of Jane's Shop's dedicated provisioning transaction. */
+export const systemShopProvisionPath = "/internal/system-shop/provision";
+
+/**
+ * Only the dedicated provisioning transaction (edge-domain-routes `ensureSystemShop`) loads Jane's
+ * Shop by itself. Marketplace routes deliberately do not: adding the shop to their scope would make
+ * every buyer search and catalogue page take Jane's tenant lock and hydrate her whole order
+ * history. The public shop list reads it in SQL, the shared-catalogue browser derives it from the
+ * seed plan, and checkout and storefront routes reach it by agent / Grogoni ID like any shop.
+ */
+export function systemShopScopedRoute(method: string, path: string): boolean {
+  return method === "POST" && path === systemShopProvisionPath;
 }

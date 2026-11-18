@@ -136,8 +136,17 @@ export const reservedGrogoniHandles: ReadonlySet<string> = new Set([
   "mail",
   "staging",
   "status",
-  "support"
+  "support",
+  // Jane's Shop, the marketplace demo shop (domains/system-shop).
+  "janes-shop"
 ]);
+
+/**
+ * Reserved handles an ordinary shop may still use with a numeric suffix. "janes-shop" belongs to
+ * the system demo shop, but a merchant who names their own shop "Jane's Shop" should get
+ * `grogoni.janes-shop-2`, not a generic `grogoni.store-2`. Words like "admin" stay unsuffixable.
+ */
+export const suffixableReservedGrogoniHandles: ReadonlySet<string> = new Set(["janes-shop"]);
 
 export function isReservedGrogoniHandle(handle: string): boolean {
   return reservedGrogoniHandles.has(handle.trim().toLowerCase());

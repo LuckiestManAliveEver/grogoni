@@ -1059,6 +1059,49 @@ export class AgentRuntimeDomain {
       "membership:manage",
       now
     );
+    return this.applyAgentProfile({
+      businessId: input.businessId,
+      profile: input.profile,
+      actorId: session.user.id,
+      now
+    });
+  }
+
+  /**
+   * Trusted entry point for an in-process system operator (the Marketplace Agent provisioning
+   * Jane's Shop). Same normalization, model check, versioning and audit as updateAgentProfile;
+   * only the session check is skipped, because no human session exists for that shop.
+   */
+  installTrustedAgentProfile(input: {
+    businessId: string;
+    profile: (current: BusinessAgentProfileSummary) => BusinessAgentProfileInput;
+    actorId: string;
+    now: Date;
+  }): BusinessAgentProfileSummary {
+    return this.applyAgentProfile({
+      businessId: input.businessId,
+      profile: input.profile(this.currentAgentProfile(input.businessId, input.now)),
+      actorId: input.actorId,
+      now: input.now,
+      // The operator keeps the platform default model, which turns resolve (and fall back from)
+      // at run time. A catalogue entry being unavailable right now must not block the shop.
+      requireAvailableModel: false
+    });
+  }
+
+  hasStoredAgentProfile(businessId: string): boolean {
+    return this.agentProfiles.has(businessId);
+  }
+
+  private applyAgentProfile(input: {
+    businessId: string;
+    profile: BusinessAgentProfileInput;
+    actorId: string;
+    now: Date;
+    requireAvailableModel?: boolean;
+  }): BusinessAgentProfileSummary {
+    const { now } = input;
+    const session = { user: { id: input.actorId } };
     const profile = normalizeBusinessAgentProfile(input.profile);
     const business = this.deps.requireBusiness(input.businessId);
     const current = hydrateBusinessAgentProfile(
@@ -1075,7 +1118,10 @@ export class AgentRuntimeDomain {
     );
     const model = this.deps.resolveCatalogModel(profile.modelId);
     const deviceModel = downloadableAiModelIdPattern.test(profile.modelId);
-    if ((!deviceModel && model === undefined) || model?.available === false) {
+    if (
+      input.requireAvailableModel !== false &&
+      ((!deviceModel && model === undefined) || model?.available === false)
+    ) {
       throw new Cp2Error(400, "ai_model_unavailable", "The selected AI model is unavailable.");
     }
     const updated: BusinessAgentProfileSummary = {
