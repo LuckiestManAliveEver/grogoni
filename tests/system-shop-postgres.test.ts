@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 import { describe, expect, it } from "vitest";
 import type { Pool as PgPool } from "pg";
+import { deleteLiveFixtureAccounts } from "../scripts/live-fixture-cleanup.mjs";
 import { seedCatalogue } from "../services/api/src/cp2/domains/catalogue-sharing/seed-catalogue";
 import {
   systemShop,
@@ -27,6 +28,23 @@ describe.skipIf(!databaseUrl)("Jane's Shop on PostgreSQL (Edge scoping)", () => 
     const client = await pool.connect();
     try {
       await client.query("begin");
+      // Other PostgreSQL tests in the lane (and Edge routes they drive) provision and commit
+      // Jane's Shop in the shared database. Remove it inside this rollback-only transaction, under
+      // the same lock the Edge system-shop test takes, so this test starts from "never
+      // provisioned" without changing what any other test sees.
+      await client.query("select pg_advisory_xact_lock(hashtext('grogoni.cp2.normalized_store'))");
+      for (const sql of [
+        "delete from payments where business_id = $1",
+        "delete from invoice_items where invoice_id in (select id from invoices where business_id = $1)",
+        "delete from invoices where business_id = $1",
+        "delete from invoice_number_counters where business_id = $1",
+        "delete from inventory_movements where business_id = $1"
+      ])
+        await client.query(sql, [systemShop.businessId]);
+      await deleteLiveFixtureAccounts(client, {
+        accountIds: [systemShop.accountId],
+        businessIds: [systemShop.businessId]
+      });
       // Fixture isolation: this rollback-only transaction must start without the shop.
       const existing = await client.query(
         "select 1 from businesses where id = $1 or grogoni_id = $2",
