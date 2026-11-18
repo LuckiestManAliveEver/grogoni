@@ -13,6 +13,7 @@ const storagePrefix = "grogoni.phonebook.v1:";
 export interface DevicePhonebookContact {
   name: string;
   phone: string | null;
+  phones?: Array<{ e164: string; label: string }>;
   email: string | null;
   /** The server phonebook node this contact landed on at its last sync. */
   nodeId: string | null;
@@ -72,7 +73,24 @@ export function readDevicePhonebook(userId: string): DevicePhonebookContact[] {
     const raw = localStorage.getItem(storagePrefix + userId);
     if (raw === null) return [];
     const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter(isDevicePhonebookContact) : [];
+    return Array.isArray(parsed)
+      ? parsed.filter(isDevicePhonebookContact).map((contact) => ({
+          ...contact,
+          phones:
+            Array.isArray(contact.phones) && contact.phones.length
+              ? contact.phones.filter(
+                  (phone) => typeof phone?.e164 === "string" && typeof phone?.label === "string"
+                )
+              : contact.phone
+                ? [
+                    {
+                      e164: canonicalDeviceContactPhone(contact.phone) ?? contact.phone,
+                      label: "Phone"
+                    }
+                  ]
+                : []
+        }))
+      : [];
   } catch {
     return [];
   }

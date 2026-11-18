@@ -995,6 +995,7 @@ export interface RecycleBinStatusSummary {
 }
 
 export interface ConversationMessageSummary {
+  serverSequence?: number;
   execution?: ConversationExecutionSummary;
   id: string;
   conversationId: string;
@@ -1077,6 +1078,8 @@ export interface ConversationTypingSummary {
 }
 
 export interface ConversationView {
+  messageCursor?: string;
+  isDelta?: boolean;
   conversation: ConversationSummary;
   participants: ConversationParticipantSummary[];
   messages: ConversationMessageSummary[];
@@ -4419,6 +4422,7 @@ export interface RuntimeTelemetryEvent {
 export const runtimeSessionTurnLimit = 20;
 
 export interface RuntimeSessionSummary {
+  conversationId?: string;
   id: string;
   businessId: string;
   userId: string;

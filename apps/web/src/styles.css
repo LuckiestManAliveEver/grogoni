@@ -9349,3 +9349,42 @@ body {
 .assistant-permissions .auth-option-row span {
   display: block;
 }
+
+.recipient-picker {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+}
+.recipient-picker label,
+.recipient-picker > div,
+.agent-session-history {
+  display: grid;
+  gap: 0.5rem;
+}
+.recipient-picker button,
+.agent-session-controls button,
+.agent-session-history button {
+  min-height: 44px;
+}
+.agent-session-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.agent-session-history {
+  padding: 0.75rem;
+  max-height: 45vh;
+  overflow: auto;
+}
+.agent-session-history button {
+  display: grid;
+  text-align: left;
+}
+@media (max-width: 480px) {
+  .messenger-thread-header {
+    flex-wrap: wrap;
+  }
+  .agent-session-controls {
+    width: 100%;
+  }
+}

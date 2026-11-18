@@ -118,6 +118,7 @@ export function useAuthState(deps: UseAuthStateDeps) {
   const sessionRefreshInFlightRef = useRef<Promise<SessionResponse | null> | null>(null);
   // One per app instance: tracks whether this account's session context has applied yet.
   const sessionContextRetryRef = useRef(createSessionContextRetry());
+  const conversationContextGeneration = useRef(0);
   // The place the app was opened at (session-restore-place.ts), kept until a context applies.
   const deepLinkRef = useRef(readDeepLinkedPlace(window.location.pathname));
 
@@ -720,10 +721,12 @@ export function useAuthState(deps: UseAuthStateDeps) {
   async function applySessionContextForConversation(
     conversationId: string
   ): Promise<GrogoniMode | null> {
+    const generation = ++conversationContextGeneration.current;
     try {
       const context = await apiFetch<GrogoniSessionContext>(
         `/v1/session/context?conversationId=${encodeURIComponent(conversationId)}`
       );
+      if (generation !== conversationContextGeneration.current) return null;
       setGrogoniSessionContext(context);
       const activeShop =
         context.shops.find((shop) => shop.business.id === context.activeShopId) ?? context.shops[0];

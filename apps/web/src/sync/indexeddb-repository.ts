@@ -7,11 +7,12 @@ import type {
   SyncPullPage
 } from "@grogoni/shared-types";
 
-const databaseVersion = 2;
+const databaseVersion = 3;
 const recordsStore = "sync_records";
 const metadataStore = "sync_metadata";
 const mutationsStore = "sync_mutations";
 const accountIndex = "by_account";
+const messagingOutboxStore = "messaging_outbox";
 
 interface StoredSyncMetadata {
   accountId: string;
@@ -33,6 +34,35 @@ export class IndexedDbSyncRepository {
 
   close(): void {
     this.#database.close();
+  }
+
+  async loadMessagingOutbox(): Promise<Array<{ key: string; value: string }>> {
+    const tx = this.#database.transaction(messagingOutboxStore, "readonly");
+    const done = transactionCompletion(tx);
+    const entries = await requestResult<Array<{ key: string; value: string }>>(
+      tx.objectStore(messagingOutboxStore).getAll()
+    );
+    await done;
+    return entries;
+  }
+
+  async writeMessagingOutbox(key: string, value: string | null): Promise<void> {
+    const tx = this.#database.transaction(messagingOutboxStore, "readwrite");
+    const done = transactionCompletion(tx);
+    if (value === null) tx.objectStore(messagingOutboxStore).delete(key);
+    else tx.objectStore(messagingOutboxStore).put({ key, value });
+    await done;
+  }
+
+  /** A second tab migrating stale browser storage must never overwrite a newer IDB value. */
+  async migrateMessagingOutbox(key: string, value: string): Promise<string> {
+    const tx = this.#database.transaction(messagingOutboxStore, "readwrite");
+    const done = transactionCompletion(tx);
+    const store = tx.objectStore(messagingOutboxStore);
+    const current = await requestResult<{ key: string; value: string } | undefined>(store.get(key));
+    if (current === undefined) store.put({ key, value });
+    await done;
+    return current?.value ?? value;
   }
 
   async loadSnapshot<T>(accountId: string): Promise<LocalSyncSnapshot<T>> {
@@ -171,6 +201,8 @@ export async function openIndexedDbSyncRepository(
   const request = factory.open(options.databaseName ?? "grogoni-sync", databaseVersion);
   request.onupgradeneeded = () => {
     const database = request.result;
+    if (!database.objectStoreNames.contains(messagingOutboxStore))
+      database.createObjectStore(messagingOutboxStore, { keyPath: "key" });
     if (!database.objectStoreNames.contains(recordsStore)) {
       const store = database.createObjectStore(recordsStore, {
         keyPath: ["accountId", "collection", "entityId"]

@@ -1916,6 +1916,7 @@ export class AgentRuntimeDomain {
     sessionId: string | null;
     businessId: string;
     idempotencyKey?: string;
+    conversationId?: string;
     now?: Date;
   }): RuntimeSessionSummary {
     const now = input.now ?? new Date();
@@ -1950,6 +1951,7 @@ export class AgentRuntimeDomain {
       businessId: input.businessId,
       userId: session.user.id,
       ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
+      ...(input.conversationId === undefined ? {} : { conversationId: input.conversationId }),
       status: "active",
       turnCount: 0,
       createdAt: now.toISOString(),
@@ -2210,6 +2212,18 @@ export class AgentRuntimeDomain {
       "business:read",
       input.now ?? new Date()
     );
+    if (input.runtimeSessionId !== undefined) {
+      const runtimeSession = this.requireRuntimeSession(input.businessId, input.runtimeSessionId);
+      if (
+        runtimeSession.conversationId !== undefined &&
+        runtimeSession.conversationId !== input.conversationId
+      )
+        throw new Cp2Error(
+          409,
+          "runtime_conversation_mismatch",
+          "This runtime session belongs to another conversation."
+        );
+    }
     const acquired = input.conversationId
       ? this.deps.acquireRuntimeTurn?.(input.conversationId, auth.account.id, input.businessId)
       : undefined;
@@ -2371,6 +2385,7 @@ export class AgentRuntimeDomain {
         ? this.createRuntimeSession({
             sessionId: input.sessionId,
             businessId: input.businessId,
+            ...(input.conversationId === undefined ? {} : { conversationId: input.conversationId }),
             now
           })
         : this.requireRuntimeSession(input.businessId, input.runtimeSessionId);

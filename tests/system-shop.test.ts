@@ -121,7 +121,7 @@ describe("Jane's Shop provisioning", () => {
       productsCreated: seedCatalogue.products.length,
       productCount: seedCatalogue.products.length
     });
-    expect(store.provisionSystemShop().status).toBe("unchanged");
+    expect(store.provisionSystemShop(new Date("2026-11-17T08:00:00Z")).status).toBe("unchanged");
 
     const snapshot = store.snapshot();
     expect(snapshot.businesses.filter((b) => b.id === systemShop.businessId)).toEqual([

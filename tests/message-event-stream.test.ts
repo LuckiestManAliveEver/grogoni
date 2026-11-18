@@ -1,0 +1,61 @@
+import { describe, expect, it, vi } from "vitest";
+import { messageEventStream } from "../supabase/functions/api/message-events";
+import type { Transaction } from "../supabase/functions/api/session-routes";
+
+describe("account message event stream", () => {
+  it("sends identifiers only and scopes every journal read to the authenticated account", async () => {
+    const query = vi.fn(async (sql: string, values?: unknown[]) => {
+      expect(values?.[0]).toBe("account-a");
+      return {
+        rows: sql.includes("max(sequence)")
+          ? [{ cursor: "2" }]
+          : values?.[1] === "2"
+            ? [
+                {
+                  sequence: "3",
+                  collection: "conversation_messages",
+                  conversation_id: "thread-a",
+                  entity_id: "message-a",
+                  text: "MUST NOT STREAM"
+                }
+              ]
+            : []
+      };
+    });
+    const transaction: Transaction = async (work) => work({ query });
+    const response = await messageEventStream(
+      new Request("https://example.invalid/v1/realtime/messages"),
+      transaction,
+      async () => "account-a",
+      { durationMs: 20, intervalMs: 1 }
+    );
+    const text = await response.text();
+    expect(text).toContain('"conversationIds":["thread-a"]');
+    expect(text).toContain("id: 3");
+    expect(text).not.toContain("MUST NOT STREAM");
+  });
+  it("revalidates authentication and closes on expiry", async () => {
+    const auth = vi.fn().mockResolvedValueOnce("a").mockRejectedValue(new Error("expired"));
+    const transaction: Transaction = async (work) =>
+      work({ query: async () => ({ rows: [{ cursor: "0" }] }) });
+    const response = await messageEventStream(
+      new Request("https://example.invalid/v1/realtime/messages"),
+      transaction,
+      auth,
+      { durationMs: 100, intervalMs: 1 }
+    );
+    expect(await response.text()).not.toContain("event: changed");
+    expect(auth).toHaveBeenCalledTimes(2);
+  });
+  it("rejects a malformed reconnect cursor", async () => {
+    const transaction: Transaction = async () => {
+      throw new Error("journal must not be read");
+    };
+    const response = await messageEventStream(
+      new Request("https://example.invalid/v1/realtime/messages?since=abc"),
+      transaction,
+      async () => "a"
+    );
+    expect(response.status).toBe(400);
+  });
+});

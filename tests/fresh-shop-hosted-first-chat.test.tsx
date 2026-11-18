@@ -44,6 +44,12 @@ describe("fresh shop, first AI message: hosted-first with no client model state"
     localStorage.clear();
   });
 
+  // sendChatDraft returns once the bubble renders; the send itself runs detached. After its last
+  // visible effect, let any remaining continuation run before asserting what must NOT happen.
+  async function settleDetachedSend() {
+    for (let turn = 0; turn < 5; turn += 1) await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
   function business(): ActiveBusiness {
     return {
       id: "fresh-shop-1",
@@ -439,7 +445,9 @@ describe("fresh shop, first AI message: hosted-first with no client model state"
           messages = typeof next === "function" ? next(messages as never) : (next as never);
         },
         chatDraft: "",
-        setChatDraft: (draft) => drafts.push(draft),
+        // React applies a function update to the current draft; so does this harness.
+        setChatDraft: (draft) =>
+          drafts.push(typeof draft === "function" ? draft(drafts.at(-1) ?? "") : draft),
         pendingAttachments: [],
         setPendingAttachments: () => undefined,
         runtimeSessionId: null,
@@ -462,9 +470,16 @@ describe("fresh shop, first AI message: hosted-first with no client model state"
       await sendChatDraft!("Add 5 bags of sugar to stock");
     });
 
+    // The send runs after sendChatDraft returns (the composer never waits for it).
+    // It first waits (about three seconds) for the chat to open.
+    await vi.waitFor(
+      () => {
+        expect(statusMessages.at(-1)).toMatch(/still opening.*back in the box/u);
+      },
+      { timeout: 10_000 }
+    );
     expect(messages.some((message) => message.body === "Add 5 bags of sugar to stock")).toBe(false);
     expect(drafts.at(-1)).toBe("Add 5 bags of sugar to stock");
-    expect(statusMessages.at(-1)).toMatch(/still opening.*back in the box/u);
     window.history.replaceState(null, "", "/");
   });
 
@@ -526,7 +541,9 @@ describe("fresh shop, first AI message: hosted-first with no client model state"
           messages = typeof next === "function" ? next(messages as never) : (next as never);
         },
         chatDraft: "",
-        setChatDraft: (draft) => drafts.push(draft),
+        // React applies a function update to the current draft; so does this harness.
+        setChatDraft: (draft) =>
+          drafts.push(typeof draft === "function" ? draft(drafts.at(-1) ?? "") : draft),
         pendingAttachments: [],
         setPendingAttachments: () => undefined,
         runtimeSessionId: null,
@@ -563,12 +580,15 @@ describe("fresh shop, first AI message: hosted-first with no client model state"
     }
 
     // The user's message, sent once, to the conversation the URL named (the client also persists
-    // the agent's reply there).
-    expect(
-      posted
-        .filter((payload) => (payload as { author?: string }).author !== "agent")
-        .map((payload) => payload.conversationId)
-    ).toEqual(["conversation-1"]);
+    // the agent's reply there). The send runs after sendChatDraft returns.
+    await vi.waitFor(() => {
+      expect(
+        posted
+          .filter((payload) => (payload as { author?: string }).author !== "agent")
+          .map((payload) => payload.conversationId)
+      ).toEqual(["conversation-1"]);
+    });
+    await settleDetachedSend();
     expect(statusMessages).toContain("Opening this chat…");
     expect(statusMessages.some((message) => /still opening/u.test(message))).toBe(false);
     window.history.replaceState(null, "", "/");
@@ -672,10 +692,14 @@ describe("fresh shop, first AI message: hosted-first with no client model state"
       ).IS_REACT_ACT_ENVIRONMENT = true;
     }
 
-    // Sent once, and the box was not cleared: it now holds something else.
-    expect(
-      posted.filter((payload) => (payload as { author?: string }).author !== "agent")
-    ).toHaveLength(1);
+    // Sent once, and the box was not cleared: it now holds something else. The send runs after
+    // sendChatDraft returns.
+    await vi.waitFor(() => {
+      expect(
+        posted.filter((payload) => (payload as { author?: string }).author !== "agent")
+      ).toHaveLength(1);
+    });
+    await settleDetachedSend();
     // After the chat opened, the retried send did not wipe what was typed meanwhile.
     expect(openedAt).toBeGreaterThanOrEqual(0);
     expect(drafts.slice(openedAt)).not.toContain("");
@@ -758,10 +782,109 @@ describe("fresh shop, first AI message: hosted-first with no client model state"
       await sendChatDraft!("Add 5 bags of sugar to stock");
     });
 
+    await vi.waitFor(() => {
+      expect(readMessagingOutbox("account-1")[0]).toMatchObject({ retryKind: "agent-turn" });
+    });
     const [entry] = readMessagingOutbox("account-1");
-    expect(entry).toMatchObject({ attempts: 0 });
+    expect(entry).toMatchObject({ attempts: 0, retryKind: "agent-turn" });
     // Not due at once: the next 4-second refresh must not rerun a paid model turn.
     expect(entry!.nextAttemptAt).toBeGreaterThan(Date.now() + 10_000);
+  });
+
+  it("does not queue a saved message for resend when reconciling the thread fails locally", async () => {
+    let saved = false;
+    const posted: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const path = new URL(String(input), "http://localhost").pathname;
+        posted.push(path);
+        if (path === "/v1/messages") {
+          saved = true;
+          return jsonResponse({
+            id: "saved-2",
+            conversationId: "conversation-1",
+            clientMessageId: "saved-client-2",
+            author: "account",
+            authorId: "user-1",
+            content: { type: "text", text: "Add 5 bags of sugar to stock" },
+            processing: { status: "completed" }
+          });
+        }
+        return jsonResponse({});
+      })
+    );
+    // A local failure that only happens once the server has answered (reading the thread's
+    // participants to map the stored copy), standing in for any reconcile-time bug. A TypeError,
+    // as a real bug throws, is also what a failed fetch throws, so it reads as a lost request.
+    const conversation = {
+      conversation: { id: "conversation-1" },
+      get participants() {
+        if (saved) throw new TypeError("Couldn't redraw this chat.");
+        return [{ role: "account", accountId: "account-1" }];
+      }
+    } as unknown as ConversationView;
+    let messages: unknown[] = [];
+    const statusMessages: string[] = [];
+    let sendChatDraft: ((draft?: string) => Promise<void>) | null = null;
+    function Harness() {
+      const api = useChatRuntimeState({
+        business: business(),
+        mode: "seller",
+        session: session(),
+        authBootstrapState: "authenticated",
+        ensureAuthenticatedSession: async () => session(),
+        rejectDefinitiveAuthenticationFailure: () => false,
+        agentSettings: agentSettings(),
+        setStatusMessage: (message) => statusMessages.push(message),
+        navigateToView: () => undefined,
+        requireMessagingSignIn: () => undefined,
+        loadProducts: async () => undefined,
+        loadSuppliers: async () => undefined,
+        loadCustomers: async () => undefined,
+        loadInvoices: async () => undefined,
+        loadReports: async () => undefined,
+        loadNotifications: async () => undefined,
+        loadRuntimeSessions: async () => undefined,
+        createManagedRuntimeSession: async () => "runtime-session-1",
+        ensureRuntimeSession: async () => "runtime-session-1",
+        loadDocumentImports: async () => undefined,
+        chatMessages: [],
+        setChatMessages: (next) => {
+          messages = typeof next === "function" ? next(messages as never) : (next as never);
+        },
+        chatDraft: "",
+        setChatDraft: () => undefined,
+        pendingAttachments: [],
+        setPendingAttachments: () => undefined,
+        runtimeSessionId: null,
+        setRuntimeSessionId: () => undefined,
+        replyToMessageId: null,
+        setReplyToMessageId: () => undefined,
+        activeConversationId: "conversation-1",
+        activeConversation: conversation,
+        loadMessagingInbox: async () => undefined,
+        registerReset: () => undefined
+      });
+      sendChatDraft = api.sendChatDraft;
+      return null;
+    }
+    await act(async () => {
+      root = createRoot(host);
+      root.render(<Harness />);
+    });
+    await act(async () => {
+      await sendChatDraft!("Add 5 bags of sugar to stock");
+    });
+
+    await vi.waitFor(() => {
+      expect(statusMessages.at(-1)).toBe("Couldn't redraw this chat.");
+    });
+    await settleDetachedSend();
+    expect(posted.filter((path) => path === "/v1/messages")).toHaveLength(1);
+    // Saved on the server, so nothing waits to be resent (a transport retry would rerun the turn).
+    expect(readMessagingOutbox("account-1")).toEqual([]);
+    expect(statusMessages.at(-1)).toBe("Couldn't redraw this chat.");
   });
 
   it("sends nothing past an earlier message still waiting in the same conversation", async () => {

@@ -84,8 +84,17 @@ describe("useNetworkState phonebook", () => {
       ]
     });
     expect(readDevicePhonebook("owner")).toEqual([
-      { name: "Wanjiru", phone: "0722 000 101", email: null, nodeId: "n-1" },
-      { name: "Otieno", phone: null, email: "o@example.com", nodeId: "n-2" }
+      {
+        name: "Wanjiru",
+        phone: "0722 000 101",
+        phones: [
+          { e164: "+254722000101", label: "Phone" },
+          { e164: "+254733000202", label: "Phone" }
+        ],
+        email: null,
+        nodeId: "n-1"
+      },
+      { name: "Otieno", phone: null, phones: [], email: "o@example.com", nodeId: "n-2" }
     ]);
     expect(hook.devicePhonebook).toHaveLength(2);
 

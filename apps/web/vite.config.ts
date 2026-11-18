@@ -162,6 +162,21 @@ export default defineConfig(({ mode }) => {
     },
     envDir: workspaceRoot,
     plugins: [
+      {
+        // Keep the published Android manifest as the source of truth while allowing its
+        // compile-time import: Vite's dev server refuses direct imports from public/.
+        name: "android-release-module",
+        enforce: "pre",
+        resolveId(source) {
+          if (source === "../public/android/release.json") return "\0android-release-manifest";
+        },
+        load(id) {
+          if (id !== "\0android-release-manifest") return;
+          const manifest = join(workspaceRoot, "apps/web/public/android/release.json");
+          this.addWatchFile(manifest);
+          return `export default ${JSON.stringify(JSON.parse(readFileSync(manifest, "utf8")))};`;
+        }
+      },
       react(),
       tesseractOfflineAssets(),
       {

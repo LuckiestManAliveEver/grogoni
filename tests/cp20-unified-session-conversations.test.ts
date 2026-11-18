@@ -480,10 +480,10 @@ describe("CP20 unified account, conversation, and session foundation", () => {
     expect(repeatedMessage.id).toBe(firstMessage.id);
     expect(firstMessage).toMatchObject({
       idempotencyKey: payload.idempotencyKey,
-      status: "delivered",
+      status: "sent",
       queuedAt: payload.queuedAt,
       sentAt: expect.any(String),
-      deliveredAt: expect.any(String),
+      deliveredAt: null,
       retryCount: 0,
       selectedChannel: "grogoni",
       actualChannel: "grogoni",
@@ -795,7 +795,7 @@ describe("CP20 unified account, conversation, and session foundation", () => {
       },
       senderCookie
     );
-    expect(sent).toMatchObject({ status: "delivered", deliveredAt: expect.any(String) });
+    expect(sent).toMatchObject({ status: "sent", deliveredAt: null });
     expect(sent.content).toMatchObject({ type: "encrypted", attachmentCount: 1 });
     await Promise.resolve();
     expect(deliveries).toHaveLength(1);

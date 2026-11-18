@@ -1,5 +1,7 @@
 # Instant messaging, recipient picker and agent sessions: remaining checklist
 
+Implementation update (2026-11-18): see [implementation and release evidence](instant-messaging-implementation-2026-11-18.md). The historical analysis below describes the reviewed revision; production certification remains gated.
+
 Reviewed: 2026-11-17. Repository: `LuckiestManAliveEver/grogoni`.
 Local branch: `perf/agent-response-latency`; HEAD: `736ce720` (plus uncommitted system-shop work, not reviewed here).
 

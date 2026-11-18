@@ -9,8 +9,7 @@ import { apiFetch } from "../lib/api";
  * `processing.status = "pending"` and a `turnId`; the reply arrives by long-polling
  * GET /v1/agent-turns/:turnId?waitMs=N, which holds open while the turn runs and answers the body
  * the synchronous API answers (agentMessage, runtime, processing) the moment the turn completed or
- * failed. The Node API answers `completed` directly, and `waitForAgentTurn` passes that through
- * untouched.
+ * failed. Node uses the same queued contract; legacy synchronous answers pass through untouched.
  *
  * The first ask goes out at once. After a pending answer the client waits only what is left of
  * the backoff step: a server that held the poll open (agentTurnLongPollWaitMs) already waited
@@ -45,6 +44,7 @@ export async function waitForAgentTurn<T extends { id?: string; processing?: Age
 ): Promise<T> {
   const turnId = response.processing?.turnId;
   if (response.processing?.status !== "pending" || turnId === undefined) return response;
+  const replyStarted = performance.now();
   options.onPending?.();
   const poll =
     options.poll ??
@@ -68,8 +68,10 @@ export async function waitForAgentTurn<T extends { id?: string; processing?: Age
     } catch {
       // A dropped poll is asked again; the turn keeps running on the server either way.
     }
-    if (turn?.processing !== undefined && turn.processing.status !== "pending")
+    if (turn?.processing !== undefined && turn.processing.status !== "pending") {
+      performance.measure("agent.turn.reply_ms", { start: replyStarted, end: performance.now() });
       return { ...response, ...turn, id: response.id ?? turn.id } as T;
+    }
     // A failed ask always backs off fully, so a network outage never turns into a tight loop.
     const rest = turn === null ? step : step - (now() - asked);
     if (rest > 0) await sleep(rest);

@@ -31,6 +31,7 @@ describe("outbox resend routing", () => {
   let messages: ChatMessage[] = [];
   let draft = "";
   let sendInFlight = false;
+  let restoreContext: (id: string) => Promise<null> = async () => null;
   let statusSink: (message: string) => void = () => undefined;
   const session = {
     account: { id: "account-1" },
@@ -49,7 +50,7 @@ describe("outbox resend routing", () => {
       mode: "seller",
       setStatusMessage: (message) => statusSink(message),
       setView: () => undefined,
-      applySessionContextForConversation: async () => null,
+      applySessionContextForConversation: (id) => restoreContext(id),
       requireMessagingSignIn: () => undefined,
       chatMessages,
       chatDraft,
@@ -101,6 +102,7 @@ describe("outbox resend routing", () => {
       globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
     ).IS_REACT_ACT_ENVIRONMENT = true;
     localStorage.clear();
+    restoreContext = async () => null;
     window.matchMedia = ((query: string) => ({
       matches: false,
       media: query,
@@ -124,6 +126,33 @@ describe("outbox resend routing", () => {
   afterEach(() => {
     act(() => root.unmount());
     host.remove();
+  });
+
+  it("keeps the most recently selected session when context requests finish in reverse order", async () => {
+    let finishA!: (value: null) => void;
+    let finishB!: (value: null) => void;
+    restoreContext = (id) =>
+      new Promise((resolve) => {
+        if (id === "A") finishA = resolve;
+        else finishB = resolve;
+      });
+    vi.mocked(getJson).mockImplementation(async (path) => view(String(path).split("/").at(-1)!));
+    let a!: Promise<void>, b!: Promise<void>;
+    await act(async () => {
+      a = inbox!.selectConversation("A");
+      b = inbox!.selectConversation("B");
+    });
+    await act(async () => {
+      finishB(null);
+      await b;
+    });
+    await act(async () => {
+      finishA(null);
+      await a;
+    });
+    expect(window.location.pathname).toContain("/B");
+    expect(inbox!.activeConversationId).toBe("B");
+    expect(messages[0]?.id).toBe("B-first");
   });
 
   it("does not let a message that stopped retrying hold up other conversations", async () => {

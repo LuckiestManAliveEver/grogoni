@@ -1,3 +1,4 @@
+import { subscribeAccountHints } from "../messaging/account-hints";
 import type { SyncRealtimeEvent } from "@grogoni/shared-types";
 import { recordRealtimeConnection } from "../performance";
 
@@ -35,8 +36,18 @@ export function accountRealtimeTransport(
 export function subscribeToAccountRealtime(options: AccountRealtimeOptions): () => void {
   if (options.transport === "http-poll") {
     let stopped = false;
+    let healthy = false;
+    let polling = false;
+    let pending = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
     const poll = async () => {
+      if (stopped || (typeof document !== "undefined" && document.visibilityState === "hidden"))
+        return;
+      if (polling) {
+        pending = true;
+        return;
+      }
+      polling = true;
       try {
         recordRealtimeConnection("connecting");
         await options.onChangesAvailable();
@@ -47,13 +58,40 @@ export function subscribeToAccountRealtime(options: AccountRealtimeOptions): () 
           options.onError?.(error);
         }
       } finally {
-        if (!stopped)
-          timer = setTimeout(() => void poll(), Math.max(1000, options.reconnectDelayMs ?? 5000));
+        polling = false;
+        if (pending && !stopped) {
+          pending = false;
+          void poll();
+        } else if (!stopped)
+          timer = setTimeout(
+            () => void poll(),
+            healthy ? 30_000 : Math.max(1000, options.reconnectDelayMs ?? 5000)
+          );
       }
     };
+    const unsubscribe = subscribeAccountHints(
+      options.accountId,
+      () => {
+        if (timer) clearTimeout(timer);
+        void poll();
+      },
+      (ready) => {
+        healthy = ready;
+      }
+    );
+    const onVisible = () => {
+      if (document.visibilityState !== "hidden") {
+        if (timer) clearTimeout(timer);
+        void poll();
+      }
+    };
+    if (typeof document !== "undefined") document.addEventListener("visibilitychange", onVisible);
     void poll();
     return () => {
       stopped = true;
+      unsubscribe();
+      if (typeof document !== "undefined")
+        document.removeEventListener("visibilitychange", onVisible);
       if (timer !== null) clearTimeout(timer);
     };
   }

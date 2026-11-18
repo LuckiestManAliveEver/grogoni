@@ -84,7 +84,9 @@ describe("a channel send whose follow-up refresh fails", () => {
           messages = typeof next === "function" ? next(messages as never) : (next as never);
         },
         chatDraft: "",
-        setChatDraft: (draft) => drafts.push(draft),
+        // React applies a function update to the current draft; so does this harness.
+        setChatDraft: (draft) =>
+          drafts.push(typeof draft === "function" ? draft(drafts.at(-1) ?? "") : draft),
         pendingAttachments: [],
         setPendingAttachments: () => undefined,
         runtimeSessionId: null,
@@ -106,6 +108,10 @@ describe("a channel send whose follow-up refresh fails", () => {
     await act(async () => root.render(<Harness />));
     await act(async () => {
       await send!("Your order is ready");
+    });
+    // The send runs after sendChatDraft returns (the composer never waits for it).
+    await vi.waitFor(() => {
+      expect(statuses.at(-1)).toMatch(/SMS queued/u);
     });
     expect(posted.filter((path) => path.endsWith("/channel-messages"))).toHaveLength(1);
     expect(messages.map((message) => message.id)).toContain("sent-1");

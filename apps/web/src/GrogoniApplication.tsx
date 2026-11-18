@@ -2071,7 +2071,11 @@ export function OwnerApp() {
                 onForwardMessage={(messageId, conversationId) =>
                   void runAction("message-forward", () => forwardMessage(messageId, conversationId))
                 }
-                onRetryMessages={() => void runAction("message-retry", retryQueuedMessages)}
+                onRetryMessages={(clientMessageId) =>
+                  void runAction("message-retry", () =>
+                    retryQueuedMessages({ ...(clientMessageId ? { clientMessageId } : {}) })
+                  )
+                }
                 queuedMessageCount={queuedMessageCount}
                 onOpenShop={() => openShopOrBrowse(browseShops)}
                 onCloseWorkspace={closeShopHub}

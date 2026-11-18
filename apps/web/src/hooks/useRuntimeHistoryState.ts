@@ -1,3 +1,4 @@
+import { readCurrentOwnerRoute } from "../browser-navigation";
 import { runtimeSessionTurnLimit } from "@grogoni/shared-types";
 import { useRef, useState } from "react";
 import { reportBackgroundLoadError } from "../background-load-error";
@@ -29,7 +30,7 @@ export function useRuntimeHistoryState(deps: UseRuntimeHistoryStateDeps) {
     string | null
   >(null);
   const [runtimeTurns, setRuntimeTurns] = useState<RuntimeTurnSummary[]>([]);
-  const runtimeRestoreInFlightRef = useRef<Promise<string> | null>(null);
+  const runtimeRestoreInFlightRef = useRef(new Map<string, Promise<string>>());
   const runtimeCreationAttemptRef = useRef<{
     managerKey: string;
     idempotencyKey: string;
@@ -65,11 +66,13 @@ export function useRuntimeHistoryState(deps: UseRuntimeHistoryStateDeps) {
     }
   }
 
-  async function createManagedRuntimeSession(): Promise<string> {
+  async function createManagedRuntimeSession(
+    conversationId = readCurrentOwnerRoute()?.conversationId
+  ): Promise<string> {
     if (deps.business === null || deps.session === null) {
       throw new Error("Sign in and select a shop before starting the AI runtime.");
     }
-    const managerKey = runtimeManagerKey(deps.session.account.id, deps.business.id);
+    const managerKey = runtimeManagerKey(deps.session.account.id, deps.business.id, conversationId);
     if (runtimeCreationAttemptRef.current?.managerKey !== managerKey) {
       runtimeCreationAttemptRef.current = {
         managerKey,
@@ -79,7 +82,8 @@ export function useRuntimeHistoryState(deps: UseRuntimeHistoryStateDeps) {
     const attempt = runtimeCreationAttemptRef.current;
     const create = () =>
       postJson<RuntimeSessionSummary>(`/businesses/${deps.business!.id}/runtime/sessions`, {
-        idempotencyKey: attempt.idempotencyKey
+        idempotencyKey: attempt.idempotencyKey,
+        ...(conversationId ? { conversationId } : {})
       });
     // The same key makes a retry safe even if the first response was lost after committing.
     const created = await create().catch(async (error) => {
@@ -89,6 +93,11 @@ export function useRuntimeHistoryState(deps: UseRuntimeHistoryStateDeps) {
     });
     if (runtimeCreationAttemptRef.current === attempt) {
       runtimeCreationAttemptRef.current = null;
+    }
+    try {
+      localStorage.setItem(`grogoni.runtime-conversation:${managerKey}`, created.id);
+    } catch {
+      /* Session continues in memory. */
     }
     setRuntimeSessions((sessions) =>
       sessions.some((item) => item.id === created.id) ? sessions : [...sessions, created]
@@ -111,7 +120,11 @@ export function useRuntimeHistoryState(deps: UseRuntimeHistoryStateDeps) {
       runtimeManager.stop();
       const runtimeSessionId = await createManagedRuntimeSession();
       runtimeManager.adoptSession(
-        runtimeManagerKey(deps.session.account.id, deps.business.id),
+        runtimeManagerKey(
+          deps.session.account.id,
+          deps.business.id,
+          readCurrentOwnerRoute()?.conversationId
+        ),
         runtimeSessionId
       );
       setRuntimeTurns([]);
@@ -123,55 +136,66 @@ export function useRuntimeHistoryState(deps: UseRuntimeHistoryStateDeps) {
   }
 
   async function ensureRuntimeSession(
-    setRuntimeSessionId: (sessionId: string) => void
+    setRuntimeSessionId: (sessionId: string) => void,
+    conversationId = readCurrentOwnerRoute()?.conversationId
   ): Promise<string> {
     if (deps.business === null || deps.session === null) {
       throw new Error("Sign in and select a shop before starting the AI runtime.");
     }
 
-    const key = runtimeManagerKey(deps.session.account.id, deps.business.id);
-    const runtimeSessionId = await runtimeManager.ensureSession(key, createManagedRuntimeSession);
+    const key = runtimeManagerKey(deps.session.account.id, deps.business.id, conversationId);
+    const runtimeSessionId = await runtimeManager.ensureSession(key, () =>
+      createManagedRuntimeSession(conversationId)
+    );
     setRuntimeSessionId(runtimeSessionId);
     return runtimeSessionId;
   }
 
   async function restoreOrCreateRuntimeSession(
-    setRuntimeSessionId: (sessionId: string) => void
+    setRuntimeSessionId: (sessionId: string) => void,
+    conversationId = readCurrentOwnerRoute()?.conversationId
   ): Promise<string> {
     if (deps.business === null || deps.session === null) {
       throw new Error("Sign in and select a shop before restoring the AI runtime.");
     }
-    if (runtimeRestoreInFlightRef.current !== null) return runtimeRestoreInFlightRef.current;
-
     const businessId = deps.business.id;
-    const key = runtimeManagerKey(deps.session.account.id, businessId);
+    const key = runtimeManagerKey(deps.session.account.id, businessId, conversationId);
+    const pending = runtimeRestoreInFlightRef.current.get(key);
+    if (pending) return pending;
     const restore = (async () => {
       const sessions = await getJson<RuntimeSessionSummary[]>(
         `/businesses/${businessId}/runtime/sessions`
       );
       setRuntimeSessions(sessions);
-      const existing = [...sessions]
-        .reverse()
-        .find(
-          (candidate) =>
-            candidate.status === "active" && candidate.turnCount < runtimeSessionTurnLimit
-        );
+      let remembered: string | null = null;
+      try {
+        remembered = localStorage.getItem(`grogoni.runtime-conversation:${key}`);
+      } catch {
+        /* No saved association. */
+      }
+      const existing = sessions.find(
+        (candidate) =>
+          (candidate.conversationId === conversationId || candidate.id === remembered) &&
+          candidate.status === "active" &&
+          candidate.turnCount < runtimeSessionTurnLimit
+      );
       if (existing !== undefined) {
         runtimeManager.adoptSession(key, existing.id, existing.turnCount);
         setRuntimeSessionId(existing.id);
         setSelectedRuntimeHistorySessionId(existing.id);
         return existing.id;
       }
-      return ensureRuntimeSession(setRuntimeSessionId);
+      return ensureRuntimeSession(setRuntimeSessionId, conversationId);
     })().finally(() => {
-      runtimeRestoreInFlightRef.current = null;
+      runtimeRestoreInFlightRef.current.delete(key);
     });
-    runtimeRestoreInFlightRef.current = restore;
+    runtimeRestoreInFlightRef.current.set(key, restore);
     return restore;
   }
 
   deps.registerReset("runtime-history", () => {
     runtimeCreationAttemptRef.current = null;
+    runtimeRestoreInFlightRef.current.clear();
     setRuntimeSessions([]);
     setSelectedRuntimeHistorySessionId(null);
     setRuntimeTurns([]);

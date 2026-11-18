@@ -193,6 +193,12 @@ export function useNetworkState(deps: UseNetworkStateDeps) {
     // Keep whatever was synced, even when a later batch failed.
     const picked = contacts.slice(0, result.nodeIds.length).map((contact, index) => ({
       name: contact.name,
+      phones: contact.phones.flatMap((phone) => {
+        const e164 =
+          canonicalDeviceContactPhone(phone, deps.defaultCountry ?? browserDefaultCountry()) ??
+          canonicalDeviceContactPhone(phone, "KE");
+        return e164 ? [{ e164, label: "Phone" }] : [];
+      }),
       phone: contact.phone
         ? (canonicalDeviceContactPhone(
             contact.phone,

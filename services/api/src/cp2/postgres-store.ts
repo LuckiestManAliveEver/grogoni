@@ -1370,6 +1370,7 @@ export async function createPostgresCp2Store(
       if (property === "flush") {
         return flush;
       }
+      if (property === "agentTurnDatabase") return pool;
 
       if (property === "health") {
         return health;

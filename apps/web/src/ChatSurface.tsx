@@ -290,6 +290,21 @@ export function ChatSurface({
   );
   const selectedTitle = conversationTitle(selectedConversation);
   const isAssistantSelected = isAssistantConversation(selectedConversation);
+  const [sessionHistoryOpen, setSessionHistoryOpen] = useState(false);
+  const isAgentSession =
+    selectedConversation !== undefined &&
+    !selectedConversation.hasHumanRecipient &&
+    !selectedConversation.helpTopic &&
+    selectedConversation.kind === "personal";
+  const agentSessions = conversations.filter(
+    (item) =>
+      !item.hasHumanRecipient &&
+      !item.helpTopic &&
+      item.kind === "personal" &&
+      item.activeShopId === selectedConversation?.activeShopId &&
+      item.runtimeBindingId === selectedConversation?.runtimeBindingId
+  );
+
   // Replies in the permanent daemon conversation come from "My Assistant", not the shop agent.
   const threadAgentName = isAssistantSelected ? permanentDaemonDisplayName : agent.name;
   const isHumanConversation =
@@ -571,11 +586,51 @@ export function ChatSurface({
                 Details
               </button>
             ) : null}
+            {isAgentSession ? (
+              <div className="agent-session-controls">
+                <button
+                  type="button"
+                  onClick={() => setSessionHistoryOpen((open) => !open)}
+                  aria-expanded={sessionHistoryOpen}
+                >
+                  Session history
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSessionHistoryOpen(false);
+                    onCreateAgentSession();
+                  }}
+                >
+                  + New Session
+                </button>
+              </div>
+            ) : null}
             <ConversationExecutionControls
               conversation={selectedConversation}
               businessId={hasBusiness ? businessId : null}
             />
           </header>
+        ) : null}
+        {isAgentSession && sessionHistoryOpen ? (
+          <section className="agent-session-history" aria-label="Session history">
+            {agentSessions.map((item) => (
+              <button
+                type="button"
+                key={item.id}
+                onClick={() => {
+                  setSessionHistoryOpen(false);
+                  onSelectConversation(item.id);
+                }}
+              >
+                <strong>{conversationTitle(item) ?? "New session"}</strong>
+                {item.lastMessage ? (
+                  <span>{conversationMessageText(item.lastMessage).slice(0, 120)}</span>
+                ) : null}
+                <time dateTime={item.createdAt}>{new Date(item.createdAt).toLocaleString()}</time>
+              </button>
+            ))}
+          </section>
         ) : null}
         <div
           className={`message-list${isHomeEmpty ? " home-empty-messages" : ""}`}
@@ -692,7 +747,11 @@ export function ChatSurface({
                     ))}
                   </div>
                 ) : null}
-                <MessageDeliveryMeta message={message} attempts={deliveryAttempts} />
+                <MessageDeliveryMeta
+                  message={message}
+                  attempts={deliveryAttempts}
+                  onRetry={() => onRetryMessages(message.clientMessageId ?? message.id)}
+                />
                 {message.reactions?.length ? (
                   <div className="message-reactions" aria-label="Reactions">
                     {message.reactions.map((reaction) => (

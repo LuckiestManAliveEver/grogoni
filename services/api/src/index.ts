@@ -370,6 +370,7 @@ const apiOptions = {
   ...(config.metricsAuthToken === "" ? {} : { metricsAuthToken: config.metricsAuthToken }),
   cp2: {
     store: cp2Store,
+    queuedAgentTurns: shouldUsePostgresStore,
     ...(inventoryTaskController === undefined ? {} : { inventoryTaskController }),
     ...(fulfillmentPool === undefined
       ? {}

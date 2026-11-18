@@ -348,7 +348,10 @@ describe("guest chat send with the classifier", () => {
       )
     );
     const { searchBuyFeed } = await sending;
-    expect(searchBuyFeed).toHaveBeenCalledWith("maize flour");
+    // sendChatDraft returns once the bubble renders; the classified answer is handled after it.
+    await vi.waitFor(() => {
+      expect(searchBuyFeed).toHaveBeenCalledWith("maize flour");
+    });
     expect(isGuestReplyPending("agent-thread-1")).toBe(false);
   });
 

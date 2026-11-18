@@ -1,3 +1,4 @@
+import { subscribeAccountHints } from "../messaging/account-hints";
 import { useEffect, useRef } from "react";
 import type { GrogoniMode } from "../app-shell";
 import { navigateToOwnerRoute, readCurrentOwnerRoute } from "../browser-navigation";
@@ -28,7 +29,7 @@ export function useInboxRefresh({
     let cancelled = false;
     let refreshing = false;
     const refresh = async () => {
-      if (refreshing || cancelled) return;
+      if (refreshing || cancelled || document.visibilityState === "hidden") return;
       refreshing = true;
       try {
         const notificationConversationId = new URLSearchParams(window.location.search).get(
@@ -55,7 +56,23 @@ export function useInboxRefresh({
       }
     };
     void refresh();
-    const interval = window.setInterval(() => void refresh(), 4_000);
+    let interval: ReturnType<typeof setInterval>;
+    const unsubscribe = subscribeAccountHints(
+      accountId,
+      () => void refresh(),
+      (healthy) => {
+        clearInterval(interval);
+        interval = setInterval(() => void refresh(), healthy ? 30_000 : 4_000);
+      }
+    );
+    interval = setInterval(() => void refresh(), 4_000);
+    const onVisible = () => {
+      if (document.visibilityState !== "hidden") {
+        void latest.current.retryQueuedMessages();
+        void refresh();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
     const onOnline = () => {
       void latest.current.retryQueuedMessages();
       void refresh();
@@ -71,6 +88,8 @@ export function useInboxRefresh({
     return () => {
       cancelled = true;
       window.clearInterval(interval);
+      unsubscribe();
+      document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("online", onOnline);
       navigator.serviceWorker?.removeEventListener("message", onServiceWorkerMessage);
     };

@@ -105,3 +105,45 @@ describe("application runtime manager", () => {
     );
   });
 });
+
+describe("runtime session isolation across conversations", () => {
+  it("does not restore an initialization that finishes after sign-out", async () => {
+    const manager = new RuntimeManager();
+    let finish!: (id: string) => void;
+    const pending = manager.ensureSession(
+      "account:shop:chat",
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        })
+    );
+    manager.stop();
+    finish("stale-runtime");
+    await expect(pending).rejects.toThrow("cancelled");
+    expect(manager.getSessionId("account:shop:chat")).toBeNull();
+    expect(manager.getState()).toBe("stopped");
+  });
+  it("keeps concurrent initializations and late replies bound to their own key", async () => {
+    const manager = new RuntimeManager();
+    let finishA!: (id: string) => void;
+    const a = manager.ensureSession(
+      "account:shop:chat-a",
+      () =>
+        new Promise((resolve) => {
+          finishA = resolve;
+        })
+    );
+    await expect(
+      manager.ensureSession("account:shop:chat-b", async () => "runtime-b")
+    ).resolves.toBe("runtime-b");
+    finishA("runtime-a");
+    await expect(a).resolves.toBe("runtime-a");
+    expect(manager.getSessionId("account:shop:chat-b")).toBe("runtime-b");
+    expect(manager.getSessionId("account:shop:chat-a")).toBe("runtime-a");
+    expect(
+      await manager.ensureSession("account:shop:chat-a", async () => {
+        throw new Error("must reuse");
+      })
+    ).toBe("runtime-a");
+  });
+});

@@ -1,3 +1,5 @@
+import { deviceMessagingAdapter, isNativeDeviceHost } from "./device-messaging";
+import { contactDestination, parseDevicePhonebook } from "./device-contacts";
 import type { ContactPickerContact, ContactPickerNavigator } from "./grogoni-application-shared";
 import { parseVcardContacts } from "./phonebook-vcard";
 import { parseContactImportContent } from "./contacts-import";
@@ -33,3 +35,20 @@ export async function readContactsFile(file: File): Promise<ContactPickerContact
     }))
   );
 }
+
+/** Native reads are available only after a deliberate contact-picker gesture and permission. */
+export const deviceContactsAdapter: ContactsAccessAdapter = {
+  source: "native",
+  isSupported: () => isNativeDeviceHost() || browserContactsAdapter.isSupported(),
+  async select() {
+    if (!isNativeDeviceHost()) return browserContactsAdapter.select();
+    await deviceMessagingAdapter.call("requestPermissionGroup", { id: "contacts" });
+    const phonebook = parseDevicePhonebook(await deviceMessagingAdapter.call("listContacts"));
+    // The bridge returns one row per phone and no stable contact ID. Keep those rows
+    // separate so two people with the same display name are never merged.
+    return phonebook.contacts.map((contact) => ({
+      name: [contact.name],
+      tel: [contactDestination(contact, phonebook.country)]
+    }));
+  }
+};

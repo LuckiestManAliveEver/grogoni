@@ -1047,6 +1047,7 @@ export interface DocumentExtractionResponse {
 }
 
 export interface RuntimeSessionSummary {
+  conversationId?: string;
   id: string;
   businessId: string;
   userId: string;

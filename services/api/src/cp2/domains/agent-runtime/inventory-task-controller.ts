@@ -71,8 +71,10 @@ export function createInventoryTaskController(
           "business_runtime_unavailable",
           "A durable agent runtime binding is required."
         );
+      // Never spread the caller: a conversationId would bind the task's session to a chat.
       const session = runtime.createRuntimeSession({
-        ...actor,
+        sessionId: actor.sessionId,
+        businessId: actor.businessId,
         idempotencyKey: `business-task:${taskId}`
       });
       await commitRuntime();
@@ -421,7 +423,14 @@ export function createInventoryTaskController(
         title: "Inventory replenishment",
         runtimeBindingId: effective.binding.id
       });
-      runtime.createRuntimeSession({ ...input, idempotencyKey: `business-task:${taskId}` });
+      // The task's runtime session is scoped by the task (its turns run under the task id), so it
+      // must not carry the parent chat's conversationId; spreading input would bind it to the chat
+      // and every task step would then be refused as runtime_conversation_mismatch.
+      runtime.createRuntimeSession({
+        sessionId: input.sessionId,
+        businessId: input.businessId,
+        idempotencyKey: `business-task:${taskId}`
+      });
       await commitRuntime();
       const task = await native((pool) =>
         tasks(pool).create(input, inventoryReplenishmentEnvironment, {

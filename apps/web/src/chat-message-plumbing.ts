@@ -507,8 +507,12 @@ export async function showMessageNotification(input: {
   new Notification(input.title, { body: input.body, tag: input.tag });
 }
 
-export function runtimeManagerKey(accountId: string, businessId: string): string {
-  return `${accountId}:${businessId}`;
+export function runtimeManagerKey(
+  accountId: string,
+  businessId: string,
+  conversationId?: string | null
+): string {
+  return `${accountId}:${businessId}${conversationId ? `:${conversationId}` : ""}`;
 }
 
 export function logAuthenticationLifecycle(

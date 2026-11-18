@@ -8096,9 +8096,44 @@ export class Cp2Store {
     return this.messagingDomain.listConversations(...args);
   }
   getConversation(
-    ...args: Parameters<MessagingDomain["getConversation"]>
+    input: Parameters<MessagingDomain["getConversation"]>[0] & { since?: string }
   ): ReturnType<MessagingDomain["getConversation"]> {
-    return this.messagingDomain.getConversation(...args);
+    const view = this.messagingDomain.getConversation(input);
+    const actor = this.requirePinVerifiedSession(input.sessionId, input.now ?? new Date());
+    if (input.since !== undefined && !/^\d{1,16}$/u.test(input.since))
+      throw new Cp2Error(400, "message_cursor_invalid", "Invalid message cursor.");
+    const journal = this.syncChanges.filter((change) => change.accountId === actor.account.id);
+    const cursor = journal.reduce((max, change) => Math.max(max, change.sequence), 0);
+    const oldest = journal.reduce(
+      (min, change) => Math.min(min, change.sequence),
+      Number.POSITIVE_INFINITY
+    );
+    const since = input.since === undefined ? null : Number(input.since);
+    const delta = since !== null && since <= cursor && since >= oldest;
+    const changed = new Set<string>();
+    const sequences = new Map<string, number>();
+    for (const change of journal) {
+      if (change.collection !== "conversation_messages") continue;
+      // Status updates and edits must never move an existing bubble to the end.
+      const entity = change.entity as { createdAt?: string } | null;
+      if (entity?.createdAt === change.changedAt)
+        sequences.set(
+          change.entityId,
+          Math.min(sequences.get(change.entityId) ?? Infinity, change.sequence)
+        );
+      if (!delta || change.sequence > since!) changed.add(change.entityId);
+    }
+    return {
+      ...view,
+      messageCursor: String(cursor),
+      isDelta: delta,
+      messages: view.messages
+        .filter((message) => !delta || changed.has(message.id))
+        .map((message) => ({
+          ...message,
+          ...(sequences.has(message.id) ? { serverSequence: sequences.get(message.id)! } : {})
+        }))
+    };
   }
   getConversationAttachment(
     ...args: Parameters<MessagingDomain["getConversationAttachment"]>
@@ -8162,6 +8197,18 @@ export class Cp2Store {
   createAgentConversationMessage(
     ...args: Parameters<MessagingDomain["createAgentConversationMessage"]>
   ): ReturnType<MessagingDomain["createAgentConversationMessage"]> {
+    const input = args[0];
+    if (input.runtimeSessionId !== undefined) {
+      const runtime = this.agentRuntimeDomain.runtimeSessionsMap.get(input.runtimeSessionId);
+      if (runtime?.conversationId !== undefined && runtime.conversationId !== input.conversationId)
+        return Promise.reject(
+          new Cp2Error(
+            409,
+            "runtime_conversation_mismatch",
+            "Use the runtime session belonging to this conversation."
+          )
+        );
+    }
     return this.messagingDomain.createAgentConversationMessage(...args);
   }
   listMessageDeliveryAttempts(
@@ -11660,6 +11707,23 @@ export class Cp2Store {
   createRuntimeSession(
     ...args: Parameters<AgentRuntimeDomain["createRuntimeSession"]>
   ): ReturnType<AgentRuntimeDomain["createRuntimeSession"]> {
+    const input = args[0];
+    if (input.conversationId !== undefined) {
+      const view = this.messagingDomain.getConversation({
+        sessionId: input.sessionId,
+        conversationId: input.conversationId,
+        ...(input.now ? { now: input.now } : {})
+      });
+      if (
+        view.conversation.activeShopId !== null &&
+        view.conversation.activeShopId !== input.businessId
+      )
+        throw new Cp2Error(
+          403,
+          "runtime_conversation_mismatch",
+          "This conversation belongs to another business."
+        );
+    }
     return this.agentRuntimeDomain.createRuntimeSession(...args);
   }
   listRuntimeSessions(
