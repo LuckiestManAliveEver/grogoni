@@ -54,7 +54,9 @@ Verified live: `/health/live` returns 200, `/health/db` returns 200 with
 
 With the Supabase access token and existing Neon `DATABASE_URL` in the ignored root environment
 files, run `pnpm deploy:api:supabase` to deploy and verify, or `pnpm health:api:supabase`
-to repeat the live read-only health checks without deploying. Deployment sets the
+to repeat the live read-only health checks without deploying. Deployment uploads through the
+Supabase CLI (`supabase functions deploy --use-docker`), so it needs the CLI on `PATH` (or
+`SUPABASE_CLI=/path/to/supabase`) and a running Docker daemon; see "Upload size budget" below. Deployment sets the
 `DATABASE_URL` and `WEB_ORIGINS` secrets in the Supabase project. Both are project-wide
 secrets, so other functions should not use these names for unrelated configuration.
 
@@ -173,7 +175,14 @@ resolves on its side. It is not a stable 5,000,000 bytes: on 2026-11-17 a 4,791,
 was refused three times, 13 minutes after byte-identical sources had been accepted. The upload
 file list lives in `scripts/edge-api-upload.mjs`, and the build fails when the total exceeds the
 5,000,000-byte budget set there. The build prints the total and largest files.
-Use the Supabase CLI with `--use-docker` if the Management API rejects the upload.
+
+Since 2026-11-18 the Management API refuses this function's upload persistently: a
+4,821,863-byte upload (the deployed code) and a 4,715,920-byte upload were each refused on
+every attempt, while `supabase functions deploy --use-docker` (CLI 3.2.0) deployed the same
+sources first time. `pnpm deploy:api:supabase` therefore uploads through the CLI by default
+(`scripts/supabase-cli-deploy.mjs`), passing the access token only in the CLI's environment.
+`--upload=management-api` keeps the old multipart upload as an explicit fallback. Both paths set
+the same secrets first and run the same health checks afterwards.
 
 The matching pdf.js worker is minified locally into `pdf-worker.mjs` and loaded on
 first PDF parsing. Importing its full npm package expanded the local deployment to

@@ -3,10 +3,12 @@ import { URL } from "node:url";
 import { Blob } from "node:buffer";
 import { execFileSync } from "node:child_process";
 import { edgeApiUploadFiles } from "./edge-api-upload.mjs";
+import { deployWithSupabaseCli, readUploadMethod } from "./supabase-cli-deploy.mjs";
 
 const projectRef = "gnmndzsughifhboqvsgd";
 const slug = process.argv.find((arg) => arg.startsWith("--slug="))?.slice(7) ?? "api";
 if (!["api", "api-candidate"].includes(slug)) throw new Error("Unsupported API deployment slug.");
+const uploadMethod = readUploadMethod(process.argv);
 const managementBase = `https://api.supabase.com/v1/projects/${projectRef}`;
 const functionBase = `https://${projectRef}.supabase.co/functions/v1/${slug}`;
 const token = process.env.SUPABASE_ACCESS_TOKEN?.trim();
@@ -108,30 +110,40 @@ if (process.argv.includes("--deploy")) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(messagingSecrets)
     });
-  const form = new globalThis.FormData();
-  form.append(
-    "metadata",
-    JSON.stringify({
-      name: "Grogoni API",
-      entrypoint_path: "index.ts",
-      verify_jwt: false
-    })
-  );
-  for (const filename of edgeApiUploadFiles) {
-    const source = await readFile(
-      new URL(`../supabase/functions/api/${filename}`, import.meta.url)
+  if (uploadMethod === "cli") {
+    // Default: the CLI bundles locally in Docker and uploads the result. See
+    // scripts/supabase-cli-deploy.mjs for why the Management API upload is no longer the default.
+    deployWithSupabaseCli({ slug, projectRef, token });
+  } else {
+    const form = new globalThis.FormData();
+    form.append(
+      "metadata",
+      JSON.stringify({
+        name: "Grogoni API",
+        entrypoint_path: "index.ts",
+        verify_jwt: false
+      })
     );
-    form.append("file", new Blob([source], { type: "application/typescript" }), filename);
+    for (const filename of edgeApiUploadFiles) {
+      const source = await readFile(
+        new URL(`../supabase/functions/api/${filename}`, import.meta.url)
+      );
+      form.append("file", new Blob([source], { type: "application/typescript" }), filename);
+    }
+    const deployed = await (
+      await management(`/functions/deploy?slug=${slug}`, {
+        method: "POST",
+        body: form
+      })
+    ).json();
+    console.log(
+      JSON.stringify({
+        deployed: deployed.slug,
+        status: deployed.status,
+        version: deployed.version
+      })
+    );
   }
-  const deployed = await (
-    await management(`/functions/deploy?slug=${slug}`, {
-      method: "POST",
-      body: form
-    })
-  ).json();
-  console.log(
-    JSON.stringify({ deployed: deployed.slug, status: deployed.status, version: deployed.version })
-  );
 }
 
 let failed = false;
