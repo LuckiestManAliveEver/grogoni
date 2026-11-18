@@ -3,100 +3,112 @@ import { recordRuntimeInitialization } from "./performance";
 
 export type RuntimeManagerState = "idle" | "initializing" | "ready" | "failed" | "stopped";
 
+interface RuntimeSlot {
+  sessionId: string | null;
+  exhaustedId: string | null;
+  initialization: Promise<string> | null;
+  state: RuntimeManagerState;
+  generation: number;
+}
+
 export class RuntimeManager {
-  private key: string | null = null;
-  private exhaustedSessionId: string | null = null;
-  private runtimeSessionId: string | null = null;
-  private initialization: Promise<string> | null = null;
-  private state: RuntimeManagerState = "idle";
-
-  getState(): RuntimeManagerState {
-    return this.state;
-  }
-
-  getSessionId(key: string): string | null {
-    return this.key === key ? this.runtimeSessionId : null;
-  }
-
-  async ensureSession(key: string, createSession: () => Promise<string>): Promise<string> {
-    if (this.key !== key) this.resetForKey(key);
-    if (this.runtimeSessionId === this.exhaustedSessionId) this.runtimeSessionId = null;
-    if (this.runtimeSessionId !== null) {
-      recordRuntimeInitialization("reused");
-      return this.runtimeSessionId;
+  private readonly slots = new Map<string, RuntimeSlot>();
+  private selectedKey: string | null = null;
+  private slot(key: string): RuntimeSlot {
+    this.selectedKey = key;
+    let slot = this.slots.get(key);
+    if (!slot) {
+      slot = {
+        sessionId: null,
+        exhaustedId: null,
+        initialization: null,
+        state: "idle",
+        generation: 0
+      };
+      this.slots.set(key, slot);
     }
-    if (this.initialization !== null) return this.initialization;
-
-    const startedAt = performance.now();
-    this.state = "initializing";
+    return slot;
+  }
+  getState(): RuntimeManagerState {
+    return this.selectedKey ? (this.slots.get(this.selectedKey)?.state ?? "idle") : "idle";
+  }
+  getSessionId(key: string): string | null {
+    return this.slots.get(key)?.sessionId ?? null;
+  }
+  async ensureSession(key: string, createSession: () => Promise<string>): Promise<string> {
+    const slot = this.slot(key);
+    if (slot.sessionId === slot.exhaustedId) slot.sessionId = null;
+    if (slot.sessionId !== null) {
+      recordRuntimeInitialization("reused");
+      return slot.sessionId;
+    }
+    if (slot.initialization) return slot.initialization;
+    const started = performance.now();
+    const generation = slot.generation;
+    slot.state = "initializing";
     recordRuntimeInitialization("initializing");
-    this.initialization = createSession()
-      .then((runtimeSessionId) => {
-        this.runtimeSessionId = runtimeSessionId;
-        this.state = "ready";
-        recordRuntimeInitialization("ready", performance.now() - startedAt);
-        return runtimeSessionId;
+    const initialization = createSession()
+      .then((id) => {
+        if (slot.generation !== generation)
+          throw new Error("Runtime session initialization was cancelled.");
+        slot.sessionId = id;
+        slot.state = "ready";
+        recordRuntimeInitialization("ready", performance.now() - started);
+        return id;
       })
-      .catch((error) => {
-        this.state = "failed";
-        recordRuntimeInitialization("failed", performance.now() - startedAt);
+      .catch((error: unknown) => {
+        if (slot.generation === generation) slot.state = "failed";
+        recordRuntimeInitialization("failed", performance.now() - started);
         throw error;
       })
       .finally(() => {
-        this.initialization = null;
+        if (slot.initialization === initialization) slot.initialization = null;
       });
-    return this.initialization;
+    slot.initialization = initialization;
+    return initialization;
   }
-
-  adoptSession(key: string, runtimeSessionId: string, turnCount?: number): void {
-    if (this.key !== key) this.resetForKey(key);
-    this.runtimeSessionId = runtimeSessionId;
-    if (turnCount !== undefined && turnCount >= runtimeSessionTurnLimit) {
-      this.exhaustedSessionId = runtimeSessionId;
-    }
-    this.state = "ready";
+  adoptSession(key: string, id: string, turnCount?: number): void {
+    const slot = this.slot(key);
+    slot.generation += 1;
+    slot.initialization = null;
+    slot.sessionId = id;
+    if (turnCount !== undefined && turnCount >= runtimeSessionTurnLimit) slot.exhaustedId = id;
+    slot.state = "ready";
   }
-
-  async runWithSession<TResult>(
+  async runWithSession<T>(
     key: string,
-    createSession: () => Promise<string>,
-    action: (runtimeSessionId: string) => Promise<TResult>
-  ): Promise<TResult> {
-    const runtimeSessionId = await this.ensureSession(key, createSession);
+    create: () => Promise<string>,
+    action: (id: string) => Promise<T>
+  ): Promise<T> {
+    const slot = this.slot(key);
+    const id = await this.ensureSession(key, create);
+    const generation = slot.generation;
     try {
-      const result = await action(runtimeSessionId);
-      const runtime = runtimeResultRecord(result);
-      const session = runtime?.session as { id?: unknown; turnCount?: unknown } | undefined;
-      if (typeof session?.id === "string" && Number(session.turnCount) >= runtimeSessionTurnLimit) {
-        this.exhaustedSessionId = session.id;
-      }
+      const result = await action(id);
+      if (slot.generation !== generation) return result;
+      const session = runtimeResultRecord(result)?.session as
+        { id?: unknown; turnCount?: unknown } | undefined;
+      if (typeof session?.id === "string" && Number(session.turnCount) >= runtimeSessionTurnLimit)
+        slot.exhaustedId = session.id;
       if (!isRuntimeTurnLimitResult(result)) return result;
-      // The server rejected this turn before execution; only that exact rejection is safe
-      // to repeat in a fresh session. Never repeat a completed tool or another rate limit.
-      this.runtimeSessionId = null;
-      this.state = "idle";
-      const replacement = await this.ensureSession(key, createSession);
-      return action(replacement);
+      slot.sessionId = null;
+      slot.state = "idle";
+      return action(await this.ensureSession(key, create));
     } catch (error) {
+      if (slot.generation !== generation) throw error;
       if (!isExpiredRuntimeSessionError(error)) throw error;
-      this.runtimeSessionId = null;
-      this.state = "idle";
-      const replacement = await this.ensureSession(key, createSession);
-      return action(replacement);
+      slot.sessionId = null;
+      slot.state = "idle";
+      return action(await this.ensureSession(key, create));
     }
   }
-
   stop(): void {
-    this.runtimeSessionId = null;
-    this.initialization = null;
-    this.state = "stopped";
-  }
-
-  private resetForKey(key: string): void {
-    this.key = key;
-    this.runtimeSessionId = null;
-    this.initialization = null;
-    this.state = "idle";
+    for (const slot of this.slots.values()) {
+      slot.generation += 1;
+      slot.sessionId = null;
+      slot.initialization = null;
+      slot.state = "stopped";
+    }
   }
 }
 

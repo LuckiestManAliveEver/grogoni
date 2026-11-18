@@ -4017,10 +4017,10 @@ export class MessagingDomain {
       author,
       authorId: author === "agent" ? `account-${session.account.id}-agent` : session.user.id,
       content: input.content,
-      status: selectedChannel === "grogoni" ? "delivered" : "queued",
+      status: selectedChannel === "grogoni" ? "sent" : "queued",
       queuedAt: input.queuedAt ?? (selectedChannel === "grogoni" ? null : now.toISOString()),
       sentAt: selectedChannel === "grogoni" ? now.toISOString() : null,
-      deliveredAt: selectedChannel === "grogoni" ? now.toISOString() : null,
+      deliveredAt: null,
       readAt: null,
       failureCode: selectedChannel === "grogoni" ? null : "provider_adapter_unconfigured",
       retryCount: 0,
@@ -4063,6 +4063,16 @@ export class MessagingDomain {
     this.messageDeliveryAttempts.set(attempt.id, attempt);
     this.conversations.set(conversation.id, {
       ...conversation,
+      ...(!conversation.title &&
+      !conversation.isPermanentDaemon &&
+      author === "user" &&
+      input.content.type === "text"
+        ? {
+            title:
+              Array.from(input.content.text.trim().replace(/\s+/gu, " ")).slice(0, 60).join("") ||
+              null
+          }
+        : {}),
       updatedAt: now.toISOString()
     });
     this.recordConversationSyncForParticipants(
@@ -4213,6 +4223,8 @@ export class MessagingDomain {
      * ran in the background still sorts directly under the message it answers.
      */
     replyRightAfterMessage?: boolean;
+    /** Server-only worker execution: HTTP parsers never accept this flag. */
+    runQueuedTurn?: boolean;
     now?: Date;
   }): Promise<AgentConversationMessageResult> {
     const now = input.now ?? new Date();
@@ -4295,7 +4307,7 @@ export class MessagingDomain {
       return answered;
     }
 
-    const queue = this.agentTurnQueue;
+    const queue = input.runQueuedTurn ? undefined : this.agentTurnQueue;
     const queued = queue === undefined ? null : await queue.find(message.id);
     const pending = (turnId: string): AgentConversationMessageResult => ({
       message,

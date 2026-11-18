@@ -995,6 +995,7 @@ export interface RecycleBinStatusSummary {
 }
 
 export interface ConversationMessageSummary {
+  serverSequence?: number;
   execution?: ConversationExecutionSummary;
   id: string;
   conversationId: string;
@@ -1077,6 +1078,8 @@ export interface ConversationTypingSummary {
 }
 
 export interface ConversationView {
+  messageCursor?: string;
+  isDelta?: boolean;
   conversation: ConversationSummary;
   participants: ConversationParticipantSummary[];
   messages: ConversationMessageSummary[];
@@ -2995,6 +2998,10 @@ export interface ShareableCatalogueSummary {
   businessName: string;
   productCount: number;
   updatedAt: string;
+  /** Pinned to the top of the marketplace (Jane's Shop). Absent for ordinary shops. */
+  pinned?: true;
+  /** Set when no human runs the shop: the Marketplace Agent operates it end to end. */
+  operatedBy?: "marketplace_agent";
 }
 
 /**
@@ -4415,6 +4422,7 @@ export interface RuntimeTelemetryEvent {
 export const runtimeSessionTurnLimit = 20;
 
 export interface RuntimeSessionSummary {
+  conversationId?: string;
   id: string;
   businessId: string;
   userId: string;

@@ -2,7 +2,20 @@ import { sessionCookie, type Transaction } from "./session-routes.ts";
 
 type RecordView = Record<string, unknown>;
 
-export function createPublicRoutes(transaction: Transaction) {
+/**
+ * Jane's Shop, the marketplace demo shop the Marketplace Agent runs. Pinned first in the list.
+ * Mirrors services/api/src/cp2/domains/system-shop/catalogue.ts (`systemShop.businessId`), which
+ * tests/system-shop.test.ts keeps in sync.
+ */
+export const pinnedSystemShopBusinessId = "e1c4bf59-faaf-5051-8ccd-2131d4a460f9";
+
+export function createPublicRoutes(
+  transaction: Transaction,
+  options: {
+    /** Provisions Jane's Shop if it is missing; resolves (never rejects) before listing. */
+    ensureSystemShop?: () => Promise<unknown>;
+  } = {}
+) {
   return async (request: Request, path: string): Promise<Response | null> => {
     if (
       request.method === "GET" &&
@@ -15,6 +28,7 @@ export function createPublicRoutes(transaction: Transaction) {
       if (!/^\d+$/.test(rawLimit)) return Response.json({ code: "limit_invalid" }, { status: 400 });
       const limit = Math.min(50, Math.max(1, Number(rawLimit)));
       const search = (url.searchParams.get("search") ?? "").trim().toLowerCase().slice(0, 120);
+      await options.ensureSystemShop?.().catch(() => undefined);
       return transaction(async (client) => {
         const result = await client.query(
           `
@@ -31,13 +45,14 @@ export function createPublicRoutes(transaction: Transaction) {
               or position($1 in lower(b.record->>'grogoniId')) > 0
               or exists (select 1 from cp2_products c where c.business_id = b.entity_id
                 and position($1 in lower(c.record->>'name')) > 0))
-          order by b.record->>'name' limit $2`,
-          [search, limit]
+          order by (b.entity_id = $3) desc, b.record->>'name' limit $2`,
+          [search, limit, pinnedSystemShopBusinessId]
         );
         return Response.json({
           storefronts: result.rows.map((row) => {
             const business = row.business as RecordView;
             const presence = row.presence as RecordView | null;
+            const pinned = business.id === pinnedSystemShopBusinessId;
             return {
               agentId: business.grogoniId,
               grogoniId: business.grogoniId,
@@ -46,6 +61,7 @@ export function createPublicRoutes(transaction: Transaction) {
                 .toLowerCase()
                 .replace(/^grogoni\./, "")}@grogoni.com`,
               businessName: business.name,
+              ...(pinned ? { pinned: true, operatedBy: "marketplace_agent" } : {}),
               presence: {
                 status: presence?.status ?? "online",
                 updatedAt: presence?.updatedAt ?? new Date(0).toISOString()

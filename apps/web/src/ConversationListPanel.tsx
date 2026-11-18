@@ -1,3 +1,4 @@
+import { RecipientPicker } from "./RecipientPicker";
 import { HelpConversations } from "./HelpConversations";
 import {
   conversationTitle,
@@ -70,15 +71,10 @@ export function ConversationListPanel({
   setInboxSearch,
   isNewConversationOpen,
   setIsNewConversationOpen,
-  newRecipient,
-  setNewRecipient,
-  newConversationTitle,
-  setNewConversationTitle,
   isNewSessionOpen,
   setIsNewSessionOpen,
   newSessionTitle,
   setNewSessionTitle,
-  liveDraft,
   visibleConversations,
   devicePhonebook = [],
   activeConversationId,
@@ -90,7 +86,6 @@ export function ConversationListPanel({
   onInboxOpenChange,
   onConversationPreference,
   openSmsHandoff,
-  openPlatformHandoff,
   onOpenRecycleBin,
   deletingConversationId,
   setDeletingConversationId,
@@ -147,57 +142,21 @@ export function ConversationListPanel({
         )}
       </div>
       {isNewConversationOpen && !isSessionListView ? (
-        <form
-          className="new-conversation-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            onCreateConversation(newRecipient, newConversationTitle);
-            setNewRecipient("");
-            setNewConversationTitle("");
+        <RecipientPicker
+          contacts={devicePhonebook}
+          recent={visibleConversations}
+          onChoose={(recipient, title) => {
+            onCreateConversation(recipient, title);
             setIsNewConversationOpen(false);
           }}
-        >
-          <label>
-            Phone number or email
-            <input
-              required
-              value={newRecipient}
-              onChange={(event) => setNewRecipient(event.target.value)}
-              placeholder="+254 700 000 000 or name@example.com"
-            />
-          </label>
-          <label>
-            Name
-            <input
-              value={newConversationTitle}
-              onChange={(event) => setNewConversationTitle(event.target.value)}
-              placeholder="Conversation name"
-            />
-          </label>
-          <small>
-            Grogoni chats require a registered user and are end-to-end encrypted. SMS and external
-            apps use their own privacy and delivery rules.
-          </small>
-          <div className="new-conversation-actions">
-            <button type="submit">Start encrypted chat</button>
-            <button
-              className="secondary"
-              type="button"
-              disabled={newRecipient.trim().length === 0 || liveDraft.trim().length === 0}
-              onClick={() => openSmsHandoff(newRecipient, newConversationTitle)}
-            >
-              Send as SMS
-            </button>
-            <button
-              className="secondary"
-              type="button"
-              disabled={liveDraft.trim().length === 0}
-              onClick={() => void openPlatformHandoff(newConversationTitle)}
-            >
-              Share to apps
-            </button>
-          </div>
-        </form>
+          onOpen={(id) => {
+            onSelectConversation(id);
+            setIsNewConversationOpen(false);
+            onInboxOpenChange(false);
+          }}
+          onSms={openSmsHandoff}
+          onClose={() => setIsNewConversationOpen(false)}
+        />
       ) : null}
       {isNewSessionOpen && isSessionListView ? (
         <form
@@ -432,12 +391,7 @@ export function ConversationListPanel({
             setIsNewSessionOpen((open) => !open);
             return;
           }
-          // A blank session with the shop agent, ready to type into immediately - matches
-          // "New chat" in the session-list view instead of requiring a recipient up front.
-          // Starting a chat with a specific phone/email contact is still available via
-          // "Message a phone number or email" below the search field.
-          onCreateAgentSession();
-          onInboxOpenChange(false);
+          setIsNewConversationOpen(true);
         }}
       >
         <span aria-hidden="true">+</span>

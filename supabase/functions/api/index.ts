@@ -193,12 +193,28 @@ const application = createApplicationRoutes({
     return runtime.runJob(jobName);
   }
 });
-const publicRoutes = createPublicRoutes(transaction);
+const publicRoutes = createPublicRoutes(transaction, {
+  ensureSystemShop: async () => {
+    // Never hold the landing-page list on a cold domain start: once Jane's Shop exists (every
+    // request after the first-ever provisioning) the SQL list already shows it. A cold isolate
+    // starts the domain and provisioning in the background instead.
+    if (domain === null) {
+      const background = getDomain().then((runtime) => runtime?.ensureSystemShop());
+      (
+        globalThis as { EdgeRuntime?: { waitUntil: (promise: Promise<unknown>) => void } }
+      ).EdgeRuntime?.waitUntil(background.catch(() => undefined));
+      return;
+    }
+    return domain.ensureSystemShopWithin(1500);
+  }
+});
 let domain: {
   routes: (request: Request, path: string) => Promise<Response | null>;
   daemonRoutes: (request: Request, path: string) => Promise<Response | null>;
   guestIntentRoutes: (request: Request, path: string) => Promise<Response | null>;
   runJob: (jobName: string) => Promise<EdgeJobOutcome>;
+  ensureSystemShop: () => Promise<unknown>;
+  ensureSystemShopWithin: (ms: number) => Promise<unknown>;
 } | null = null;
 let domainStartupError: string | null = null;
 let domainInitialization: Promise<typeof domain> | undefined;

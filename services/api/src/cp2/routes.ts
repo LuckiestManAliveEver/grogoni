@@ -123,6 +123,7 @@ import { HttpComputerWorkerClient } from "../computer-runtime/client.js";
 import type { InventoryTaskController } from "./domains/agent-runtime/inventory-task-controller.js";
 
 export interface Cp2RouteOptions {
+  queuedAgentTurns?: boolean;
   inventoryTaskController?: InventoryTaskController;
   businessTaskStore?: BusinessTaskStore;
   binaryUploadPipeline?: BinaryUploadPipeline;
@@ -1810,7 +1811,13 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
     }
   });
 
-  registerMessagingRoutes(app, store, oauthAllowedRedirectOrigins, options.vapidPublicKey);
+  registerMessagingRoutes(
+    app,
+    store,
+    oauthAllowedRedirectOrigins,
+    options.vapidPublicKey,
+    options.queuedAgentTurns === true
+  );
 
   app.post("/auth/logout", async (request, reply) => {
     const revoked = store.logout(readSessionCookie(request.headers.cookie));

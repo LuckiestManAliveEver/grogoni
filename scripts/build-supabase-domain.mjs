@@ -35,7 +35,10 @@ const externalPackages = new Map([
   ["pg", "npm:pg@8.22.0"],
   ["mammoth", "npm:mammoth@1.12.0"],
   ["libphonenumber-js", "npm:libphonenumber-js@1.13.9"],
-  ["libphonenumber-js/max", "npm:libphonenumber-js@1.13.9/max"]
+  ["libphonenumber-js/max", "npm:libphonenumber-js@1.13.9/max"],
+  // Pure JS with no dependencies (so no floating transitive ranges), resolved by Supabase like the
+  // packages above. Keeping its ~112 KB out of the upload gives the intermittent 413 more room.
+  ["yaml", "npm:yaml@2.9.0"]
 ]);
 await build({
   entryPoints: [
@@ -72,7 +75,7 @@ await build({
         builder.onResolve(
           {
             filter:
-              /^(baileys|@simplewebauthn\/server|fastify|@fastify\/websocket|pg|mammoth|pdf-parse|libphonenumber-js(?:\/max)?)$/
+              /^(baileys|@simplewebauthn\/server|fastify|@fastify\/websocket|pg|mammoth|pdf-parse|libphonenumber-js(?:\/max)?|yaml)$/
           },
           (args) => ({
             // Avoid shipping native canvas binaries to Edge for PDF text extraction.

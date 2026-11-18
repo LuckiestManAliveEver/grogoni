@@ -64,6 +64,7 @@ describe("snapshot request coordination", () => {
       "/auth/bootstrap",
       "/health",
       "/v1/daemon/claims",
+      "/v1/agent-turns/turn-1",
       "/v1/chat/images/read",
       "/v1/ai/turn-stream/123"
     ])

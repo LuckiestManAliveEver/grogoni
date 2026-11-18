@@ -80,7 +80,8 @@ const deployment = await (
     body: JSON.stringify({
       name: projectName,
       project: project.id,
-      target,
+      // Vercel creates a preview when target is omitted; it rejects target: "preview".
+      ...(target === "production" ? { target } : {}),
       files: uploaded,
       projectSettings: {
         framework: null,

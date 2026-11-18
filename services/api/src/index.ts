@@ -57,6 +57,10 @@ import { RETIRED_LEGACY_BINDING_TABLES } from "./cp2/retired-legacy-binding-tabl
 import { readBuildManifest } from "./build-manifest.js";
 import { createNodeGuestIntentService } from "./guest-intent/node-route.js";
 import { createCp2Store } from "./cp2/store.js";
+import {
+  logSystemShopProvision,
+  systemShopProvisioningEnabled
+} from "./cp2/domains/system-shop/provisioning.js";
 import { createWebPushSender, readWebPushConfiguration } from "./cp2/push.js";
 import { createEmailProviderFromEnvironment } from "./cp2/email-provider.js";
 import { createNetworkInviteSenderFromEnvironment } from "./cp2/network-invite-provider.js";
@@ -309,6 +313,11 @@ if (shouldUsePostgresStore) {
   );
 }
 const cp2Store = await createCp2StoreOrExplainSchemaFailure();
+// Jane's Shop, the marketplace demo shop the Marketplace Agent runs (domains/system-shop). The
+// Node store holds the full snapshot, so "absent" here really means absent.
+if (systemShopProvisioningEnabled()) {
+  logSystemShopProvision(cp2Store.provisionSystemShop(), "node");
+}
 // Cp2Store attaches its database-backed model catalog to the provider router during construction.
 // Resolve the default only after that late binding, otherwise a provider-routed default appears
 // disabled to readiness even though both its catalog model and provider are configured.
@@ -361,6 +370,7 @@ const apiOptions = {
   ...(config.metricsAuthToken === "" ? {} : { metricsAuthToken: config.metricsAuthToken }),
   cp2: {
     store: cp2Store,
+    queuedAgentTurns: shouldUsePostgresStore,
     ...(inventoryTaskController === undefined ? {} : { inventoryTaskController }),
     ...(fulfillmentPool === undefined
       ? {}

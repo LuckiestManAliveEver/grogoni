@@ -6,6 +6,8 @@ import {
   queueMessagingOutbox,
   readMessagingOutbox,
   removeMessagingOutboxEntry,
+  recordMessagingOutboxAttempt,
+  outboxEntryDue,
   type MessagingOutboxStorage
 } from "../apps/web/src/messaging/outbox";
 import {
@@ -30,6 +32,30 @@ class MemoryStorage implements MessagingOutboxStorage {
 }
 
 describe("messaging outbox", () => {
+  it("retries transport failures quickly without the model retry cap", () => {
+    const storage = new MemoryStorage();
+    queueMessagingOutbox(
+      {
+        accountId: "transport",
+        clientMessageId: "stable-id",
+        retryKind: "transport",
+        payload: { conversationId: "chat", agent: { message: "hello" } }
+      },
+      storage
+    );
+    const random = vi.spyOn(Math, "random").mockReturnValue(0.5);
+    try {
+      for (const [index, delay] of [2000, 4000, 8000, 16000, 32000, 60000, 60000].entries()) {
+        const next = recordMessagingOutboxAttempt("transport", "stable-id", 0, storage)!;
+        expect(next.attempts).toBe(index + 1);
+        expect(next.nextAttemptAt).toBe(delay);
+        expect(outboxEntryDue(next, delay)).toBe(true);
+        expect(next.clientMessageId).toBe("stable-id");
+      }
+    } finally {
+      random.mockRestore();
+    }
+  });
   it("replays browser storage journals, removes private payloads, and preserves new messages after clear", () => {
     class BrowserStorage extends MemoryStorage {
       get length() {

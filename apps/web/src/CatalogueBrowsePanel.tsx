@@ -33,6 +33,7 @@ export default function CatalogueBrowsePanel({
   const [shopProducts, setShopProducts] = useState<ShareableCatalogueProductSummary[] | null>(null);
   const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
   const [message, setMessage] = useState("");
+  const [copyProgress, setCopyProgress] = useState<{ done: number; total: number } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -90,6 +91,35 @@ export default function CatalogueBrowsePanel({
     setSelectedProductIds(new Set());
   }
 
+  /**
+   * Copies every product of a pinned shop (Jane's Shop) in batches of 50, the server's per-request
+   * limit. The server matches copies to the marketplace catalogue, so a retry after a failed batch
+   * reuses what already landed instead of duplicating it.
+   */
+  async function copyWholeCatalogue() {
+    if (activeShop === null || shopProducts === null || shopProducts.length === 0) return;
+    const ids = shopProducts.map((product) => product.id);
+    const created: ProductSummary[] = [];
+    setCopyProgress({ done: 0, total: ids.length });
+    try {
+      for (let index = 0; index < ids.length; index += 50) {
+        const batch = await postJson<ProductSummary[]>(
+          `/businesses/${businessId}/catalogue-marketplace/shops/${encodeURIComponent(activeShop.businessId)}/duplicate`,
+          { productIds: ids.slice(index, index + 50) }
+        );
+        created.push(...batch);
+        setCopyProgress({ done: Math.min(index + 50, ids.length), total: ids.length });
+      }
+    } finally {
+      setCopyProgress(null);
+    }
+    onDuplicated?.(created);
+    setMessage(
+      `All ${created.length} products from ${activeShop.businessName} are in your catalogue. They start with zero stock and no prices; products you already had were kept.`
+    );
+    setSelectedProductIds(new Set());
+  }
+
   return (
     <div className="record-form catalogue-browse-panel" aria-label="Browse shared catalogues">
       <div className="section-heading">
@@ -141,7 +171,13 @@ export default function CatalogueBrowsePanel({
                     })
                   }
                 >
+                  {shop.pinned ? <span className="pinned-shop-label">Pinned</span> : null}
                   <strong>{shop.businessName}</strong>
+                  {shop.operatedBy === "marketplace_agent" ? (
+                    <small className="pinned-shop-note">
+                      Run by the Marketplace Agent · every marketplace product, free to copy
+                    </small>
+                  ) : null}
                   <small>
                     {shop.sourceKind === "seed"
                       ? `Starter dataset · v${shop.datasetVersion}`
@@ -180,8 +216,31 @@ export default function CatalogueBrowsePanel({
                 Select up to 50 products per import. {selectedProductIds.size} of 50 selected.
                 {activeShop.sourceKind === "seed"
                   ? " Starter items have zero stock and no prices. Review units and set stock and prices after importing."
-                  : " Imported items start with zero stock. Review prices after importing."}
+                  : activeShop.pinned
+                    ? " Copied items have zero stock and no prices (the shop's demo prices are not copied). Set stock and prices after importing."
+                    : " Imported items start with zero stock. Review prices after importing."}
               </p>
+              {activeShop.pinned ? (
+                <div className="row-actions">
+                  <button
+                    type="button"
+                    disabled={isPending("catalogue-browse-copy-all")}
+                    onClick={() =>
+                      void runAction("catalogue-browse-copy-all", async () => {
+                        try {
+                          await copyWholeCatalogue();
+                        } catch (error) {
+                          setMessage(getUserFacingErrorMessage(error));
+                        }
+                      })
+                    }
+                  >
+                    {copyProgress === null
+                      ? `Copy whole catalogue (${shopProducts.length} products)`
+                      : `Copying ${copyProgress.done} of ${copyProgress.total}…`}
+                  </button>
+                </div>
+              ) : null}
               {shopProducts.map((product) => (
                 <label className="product-management-item catalogue-browse-item" key={product.id}>
                   <input

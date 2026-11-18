@@ -289,7 +289,7 @@ describe("CP11 local model adapter", () => {
       sessionCookie
     );
     expect(completed).toMatchObject({
-      status: "delivered",
+      status: "sent",
       failureCode: null,
       processing: {
         status: "completed",

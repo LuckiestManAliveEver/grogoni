@@ -174,15 +174,21 @@ export function MarketplaceModeCard({
         <div className="marketplace-directory" aria-label="Public shops">
           {publicStorefronts.map((storefront) => (
             <a
-              className="public-shop-card"
+              className={`public-shop-card${storefront.pinned ? " pinned-shop-card" : ""}`}
               href={routes.publicAgent(storefront.agentId)}
               key={storefront.agentId}
             >
               <span className={`presence-label ${storefront.presence.status}`}>
                 {storefront.presence.status}
               </span>
+              {storefront.pinned ? <span className="pinned-shop-label">Pinned</span> : null}
               <strong>{storefront.businessName}</strong>
               <small>{storefront.commerceAddress}</small>
+              {storefront.operatedBy === "marketplace_agent" ? (
+                <small className="pinned-shop-note">
+                  Demo shop run by the Marketplace Agent · demo prices, no payment
+                </small>
+              ) : null}
               <p>
                 {storefront.products.length === 0
                   ? "No public catalogue items"

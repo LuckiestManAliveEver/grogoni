@@ -105,7 +105,14 @@ import {
   readApiBaseUrl,
   readStableDeviceId
 } from "../lib/api";
-import { outboxBackoffMs, queueMessagingOutbox, readMessagingOutbox } from "../messaging/outbox";
+import {
+  outboxBackoffMs,
+  queueMessagingOutbox,
+  readMessagingOutbox,
+  removeMessagingOutboxEntry,
+  hydrateMessagingOutbox,
+  flushMessagingOutbox
+} from "../messaging/outbox";
 import {
   clearAgentReplyPlaceholders,
   placeReplyAfter,
@@ -146,8 +153,11 @@ interface UseChatRuntimeStateDeps {
   loadReports: (businessId: string) => Promise<void>;
   loadNotifications: (businessId: string) => Promise<void>;
   loadRuntimeSessions: (businessId: string) => Promise<void>;
-  createManagedRuntimeSession: () => Promise<string>;
-  ensureRuntimeSession: (setRuntimeSessionId: (sessionId: string) => void) => Promise<string>;
+  createManagedRuntimeSession: (conversationId?: string) => Promise<string>;
+  ensureRuntimeSession: (
+    setRuntimeSessionId: (sessionId: string) => void,
+    conversationId?: string
+  ) => Promise<string>;
   loadDocumentImports: (businessId: string) => Promise<void>;
   chatMessages: ChatMessage[];
   setChatMessages: Dispatch<SetStateAction<ChatMessage[]>>;
@@ -177,7 +187,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
     ensureAuthenticatedSession,
     rejectDefinitiveAuthenticationFailure,
     agentSettings,
-    setStatusMessage,
+    setStatusMessage: setVisibleStatusMessage,
     navigateToView,
     searchBuyFeed,
     registerShopFromChat,
@@ -192,13 +202,13 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
     ensureRuntimeSession,
     loadDocumentImports,
     chatMessages,
-    setChatMessages,
+    setChatMessages: setVisibleChatMessages,
     chatDraft,
-    setChatDraft,
+    setChatDraft: setVisibleChatDraft,
     pendingAttachments,
-    setPendingAttachments,
+    setPendingAttachments: setVisiblePendingAttachments,
     runtimeSessionId,
-    setRuntimeSessionId,
+    setRuntimeSessionId: setVisibleRuntimeSessionId,
     replyToMessageId,
     setReplyToMessageId,
     activeConversationId,
@@ -208,6 +218,12 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
   // The thread open now, read after an await (activeConversationId is this render's value).
   const currentConversationRef = useRef(activeConversationId);
   currentConversationRef.current = activeConversationId;
+  const setRuntimeSessionId = setVisibleRuntimeSessionId;
+  const setChatMessages = setVisibleChatMessages;
+  const setChatDraft = setVisibleChatDraft;
+  const setPendingAttachments = setVisiblePendingAttachments;
+  const setStatusMessage = setVisibleStatusMessage;
+  const acceptanceTails = useRef(new Map<string, Promise<void>>());
   // The draft as of the latest render, for decisions made after an await.
   const chatDraftRef = useRef(chatDraft);
   chatDraftRef.current = chatDraft;
@@ -226,7 +242,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
   const assistantScope = daemonChatScope(mode, business?.id ?? null, activeConversationId);
   useDaemonChatResults(session?.account.id ?? null, assistantScope, async (entry, task) => {
     if (task.payload.kind === "agent" && task.payload.conversation) {
-      await loadMessagingInbox(entry.conversationId);
+      await loadMessagingInbox(currentConversationRef.current);
       setStatusMessage(
         task.status === "failed"
           ? "Background task failed. You can retry it here."
@@ -249,10 +265,9 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       reply = mapConversationMessage(persisted, activeConversation.participants, session);
     }
     setChatMessages((messages) => {
+      if (currentConversationRef.current !== entry.conversationId) return messages;
       const delivered = messages.map((message) =>
-        message.id === entry.clientMessageId
-          ? { ...message, status: "delivered" as const }
-          : message
+        message.id === entry.clientMessageId ? { ...message, status: "sent" as const } : message
       );
       return delivered.some((message) => message.id === reply.id)
         ? delivered
@@ -267,35 +282,68 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
     );
   });
 
-  async function sendChatDraft(
+  // Acceptance belongs to the composer; reply processing runs independently in its originating
+  // conversation. A model call must never hold the browser-wide runtime handoff lock.
+  function sendChatDraft(
     draftOverride?: string,
     preferredProvider?: ChannelProvider,
     emailSubject?: string,
     emailInvoiceId?: string
-  ) {
-    const send = () =>
-      sendChatDraftOnRuntime(draftOverride, preferredProvider, emailSubject, emailInvoiceId);
-    if (
-      session &&
-      business &&
-      !activeConversation?.conversation.helpTopic &&
-      navigator.locks &&
-      !isExplicitOfflineMode()
-    ) {
-      await navigator.locks.request(
-        "grogoni-runtime-handoff",
-        { ifAvailable: true },
-        async (lock) => {
-          if (!lock) {
-            setStatusMessage(
-              "Another tab is using this runtime. Your draft is saved; wait for its turn or handoff to finish."
-            );
-            return;
-          }
-          await send();
-        }
-      );
-    } else await send();
+  ): Promise<void> {
+    const text = (draftOverride ?? chatDraftRef.current).trim();
+    const body = text || createAttachmentOnlyMessage(pendingAttachments);
+    if (!text && pendingAttachments.length === 0) return Promise.resolve();
+    const optimistic = {
+      id: createClientMessageId("message"),
+      author: "merchant" as const,
+      body,
+      createdAt: new Date().toISOString(),
+      status: "queued" as const,
+      ...(pendingAttachments.length ? { attachments: pendingAttachments } : {}),
+      replyToMessageId
+    };
+    performance.mark(`message.send.${optimistic.id}.start`);
+    setVisibleChatMessages((messages) => [...messages, optimistic]);
+    setChatDraft("");
+    setPendingAttachments([]);
+    setReplyToMessageId(null);
+    performance.mark(`message.send.${optimistic.id}.accepted`);
+    performance.measure(
+      "message.send.accepted_ms",
+      `message.send.${optimistic.id}.start`,
+      `message.send.${optimistic.id}.accepted`
+    );
+    const key = `${session?.account.id ?? "guest"}:${activeConversationId ?? "opening"}`;
+    const previous = acceptanceTails.current.get(key) ?? Promise.resolve();
+    let release!: () => void;
+    const accepted = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const tail = previous.then(() => accepted);
+    acceptanceTails.current.set(key, tail);
+    void previous
+      .then(() =>
+        sendChatDraftOnRuntime(
+          text,
+          preferredProvider,
+          emailSubject,
+          emailInvoiceId,
+          optimistic,
+          release
+        )
+      )
+      .catch((error: unknown) => {
+        if (currentConversationRef.current !== activeConversationId) return;
+        setVisibleChatMessages((messages) =>
+          messages.map((item) => (item.id === optimistic.id ? { ...item, status: "failed" } : item))
+        );
+        setStatusMessage(getErrorMessage(error));
+      })
+      .finally(() => {
+        release();
+        if (acceptanceTails.current.get(key) === tail) acceptanceTails.current.delete(key);
+      });
+    return Promise.resolve();
   }
 
   latestSend.current = sendChatDraftOnRuntime;
@@ -304,8 +352,57 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
     draftOverride?: string,
     preferredProvider?: ChannelProvider,
     emailSubject?: string,
-    emailInvoiceId?: string
+    emailInvoiceId?: string,
+    optimistic?: ChatMessage,
+    onAccepted?: () => void
   ) {
+    const setRuntimeSessionId: Dispatch<SetStateAction<string | null>> = (value) => {
+      if (currentConversationRef.current === activeConversationId)
+        setVisibleRuntimeSessionId(value);
+    };
+    const sentText = (draftOverride ?? chatDraft).trim();
+    const setStatusMessage = (message: string) => {
+      if (currentConversationRef.current === activeConversationId) setVisibleStatusMessage(message);
+    };
+    const setChatDraft: Dispatch<SetStateAction<string>> = (value) => {
+      if (currentConversationRef.current !== activeConversationId) return;
+      setVisibleChatDraft((current) =>
+        current.trim() && current.trim() !== sentText
+          ? current
+          : typeof value === "function"
+            ? value(current)
+            : value
+      );
+    };
+    const setPendingAttachments: Dispatch<SetStateAction<ChatAttachment[]>> = (value) => {
+      if (currentConversationRef.current !== activeConversationId) return;
+      setVisiblePendingAttachments((current) =>
+        current.length && current !== pendingAttachments
+          ? current
+          : typeof value === "function"
+            ? value(current)
+            : value
+      );
+    };
+    const conversationId = activeConversationId;
+    // Ignore transient writes after navigation. The persisted reply is fetched when its thread
+    // opens; never append it to whichever conversation happens to be visible now.
+    const setChatMessages: Dispatch<SetStateAction<ChatMessage[]>> = (update) => {
+      setVisibleChatMessages((previous) => {
+        if (currentConversationRef.current !== conversationId) return previous;
+        const next = typeof update === "function" ? update(previous) : update;
+        if (!optimistic) return next;
+        const replacement = next.find(
+          (item) =>
+            item.author === "merchant" &&
+            item.id !== optimistic.id &&
+            !previous.some((old) => old.id === item.id)
+        );
+        if (!replacement || !next.some((item) => item.id === optimistic.id)) return next;
+        return next.filter((item) => item.id !== optimistic.id);
+      });
+    };
+    await hydrateMessagingOutbox();
     let activeSession = session;
     if (activeSession === null) {
       const bootstrappedSession = await ensureAuthenticatedSession();
@@ -369,8 +466,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       // The box as it is now (this function's chatDraft is from the render that started the send,
       // which can be behind what the composer synced just before sending).
       const current = chatDraftRef.current.trim();
-      if (draftOverride === undefined || current.length === 0 || current === typedText)
-        setChatDraft("");
+      if (current.length === 0 || current === typedText) setChatDraft("");
     };
     const helpCommand = extractAgentHelpCommand(message);
     const agentRequest =
@@ -433,6 +529,12 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
         );
       } catch (error) {
         setChatDraft(message);
+        setPendingAttachments(attachments);
+        setChatMessages((messages) =>
+          messages.map((item) =>
+            item.id === optimistic?.id ? { ...item, status: "failed" } : item
+          )
+        );
         setStatusMessage(
           `Couldn't read the attachment. ${getErrorMessage(error)} Your draft is saved.`
         );
@@ -465,7 +567,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
         }
         setChatMessages((current) => [
           ...current,
-          { id, author: "merchant", body: message, attachments, createdAt, status: "delivered" },
+          { id, author: "merchant", body: message, attachments, createdAt, status: "sent" },
           {
             id: createClientMessageId("agent"),
             author: "grogoniclaw",
@@ -639,6 +741,10 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
             replyToMessageId,
             clientTimestamp: createdAt
           });
+        onAccepted?.();
+        setChatMessages((messages) =>
+          messages.map((item) => (item.id === clientMessageId ? { ...item, status: "sent" } : item))
+        );
         if (reminder?.kind === "clarify") {
           await reply("When should I remind you? Try “Remind me in 2 minutes to check my stock.”");
           setStatusMessage("Choose a reminder time.");
@@ -719,9 +825,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
           );
         }
         setChatMessages((messages) =>
-          messages.map((item) =>
-            item.id === clientMessageId ? { ...item, status: "delivered" } : item
-          )
+          messages.map((item) => (item.id === clientMessageId ? { ...item, status: "sent" } : item))
         );
       } catch (error) {
         setChatMessages((messages) => messages.filter((item) => item.id !== clientMessageId));
@@ -828,7 +932,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       return;
     }
 
-    const clientMessageId = createClientMessageId("message");
+    const clientMessageId = optimistic?.id ?? createClientMessageId("message");
     const merchantMessage: ChatMessage = {
       id: clientMessageId,
       author: "merchant",
@@ -838,7 +942,11 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       status: navigator.onLine ? "pending" : "failed",
       replyToMessageId
     };
-    setChatMessages((messages) => [...messages, merchantMessage]);
+    setChatMessages((messages) =>
+      messages.some((item) => item.id === clientMessageId)
+        ? messages
+        : [...messages, merchantMessage]
+    );
     setStatusMessage("Agent processing…");
     clearSentDraft();
     setPendingAttachments([]);
@@ -850,7 +958,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       if (business === null) {
         setChatMessages((messages) => [
           ...messages.map((item) =>
-            item.id === clientMessageId ? { ...item, status: "delivered" as const } : item
+            item.id === clientMessageId ? { ...item, status: "sent" as const } : item
           ),
           {
             id: createClientMessageId("agent"),
@@ -866,7 +974,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       navigateToView(localModuleCommand.view, { mode: "seller" });
       setChatMessages((messages) => [
         ...messages.map((item) =>
-          item.id === clientMessageId ? { ...item, status: "delivered" as const } : item
+          item.id === clientMessageId ? { ...item, status: "sent" as const } : item
         ),
         {
           id: createClientMessageId("agent"),
@@ -929,6 +1037,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
               ? `Message queued with ${sent.message.provider ?? preferredProvider ?? "connected channel"}. Delivery is not confirmed yet.`
               : `Sent via ${sent.message.provider ?? preferredProvider ?? "connected channel"}.`
         );
+        onAccepted?.();
         // The message went out; a failed refresh must not look like a failed send (resending
         // would use a new idempotency key and send the SMS or email twice).
         await loadMessagingInbox(activeConversationId).catch(() => undefined);
@@ -944,7 +1053,10 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
     if (!hasHumanRecipient && business !== null) {
       if (navigator.onLine) {
         try {
-          resolvedInferenceRuntimeSessionId = await ensureRuntimeSession(setRuntimeSessionId);
+          resolvedInferenceRuntimeSessionId = await ensureRuntimeSession(
+            setRuntimeSessionId,
+            activeConversationId ?? undefined
+          );
         } catch (error) {
           setChatMessages((messages) => messages.filter((item) => item.id !== clientMessageId));
           restoreDraft();
@@ -1062,7 +1174,10 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       navigator.onLine
     ) {
       try {
-        activeServerRuntimeSessionId = await ensureRuntimeSession(setRuntimeSessionId);
+        activeServerRuntimeSessionId = await ensureRuntimeSession(
+          setRuntimeSessionId,
+          activeConversationId ?? undefined
+        );
       } catch {
         setChatMessages((messages) => messages.filter((item) => item.id !== clientMessageId));
         restoreDraft();
@@ -1132,8 +1247,9 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
         accountId: activeSession.account.id,
         clientMessageId,
         payload: queuedPayload,
+        retryKind: "transport",
         attempts: 0,
-        nextAttemptAt: Date.now() + outboxBackoffMs(0)
+        nextAttemptAt: Date.now() + 1_000
       });
       const queuedCopy: ChatMessage = {
         ...merchantMessage,
@@ -1198,41 +1314,88 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
         );
         return;
       }
+      queueMessagingOutbox({
+        accountId: activeSession.account.id,
+        clientMessageId,
+        payload,
+        retryKind: "transport",
+        attempts: 0,
+        nextAttemptAt: Date.now() + 60_000
+      });
+      setChatMessages((messages) =>
+        messages.map((item) =>
+          item.id === clientMessageId ? { ...item, status: "sending" } : item
+        )
+      );
+      // Set once the server has answered with the persisted message. A later error is local (it
+      // happened while reconciling the thread), not a lost request: it must not be queued as a
+      // transport resend, which would rerun the turn on the fast schedule.
+      let persistedReceived = false;
       try {
+        await flushMessagingOutbox();
         const persisted =
           !hasHumanRecipient && business !== null && shouldRequestServerInference
             ? await withAgentTurnPreview({
                 setChatMessages,
                 onStatus: setStatusMessage,
                 run: (turnHeaders) =>
-                  runtimeManager.runWithSession(
-                    runtimeManagerKey(activeSession.account.id, business.id),
-                    createManagedRuntimeSession,
-                    (managedRuntimeSessionId) =>
-                      postJson<ProcessedConversationMessageResponse>(
-                        "/v1/messages",
-                        {
-                          ...payload,
-                          agent: {
-                            ...(payload.agent as Record<string, unknown>),
-                            runtimeSessionId: managedRuntimeSessionId
-                          }
-                        },
-                        { headers: turnHeaders, timeoutMs: 90_000 }
-                      ).then((accepted) =>
-                        // On the Edge API the reply runs after this answer: wait for it here.
-                        waitForAgentTurn(accepted, {
-                          onPending: () =>
-                            showPendingAgentReply(
-                              setChatMessages,
-                              String(payload.conversationId),
-                              accepted.id
+                  runtimeManager
+                    .runWithSession(
+                      runtimeManagerKey(
+                        activeSession.account.id,
+                        business.id,
+                        activeConversationId
+                      ),
+                      () => createManagedRuntimeSession(activeConversationId ?? undefined),
+                      (managedRuntimeSessionId) =>
+                        postJson<ProcessedConversationMessageResponse>(
+                          "/v1/messages",
+                          {
+                            ...payload,
+                            agent: {
+                              ...(payload.agent as Record<string, unknown>),
+                              runtimeSessionId: managedRuntimeSessionId
+                            }
+                          },
+                          { headers: turnHeaders, timeoutMs: 90_000 }
+                        ).then((accepted) => {
+                          onAccepted?.();
+                          removeMessagingOutboxEntry(activeSession.account.id, clientMessageId);
+                          setChatMessages((messages) =>
+                            messages.map((item) =>
+                              item.id === clientMessageId
+                                ? { ...item, id: accepted.id, status: "sent" }
+                                : item
                             )
+                          );
+                          performance.mark(`message.send.${clientMessageId}.ack`);
+                          if (
+                            performance.getEntriesByName(`message.send.${clientMessageId}.start`)
+                              .length
+                          )
+                            performance.measure(
+                              "message.send.ack_ms",
+                              `message.send.${clientMessageId}.start`,
+                              `message.send.${clientMessageId}.ack`
+                            );
+                          return accepted;
                         })
-                      )
-                  )
+                    )
+                    .then((accepted) =>
+                      waitForAgentTurn(accepted, {
+                        onPending: () =>
+                          showPendingAgentReply(
+                            setChatMessages,
+                            String(payload.conversationId),
+                            accepted.id
+                          )
+                      })
+                    )
               })
             : await postJson<ProcessedConversationMessageResponse>("/v1/messages", payload);
+        persistedReceived = true;
+        onAccepted?.();
+        removeMessagingOutboxEntry(activeSession.account.id, clientMessageId);
         const agentReply = persisted.agentMessage;
         if (currentConversation !== null || agentReply !== undefined) {
           setChatMessages((messages) => {
@@ -1240,12 +1403,12 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
               currentConversation === null
                 ? messages
                 : messages.map((item) =>
-                    item.id === clientMessageId
+                    item.id === clientMessageId || item.id === persisted.id
                       ? persisted.content.type === "encrypted"
                         ? mergePersistedEncryptedMessage(item, persisted)
                         : mapConversationMessage(
                             persisted,
-                            currentConversation.participants,
+                            currentConversation.participants ?? [],
                             activeSession
                           )
                       : item
@@ -1285,6 +1448,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
             accountId: activeSession.account.id,
             clientMessageId,
             payload,
+            retryKind: "agent-turn",
             attempts: 0,
             nextAttemptAt: Date.now() + outboxBackoffMs(0)
           });
@@ -1292,7 +1456,14 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
           agentProcessingFailed = true;
         }
       } catch (error) {
+        if (persistedReceived) {
+          // Saved on the server: the next thread refresh shows the stored copy.
+          setStatusMessage(getErrorMessage(error));
+          void loadMessagingInbox(currentConversationRef.current).catch(() => undefined);
+          return;
+        }
         if (!isRetryableApiRequestError(error)) {
+          removeMessagingOutboxEntry(activeSession.account.id, clientMessageId);
           setChatMessages((messages) => messages.filter((item) => item.id !== clientMessageId));
           restoreDraft();
           setPendingAttachments(attachments);
@@ -1308,7 +1479,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
     }
 
     if (hasHumanRecipient) {
-      await loadMessagingInbox(activeConversationId);
+      void loadMessagingInbox(currentConversationRef.current).catch(() => undefined);
       return;
     }
 
@@ -1658,15 +1829,16 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
     async function applyRuntimeResult(result: RuntimeTurnResult, appendResponse: boolean) {
       if (business !== null && session !== null) {
         runtimeManager.adoptSession(
-          runtimeManagerKey(session.account.id, business.id),
+          runtimeManagerKey(session.account.id, business.id, activeConversationId),
           result.session.id,
           result.session.turnCount
         );
       }
-      setRuntimeSessionId(result.session.id);
+      if (currentConversationRef.current === activeConversationId)
+        setRuntimeSessionId(result.session.id);
       setChatMessages((messages) =>
         messages.map((item) =>
-          item.id === clientMessageId ? { ...item, status: "delivered" as const } : item
+          item.id === clientMessageId ? { ...item, status: "sent" as const } : item
         )
       );
       if (appendResponse) {
@@ -1836,7 +2008,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
     }
 
     try {
-      const key = runtimeManagerKey(activeSession.account.id, business.id);
+      const key = runtimeManagerKey(activeSession.account.id, business.id, activeConversationId);
       const result = await withAgentTurnPreview({
         setChatMessages,
         onStatus: setStatusMessage,
@@ -1847,7 +2019,11 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
             (managedRuntimeSessionId) =>
               postJson<RuntimeTurnResult>(
                 `/businesses/${business.id}/runtime/turns`,
-                { runtimeSessionId: managedRuntimeSessionId, message: runtimeMessage },
+                {
+                  runtimeSessionId: managedRuntimeSessionId,
+                  message: runtimeMessage,
+                  ...(activeConversationId ? { conversationId: activeConversationId } : {})
+                },
                 { headers: turnHeaders, timeoutMs: 90_000 }
               )
           )
@@ -1907,15 +2083,18 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
               runtimeSessionId: scope?.runtimeSessionId ?? runtimeSessionId,
               message: "confirm",
               confirmationToken,
-              ...(scope?.conversationId ? { conversationId: scope.conversationId } : {})
+              ...((scope?.conversationId ?? activeConversationId)
+                ? { conversationId: scope?.conversationId ?? activeConversationId }
+                : {})
             },
             { headers: turnHeaders, timeoutMs: 90_000 }
           )
       });
-      setRuntimeSessionId(result.session.id);
+      if (currentConversationRef.current === activeConversationId)
+        setRuntimeSessionId(result.session.id);
       if (session !== null) {
         runtimeManager.adoptSession(
-          runtimeManagerKey(session.account.id, business.id),
+          runtimeManagerKey(session.account.id, business.id, activeConversationId),
           result.session.id,
           result.session.turnCount
         );
@@ -1965,7 +2144,9 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       await postJson(`/businesses/${business.id}/runtime/approvals/reject`, {
         runtimeSessionId: scope?.runtimeSessionId ?? runtimeSessionId,
         confirmationToken,
-        ...(scope?.conversationId ? { conversationId: scope.conversationId } : {})
+        ...((scope?.conversationId ?? activeConversationId)
+          ? { conversationId: scope?.conversationId ?? activeConversationId }
+          : {})
       });
       clearApproval(confirmationToken);
       setStatusMessage("Approval rejected. No action was executed.");

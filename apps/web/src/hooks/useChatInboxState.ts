@@ -1,3 +1,5 @@
+import { compareConversationMessages } from "../messaging/message-order";
+import { normalizedRecipient } from "../RecipientPicker";
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 
 import { currentOfflineScope, getOfflineState } from "../offline-runtime";
@@ -55,10 +57,12 @@ import {
 import { decryptDirectMessage, encryptDirectMessage, type E2eeIdentity } from "../e2ee";
 import { isRetryableApiRequestError } from "../lib/api";
 import {
+  hydrateMessagingOutbox,
   outboxEntryDue,
   type MessagingOutboxEntry,
   readMessagingOutbox,
   recordMessagingOutboxAttempt,
+  queueMessagingOutbox,
   removeMessagingOutboxEntry
 } from "../messaging/outbox";
 import { useMessagingOutboxSaveFailure } from "../messaging/useMessagingOutboxSaveFailure";
@@ -129,6 +133,8 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
   // Current values for work that outlives the render that started it (the outbox resend).
   const activeConversationRef = useRef(activeConversation);
   activeConversationRef.current = activeConversation;
+  const threadLoadGeneration = useRef(0);
+  const selectionGeneration = useRef(0);
   const activeConversationIdRef = useRef(activeConversationId);
   activeConversationIdRef.current = activeConversationId;
   const chatMessagesRef = useRef(deps.chatMessages);
@@ -153,6 +159,11 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
     setReplyToMessageId
   } = deps;
   useMessagingOutboxSaveFailure(session?.account.id ?? null, setStatusMessage);
+  useEffect(() => {
+    void hydrateMessagingOutbox().catch(() =>
+      setStatusMessage("Waiting messages could not be loaded from device storage.")
+    );
+  }, [setStatusMessage]);
 
   useEffect(() => {
     const refresh = () => {
@@ -248,8 +259,34 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
       setChatMessages(handoffChatMessages(local.messages));
       return;
     }
-    const view = await getJson<ConversationView>(`/v1/conversations/${conversationId}`);
-    if (currentAccountId.current !== session.account.id) return;
+    const requestedAt = ++threadLoadGeneration.current;
+    const cached =
+      activeConversationRef.current?.conversation.id === conversationId
+        ? activeConversationRef.current
+        : null;
+    const cursor = cached?.messageCursor;
+    const response = await getJson<ConversationView>(
+      `/v1/conversations/${conversationId}${cursor ? `?since=${encodeURIComponent(cursor)}` : ""}`
+    );
+    const merged = new Map(
+      (response.isDelta && cached ? cached.messages : []).map((message) => [message.id, message])
+    );
+    for (const message of response.messages) {
+      const previous = merged.get(message.id);
+      merged.set(message.id, {
+        ...message,
+        ...(message.serverSequence === undefined && previous?.serverSequence !== undefined
+          ? { serverSequence: previous.serverSequence }
+          : {})
+      });
+    }
+    const view = { ...response, messages: [...merged.values()].sort(compareConversationMessages) };
+
+    if (
+      currentAccountId.current !== session.account.id ||
+      requestedAt !== threadLoadGeneration.current
+    )
+      return;
     setActiveConversation(view);
     setIsContactTyping((view.typing ?? []).some((typing) => typing.actorId !== session.user.id));
     const mapped = await Promise.all(
@@ -272,6 +309,7 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
         }
       })
     );
+    if (requestedAt !== threadLoadGeneration.current) return;
     const nextMessages =
       mapped.length > 0
         ? mapped
@@ -313,6 +351,9 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
   }
 
   async function selectConversation(conversationId: string) {
+    const selection = ++selectionGeneration.current;
+    threadLoadGeneration.current += 1;
+    activeConversationIdRef.current = conversationId;
     const offlineScope = currentOfflineScope();
     if (offlineScope) {
       const local = (await getOfflineState(offlineScope)).runtimeHandoffSession;
@@ -331,6 +372,7 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
     setReplyToMessageId(null);
     setView("chat");
     const restoredMode = await applySessionContextForConversation(conversationId);
+    if (selection !== selectionGeneration.current) return;
     navigateToOwnerRoute({ mode: restoredMode ?? mode, view: "chat", conversationId });
     await loadConversationThread(conversationId);
   }
@@ -339,6 +381,13 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
   // singleton used at login) and switches to it, so the account can hold several independently
   // moded conversations with its own agent. See docs/frontend/frontend.md Phase 3.
   async function createAgentSession(title?: string) {
+    const targetId = activeConversationIdRef.current;
+    const origin =
+      activeConversationRef.current?.conversation.id === targetId
+        ? activeConversationRef.current.conversation
+        : conversationInbox.find((item) => item.id === targetId);
+    if (targetId !== null && origin === undefined)
+      throw new Error("Wait for this conversation to open before creating a session.");
     if (sessionRef.current === null) {
       const continued = await requireMessagingSignIn();
       if (continued === null) return;
@@ -346,14 +395,21 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
     }
     const created = await postJson<ConversationView>("/v1/conversations", {
       kind: "personal",
-      activeShopId: null,
+      activeShopId: origin ? origin.activeShopId : (business?.id ?? null),
+      ...(origin?.runtimeBindingId ? { runtimeBindingId: origin.runtimeBindingId } : {}),
       ...(title?.trim() ? { title: title.trim() } : {})
     });
+    if (activeConversationIdRef.current !== targetId) return;
     await loadMessagingInbox(created.conversation.id);
     await selectConversation(created.conversation.id);
   }
 
   async function createDirectConversation(recipient: string, title: string) {
+    if (!recipient.startsWith("network-node:")) {
+      const normalized = normalizedRecipient(recipient);
+      if (!normalized) throw new Error("Enter a valid phone number or email.");
+      recipient = normalized;
+    }
     if (sessionRef.current === null) {
       const continued = await requireMessagingSignIn();
       if (continued === null) return;
@@ -742,7 +798,9 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
    * two passes at the same time, in this tab or across tabs (a Web Lock where the browser has
    * one): a message would post twice.
    */
-  async function retryQueuedMessages(options: { automatic?: boolean; reconnect?: boolean } = {}) {
+  async function retryQueuedMessages(
+    options: { automatic?: boolean; reconnect?: boolean; clientMessageId?: string } = {}
+  ) {
     const mode: OutboxPass = options.reconnect
       ? "reconnect"
       : options.automatic
@@ -754,6 +812,7 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
       return;
     }
     const accountId = session.account.id;
+    await hydrateMessagingOutbox();
     const queued = readMessagingOutbox(accountId);
     if (queued.length === 0 || (mode !== "manual" && !queued.some((entry) => dueFor(entry, mode))))
       return;
@@ -764,12 +823,12 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
           `grogoni-outbox-resend:${accountId}`,
           { ifAvailable: true },
           async (lock) => {
-            if (lock) await resendQueuedMessages(accountId, mode);
+            if (lock) await resendQueuedMessages(accountId, mode, options.clientMessageId);
             else if (mode === "manual")
               setStatusMessage("Your waiting messages are being sent from another tab.");
           }
         );
-      else await resendQueuedMessages(accountId, mode);
+      else await resendQueuedMessages(accountId, mode, options.clientMessageId);
     } finally {
       outboxRetryRunning.current = false;
     }
@@ -793,14 +852,18 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
     );
   }
 
-  async function resendQueuedMessages(accountId: string, mode: OutboxPass) {
+  async function resendQueuedMessages(
+    accountId: string,
+    mode: OutboxPass,
+    clientMessageId?: string
+  ) {
     // Conversations whose earlier message is still waiting: their later ones wait too.
     const held = new Set<unknown>();
     // Read under the lock: another tab may have sent some of these meanwhile.
     for (const entry of readMessagingOutbox(accountId)) {
       const conversationId = entry.payload.conversationId;
       if (held.has(conversationId)) continue;
-      if (!dueFor(entry, mode)) {
+      if ((clientMessageId && entry.clientMessageId !== clientMessageId) || !dueFor(entry, mode)) {
         held.add(conversationId);
         continue;
       }
@@ -809,34 +872,14 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
           "/v1/messages",
           entry.payload
         );
-        // On the Edge API the reply runs after this answer; a resend of a message whose turn is
-        // still running answers with that same turn, so this waits for it rather than starting
-        // another one.
-        const sent = await waitForAgentTurn(accepted, {
-          onPending: () => {
-            if (conversationId === activeConversationIdRef.current)
-              showPendingAgentReply(setChatMessages, String(conversationId), accepted.id);
-          }
-        });
-        clearAgentReplyPlaceholders(setChatMessages, accepted.id);
-        reconcileResent(entry, sent);
-        if (sent.processing?.status === "failed") {
-          if (conversationId === activeConversationIdRef.current)
-            showFailedAgentReply(
-              setChatMessages,
-              String(conversationId),
-              accepted.id,
-              agentProcessingFailureMessage(sent.processing.errorCode)
-            );
-          setStatusMessage(agentProcessingFailureMessage(sent.processing.errorCode));
-          noteFailedResend(accountId, entry.clientMessageId);
-          held.add(conversationId);
-          continue;
-        }
         removeMessagingOutboxEntry(accountId, entry.clientMessageId);
+        reconcileResent(entry, accepted);
         forgetDeliveredDeviceOnlyMessages(accountId, [
-          { id: sent.id, clientMessageId: entry.clientMessageId, author: "merchant", body: "" }
+          { id: accepted.id, clientMessageId: entry.clientMessageId, author: "merchant", body: "" }
         ]);
+        // The lock protects transport acceptance only. Reply processing belongs to the server;
+        // following it must not block another message or another tab.
+        void followResentReply(entry, accepted);
       } catch (error) {
         if (isRetryableApiRequestError(error)) {
           noteFailedResend(accountId, entry.clientMessageId);
@@ -871,6 +914,41 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
           setStatusMessage(`Message not sent: ${getErrorMessage(error)}`);
         }
       }
+    }
+  }
+
+  async function followResentReply(
+    entry: MessagingOutboxEntry,
+    accepted: ProcessedConversationMessageResponse
+  ) {
+    const conversationId = entry.payload.conversationId;
+    try {
+      const sent = await waitForAgentTurn(accepted, {
+        onPending: () => {
+          if (conversationId === activeConversationIdRef.current)
+            showPendingAgentReply(setChatMessages, String(conversationId), accepted.id);
+        }
+      });
+      if (conversationId === activeConversationIdRef.current)
+        clearAgentReplyPlaceholders(setChatMessages, accepted.id);
+      reconcileResent(entry, sent);
+      if (sent.processing?.status === "failed") {
+        queueMessagingOutbox({ ...entry, retryKind: "agent-turn" });
+        noteFailedResend(entry.accountId, entry.clientMessageId);
+        if (conversationId === activeConversationIdRef.current) {
+          showFailedAgentReply(
+            setChatMessages,
+            String(conversationId),
+            accepted.id,
+            agentProcessingFailureMessage(sent.processing.errorCode)
+          );
+          setStatusMessage(agentProcessingFailureMessage(sent.processing.errorCode));
+        }
+      }
+    } catch (error) {
+      // Acceptance already succeeded. A failed status read must not replay the model turn.
+      if (conversationId === activeConversationIdRef.current)
+        setStatusMessage(getErrorMessage(error));
     }
   }
 

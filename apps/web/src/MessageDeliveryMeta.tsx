@@ -46,10 +46,12 @@ export function useDeliveryAttempts(activeConversationId: string | null) {
 /** Time, edit mark, delivery status, and the delivery-attempts panel under one message. */
 export function MessageDeliveryMeta({
   message,
-  attempts
+  attempts,
+  onRetry
 }: {
   message: ChatMessage;
   attempts: DeliveryAttempts;
+  onRetry?: () => void;
 }) {
   const label =
     message.author === "merchant" && message.status
@@ -66,6 +68,11 @@ export function MessageDeliveryMeta({
         {label !== null ? (
           // No role="status" here: the message list is already a polite live region.
           <span className={label.failed ? "message-status-failed" : undefined}>{label.text}</span>
+        ) : null}
+        {message.author === "merchant" && message.status === "failed" && onRetry ? (
+          <button type="button" onClick={onRetry}>
+            Retry message
+          </button>
         ) : null}
         {message.author === "merchant" &&
         message.deviceOnlyIn === undefined &&

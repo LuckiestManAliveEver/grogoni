@@ -1,3 +1,6 @@
+import { messagingOutboxStorage } from "./outbox-storage";
+import { flushMessagingOutbox as flushIndexedDbOutbox } from "./outbox-storage";
+export { hydrateMessagingOutbox } from "./outbox-storage";
 import { clearDeviceOnlyMessages } from "../chat-device-only-messages";
 
 const messagingOutboxStoragePrefix = "grogoni.messaging-outbox.v2";
@@ -11,6 +14,7 @@ export interface MessagingOutboxEntry {
   payload: Record<string, unknown>;
   /** Automatic resends tried so far (manual taps are not limited). */
   attempts?: number;
+  retryKind?: "transport" | "agent-turn";
   /** Epoch ms before which no automatic resend runs. */
   nextAttemptAt?: number;
 }
@@ -27,7 +31,10 @@ export function outboxBackoffMs(attempts: number): number {
 
 /** Whether an automatic resend may run for this entry now. */
 export function outboxEntryDue(entry: MessagingOutboxEntry, now = Date.now()): boolean {
-  return (entry.attempts ?? 0) < outboxAutomaticAttempts && (entry.nextAttemptAt ?? 0) <= now;
+  const agent = entry.retryKind !== "transport";
+  return (
+    (!agent || (entry.attempts ?? 0) < outboxAutomaticAttempts) && (entry.nextAttemptAt ?? 0) <= now
+  );
 }
 
 /** Records a failed resend: one more attempt, and the wait before the next. */
@@ -35,14 +42,18 @@ export function recordMessagingOutboxAttempt(
   accountId: string,
   clientMessageId: string,
   now = Date.now(),
-  storage: MessagingOutboxStorage = localStorage
+  storage: MessagingOutboxStorage = messagingOutboxStorage()
 ): MessagingOutboxEntry | null {
   const entry = readMessagingOutbox(accountId, storage).find(
     (candidate) => candidate.clientMessageId === clientMessageId
   );
   if (entry === undefined) return null;
   const attempts = (entry.attempts ?? 0) + 1;
-  const updated = { ...entry, attempts, nextAttemptAt: now + outboxBackoffMs(attempts) };
+  const agent = entry.retryKind !== "transport";
+  const wait = agent
+    ? outboxBackoffMs(attempts)
+    : Math.min(60_000, 1000 * 2 ** Math.min(attempts, 6)) * (0.8 + Math.random() * 0.4);
+  const updated = { ...entry, attempts, nextAttemptAt: now + Math.round(wait) };
   mutateOutbox(accountId, storage, {
     kind: "attempt",
     clientMessageId,
@@ -62,7 +73,7 @@ export interface MessagingOutboxStorage {
 
 export function readMessagingOutbox(
   accountId: string,
-  storage: MessagingOutboxStorage = localStorage
+  storage: MessagingOutboxStorage = messagingOutboxStorage()
 ): MessagingOutboxEntry[] {
   discardUnsafeLegacyOutbox(storage);
   return applyOutboxOperations(
@@ -83,7 +94,7 @@ let countMemo: { key: string; raw: string | null; count: number } | null = null;
 export function countMessagingOutbox(
   accountId: string,
   conversationId?: string | null,
-  storage: Pick<MessagingOutboxStorage, "getItem"> = localStorage
+  storage: Pick<MessagingOutboxStorage, "getItem"> = messagingOutboxStorage()
 ): number {
   try {
     const operations = pendingOutbox(storage, accountId)?.operations ?? [];
@@ -124,7 +135,7 @@ export function countMessagingOutbox(
 
 export function queueMessagingOutbox(
   entry: MessagingOutboxEntry,
-  storage: MessagingOutboxStorage = localStorage
+  storage: MessagingOutboxStorage = messagingOutboxStorage()
 ): void {
   mutateOutbox(entry.accountId, storage, { kind: "put", entry });
 }
@@ -132,14 +143,14 @@ export function queueMessagingOutbox(
 export function removeMessagingOutboxEntry(
   accountId: string,
   clientMessageId: string,
-  storage: MessagingOutboxStorage = localStorage
+  storage: MessagingOutboxStorage = messagingOutboxStorage()
 ): void {
   mutateOutbox(accountId, storage, { kind: "remove", clientMessageId });
 }
 
 export function clearMessagingOutbox(
   accountId: string,
-  storage: MessagingOutboxStorage = localStorage
+  storage: MessagingOutboxStorage = messagingOutboxStorage()
 ): void {
   // The thread copies of queued messages go with the queue.
   clearDeviceOnlyMessages(accountId, storage);
@@ -488,4 +499,12 @@ function discardUnsafeLegacyOutbox(storage: MessagingOutboxStorage): void {
   if (storage.getItem(legacyMessagingOutboxStorageKey) !== null) {
     storage.removeItem(legacyMessagingOutboxStorageKey);
   }
+}
+
+/** Wait for the cross-tab journal lock and the IndexedDB commit before submitting a message. */
+export async function flushMessagingOutbox(): Promise<void> {
+  await Promise.all([...pendingWrites].map((pending) => pending.flush));
+  if ([...pendingWrites].some((pending) => pending.operations.length > 0))
+    throw new Error("A waiting message has not been saved on this device yet.");
+  await flushIndexedDbOutbox();
 }

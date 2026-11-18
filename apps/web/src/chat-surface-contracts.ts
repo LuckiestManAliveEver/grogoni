@@ -113,7 +113,7 @@ export interface ChatSurfaceProps {
   /** Regenerating an agent reply and moving between its versions. */
   replyVersionDeps: ReplyVersionDeps;
   onForwardMessage: (messageId: string, conversationId: string) => void;
-  onRetryMessages: () => void;
+  onRetryMessages: (clientMessageId?: string) => void;
   /** Messages waiting in the outbox; the retry control shows only when this is above zero. */
   queuedMessageCount: number;
   /**

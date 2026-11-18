@@ -123,13 +123,15 @@ describe("Phase 6 model selection and business revocation", () => {
       }),
       message: { text: "Human messaging during the provider outage.", attachments: [] }
     });
-    const delivered = restored.createConversationMessage({
+    const accepted = restored.createConversationMessage({
       sessionId: a.session.id,
       conversationId: direct.conversation.id,
       clientMessageId: "outage-direct-message",
       content
     });
-    expect(delivered.status).toBe("delivered");
+    // Server acceptance is "sent"; "delivered" needs the recipient device's acknowledgement.
+    expect(accepted.status).toBe("sent");
+    expect(accepted.deliveredAt).toBeNull();
     if (content.type !== "encrypted") throw new Error("Expected encrypted content");
     expect(
       (

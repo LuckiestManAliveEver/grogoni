@@ -363,7 +363,7 @@ describe("buyer and seller assistant journeys", () => {
     await mount("seller", { id: "shop-1", name: "Shop" } as ActiveBusiness);
     await act(async () => send("A basket costs 450 shillings. What do 3 baskets cost?"));
     expect(messages.at(-1)?.body).toContain("1,350");
-    expect(messages.find((message) => message.author === "merchant")?.status).toBe("delivered");
+    expect(messages.find((message) => message.author === "merchant")?.status).toBe("sent");
     expect(requests.some((request) => request.path === "/businesses/shop-1/runtime/turns")).toBe(
       true
     );

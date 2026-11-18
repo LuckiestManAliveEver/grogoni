@@ -75,17 +75,32 @@ describe("chat with an agent reply that runs after the message was accepted", ()
     reactions: []
   });
 
-  async function run(turnAnswers: unknown[], options: { conversationOpen?: boolean } = {}) {
+  async function run(
+    turnAnswers: unknown[],
+    options: {
+      conversationOpen?: boolean;
+      poll?: (id: string) => Promise<unknown>;
+      conversationWait?: Promise<unknown>;
+      postStatus?: number;
+    } = {}
+  ) {
     const fetched: string[] = [];
+    let posted = 0;
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: string | URL | Request) => {
         const path = new URL(String(input), "http://localhost").pathname;
         fetched.push(path);
-        if (path === "/v1/messages")
+        if (path === "/v1/messages") {
+          if (options.postStatus)
+            return json(
+              { code: "message_refused", message: "Message refused." },
+              options.postStatus
+            );
+          posted += 1;
           return json({
             ...serverMessage(
-              "server-message-1",
+              `server-message-${posted}`,
               "user",
               "How are sales?",
               "2026-10-17T10:00:00.000Z"
@@ -95,15 +110,21 @@ describe("chat with an agent reply that runs after the message was accepted", ()
               status: "pending",
               errorCode: null,
               retryable: false,
-              turnId: "turn-1"
+              turnId: `turn-${posted}`
             }
           });
+        }
+        if (path === "/v1/conversations/conversation-1" && options.conversationWait)
+          return json(await options.conversationWait);
         if (path === "/v1/conversations/conversation-1")
           return json({
             conversation: { id: "conversation-1", kind: "personal", activeShopId: "shop-1" },
             participants: []
           });
-        if (path === "/v1/agent-turns/turn-1") return json(turnAnswers.shift());
+        if (path.startsWith("/v1/agent-turns/"))
+          return json(
+            options.poll ? await options.poll(path.split("/").at(-1)!) : turnAnswers.shift()
+          );
         if (path.startsWith("/v1/ai/turn-stream/")) return new Response("", { status: 204 });
         throw new Error(`Unexpected fetch to ${path}`);
       })
@@ -111,9 +132,15 @@ describe("chat with an agent reply that runs after the message was accepted", ()
     const seen: ChatMessage[][] = [];
     let send: ((draft?: string) => Promise<void>) | null = null;
     let current: ChatMessage[] = [];
+    let switchThread!: (id: string) => void;
     function Harness() {
+      const [conversationId, setConversationId] = useState("conversation-1");
       const [chatMessages, setState] = useState<ChatMessage[]>([]);
       current = chatMessages;
+      switchThread = (id) => {
+        setConversationId(id);
+        setState([]);
+      };
       // Every intermediate thread state, in order (act batches the renders themselves).
       const setChatMessages: typeof setState = (next) =>
         setState((previous) => {
@@ -166,12 +193,12 @@ describe("chat with an agent reply that runs after the message was accepted", ()
         setRuntimeSessionId: () => undefined,
         replyToMessageId: null,
         setReplyToMessageId: () => undefined,
-        activeConversationId: "conversation-1",
+        activeConversationId: conversationId,
         activeConversation:
           options.conversationOpen === false
             ? null
             : ({
-                conversation: { id: "conversation-1", kind: "personal", activeShopId: "shop-1" },
+                conversation: { id: conversationId, kind: "personal", activeShopId: "shop-1" },
                 participants: []
               } as never),
         loadMessagingInbox: async () => undefined,
@@ -187,7 +214,16 @@ describe("chat with an agent reply that runs after the message was accepted", ()
     await act(async () => {
       await send!("How are sales?");
     });
-    return { fetched, seen, current: () => current };
+    return {
+      fetched,
+      seen,
+      current: () => current,
+      send: (text: string) =>
+        act(async () => {
+          await send!(text);
+        }),
+      switchThread: (id: string) => act(() => switchThread(id))
+    };
   }
 
   it("shows a pending reply, then the reply under its message, with no refresh", async () => {
@@ -209,6 +245,16 @@ describe("chat with an agent reply that runs after the message was accepted", ()
         }
       }
     ]);
+    // Acceptance resolves before the reply; explicitly wait for the background follower.
+    await vi.waitFor(
+      async () => {
+        await act(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+        expect(result.current().some((item) => item.id === "agent-reply-1")).toBe(true);
+      },
+      { timeout: 4000 }
+    );
     const polls = result.fetched.filter((path) => path === "/v1/agent-turns/turn-1");
     expect(polls).toHaveLength(2);
     // While the turn ran, a placeholder reply sat right under the message.
@@ -276,4 +322,82 @@ describe("chat with an agent reply that runs after the message was accepted", ()
     // The retry: the same message (same clientMessageId) waits in the outbox.
     expect(readMessagingOutbox("account-1")).toHaveLength(1);
   }, 20_000);
+  it("removes a definitively refused message from the durable retry queue", async () => {
+    const result = await run([], { postStatus: 400 });
+    await vi.waitFor(async () => {
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      expect(result.fetched.filter((path) => path === "/v1/messages")).toHaveLength(1);
+      expect(result.current().filter((message) => message.author === "merchant")).toHaveLength(0);
+      expect(readMessagingOutbox("account-1")).toEqual([]);
+    });
+  });
+
+  it("accepts a second message while the first reply is blocked", async () => {
+    let release!: (value: unknown) => void;
+    const blocked = new Promise<unknown>((resolve) => {
+      release = resolve;
+    });
+    const result = await run([], { poll: () => blocked });
+    expect(result.current().find((item) => item.author === "merchant")?.status).toBe("sent");
+    await result.send("A second question");
+    await vi.waitFor(async () => {
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      expect(result.fetched.filter((path) => path === "/v1/messages")).toHaveLength(2);
+    });
+    release({
+      processing: { correlationId: "done", status: "completed", errorCode: null, retryable: false }
+    });
+    await act(async () => {
+      await blocked;
+    });
+  });
+
+  it("renders before a stalled conversation lookup and isolates a late reply after navigation", async () => {
+    let open!: (value: unknown) => void;
+    let reply!: (value: unknown) => void;
+    const conversationWait = new Promise((resolve) => {
+      open = resolve;
+    });
+    const blocked = new Promise<unknown>((resolve) => {
+      reply = resolve;
+    });
+    const result = await run([], {
+      conversationOpen: false,
+      conversationWait,
+      poll: () => blocked
+    });
+    expect(result.current().filter((item) => item.author === "merchant")).toHaveLength(1);
+    expect(result.fetched).not.toContain("/v1/messages");
+    await act(async () => {
+      open({
+        conversation: { id: "conversation-1", kind: "personal", activeShopId: "shop-1" },
+        participants: [],
+        messages: []
+      });
+      await conversationWait;
+    });
+    await result.switchThread("conversation-2");
+    await act(async () => {
+      reply({
+        agentMessage: serverMessage(
+          "late-reply",
+          "agent",
+          "Only in the original chat",
+          "2026-10-17T10:00:00.001Z"
+        ),
+        processing: {
+          correlationId: "server-message-1",
+          status: "completed",
+          errorCode: null,
+          retryable: false
+        }
+      });
+      await blocked;
+    });
+    expect(result.current()).toEqual([]);
+  });
 });

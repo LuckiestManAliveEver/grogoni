@@ -17,7 +17,21 @@ import type { PoolClient, QueryResultRow } from "pg";
 import { registerCp2Routes } from "./cp2/routes.js";
 import { createPostgresBusinessTaskStore } from "./cp2/domains/agent-runtime/business-task-store.js";
 import { createPostgresRuntimeApprovalStore } from "./cp2/domains/agent-runtime/runtime-approval-store.js";
-import { createCp2Store, readSessionCookie, type Cp2Store } from "./cp2/store.js";
+import { createCp2Store, readSessionCookie, type Cp2Snapshot, type Cp2Store } from "./cp2/store.js";
+import type { BusinessSummary, ProductSummary } from "@grogoni/shared-types";
+import {
+  logSystemShopProvision,
+  systemShopProvisioningEnabled
+} from "./cp2/domains/system-shop/provisioning.js";
+import type { SystemShopProvisionReport } from "./cp2/domains/system-shop/store.js";
+import {
+  systemShop,
+  systemShopPlannedProductFields,
+  systemShopProductPlan,
+  systemShopStockPolicy
+} from "./cp2/domains/system-shop/catalogue.js";
+import { seedCatalogue } from "./cp2/domains/catalogue-sharing/seed-catalogue.js";
+import { systemShopProvisionPath } from "./cp2/edge-snapshot-scope.js";
 import { createInventoryProcurementStore } from "./cp2/domains/agent-runtime/inventory-procurement-store.js";
 import { createBusinessTaskEvaluationReader } from "./cp2/domains/agent-runtime/business-task-evaluation-reader.js";
 import { createInventoryTaskController } from "./cp2/domains/agent-runtime/inventory-task-controller.js";
@@ -387,6 +401,8 @@ export async function createEdgeDomainRoutes(
   }
 
   /** One attempt of a request, in one transaction. */
+  /** Set once ensureSystemShop has seen or made a complete Jane's Shop in this isolate. */
+  let systemShopReady = false;
   const runAttempt = (input: AttemptInput): Promise<Response> => {
     const { request, path, url, payload, attempt, ledger } = input;
     ledger.beginAttempt();
@@ -425,9 +441,12 @@ export async function createEdgeDomainRoutes(
       // Only requests that can claim a storefront ID load the global set of taken IDs.
       const takenGrogoniIds = claimsGrogoniId(request.method, path)
         ? await loadTakenGrogoniIds(client)
-        : request.method === "GET" && path === "/public/commerce-identities/availability"
-          ? await loadTakenGrogoniIds(client, availabilityGrogoniId(url) ?? "")
-          : null;
+        : scope.systemShopInScope
+          ? // Shops and rename cooldowns holding the reserved ID, so provisioning never takes it.
+            await loadTakenGrogoniIds(client, normalizeStorefrontLookupId(systemShop.grogoniId))
+          : request.method === "GET" && path === "/public/commerce-identities/availability"
+            ? await loadTakenGrogoniIds(client, availabilityGrogoniId(url) ?? "")
+            : null;
       const nativeRecords =
         database.approvalTransaction === undefined
           ? pool
@@ -437,6 +456,7 @@ export async function createEdgeDomainRoutes(
             };
       const store: Cp2Store = createCp2Store({
         ...attemptDependencies(ledger),
+        ...(systemShopReady ? { systemShopProvisioned: true } : {}),
         ...(takenGrogoniIds === null
           ? {}
           : { externalGrogoniIdTaken: (id: string) => takenGrogoniIds.has(id) }),
@@ -782,6 +802,11 @@ export async function createEdgeDomainRoutes(
   };
 
   const routes = async (request: Request, path: string): Promise<Response | null> => {
+    // Marketplace reads show Jane's Shop from its plan once this isolate knows it exists. Shop
+    // owners' catalogue routes may provision it; buyer routes only check.
+    if (/^\/businesses\/[^/]+\/catalogue-marketplace\//.test(path))
+      await ensureSystemShopWithin(1500);
+    else if (path === "/buy/search" || path === "/buy/assistant") await checkSystemShopWithin(1500);
     const turnPoll = /^\/v1\/agent-turns\/([^/]+)$/u.exec(path);
     if (request.method === "GET" && turnPoll !== null)
       return worker.poll(request, decodeURIComponent(turnPoll[1]!));
@@ -851,12 +876,25 @@ export async function createEdgeDomainRoutes(
             const scope = await createEdgeSnapshotScope(client, searchRequest, "/buy/search");
             return loadTransactionalCp2Snapshot(client, scope);
           });
-          const catalogue = createCp2Store(storeDependencies);
+          const catalogue = createCp2Store({
+            ...storeDependencies,
+            ...(systemShopReady ? { systemShopProvisioned: true } : {})
+          });
           catalogue.hydrateSnapshot(prepareEdgeHydration(found));
+          const feed = catalogue.searchBuyFeed({ sessionId, query });
+          // Jane's Shop is never loaded here (see systemShopScopedRoute); quote its results from
+          // the plan. stripSystemShopPlanRecords keeps these rows out of what this path saves.
+          const plan = systemShopPlanRecordsFor(
+            feed.results.flatMap((result) =>
+              result.agentId === systemShop.grogoniId && result.productId !== null
+                ? [result.productId]
+                : []
+            )
+          );
           return {
-            feed: catalogue.searchBuyFeed({ sessionId, query }),
-            businesses: found.businesses,
-            products: found.products
+            feed,
+            businesses: [...found.businesses, ...plan.businesses],
+            products: [...found.products, ...plan.products]
           };
         }
       });
@@ -877,7 +915,10 @@ export async function createEdgeDomainRoutes(
             status: result.statusCode,
             headers: { "content-type": "application/json", "cache-control": "no-store" }
           });
-        const next = prepareEdgePersistence(store.snapshot(), loaded.snapshot);
+        const next = stripSystemShopPlanRecords(
+          prepareEdgePersistence(store.snapshot(), loaded.snapshot),
+          loaded.snapshot
+        );
         await edgeDatabase.transaction(async (client) => {
           const current = await createEdgeSnapshotScope(client, request, path, payload);
           if (!current.accountId || current.accountId !== loaded.scope.accountId) {
@@ -1034,6 +1075,120 @@ export async function createEdgeDomainRoutes(
       throw error;
     }
   };
+  /**
+   * Jane's Shop (domains/system-shop), at most once per isolate. One indexed query decides whether
+   * anything is missing; only then does a dedicated transaction, scoped to the shop alone and
+   * holding its tenant lock, provision it. Concurrent isolates serialize on that lock and the
+   * second sees the first's rows. Never throws: the marketplace must not fail because of it.
+   * A failure backs off exponentially (30 s doubling to 15 min) before the next attempt.
+   */
+  /** Read-only: is Jane's Shop fully provisioned? One indexed query, no lock, no writes. */
+  const systemShopComplete = (): Promise<boolean> =>
+    edgeDatabase.transaction(async (client) => {
+      const result = await client.query<{ products: string; ready: boolean }>(
+        `select (select count(*) from cp2_products where business_id = $1
+               and record->'catalogueSource'->>'datasetVersion' = $3
+               and (record->>'quantity')::numeric > 0) as products,
+             exists (select 1 from cp2_shop_presences where entity_id = $1
+               and record->>'status' = 'online' and record->>'catalogueShareable' = 'true')
+             and exists (select 1 from cp2_agent_profiles where entity_id = $1)
+             and exists (select 1 from business_memberships where business_id = $1::uuid
+               and user_id = $2::uuid and role = 'owner') as ready`,
+        [systemShop.businessId, systemShop.userId, seedCatalogue.version]
+      );
+      const row = result.rows[0];
+      // Any missing piece (an agent profile whose install failed, a presence that drifted,
+      // products not yet synced to the current seed version) reprovisions.
+      return (
+        row !== undefined && row.ready && Number(row.products) >= systemShopProductPlan().length
+      );
+    });
+  /**
+   * Buyer routes only learn whether the shop exists (memoized per isolate); they never provision.
+   * A buyer request must not write on the shop's behalf.
+   */
+  let systemShopChecked: Promise<void> | null = null;
+  let systemShopCheckRetryAt = 0;
+  const checkSystemShopWithin = (ms: number): Promise<unknown> => {
+    if (systemShopReady || !systemShopProvisioningEnabled()) return Promise.resolve();
+    if (systemShopChecked === null && Date.now() < systemShopCheckRetryAt) return Promise.resolve();
+    const recheckLater = () => {
+      systemShopChecked = null;
+      systemShopCheckRetryAt = Date.now() + 60_000;
+    };
+    systemShopChecked ??= systemShopComplete().then((complete) => {
+      if (complete) systemShopReady = true;
+      else recheckLater();
+    }, recheckLater);
+    return Promise.race([systemShopChecked, new Promise((resolve) => setTimeout(resolve, ms))]);
+  };
+  let systemShopEnsured: Promise<SystemShopProvisionReport | null> | null = null;
+  let systemShopEnsuredAt = 0;
+  let systemShopRetryAt = 0;
+  let systemShopFailures = 0;
+  const ensureSystemShop = (): Promise<SystemShopProvisionReport | null> => {
+    if (!systemShopProvisioningEnabled()) return Promise.resolve(null);
+    if (systemShopEnsured !== null && Date.now() - systemShopEnsuredAt >= 10 * 60_000)
+      systemShopEnsured = null;
+    if (systemShopEnsured === null && Date.now() < systemShopRetryAt) return Promise.resolve(null);
+    if (systemShopEnsured === null) systemShopEnsuredAt = Date.now();
+    systemShopEnsured ??= (async () => {
+      const complete = await systemShopComplete();
+      if (complete) {
+        systemShopReady = true;
+        return null;
+      }
+      const request = new Request(`https://edge.internal${systemShopProvisionPath}`, {
+        method: "POST"
+      });
+      let report: SystemShopProvisionReport | null = null;
+      await retryReadOnConflict("POST", systemShopProvisionPath, (attempt) =>
+        runAttempt({
+          request,
+          path: systemShopProvisionPath,
+          url: new URL(request.url),
+          payload: undefined,
+          attempt,
+          ledger: newLedger(null),
+          turns: null,
+          worker: async (store) => {
+            report = store.provisionSystemShop();
+            return { ...report };
+          }
+        })
+      );
+      const final = report as SystemShopProvisionReport | null;
+      if (final !== null) logSystemShopProvision(final, "edge");
+      systemShopReady = final !== null && final.status !== "blocked";
+      systemShopFailures = 0;
+      return final;
+    })().catch((error: unknown) => {
+      systemShopFailures += 1;
+      systemShopRetryAt =
+        Date.now() + Math.min(15 * 60_000, 30_000 * 2 ** (systemShopFailures - 1));
+      systemShopEnsured = null;
+      console.error(
+        JSON.stringify({
+          event: "system_shop.provision_failed",
+          runtime: "edge",
+          failures: systemShopFailures,
+          retryInMs: systemShopRetryAt - Date.now(),
+          message: error instanceof Error ? error.message : String(error)
+        })
+      );
+      return null;
+    });
+    return systemShopEnsured;
+  };
+  /** ensureSystemShop, waiting at most `ms`; the work itself carries on in the background. */
+  const ensureSystemShopWithin = (ms: number): Promise<unknown> => {
+    const work = ensureSystemShop();
+    // A first provisioning (713 product rows) can outlast the wait; keep it alive after the
+    // response so the worker is not recycled mid-transaction.
+    runtime.waitUntil?.(work);
+    return Promise.race([work, new Promise((resolve) => setTimeout(resolve, ms))]);
+  };
+
   const runJob = (jobName: string): Promise<EdgeJobOutcome> => {
     const { jobTransaction } = edgeDatabase;
     if (jobTransaction === undefined)
@@ -1205,7 +1360,9 @@ export async function createEdgeDomainRoutes(
               { status: 503 }
             )
           : null,
-    runJob
+    runJob,
+    ensureSystemShop,
+    ensureSystemShopWithin
   };
 }
 
@@ -1234,4 +1391,60 @@ function startGuestIntent(database: EdgeDomainDatabase["guestIntent"]) {
     );
     return null;
   }
+}
+
+/**
+ * Jane's Shop records derived from its seed plan, for a buyer-assistant store that cannot load the
+ * shop. Stock is the guaranteed minimum (one above the restock threshold), so a quote never
+ * promises more than the real shop always holds; confirming the checkout loads the real shop.
+ */
+export function systemShopPlanRecordsFor(productIds: string[]): {
+  businesses: BusinessSummary[];
+  products: ProductSummary[];
+} {
+  if (productIds.length === 0) return { businesses: [], products: [] };
+  const wanted = new Set(productIds);
+  const at = new Date(0).toISOString();
+  return {
+    businesses: [
+      {
+        id: systemShop.businessId,
+        name: systemShop.name,
+        language: systemShop.language,
+        grogoniId: systemShop.grogoniId
+      }
+    ],
+    products: systemShopProductPlan()
+      .filter((planned) => wanted.has(planned.id))
+      .map((planned) => ({
+        id: planned.id,
+        businessId: systemShop.businessId,
+        ...systemShopPlannedProductFields(planned),
+        aliases: [],
+        primaryMediaId: null,
+        quantity: systemShopStockPolicy.restockThreshold + 1,
+        buyingPrice: null,
+        unitWeightGrams: null,
+        fieldValues: {},
+        createdAt: at,
+        updatedAt: at
+      }))
+  };
+}
+
+/** Drops plan-derived Jane's Shop rows a scoped store gained, so they are never persisted. */
+export function stripSystemShopPlanRecords(next: Cp2Snapshot, loaded: Cp2Snapshot): Cp2Snapshot {
+  const loadedBusiness = loaded.businesses.some((b) => b.id === systemShop.businessId);
+  const loadedProducts = new Set(
+    loaded.products.filter((p) => p.businessId === systemShop.businessId).map((p) => p.id)
+  );
+  return {
+    ...next,
+    businesses: next.businesses.filter(
+      (business) => business.id !== systemShop.businessId || loadedBusiness
+    ),
+    products: next.products.filter(
+      (product) => product.businessId !== systemShop.businessId || loadedProducts.has(product.id)
+    )
+  };
 }

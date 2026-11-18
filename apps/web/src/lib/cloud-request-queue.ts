@@ -53,7 +53,7 @@ export function createCloudRequestQueue() {
 }
 
 export function isSnapshotRequest(url: string): boolean {
-  return !/\/(?:auth\/|health(?:[/?]|$)|v1\/daemon\/|v1\/chat\/images\/read(?:[/?]|$)|v1\/ai\/turn-stream\/)/u.test(
+  return !/\/(?:auth\/|health(?:[/?]|$)|v1\/daemon\/|v1\/agent-turns\/|v1\/chat\/images\/read(?:[/?]|$)|v1\/ai\/turn-stream\/)/u.test(
     url
   );
 }

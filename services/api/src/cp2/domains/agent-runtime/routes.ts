@@ -138,6 +138,7 @@ interface RuntimeSessionParams extends BusinessParams {
 }
 
 interface RuntimeSessionBody {
+  conversationId?: unknown;
   idempotencyKey?: unknown;
 }
 
@@ -929,7 +930,10 @@ export function registerAgentRuntimeRoutes(app: FastifyInstance, store: Cp2Store
         const created = store.createRuntimeSession({
           sessionId,
           businessId: request.params.businessId,
-          ...(idempotencyKey === undefined ? {} : { idempotencyKey })
+          ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
+          ...(body.conversationId === undefined
+            ? {}
+            : { conversationId: parseString(body.conversationId, "conversationId") })
         });
         request.log.info(
           {

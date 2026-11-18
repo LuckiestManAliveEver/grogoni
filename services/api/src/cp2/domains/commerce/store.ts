@@ -117,6 +117,18 @@ export interface CommerceDomainDeps {
   users: Map<string, UserSummary>;
   businesses: Map<string, BusinessSummary>;
   invoices: Map<string, InvoiceSummary>;
+  /**
+   * Called with the catalogue orders one checkout created, before the checkout is stored, so an
+   * automated seller (the system shop) can complete them and the buyer sees the final status.
+   */
+  onCatalogueOrdersCreated?: (orders: BuyOrderSummary[], now: Date) => void;
+  /** A reason to refuse every item for one seller in this checkout (system shop daily cap). */
+  catalogueOrderRefusal?: (
+    businessId: string,
+    buyerAccountId: string,
+    lines: number,
+    now: Date
+  ) => string | null;
 }
 
 export class CommerceDomain {
@@ -1332,6 +1344,22 @@ export class CommerceDomain {
         }
         continue;
       }
+      const refusal = this.deps.catalogueOrderRefusal?.(
+        business.id,
+        session.account.id,
+        items.length,
+        now
+      );
+      if (refusal) {
+        for (const item of items)
+          failures.push({
+            checkoutItemIndex: input.items.indexOf(item),
+            sourceLabel: item.sourceLabel,
+            title: item.title,
+            reason: refusal
+          });
+        continue;
+      }
       const resolved: Array<{ item: BuyCheckoutItemInput; product: ProductSummary }> = [];
       const requestedQuantities = new Map<string, number>();
       for (const item of items) {
@@ -1504,6 +1532,19 @@ export class CommerceDomain {
           unitPrice: item.price
         }))
       });
+    }
+
+    const createdOrders = handoffs.flatMap((handoff) => {
+      const order = handoff.kind === "catalogue" ? this.buyOrders.get(handoff.orderId) : undefined;
+      return order === undefined ? [] : [order];
+    });
+    if (createdOrders.length > 0 && this.deps.onCatalogueOrdersCreated) {
+      this.deps.onCatalogueOrdersCreated(createdOrders, now);
+      for (const handoff of handoffs) {
+        if (handoff.kind !== "catalogue") continue;
+        const order = this.buyOrders.get(handoff.orderId);
+        if (order !== undefined) handoff.status = order.status;
+      }
     }
 
     const checkout: UnifiedCheckoutSummary = {

@@ -1,3 +1,4 @@
+import { messageEventStream } from "./message-events.ts";
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import { Buffer } from "node:buffer";
 import { sessionCookie, type SqlClient, type Transaction } from "./session-routes.ts";
@@ -242,6 +243,12 @@ export function createApplicationRoutes({
 }: Dependencies) {
   return async (request: Request, path: string): Promise<Response | null> => {
     try {
+      if (path === "/v1/realtime/messages" && request.method === "GET")
+        return await messageEventStream(
+          request,
+          recordTransaction,
+          async () => (await recordTransaction((client) => actor(client, request))).accountId
+        );
       // Job routes check the operator token before touching the database: they are exempt
       // from the rate limit, so an unauthenticated caller must not reach a connection or lock.
       const jobRun = params(routes.jobsRun, path);

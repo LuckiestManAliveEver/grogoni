@@ -253,6 +253,8 @@ const baselineScopedCollections = new Set<SnapshotCollectionKey>([
 // persistence round trip - and blocking the response on it via app.ts's runtime GET flush wait -
 // on every capability/status poll is not worth it.
 const mutatingMethodNames = new Set([
+  // Jane's Shop at Node boot (domains/system-shop): persist immediately, not on the next write.
+  "provisionSystemShop",
   "ingestLinkedWhatsAppMessage",
   "ensureLinkedWhatsAppRuntime",
   "setLinkedToolGrants",
@@ -1368,6 +1370,7 @@ export async function createPostgresCp2Store(
       if (property === "flush") {
         return flush;
       }
+      if (property === "agentTurnDatabase") return pool;
 
       if (property === "health") {
         return health;

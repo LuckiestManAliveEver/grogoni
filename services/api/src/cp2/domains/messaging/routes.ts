@@ -1,3 +1,4 @@
+import { createNodeAgentTurns } from "../../../node-agent-turns.js";
 import { registerLinkedWhatsAppDeviceRoutes } from "../../../messaging/whatsapp-linked/device-worker-routes.js";
 import { registerLinkedWhatsAppAccountRoutes } from "../../../messaging/whatsapp-linked/account-routes.js";
 /**
@@ -227,8 +228,18 @@ export function registerMessagingRoutes(
   app: FastifyInstance,
   store: Cp2Store,
   oauthAllowedRedirectOrigins: ReadonlySet<string>,
-  vapidPublicKey: string | undefined
+  vapidPublicKey: string | undefined,
+  queuedAgentTurns = false
 ): void {
+  const turns = queuedAgentTurns
+    ? createNodeAgentTurns(store, (error, turnId) =>
+        app.log.error(
+          { turnId, errorCode: error instanceof Cp2Error ? error.code : "AGENT_TURN_FAILED" },
+          "Node agent turn failed"
+        )
+      )
+    : null;
+  if (turns) app.addHook("onClose", () => turns.close());
   registerLinkedWhatsAppRoutes(app, store);
   registerLinkedWhatsAppDeviceRoutes(app, store);
   registerLinkedWhatsAppAccountRoutes(app, store);
@@ -362,11 +373,17 @@ export function registerMessagingRoutes(
 
   app.get(
     "/v1/conversations/:conversationId",
-    async (request: FastifyRequest<{ Params: ConversationParams }>, reply) => {
+    async (
+      request: FastifyRequest<{ Params: ConversationParams; Querystring: { since?: string } }>,
+      reply
+    ) => {
       try {
         return store.getConversation({
           sessionId: readSessionCookie(request.headers.cookie),
-          conversationId: parseString(request.params.conversationId, "conversationId")
+          conversationId: parseString(request.params.conversationId, "conversationId"),
+          ...(request.query.since === undefined
+            ? {}
+            : { since: parseString(request.query.since, "since") })
         });
       } catch (error) {
         return sendCp2Error(reply, error);
@@ -561,6 +578,7 @@ export function registerMessagingRoutes(
   );
 
   app.post("/v1/messages", async (request: FastifyRequest<{ Body: CreateMessageBody }>, reply) => {
+    const acceptanceStarted = performance.now();
     try {
       const sessionId = readSessionCookie(request.headers.cookie);
       const clientTimestamp =
@@ -628,11 +646,13 @@ export function registerMessagingRoutes(
           );
           throw error;
         }
+        if (turns) processed = await turns.accept(processed);
         if (processed.processing.status === "pending") {
           // The reply runs after this request (Edge API only); the client polls the turn.
           request.log.info(
             {
               event: "agent_turn_queued",
+              acceptedMs: performance.now() - acceptanceStarted,
               correlationId: processed.processing.correlationId,
               tenantId: businessId,
               conversationId: processed.message.conversationId,
@@ -641,7 +661,16 @@ export function registerMessagingRoutes(
             },
             "Agent turn queued."
           );
-          await store.deliverPendingMessageNotifications({ messageId: processed.message.id });
+          if (turns)
+            void store
+              .deliverPendingMessageNotifications({ messageId: processed.message.id })
+              .catch(() =>
+                request.log.warn({
+                  event: "message.notification_failed",
+                  messageId: processed.message.id
+                })
+              );
+          else await store.deliverPendingMessageNotifications({ messageId: processed.message.id });
           return { ...processed.message, processing: processed.processing };
         }
         const modelPromptEvent = processed.runtime?.turn.telemetry.find(
@@ -733,11 +762,20 @@ export function registerMessagingRoutes(
     }
   });
 
-  // Agent replies that run after their message's request exist only on the Edge API, which
-  // answers this route before it reaches here (services/api/src/edge-domain-routes.ts). This API
-  // runs every turn inside its request, so no turn is ever pending here.
-  app.get("/v1/agent-turns/:turnId", async (_request, reply) =>
-    sendCp2Error(reply, new Cp2Error(404, "agent_turn_not_found", "This agent turn was not found."))
+  app.get(
+    "/v1/agent-turns/:turnId",
+    async (request: FastifyRequest<{ Params: { turnId: string } }>, reply) => {
+      try {
+        if (!turns)
+          throw new Cp2Error(404, "agent_turn_not_found", "This agent turn was not found.");
+        return await turns.poll(
+          parseString(request.params.turnId, "turnId"),
+          readSessionCookie(request.headers.cookie)
+        );
+      } catch (error) {
+        return sendCp2Error(reply, error);
+      }
+    }
   );
 
   app.get(
