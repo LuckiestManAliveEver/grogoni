@@ -159,7 +159,9 @@ try {
       ),
       "Message create"
     );
-    assert.equal(message.status, "delivered");
+    // Server acceptance is "sent"; "delivered" needs the recipient device's acknowledgement.
+    assert.equal(message.status, "sent");
+    assert.equal(message.deliveredAt, null);
     const restoredConversation = ok(
       await call(
         `/v1/conversations/${conversation.conversation.id}`,
