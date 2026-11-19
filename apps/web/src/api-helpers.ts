@@ -10,6 +10,8 @@ export async function postJson<TResponse>(
     timeoutMs?: number;
     idempotencyKey?: string;
     headers?: Record<string, string>;
+    /** Skips the one-at-a-time cloud queue. Only for a message the user just sent. */
+    urgent?: boolean;
   } = {}
 ): Promise<TResponse> {
   const response = await apiFetch<TResponse>(path, { method: "POST", body, ...options });

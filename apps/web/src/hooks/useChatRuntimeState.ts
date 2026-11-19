@@ -420,7 +420,8 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       try {
         currentConversation = await apiFetch<NonNullable<typeof activeConversation>>(
           `/v1/conversations/${activeConversationId}`,
-          { priority: true }
+          // Part of sending: the message waits on this, so it must not queue behind background reads.
+          { priority: true, urgent: true }
         );
       } catch (error) {
         setStatusMessage(getErrorMessage(error));
@@ -1357,7 +1358,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
                               runtimeSessionId: managedRuntimeSessionId
                             }
                           },
-                          { headers: turnHeaders, timeoutMs: 90_000 }
+                          { headers: turnHeaders, timeoutMs: 90_000, urgent: true }
                         ).then((accepted) => {
                           onAccepted?.();
                           removeMessagingOutboxEntry(activeSession.account.id, clientMessageId);
@@ -1392,7 +1393,9 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
                       })
                     )
               })
-            : await postJson<ProcessedConversationMessageResponse>("/v1/messages", payload);
+            : await postJson<ProcessedConversationMessageResponse>("/v1/messages", payload, {
+                urgent: true
+              });
         persistedReceived = true;
         onAccepted?.();
         removeMessagingOutboxEntry(activeSession.account.id, clientMessageId);

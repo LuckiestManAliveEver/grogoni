@@ -162,6 +162,8 @@ export async function apiFetch<T>(
     skipAuthRefresh?: boolean;
     timeoutMs?: number;
     priority?: boolean;
+    /** Skips the one-at-a-time cloud queue. Only for a message the user just sent. */
+    urgent?: boolean;
   }
 ) {
   if (isExplicitOfflineMode()) {
@@ -187,6 +189,8 @@ export async function apiCloudFetch<T>(
     skipAuthRefresh?: boolean;
     timeoutMs?: number;
     priority?: boolean;
+    /** Skips the one-at-a-time cloud queue. Only for a message the user just sent. */
+    urgent?: boolean;
   }
 ) {
   const base = readApiBaseUrl();
@@ -285,10 +289,19 @@ async function performFetch(
   url: string,
   method: string,
   headers: Record<string, string>,
-  options?: { body?: unknown; signal?: AbortSignal; timeoutMs?: number; priority?: boolean }
+  options?: {
+    body?: unknown;
+    signal?: AbortSignal;
+    timeoutMs?: number;
+    priority?: boolean;
+    urgent?: boolean;
+  }
 ): Promise<Response> {
   const run = () => performNetworkFetch(url, method, headers, options);
-  return isSnapshotRequest(url)
+  // A message the user just sent must not wait behind the startup/refresh reads queued ahead of it
+  // (measured live: ~11 s of a 15 s acknowledgement). At most one queued request is in flight, and
+  // sends are serialized per conversation, so this adds one concurrent request, not a burst.
+  return isSnapshotRequest(url) && !options?.urgent
     ? queueCloudRequest(
         run,
         options?.priority || (method !== "GET" && method !== "HEAD"),

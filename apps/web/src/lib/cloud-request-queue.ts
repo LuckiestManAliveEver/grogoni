@@ -1,7 +1,8 @@
 /** Snapshot-backed domain requests take an actor/store lock on the Edge API. Sending a shop's
  * entire startup burst together makes requests time out waiting for each other. Keep one in
  * flight per tab and let user mutations pass background reads already waiting in the queue.
- * Authentication, daemon leases and preview streams use independent paths and bypass this queue.
+ * Authentication, daemon leases and preview streams use independent paths and bypass this queue,
+ * as do the requests of a message the user just sent (`urgent` in apiFetch/postJson).
  */
 export function createCloudRequestQueue() {
   const waiting: Array<{ priority: boolean; start: () => void }> = [];
