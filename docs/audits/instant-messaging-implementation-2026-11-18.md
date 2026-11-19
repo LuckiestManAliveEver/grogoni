@@ -80,3 +80,26 @@ Same harness (`scripts/measure-instant-messaging.mjs --live`), disposable fixtur
 | 1.5 Mbps / 300 ms |                           9,665 → 46 ms |                                        14,546 ms |                                          5,252 ms |                    18 |
 
 An instrumented run on `fc357976` showed the message POST leaving the browser 14,961 ms after the tap. It had waited in the one-at-a-time cloud request queue behind startup and refresh reads; the server answered in 3.6 s. `59270f29` sends the message, and the conversation lookup it waits on, outside that queue. The remaining acknowledgement time is Edge API server time: every request measured 1.1-5 s server-side, including `/health`. Idle traffic did not fall, because `/v1/sync/changes` still polls every 3-4 s while the SSE hint stream is connected (each stream lasted about 28 s and reconnected). Inbound visibility was not measured separately; at this per-request server time it cannot be under 1 s.
+
+## Edge latency work (2026-11-19, `d13b760f`)
+
+Server-Timing and Supabase shutdown logs showed every Edge request ran on a fresh isolate: each was retired after one request (`EarlyDrop`, ~1.1 s CPU, mostly startup), so every request paid a ~0.95 s cold start. Fixed by a build-time route list, lazily loaded heavy libraries, one shared route app per isolate, and batched lock round trips (see `docs/deployment/supabase-edge-api.md`, "Request latency and isolate reuse").
+
+| Edge server time (candidate, warm) |                    Before |           After |
+| ---------------------------------- | ------------------------: | --------------: |
+| Requests per isolate               |                         1 |              ~7 |
+| `appBuild`                         |                 80-110 ms |          < 1 ms |
+| `txOpen` / `locks`                 |                59 / 45 ms |      29 / 15 ms |
+| Whole request at the Edge          | 1,550-1,750 ms (all cold) | 300-440 ms warm |
+
+Live browser measurements on grogoni.com (disposable fixtures, one sample per row):
+
+| Network profile   | Tap to bubble | Tap to HTTP acknowledgement: 2026-11-18 → `59270f29` → `d13b760f` |
+| ----------------- | ------------: | ----------------------------------------------------------------: |
+| Normal            |         77 ms |                                         18,159 → 3,242 → 2,707 ms |
+| Slow 3G           |         20 ms |                                         14,373 → 3,190 → 2,193 ms |
+| 1.5 Mbps / 300 ms |         20 ms |                                         14,546 → 5,252 → 3,387 ms |
+
+A true idle minute (measured after a 60 s settle, no sends) went from 11 to 9 API requests: reconnects of the hint stream no longer trigger a full catch-up. What remains is the stream reconnect, the deliberate 30 s fallback checks, the notifications poll and one health check.
+
+Not done, by decision: the snapshot `load` stage (~165-190 ms warm) is dominated by PostgreSQL planning a 154-arm UNION per request. Plan caching needs parameterized SQL and prepared statements through Neon's pooler; that is a production-risk change left for an explicit decision.
