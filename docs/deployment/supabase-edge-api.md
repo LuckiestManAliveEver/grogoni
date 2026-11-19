@@ -189,6 +189,40 @@ first PDF parsing. Importing its full npm package expanded the local deployment 
 35 MB and caused HTTP 413; retaining the minified worker keeps the complete bundle
 under 5 MB. The candidate must pass the live business smoke, including PDF extraction.
 
+### Request latency and isolate reuse
+
+Edge responses carry a `Server-Timing` header, and each domain request logs `edge_request_timing`
+(route template only, no identifiers). Stages: `rateLimit`, `preRoutes`, `domainInit` (waiting for
+the domain runtime; `domainImport`/`domainCreate` on a cold start), `txOpen` (connect, rate limit,
+begin, store lock), `scope`, `locks`, `load` (snapshot read), `hydrate`, `appBuild`, `handler`,
+`persist`, `total`, and `edge` (whole function). Read it from the browser's network panel or with
+`curl -D -`.
+
+Supabase retires an isolate once its CPU use passes the soft limit (shutdown reason `EarlyDrop` in
+the function logs, with `cpu_time_used`). On 2026-11-19 every isolate was retired after one request
+(~1.1 s CPU, mostly startup), so every request paid a ~0.95 s cold start. Three changes keep
+isolates alive:
+
+- The route list used for matching is generated at build time
+  (`services/api/src/edge-route-inventory.generated.ts`, `pnpm generate:edge-routes`; the Edge
+  build regenerates it and a gate test fails if it drifts) instead of registering the whole API at
+  every isolate start.
+- Large libraries that most requests never use (the Pi agent loop, mammoth, SheetJS) load on first
+  use through small local modules, so tree-shaking still applies.
+- Non-MCP requests share one Fastify route app per isolate. The per-request store and services
+  are resolved through `AsyncLocalStorage`; the context is entered in an `onRequest` hook because
+  Fastify can resume a queued inject outside its caller's context. MCP paths still build an app per
+  request, because MCP routes capture per-request protocol state when they are registered. The
+  shared app sets `externalAuthRateLimit`, since every injected request appears as `127.0.0.1` and
+  auth rates are enforced by `rate-limit.ts`.
+
+Statements without request input that must run in order are sent as one round trip (begin, lock
+timeout and store lock; tenant account and business locks). The function and Neon are ~11 ms apart.
+
+Query logs live in the Management API `analytics/endpoints/logs` endpoint, which takes ClickHouse
+SQL over one `logs` table with a `source` column (for example
+`SELECT log_attributes['reason'], count() FROM logs WHERE event_message = 'shutdown' GROUP BY 1`).
+
 ### Floating npm: dependencies
 
 Supabase resolves each `npm:` package's own dependency ranges at deploy time, not from our
