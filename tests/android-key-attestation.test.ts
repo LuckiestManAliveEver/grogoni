@@ -28,12 +28,22 @@ const real = {
   packageName: grogoniAndroidPackage,
   signerDigests: [debugSigner],
   roots: [root],
-  allowSoftware: true
+  allowSoftware: true,
+  // The fixture's remotely provisioned intermediate is short-lived (valid 2026-11-03 to
+  // 2026-11-19T10:05:08Z). Verify at a fixed instant inside every certificate's window so the
+  // suite does not start failing when that certificate expires.
+  now: new Date("2026-11-10T00:00:00Z")
 };
 
 describe("Android Key Attestation", () => {
   it("accepts a real chain", () => {
     expect(androidAttestationProblem(real)).toBeNull();
+  });
+
+  it("refuses the same chain once its remotely provisioned certificate has expired", () => {
+    expect(androidAttestationProblem({ ...real, now: new Date("2026-11-19T10:05:09Z") })).toBe(
+      "certificate_expired"
+    );
   });
 
   it.each([
