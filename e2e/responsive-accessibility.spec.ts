@@ -877,7 +877,9 @@ test("the Shop Hub opens at /sell/shop, opens modules as drawers, and closes wit
   page
 }) => {
   await page.goto("/sell");
-  const workspaceButton = page.getByRole("button", { name: "Workspace", exact: true });
+  // The seller route shares the home shell, so the Shop Hub is reached from the menu.
+  await page.getByRole("button", { name: "Open menu", exact: true }).click();
+  const workspaceButton = page.getByRole("button", { name: "Go to my shop", exact: true });
   await workspaceButton.click();
   const dialog = page.getByRole("dialog", { name: "Your shop" });
   await expect(dialog).toBeVisible();
@@ -900,7 +902,9 @@ test("the Shop Hub opens at /sell/shop, opens modules as drawers, and closes wit
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
   await expect(page).toHaveURL(/\/sell$/u);
-  await expect(workspaceButton).toBeFocused();
+  // The menu item that opened the hub is gone with the closed drawer, so focus returns to the
+  // visible control that leads back to it.
+  await expect(page.getByRole("button", { name: "Open menu", exact: true })).toBeFocused();
 });
 
 test("Ask the agent pre-fills the chat with the tool's command", async ({ page }) => {
@@ -958,7 +962,9 @@ test("the Business workspace dashboard reflows on a small screen and stays keybo
   // dashboard is reached through "Go to my shop" in the menu instead. Open it at desktop width
   // first, then shrink the viewport to check the new content's own reflow.
   await page.goto("/sell");
-  const workspaceButton = page.getByRole("button", { name: "Workspace", exact: true });
+  // The seller route shares the home shell, so the Shop Hub is reached from the menu.
+  await page.getByRole("button", { name: "Open menu", exact: true }).click();
+  const workspaceButton = page.getByRole("button", { name: "Go to my shop", exact: true });
   await workspaceButton.click();
   // Scoped by the Workspace module's own id, not accessible name: the dialog's title (and so its
   // aria-labelledby text) changes from "Your shop" to "Business workspace" once the dashboard
@@ -1023,7 +1029,9 @@ test("existing shops keep the Shop Hub out of the chat until the launcher opens 
   await page.goto("/sell");
   await expect(page.locator(".shop-hub")).toHaveCount(0);
 
-  const launcher = page.getByRole("button", { name: "Workspace", exact: true });
+  // The seller route shares the home shell, so the Shop Hub is reached from the menu.
+  await page.getByRole("button", { name: "Open menu", exact: true }).click();
+  const launcher = page.getByRole("button", { name: "Go to my shop", exact: true });
   await launcher.click();
   const dialog = page.getByRole("dialog", { name: "Your shop" });
   await expect(dialog).toBeVisible();
@@ -1033,8 +1041,10 @@ test("existing shops keep the Shop Hub out of the chat until the launcher opens 
 
   await dialog.getByRole("button", { name: "Close Your shop" }).click();
   await expect(page.locator(".shop-hub")).toHaveCount(0);
-  await expect(launcher).toBeFocused();
+  const menuButton = page.getByRole("button", { name: "Open menu", exact: true });
+  await expect(menuButton).toBeFocused();
 
+  await menuButton.click();
   await launcher.click();
   await expect(page.getByRole("dialog", { name: "Your shop" })).toHaveCount(1);
   await page.keyboard.press("Escape");
@@ -1096,7 +1106,9 @@ test("mobile composer keeps one More control and exposes secondary actions in a 
   // empty), not tucked inside the action sheet.
   await expect(page.getByRole("button", { name: "Record voice", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Take photo", exact: true })).toHaveCount(0);
-  await expect(page.getByText(/will answer$/)).toBeVisible();
+  // Same composer as the customer home: the "<agent> will answer" line stays in the DOM for
+  // assistive context but is not shown.
+  await expect(page.getByText(/will answer$/)).toBeHidden();
 
   await more.click();
   const actions = page.getByRole("dialog", { name: "More message actions" });
@@ -1349,7 +1361,10 @@ for (const viewport of viewportMatrix) {
     await expect(page.getByRole("textbox", { name: "Message" })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeVisible();
     await expectNoViewportOverflow(page);
-    await expectInteractiveControlsInsideViewport(page, page.locator("body"));
+    // Same swipeable chip strip as the customer home (see the sweep below).
+    await expectInteractiveControlsInsideViewport(page, page.locator("body"), [
+      ".home-suggestion-chips button"
+    ]);
   });
 }
 

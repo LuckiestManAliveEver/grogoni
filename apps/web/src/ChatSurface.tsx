@@ -627,8 +627,16 @@ export function ChatSurface({
                   ) : (
                     <>
                       {isAssistantSelected ? (
-                        // My Assistant is the account's own agent, not the shop's profile.
-                        permanentDaemonDisplayName
+                        // My Assistant is the account's own agent, not the shop's profile. Agent
+                        // chats have no thread header, so its name is where the details open.
+                        <button
+                          className="message-author-link"
+                          type="button"
+                          aria-label="Open My Assistant details"
+                          onClick={() => setAssistantDetailsId(activeConversationId)}
+                        >
+                          {permanentDaemonDisplayName}
+                        </button>
                       ) : (
                         <button
                           className="message-author-link"

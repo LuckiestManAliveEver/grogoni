@@ -23,8 +23,10 @@ test.beforeEach(async ({ page }) => {
 
 test("primary navigation remains local while data refreshes slowly", async ({ page }) => {
   await page.goto("/sell");
-  const workspaceButton = page.getByRole("button", { name: "Workspace", exact: true });
-  await expect(workspaceButton).toBeVisible({ timeout: 30_000 });
+  // The seller route shares the home shell; the Shop Hub opens from the menu.
+  const menuButton = page.getByRole("button", { name: "Open menu", exact: true });
+  await expect(menuButton).toBeVisible({ timeout: 30_000 });
+  const workspaceButton = page.getByRole("button", { name: "Go to my shop", exact: true });
   const shellId = await page.locator(".app-frame").getAttribute("data-shell-instance");
   const timings: Record<string, number> = {};
 
@@ -36,6 +38,7 @@ test("primary navigation remains local while data refreshes slowly", async ({ pa
     { module: "receipts", surface: "Receipts & files", dialogTitle: "Purchase receipts" },
     { module: "insights", surface: "Business summary", dialogTitle: "Reports" }
   ]) {
+    await menuButton.click();
     await workspaceButton.click();
     const hub = page.getByRole("dialog", { name: "Your shop" });
     await expect(hub).toBeVisible();
@@ -50,6 +53,7 @@ test("primary navigation remains local while data refreshes slowly", async ({ pa
 
   // Catalogue is a nested view inside the same launcher dialog (relabeled "Catalogue" instead of
   // "Your shop") rather than its own dialog - apps/web/src/workspace-panel-title.ts.
+  await menuButton.click();
   await workspaceButton.click();
   await expect(page.getByRole("dialog", { name: "Your shop" })).toBeVisible();
   await page.locator('.shop-hub-tile[data-module-id="catalog"]').click();
@@ -69,7 +73,8 @@ test("workspace and agent settings do not replace the authenticated shell", asyn
   await page.goto("/sell");
   const shellId = await page.locator(".app-frame").getAttribute("data-shell-instance");
 
-  await page.getByRole("button", { name: "Workspace", exact: true }).click();
+  await page.getByRole("button", { name: "Open menu", exact: true }).click();
+  await page.getByRole("button", { name: "Go to my shop", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Your shop" })).toBeVisible();
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Account and agent settings" }).click();
