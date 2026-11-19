@@ -1,10 +1,5 @@
-import { Agent, type AgentEvent } from "@earendil-works/pi-agent-core";
-import {
-  createAssistantMessageEventStream,
-  type AssistantMessage,
-  type Model,
-  type Usage
-} from "@earendil-works/pi-ai";
+import type { AgentEvent } from "@earendil-works/pi-agent-core";
+import type { AssistantMessage, Model, Usage } from "@earendil-works/pi-ai";
 import type { RuntimeModelCompletionResult } from "@grogoni/shared-types";
 
 import type { AgentRuntimeAdapter, AgentRuntimeExecutionInput } from "./agent-runtime-adapter.js";
@@ -26,6 +21,10 @@ export function createPiAgentRuntimeAdapter(): AgentRuntimeAdapter {
     },
     async execute(input) {
       input.signal?.throwIfAborted();
+      // Loaded on the first agent run, not at startup: evaluating pi-agent-core and pi-ai was the
+      // largest part of the Edge isolate cold start (measured ~0.7 s to import in Node), and most
+      // requests never run an agent.
+      const { Agent, createAssistantMessageEventStream } = await import("./pi-agent-loop.js");
       const events: string[] = [];
       let completion: RuntimeModelCompletionResult | undefined;
       const piModel = modelDefinition(input);

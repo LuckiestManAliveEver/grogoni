@@ -11,6 +11,18 @@ execFileSync(
   [fileURLToPath(new URL("./build-seed-catalogue.mjs", import.meta.url)), "--check"],
   { stdio: "inherit" }
 );
+// The Edge runtime matches routes against this build-time list instead of registering the whole
+// API at every isolate start (services/api/src/edge-route-inventory.ts). Regenerate it so a
+// deployment always carries the routes it was built with.
+execFileSync(
+  process.execPath,
+  [
+    "--import",
+    "tsx",
+    fileURLToPath(new URL("./generate-edge-route-inventory.ts", import.meta.url))
+  ],
+  { stdio: "inherit" }
+);
 const require = createRequire(import.meta.url);
 const viteRequire = createRequire(require.resolve("vite"));
 const { build } = viteRequire("esbuild");

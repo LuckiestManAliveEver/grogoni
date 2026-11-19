@@ -1,6 +1,4 @@
 import { createHash } from "node:crypto";
-import mammoth from "mammoth";
-import * as XLSX from "xlsx";
 import type { DocumentImportSourceInput } from "@grogoni/business-core";
 import { Cp2Error } from "./cp2-error.js";
 
@@ -141,6 +139,9 @@ export async function extractDocumentBuffer(input: {
   }
 
   if (isWord(extension, contentType)) {
+    // Loaded on first use, like pdf-parse: most requests never extract a document, and evaluating
+    // these libraries is a large part of an Edge isolate's cold start.
+    const { default: mammoth } = await import("mammoth");
     const result = await mammoth.extractRawText({ buffer: input.buffer });
     return {
       text: result.value,
@@ -150,6 +151,7 @@ export async function extractDocumentBuffer(input: {
   }
 
   if (isSpreadsheet(extension, contentType)) {
+    const XLSX = await import("./spreadsheet-reader.js");
     const workbook = XLSX.read(input.buffer, {
       type: "buffer",
       cellDates: false,

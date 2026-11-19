@@ -10,7 +10,15 @@ import { registerChatImageRoutes } from "./cp2/chat-image-routes.js";
 import Fastify from "fastify";
 import websocket from "@fastify/websocket";
 import { registerMcpRoutes, createMcpRouteState } from "./mcp/routes.js";
+import { edgeRouteInventory } from "./edge-route-inventory.generated.js";
 import { isValidTurnId, turnContext } from "./inference/turn-stream.js";
+import {
+  currentRequestTiming,
+  recordStage,
+  runWithRequestTiming,
+  serverTimingHeader,
+  timeStage
+} from "./edge-request-timing.js";
 import { Cp2Error } from "./cp2/cp2-error.js";
 import { createEmailProviderFromEnvironment } from "./cp2/email-provider.js";
 import type { PoolClient, QueryResultRow } from "pg";
@@ -283,6 +291,13 @@ function requestsAgentTurn(payload: Buffer | undefined): boolean {
   }
 }
 
+/** The route with identifiers removed, so timing logs carry no account or record ids. */
+function routeTemplate(path: string): string {
+  return path
+    .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/giu, ":id")
+    .replace(/\/\d+(?=\/|$)/gu, "/:n");
+}
+
 export async function createEdgeDomainRoutes(
   edgeDatabase: EdgeDomainDatabase,
   runtime: EdgeDomainRuntime = {}
@@ -291,22 +306,9 @@ export async function createEdgeDomainRoutes(
   const storeDependencies = createEdgeStoreDependencies();
   // Parsed once: an invalid value fails startup (readiness), not every request.
   const fulfillmentRetentionHours = readFulfillmentRetentionHours();
-  // Only route metadata is shared. Every request gets fresh state and a transaction.
-  const inventoryApp = Fastify({ logger: false });
-  await inventoryApp.register(websocket);
-  const inventory: { method: string; path: string; websocket: boolean }[] = [];
-  inventoryApp.addHook("onRoute", (route) => {
-    for (const method of Array.isArray(route.method) ? route.method : [route.method])
-      inventory.push({ method, path: route.url, websocket: route.websocket === true });
-  });
-  const inventoryStore = registerCp2Routes(inventoryApp);
-  registerMcpRoutes(inventoryApp, {
-    store: inventoryStore,
-    allowedOrigins: [],
-    publicOrigin: "https://grogoni.com/api"
-  });
-  await inventoryApp.ready();
-  await inventoryApp.close();
+  // Only route metadata is shared. Every request gets fresh state and a transaction. The route
+  // list is generated at build time (edge-route-inventory.ts explains why it is not built here).
+  const inventory = edgeRouteInventory;
   const patterns = inventory.map((route) => ({
     ...route,
     pattern: new RegExp(
@@ -407,9 +409,15 @@ export async function createEdgeDomainRoutes(
     const { request, path, url, payload, attempt, ledger } = input;
     ledger.beginAttempt();
     const database = trackIndependentWork(edgeDatabase, attempt, ledger);
+    const attemptStartedAt = performance.now();
 
     return database.transaction(async (client) => {
-      const scope = await createEdgeSnapshotScope(client, request, path, payload);
+      // Pool connect, rate limit, begin and the shared store lock (supabase/functions/api/index.ts).
+      recordStage("txOpen", performance.now() - attemptStartedAt);
+      const scope = await timeStage("scope", () =>
+        createEdgeSnapshotScope(client, request, path, payload)
+      );
+      const locksStartedAt = performance.now();
       // GET handlers also refresh sessions, mark messages read and initialize runtime defaults.
       // Their snapshots must be loaded after the same tenant locks as explicit writes.
       {
@@ -437,6 +445,7 @@ export async function createEdgeDomainRoutes(
           );
         }
       }
+      recordStage("locks", performance.now() - locksStartedAt);
       const pool = transactionPool(client);
       // Only requests that can claim a storefront ID load the global set of taken IDs.
       const takenGrogoniIds = claimsGrogoniId(request.method, path)
@@ -482,7 +491,7 @@ export async function createEdgeDomainRoutes(
         conversationAttachmentBlobStore: createPostgresAttachmentBlobStore(pool),
         accountAiAssetStore: createPostgresAccountAiAssetStore(pool)
       });
-      const snapshot = await loadTransactionalCp2Snapshot(client, scope);
+      const snapshot = await timeStage("load", () => loadTransactionalCp2Snapshot(client, scope));
       let baseline = snapshot;
       let independentlyCommitted = false;
       // Final offline change sequence numbers given in this request (allocateOfflineSequences).
@@ -499,6 +508,7 @@ export async function createEdgeDomainRoutes(
         await saveTransactionalCp2Snapshot(target, next, previous);
       };
       // A write may allocate offline change sequences, which are unique across all shops.
+      const hydrateStartedAt = performance.now();
       store.hydrateSnapshot(
         prepareEdgeHydration(
           snapshot,
@@ -507,6 +517,7 @@ export async function createEdgeDomainRoutes(
             : await offlineSequenceHighWater(client)
         )
       );
+      recordStage("hydrate", performance.now() - hydrateStartedAt);
       // Loading fills message defaults; that alone must not count as this request's change.
       baseline = rebaseLoadNormalizedCollections(snapshot, store.snapshot(), [
         "conversationMessages"
@@ -551,7 +562,9 @@ export async function createEdgeDomainRoutes(
           settle: (messageId, result) => settleAnsweredAgentTurn(pool, messageId, result)
         });
       // Saves what this attempt changed, then the follow-up work its writes queued.
-      const persistAttempt = async (pendingActions: (() => Promise<unknown>)[]) => {
+      const persistAttempt = (pendingActions: (() => Promise<unknown>)[]) =>
+        timeStage("persist", () => persistAttemptUntimed(pendingActions));
+      const persistAttemptUntimed = async (pendingActions: (() => Promise<unknown>)[]) => {
         const afterRoutes = prepareEdgePersistence(store.snapshot(), baseline);
         // A repeatable-read outer snapshot cannot CAS rows committed by the task's own
         // independent transaction. Keep its final chat acknowledgement on that same path.
@@ -655,6 +668,7 @@ export async function createEdgeDomainRoutes(
           throw error;
         }
       }
+      const appBuildStartedAt = performance.now();
       const app = Fastify({ logger: false, bodyLimit: 15_000_000 });
       app.addHook("onError", async (failedRequest, reply, error) => {
         if ((error.statusCode ?? 500) < 500) return;
@@ -744,6 +758,7 @@ export async function createEdgeDomainRoutes(
           allowedOrigins: (process.env.WEB_ORIGINS ?? "https://grogoni.com").split(","),
           publicOrigin: `${(process.env.WEB_PUBLIC_URL ?? "https://grogoni.com").replace(/\/+$/, "")}/api`
         });
+        recordStage("appBuild", performance.now() - appBuildStartedAt);
         const headers = Object.fromEntries(request.headers);
         delete headers["content-length"];
         if (payload === undefined) delete headers["content-type"];
@@ -756,9 +771,9 @@ export async function createEdgeDomainRoutes(
             ...(payload === undefined ? {} : { payload })
           });
         const turnId = request.headers.get("x-grogoni-turn-id");
-        const result = isValidTurnId(turnId)
-          ? await turnContext.run({ turnId }, inject)
-          : await inject();
+        const result = await timeStage("handler", () =>
+          isValidTurnId(turnId) ? turnContext.run({ turnId }, inject) : inject()
+        );
         // The route needed a model call it had no answer for: roll everything back (nothing is
         // saved), make the call with no transaction open, and run the request again.
         if (ledger.pending !== null) throw new AttemptNeedsModelCall(attempt.independentWork);
@@ -955,45 +970,69 @@ export async function createEdgeDomainRoutes(
     const agentTurn =
       request.method === "POST" && path === "/v1/messages" && requestsAgentTurn(payload);
     const ledger = newLedger(streamTurnId);
-    for (;;) {
-      const dispatch: string[] = [];
-      try {
-        const response = await retryReadOnConflict(request.method, path, (attempt) =>
-          runAttempt({
-            request,
-            path,
-            url,
-            payload,
-            attempt,
-            ledger,
-            turns: agentTurn ? { dispatch, streamTurnId } : null
+    return runWithRequestTiming(async () => {
+      const response = await runDomainRequest();
+      const timing = currentRequestTiming();
+      if (timing !== undefined) {
+        const header = serverTimingHeader(timing);
+        response.headers.set("Server-Timing", header);
+        console.log(
+          JSON.stringify({
+            event: "edge_request_timing",
+            method: request.method,
+            route: routeTemplate(path),
+            status: response.status,
+            serverTiming: header
           })
         );
-        // Committed: start the queued turn in the background.
-        for (const turnId of dispatch) worker.dispatch(turnId);
-        return response;
-      } catch (error) {
-        if (!(error instanceof AttemptNeedsModelCall)) throw error;
-        if (error.independentWork) {
-          console.error(
-            JSON.stringify({ event: "edge_model_call_after_commit", method: request.method, path })
-          );
-          return Response.json(
-            {
-              code: "service_unavailable",
-              message: "The service is temporarily unavailable."
-            },
-            { status: 503 }
-          );
-        }
+      }
+      return response;
+    });
+    async function runDomainRequest(): Promise<Response> {
+      for (;;) {
+        const dispatch: string[] = [];
         try {
-          await ledger.callLive(request.signal);
-        } catch (failure) {
-          if (!(failure instanceof ModelRuntimeError)) throw failure;
-          return Response.json(
-            { code: failure.code, message: failure.message, retryable: failure.retryable },
-            { status: 503 }
+          const response = await retryReadOnConflict(request.method, path, (attempt) =>
+            runAttempt({
+              request,
+              path,
+              url,
+              payload,
+              attempt,
+              ledger,
+              turns: agentTurn ? { dispatch, streamTurnId } : null
+            })
           );
+          // Committed: start the queued turn in the background.
+          for (const turnId of dispatch) worker.dispatch(turnId);
+          return response;
+        } catch (error) {
+          if (!(error instanceof AttemptNeedsModelCall)) throw error;
+          if (error.independentWork) {
+            console.error(
+              JSON.stringify({
+                event: "edge_model_call_after_commit",
+                method: request.method,
+                path
+              })
+            );
+            return Response.json(
+              {
+                code: "service_unavailable",
+                message: "The service is temporarily unavailable."
+              },
+              { status: 503 }
+            );
+          }
+          try {
+            await ledger.callLive(request.signal);
+          } catch (failure) {
+            if (!(failure instanceof ModelRuntimeError)) throw failure;
+            return Response.json(
+              { code: failure.code, message: failure.message, retryable: failure.retryable },
+              { status: 503 }
+            );
+          }
         }
       }
     }

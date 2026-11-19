@@ -67,6 +67,7 @@
     "check:render-inference-boundaries": "node scripts/check-render-inference-boundaries.mjs",
     "check:shellview-boundary": "node scripts/check-shellview-boundary.mjs",
     "check:edge-bundle": "node scripts/build-supabase-domain.mjs",
+    "generate:edge-routes": "tsx scripts/generate-edge-route-inventory.ts",
     "check:web-bundle-budgets": "VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://127.0.0.1:4000} pnpm --filter @grogoni/web build && node scripts/check-web-bundle-budgets.mjs",
     "ci": "pnpm format && pnpm lint && pnpm typecheck && pnpm test && pnpm check:esm-relative-imports && pnpm check:edge-bundle && pnpm check:current-ocr-contracts && pnpm android:manifest:verify && pnpm android:identity:verify && pnpm android:legal:verify && pnpm check:boundaries && pnpm check:api-routes && pnpm check:shellview-boundary && pnpm check:web-bundle-budgets",
     "clean:dev": "pnpm --filter @grogoni/web clean:dev",

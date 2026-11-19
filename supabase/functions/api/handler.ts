@@ -14,6 +14,21 @@ export function createHandler({
   databaseProvider = "postgres"
 }: Dependencies) {
   return async (request: Request): Promise<Response> => {
+    const startedAt = performance.now();
+    const response = await handle(request);
+    // Whole-function time, so callers can tell server time from network time. Domain routes add
+    // their own stages (services/api/src/edge-request-timing.ts) to the same header.
+    try {
+      response.headers.append(
+        "Server-Timing",
+        `edge;dur=${(performance.now() - startedAt).toFixed(1)}`
+      );
+    } catch {
+      // Immutable headers (a proxied fetch response): leave them as they are.
+    }
+    return response;
+  };
+  async function handle(request: Request): Promise<Response> {
     const headers = new Headers({
       "Content-Type": "application/json",
       "Cache-Control": "no-store"
@@ -124,5 +139,5 @@ export function createHandler({
       return Response.json({ code: "route_not_found" }, { status: 404, headers });
     }
     return Response.json({ code: "route_not_found" }, { status: 404, headers });
-  };
+  }
 }

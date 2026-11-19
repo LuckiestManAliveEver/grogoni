@@ -217,11 +217,16 @@ let domain: {
   ensureSystemShopWithin: (ms: number) => Promise<unknown>;
 } | null = null;
 let domainStartupError: string | null = null;
+/** Cold-start split for this isolate, reported on its first domain request. */
+const domainStartup: { importMs?: number; createMs?: number; reported?: boolean } = {};
 let domainInitialization: Promise<typeof domain> | undefined;
 function getDomain() {
   return (domainInitialization ??= (async () => {
     try {
+      const importStartedAt = performance.now();
       const { createEdgeDomainRoutes } = await import("./domain-bundle.mjs");
+      domainStartup.importMs = performance.now() - importStartedAt;
+      const createStartedAt = performance.now();
       domain = await createEdgeDomainRoutes(
         {
           transaction,
@@ -249,6 +254,7 @@ function getDomain() {
             ).EdgeRuntime?.waitUntil(work)
         }
       );
+      domainStartup.createMs = performance.now() - createStartedAt;
       domainStartupError = null;
       return domain;
     } catch (error) {
@@ -273,10 +279,49 @@ async function routeRequest(request: Request, path: string): Promise<Response | 
       forwardingHeaders: forwardingHeaders(request)
     });
   }
-  return (
+  const routingStartedAt = performance.now();
+  const early =
     (await auth(request, path)) ??
     (await sessions(request, path)) ??
-    (await publicRoutes(request, path)) ??
+    (await publicRoutes(request, path));
+  const routingMs = performance.now() - routingStartedAt;
+  const routed = await routeAfterEarlyMatchers(early, request, path);
+  appendServerTiming(routed, `preRoutes;dur=${routingMs.toFixed(1)}`);
+  const domainWait = domainWaits.get(request);
+  if (domainWait !== undefined)
+    appendServerTiming(routed, `domainInit;dur=${domainWait.toFixed(1)}`);
+  if (domainWait !== undefined && !domainStartup.reported && domainStartup.createMs !== undefined) {
+    domainStartup.reported = true;
+    appendServerTiming(
+      routed,
+      `domainImport;dur=${(domainStartup.importMs ?? 0).toFixed(1)}, domainCreate;dur=${domainStartup.createMs.toFixed(1)}`
+    );
+  }
+  return routed;
+}
+const domainWaits = new WeakMap<Request, number>();
+/** getDomain, recording how long this request waited for the domain runtime (cold start). */
+async function timedDomain(request: Request) {
+  const startedAt = performance.now();
+  const runtime = await getDomain();
+  domainWaits.set(request, performance.now() - startedAt);
+  return runtime;
+}
+/** Adds stages measured here to whatever Server-Timing the route already set. */
+function appendServerTiming(response: Response | null, entry: string) {
+  try {
+    response?.headers.append("Server-Timing", entry);
+  } catch {
+    // Immutable headers: leave them.
+  }
+}
+async function routeAfterEarlyMatchers(
+  early: Response | null,
+  request: Request,
+  path: string
+): Promise<Response | null> {
+  return (
+    early ??
     (path === "/realtime" || path.startsWith("/v1/realtime/") || path.startsWith("/internal/jobs/")
       ? application(request, path)
       : path === "/v1/guest/intent"
@@ -287,7 +332,7 @@ async function routeRequest(request: Request, path: string): Promise<Response | 
             (domain === null
               ? Response.json({ code: "service_unavailable" }, { status: 503 })
               : null))
-          : ((await (await getDomain())?.routes(request, path)) ??
+          : ((await (await timedDomain(request))?.routes(request, path)) ??
             (domain === null
               ? Response.json({ code: "service_unavailable" }, { status: 503 })
               : null)))
@@ -299,13 +344,20 @@ const handler = createHandler({
     url.hostname.endsWith(".neon.tech") || url.hostname.endsWith(".neon.database")
       ? "neon"
       : "postgres",
-  applicationRoutes: (request, path) =>
-    rateLimiter
-      .run(request, path, () => routeRequest(request, path))
+  applicationRoutes: (request, path) => {
+    const rateLimitStartedAt = performance.now();
+    return rateLimiter
+      .run(request, path, async () => {
+        const rateLimitMs = performance.now() - rateLimitStartedAt;
+        const routed = await routeRequest(request, path);
+        appendServerTiming(routed, `rateLimit;dur=${rateLimitMs.toFixed(1)}`);
+        return routed;
+      })
       .catch((error: unknown) => {
         if (error instanceof RateLimitExceededError) return rateLimitedResponse(error);
         throw error;
-      }),
+      });
+  },
   allowedOrigins: (Deno.env.get("WEB_ORIGINS") ?? "http://localhost:5173,http://127.0.0.1:5173")
     .split(",")
     .map((origin) => origin.trim())

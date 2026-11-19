@@ -10,6 +10,20 @@ describe("Supabase Edge migration entry point", () => {
     expect(applicationRoutes).not.toHaveBeenCalled();
     expect(checkDatabase).not.toHaveBeenCalled();
   });
+  it("reports whole-function time after any stage timings the route added", async () => {
+    const handler = createHandler({
+      checkDatabase: vi.fn(),
+      allowedOrigins: [],
+      applicationRoutes: async () =>
+        new Response("{}", { headers: { "Server-Timing": "load;dur=12.0, total;dur=20.0" } })
+    });
+    const routed = await handler(new Request("https://example.com/api/v1/conversations"));
+    expect(routed.headers.get("server-timing")).toMatch(
+      /^load;dur=12\.0, total;dur=20\.0, edge;dur=\d+\.\d$/u
+    );
+    const health = await handler(new Request("https://example.com/api/health"));
+    expect(health.headers.get("server-timing")).toMatch(/^edge;dur=\d+\.\d$/u);
+  });
   it("logs route failures with a correlation ID without leaking exception messages", async () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
