@@ -269,6 +269,21 @@ describe("Grogoni Home: suggested requests and capability trace", () => {
       expect(html).toContain(prompt);
   });
 
+  it("swaps in seller chips on an empty seller thread for a shop owner", () => {
+    expect(chatSurface).toContain('seller={mode === "seller" && hasBusiness}');
+    const html = renderToStaticMarkup(
+      createElement(HomeSuggestionChips, { onSelect: () => {}, seller: true })
+    );
+    for (const prompt of [
+      "Add a product",
+      "Copy a catalogue from another shop",
+      "Import my stock list",
+      "Show today&#x27;s sales"
+    ])
+      expect(html).toContain(prompt);
+    expect(html).not.toContain("Find me 50kg maize nearby");
+  });
+
   it("names the real capability behind a generated card instead of fabricating one", () => {
     expect(chatSurface).toContain("function capabilityTraceLabel(");
     expect(chatSurface).toContain('"product-management": "product.update"');

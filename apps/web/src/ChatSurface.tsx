@@ -1060,7 +1060,7 @@ export function ChatSurface({
         {activeModuleView === null &&
         !isHumanConversation &&
         visibleMessages.filter((message) => message.id !== "welcome").length === 0 ? (
-          <HomeSuggestionChips onSelect={commitDraft} />
+          <HomeSuggestionChips onSelect={commitDraft} seller={mode === "seller" && hasBusiness} />
         ) : null}
         {assistantDetailsId !== null ? (
           <AssistantDetailsPanel
