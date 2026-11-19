@@ -290,21 +290,6 @@ export function ChatSurface({
   );
   const selectedTitle = conversationTitle(selectedConversation);
   const isAssistantSelected = isAssistantConversation(selectedConversation);
-  const [sessionHistoryOpen, setSessionHistoryOpen] = useState(false);
-  const isAgentSession =
-    selectedConversation !== undefined &&
-    !selectedConversation.hasHumanRecipient &&
-    !selectedConversation.helpTopic &&
-    selectedConversation.kind === "personal";
-  const agentSessions = conversations.filter(
-    (item) =>
-      !item.hasHumanRecipient &&
-      !item.helpTopic &&
-      item.kind === "personal" &&
-      item.activeShopId === selectedConversation?.activeShopId &&
-      item.runtimeBindingId === selectedConversation?.runtimeBindingId
-  );
-
   // Replies in the permanent daemon conversation come from "My Assistant", not the shop agent.
   const threadAgentName = isAssistantSelected ? permanentDaemonDisplayName : agent.name;
   const isHumanConversation =
@@ -457,7 +442,9 @@ export function ChatSurface({
     onDeleteConversation
   };
 
-  const isHomeConversation = mode === "marketplace" && activeModuleView === null;
+  // Buying and selling share one home surface: an agent chat with nothing in it yet shows the
+  // same welcome and suggestion chips whichever mode the route is in.
+  const isHomeConversation = activeModuleView === null;
   const isHomeEmpty =
     isHomeConversation &&
     !isHumanConversation &&
@@ -500,7 +487,7 @@ export function ChatSurface({
         className="messenger-thread"
         aria-label={showBlankSessionState ? "New chat" : (selectedTitle ?? "Chat")}
       >
-        {showMessageThread && !isHomeEmpty ? (
+        {showMessageThread && !isHomeEmpty && isHumanConversation ? (
           <header className="messenger-thread-header">
             <span
               className={`thread-avatar ${mode === "seller" ? "sell" : "buy"}`}
@@ -576,61 +563,14 @@ export function ChatSurface({
             {!showBlankSessionState ? (
               <WaitingMessagesButton count={queuedMessageCount} onSend={onRetryMessages} />
             ) : null}
-            {isAssistantSelected && activeConversationId !== null ? (
-              <button
-                type="button"
-                className="assistant-details-button"
-                aria-label="My Assistant details"
-                onClick={() => setAssistantDetailsId(activeConversationId)}
-              >
-                Details
-              </button>
-            ) : null}
-            {isAgentSession ? (
-              <div className="agent-session-controls">
-                <button
-                  type="button"
-                  onClick={() => setSessionHistoryOpen((open) => !open)}
-                  aria-expanded={sessionHistoryOpen}
-                >
-                  Session history
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSessionHistoryOpen(false);
-                    onCreateAgentSession();
-                  }}
-                >
-                  + New Session
-                </button>
-              </div>
-            ) : null}
             <ConversationExecutionControls
               conversation={selectedConversation}
               businessId={hasBusiness ? businessId : null}
             />
           </header>
-        ) : null}
-        {isAgentSession && sessionHistoryOpen ? (
-          <section className="agent-session-history" aria-label="Session history">
-            {agentSessions.map((item) => (
-              <button
-                type="button"
-                key={item.id}
-                onClick={() => {
-                  setSessionHistoryOpen(false);
-                  onSelectConversation(item.id);
-                }}
-              >
-                <strong>{conversationTitle(item) ?? "New session"}</strong>
-                {item.lastMessage ? (
-                  <span>{conversationMessageText(item.lastMessage).slice(0, 120)}</span>
-                ) : null}
-                <time dateTime={item.createdAt}>{new Date(item.createdAt).toLocaleString()}</time>
-              </button>
-            ))}
-          </section>
+        ) : !isHumanConversation && !showBlankSessionState ? (
+          // Agent chats keep the home layout (no thread header), so waiting messages surface here.
+          <WaitingMessagesButton count={queuedMessageCount} onSend={onRetryMessages} />
         ) : null}
         <div
           className={`message-list${isHomeEmpty ? " home-empty-messages" : ""}`}
@@ -1117,8 +1057,8 @@ export function ChatSurface({
           onRestoreConversation={onRestoreConversation}
           onEmptyRecycleBin={onEmptyRecycleBin}
         />
-        {mode === "marketplace" &&
-        activeModuleView === null &&
+        {activeModuleView === null &&
+        !isHumanConversation &&
         visibleMessages.filter((message) => message.id !== "welcome").length === 0 ? (
           <HomeSuggestionChips onSelect={commitDraft} />
         ) : null}
