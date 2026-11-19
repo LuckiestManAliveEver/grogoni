@@ -1682,11 +1682,15 @@ export function OwnerApp() {
               </>
             ) : null}
           </header>
-          {!isAuthScreen && mode === "marketplace" && showsSignInEntry ? (
+          {/* One shell for buying and selling: the seller route renders the same home chrome
+              (top bar, thread, suggestion chips, composer) as the marketplace, so sign-in sits
+              here in both modes and there is no separate seller mode bar. */}
+          {!isAuthScreen && showsSignInEntry ? (
             <nav className="customer-auth-actions" aria-label="Account access">
               <button
                 className="header-auth-button secondary"
                 type="button"
+                data-testid="header-signup-button"
                 onClick={() => openAuth("signup")}
               >
                 Sign up
@@ -1694,6 +1698,7 @@ export function OwnerApp() {
               <button
                 className="header-auth-button"
                 type="button"
+                data-testid="header-login-button"
                 onClick={() => openAuth("login")}
               >
                 Log in
@@ -1756,103 +1761,6 @@ export function OwnerApp() {
               }}
             />
           )}
-
-          {!isAuthScreen ? (
-            <nav
-              className="shell-mode-bar"
-              aria-label={mode === "seller" ? "Commerce mode and messages" : "Shell actions"}
-            >
-              <button
-                className={`header-action-button marketplace commerce-mode-toggle ${
-                  mode === "marketplace" && isMarketplaceShortcutOpen ? "mode-active" : ""
-                }`}
-                type="button"
-                data-testid="marketplace-button"
-                aria-label="Marketplace"
-                aria-expanded={mode === "marketplace" && isMarketplaceShortcutOpen}
-                onClick={() => {
-                  if (mode === "marketplace") {
-                    if (view !== "chat" && view !== "home") returnToChat();
-                    setIsMarketplaceShortcutOpen((open) =>
-                      view === "chat" || view === "home" ? !open : true
-                    );
-                    return;
-                  }
-                  switchMode("marketplace");
-                }}
-              >
-                {/* A seller previewing the buyer side reads this as "switch to Buy"; a customer
-                    reads it as "browse shops/cart", since they're already shopping. Neither is the
-                    removed Buy/Sell mode-switch pill - it never renders a "Sell" counterpart and,
-                    for a customer, never changes mode at all. */}
-                {mode === "seller" ? "Buy" : "Browse"}
-              </button>
-              {mode === "seller" ? (
-                <button
-                  className="header-action-button messages"
-                  type="button"
-                  data-testid="messages-button"
-                  aria-expanded={isMessagingInboxOpen}
-                  onClick={() => {
-                    if (view !== "chat" && view !== "home") returnToChat();
-                    setIsMessagingInboxOpen((open) => !open);
-                  }}
-                >
-                  Messages
-                </button>
-              ) : null}
-              <div className="shell-secondary-actions">
-                {installPrompt.canInstall ? (
-                  <button
-                    className="header-action-button workspace"
-                    type="button"
-                    data-testid="install-app-button"
-                    onClick={() => void installPrompt.installApp()}
-                  >
-                    Install app
-                  </button>
-                ) : null}
-                {mode === "seller" && showsSignInEntry ? (
-                  <>
-                    <button
-                      className="header-auth-button secondary"
-                      type="button"
-                      data-testid="header-signup-button"
-                      onClick={() => openAuth("signup")}
-                    >
-                      <span
-                        className="header-auth-icon header-auth-icon-signup"
-                        aria-hidden="true"
-                      />
-                      <span>Sign up</span>
-                    </button>
-                    <button
-                      className="header-auth-button"
-                      type="button"
-                      data-testid="header-login-button"
-                      onClick={() => openAuth("login")}
-                    >
-                      <span
-                        className="header-auth-icon header-auth-icon-login"
-                        aria-hidden="true"
-                      />
-                      <span>Log in</span>
-                    </button>
-                  </>
-                ) : null}
-                {business !== null && mode === "seller" ? (
-                  <button
-                    className="header-action-button workspace"
-                    type="button"
-                    onClick={openShopHub}
-                    aria-haspopup="dialog"
-                  >
-                    Workspace
-                  </button>
-                ) : null}
-              </div>
-            </nav>
-          ) : null}
 
           <ShellNotices
             statusMessage={isAuthScreen ? "" : statusMessage}

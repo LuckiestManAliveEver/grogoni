@@ -147,57 +147,34 @@ describe("Grogoni Home: merchant entry point", () => {
     // in the hamburger menu is that path.
     expect(grogoniApplication).not.toContain('data-testid="sell-button"');
     expect(grogoniApplication).not.toContain('className="commerce-mode-toggle"');
-    expect(grogoniApplication).toContain("commerce-mode-toggle");
     expect(grogoniApplication).toContain("onGoToShop={() => {");
     const menuDrawer = readFileSync("apps/web/src/MenuDrawer.tsx", "utf8");
     expect(menuDrawer).toContain("onGoToShop");
     expect(menuDrawer).toContain("Go to my shop");
   });
 
-  it("scopes the Messages pill and header sign-up/log-in to seller mode, out of the customer home", () => {
-    // The Buy/Sell toggle removal above only dropped the "Sell" pill; "Messages" and the header
-    // sign-up/log-in buttons stayed unconditionally rendered, which is the exact legacy "Messages
-    // button + Sign up/Log in in the top nav" pattern the unified-chat spec forbids on the
-    // customer home. They now render only while mode is "seller" (the merchant's own header,
-    // reachable solely via the shop icon or menu) - Message history moved into the hamburger menu,
-    // and so did the customer home's Log in / Sign up (MenuDrawer, signed-out visitors only).
-    //
-    // The remaining "marketplace-button" is not that toggle: it never renders a "Sell" pill, it
-    // relabels itself "Browse" (never "Buy") for a customer, and for a customer it only opens/closes
-    // the storefront-browsing/cart panel in place - it never switches mode. It stays reachable on
-    // the customer home because the panel it opens (cart, checkout, storefronts) has no other entry
-    // point yet.
-    const shellModeBarStart = grogoniApplication.indexOf(
-      'aria-label={mode === "seller" ? "Commerce mode and messages" : "Shell actions"}'
-    );
-    expect(shellModeBarStart).toBeGreaterThan(-1);
-    const shellModeBar = grogoniApplication.slice(
-      shellModeBarStart,
-      grogoniApplication.indexOf("</nav>", shellModeBarStart)
+  it("renders the seller route through the same home shell as the marketplace", () => {
+    // Frame for /sell must match the customer home: no seller-only mode bar (Buy / Messages /
+    // Workspace pills), sign-up/log-in in the same account-access row in both modes, the same
+    // welcome + suggestion chips on an empty agent chat, and the same "Ask Grogoni..." composer.
+    const chatSurface = readFileSync("apps/web/src/ChatSurface.tsx", "utf8");
+    const composer = readFileSync("apps/web/src/ChatComposer.tsx", "utf8");
+    const homeReference = readFileSync("apps/web/src/home-reference.css", "utf8");
+
+    expect(grogoniApplication).not.toContain('className="shell-mode-bar"');
+    expect(grogoniApplication).toContain("{!isAuthScreen && showsSignInEntry ? (");
+    expect(grogoniApplication).toContain('data-testid="header-signup-button"');
+    expect(grogoniApplication).toContain('data-testid="header-login-button"');
+
+    expect(chatSurface).toContain("const isHomeConversation = activeModuleView === null;");
+    expect(chatSurface).toContain("showMessageThread && !isHomeEmpty && isHumanConversation");
+    expect(chatSurface).not.toContain("+ New Session");
+    expect(chatSurface).not.toContain(
+      'mode === "marketplace" &&\n        activeModuleView === null'
     );
 
-    const buyIndex = shellModeBar.indexOf('data-testid="marketplace-button"');
-    expect(buyIndex).toBeGreaterThan(-1);
-    expect(shellModeBar).toContain('mode === "seller" ? "Buy" : "Browse"');
-
-    const sellerGateStart = shellModeBar.indexOf('mode === "seller" ? (', buyIndex);
-    expect(sellerGateStart).toBeGreaterThan(buyIndex);
-    const sellerGateEnd = shellModeBar.indexOf(") : null}", sellerGateStart);
-    expect(sellerGateEnd).toBeGreaterThan(sellerGateStart);
-
-    const messagesIndex = shellModeBar.indexOf('data-testid="messages-button"');
-    expect(messagesIndex).toBeGreaterThan(sellerGateStart);
-    expect(messagesIndex).toBeLessThan(sellerGateEnd);
-
-    const authGateStart = shellModeBar.indexOf('mode === "seller" && showsSignInEntry ? (');
-    expect(authGateStart).toBeGreaterThan(sellerGateEnd);
-    const authGateEnd = shellModeBar.indexOf(") : null}", authGateStart);
-    const signupIndex = shellModeBar.indexOf('data-testid="header-signup-button"');
-    const loginIndex = shellModeBar.indexOf('data-testid="header-login-button"');
-    expect(signupIndex).toBeGreaterThan(authGateStart);
-    expect(signupIndex).toBeLessThan(authGateEnd);
-    expect(loginIndex).toBeGreaterThan(signupIndex);
-    expect(loginIndex).toBeLessThan(authGateEnd);
+    expect(composer).not.toContain("type # to call a capability");
+    expect(homeReference).not.toContain('[data-commerce-mode="buy"]');
   });
 });
 
@@ -290,6 +267,21 @@ describe("Grogoni Home: suggested requests and capability trace", () => {
     expect(html).toContain('class="home-suggestion-chips"');
     for (const prompt of ["Find me 50kg maize nearby", "Track my delivery", "Talk to a shop"])
       expect(html).toContain(prompt);
+  });
+
+  it("swaps in seller chips on an empty seller thread for a shop owner", () => {
+    expect(chatSurface).toContain('seller={mode === "seller" && hasBusiness}');
+    const html = renderToStaticMarkup(
+      createElement(HomeSuggestionChips, { onSelect: () => {}, seller: true })
+    );
+    for (const prompt of [
+      "Add a product",
+      "Copy a catalogue from another shop",
+      "Import my stock list",
+      "Show today&#x27;s sales"
+    ])
+      expect(html).toContain(prompt);
+    expect(html).not.toContain("Find me 50kg maize nearby");
   });
 
   it("names the real capability behind a generated card instead of fabricating one", () => {
