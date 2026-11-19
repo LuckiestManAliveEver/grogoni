@@ -68,3 +68,15 @@ The PostgreSQL lane on a freshly migrated database found five regressions not pr
 Other gates: format, lint, typecheck, ESM imports, Edge bundle (4,831,987 of 5,000,000 bytes), OCR contracts, Android manifest/identity/legal checks, boundaries, API route coverage, shell-view boundary and web bundle budgets pass. Responsive/accessibility certification passed 81 of 82; the one failure, a cold-load boot timeout run alongside the PostgreSQL lane, passed 3 out of 3 alone. Modularity budgets were raised to the measured sizes, and one type-only sibling import was sanctioned. The owner-route budget was raised from 185 KiB to 190 KiB with approval (173.54 KiB on HEAD, 188.66 KiB after).
 
 Not run: the Android Gradle lane (no Android sources changed; the local JDK is incomplete), physical-device and Kenyan-carrier certification, and production SSE load measurement.
+
+## Live measurements after deployment (2026-11-19)
+
+Same harness (`scripts/measure-instant-messaging.mjs --live`), disposable fixtures, one sample per row, 360 px viewport, production grogoni.com.
+
+| Network profile   | Tap to own bubble (baseline → deployed) | Tap to HTTP acknowledgement: deployed `fc357976` | Acknowledgement with the urgent send (`59270f29`) | Idle requests in 30 s |
+| ----------------- | --------------------------------------: | -----------------------------------------------: | ------------------------------------------------: | --------------------: |
+| Normal            |                          10,187 → 39 ms |                                        18,159 ms |                                          3,242 ms |                    21 |
+| Slow 3G           |                          10,566 → 48 ms |                                        14,373 ms |                                          3,190 ms |                    21 |
+| 1.5 Mbps / 300 ms |                           9,665 → 46 ms |                                        14,546 ms |                                          5,252 ms |                    18 |
+
+An instrumented run on `fc357976` showed the message POST leaving the browser 14,961 ms after the tap. It had waited in the one-at-a-time cloud request queue behind startup and refresh reads; the server answered in 3.6 s. `59270f29` sends the message, and the conversation lookup it waits on, outside that queue. The remaining acknowledgement time is Edge API server time: every request measured 1.1-5 s server-side, including `/health`. Idle traffic did not fall, because `/v1/sync/changes` still polls every 3-4 s while the SSE hint stream is connected (each stream lasted about 28 s and reconnected). Inbound visibility was not measured separately; at this per-request server time it cannot be under 1 s.
