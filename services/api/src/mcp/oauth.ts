@@ -36,17 +36,22 @@ export function createMcpOAuthState(): McpOAuthState {
   return { pendingAuthorizations: new Map(), authorizationCodes: new Map() };
 }
 
+/** Root-level form body parser the OAuth token endpoint needs (also used by the Edge shared app). */
+export function addFormUrlEncodedParser(app: FastifyInstance): void {
+  app.addContentTypeParser(
+    "application/x-www-form-urlencoded",
+    { parseAs: "string" },
+    (_request, body, done) => done(null, Object.fromEntries(new URLSearchParams(String(body))))
+  );
+}
+
 export function registerMcpOAuthRoutes(app: FastifyInstance, options: McpOAuthOptions): void {
   const publicOrigin = options.publicOrigin.replace(/\/+$/u, "");
   const issuer = publicOrigin;
   const resource = `${publicOrigin}/mcp`;
   const { pendingAuthorizations, authorizationCodes } = options.state ?? createMcpOAuthState();
 
-  app.addContentTypeParser(
-    "application/x-www-form-urlencoded",
-    { parseAs: "string" },
-    (_request, body, done) => done(null, Object.fromEntries(new URLSearchParams(String(body))))
-  );
+  addFormUrlEncodedParser(app);
 
   app.get("/.well-known/oauth-protected-resource", async () => ({
     resource,

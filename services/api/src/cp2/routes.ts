@@ -123,6 +123,12 @@ import { HttpComputerWorkerClient } from "../computer-runtime/client.js";
 import type { InventoryTaskController } from "./domains/agent-runtime/inventory-task-controller.js";
 
 export interface Cp2RouteOptions {
+  /**
+   * The host enforces auth rate limits itself (the Edge API's database-backed limiter). The
+   * in-memory per-IP count is then not kept: an app shared across requests sees every injected
+   * request as 127.0.0.1 and would limit all callers together.
+   */
+  externalAuthRateLimit?: boolean;
   queuedAgentTurns?: boolean;
   inventoryTaskController?: InventoryTaskController;
   businessTaskStore?: BusinessTaskStore;
@@ -290,6 +296,13 @@ interface AccountRestorationParams {
   requestId: string;
 }
 
+/** Records nothing: used when the host enforces auth rate limits (see externalAuthRateLimit). */
+class DiscardingAttemptMap extends Map<string, number[]> {
+  override set(): this {
+    return this;
+  }
+}
+
 export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions = {}): Cp2Store {
   const computerRuntimeUrl = process.env.COMPUTER_RUNTIME_URL?.trim();
   const computerRuntimeToken = process.env.COMPUTER_RUNTIME_SERVICE_TOKEN?.trim();
@@ -347,7 +360,9 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
   const oauthAllowedRedirectOrigins = new Set(options.oauthAllowedRedirectOrigins ?? []);
   const realtimeAllowedOrigins = new Set(options.realtimeAllowedOrigins ?? []);
   const authRuntime = readAuthRuntimeConfig(realtimeAllowedOrigins);
-  const authAttemptsByIp = new Map<string, number[]>();
+  const authAttemptsByIp: Map<string, number[]> = options.externalAuthRateLimit
+    ? new DiscardingAttemptMap()
+    : new Map<string, number[]>();
 
   function requireAuthFeature(enabled: boolean, code: string, message: string): void {
     if (!enabled) throw new Cp2Error(503, code, message);

@@ -7,7 +7,14 @@ import { loadDaemonConversationHistory } from "./daemon/conversation-history.js"
 import { readWebPushConfiguration } from "./cp2/push.js";
 import { registerCommerceRoutes } from "./cp2/domains/commerce/routes.js";
 import { registerChatImageRoutes } from "./cp2/chat-image-routes.js";
-import Fastify from "fastify";
+import Fastify, {
+  type FastifyError,
+  type FastifyInstance,
+  type FastifyReply,
+  type FastifyRequest
+} from "fastify";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { addFormUrlEncodedParser } from "./mcp/oauth.js";
 import websocket from "@fastify/websocket";
 import { registerMcpRoutes, createMcpRouteState } from "./mcp/routes.js";
 import { edgeRouteInventory } from "./edge-route-inventory.generated.js";
@@ -22,7 +29,7 @@ import {
 import { Cp2Error } from "./cp2/cp2-error.js";
 import { createEmailProviderFromEnvironment } from "./cp2/email-provider.js";
 import type { PoolClient, QueryResultRow } from "pg";
-import { registerCp2Routes } from "./cp2/routes.js";
+import { registerCp2Routes, type Cp2RouteOptions } from "./cp2/routes.js";
 import { createPostgresBusinessTaskStore } from "./cp2/domains/agent-runtime/business-task-store.js";
 import { createPostgresRuntimeApprovalStore } from "./cp2/domains/agent-runtime/runtime-approval-store.js";
 import { createCp2Store, readSessionCookie, type Cp2Snapshot, type Cp2Store } from "./cp2/store.js";
@@ -291,6 +298,63 @@ function requestsAgentTurn(payload: Buffer | undefined): boolean {
   }
 }
 
+/** The objects that differ per request in the shared route app (getSharedRouteApp). */
+interface SharedRouteContext {
+  store: Cp2Store;
+  inventoryTaskController: Cp2RouteOptions["inventoryTaskController"];
+  businessTaskStore: NonNullable<Cp2RouteOptions["businessTaskStore"]>;
+  emailProvider: NonNullable<Cp2RouteOptions["emailProvider"]>;
+  fulfillmentService: NonNullable<Cp2RouteOptions["fulfillmentService"]>;
+}
+const sharedRouteContext = new AsyncLocalStorage<SharedRouteContext>();
+/** Internal header naming a request's route context (set by the injector, never by clients). */
+const routeContextHeader = "x-grogoni-edge-route-context";
+const routeContexts = new Map<string, SharedRouteContext>();
+
+/**
+ * Stands in for one per-request object in the shared route app: every property access resolves
+ * against the object of the request being handled (methods are bound to it). Route registration
+ * touches none of these objects (checked when this was introduced), so nothing is captured from
+ * one request and reused by another. Used outside a request it throws instead of guessing.
+ */
+function perRequest<K extends keyof SharedRouteContext>(
+  key: K
+): NonNullable<SharedRouteContext[K]> {
+  const current = (): object => {
+    const target = sharedRouteContext.getStore()?.[key];
+    if (target === undefined || target === null)
+      throw new Error(`The shared Edge route app was used without a request ${key}.`);
+    return target as object;
+  };
+  return new Proxy(
+    {},
+    {
+      get(_shape, property) {
+        const target = current();
+        const value = Reflect.get(target, property, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+      has(_shape, property) {
+        return property in current();
+      }
+    }
+  ) as NonNullable<SharedRouteContext[K]>;
+}
+
+/** Paths served by MCP routes (all of them, checked against registerMcpRoutes). */
+function isMcpPath(path: string): boolean {
+  return (
+    path === "/mcp" ||
+    path.startsWith("/oauth/") ||
+    path.startsWith("/v1/mcp/") ||
+    path.startsWith("/.well-known/")
+  );
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(value);
+}
+
 /** The route with identifiers removed, so timing logs carry no account or record ids. */
 function routeTemplate(path: string): string {
   return path
@@ -324,6 +388,88 @@ export async function createEdgeDomainRoutes(
         .join("/")}$`
     )
   }));
+
+  const reportDomainRouteFailure = async (
+    failedRequest: FastifyRequest,
+    reply: FastifyReply,
+    error: FastifyError
+  ) => {
+    if ((error.statusCode ?? 500) < 500) return;
+    const requestId = crypto.randomUUID();
+    reply.header("x-request-id", requestId);
+    console.error(
+      JSON.stringify({
+        event: "edge_domain_route_failed",
+        requestId,
+        method: failedRequest.method,
+        route: failedRequest.routeOptions.url,
+        errorType: error.name,
+        code: error.code ?? null
+      })
+    );
+  };
+  // registerCp2Routes options for one request's objects, or for the shared app's per-request
+  // proxies. Only the per-request objects differ between the two.
+  const cp2RouteOptions = (context: SharedRouteContext): Cp2RouteOptions => ({
+    store: context.store,
+    ...(readWebPushConfiguration()
+      ? { vapidPublicKey: readWebPushConfiguration()!.publicKey }
+      : {}),
+    ...(context.inventoryTaskController === undefined
+      ? {}
+      : { inventoryTaskController: context.inventoryTaskController }),
+    businessTaskStore: context.businessTaskStore,
+    emailProvider: context.emailProvider,
+    ...(runtime.waitUntil === undefined ? {} : { waitUntil: runtime.waitUntil }),
+    fulfillmentService: context.fulfillmentService,
+    webPublicUrl: process.env.WEB_PUBLIC_URL ?? "https://grogoni.com",
+    realtimeAllowedOrigins: (process.env.WEB_ORIGINS ?? "https://grogoni.com").split(","),
+    oauthAllowedRedirectOrigins: (process.env.WEB_ORIGINS ?? "https://grogoni.com").split(",")
+  });
+  // One route app per isolate for non-MCP requests. Registering the API cost ~85-150 ms of CPU per
+  // request (measured 2026-11-19), and CPU per isolate is what gets isolates retired.
+  let sharedRouteApp: Promise<FastifyInstance> | undefined;
+  const getSharedRouteApp = () =>
+    (sharedRouteApp ??= (async () => {
+      const app = Fastify({ logger: false, bodyLimit: 15_000_000 });
+      app.addHook("onError", reportDomainRouteFailure);
+      // Enter the request's context inside Fastify's own lifecycle (as @fastify/request-context
+      // does): concurrent injects are queued by Fastify and can resume outside the caller's
+      // context, so wrapping app.inject alone is not enough. Registered before every route.
+      app.addHook("onRequest", (request, _reply, done) => {
+        const id = request.headers[routeContextHeader];
+        const context = typeof id === "string" ? routeContexts.get(id) : undefined;
+        if (context === undefined) {
+          done(new Error("A shared Edge route request arrived without its context."));
+          return;
+        }
+        sharedRouteContext.run(context, () => done());
+      });
+      await app.register(websocket);
+      registerCp2Routes(app, {
+        ...cp2RouteOptions({
+          store: perRequest("store"),
+          inventoryTaskController:
+            edgeDatabase.approvalTransaction === undefined
+              ? undefined
+              : perRequest("inventoryTaskController"),
+          businessTaskStore: perRequest("businessTaskStore"),
+          emailProvider: perRequest("emailProvider"),
+          fulfillmentService: perRequest("fulfillmentService")
+        }),
+        // Shared across requests, every injected request would count as 127.0.0.1; the Edge API's
+        // database-backed limiter (supabase/functions/api/rate-limit.ts) enforces auth rates.
+        externalAuthRateLimit: true
+      });
+      // Every per-request app also registered the MCP routes, whose OAuth module adds this
+      // root-level parser after the CP2 routes. Keep CP2 request parsing identical.
+      addFormUrlEncodedParser(app);
+      await app.ready();
+      return app;
+    })().catch((error: unknown) => {
+      sharedRouteApp = undefined;
+      throw error;
+    }));
 
   // A model call must not keep snapshot/account/business locks or a Neon connection open.
   // The session lookup commits first; receipt drafts are persisted by a separate short request.
@@ -421,28 +567,44 @@ export async function createEdgeDomainRoutes(
       // GET handlers also refresh sessions, mark messages read and initialize runtime defaults.
       // Their snapshots must be loaded after the same tenant locks as explicit writes.
       {
-        await client.query("set local lock_timeout = '10s'");
-        if (scope.modelSelectionLock)
-          await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [
-            scope.modelSelectionLock
-          ]);
-        if (scope.directPairLock)
-          await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [
-            scope.directPairLock
-          ]);
-        // Before the account lock, on every recovery-approval route (edge-snapshot-scope.ts).
-        if (scope.recoveryApprovalLock)
-          await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [
-            scope.recoveryApprovalLock
-          ]);
+        // Lock order is unchanged: timeout, model selection, direct pair, recovery approval (each
+        // from request input, so they keep bound parameters), then account, then businesses.
+        // Statements without request input share one round trip (~11 ms each to Neon).
+        const requestKeyedLocks = [
+          scope.modelSelectionLock,
+          scope.directPairLock,
+          // Before the account lock, on every recovery-approval route (edge-snapshot-scope.ts).
+          scope.recoveryApprovalLock
+        ].filter((key): key is string => typeof key === "string" && key.length > 0);
+        const tenantLocks: string[] = [];
+        let parameterizedAccountLock: string | null = null;
         if (!isEdgeFastPathWrite(request.method, path)) {
-          if (scope.accountId)
-            await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [
-              `edge:account:${scope.accountId}`
-            ]);
-          await client.query(
+          if (scope.accountId) {
+            // Inlined only as a validated UUID (hex digits and dashes: no quote can occur).
+            if (isUuid(scope.accountId))
+              tenantLocks.push(
+                `select pg_advisory_xact_lock(hashtextextended('edge:account:${scope.accountId}', 0))`
+              );
+            else parameterizedAccountLock = `edge:account:${scope.accountId}`;
+          }
+          tenantLocks.push(
             `${scope.withClause} select pg_advisory_xact_lock(hashtextextended('edge:business:' || id, 0)) from edge_business_ids order by id`
           );
+        }
+        const timeout = "set local lock_timeout = '10s'";
+        if (requestKeyedLocks.length === 0 && parameterizedAccountLock === null) {
+          await client.query([timeout, ...tenantLocks].join(";\n"));
+        } else {
+          await client.query(timeout);
+          for (const key of requestKeyedLocks)
+            await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [key]);
+          if (parameterizedAccountLock !== null)
+            await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [
+              parameterizedAccountLock
+            ]);
+          // tenantLocks then holds only the business locks (the account lock was parameterized)
+          // or the account and business locks together, still in that order.
+          if (tenantLocks.length) await client.query(tenantLocks.join(";\n"));
         }
       }
       recordStage("locks", performance.now() - locksStartedAt);
@@ -669,60 +831,43 @@ export async function createEdgeDomainRoutes(
         }
       }
       const appBuildStartedAt = performance.now();
-      const app = Fastify({ logger: false, bodyLimit: 15_000_000 });
-      app.addHook("onError", async (failedRequest, reply, error) => {
-        if ((error.statusCode ?? 500) < 500) return;
-        const requestId = crypto.randomUUID();
-        reply.header("x-request-id", requestId);
-        console.error(
-          JSON.stringify({
-            event: "edge_domain_route_failed",
-            requestId,
-            method: failedRequest.method,
-            route: failedRequest.routeOptions.url,
-            errorType: error.name,
-            code: error.code ?? null
-          })
-        );
+      const needsMcpState = isMcpPath(path);
+      const fulfillment = createEdgeFulfillmentService(pool, store, fulfillmentRetentionHours);
+      const pendingActions: (() => Promise<unknown>)[] = [];
+      store.setFulfillmentIntakeListener(async (input) => {
+        pendingActions.push(() => fulfillment.intakeOrder(input));
       });
+      store.setMembershipChangedListener(async (input) => {
+        pendingActions.push(() => fulfillment.releaseDriverAssignments(input));
+      });
+      const routeContext: SharedRouteContext = {
+        store,
+        inventoryTaskController,
+        businessTaskStore: createPostgresBusinessTaskStore(pool, (input) =>
+          store.authorizeBusinessPermission(input)
+        ),
+        emailProvider: suppressAfterDeferral(
+          createEmailProviderFromEnvironment({
+            ...process.env,
+            NODE_ENV: "production"
+          }),
+          ledger
+        ),
+        fulfillmentService: fulfillment
+      };
+      // Non-MCP requests use this isolate's shared route app, resolving the per-request objects
+      // above through sharedRouteContext. MCP routes capture per-request protocol state when they
+      // are registered, so MCP paths still get an app of their own (as every request used to).
+      const app = needsMcpState
+        ? Fastify({ logger: false, bodyLimit: 15_000_000 })
+        : await getSharedRouteApp();
       try {
-        await app.register(websocket);
-        const fulfillment = createEdgeFulfillmentService(pool, store, fulfillmentRetentionHours);
-        const pendingActions: (() => Promise<unknown>)[] = [];
-        store.setFulfillmentIntakeListener(async (input) => {
-          pendingActions.push(() => fulfillment.intakeOrder(input));
-        });
-        store.setMembershipChangedListener(async (input) => {
-          pendingActions.push(() => fulfillment.releaseDriverAssignments(input));
-        });
-        registerCp2Routes(app, {
-          store,
-          ...(readWebPushConfiguration()
-            ? { vapidPublicKey: readWebPushConfiguration()!.publicKey }
-            : {}),
-          ...(inventoryTaskController === undefined ? {} : { inventoryTaskController }),
-          businessTaskStore: createPostgresBusinessTaskStore(pool, (input) =>
-            store.authorizeBusinessPermission(input)
-          ),
-          emailProvider: suppressAfterDeferral(
-            createEmailProviderFromEnvironment({
-              ...process.env,
-              NODE_ENV: "production"
-            }),
-            ledger
-          ),
-          ...(runtime.waitUntil === undefined ? {} : { waitUntil: runtime.waitUntil }),
-          fulfillmentService: fulfillment,
-          webPublicUrl: process.env.WEB_PUBLIC_URL ?? "https://grogoni.com",
-          realtimeAllowedOrigins: (process.env.WEB_ORIGINS ?? "https://grogoni.com").split(","),
-          oauthAllowedRedirectOrigins: (process.env.WEB_ORIGINS ?? "https://grogoni.com").split(",")
-        });
+        if (needsMcpState) {
+          app.addHook("onError", reportDomainRouteFailure);
+          await app.register(websocket);
+          registerCp2Routes(app, cp2RouteOptions(routeContext));
+        }
         const mcp = createMcpRouteState();
-        const needsMcpState =
-          path === "/mcp" ||
-          path.startsWith("/oauth/") ||
-          path.startsWith("/v1/mcp/") ||
-          path.startsWith("/.well-known/");
         if (needsMcpState) {
           await client.query(
             "select pg_advisory_xact_lock(hashtextextended('edge:mcp-protocol', 0))"
@@ -751,17 +896,22 @@ export async function createEdgeDomainRoutes(
             }
           }
         }
-        registerMcpRoutes(app, {
-          store,
-          state: mcp,
-          fulfillmentService: fulfillment,
-          allowedOrigins: (process.env.WEB_ORIGINS ?? "https://grogoni.com").split(","),
-          publicOrigin: `${(process.env.WEB_PUBLIC_URL ?? "https://grogoni.com").replace(/\/+$/, "")}/api`
-        });
+        if (needsMcpState)
+          registerMcpRoutes(app, {
+            store,
+            state: mcp,
+            fulfillmentService: fulfillment,
+            allowedOrigins: (process.env.WEB_ORIGINS ?? "https://grogoni.com").split(","),
+            publicOrigin: `${(process.env.WEB_PUBLIC_URL ?? "https://grogoni.com").replace(/\/+$/, "")}/api`
+          });
         recordStage("appBuild", performance.now() - appBuildStartedAt);
         const headers = Object.fromEntries(request.headers);
         delete headers["content-length"];
         if (payload === undefined) delete headers["content-type"];
+        // Always this request's own id: a client-sent header of the same name is overwritten.
+        const routeContextId = crypto.randomUUID();
+        headers[routeContextHeader] = routeContextId;
+        routeContexts.set(routeContextId, routeContext);
         const inject = () =>
           app.inject({
             method: request.method as
@@ -770,9 +920,10 @@ export async function createEdgeDomainRoutes(
             headers,
             ...(payload === undefined ? {} : { payload })
           });
+        const injectInContext = () => sharedRouteContext.run(routeContext, inject);
         const turnId = request.headers.get("x-grogoni-turn-id");
         const result = await timeStage("handler", () =>
-          isValidTurnId(turnId) ? turnContext.run({ turnId }, inject) : inject()
+          isValidTurnId(turnId) ? turnContext.run({ turnId }, injectInContext) : injectInContext()
         );
         // The route needed a model call it had no answer for: roll everything back (nothing is
         // saved), make the call with no transaction open, and run the request again.
@@ -811,7 +962,11 @@ export async function createEdgeDomainRoutes(
           { status: result.statusCode, headers: outgoing }
         );
       } finally {
-        await app.close();
+        routeContexts.forEach((context, id) => {
+          if (context === routeContext) routeContexts.delete(id);
+        });
+        // The shared route app lives as long as the isolate.
+        if (needsMcpState) await app.close();
       }
     });
   };

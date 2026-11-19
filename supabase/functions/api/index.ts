@@ -15,7 +15,7 @@ import {
 } from "./application-routes.ts";
 import { createPublicRoutes } from "./public-routes.ts";
 import { createJobTransaction } from "./job-transaction.ts";
-import { coordinateStoreRequest } from "./store-coordination.ts";
+import { storeCoordinationSql } from "./store-coordination.ts";
 import type { Transaction } from "./session-routes.ts";
 import {
   createRateLimiter,
@@ -74,11 +74,10 @@ const transaction: Transaction = async (action) => {
     client = await pool.connect();
     stage = "rate_limit";
     await rateLimiter.check(client);
+    // One round trip, in this order: begin, the lock timeout, then the shared store lock. The
+    // function and Neon are ~11 ms apart, so each separate statement cost a round trip.
     stage = "begin";
-    await client.query("begin");
-    await client.query("set local lock_timeout = '10s'");
-    stage = "store_coordination";
-    await coordinateStoreRequest(client);
+    await client.query(`begin; set local lock_timeout = '10s'; ${storeCoordinationSql}`);
     stage = "action";
     const result = await action(client);
     stage = "commit";
