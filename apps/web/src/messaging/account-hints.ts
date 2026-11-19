@@ -47,11 +47,15 @@ export function subscribeAccountHints(
           close();
           return;
         }
+        // A reconnect resumes from the journal cursor (?since= / Last-Event-ID): the server's first
+        // probe sends "changed" for anything missed while disconnected, so only a connection with
+        // nothing to resume from catches up here. Catching up on every reconnect (the stream ends
+        // every ~25 s) cost three requests per idle half minute (measured 2026-11-19). A tab
+        // becoming visible still catches up through the visibility handler.
+        const resumed = cursor !== "";
         cursor = (event as MessageEvent<string>).lastEventId || cursor;
         notifyHealth(true);
-        // Catch up on every connection, including a reconnect whose retained cursor has expired.
-        // The conversation endpoint resets stale delta cursors to a full authorized view.
-        for (const listener of listeners) listener.changed();
+        if (!resumed) for (const listener of listeners) listener.changed();
       });
       source.addEventListener("changed", (event) => {
         try {

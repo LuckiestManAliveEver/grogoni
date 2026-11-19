@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { subscribeAccountHints } from "../apps/web/src/messaging/account-hints";
 
 afterEach(() => vi.unstubAllGlobals());
-it("catches up on every authorized connection and ignores another account's hints", async () => {
+it("catches up on a first connection, resumes reconnects from the cursor, and ignores another account's hints", async () => {
   const sources: FakeEvents[] = [];
   class FakeEvents extends EventTarget {
     static CLOSED = 2;
@@ -29,10 +29,12 @@ it("catches up on every authorized connection and ignores another account's hint
     expect(changed).toHaveBeenCalledTimes(1);
     sources[0]!.emit("changed", "other-account");
     expect(changed).toHaveBeenCalledTimes(1);
+    // A reconnect resumes from the cursor: no catch-up of its own...
     sources[0]!.emit("ready", "hint-owner", "200");
-    expect(changed).toHaveBeenCalledTimes(2);
+    expect(changed).toHaveBeenCalledTimes(1);
+    // ...because the server reports what was missed as a hint, which still catches up.
     sources[0]!.emit("changed", "hint-owner", "201");
-    expect(changed).toHaveBeenCalledTimes(3);
+    expect(changed).toHaveBeenCalledTimes(2);
     expect(health).toHaveBeenLastCalledWith(true);
   } finally {
     stop();

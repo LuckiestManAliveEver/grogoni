@@ -34,6 +34,29 @@ describe("account message event stream", () => {
     expect(text).toContain("id: 3");
     expect(text).not.toContain("MUST NOT STREAM");
   });
+  it("resumes a reconnect from its cursor and reports what changed while it was away", async () => {
+    // Clients no longer catch up on every reconnect's ready event; this hint is what they rely on.
+    const query = vi.fn(async (sql: string, values?: unknown[]) => {
+      expect(sql).not.toContain("max(sequence)");
+      return {
+        rows:
+          values?.[1] === "5"
+            ? [{ sequence: "7", collection: "conversations", entity_id: "thread-missed" }]
+            : []
+      };
+    });
+    const transaction: Transaction = async (work) => work({ query });
+    const response = await messageEventStream(
+      new Request("https://example.invalid/v1/realtime/messages?since=5"),
+      transaction,
+      async () => "account-a",
+      { durationMs: 20, intervalMs: 1 }
+    );
+    const text = await response.text();
+    expect(text).toMatch(/^id: 5\nevent: ready\n/u);
+    expect(text).toContain("id: 7\nevent: changed");
+    expect(text).toContain('"conversationIds":["thread-missed"]');
+  });
   it("revalidates authentication and closes on expiry", async () => {
     const auth = vi.fn().mockResolvedValueOnce("a").mockRejectedValue(new Error("expired"));
     const transaction: Transaction = async (work) =>
