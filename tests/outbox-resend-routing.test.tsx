@@ -169,6 +169,20 @@ describe("outbox resend routing", () => {
     expect(posted).toEqual(["due-in-b"]);
   });
 
+  it("retries only the tapped failed message, with its original clientMessageId", async () => {
+    queue("tapped-message", "A", 3);
+    queue("other-waiting", "B", 3);
+    await act(async () => {
+      await inbox!.retryQueuedMessages({ clientMessageId: "tapped-message" });
+      await flush();
+    });
+    const posted = vi
+      .mocked(postJson)
+      .mock.calls.map(([path, body]) => [path, body.clientMessageId]);
+    // Same clientMessageId, so the server deduplicates if the first attempt actually landed.
+    expect(posted).toEqual([["/v1/messages", "tapped-message"]]);
+  });
+
   it("never puts a resent reply into the thread opened while it was in flight", async () => {
     let answerB: (value: unknown) => void = () => undefined;
     vi.mocked(getJson).mockImplementation(async (path: string) => {

@@ -25,6 +25,12 @@ import { useCompactViewport } from "./hooks/useCompactViewport";
 import { ChatParticipantsPanel } from "./ChatParticipantsPanel";
 import { AssistantDetailsPanel } from "./AssistantDetailsPanel";
 import { conversationTitle, isAssistantConversation } from "./conversation-title";
+import {
+  AgentSessionHeaderControls,
+  AgentSessionHistory,
+  agentSessionsFor,
+  isAgentSessionConversation
+} from "./AgentSessionControls";
 
 import { ChatComposer } from "./ChatComposer";
 import { readCurrentOwnerRoute } from "./browser-navigation";
@@ -291,19 +297,8 @@ export function ChatSurface({
   const selectedTitle = conversationTitle(selectedConversation);
   const isAssistantSelected = isAssistantConversation(selectedConversation);
   const [sessionHistoryOpen, setSessionHistoryOpen] = useState(false);
-  const isAgentSession =
-    selectedConversation !== undefined &&
-    !selectedConversation.hasHumanRecipient &&
-    !selectedConversation.helpTopic &&
-    selectedConversation.kind === "personal";
-  const agentSessions = conversations.filter(
-    (item) =>
-      !item.hasHumanRecipient &&
-      !item.helpTopic &&
-      item.kind === "personal" &&
-      item.activeShopId === selectedConversation?.activeShopId &&
-      item.runtimeBindingId === selectedConversation?.runtimeBindingId
-  );
+  const isAgentSession = isAgentSessionConversation(selectedConversation);
+  const agentSessions = agentSessionsFor(conversations, selectedConversation);
 
   // Replies in the permanent daemon conversation come from "My Assistant", not the shop agent.
   const threadAgentName = isAssistantSelected ? permanentDaemonDisplayName : agent.name;
@@ -587,24 +582,14 @@ export function ChatSurface({
               </button>
             ) : null}
             {isAgentSession ? (
-              <div className="agent-session-controls">
-                <button
-                  type="button"
-                  onClick={() => setSessionHistoryOpen((open) => !open)}
-                  aria-expanded={sessionHistoryOpen}
-                >
-                  Session history
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSessionHistoryOpen(false);
-                    onCreateAgentSession();
-                  }}
-                >
-                  + New Session
-                </button>
-              </div>
+              <AgentSessionHeaderControls
+                historyOpen={sessionHistoryOpen}
+                onToggleHistory={() => setSessionHistoryOpen((open) => !open)}
+                onNewSession={() => {
+                  setSessionHistoryOpen(false);
+                  onCreateAgentSession();
+                }}
+              />
             ) : null}
             <ConversationExecutionControls
               conversation={selectedConversation}
@@ -613,24 +598,13 @@ export function ChatSurface({
           </header>
         ) : null}
         {isAgentSession && sessionHistoryOpen ? (
-          <section className="agent-session-history" aria-label="Session history">
-            {agentSessions.map((item) => (
-              <button
-                type="button"
-                key={item.id}
-                onClick={() => {
-                  setSessionHistoryOpen(false);
-                  onSelectConversation(item.id);
-                }}
-              >
-                <strong>{conversationTitle(item) ?? "New session"}</strong>
-                {item.lastMessage ? (
-                  <span>{conversationMessageText(item.lastMessage).slice(0, 120)}</span>
-                ) : null}
-                <time dateTime={item.createdAt}>{new Date(item.createdAt).toLocaleString()}</time>
-              </button>
-            ))}
-          </section>
+          <AgentSessionHistory
+            sessions={agentSessions}
+            onOpen={(conversationId) => {
+              setSessionHistoryOpen(false);
+              onSelectConversation(conversationId);
+            }}
+          />
         ) : null}
         <div
           className={`message-list${isHomeEmpty ? " home-empty-messages" : ""}`}
