@@ -109,7 +109,7 @@
     "test:postgres": "node scripts/run-postgres-tests.mjs",
     "test:mcp:openai": "node scripts/test-openai-grogoni-mcp.mjs",
     "test:live-model-runtime": "RUN_LIVE_MODEL_RUNTIME_TEST=true vitest run tests/live-render-model-runtime.test.ts",
-    "test:ui-cert": "playwright test e2e/responsive-accessibility.spec.ts",
+    "test:ui-cert": "playwright test e2e/responsive-accessibility.spec.ts e2e/instant-messaging.spec.ts e2e/instant-messaging-certification.spec.ts",
     "typecheck": "pnpm -r --filter \"./packages/**\" --if-present build && pnpm -r --if-present typecheck",
     "verify:production-runtime": "node --env-file-if-exists=.env scripts/verify-production-runtime.mjs",
     "prepare": "husky"

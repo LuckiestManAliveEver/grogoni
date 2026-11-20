@@ -40,3 +40,50 @@ it("loads signed-in assistant conversations before encryption registration and r
     await act(async () => root.unmount());
   }
 });
+
+it("runs the outbox's automatic pass on refresh and after outbox changes, and a reconnect pass when back online", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  vi.useFakeTimers();
+  const root = createRoot(document.createElement("div"));
+  const loadMessagingInbox = vi.fn(async () => undefined);
+  const retryQueuedMessages = vi.fn(async () => undefined);
+  function Harness() {
+    useInboxRefresh({
+      accountId: "owner",
+      encryptionDeviceId: null,
+      mode: "seller",
+      activeConversationId: "chat",
+      loadMessagingInbox,
+      retryQueuedMessages,
+      selectConversation: vi.fn(async () => undefined)
+    });
+    return null;
+  }
+  try {
+    await act(async () => root.render(<Harness />));
+    // The first refresh is followed by an automatic pass (backoff-respecting, capped).
+    expect(retryQueuedMessages).toHaveBeenCalledWith({ automatic: true });
+    expect(retryQueuedMessages).not.toHaveBeenCalledWith();
+
+    retryQueuedMessages.mockClear();
+    await act(async () => {
+      window.dispatchEvent(new Event("grogoni:messaging-outbox-change"));
+      window.dispatchEvent(new Event("grogoni:messaging-outbox-change"));
+      await vi.advanceTimersByTimeAsync(1_300);
+    });
+    // Debounced: two writes, one pass.
+    expect(retryQueuedMessages.mock.calls).toEqual([[{ automatic: true }]]);
+
+    retryQueuedMessages.mockClear();
+    await act(async () => {
+      window.dispatchEvent(new Event("online"));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(retryQueuedMessages).toHaveBeenCalledWith({ reconnect: true });
+    // Only a tap may pass the three-try cap.
+    expect(retryQueuedMessages).not.toHaveBeenCalledWith();
+  } finally {
+    await act(async () => root.unmount());
+    vi.useRealTimers();
+  }
+});

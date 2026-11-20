@@ -169,6 +169,31 @@ describe("outbox resend routing", () => {
     expect(posted).toEqual(["due-in-b"]);
   });
 
+  it("a tap on one message's Retry resends only that message, with its original clientMessageId", async () => {
+    queue("tap-target", "A", 3);
+    queue("other-in-b", "B", 3);
+    vi.mocked(postJson).mockResolvedValue({
+      id: "server-tap-target",
+      clientMessageId: "tap-target",
+      conversationId: "A",
+      agentMessage: null,
+      runtime: null,
+      processing: null
+    });
+    await act(async () => {
+      await inbox!.retryQueuedMessages({ clientMessageId: "tap-target" });
+      await flush();
+    });
+    // Same idempotency key as the first attempt, so the server returns the stored message
+    // instead of creating a second one (tests/agent-session-verification.test.ts).
+    expect(vi.mocked(postJson).mock.calls).toEqual([
+      ["/v1/messages", { conversationId: "A", clientMessageId: "tap-target" }]
+    ]);
+    expect(readMessagingOutbox("account-1").map((entry) => entry.clientMessageId)).toEqual([
+      "other-in-b"
+    ]);
+  });
+
   it("never puts a resent reply into the thread opened while it was in flight", async () => {
     let answerB: (value: unknown) => void = () => undefined;
     vi.mocked(getJson).mockImplementation(async (path: string) => {

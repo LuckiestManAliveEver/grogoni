@@ -65,10 +65,68 @@ describe("account message event stream", () => {
       new Request("https://example.invalid/v1/realtime/messages"),
       transaction,
       auth,
-      { durationMs: 100, intervalMs: 1 }
+      { durationMs: 100, intervalMs: 1, reauthorizeEveryMs: 0 }
     );
     expect(await response.text()).not.toContain("event: changed");
     expect(auth).toHaveBeenCalledTimes(2);
+  });
+  it("reads the journal every probe but rechecks the session only every reauthorizeEveryMs", async () => {
+    vi.useFakeTimers();
+    try {
+      const auth = vi.fn(async () => "account-a");
+      const journalReads = vi.fn();
+      const transaction: Transaction = async (work) =>
+        work({
+          query: async (sql: string) => {
+            if (!sql.includes("max(sequence)")) journalReads();
+            return { rows: sql.includes("max(sequence)") ? [{ cursor: "0" }] : [] };
+          }
+        });
+      const response = await messageEventStream(
+        new Request("https://example.invalid/v1/realtime/messages"),
+        transaction,
+        auth,
+        { durationMs: 10_000, intervalMs: 500, reauthorizeEveryMs: 5_000 }
+      );
+      const text = response.text();
+      await vi.advanceTimersByTimeAsync(10_500);
+      await text;
+      // 20 probes in 10 s, each reading the journal; the session checked at open and at 5 s and 10 s.
+      expect(journalReads.mock.calls.length).toBeGreaterThanOrEqual(19);
+      expect(auth.mock.calls.length).toBeLessThanOrEqual(3);
+      expect(auth.mock.calls.length).toBeGreaterThanOrEqual(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it("still closes within the recheck window once the session expires", async () => {
+    vi.useFakeTimers();
+    try {
+      const auth = vi
+        .fn()
+        .mockResolvedValueOnce("account-a")
+        .mockRejectedValue(new Error("expired"));
+      const transaction: Transaction = async (work) =>
+        work({ query: async () => ({ rows: [{ cursor: "0" }] }) });
+      const response = await messageEventStream(
+        new Request("https://example.invalid/v1/realtime/messages"),
+        transaction,
+        auth,
+        { durationMs: 25_000, intervalMs: 500, reauthorizeEveryMs: 5_000 }
+      );
+      let closedAt: number | null = null;
+      const started = Date.now();
+      const text = response.text().then((body) => {
+        closedAt = Date.now() - started;
+        return body;
+      });
+      await vi.advanceTimersByTimeAsync(6_000);
+      await text;
+      expect(closedAt).not.toBeNull();
+      expect(closedAt!).toBeLessThanOrEqual(5_600);
+    } finally {
+      vi.useRealTimers();
+    }
   });
   it("rejects a malformed reconnect cursor", async () => {
     const transaction: Transaction = async () => {
