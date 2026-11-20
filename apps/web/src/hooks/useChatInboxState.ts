@@ -266,7 +266,14 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
         : null;
     const cursor = cached?.messageCursor;
     const response = await getJson<ConversationView>(
-      `/v1/conversations/${conversationId}${cursor ? `?since=${encodeURIComponent(cursor)}` : ""}`
+      `/v1/conversations/${conversationId}${cursor ? `?since=${encodeURIComponent(cursor)}` : ""}`,
+      // A thread opened from the device copy is redrawn as soon as the server's answer arrives.
+      cursor
+        ? undefined
+        : () => {
+            if (activeConversationIdRef.current === conversationId)
+              void loadConversationThread(conversationId).catch(() => undefined);
+          }
     );
     const merged = new Map(
       (response.isDelta && cached ? cached.messages : []).map((message) => [message.id, message])
