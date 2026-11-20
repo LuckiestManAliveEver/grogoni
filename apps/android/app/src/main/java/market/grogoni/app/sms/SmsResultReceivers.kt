@@ -1,6 +1,5 @@
 package market.grogoni.app.sms
 
-import android.app.Activity
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.ContentValues
@@ -60,14 +59,14 @@ class SmsDeliveryResultReceiver : BroadcastReceiver() {
         val commandId = intent.getStringExtra("command_id") ?: return
         val index = intent.getIntExtra("segment_index", -1)
         val count = intent.getIntExtra("segment_count", 0)
-        if (index < 0 || count <= 0 || resultCode != Activity.RESULT_OK) return
+        if (index < 0 || count <= 0 || !NativeSmsDeliveryPolicy.reportCounts(resultCode)) return
         val store = NativeSmsStore(context)
         val reportToGrogoni = intent.getBooleanExtra("report_to_grogoni", true)
-        if (store.commandState(commandId) == "failed") return
+        if (!NativeSmsDeliveryPolicy.reportApplies(store.commandState(commandId))) return
         val (reported, _) = store.saveSegmentResult(
             commandId, "delivered", index, count, NativeSmsErrorCode.SMS_DELIVERED,
         )
-        if (reported == count) {
+        if (NativeSmsDeliveryPolicy.commandDelivered(reported, count)) {
             store.markCommandTerminal(commandId, "delivered", NativeSmsErrorCode.SMS_DELIVERED)
             if (reportToGrogoni) {
                 store.enqueueResult(

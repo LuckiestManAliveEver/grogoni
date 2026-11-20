@@ -67,6 +67,21 @@ object NativeSmsResultMapper {
     }
 }
 
+/**
+ * Delivery status rules (checked by NativeSmsDeliveryPolicyTest). A command becomes "delivered"
+ * only from a successful delivery report (a delivery PDU with RESULT_OK) for every segment, and
+ * never after it failed. A missing or failed report leaves it "sent". MMS reports no delivery.
+ */
+object NativeSmsDeliveryPolicy {
+    fun reportCounts(resultCode: Int, okCode: Int = android.app.Activity.RESULT_OK): Boolean =
+        resultCode == okCode
+
+    fun reportApplies(commandState: String?): Boolean = commandState != "failed"
+
+    fun commandDelivered(reportedSegments: Int, segmentCount: Int): Boolean =
+        segmentCount > 0 && reportedSegments == segmentCount
+}
+
 enum class CommandReplayDecision { EXECUTE, REPORT_DELIVERY_UNKNOWN, SKIP }
 
 fun commandReplayDecision(
