@@ -45,3 +45,36 @@ export function serverTimingHeader(timing: RequestTiming, now = performance.now(
   entries.push(`total;dur=${(now - timing.startedAt).toFixed(1)}`);
   return entries.join(", ");
 }
+
+/**
+ * One log line per message the server accepted (`message_accepted`), so a client's
+ * `message.send.accepted_ms` mark can be matched to the server side of the same send. Random
+ * identifiers and durations only: never message text, ciphertext or the sender.
+ */
+export function messageAcceptedLogLine(
+  payload: Buffer | undefined,
+  status: number,
+  serverMs: number
+): string | null {
+  if (payload === undefined || status !== 200) return null;
+  try {
+    const body = JSON.parse(payload.toString()) as {
+      clientMessageId?: unknown;
+      conversationId?: unknown;
+      agent?: unknown;
+    } | null;
+    const id = (value: unknown) =>
+      typeof value === "string" && /^[A-Za-z0-9._:-]{1,120}$/u.test(value) ? value : null;
+    const clientMessageId = id(body?.clientMessageId);
+    if (clientMessageId === null) return null;
+    return JSON.stringify({
+      event: "message_accepted",
+      clientMessageId,
+      conversationId: id(body?.conversationId),
+      agentTurn: typeof body?.agent === "object" && body.agent !== null,
+      serverMs: Math.round(serverMs)
+    });
+  } catch {
+    return null;
+  }
+}

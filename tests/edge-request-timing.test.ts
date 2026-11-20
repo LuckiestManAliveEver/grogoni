@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   currentRequestTiming,
+  messageAcceptedLogLine,
   recordStage,
   runWithRequestTiming,
   serverTimingHeader,
@@ -63,5 +64,39 @@ describe("Edge request stage timing", () => {
       return [...currentRequestTiming()!.stages.keys()];
     });
     expect(keys).toEqual(["handler"]);
+  });
+});
+
+describe("message_accepted log line", () => {
+  const body = (value: unknown) => Buffer.from(JSON.stringify(value));
+
+  it("logs ids and the server duration of an accepted message, never its content", () => {
+    const line = messageAcceptedLogLine(
+      body({
+        conversationId: "conversation-1",
+        clientMessageId: "message-1795194322831-b1fbe357",
+        content: { type: "text", text: "secret price list" },
+        agent: { businessId: "business-1", message: "secret price list" }
+      }),
+      200,
+      312.6
+    );
+    expect(JSON.parse(line!)).toEqual({
+      event: "message_accepted",
+      clientMessageId: "message-1795194322831-b1fbe357",
+      conversationId: "conversation-1",
+      agentTurn: true,
+      serverMs: 313
+    });
+    expect(line).not.toContain("secret");
+    expect(line).not.toContain("business-1");
+  });
+
+  it("logs nothing for a refused send, a body without an id, or an unsafe id", () => {
+    expect(messageAcceptedLogLine(body({ clientMessageId: "m-00000001" }), 400, 5)).toBeNull();
+    expect(messageAcceptedLogLine(body({ conversationId: "c" }), 200, 5)).toBeNull();
+    expect(messageAcceptedLogLine(body({ clientMessageId: 'x"}\n{"event' }), 200, 5)).toBeNull();
+    expect(messageAcceptedLogLine(Buffer.from("not json"), 200, 5)).toBeNull();
+    expect(messageAcceptedLogLine(undefined, 200, 5)).toBeNull();
   });
 });

@@ -721,6 +721,75 @@ describe("CP20 unified account, conversation, and session foundation", () => {
     await hydratedApp.close();
   });
 
+  it("marks a direct message delivered when the recipient's app fetches it, then read", async () => {
+    const store = createCp2Store();
+    const app = buildApi({ cp2: { store } });
+    const senderCookie = await createAccountSession(app, "254700000041");
+    const recipientCookie = await createAccountSession(app, "254700000042");
+    await registerEncryptionDevice(app, senderCookie, "device-delivered-sender");
+    await registerEncryptionDevice(app, recipientCookie, "device-delivered-recipient");
+    const { conversation } = await postJson<ConversationView>(
+      app,
+      "/v1/conversations",
+      { kind: "personal", activeShopId: null, recipient: "+254700000042" },
+      senderCookie
+    );
+    const sent = await postJson<ConversationMessageSummary>(
+      app,
+      "/v1/messages",
+      {
+        conversationId: conversation.id,
+        clientMessageId: "delivered-message-0001",
+        content: encryptedFixture(
+          ["device-delivered-sender", "device-delivered-recipient"],
+          "ciphertext-delivered"
+        )
+      },
+      senderCookie
+    );
+    expect(sent).toMatchObject({ status: "sent", deliveredAt: null });
+    const statusFor = async (cookie: string) =>
+      (
+        await getJson<ConversationView>(app, `/v1/conversations/${conversation.id}`, cookie)
+      ).messages.find((message) => message.id === sent.id);
+
+    // The sender rereading its own thread is not a delivery.
+    expect(await statusFor(senderCookie)).toMatchObject({ status: "sent", deliveredAt: null });
+
+    // The recipient's app lists the inbox: the message reached that device.
+    await getJson(app, "/v1/conversations", recipientCookie);
+    const delivered = await statusFor(senderCookie);
+    expect(delivered).toMatchObject({ status: "delivered", readAt: null });
+    expect(delivered?.deliveredAt).toEqual(expect.any(String));
+    // The sender hears about it through its sync journal (the SSE hint's delta read).
+    const changes = await getJson<{
+      changes: Array<{ collection: string; entityId: string; entity: { status?: string } }>;
+    }>(app, "/v1/sync/changes", senderCookie);
+    expect(
+      changes.changes
+        .filter(
+          (change) => change.collection === "conversation_messages" && change.entityId === sent.id
+        )
+        .at(-1)?.entity.status
+    ).toBe("delivered");
+
+    // Fetching again changes nothing; reading moves it on.
+    await getJson(app, "/v1/conversations", recipientCookie);
+    expect((await statusFor(senderCookie))?.deliveredAt).toBe(delivered?.deliveredAt);
+    const read = await patchJson(
+      app,
+      `/v1/conversations/${conversation.id}`,
+      { read: true },
+      recipientCookie
+    );
+    expect(read.statusCode).toBe(200);
+    expect(await statusFor(senderCookie)).toMatchObject({
+      status: "read",
+      deliveredAt: delivered?.deliveredAt
+    });
+    await app.close();
+  });
+
   it("supports full direct-message lifecycle across two accounts", async () => {
     const deliveries: Array<{ endpoint: string; body: string }> = [];
     const store = createCp2Store({

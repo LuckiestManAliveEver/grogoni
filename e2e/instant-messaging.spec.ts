@@ -150,7 +150,8 @@ for (const [profile, ackDelayMs] of [
     await page.goto(`/workspace/conversations/${conversation.id}`);
     const composer = page.getByRole("textbox", { name: "Message", exact: true });
     await expect(composer).toBeVisible({ timeout: 25_000 });
-    await expect(page.locator(".messenger-thread-header")).toContainText("Fixture session");
+    // Agent chats use the home shell (no thread header): the session is identified by its URL.
+    await expect(page.locator(".messenger-thread-header")).toHaveCount(0);
     await composer.fill("First fixture question");
     await composer.press("Enter");
     await expect(page.locator(".message-list")).toContainText("First fixture question");

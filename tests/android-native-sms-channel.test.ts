@@ -291,6 +291,16 @@ describe("Android native SMS channel", () => {
       androidHeaders
     );
     expect(duplicateSent.message.sentAt).toBe(sent.message.sentAt);
+    // No delivery PDU from the carrier, no "delivered": not from a repeated "sent" report, not from
+    // the app listing or opening the conversation (that marks Grogoni-to-Grogoni messages only).
+    await getJson(app, "/v1/conversations", owner.cookie);
+    const smsMessage = () =>
+      store
+        .snapshot()
+        .conversationMessages.find((message) => message.actualChannel === "native_sms");
+    expect(smsMessage()).toMatchObject({ status: "sent", deliveredAt: null });
+    await getJson(app, `/v1/conversations/${smsMessage()!.conversationId}`, owner.cookie);
+    expect(smsMessage()).toMatchObject({ status: "sent", deliveredAt: null });
     const delivered = await postJson<{ message: { status: string; deliveredAt: string } }>(
       app,
       `/v1/devices/native-sms/commands/${commandId}/result`,

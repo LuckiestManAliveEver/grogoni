@@ -1,4 +1,5 @@
 import { subscribeAccountHints } from "../messaging/account-hints";
+import { messagingOutboxChangeEvent } from "../messaging/outbox";
 import { useEffect, useRef } from "react";
 import type { GrogoniMode } from "../app-shell";
 import { navigateToOwnerRoute, readCurrentOwnerRoute } from "../browser-navigation";
@@ -17,7 +18,7 @@ export function useInboxRefresh({
   mode: GrogoniMode;
   activeConversationId: string | null;
   loadMessagingInbox: (preferred: string | null) => Promise<void>;
-  retryQueuedMessages: () => Promise<void>;
+  retryQueuedMessages: (options?: { automatic?: boolean; reconnect?: boolean }) => Promise<void>;
   selectConversation: (id: string) => Promise<void>;
 }) {
   const latest = useRef({ loadMessagingInbox, retryQueuedMessages, selectConversation });
@@ -54,8 +55,22 @@ export function useInboxRefresh({
       } finally {
         refreshing = false;
       }
+      // The outbox's own backoff decides what is due (15 s, 1 min, 4 min, then it stops), so a
+      // pass on every refresh never reruns a failing paid model turn early.
+      if (!cancelled) void latest.current.retryQueuedMessages({ automatic: true });
     };
     void refresh();
+    // A message queued behind an earlier one in its conversation goes as soon as that one is
+    // accepted (its outbox entry is removed), not at the next refresh.
+    let outboxPass: ReturnType<typeof setTimeout> | undefined;
+    const onOutboxChange = () => {
+      clearTimeout(outboxPass);
+      outboxPass = setTimeout(() => {
+        if (!cancelled && document.visibilityState !== "hidden")
+          void latest.current.retryQueuedMessages({ automatic: true });
+      }, 1_200);
+    };
+    window.addEventListener(messagingOutboxChangeEvent, onOutboxChange);
     let interval: ReturnType<typeof setInterval>;
     const unsubscribe = subscribeAccountHints(
       accountId,
@@ -67,14 +82,12 @@ export function useInboxRefresh({
     );
     interval = setInterval(() => void refresh(), 4_000);
     const onVisible = () => {
-      if (document.visibilityState !== "hidden") {
-        void latest.current.retryQueuedMessages();
-        void refresh();
-      }
+      if (document.visibilityState !== "hidden") void refresh();
     };
     document.addEventListener("visibilitychange", onVisible);
+    // Back online: skip the backoff wait, but not the three-try cap (only a tap passes that).
     const onOnline = () => {
-      void latest.current.retryQueuedMessages();
+      void latest.current.retryQueuedMessages({ reconnect: true });
       void refresh();
     };
     const onServiceWorkerMessage = (event: MessageEvent<unknown>) => {
@@ -88,6 +101,8 @@ export function useInboxRefresh({
     return () => {
       cancelled = true;
       window.clearInterval(interval);
+      clearTimeout(outboxPass);
+      window.removeEventListener(messagingOutboxChangeEvent, onOutboxChange);
       unsubscribe();
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("online", onOnline);

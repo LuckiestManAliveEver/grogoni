@@ -3414,6 +3414,7 @@ export class MessagingDomain {
           session.account.id
         );
         if (participant === null || (!input.includeArchived && participant.archivedAt)) return null;
+        this.markDeliveredToDevice(conversation.id, session.user.id, now);
         const messages = this.messagesForConversation(conversation.id);
         const lastMessage = messages.at(-1) ?? null;
         const lastRead =
@@ -3458,10 +3459,43 @@ export class MessagingDomain {
     conversationId: string;
     now?: Date;
   }): ConversationView {
-    const session = this.deps.requirePinVerifiedSession(input.sessionId, input.now ?? new Date());
-    return this.conversationView(
-      this.requireAccountConversation(input.conversationId, session.account.id)
-    );
+    const now = input.now ?? new Date();
+    const session = this.deps.requirePinVerifiedSession(input.sessionId, now);
+    const conversation = this.requireAccountConversation(input.conversationId, session.account.id);
+    this.markDeliveredToDevice(conversation.id, session.user.id, now);
+    return this.conversationView(conversation);
+  }
+
+  /**
+   * "Delivered" for Grogoni-to-Grogoni messages: another person's message reached this
+   * participant's device when their app fetched it (the inbox or the thread). Only `sent` moves:
+   * a message already delivered, read, failed or still queued keeps its status, so a reread
+   * writes nothing. The sender learns through the participants' sync journal.
+   */
+  private markDeliveredToDevice(conversationId: string, recipientUserId: string, now: Date): void {
+    for (const message of this.messagesForConversation(conversationId)) {
+      if (
+        message.status !== "sent" ||
+        message.author !== "user" ||
+        message.authorId === recipientUserId ||
+        message.deletedAt != null ||
+        (message.actualChannel ?? "grogoni") !== "grogoni"
+      )
+        continue;
+      const delivered: ConversationMessageSummary = {
+        ...message,
+        status: "delivered",
+        deliveredAt: message.deliveredAt ?? now.toISOString()
+      };
+      this.conversationMessages.set(delivered.id, delivered);
+      this.recordConversationSyncForParticipants(
+        conversationId,
+        "conversation_messages",
+        delivered.id,
+        delivered,
+        now
+      );
+    }
   }
 
   async deliverWorkspaceFile(input: {
