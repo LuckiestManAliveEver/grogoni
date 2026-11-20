@@ -125,13 +125,24 @@ export async function invalidateApiCacheForMutation(path: string): Promise<void>
     if (businessRoot !== undefined) {
       const businessId = businessRoot.slice("/businesses/".length);
       await createLocalDataRepository("workspace", `business:${businessId}`).clearForLogout();
-    } else if (policy !== null) {
-      await createLocalDataRepository(policy.domain, policy.scope).invalidate();
     } else if (
       normalized.startsWith("/v1/messages") ||
       normalized.startsWith("/v1/conversations")
     ) {
-      await createLocalDataRepository("conversation", "account").invalidate();
+      // The device copies of the inbox and of opened threads are kept: the in-memory entries
+      // were dropped above, so the next read shows the device copy at once and refreshes it from
+      // the server. Wiping them on every send or read marker made each chat open wait on the
+      // network. (Before threads were kept, this branch cleared a scope nothing was stored in.)
+      // A change to one conversation (deleted, renamed, marked read) drops only that thread's
+      // copy; the open thread's next refresh stores it again.
+      const thread = normalized.match(/^\/v1\/conversations\/([^/]+)/u)?.[1];
+      const accountId = readCachedAuthSession()?.account.id;
+      if (thread !== undefined && thread !== "recycle-bin" && accountId !== undefined)
+        await createLocalDataRepository("conversation", `account:${accountId}`).invalidate(
+          `/v1/conversations/${thread}`
+        );
+    } else if (policy !== null) {
+      await createLocalDataRepository(policy.domain, policy.scope).invalidate();
     }
   } catch {
     // The server mutation already succeeded. A browser cache failure must not report it as failed.
@@ -238,6 +249,16 @@ function persistentPolicy(path: string): { domain: LocalDataDomain; scope: strin
   if (pathname === "/network")
     return accountId ? { domain: "workspace", scope: `account:${accountId}` } : null;
   if (pathname === "/v1/conversations")
+    return accountId ? { domain: "conversation", scope: `account:${accountId}` } : null;
+  // An opened thread, so reopening it shows at once from the device while the server refreshes
+  // it. Only the full read: a delta read (`?since=`) answers relative to one cursor, and the
+  // recycle bin is not a thread. Encrypted direct messages are stored as the server holds them
+  // (ciphertext); everything here is cleared on sign-out (clearAllLocalData).
+  if (
+    path === pathname &&
+    /^\/v1\/conversations\/[^/]+$/u.test(pathname) &&
+    pathname !== "/v1/conversations/recycle-bin"
+  )
     return accountId ? { domain: "conversation", scope: `account:${accountId}` } : null;
   return null;
 }

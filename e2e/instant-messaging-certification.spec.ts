@@ -56,9 +56,12 @@ async function installFixture(page: Page) {
     submitted: [] as Submission[],
     /** While true, POST /v1/messages fails as a dropped connection. */
     dropSends: false,
-    ackDelayMs: 50
+    ackDelayMs: 50,
+    /** Extra wait before the server answers a thread read (GET /v1/conversations/:id). */
+    threadDelayMs: 0
   };
-  await page.route("http://127.0.0.1:4000/**", async (route) => {
+  // On the browser context, so a second tab (a cold app start) talks to the same fixture.
+  await page.context().route("http://127.0.0.1:4000/**", async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
     const json = (body: unknown, status = 200) =>
@@ -85,7 +88,9 @@ async function installFixture(page: Page) {
       });
     if (path === "/v1/conversations") return json({ conversations });
     const opened = conversations.find((item) => path === `/v1/conversations/${item.id}`);
-    if (opened && request.method() === "GET")
+    if (opened && request.method() === "GET") {
+      if (state.threadDelayMs > 0)
+        await new Promise((resolve) => setTimeout(resolve, state.threadDelayMs));
       return json({
         conversation: opened,
         participants: [],
@@ -93,6 +98,7 @@ async function installFixture(page: Page) {
         typing: [],
         channels: []
       });
+    }
     if (opened) return json({ conversation: opened });
     if (path.endsWith("/runtime/sessions"))
       return json(
@@ -170,7 +176,7 @@ async function installFixture(page: Page) {
     if (path === "/v1/marketplace-intro") return json({ completedAt: "2026-11-18T00:00:00Z" });
     return json({ code: "fixture_unavailable", message: "Unavailable in fixture." }, 404);
   });
-  await page.addInitScript((business) => {
+  await page.context().addInitScript((business) => {
     localStorage.setItem("grogoni.marketplace-intro.completed.v1", "true");
     localStorage.setItem("grogoni.chatFirst.activeBusiness", JSON.stringify(business));
     localStorage.setItem("grogoni.chatFirst.mode", "seller");
@@ -295,4 +301,60 @@ test("a failed send retried by hand keeps its clientMessageId", async ({ page })
   expect(fixture.state.submitted[0]?.clientMessageId).toBe(sent?.clientMessageId);
   expect(new Set(fixture.state.submitted.map((item) => item.clientMessageId)).size).toBe(2);
   await expect.poll(() => fixture.messages.get("cert-chat-a")?.length).toBe(2);
+});
+
+test("a chat opened before opens from the phone on a cold start while the server is slow", async ({
+  page,
+  context
+}) => {
+  test.setTimeout(60_000);
+  const fixture = await installFixture(page);
+  fixture.messages.get("cert-chat-a")!.push({
+    id: "server-earlier",
+    conversationId: "cert-chat-a",
+    clientMessageId: "earlier-hello-0001",
+    author: "user",
+    authorId: "cert-user",
+    content: { type: "text", text: "Earlier hello from this phone" },
+    status: "sent",
+    createdAt: "2026-11-18T09:00:00Z",
+    deletedAt: null,
+    replyToMessageId: null,
+    reactions: []
+  });
+  await openSession(page, "cert-chat-a");
+  await expect(page.locator(".message-list")).toContainText("Earlier hello from this phone");
+  // Leave it for another chat, then close the app: only the device's storage remains.
+  await openSession(page, "cert-chat-b");
+  await page.close();
+
+  // The server now takes 4 s to answer a thread read; the device copy must not wait for it.
+  fixture.state.threadDelayMs = 4_000;
+  // Something arrived while the app was closed: the device copy cannot know it yet.
+  fixture.messages.get("cert-chat-a")!.push({
+    id: "server-newer",
+    conversationId: "cert-chat-a",
+    clientMessageId: "newer-hello-00001",
+    author: "user",
+    authorId: "cert-user",
+    content: { type: "text", text: "Newer message from the server" },
+    status: "sent",
+    createdAt: "2026-11-18T10:00:00Z",
+    deletedAt: null,
+    replyToMessageId: null,
+    reactions: []
+  });
+  const cold = await context.newPage();
+  await cold.setViewportSize({ width: 360, height: 800 });
+  const started = Date.now();
+  await cold.goto("/workspace/conversations/cert-chat-a");
+  await expect(cold.locator(".message-list")).toContainText("Earlier hello from this phone", {
+    timeout: 3_500
+  });
+  expect(Date.now() - started).toBeLessThan(3_500);
+  // Then the server's answer replaces the device copy without another tap.
+  await expect(cold.locator(".message-list")).toContainText("Newer message from the server", {
+    timeout: 15_000
+  });
+  await expect(cold.locator(".message-list")).toContainText("Earlier hello from this phone");
 });
