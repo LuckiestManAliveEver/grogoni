@@ -6732,6 +6732,50 @@ export class MessagingDomain {
     return result;
   }
 
+  /**
+   * The recipient's device has received these messages: they came down in its account sync pull.
+   * Grogoni messages written by another person that are still "sent" become "delivered", and the
+   * change is journaled to the conversation's participants so the sender's tick updates live.
+   * Never touches read, failed, deleted, agent/system or external-channel messages, and only
+   * messages in conversations this account takes part in. Returns how many changed.
+   */
+  markReceivedMessagesDelivered(input: {
+    accountId: string;
+    userId: string;
+    messageIds: readonly string[];
+    now: Date;
+  }): number {
+    let marked = 0;
+    for (const id of new Set(input.messageIds)) {
+      const message = this.conversationMessages.get(id);
+      if (
+        message === undefined ||
+        message.status !== "sent" ||
+        message.author !== "user" ||
+        message.authorId === input.userId ||
+        message.deletedAt != null ||
+        (message.actualChannel ?? message.selectedChannel ?? "grogoni") !== "grogoni" ||
+        this.accountConversationParticipant(message.conversationId, input.accountId) === null
+      )
+        continue;
+      const delivered: ConversationMessageSummary = {
+        ...message,
+        status: "delivered",
+        deliveredAt: input.now.toISOString()
+      };
+      this.conversationMessages.set(id, delivered);
+      this.recordConversationSyncForParticipants(
+        message.conversationId,
+        "conversation_messages",
+        id,
+        delivered,
+        input.now
+      );
+      marked += 1;
+    }
+    return marked;
+  }
+
   private recordConversationSyncForParticipants(
     conversationId: string,
     collection: SyncCollection,

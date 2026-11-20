@@ -4564,6 +4564,19 @@ export class Cp2Store {
 
     const pageChanges = changes.slice(startIndex, startIndex + limit);
     const nextCursor = pageChanges.at(-1)?.cursor ?? input.cursor ?? originCursor;
+    // This device now holds these messages: the truthful moment for "delivered" (a Grogoni
+    // message is "sent" when the server accepts it). Journaled to the sender; already-delivered
+    // messages change nothing, so the follow-up pulls this triggers settle at once.
+    const received = pageChanges
+      .filter((change) => change.collection === "conversation_messages")
+      .map((change) => change.entityId);
+    if (received.length > 0)
+      this.messagingDomain.markReceivedMessagesDelivered({
+        accountId,
+        userId: session.user.id,
+        messageIds: received,
+        now
+      });
 
     return {
       accountId,
