@@ -39,7 +39,7 @@ Use actual readiness/errors, provider responses, pending persistence/job state, 
 ```bash
 node node_modules/vitest/vitest.mjs run packages/resource-control/src/bulkhead.test.ts packages/resource-control/src/circuit-breaker.test.ts packages/resource-control/src/retry.test.ts services/api/src/resource-exhaustion-acceptance.test.ts --maxWorkers=1 --minWorkers=1
 node scripts/check-retired-runtime-references.mjs
-node scripts/check-render-inference-boundaries.mjs
+node scripts/check-inference-boundaries.mjs
 ```
 
 These verify primitive behavior and retired-deployment boundaries. Production isolation, load budgets and recovery require measurements against the actual deployed Node/Edge paths; do not claim those measurements from this document.

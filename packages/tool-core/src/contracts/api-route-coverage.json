@@ -242,12 +242,12 @@
     {
       "file": "apps/web/src/hooks/useChatRuntimeState.ts",
       "path": "/v1/inference/owner-node/presence",
-      "reason": "Owner-node inference: the server routes were removed in a6b515c0 ('Move inference off Render'). The call runs only when VITE_INFERENCE_OWNER_NODE_ENABLED is 'true'. The Vercel production build does not set it, but render.yaml still sets it to 'true' for its production and staging web services, so a Render web deploy would call these removed routes. Remove the call or the render.yaml setting before deploying the web app from Render."
+      "reason": "Owner-node inference: the server routes were removed in a6b515c0 ('Move inference off Render'). The call runs only when VITE_INFERENCE_OWNER_NODE_ENABLED is 'true'. The Vercel production build (the only web deploy) does not set it, so production never calls these removed routes."
     },
     {
       "file": "apps/web/src/hooks/useChatRuntimeState.ts",
       "path": "/v1/inference/owner-node/jobs",
-      "reason": "Owner-node inference: the server routes were removed in a6b515c0 ('Move inference off Render'). The call runs only when VITE_INFERENCE_OWNER_NODE_ENABLED is 'true'. The Vercel production build does not set it, but render.yaml still sets it to 'true' for its production and staging web services, so a Render web deploy would call these removed routes. Remove the call or the render.yaml setting before deploying the web app from Render."
+      "reason": "Owner-node inference: the server routes were removed in a6b515c0 ('Move inference off Render'). The call runs only when VITE_INFERENCE_OWNER_NODE_ENABLED is 'true'. The Vercel production build (the only web deploy) does not set it, so production never calls these removed routes."
     }
   ]
 }

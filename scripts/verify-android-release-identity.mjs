@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath, URL } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -10,7 +10,8 @@ const webManifest = JSON.parse(
   readFileSync(join(workspaceRoot, "apps/web/public/manifest.webmanifest"), "utf8")
 );
 const rootPackage = JSON.parse(readFileSync(join(workspaceRoot, "package.json"), "utf8"));
-const renderBlueprint = readFileSync(join(workspaceRoot, "render.yaml"), "utf8");
+// grogoni.com is served by Vercel (vercel.json); the API sits behind its /api rewrite.
+const vercelConfig = JSON.parse(readFileSync(join(workspaceRoot, "vercel.json"), "utf8"));
 const errors = [];
 const pending = [];
 
@@ -61,10 +62,19 @@ check(
   identity.web?.digitalAssetLinksUrl === `${identity.web?.origin}/.well-known/assetlinks.json`,
   "Digital Asset Links URL is inconsistent"
 );
-check(renderBlueprint.includes("domains:\n      - grogoni"), "Render must declare grogoni");
 check(
-  renderBlueprint.includes("value: https://grogoni.com"),
-  "Render web API origin must match the release identity"
+  vercelConfig.rewrites?.some(
+    (rewrite) => rewrite.source === "/(.*)" && rewrite.destination === "/index.html"
+  ) === true,
+  "Vercel must serve the PWA's routes from index.html"
+);
+check(
+  vercelConfig.rewrites?.some((rewrite) => rewrite.source === "/api/:path*") === true,
+  "Vercel must route the production origin's /api to the API"
+);
+check(
+  existsSync(join(workspaceRoot, "apps/web/public/.well-known/assetlinks.json")),
+  "the production origin must serve Digital Asset Links"
 );
 check(identity.signing?.playAppSigning === true, "Play App Signing must be enabled");
 check(

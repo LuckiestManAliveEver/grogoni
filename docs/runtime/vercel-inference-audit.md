@@ -181,7 +181,7 @@ See `tests/model-activation-runtime.test.ts`, `tests/native-runtime-execution-ta
    regression, see above).
 6. Rewrite `render.yaml`, `docker-compose.yml`, `.env.example`, the ops scripts
    (`inference-health.mjs`, `inference-probe.mjs`, `verify-production-runtime.mjs`), and
-   `scripts/check-render-inference-boundaries.mjs` (which had been asserting the _old_ boundary and
+   `scripts/check-inference-boundaries.mjs` (which had been asserting the _old_ boundary and
    would have failed Render's own build) to match the new contract.
 
 ## Final target flow
@@ -214,7 +214,7 @@ the identical resolver/routing/telemetry path with no chat-code branching.
 - [../architecture/inference-runtime.md](../architecture/inference-runtime.md) - ownership boundary,
   runtime contracts, swap flows.
 - [../deployment/vercel-inference.md](../deployment/vercel-inference.md) - Vercel deployment runbook.
-- [../deployment/render-api.md](../deployment/render-api.md) - Render API deployment/config.
+- [../deployment/render-retirement.md](../deployment/render-retirement.md) - Render is retired; where the API and jobs run now.
 - [../storage/model-artifacts.md](../storage/model-artifacts.md) - Neon artifact storage contract.
 
 ## Hardening addendum (2026-09-01)
@@ -238,7 +238,7 @@ verified it with real inference rather than a compiled build:
   invalid, never triggers a download). Neither can know whether `/v1/inference`'s separate function
   has a warm model - documented explicitly rather than faked, consistent with the existing "Render's
   `/health/ai` is the real end-to-end probe" design.
-- **Reverse deployment boundary was unchecked.** `scripts/check-render-inference-boundaries.mjs`
+- **Reverse deployment boundary was unchecked.** `scripts/check-inference-boundaries.mjs`
   only checked that Render doesn't depend on a local inference engine; nothing checked the other
   direction. Added a dependency-allowlist and import-scan check for `services/ai-runtime` (must
   depend on nothing but `@grogoni/shared-types` and `node-llama-cpp`, must never import

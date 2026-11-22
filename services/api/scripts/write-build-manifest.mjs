@@ -7,8 +7,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 function resolveGitCommitSha() {
-  const fromEnv =
-    process.env.RENDER_GIT_COMMIT?.trim() || process.env.RAILWAY_GIT_COMMIT_SHA?.trim();
+  const fromEnv = process.env.GITHUB_SHA?.trim() || process.env.VERCEL_GIT_COMMIT_SHA?.trim();
   if (fromEnv !== undefined && fromEnv !== "") return fromEnv;
   try {
     return execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();

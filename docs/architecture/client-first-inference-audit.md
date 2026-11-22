@@ -202,7 +202,7 @@ Required production changes:
 - `services/api/package.json`: remove the local runtime package from Render dependencies.
 - `render.yaml`: remove local inference variables/package filter and run the inference boundary
   check.
-- `scripts/check-render-inference-boundaries.mjs` and root `package.json`: fail builds that
+- `scripts/check-inference-boundaries.mjs` and root `package.json`: fail builds that
   reintroduce local/browser inference into the Render API.
 - `.env.example`: safe disabled-by-default flags; local runtime settings become app/node-only.
 
@@ -211,7 +211,7 @@ Required tests and documentation:
 - new focused tests under `tests/` for unified routing, providers, cache metadata, cloud policy,
   owner-node isolation, and Render boundaries.
 - `docs/architecture/client-first-inference.md`
-- `docs/deployment/render-without-inference.md`
+- `docs/deployment/render-retirement.md` (Render, including its inference-free API setup, is retired)
 - `docs/inference/native-bridge.md`
 - `docs/inference/owner-node.md`
 - `docs/inference/model-manifest.md`

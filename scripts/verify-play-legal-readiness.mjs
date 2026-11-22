@@ -11,7 +11,9 @@ const routesSource = readText("apps/web/src/routes.ts");
 const deletionPage = readText("apps/web/src/legal/AccountDeletionPage.tsx");
 const privacyPage = readText("apps/web/src/legal/PrivacyPolicyPage.tsx");
 const termsPage = readText("apps/web/src/legal/TermsOfServicePage.tsx");
-const renderBlueprint = readText("render.yaml");
+// grogoni.com is served by Vercel; production jobs run as scheduled GitHub workflows.
+const vercelConfig = readJson("vercel.json");
+const maintenanceWorkflow = readText(".github/workflows/scheduled-maintenance.yml");
 const purgeMigration = readText("infra/db/migrations/022_account_deletion_purge.sql");
 const purgeScript = readText("services/api/scripts/purge-account-deletions.mjs");
 const errors = [];
@@ -65,12 +67,18 @@ check(deletionPage.includes("up to 30 days"), "deletion resource must explain re
 check(privacyPage.includes("Privacy Policy"), "privacy policy page is missing");
 check(termsPage.includes("Terms of Service"), "Terms of Service page is missing");
 check(
-  renderBlueprint.includes("source: /*\n        destination: /index.html"),
+  vercelConfig.rewrites?.some(
+    (rewrite) => rewrite.source === "/(.*)" && rewrite.destination === "/index.html"
+  ) === true,
   "SPA route rewrite is missing"
 );
-check(renderBlueprint.includes("name: grogoni-account-purge"), "account purge cron is missing");
 check(
-  renderBlueprint.includes("ACCOUNT_DELETION_PROCESSORS_JSON"),
+  maintenanceWorkflow.includes('- cron: "7 4 * * *"') &&
+    maintenanceWorkflow.includes("run: pnpm db:purge-accounts"),
+  "account purge schedule is missing"
+);
+check(
+  maintenanceWorkflow.includes("secrets.ACCOUNT_DELETION_PROCESSORS_JSON"),
   "processor configuration secret is missing"
 );
 check(
@@ -141,6 +149,11 @@ pendingValue(
   hasText(readiness.accountDeletion?.operationsOwner)
 );
 pendingValue("accountDeletion.privacyOwner", hasText(readiness.accountDeletion?.privacyOwner));
+// The purge runs only once vars.ACCOUNT_PURGE_ENABLED is true in GitHub, which code cannot read.
+pendingValue(
+  "accountDeletion.purgeScheduleEnabledOn",
+  isDate(readiness.accountDeletion?.purgeScheduleEnabledOn)
+);
 pendingValue("approval.approvedBy", hasText(readiness.approval?.approvedBy));
 pendingValue("approval.approvedOn", isDate(readiness.approval?.approvedOn));
 pendingValue("approval.changeRecord", hasText(readiness.approval?.changeRecord));

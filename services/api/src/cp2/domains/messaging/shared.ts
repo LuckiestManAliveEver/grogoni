@@ -82,13 +82,6 @@ export interface MessageNotificationDeliveryRunSummary {
   deadLettered: number;
 }
 
-export interface AppUpdateBroadcastSummary {
-  targeted: number;
-  sent: number;
-  expired: number;
-  failed: number;
-}
-
 export interface ConnectedMailboxBackgroundSyncSummary {
   checked: number;
   synchronized: number;

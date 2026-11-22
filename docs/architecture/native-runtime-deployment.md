@@ -110,7 +110,7 @@ retired table) - it is allowlisted by exact path, not by directory, so it stays 
 exception rather than a loophole.
 
 `pnpm build:production` runs it between `check:production-imports` and
-`check:render-inference-boundaries`, so a production deploy containing a retired-runtime reference
+`check:inference-boundaries`, so a production deploy containing a retired-runtime reference
 
 - in source, or surviving in `dist` - fails the build before Render ever starts the API.
 

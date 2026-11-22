@@ -68,9 +68,9 @@ export function isGrogoniStorefrontId(value: string): boolean {
  * (docs/architecture/grogoni-id-slug-system.md). Derived from what's actually in this monorepo today
  * - not a guessed list - so a change to real routing does not silently drift out of sync with
  * this constant:
- *   - `api` (services/api's own domain, render.yaml:23 `grogoni`) and `www` (an origin this
- *     app already treats as canonical - see WEB_ORIGINS/AUTH_ALLOWED_REDIRECT_ORIGINS in
- *     render.yaml/.env.example - even though no literal `www.grogoni.com` Render domain exists yet).
+ *   - `api` (the API's path on grogoni.com, vercel.json's `/api` rewrite) and `www` (an origin
+ *     this app treats as canonical - see WEB_ORIGINS/AUTH_ALLOWED_REDIRECT_ORIGINS in
+ *     .env.example; www.grogoni.com is served by the same Vercel deploy).
  *   - Every top-level API path segment (grep `app.(get|post|put|delete|patch)("/<segment>`,
  *     services/api/src/cp2/routes.ts / app.ts): auth, account, account-restoration, businesses,
  *     logout, logout-all, roles, session, sessions, v1.

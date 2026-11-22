@@ -17,11 +17,22 @@
     "approval"
   ],
   "properties": {
-    "$schema": { "type": "string" },
-    "schemaVersion": { "const": 1 },
-    "checkpoint": { "const": "CP27" },
-    "lastReviewedOn": { "type": "string", "format": "date" },
-    "readinessStatus": { "enum": ["proposed", "approved"] },
+    "$schema": {
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "checkpoint": {
+      "const": "CP27"
+    },
+    "lastReviewedOn": {
+      "type": "string",
+      "format": "date"
+    },
+    "readinessStatus": {
+      "enum": ["proposed", "approved"]
+    },
     "product": {
       "type": "object",
       "additionalProperties": false,
@@ -34,12 +45,24 @@
         "registrationNumber"
       ],
       "properties": {
-        "appName": { "const": "Grogoni" },
-        "playDeveloperName": { "type": ["string", "null"] },
-        "legalEntityName": { "type": ["string", "null"] },
-        "registeredAddress": { "type": ["string", "null"] },
-        "countryOfRegistration": { "type": ["string", "null"] },
-        "registrationNumber": { "type": ["string", "null"] }
+        "appName": {
+          "const": "Grogoni"
+        },
+        "playDeveloperName": {
+          "type": ["string", "null"]
+        },
+        "legalEntityName": {
+          "type": ["string", "null"]
+        },
+        "registeredAddress": {
+          "type": ["string", "null"]
+        },
+        "countryOfRegistration": {
+          "type": ["string", "null"]
+        },
+        "registrationNumber": {
+          "type": ["string", "null"]
+        }
       }
     },
     "contacts": {
@@ -47,10 +70,21 @@
       "additionalProperties": false,
       "required": ["supportEmail", "privacyEmail", "legalEmail", "contactVerificationStatus"],
       "properties": {
-        "supportEmail": { "type": ["string", "null"], "format": "email" },
-        "privacyEmail": { "type": ["string", "null"], "format": "email" },
-        "legalEmail": { "type": ["string", "null"], "format": "email" },
-        "contactVerificationStatus": { "enum": ["pending", "verified"] }
+        "supportEmail": {
+          "type": ["string", "null"],
+          "format": "email"
+        },
+        "privacyEmail": {
+          "type": ["string", "null"],
+          "format": "email"
+        },
+        "legalEmail": {
+          "type": ["string", "null"],
+          "format": "email"
+        },
+        "contactVerificationStatus": {
+          "enum": ["pending", "verified"]
+        }
       }
     },
     "legalDocuments": {
@@ -66,13 +100,29 @@
         "legalApprovalReference"
       ],
       "properties": {
-        "privacyPolicyUrl": { "const": "https://grogoni.com/privacy" },
-        "privacyPolicyStatus": { "enum": ["draft", "approved"] },
-        "privacyPolicyEffectiveOn": { "type": ["string", "null"], "format": "date" },
-        "termsUrl": { "const": "https://grogoni.com/terms" },
-        "termsStatus": { "enum": ["draft", "approved"] },
-        "termsEffectiveOn": { "type": ["string", "null"], "format": "date" },
-        "legalApprovalReference": { "type": ["string", "null"] }
+        "privacyPolicyUrl": {
+          "const": "https://grogoni.com/privacy"
+        },
+        "privacyPolicyStatus": {
+          "enum": ["draft", "approved"]
+        },
+        "privacyPolicyEffectiveOn": {
+          "type": ["string", "null"],
+          "format": "date"
+        },
+        "termsUrl": {
+          "const": "https://grogoni.com/terms"
+        },
+        "termsStatus": {
+          "enum": ["draft", "approved"]
+        },
+        "termsEffectiveOn": {
+          "type": ["string", "null"],
+          "format": "date"
+        },
+        "legalApprovalReference": {
+          "type": ["string", "null"]
+        }
       }
     },
     "accountDeletion": {
@@ -90,21 +140,53 @@
         "fulfillmentRunbookStatus",
         "serviceProviderDeletionStatus",
         "operationsOwner",
-        "privacyOwner"
+        "privacyOwner",
+        "purgeScheduleEnabledOn"
       ],
       "properties": {
-        "externalRequestUrl": { "const": "https://grogoni.com/account-deletion" },
-        "inAppPath": { "type": "string", "minLength": 1 },
-        "authenticationRequired": { "const": true },
-        "androidAppRequired": { "const": false },
-        "requestPathImplemented": { "const": true },
-        "recoveryPeriodDays": { "type": "integer", "minimum": 0 },
-        "associatedDataIncluded": { "const": true },
-        "lawfulRetentionDisclosed": { "const": true },
-        "fulfillmentRunbookStatus": { "enum": ["pending", "verified"] },
-        "serviceProviderDeletionStatus": { "enum": ["pending", "verified"] },
-        "operationsOwner": { "type": ["string", "null"] },
-        "privacyOwner": { "type": ["string", "null"] }
+        "externalRequestUrl": {
+          "const": "https://grogoni.com/account-deletion"
+        },
+        "inAppPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "authenticationRequired": {
+          "const": true
+        },
+        "androidAppRequired": {
+          "const": false
+        },
+        "requestPathImplemented": {
+          "const": true
+        },
+        "recoveryPeriodDays": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "associatedDataIncluded": {
+          "const": true
+        },
+        "lawfulRetentionDisclosed": {
+          "const": true
+        },
+        "fulfillmentRunbookStatus": {
+          "enum": ["pending", "verified"]
+        },
+        "serviceProviderDeletionStatus": {
+          "enum": ["pending", "verified"]
+        },
+        "operationsOwner": {
+          "type": ["string", "null"]
+        },
+        "privacyOwner": {
+          "type": ["string", "null"]
+        },
+        "purgeScheduleEnabledOn": {
+          "type": ["string", "null"],
+          "format": "date",
+          "description": "Date the scheduled account purge (scheduled-maintenance.yml, vars.ACCOUNT_PURGE_ENABLED) was switched on in GitHub. Code cannot see repository variables, so the owner records it here."
+        }
       }
     },
     "policyBaseline": {
@@ -117,10 +199,21 @@
         "revalidateBeforeSubmission"
       ],
       "properties": {
-        "verifiedOn": { "type": "string", "format": "date" },
-        "accountDeletionSource": { "type": "string", "format": "uri" },
-        "userDataSource": { "type": "string", "format": "uri" },
-        "revalidateBeforeSubmission": { "const": true }
+        "verifiedOn": {
+          "type": "string",
+          "format": "date"
+        },
+        "accountDeletionSource": {
+          "type": "string",
+          "format": "uri"
+        },
+        "userDataSource": {
+          "type": "string",
+          "format": "uri"
+        },
+        "revalidateBeforeSubmission": {
+          "const": true
+        }
       }
     },
     "approval": {
@@ -128,9 +221,16 @@
       "additionalProperties": false,
       "required": ["approvedBy", "approvedOn", "changeRecord"],
       "properties": {
-        "approvedBy": { "type": ["string", "null"] },
-        "approvedOn": { "type": ["string", "null"], "format": "date" },
-        "changeRecord": { "type": ["string", "null"] }
+        "approvedBy": {
+          "type": ["string", "null"]
+        },
+        "approvedOn": {
+          "type": ["string", "null"],
+          "format": "date"
+        },
+        "changeRecord": {
+          "type": ["string", "null"]
+        }
       }
     }
   }

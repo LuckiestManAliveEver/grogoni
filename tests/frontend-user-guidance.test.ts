@@ -223,7 +223,6 @@ describe("frontend user guidance", () => {
       "services/api/src/cp2/domains/agent-runtime/model-catalog.ts",
       "utf8"
     );
-    const render = readFileSync("render.yaml", "utf8");
 
     expect(application).not.toContain("/v1/ai-models/github");
     expect(application).not.toContain("/v1/ai-models/huggingface");
@@ -231,16 +230,6 @@ describe("frontend user guidance", () => {
     expect(application).toContain("Browse Grogoni's local model catalog.");
     expect(modelCatalog).toContain("tinyllama-1.1b-chat-q3-k-m-android");
     expect(modelCatalog).toContain('id: "llama-cpp-configured"');
-    expect(render).toContain("- key: GITHUB_TOKEN");
-    expect(render).not.toContain("- key: HF_TOKEN");
-    expect(render).not.toContain("LOCAL_MODEL_");
-    // VITE_INFERENCE_CLIENT_FIRST/VITE_BROWSER_LOCAL_INFERENCE_ENABLED were retired along with
-    // browser-local inference - see ADR-device-independent-runtime-and-registry-discovery.md and
-    // tests/render-blueprint.test.ts, which guards their continued absence.
-    expect(render).not.toContain("VITE_INFERENCE_CLIENT_FIRST");
-    expect(render).toContain("- key: VITE_INFERENCE_OWNER_NODE_ENABLED");
-    expect(render).toContain("- key: INFERENCE_OWNER_NODE_ENABLED");
-    expect(render).not.toContain("INFERENCE_CLOUD_FALLBACK_ENABLED");
   });
 
   it("does not offer retired cloud surfaces in the web app", () => {

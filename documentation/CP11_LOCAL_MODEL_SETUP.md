@@ -58,7 +58,7 @@ running container: `docker compose exec ai-runtime ollama pull <providerModelId>
 
 `GET /health/ready` on the API (`services/api`) checks reachability and model installation without
 running inference; the gateway's own `GET /health/ready` additionally reports installed/available
-status per canonical model. See [render-inference.md](../docs/deployment/render-inference.md) and
+status per canonical model. See [render-retirement.md](../docs/deployment/render-retirement.md) and
 [runtime-resolution.md](../docs/architecture/runtime-resolution.md) for the full architecture; the
 `LOCAL_MODEL_*` env vars and the standalone `ollama serve` flow shown in older revisions of this
 document no longer exist in the current codebase.

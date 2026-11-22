@@ -66,7 +66,7 @@ onlyBuiltDependencies:
 ```
 
 No other dependency's install scripts are approved. `services/api` must never depend on
-`node-llama-cpp` or any other native inference engine - `pnpm check:render-inference-boundaries`
+`node-llama-cpp` or any other native inference engine - `pnpm check:inference-boundaries`
 fails the build if it does.
 
 Vercel has no access to Postgres, no business data, no tool-execution authority, and no permanent

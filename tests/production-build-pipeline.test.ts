@@ -28,7 +28,7 @@ describe("production workspace build pipeline", () => {
     );
     expect(rootManifest.scripts["build:production:workspace"]).toContain("--if-present build");
     expect(rootManifest.scripts).not.toHaveProperty("inference:build");
-    // Loads a local .env when present (Render production has none - --env-file-if-exists is a
+    // Loads a local .env when present (a production host has none - --env-file-if-exists is a
     // no-op there, same pattern as pnpm verify:production-runtime) so `pnpm dev`/`pnpm start`
     // pick up OLLAMA_BASE_URL and DATABASE_URL locally without a separate env-loading step. The
     // ignored .env.openrouter holds OPENROUTER_API_KEY locally; the daemon ships from the same build
@@ -41,18 +41,21 @@ describe("production workspace build pipeline", () => {
     );
   });
 
-  it("uses the same production command in the Render API service", async () => {
-    const blueprint = await readFile("render.yaml", "utf8");
-    const apiStart = blueprint.indexOf("name: grogoni");
-    const apiEnd = blueprint.indexOf("\n  - type:", apiStart);
-    const apiService = blueprint.slice(apiStart, apiEnd);
+  it("builds the web app that grogoni.com serves from vercel.json", async () => {
+    // grogoni.com is a Vercel deploy of apps/web; the API runs as a Supabase Edge Function behind
+    // its /api rewrite. Render (render.yaml) was retired and must not come back as a second path.
+    const vercel = JSON.parse(await readFile("vercel.json", "utf8")) as {
+      buildCommand: string;
+      outputDirectory: string;
+      rewrites: { source: string; destination: string }[];
+    };
 
-    expect(apiService).toContain("corepack pnpm install --frozen-lockfile");
-    expect(apiService).toContain("corepack pnpm db:migrate");
-    expect(apiService).toContain("corepack pnpm build:production");
-    expect(apiService).not.toContain("services/ai-runtime/**");
-    expect(apiService).not.toContain("preDeployCommand:");
-    expect(apiService).toContain("corepack pnpm --filter @grogoni/api start");
+    expect(vercel.buildCommand).toContain("--filter @grogoni/web...");
+    expect(vercel.outputDirectory).toBe("apps/web/dist");
+    expect(
+      vercel.rewrites.find((rewrite) => rewrite.source === "/api/:path*")?.destination
+    ).toMatch(/^https:\/\/[a-z0-9]+\.supabase\.co\/functions\/v1\/api\//u);
+    expect(existsSync("render.yaml")).toBe(false);
   });
 
   it("ships no retired hosted inference runtime in the workspace", async () => {

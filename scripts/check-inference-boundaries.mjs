@@ -1,8 +1,7 @@
 // The API never loads or runs a model in-process: server-side generation goes to Ollama over HTTP
 // (OLLAMA_BASE_URL, docs/local-first-cloud-audit.md) and device-local models run on members' own
 // devices. This script fails the build if API code depends on an in-process inference engine, or if
-// the Render Blueprint reintroduces a hosted inference, agent-runtime or OCR service that the
-// local-first runtime retired.
+// the deploy configuration (vercel.json) would hand the browser an inference or model-storage secret.
 import { readFileSync, readdirSync } from "node:fs";
 import { extname, join, relative } from "node:path";
 
@@ -35,7 +34,9 @@ for (const root of ["services/api/src", "services/api/dist"]) {
   for (const file of listCodeFiles(root)) {
     const source = readFileSync(file, "utf8");
     if (source.includes("LOCAL_MODEL_")) {
-      violations.push(`${relative(process.cwd(), file)} reads Render-local inference settings`);
+      violations.push(
+        `${relative(process.cwd(), file)} reads retired local-model inference settings`
+      );
     }
     for (const pattern of importPatterns) {
       for (const match of source.matchAll(pattern)) {
@@ -48,54 +49,33 @@ for (const root of ["services/api/src", "services/api/dist"]) {
   }
 }
 
-const blueprint = readFileSync("render.yaml", "utf8");
+const deployConfig = readFileSync("vercel.json", "utf8");
 
-// The Render Blueprint must not declare a hosted inference, ZeroClaw, or OCR service of any kind.
-const forbiddenBlueprintMarkers = [
+// The deploy configuration must not bring back a hosted inference, ZeroClaw or OCR service.
+for (const forbidden of [
   "grogoni-inference",
-  "services/ai-runtime/Dockerfile",
   "BACKEND_INFERENCE_ENABLED",
   "BACKEND_INFERENCE_BASE_URL",
   "BACKEND_INFERENCE_MODEL_ID",
-  "mountPath: /var/lib/grogoni-models",
   "OLLAMA_KEEP_ALIVE",
   "INFERENCE_ENGINE",
-  "key: INFERENCE_SERVICE_TOKEN",
-  "grogoni-zeroclaw",
-  "ghcr.io/zeroclaw-labs/zeroclaw",
-  "grogoni-ocr-worker",
-  "services/receipt-ocr-service"
-];
-for (const forbidden of forbiddenBlueprintMarkers) {
-  if (blueprint.includes(forbidden)) {
-    violations.push(
-      `Render Blueprint still declares the retired Render-hosted inference marker ${forbidden}`
-    );
+  "INFERENCE_SERVICE_TOKEN",
+  "LOCAL_MODEL_",
+  "VITE_INFERENCE_CLIENT_FIRST",
+  "zeroclaw",
+  "ocr-worker",
+  "receipt-ocr-service"
+]) {
+  if (deployConfig.toLowerCase().includes(forbidden.toLowerCase())) {
+    violations.push(`vercel.json contains the retired inference marker ${forbidden}`);
   }
 }
-
-const apiStart = blueprint.indexOf("name: grogoni");
-const nextService = blueprint.indexOf("\n  - type:", apiStart);
-const apiService = blueprint.slice(apiStart, nextService === -1 ? undefined : nextService);
-
-// The API service must never be configured to load a model itself.
-for (const forbidden of ["LOCAL_MODEL_", "llama.cpp", ".gguf", "OLLAMA_BASE_URL"]) {
-  if (apiService.toLowerCase().includes(forbidden.toLowerCase())) {
-    violations.push(`Render API service contains forbidden local-inference marker ${forbidden}`);
-  }
-}
-// The API service itself must stay `type: web`, not a private service - checked as an adjacency,
-// not a bare `apiService.includes("type: pserv")`, so a `fromService: { type: pserv }` reference in
-// its envVars does not trip it.
-if (!/-\s+type:\s*web\s*\n\s*name:\s*grogoni/u.test(blueprint)) {
-  violations.push("Render API service must declare `type: web`, not a private service (pserv).");
-}
-// Environment settings retired by the API must not be provisioned by the Blueprint.
+// Settings the API refuses at boot (config.ts rejectRemovedCloudConfiguration) must not be set.
 const apiConfig = readFileSync("services/api/src/config.ts", "utf8");
 const removedSettings = apiConfig.match(/const removed = \[([\s\S]*?)\]\.filter/u)?.[1] ?? "";
 for (const match of removedSettings.matchAll(/"([A-Z][A-Z0-9_]*)"/gu)) {
-  if (apiService.includes(`key: ${match[1]}\n`)) {
-    violations.push(`Render API service declares retired environment setting ${match[1]}`);
+  if (deployConfig.includes(`"${match[1]}"`)) {
+    violations.push(`vercel.json sets retired environment setting ${match[1]}`);
   }
 }
 
@@ -106,19 +86,19 @@ for (const forbidden of [
   "VITE_NEON_MODEL_STORAGE",
   "VITE_VERCEL_INFERENCE"
 ]) {
-  if (blueprint.includes(forbidden)) {
+  if (deployConfig.includes(forbidden)) {
     violations.push(`The browser must never receive ${forbidden}`);
   }
 }
 
 if (violations.length > 0) {
-  console.error("Render inference boundary violations:");
+  console.error("Inference boundary violations:");
   for (const violation of violations) console.error(`- ${violation}`);
   process.exit(1);
 }
 
 console.log(
-  "Runtime deployment boundaries verified; retired API cloud settings are not provisioned."
+  "Inference boundaries verified: no in-process model engine, no inference secret sent to the browser."
 );
 
 function listCodeFiles(directory) {

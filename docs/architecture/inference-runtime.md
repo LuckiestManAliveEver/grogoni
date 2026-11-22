@@ -18,8 +18,8 @@ Vercel (services/ai-runtime)
 
 Render never loads or runs a model. Vercel never touches Postgres, business data, or tool
 credentials, and is never given a permanent storage secret - Render mints a short-lived signed URL
-per request. This boundary is enforced by `pnpm check:render-inference-boundaries`
-(`scripts/check-render-inference-boundaries.mjs`), part of `pnpm build:production`.
+per request. This boundary is enforced by `pnpm check:inference-boundaries`
+(`scripts/check-inference-boundaries.mjs`), part of `pnpm build:production`.
 
 ## Runtime flow
 
@@ -128,7 +128,7 @@ actually proves.
 - [../runtime/vercel-inference-audit.md](../runtime/vercel-inference-audit.md) - what existed before
   this migration, what changed, and why.
 - [../deployment/vercel-inference.md](../deployment/vercel-inference.md) - Vercel deployment.
-- [../deployment/render-api.md](../deployment/render-api.md) - Render API deployment.
+- [../deployment/render-retirement.md](../deployment/render-retirement.md) - Render is retired; where the API and jobs run now.
 - [../storage/model-artifacts.md](../storage/model-artifacts.md) - artifact storage contract.
 - [provider-neutral-runtime.md](./provider-neutral-runtime.md) - the original provider-neutrality
   design this migration preserves.

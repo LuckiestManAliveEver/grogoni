@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 interface AndroidReleaseIdentity {
@@ -49,12 +49,12 @@ interface AndroidReleaseIdentity {
 }
 
 describe("CP26 Android release identity", () => {
-  it("pins a structurally valid proposal to the production PWA and Render origins", async () => {
-    const [identity, manifest, rootPackage, renderBlueprint] = await Promise.all([
+  it("pins a structurally valid proposal to the production PWA origin served by Vercel", async () => {
+    const [identity, manifest, rootPackage, vercelConfig] = await Promise.all([
       readJson<AndroidReleaseIdentity>("../config/android-release-identity.json"),
       readJson<{ name: string; short_name: string }>("../apps/web/public/manifest.webmanifest"),
       readJson<{ version: string }>("../package.json"),
-      readFile(new URL("../render.yaml", import.meta.url), "utf8")
+      readJson<{ rewrites: { source: string; destination: string }[] }>("../vercel.json")
     ]);
 
     expect(identity.checkpoint).toBe("CP26");
@@ -84,8 +84,9 @@ describe("CP26 Android release identity", () => {
       digitalAssetLinksUrl: "https://grogoni.com/.well-known/assetlinks.json",
       apiOrigin: "https://grogoni.com"
     });
-    expect(renderBlueprint).toContain("domains:\n      - grogoni");
-    expect(renderBlueprint).toContain("value: https://grogoni.com");
+    expect(vercelConfig.rewrites).toContainEqual({ source: "/(.*)", destination: "/index.html" });
+    expect(vercelConfig.rewrites.some((rewrite) => rewrite.source === "/api/:path*")).toBe(true);
+    expect(existsSync("apps/web/public/.well-known/assetlinks.json")).toBe(true);
     expect(identity.signing).toMatchObject({
       playAppSigning: true,
       privateKeysCommitted: false

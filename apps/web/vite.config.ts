@@ -103,14 +103,14 @@ export default defineConfig(({ mode }) => {
   const gitCommitSha =
     process.env.VITE_GIT_COMMIT_SHA ??
     env.VITE_GIT_COMMIT_SHA ??
-    process.env.RAILWAY_GIT_COMMIT_SHA ??
-    process.env.RENDER_GIT_COMMIT ??
     process.env.VERCEL_GIT_COMMIT_SHA ??
     "local";
   const deploymentEnvironment =
     process.env.VITE_DEPLOYMENT_ENV ??
     env.VITE_DEPLOYMENT_ENV ??
-    (process.env.RENDER === "true" ? "render" : mode);
+    // Vercel sets production, preview or development; previews replace the old staging site.
+    process.env.VERCEL_ENV ??
+    mode;
   const buildTimestamp = new Date().toISOString();
   const stagingSecurityHeaders =
     deploymentEnvironment === "staging"

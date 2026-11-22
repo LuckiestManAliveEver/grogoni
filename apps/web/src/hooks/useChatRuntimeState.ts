@@ -114,6 +114,7 @@ import {
   flushMessagingOutbox
 } from "../messaging/outbox";
 import { noteBubbleAccepted, notePendingSend } from "../messaging/recent-sends";
+import { unsentSendStatus } from "../messaging/unsent-send-status";
 import { loadSendTarget } from "../messaging/send-target";
 import {
   clearAgentReplyPlaceholders,
@@ -406,9 +407,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
         return next.filter((item) => item.id !== optimistic.id);
       });
     };
-    // A send stopped before anything left the device: take the "Sending…" bubble back out and
-    // give the text, attachments and reply target back to the composer, so nothing typed is lost
-    // and nothing sits as "Sending…" forever.
+    // Nothing left the device: drop the "Sending…" bubble, give text/attachments/reply back.
     const returnUnsentMessage = (status?: string) => {
       setChatMessages((messages) => messages.filter((item) => item.id !== optimistic?.id));
       if (!chatDraftRef.current.trim()) setChatDraft((draftOverride ?? chatDraft).trim());
@@ -422,11 +421,8 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
     let activeSession = session;
     if (activeSession === null) {
       const bootstrappedSession = await ensureAuthenticatedSession();
-      if (bootstrappedSession === null) {
-        return returnUnsentMessage(
-          "Couldn't start a device session, so the message was not sent. Your draft is saved; try again."
-        );
-      }
+      if (bootstrappedSession === null)
+        return returnUnsentMessage(unsentSendStatus.noDeviceSession);
       activeSession = bootstrappedSession;
     }
     let currentConversation =
@@ -445,9 +441,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
         deviceId: readStableDeviceId()
       })
     ) {
-      return returnUnsentMessage(
-        "Wait for the runtime handoff to finish before sending another message."
-      );
+      return returnUnsentMessage(unsentSendStatus.runtimeHandoff);
     }
     if (navigator.onLine && !isExplicitOfflineMode() && authBootstrapState !== "authenticated") {
       const validatedSession = await ensureAuthenticatedSession();
@@ -525,9 +519,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       attachments.length > 0 &&
       (!navigator.onLine || isExplicitOfflineMode())
     ) {
-      return returnUnsentMessage(
-        "Reading chat attachments needs a connection to Luna. Your draft is saved."
-      );
+      return returnUnsentMessage(unsentSendStatus.attachmentsOffline);
     }
     const receiptDrafts: ReceiptOCRJobSummary[] = [];
     if (!hasHumanRecipient && attachments.length > 0) {

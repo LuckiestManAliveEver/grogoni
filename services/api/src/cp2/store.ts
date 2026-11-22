@@ -1124,13 +1124,6 @@ export type PushNotificationPayload =
       title: string;
       body: string;
     }
-  | {
-      type: "app.update_available";
-      deployId: string;
-      service: string;
-      title: string;
-      body: string;
-    }
   // Someone asked to connect, or accepted. Best effort: the in-app ConnectionRequestsPrompt is
   // the durable path, this is the nudge.
   | {
@@ -8234,11 +8227,6 @@ export class Cp2Store {
     ...args: Parameters<MessagingDomain["deliverPendingMessageNotifications"]>
   ): ReturnType<MessagingDomain["deliverPendingMessageNotifications"]> {
     return this.messagingDomain.deliverPendingMessageNotifications(...args);
-  }
-  broadcastAppUpdateAvailable(
-    ...args: Parameters<MessagingDomain["broadcastAppUpdateAvailable"]>
-  ): ReturnType<MessagingDomain["broadcastAppUpdateAvailable"]> {
-    return this.messagingDomain.broadcastAppUpdateAvailable(...args);
   }
   updateConversationSettings(
     ...args: Parameters<MessagingDomain["updateConversationSettings"]>

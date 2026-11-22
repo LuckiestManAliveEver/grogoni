@@ -228,7 +228,6 @@ import {
   validateE2eePublicKey,
   type AgentConversationMessageResult,
   type AgentTurnQueue,
-  type AppUpdateBroadcastSummary,
   type ChannelIdentityLinkGrantRecord,
   type ConnectedMailboxBackgroundSyncSummary,
   type ConnectedMailboxOAuthSessionRecord,
@@ -343,13 +342,6 @@ export interface MessagingDomainDeps {
           type: "message.new";
           conversationId: string;
           messageId: string;
-          title: string;
-          body: string;
-        }
-      | {
-          type: "app.update_available";
-          deployId: string;
-          service: string;
           title: string;
           body: string;
         }
@@ -4707,8 +4699,8 @@ export class MessagingDomain {
   }
 
   /**
-   * Best-effort push to every device one account subscribed. Expired subscriptions are dropped,
-   * the same as broadcastAppUpdateAvailable; nothing is retried (callers with a durable path, like
+   * Best-effort push to every device one account subscribed. Expired subscriptions are dropped;
+   * nothing is retried (callers with a durable path, like
    * the in-app connection-request prompt, use this only as a nudge).
    */
   async pushToAccount(
@@ -4725,37 +4717,6 @@ export class MessagingDomain {
       const outcome = await this.deps
         .pushNotificationSender(subscription, payload)
         .catch(() => "failed" as const);
-      if (outcome === "sent") {
-        summary.sent += 1;
-      } else if (outcome === "expired") {
-        summary.expired += 1;
-        this.pushSubscriptions.delete(subscription.id);
-        this.pushSubscriptionIdByEndpoint.delete(subscription.endpoint);
-      } else {
-        summary.failed += 1;
-      }
-    }
-    return summary;
-  }
-
-  async broadcastAppUpdateAvailable(input: {
-    deployId: string;
-    service: string;
-    title: string;
-    body: string;
-  }): Promise<AppUpdateBroadcastSummary> {
-    const summary: AppUpdateBroadcastSummary = { targeted: 0, sent: 0, expired: 0, failed: 0 };
-    if (this.deps.pushNotificationSender === undefined) return summary;
-
-    for (const subscription of [...this.pushSubscriptions.values()]) {
-      summary.targeted += 1;
-      const outcome = await this.deps.pushNotificationSender(subscription, {
-        type: "app.update_available",
-        deployId: input.deployId,
-        service: input.service,
-        title: input.title,
-        body: input.body
-      });
       if (outcome === "sent") {
         summary.sent += 1;
       } else if (outcome === "expired") {

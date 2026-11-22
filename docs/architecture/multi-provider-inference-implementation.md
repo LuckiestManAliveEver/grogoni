@@ -376,7 +376,7 @@ pnpm lint
 npx prettier --check .
 pnpm check:boundaries && pnpm check:esm-relative-imports && pnpm check:shellview-boundary
 pnpm check:retired-runtime-references && pnpm check:retired-device-model-references
-pnpm check:render-inference-boundaries
+pnpm check:inference-boundaries
 pnpm build:production && node scripts/check-web-bundle-budgets.mjs
 pnpm test
 # Throwaway PostgreSQL 16 cluster:

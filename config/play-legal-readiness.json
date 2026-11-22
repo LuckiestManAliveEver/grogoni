@@ -39,7 +39,8 @@
     "fulfillmentRunbookStatus": "pending",
     "serviceProviderDeletionStatus": "pending",
     "operationsOwner": null,
-    "privacyOwner": null
+    "privacyOwner": null,
+    "purgeScheduleEnabledOn": null
   },
   "policyBaseline": {
     "verifiedOn": "2026-07-15",

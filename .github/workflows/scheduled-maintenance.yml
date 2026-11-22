@@ -1,0 +1,107 @@
+name: Scheduled Database Maintenance
+
+# Production jobs that used to run as Render cron services (render.yaml, removed when Render was
+# retired): the shop purge, the account-deletion purge (required by the Play legal-readiness check,
+# scripts/verify-play-legal-readiness.mjs) and the database health probe.
+#
+# Each job runs only when its repository variable is "true" (or on a manual dispatch), the same
+# gate neon-backup.yml uses, so nothing touches production before its secrets are configured:
+#   vars.SHOP_PURGE_ENABLED, vars.ACCOUNT_PURGE_ENABLED, vars.DB_HEALTH_ENABLED
+# Secrets: PRODUCTION_DATABASE_URL, PRODUCTION_DIRECT_DATABASE_URL, and for the account purge
+# ACCOUNT_DELETION_PROCESSORS_JSON and ACCOUNT_DELETION_WEBHOOK_SECRET.
+
+on:
+  workflow_dispatch:
+    inputs:
+      job:
+        description: Which job to run
+        required: true
+        type: choice
+        options: [shop-purge, account-purge, db-health]
+  schedule:
+    - cron: "37 3 * * *" # shop purge
+    - cron: "7 4 * * *" # account-deletion purge
+    - cron: "*/30 * * * *" # database health (Render ran it every 10 min; 30 keeps Actions minutes low)
+
+permissions:
+  contents: read
+
+# Production credentials are set only on the step that runs each job's script, never during
+# install or build, so no dependency lifecycle script or build plugin can read them.
+env:
+  NODE_ENV: production
+
+jobs:
+  shop-purge:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.job == 'shop-purge') ||
+      (github.event.schedule == '37 3 * * *' && vars.SHOP_PURGE_ENABLED == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: scheduled-shop-purge
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @grogoni/api... build
+      - run: pnpm db:purge-shops
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+          DIRECT_DATABASE_URL: ${{ secrets.PRODUCTION_DIRECT_DATABASE_URL }}
+
+  account-purge:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.job == 'account-purge') ||
+      (github.event.schedule == '7 4 * * *' && vars.ACCOUNT_PURGE_ENABLED == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: scheduled-account-purge
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @grogoni/api... build
+      - run: pnpm db:purge-accounts
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+          DIRECT_DATABASE_URL: ${{ secrets.PRODUCTION_DIRECT_DATABASE_URL }}
+          ACCOUNT_DELETION_PROCESSORS_JSON: ${{ secrets.ACCOUNT_DELETION_PROCESSORS_JSON }}
+          ACCOUNT_DELETION_WEBHOOK_SECRET: ${{ secrets.ACCOUNT_DELETION_WEBHOOK_SECRET }}
+
+  db-health:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.job == 'db-health') ||
+      (github.event.schedule == '*/30 * * * *' && vars.DB_HEALTH_ENABLED == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency:
+      group: scheduled-db-health
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:health
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+          DIRECT_DATABASE_URL: ${{ secrets.PRODUCTION_DIRECT_DATABASE_URL }}
+          DB_POOL_MAX: "2"
+          DB_CONNECTION_TIMEOUT_MS: "5000"
+          DB_IDLE_TIMEOUT_MS: "30000"
+          DB_QUERY_TIMEOUT_MS: "15000"

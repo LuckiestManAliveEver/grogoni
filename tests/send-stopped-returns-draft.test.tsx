@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ChatAttachment, ChatMessage } from "../apps/web/src/app-shell";
 import { useChatRuntimeState } from "../apps/web/src/hooks/useChatRuntimeState";
+import { unsentSendStatus } from "../apps/web/src/messaging/unsent-send-status";
 
 // A send that stops before anything leaves the device must not strand the message. Seen on Home:
 // a guest's device session could not be created (POST /auth/continue answered 503), the status
@@ -160,5 +161,10 @@ describe("a send stopped before it leaves the device gives the message back", ()
     expect(probe.messages.filter((m) => m.author === "merchant")).toEqual([]);
     expect(probe.status).toMatch(/needs a connection to Luna/u);
     unmount();
+  });
+
+  it("every unsent-send status tells the person their draft was kept", () => {
+    // The text goes back to the box on each of these stops; the status must not imply it was lost.
+    for (const status of Object.values(unsentSendStatus)) expect(status).toMatch(/draft is saved/u);
   });
 });

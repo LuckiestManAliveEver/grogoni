@@ -10,7 +10,6 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { registerCp2Routes, type Cp2RouteOptions } from "./cp2/routes.js";
 import { registerMcpRoutes } from "./mcp/routes.js";
-import { registerRenderDeployWebhook } from "./render-deploy-webhook.js";
 import type { Cp2Store } from "./cp2/store.js";
 import { registerGuestIntentRoute } from "./guest-intent/node-route.js";
 import type { GuestIntentService } from "./guest-intent/service.js";
@@ -69,13 +68,6 @@ export interface BuildApiOptions {
    * When omitted, rate limiting still runs but falls back to an in-memory, per-process store.
    */
   rateLimitRedisClient?: unknown;
-  /**
-   * Signing secret for Render's workspace deploy webhook (Settings page of the webhook in the
-   * Render dashboard, whsec_-prefixed). When set, POST /internal/render/deploy-webhook is
-   * registered so a successful Render deploy broadcasts an "update available" push notification.
-   * Omitted (e.g. in tests or local dev), the route is not registered at all.
-   */
-  renderDeployWebhookSecret?: string;
   webRoot?: string | false;
   /**
    * When set, GET /metrics serves this registry's Prometheus text exposition (memory, CPU,
@@ -701,12 +693,6 @@ export function buildApi(options: BuildApiOptions = {}) {
       allowedOrigins: [...allowedCorsOrigins],
       publicOrigin: webPublicUrl
     });
-    if (options.renderDeployWebhookSecret !== undefined) {
-      registerRenderDeployWebhook(routes, {
-        store,
-        signingSecret: options.renderDeployWebhookSecret
-      });
-    }
   });
 
   const defaultWebRoot = fileURLToPath(new URL("../../../apps/web/dist/", import.meta.url));

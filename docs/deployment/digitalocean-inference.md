@@ -24,7 +24,7 @@ Use Node 22 and pnpm 10.28.2 from the repository root:
 ```sh
 pnpm --filter @grogoni/ai-runtime build
 pnpm exec vitest run tests/inference-http-server.test.ts tests/vercel-inference-service.test.ts
-pnpm check:render-inference-boundaries
+pnpm check:inference-boundaries
 docker build --platform linux/amd64 -f services/ai-runtime/Dockerfile -t grogoni-inference .
 ```
 

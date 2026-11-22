@@ -2,7 +2,7 @@
 
 > Historical note: this audit originally justified a Render-private Ollama service. That service
 > has since been removed from `render.yaml`. The current production boundary is documented in
-> `docs/deployment/render-inference.md`; the statements below describe the earlier implementation.
+> `docs/deployment/render-retirement.md` (Render is retired); the statements below describe the earlier implementation.
 
 ## Outcome
 

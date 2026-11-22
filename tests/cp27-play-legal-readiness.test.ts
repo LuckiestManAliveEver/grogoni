@@ -33,6 +33,7 @@ interface PlayLegalReadiness {
     serviceProviderDeletionStatus: "pending" | "verified";
     operationsOwner: string | null;
     privacyOwner: string | null;
+    purgeScheduleEnabledOn: string | null;
   };
   approval: Record<string, string | null>;
 }
@@ -46,7 +47,8 @@ describe("CP27 Google Play legal readiness", () => {
       router,
       routes,
       deletionPage,
-      renderBlueprint
+      vercelConfig,
+      maintenanceWorkflow
     ] = await Promise.all([
       readJson<PlayLegalReadiness>("../config/play-legal-readiness.json"),
       readFile(new URL("../apps/web/src/GrogoniApplication.tsx", import.meta.url), "utf8"),
@@ -54,7 +56,8 @@ describe("CP27 Google Play legal readiness", () => {
       readFile(new URL("../apps/web/src/AppRouter.tsx", import.meta.url), "utf8"),
       readFile(new URL("../apps/web/src/routes.ts", import.meta.url), "utf8"),
       readFile(new URL("../apps/web/src/legal/AccountDeletionPage.tsx", import.meta.url), "utf8"),
-      readFile(new URL("../render.yaml", import.meta.url), "utf8")
+      readJson<{ rewrites: { source: string; destination: string }[] }>("../vercel.json"),
+      readFile(new URL("../.github/workflows/scheduled-maintenance.yml", import.meta.url), "utf8")
     ]);
 
     expect(readiness.checkpoint).toBe("CP27");
@@ -74,7 +77,11 @@ describe("CP27 Google Play legal readiness", () => {
     expect(deleteAccountPanel).toContain("Delete account and associated data");
     expect(deletionPage).toContain("Continue to secure deletion request");
     expect(deletionPage).toContain("You do not need to reinstall or open the Android app.");
-    expect(renderBlueprint).toContain("source: /*\n        destination: /index.html");
+    expect(vercelConfig.rewrites).toContainEqual({ source: "/(.*)", destination: "/index.html" });
+    // Deletions past the recovery window are purged by the scheduled account purge.
+    expect(maintenanceWorkflow).toContain('- cron: "7 4 * * *"');
+    expect(maintenanceWorkflow).toContain("run: pnpm db:purge-accounts");
+    expect(maintenanceWorkflow).toContain("secrets.ACCOUNT_DELETION_PROCESSORS_JSON");
   });
 
   it("keeps legal publication and operational fulfillment behind explicit approval", async () => {
@@ -96,6 +103,8 @@ describe("CP27 Google Play legal readiness", () => {
     expect(readiness.contacts.contactVerificationStatus).toBe("pending");
     expect(readiness.accountDeletion.fulfillmentRunbookStatus).toBe("pending");
     expect(readiness.accountDeletion.serviceProviderDeletionStatus).toBe("pending");
+    // Pending until the owner switches the scheduled purge on and records the date.
+    expect(readiness.accountDeletion.purgeScheduleEnabledOn).toBeNull();
     expect(rootPackage.scripts["android:legal:verify"]).toContain(
       "verify-play-legal-readiness.mjs"
     );
