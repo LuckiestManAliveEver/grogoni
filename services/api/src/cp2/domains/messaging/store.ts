@@ -2793,6 +2793,7 @@ export class MessagingDomain {
           dispatched.result.externalThreadId ?? message.externalConversationId ?? null
       };
       this.conversationMessages.set(delivered.id, delivered);
+      this.journalMessage(delivered, now);
       if (dispatched.result.status !== "queued") {
         this.finishChannelDeliveryAttempt(delivered, "succeeded", null, now);
       }
@@ -2821,6 +2822,7 @@ export class MessagingDomain {
             : null
       };
       this.conversationMessages.set(failed.id, failed);
+      this.journalMessage(failed, now);
       this.finishChannelDeliveryAttempt(
         failed,
         error instanceof ChannelGatewayError && error.retryable
@@ -2954,6 +2956,7 @@ export class MessagingDomain {
       nextRetryAt: null
     };
     this.conversationMessages.set(settled.id, settled);
+    this.journalMessage(settled, now);
     this.finishChannelDeliveryAttempt(
       settled,
       sent
@@ -4063,8 +4066,12 @@ export class MessagingDomain {
     this.messageDeliveryAttempts.set(attempt.id, attempt);
     this.conversations.set(conversation.id, {
       ...conversation,
+      // Agent sessions only: a conversation with a person, a shop or an external channel keeps its
+      // participants' names (a customer's first message must not become everyone's title).
       ...(!conversation.title &&
       !conversation.isPermanentDaemon &&
+      conversation.kind === "personal" &&
+      !this.conversationHasHumanRecipient(conversation.id, session.account.id) &&
       author === "user" &&
       input.content.type === "text"
         ? {
@@ -4828,11 +4835,14 @@ export class MessagingDomain {
     }
     if (input.read) {
       for (const message of unreadFromOthers) {
-        this.conversationMessages.set(message.id, {
+        const read: ConversationMessageSummary = {
           ...message,
           status: "read",
           readAt: now.toISOString()
-        });
+        };
+        this.conversationMessages.set(message.id, read);
+        // Journaled, so the sender's open thread sees "read" in its next delta read.
+        this.journalMessage(read, now);
       }
     }
     if (input.agentEnabled !== undefined || input.title !== undefined)
@@ -6758,6 +6768,20 @@ export class MessagingDomain {
         this.accountConversationParticipant(message.conversationId, input.accountId) === null
       )
         continue;
+      // In a shop's conversation, only a device on the other side is delivery: a staff member's
+      // pull must not mark the owner's reply to a customer delivered (the customer has not got it).
+      // Sides come from shop membership, not the conversation's account: a storefront visitor's
+      // chat belongs to the owner's account. The Edge snapshot scope loads the shop's memberships
+      // for sync pulls (edge_conversation_shop_ids) so this holds there too.
+      const conversation = this.conversations.get(message.conversationId);
+      const shopId =
+        conversation && conversation.kind !== "personal" ? conversation.activeShopId : null;
+      if (
+        shopId !== null &&
+        this.isShopMemberUser(message.authorId, shopId) ===
+          this.isShopMemberUser(input.userId, shopId)
+      )
+        continue;
       const delivered: ConversationMessageSummary = {
         ...message,
         status: "delivered",
@@ -6774,6 +6798,27 @@ export class MessagingDomain {
       marked += 1;
     }
     return marked;
+  }
+
+  private isShopMemberUser(userId: string, shopId: string): boolean {
+    return [...this.deps.memberships.values()].some(
+      (membership) => membership.businessId === shopId && membership.userId === userId
+    );
+  }
+
+  /**
+   * Journals a message's new state to everyone in its conversation. Every status write needs it:
+   * delta reads of an open thread include only messages with a journal row after the cursor, so an
+   * unjournaled change (read, sent, failed) never reached the other side until a full reload.
+   */
+  private journalMessage(message: ConversationMessageSummary, now: Date): void {
+    this.recordConversationSyncForParticipants(
+      message.conversationId,
+      "conversation_messages",
+      message.id,
+      message,
+      now
+    );
   }
 
   private recordConversationSyncForParticipants(
@@ -7482,6 +7527,7 @@ export class MessagingDomain {
         externalThreadId: dispatched.result.externalThreadId ?? inbound.externalThreadId
       };
       this.conversationMessages.set(sent.id, sent);
+      this.journalMessage(sent, now);
       this.finishChannelDeliveryAttempt(sent, "succeeded", null, now);
       this.conversationChannels.set(channel.id, {
         ...channel,
@@ -7517,6 +7563,7 @@ export class MessagingDomain {
         nextRetryAt: null
       };
       this.conversationMessages.set(failed.id, failed);
+      this.journalMessage(failed, now);
       this.finishChannelDeliveryAttempt(failed, "permanent_failure", normalized.code, now);
       throw error;
     }

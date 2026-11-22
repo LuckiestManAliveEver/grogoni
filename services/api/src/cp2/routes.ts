@@ -129,6 +129,8 @@ export interface Cp2RouteOptions {
    * request as 127.0.0.1 and would limit all callers together.
    */
   externalAuthRateLimit?: boolean;
+  /** The host registers attachment ciphers on each per-request store (Edge shared route app). */
+  attachmentCipherPerRequest?: boolean;
   queuedAgentTurns?: boolean;
   inventoryTaskController?: InventoryTaskController;
   businessTaskStore?: BusinessTaskStore;
@@ -1831,7 +1833,8 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
     store,
     oauthAllowedRedirectOrigins,
     options.vapidPublicKey,
-    options.queuedAgentTurns === true
+    options.queuedAgentTurns === true,
+    options.attachmentCipherPerRequest === true
   );
 
   app.post("/auth/logout", async (request, reply) => {

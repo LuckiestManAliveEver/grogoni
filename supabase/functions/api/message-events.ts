@@ -1,4 +1,11 @@
-import type { Transaction } from "./session-routes.ts";
+import type { SqlClient, Transaction } from "./session-routes.ts";
+
+type JournalRow = Record<string, unknown>;
+/** One probe: whose session this still is (null when it is no longer live) and what changed. */
+export type JournalProbe = (
+  client: SqlClient,
+  cursor: string
+) => Promise<{ accountId: string | null; rows: JournalRow[] }>;
 
 /** Bounded SSE connection. Every probe uses a short transaction; no connection or tenant lock
  * is held while waiting. The durable account journal bridges isolates and reconnects. */
@@ -6,7 +13,7 @@ export async function messageEventStream(
   request: Request,
   transaction: Transaction,
   authorize: () => Promise<string>,
-  options: { durationMs?: number; intervalMs?: number } = {}
+  options: { durationMs?: number; intervalMs?: number; probe?: JournalProbe } = {}
 ): Promise<Response> {
   const accountId = await authorize();
   const raw =
@@ -25,6 +32,18 @@ export async function messageEventStream(
         )
       ).rows[0]?.cursor ?? "0"
     );
+  // Without a combined probe: the session check and the journal read as two transactions.
+  const separateProbe = async () => {
+    const current = await authorize();
+    if (current !== accountId) return { accountId: current, rows: [] };
+    const result = await transaction((db) =>
+      db.query(
+        `select sequence::text, collection, entity_id, entity->>'conversationId' as conversation_id from account_sync_changes where account_id = $1 and sequence > $2::bigint order by sequence limit 100`,
+        [accountId, cursor]
+      )
+    );
+    return { accountId: current, rows: result.rows as JournalRow[] };
+  };
   let stopped = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let wake: (() => void) | undefined;
@@ -52,13 +71,11 @@ export async function messageEventStream(
             });
             wake = undefined;
             if (stopped) break;
-            if ((await authorize()) !== accountId) break;
-            const result = await transaction((db) =>
-              db.query(
-                `select sequence::text, collection, entity_id, entity->>'conversationId' as conversation_id from account_sync_changes where account_id = $1 and sequence > $2::bigint order by sequence limit 100`,
-                [accountId, cursor]
-              )
-            );
+            const probed = options.probe
+              ? await transaction((db) => options.probe!(db, cursor))
+              : await separateProbe();
+            if (probed.accountId !== accountId) break;
+            const result = { rows: probed.rows };
             if (stopped) break;
             if (result.rows.length) {
               cursor = String(result.rows.at(-1)!.sequence);

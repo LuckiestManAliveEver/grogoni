@@ -70,6 +70,37 @@ describe("account message event stream", () => {
     expect(await response.text()).not.toContain("event: changed");
     expect(auth).toHaveBeenCalledTimes(2);
   });
+  it("with a combined probe, uses one transaction per probe and closes when the session ends", async () => {
+    let transactions = 0;
+    const probe = vi
+      .fn()
+      .mockResolvedValueOnce({
+        accountId: "account-a",
+        rows: [{ sequence: "4", collection: "conversation_messages", conversation_id: "thread-a" }]
+      })
+      .mockResolvedValueOnce({ accountId: "account-a", rows: [] })
+      .mockResolvedValue({ accountId: null, rows: [] });
+    const transaction: Transaction = async (work) => {
+      transactions += 1;
+      return work({ query: async () => ({ rows: [{ cursor: "3" }] }) });
+    };
+    const authorize = vi.fn(async () => "account-a");
+    const response = await messageEventStream(
+      new Request("https://example.invalid/v1/realtime/messages"),
+      transaction,
+      authorize,
+      { durationMs: 1_000, intervalMs: 1, probe }
+    );
+    const text = await response.text();
+    expect(text).toContain(
+      'id: 4\nevent: changed\ndata: {"accountId":"account-a","conversationIds":["thread-a"]}'
+    );
+    // The session check happens only at open; each probe after that is a single transaction.
+    expect(authorize).toHaveBeenCalledTimes(1);
+    expect(probe).toHaveBeenCalledTimes(3);
+    expect(probe.mock.calls.map(([, cursor]) => cursor)).toEqual(["3", "4", "4"]);
+    expect(transactions).toBe(1 + 3);
+  });
   it("rejects a malformed reconnect cursor", async () => {
     const transaction: Transaction = async () => {
       throw new Error("journal must not be read");

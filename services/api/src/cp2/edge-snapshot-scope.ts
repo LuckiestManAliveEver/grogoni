@@ -342,6 +342,18 @@ export async function createEdgeSnapshotScope(
            or coalesce(c.business_id,c.record->>'activeShopId') in (select business_id::text from public.business_memberships where user_id = nullif(${actorUser}, '')::uuid)))`
     ],
     [
+      // A sync pull marks received messages delivered and journals that to the conversation's
+      // shop staff, which needs the shop's memberships and member users. A customer is not a
+      // member, so only for that pull: memberships and users of the shops behind the caller's own
+      // shop conversations, and nothing else of those shops.
+      "edge_conversation_shop_ids",
+      path === "/v1/sync/changes"
+        ? `select coalesce(c.business_id, c.record->>'activeShopId') as id from public.cp2_conversations c
+           where c.entity_id in (select id from edge_conversation_ids) and c.record->>'kind' <> 'personal'
+             and coalesce(c.business_id, c.record->>'activeShopId') is not null`
+        : `select null::text as id where false`
+    ],
+    [
       "edge_peer_account_ids",
       `select distinct p.account_id as id from public.cp2_conversation_participants p
        where p.record->>'conversationId' in (select id from edge_conversation_ids)
@@ -366,6 +378,7 @@ export async function createEdgeSnapshotScope(
       "edge_identity_user_ids",
       `select id from edge_user_ids union select id from edge_contact_user_ids
        union select id::text from public.users where account_id::text in (select id from edge_peer_account_ids)
+       union select user_id::text from public.business_memberships where business_id::text in (select id from edge_conversation_shop_ids)
       union select phone_holder.id::text from public.users phone_holder
       join public.accounts holder_account on holder_account.id = phone_holder.account_id
       where phone_holder.phone_number_e164 = ${claimedPhone}
@@ -457,7 +470,7 @@ export async function createEdgeSnapshotScope(
     ],
     [
       "business_memberships",
-      "select * from public.business_memberships where business_id in (select id::uuid from edge_business_ids) or user_id in (select id::uuid from edge_user_ids)"
+      "select * from public.business_memberships where business_id in (select id::uuid from edge_business_ids) or user_id in (select id::uuid from edge_user_ids) or business_id::text in (select id from edge_conversation_shop_ids)"
     ],
     [
       "receipt_line_items",

@@ -229,7 +229,8 @@ export function registerMessagingRoutes(
   store: Cp2Store,
   oauthAllowedRedirectOrigins: ReadonlySet<string>,
   vapidPublicKey: string | undefined,
-  queuedAgentTurns = false
+  queuedAgentTurns = false,
+  attachmentCipherPerRequest = false
 ): void {
   const turns = queuedAgentTurns
     ? createNodeAgentTurns(store, (error, turnId) =>
@@ -240,7 +241,13 @@ export function registerMessagingRoutes(
       )
     : null;
   if (turns) app.addHook("onClose", () => turns.close());
-  registerLinkedWhatsAppRoutes(app, store);
+  registerLinkedWhatsAppRoutes(
+    app,
+    store,
+    process.env,
+    undefined,
+    attachmentCipherPerRequest ? { attachmentCipherPerRequest } : {}
+  );
   registerLinkedWhatsAppDeviceRoutes(app, store);
   registerLinkedWhatsAppAccountRoutes(app, store);
   app.post("/v1/help", async (request, reply) => {

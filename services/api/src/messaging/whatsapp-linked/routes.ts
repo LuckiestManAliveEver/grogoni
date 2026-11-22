@@ -54,6 +54,8 @@ import {
 export type LinkedAssistantDaemon = Pick<LinkedDaemonClient, "reply">;
 
 export interface LinkedWhatsAppRouteOptions {
+  /** The host registers the attachment cipher on each per-request store (Edge shared app). */
+  attachmentCipherPerRequest?: boolean;
   /**
    * Replaces the client built from WHATSAPP_LINKED_DAEMON_URL. Tests pass a real
    * LinkedDaemonClient whose fetcher reaches an in-process Daemon gateway. Production callers
@@ -116,6 +118,35 @@ type DurableStore = Cp2Store & {
   loadPendingLinkedDelegationResults?: () => Promise<unknown[]>;
 };
 
+/**
+ * Lets the store read attachments imported through linked WhatsApp, which are encrypted with
+ * WHATSAPP_LINKED_SESSION_KEY (and up to three previous keys). Returns the unregister function, or
+ * undefined when no valid key is configured.
+ */
+export function registerLinkedAttachmentCipher(
+  store: Cp2Store,
+  environment: NodeJS.ProcessEnv = process.env
+): (() => void) | undefined {
+  const attachmentKey = environment.WHATSAPP_LINKED_SESSION_KEY ?? "";
+  const attachmentPrevious = (environment.WHATSAPP_LINKED_PREVIOUS_SESSION_KEYS ?? "")
+    .split(",")
+    .map((key) => key.trim())
+    .filter(Boolean);
+  if (
+    !/^[a-f0-9]{64}$/i.test(attachmentKey) ||
+    attachmentPrevious.length > 3 ||
+    !attachmentPrevious.every((key) => /^[a-f0-9]{64}$/i.test(key))
+  )
+    return undefined;
+  return store.registerConversationAttachmentCipher(
+    "encrypted/whatsapp-linked/",
+    new LinkedDataCipher(
+      Buffer.from(attachmentKey, "hex"),
+      attachmentPrevious.map((key) => Buffer.from(key, "hex"))
+    )
+  );
+}
+
 /** Persistent Node API only. Edge/serverless deployments leave this feature disabled. */
 export function registerLinkedWhatsAppRoutes(
   app: FastifyInstance,
@@ -125,27 +156,15 @@ export function registerLinkedWhatsAppRoutes(
   options: LinkedWhatsAppRouteOptions = {}
 ): LinkedWhatsAppRoutesHandle | undefined {
   const enabled = environment.WHATSAPP_LINKED_ENABLED === "true";
-  const attachmentKey = environment.WHATSAPP_LINKED_SESSION_KEY ?? "";
-  const attachmentPrevious = (environment.WHATSAPP_LINKED_PREVIOUS_SESSION_KEYS ?? "")
-    .split(",")
-    .map((key) => key.trim())
-    .filter(Boolean);
-  // Retain access to already imported encrypted attachments when the connector is disabled.
-  if (
-    /^[a-f0-9]{64}$/i.test(attachmentKey) &&
-    attachmentPrevious.length <= 3 &&
-    attachmentPrevious.every((key) => /^[a-f0-9]{64}$/i.test(key))
-  ) {
-    const removeCipher = store.registerConversationAttachmentCipher(
-      "encrypted/whatsapp-linked/",
-      new LinkedDataCipher(
-        Buffer.from(attachmentKey, "hex"),
-        attachmentPrevious.map((key) => Buffer.from(key, "hex"))
-      )
-    );
-    app.addHook("onClose", async () => {
-      removeCipher();
-    });
+  // Retain access to already imported encrypted attachments when the connector is disabled. A
+  // host whose stores are created per request (the Edge shared route app) registers the cipher on
+  // each store itself (registerLinkedAttachmentCipher) instead of here at route registration.
+  if (!options.attachmentCipherPerRequest) {
+    const removeCipher = registerLinkedAttachmentCipher(store, environment);
+    if (removeCipher)
+      app.addHook("onClose", async () => {
+        removeCipher();
+      });
   }
   let connector: LinkedWhatsAppConnector | undefined;
   /** What routes and the store call: the connector itself, or in lease mode its router. */

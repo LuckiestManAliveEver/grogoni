@@ -62,4 +62,39 @@ describe("agent session auto-title", () => {
     f.send("And cooking oil", "auto-title-edit-2");
     expect(f.title()).toBe("Weekly restock");
   });
+
+  it("never titles a customer's storefront conversation with their message", () => {
+    const store = createCp2Store();
+    const owner = store.continueWithChannelPin({
+      channel: "email",
+      destination: "storefront-title-owner@example.invalid",
+      pin: "3927"
+    });
+    const customer = store.continueWithChannelPin({
+      channel: "email",
+      destination: "storefront-title-customer@example.invalid",
+      pin: "3927"
+    });
+    const shop = store.createBusiness({
+      sessionId: owner.session.id,
+      name: "Storefront title fixture",
+      language: "en",
+      phoneNumber: "+254711456783",
+      phoneCountry: "KE"
+    }).business;
+    const conversationId = store.createConversation({
+      sessionId: customer.session.id,
+      kind: "storefront",
+      activeShopId: shop.id
+    }).conversation.id;
+    store.createConversationMessage({
+      sessionId: customer.session.id,
+      conversationId,
+      clientMessageId: "storefront-title-1",
+      content: { type: "text", text: "Hi, my phone is 0712 345 678, is the blue dress in stock?" }
+    });
+    expect(
+      store.getConversation({ sessionId: owner.session.id, conversationId }).conversation.title
+    ).toBeNull();
+  });
 });

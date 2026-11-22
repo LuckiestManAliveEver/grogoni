@@ -15,6 +15,7 @@ import Fastify, {
 } from "fastify";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { addFormUrlEncodedParser } from "./mcp/oauth.js";
+import { registerLinkedAttachmentCipher } from "./messaging/whatsapp-linked/routes.js";
 import websocket from "@fastify/websocket";
 import { registerMcpRoutes, createMcpRouteState } from "./mcp/routes.js";
 import { edgeRouteInventory } from "./edge-route-inventory.generated.js";
@@ -412,6 +413,10 @@ export async function createEdgeDomainRoutes(
   // proxies. Only the per-request objects differ between the two.
   const cp2RouteOptions = (context: SharedRouteContext): Cp2RouteOptions => ({
     store: context.store,
+    // Each request's store gets the linked-WhatsApp cipher when it is created (runAttempt).
+    // Route registration must not add it again: a second registration throws, and on the shared
+    // app the store is a proxy that only works inside a request.
+    attachmentCipherPerRequest: true,
     ...(readWebPushConfiguration()
       ? { vapidPublicKey: readWebPushConfiguration()!.publicKey }
       : {}),
@@ -653,6 +658,7 @@ export async function createEdgeDomainRoutes(
         conversationAttachmentBlobStore: createPostgresAttachmentBlobStore(pool),
         accountAiAssetStore: createPostgresAccountAiAssetStore(pool)
       });
+      registerLinkedAttachmentCipher(store);
       const snapshot = await timeStage("load", () => loadTransactionalCp2Snapshot(client, scope));
       let baseline = snapshot;
       let independentlyCommitted = false;

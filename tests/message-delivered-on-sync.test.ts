@@ -106,4 +106,91 @@ describe("delivered status for Grogoni messages", () => {
     pullAll(store, b.session.id);
     expect(statusOf(store, b.session.id, conversationId, message.id)?.status).toBe("read");
   });
+
+  it("shows the sender read status in its open thread's next delta read", async () => {
+    const { store, a, b, conversationId, message } = await directThread();
+    pullAll(store, b.session.id);
+    const open = store.getConversation({ sessionId: a.session.id, conversationId });
+    store.updateConversationSettings({ sessionId: b.session.id, conversationId, read: true });
+    const delta = store.getConversation({
+      sessionId: a.session.id,
+      conversationId,
+      since: open.messageCursor
+    });
+    expect(delta.isDelta).toBe(true);
+    expect(delta.messages.find((item) => item.id === message.id)?.status).toBe("read");
+  });
+
+  it("counts delivery in a shop's conversation only from the other side", () => {
+    const store = createCp2Store();
+    const owner = account(store, "623");
+    const customer = account(store, "624");
+    const staff = account(store, "625");
+    const shop = store.createBusiness({
+      sessionId: owner.session.id,
+      name: "Delivery shop",
+      language: "en",
+      phoneNumber: "+442079460626",
+      phoneCountry: "GB"
+    }).business;
+    const invitation = store.inviteStaff({
+      sessionId: owner.session.id,
+      businessId: shop.id,
+      role: "manager",
+      inviteeName: "Staff",
+      channel: "phone",
+      destination: staff.account.primaryAuthDestination
+    });
+    store.acceptStaffInvitation({ sessionId: staff.session.id, invitationId: invitation.id });
+    const conversationId = store.createConversation({
+      sessionId: customer.session.id,
+      kind: "storefront",
+      activeShopId: shop.id
+    }).conversation.id;
+    const question = store.createConversationMessage({
+      sessionId: customer.session.id,
+      conversationId,
+      clientMessageId: "customer-question-1",
+      content: { type: "text", text: "Is the blue dress in stock?" }
+    });
+    const reply = store.createConversationMessage({
+      sessionId: owner.session.id,
+      conversationId,
+      clientMessageId: "owner-reply-1",
+      content: { type: "text", text: "Yes, size M and L." }
+    });
+    const status = (id: string) =>
+      store
+        .getConversation({ sessionId: owner.session.id, conversationId })
+        .messages.find((item) => item.id === id)?.status;
+
+    // A colleague's device is not the customer's: the owner's reply stays sent.
+    pullAll(store, staff.session.id);
+    expect(status(reply.id)).toBe("sent");
+    // The shop's devices did receive the customer's question.
+    expect(status(question.id)).toBe("delivered");
+    // The customer's device receiving the reply is delivery.
+    pullAll(store, customer.session.id);
+    expect(status(reply.id)).toBe("delivered");
+
+    // A shop conversation owned by a member's account (a storefront visitor's chat belongs to the
+    // owner's account): a colleague's reply is still not delivered by the owner's own device.
+    const memberOwned = store.createConversation({
+      sessionId: owner.session.id,
+      kind: "storefront",
+      activeShopId: shop.id
+    }).conversation.id;
+    const staffReply = store.createConversationMessage({
+      sessionId: staff.session.id,
+      conversationId: memberOwned,
+      clientMessageId: "staff-reply-1",
+      content: { type: "text", text: "I will pack it now." }
+    });
+    pullAll(store, owner.session.id);
+    expect(
+      store
+        .getConversation({ sessionId: owner.session.id, conversationId: memberOwned })
+        .messages.find((item) => item.id === staffReply.id)?.status
+    ).toBe("sent");
+  });
 });
