@@ -436,9 +436,10 @@ describe("frontend user guidance", () => {
 
     expect(navigationState).toContain("function browseAsGuest()");
     expect(navigationState).toContain("Browsing as a guest");
-    expect(marketplaceState).toContain(
-      'getJson<PublicStorefrontListResponse>("/public/storefronts?limit=24")'
-    );
+    // The guest directory loads public storefronts with no session (the path is built by
+    // storefrontSearchPath, tests/shop-directory-ui.test.tsx).
+    expect(marketplaceState).toContain("getJson<PublicStorefrontListResponse>(");
+    expect(marketplaceState).toContain("storefrontSearchPath(storefrontFilter.current)");
     expect(marketplaceModeCard).toContain("routes.publicAgent(storefront.agentId)");
     expect(application).toContain("marketplaceShortcutOpen={isMarketplaceShortcutOpen}");
     expect(phoneFirst).toContain("Continue as guest");

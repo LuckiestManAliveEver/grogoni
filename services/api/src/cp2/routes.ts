@@ -17,7 +17,7 @@ import type {
   OwnerInferenceNodeMessage,
   RuntimeRegistryProviderId
 } from "@grogoni/shared-types";
-import { getStoreLinks } from "@grogoni/shared-types";
+import { getStoreLinks, shopCategories, type ShopCategory } from "@grogoni/shared-types";
 import { isSyncMutationType } from "@grogoni/sync-core";
 import {
   clearRefreshCookie,
@@ -246,6 +246,13 @@ interface MarketplaceIntroBody {
 interface PublicStorefrontSearchQuery {
   search?: string;
   limit?: string;
+  category?: string;
+  place?: string;
+}
+
+interface ShopDirectoryListingBody {
+  category?: unknown;
+  place?: unknown;
 }
 
 interface ShopPresenceBody {
@@ -2043,10 +2050,16 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
           request.query.limit === undefined
             ? undefined
             : parseIntegerString(request.query.limit, "limit");
+        const category = parseOptionalString(request.query.category);
+        if (category !== undefined && !(shopCategories as readonly string[]).includes(category))
+          throw new Cp2Error(400, "shop_category_invalid", "Unknown shop category.");
+        const place = parseOptionalString(request.query.place);
         return {
           storefronts: store.listPublicStorefronts({
             ...(search === undefined ? {} : { search }),
-            ...(limit === undefined ? {} : { limit })
+            ...(limit === undefined ? {} : { limit }),
+            ...(category === undefined ? {} : { category: category as ShopCategory }),
+            ...(place === undefined ? {} : { place })
           })
         };
       } catch (error) {
@@ -2131,6 +2144,32 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
           businessId: request.params.businessId,
           status: parseShopPresenceStatus(request.body.status),
           ...(catalogueShareable === undefined ? {} : { catalogueShareable })
+        });
+      } catch (error) {
+        return sendCp2Error(reply, error);
+      }
+    }
+  );
+
+  app.patch(
+    "/businesses/:businessId/directory-listing",
+    async (
+      request: FastifyRequest<{ Params: BusinessParams; Body: ShopDirectoryListingBody }>,
+      reply
+    ) => {
+      try {
+        const body = request.body ?? {};
+        const field = (value: unknown, name: string): string | null => {
+          if (value === null || value === undefined || value === "") return null;
+          if (typeof value !== "string")
+            throw new Cp2Error(400, "validation_failed", `${name} must be a string or null.`);
+          return value;
+        };
+        return store.setShopDirectoryListing({
+          sessionId: readSessionCookie(request.headers.cookie),
+          businessId: request.params.businessId,
+          category: field(body.category, "category") as ShopCategory | null,
+          place: field(body.place, "place")
         });
       } catch (error) {
         return sendCp2Error(reply, error);

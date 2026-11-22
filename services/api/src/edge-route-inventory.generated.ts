@@ -806,6 +806,7 @@ export const edgeRouteInventory: readonly EdgeRouteInventoryEntry[] = [
   { method: "GET", path: "/businesses/:businessId/presence", websocket: false },
   { method: "HEAD", path: "/businesses/:businessId/presence", websocket: false },
   { method: "PATCH", path: "/businesses/:businessId/presence", websocket: false },
+  { method: "PATCH", path: "/businesses/:businessId/directory-listing", websocket: false },
   { method: "GET", path: "/businesses/:businessId/network/invites", websocket: false },
   { method: "HEAD", path: "/businesses/:businessId/network/invites", websocket: false },
   { method: "POST", path: "/businesses/:businessId/network/invites", websocket: false },

@@ -92,6 +92,7 @@ import {
   type AssistantPermissionsView,
   type AssistantPermissions
 } from "@grogoni/shared-types";
+import { shopCategories, shopPlaceMaxLength } from "@grogoni/shared-types";
 import type {
   BuyFeedSummary,
   BuyerShoppingSession,
@@ -426,6 +427,7 @@ import type {
   GrogoniChatSurface,
   GrogoniMode,
   GrogoniSessionContext,
+  ShopCategory,
   ShopPresenceStatus,
   ShopPresenceSummary,
   StoredGrogoniSessionContext,
@@ -635,6 +637,9 @@ export interface PublicStorefrontSummary {
   /** Set when no human runs the shop: the Marketplace Agent operates it end to end. */
   operatedBy?: "marketplace_agent";
   presence: PublicShopPresenceSummary;
+  /** Shop directory listing, when the owner set one. */
+  category?: ShopCategory;
+  place?: string;
   products: PublicStorefrontProductSummary[];
 }
 
@@ -8698,8 +8703,15 @@ export class Cp2Store {
     return this.publicStorefrontForBusiness(business);
   }
 
-  listPublicStorefronts(input?: { search?: string; limit?: number }): PublicStorefrontSummary[] {
+  listPublicStorefronts(input?: {
+    search?: string;
+    limit?: number;
+    category?: ShopCategory;
+    place?: string;
+  }): PublicStorefrontSummary[] {
     const search = input?.search?.trim().toLowerCase().slice(0, 120) ?? "";
+    const place =
+      input?.place?.replace(/\s+/gu, " ").trim().toLowerCase().slice(0, shopPlaceMaxLength) ?? "";
     const limit = Math.min(50, Math.max(1, input?.limit ?? 24));
 
     const virtualSystemShop =
@@ -8711,11 +8723,18 @@ export class Cp2Store {
       .filter((business) => this.shopPresenceForBusiness(business.id).status !== "private")
       .map((business) => this.publicStorefrontForBusiness(business))
       .concat(virtualSystemShop)
+      .filter(
+        (storefront) => input?.category === undefined || storefront.category === input.category
+      )
+      .filter(
+        (storefront) => place.length === 0 || (storefront.place ?? "").toLowerCase().includes(place)
+      )
       .filter((storefront) => {
         if (search.length === 0) return true;
         return [
           storefront.businessName,
           storefront.grogoniId,
+          storefront.place ?? "",
           ...storefront.products.map((product) => product.name)
         ].some((value) => value.toLowerCase().includes(search));
       })
@@ -8751,9 +8770,10 @@ export class Cp2Store {
       now
     );
     this.requireOwnerMembership(input.businessId, session.user.id);
-    const catalogueShareable =
-      input.catalogueShareable ?? this.shopPresenceForBusiness(input.businessId).catalogueShareable;
+    const previous = this.shopPresenceForBusiness(input.businessId);
+    const catalogueShareable = input.catalogueShareable ?? previous.catalogueShareable;
     const presence: ShopPresenceSummary = {
+      ...previous,
       businessId: input.businessId,
       status: input.status,
       catalogueShareable,
@@ -8768,6 +8788,59 @@ export class Cp2Store {
       actorId: session.user.id,
       occurredAt: now.toISOString(),
       payload: { status: input.status, catalogueShareable }
+    });
+    return presence;
+  }
+
+  /**
+   * The shop's directory listing (what it sells, where it is), shown to buyers searching the
+   * shop directory. Owner only, like presence. null clears a field. A private shop is not listed
+   * whatever this says.
+   */
+  setShopDirectoryListing(input: {
+    sessionId: string | null;
+    businessId: string;
+    category: ShopCategory | null;
+    place: string | null;
+    now?: Date;
+  }): ShopPresenceSummary {
+    const now = input.now ?? new Date();
+    const session = this.requireAuthorizedSession(
+      input.sessionId,
+      input.businessId,
+      "business:read",
+      now
+    );
+    this.requireOwnerMembership(input.businessId, session.user.id);
+    if (input.category !== null && !(shopCategories as readonly string[]).includes(input.category))
+      throw new Cp2Error(400, "shop_category_invalid", "Choose a category from the list.");
+    const place = input.place?.replace(/\s+/gu, " ").trim() ?? "";
+    // Whitespace runs (tabs, newlines) were collapsed above; any other control character fails.
+    if (
+      place.length > shopPlaceMaxLength ||
+      /[<>]/u.test(place) ||
+      [...place].some((char) => char.charCodeAt(0) < 0x20 || char.charCodeAt(0) === 0x7f)
+    )
+      throw new Cp2Error(
+        400,
+        "shop_place_invalid",
+        `Write the place in ${shopPlaceMaxLength} characters or fewer, without < or >.`
+      );
+    const presence: ShopPresenceSummary = {
+      ...this.shopPresenceForBusiness(input.businessId),
+      category: input.category,
+      place: place.length === 0 ? null : place,
+      updatedBy: session.user.id,
+      updatedAt: now.toISOString()
+    };
+    this.shopPresences.set(input.businessId, presence);
+    this.recordAuditEvent({
+      type: "shop.directory_listing_updated",
+      aggregateType: "business",
+      aggregateId: input.businessId,
+      actorId: session.user.id,
+      occurredAt: now.toISOString(),
+      payload: { category: presence.category ?? null, placeSet: presence.place !== null }
     });
     return presence;
   }
@@ -15727,6 +15800,8 @@ export class Cp2Store {
         ? { pinned: true, operatedBy: "marketplace_agent" as const }
         : {}),
       presence: { status: presence.status, updatedAt: presence.updatedAt },
+      ...(presence.category ? { category: presence.category } : {}),
+      ...(presence.place ? { place: presence.place } : {}),
       products: this.salesDomain
         .productsForBusiness(business.id)
         .filter((product) => product.quantity > 0)

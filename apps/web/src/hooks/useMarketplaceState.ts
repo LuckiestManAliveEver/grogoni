@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { storefrontSearchPath, type ShopDirectoryFilter } from "../shop-directory";
+import { useRef, useState } from "react";
 
 import type { AccountShopSummary, BuyFeedSummary } from "@grogoni/shared-types";
 
@@ -60,15 +61,23 @@ export function useMarketplaceState(deps: UseMarketplaceStateDeps) {
     }
   }
 
-  async function loadPublicStorefronts() {
+  // The buyer's current directory filter: a plain refresh keeps it (the filter form still
+  // shows it). Each load is numbered so an older, slower answer never replaces a newer one.
+  const storefrontFilter = useRef<ShopDirectoryFilter>({});
+  const storefrontRequest = useRef(0);
+  async function loadPublicStorefronts(filter?: ShopDirectoryFilter) {
+    if (filter !== undefined) storefrontFilter.current = filter;
+    const request = (storefrontRequest.current += 1);
     setPublicStorefrontsLoading(true);
     try {
-      const response = await getJson<PublicStorefrontListResponse>("/public/storefronts?limit=24");
-      setPublicStorefronts(response.storefronts);
+      const response = await getJson<PublicStorefrontListResponse>(
+        storefrontSearchPath(storefrontFilter.current)
+      );
+      if (request === storefrontRequest.current) setPublicStorefronts(response.storefronts);
     } catch {
-      setPublicStorefronts([]);
+      if (request === storefrontRequest.current) setPublicStorefronts([]);
     } finally {
-      setPublicStorefrontsLoading(false);
+      if (request === storefrontRequest.current) setPublicStorefrontsLoading(false);
     }
   }
 

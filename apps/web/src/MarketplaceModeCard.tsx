@@ -7,6 +7,8 @@ import {
 } from "@grogoni/shared-types";
 
 import { routes } from "./routes";
+import { ShopDirectoryFilters } from "./ShopDirectoryFilters";
+import { shopCategoryLabels, type ShopDirectoryFilter } from "./shop-directory";
 import { StatusResultCard } from "./StatusResultCard";
 import { ShopSign } from "./ShopSign";
 
@@ -32,7 +34,7 @@ export interface MarketplaceModeCardProps {
   onOpenStore: () => void;
   onCompleteIntro: () => void;
   onPrompt: (prompt: string) => void;
-  onRefreshStorefronts: () => void;
+  onRefreshStorefronts: (filter?: ShopDirectoryFilter) => void;
   onSell: () => void;
   onSearchBuyFeed: (query: string) => void;
   onAddToCart: (result: BuyResultSummary) => void;
@@ -161,16 +163,17 @@ export function MarketplaceModeCard({
           <span>Public marketplace</span>
           <h3>Explore shops</h3>
         </div>
-        <button className="secondary" type="button" onClick={onRefreshStorefronts}>
+        <button className="secondary" type="button" onClick={() => onRefreshStorefronts()}>
           Refresh
         </button>
       </div>
+      <ShopDirectoryFilters onSearch={onRefreshStorefronts} />
       {isLoadingStorefronts ? (
         <p className="marketplace-directory-status" role="status">
           Loading public shops…
         </p>
       ) : publicStorefronts.length === 0 ? (
-        <p className="marketplace-directory-status">No public shops are available yet.</p>
+        <p className="marketplace-directory-status">No public shops match. Try another search.</p>
       ) : (
         <div className="marketplace-directory" aria-label="Public shops">
           {publicStorefronts.map((storefront) => (
@@ -185,6 +188,16 @@ export function MarketplaceModeCard({
               {storefront.pinned ? <span className="pinned-shop-label">Pinned</span> : null}
               <strong>{storefront.businessName}</strong>
               <small>{storefront.commerceAddress}</small>
+              {storefront.category || storefront.place ? (
+                <small className="public-shop-listing">
+                  {[
+                    storefront.category ? shopCategoryLabels[storefront.category] : null,
+                    storefront.place
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </small>
+              ) : null}
               {storefront.operatedBy === "marketplace_agent" ? (
                 <small className="pinned-shop-note">
                   Demo shop run by the Marketplace Agent · demo prices, no payment

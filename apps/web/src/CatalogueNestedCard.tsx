@@ -18,6 +18,7 @@ import { formatOptionalMoney } from "./formatters";
 import { createProductFieldDraft } from "./owner-app-bootstrap";
 import CatalogueBrowsePanel from "./CatalogueBrowsePanel";
 import CatalogueShareSettingsCard from "./CatalogueShareSettingsCard";
+import ShopDirectoryListingCard from "./ShopDirectoryListingCard";
 
 export function CatalogueNestedCard({
   businessId,
@@ -180,6 +181,7 @@ export function CatalogueNestedCard({
               />
             ) : null}
             <CatalogueShareSettingsCard businessId={businessId} />
+            <ShopDirectoryListingCard businessId={businessId} />
           </>
         )}
       </div>

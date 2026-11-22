@@ -1934,7 +1934,7 @@ export function OwnerApp() {
                 onSignUp={() => openAuth("signup")}
                 onLogIn={() => openAuth("login")}
                 recognizedDeviceLabel={recognizedDeviceLabel}
-                onRefreshPublicStorefronts={() => void loadPublicStorefronts()}
+                onRefreshPublicStorefronts={(filter) => void loadPublicStorefronts(filter)}
                 onConversationPreference={(conversationId, preference) =>
                   void runAction("conversation-preference", () =>
                     updateConversationPreference(conversationId, preference)

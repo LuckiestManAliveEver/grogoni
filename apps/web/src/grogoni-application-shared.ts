@@ -3,6 +3,7 @@ import { type PublicKeyCredentialCreationOptionsJSON } from "@simplewebauthn/bro
 import type { CountryCode } from "libphonenumber-js";
 
 import type {
+  ShopCategory,
   ReceiptOCRJobSummary as SharedReceiptOCRJobSummary,
   ReceiptStructuredExtractionSummary,
   NetworkConnectionSummary,
@@ -456,6 +457,9 @@ export interface PublicStorefrontSummary {
   /** The Marketplace Agent runs this shop with no human owner. */
   operatedBy?: "marketplace_agent";
   presence: Pick<ShopPresenceSummary, "status" | "updatedAt">;
+  /** Shop directory listing, when the owner set one. */
+  category?: ShopCategory;
+  place?: string;
   products: PublicStorefrontProductSummary[];
 }
 

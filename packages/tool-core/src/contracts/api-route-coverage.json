@@ -149,6 +149,10 @@
       "status": "tool",
       "tools": ["payment.record"]
     },
+    "directory-listing": {
+      "status": "gap",
+      "reason": "Setting the shop's directory category and place has no tool."
+    },
     "presence": {
       "status": "gap",
       "reason": "Setting the shop online, busy or offline has no tool."

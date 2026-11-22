@@ -7,6 +7,7 @@ import { getUserFacingErrorMessage } from "./user-facing-error";
 import type { StockAdjustmentResponse } from "./grogoni-application-shared";
 import CatalogueBrowsePanel from "./CatalogueBrowsePanel";
 import CatalogueShareSettingsCard from "./CatalogueShareSettingsCard";
+import ShopDirectoryListingCard from "./ShopDirectoryListingCard";
 
 interface ProductDraft {
   name: string;
@@ -457,6 +458,7 @@ export default function ProductManagementCard(props: { businessId: string; produ
         );
       })}
       <CatalogueShareSettingsCard businessId={props.businessId} />
+      <ShopDirectoryListingCard businessId={props.businessId} />
     </section>
   );
 }

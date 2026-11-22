@@ -9,6 +9,31 @@ type RecordView = Record<string, unknown>;
  */
 export const pinnedSystemShopBusinessId = "e1c4bf59-faaf-5051-8ccd-2131d4a460f9";
 
+/**
+ * Shop directory categories and the longest place, mirrored from packages/shared-types
+ * (`shopCategories`, `shopPlaceMaxLength`): Edge function files import no workspace package.
+ * tests/shop-directory.test.ts keeps them identical.
+ */
+export const shopCategories = [
+  "groceries",
+  "fresh_produce",
+  "butchery",
+  "bakery",
+  "restaurant",
+  "pharmacy",
+  "beauty",
+  "fashion",
+  "electronics",
+  "phones_airtime",
+  "hardware",
+  "agrovet",
+  "stationery",
+  "household",
+  "services",
+  "other"
+] as const;
+export const shopPlaceMaxLength = 80;
+
 export function createPublicRoutes(
   transaction: Transaction,
   options: {
@@ -28,6 +53,15 @@ export function createPublicRoutes(
       if (!/^\d+$/.test(rawLimit)) return Response.json({ code: "limit_invalid" }, { status: 400 });
       const limit = Math.min(50, Math.max(1, Number(rawLimit)));
       const search = (url.searchParams.get("search") ?? "").trim().toLowerCase().slice(0, 120);
+      // Shop directory filters (mirrors Cp2Store.listPublicStorefronts).
+      const category = (url.searchParams.get("category") ?? "").trim();
+      if (category !== "" && !(shopCategories as readonly string[]).includes(category))
+        return Response.json({ code: "shop_category_invalid" }, { status: 400 });
+      const place = (url.searchParams.get("place") ?? "")
+        .replace(/\s+/gu, " ")
+        .trim()
+        .toLowerCase()
+        .slice(0, shopPlaceMaxLength);
       await options.ensureSystemShop?.().catch(() => undefined);
       return transaction(async (client) => {
         const result = await client.query(
@@ -41,12 +75,15 @@ export function createPublicRoutes(
           from cp2_businesses b left join cp2_shop_presences p on p.entity_id = b.entity_id
           where coalesce(p.record->>'status', 'online') <> 'private'
             and coalesce(b.record->>'quarantined', 'false') <> 'true'
+            and ($4 = '' or p.record->>'category' = $4)
+            and ($5 = '' or position($5 in lower(coalesce(p.record->>'place', ''))) > 0)
             and ($1 = '' or position($1 in lower(b.record->>'name')) > 0
               or position($1 in lower(b.record->>'grogoniId')) > 0
+              or position($1 in lower(coalesce(p.record->>'place', ''))) > 0
               or exists (select 1 from cp2_products c where c.business_id = b.entity_id
                 and position($1 in lower(c.record->>'name')) > 0))
           order by (b.entity_id = $3) desc, b.record->>'name' limit $2`,
-          [search, limit, pinnedSystemShopBusinessId]
+          [search, limit, pinnedSystemShopBusinessId, category, place]
         );
         return Response.json({
           storefronts: result.rows.map((row) => {
@@ -66,6 +103,12 @@ export function createPublicRoutes(
                 status: presence?.status ?? "online",
                 updatedAt: presence?.updatedAt ?? new Date(0).toISOString()
               },
+              ...(typeof presence?.category === "string" && presence.category
+                ? { category: presence.category }
+                : {}),
+              ...(typeof presence?.place === "string" && presence.place
+                ? { place: presence.place }
+                : {}),
               products: row.products
             };
           })

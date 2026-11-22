@@ -27,10 +27,13 @@ describe("Edge public routes", () => {
     expect(await response!.json()).toMatchObject({
       storefronts: [{ commerceAddress: "shop@grogoni.com", presence: { status: "online" } }]
     });
+    // No directory filter: category and place are empty (any).
     expect(query).toHaveBeenCalledWith(expect.stringContaining("<> 'private'"), [
       "shop",
       2,
-      pinnedSystemShopBusinessId
+      pinnedSystemShopBusinessId,
+      "",
+      ""
     ]);
   });
   it("pins and labels Jane's Shop first and provisions it before listing", async () => {

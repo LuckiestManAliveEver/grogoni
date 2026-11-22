@@ -14,6 +14,7 @@ import {
 import { formatOptionalMoney } from "./formatters";
 import CatalogueBrowsePanel from "./CatalogueBrowsePanel";
 import CatalogueShareSettingsCard from "./CatalogueShareSettingsCard";
+import ShopDirectoryListingCard from "./ShopDirectoryListingCard";
 
 export interface ProductSurfaceProps {
   businessId: string;
@@ -239,6 +240,7 @@ export function ProductSurface(props: ProductSurfaceProps) {
       </section>
 
       <CatalogueShareSettingsCard businessId={props.businessId} />
+      <ShopDirectoryListingCard businessId={props.businessId} />
     </div>
   );
 }

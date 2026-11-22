@@ -2977,11 +2977,42 @@ export interface AccountDeletionRequestSummary {
 
 export type ShopPresenceStatus = "online" | "private" | "offline";
 
+/**
+ * What a shop sells, for finding it in the shop directory. A fixed list so buyers can filter by
+ * it; "other" for anything else. Labels live with the UI (shopCategoryLabels in the web app).
+ */
+export const shopCategories = [
+  "groceries",
+  "fresh_produce",
+  "butchery",
+  "bakery",
+  "restaurant",
+  "pharmacy",
+  "beauty",
+  "fashion",
+  "electronics",
+  "phones_airtime",
+  "hardware",
+  "agrovet",
+  "stationery",
+  "household",
+  "services",
+  "other"
+] as const;
+export type ShopCategory = (typeof shopCategories)[number];
+
+/** Longest place a shop can give ("Westlands, Nairobi"). */
+export const shopPlaceMaxLength = 80;
+
 export interface ShopPresenceSummary {
   businessId: string;
   status: ShopPresenceStatus;
   /** Owner opt-in: when true, other shops can browse and duplicate this shop's catalogue. */
   catalogueShareable: boolean;
+  /** Shop directory listing: what the shop sells. Absent or null until the owner sets it. */
+  category?: ShopCategory | null;
+  /** Shop directory listing: where it is, as the owner writes it ("Westlands, Nairobi"). */
+  place?: string | null;
   updatedBy: string;
   updatedAt: string;
 }

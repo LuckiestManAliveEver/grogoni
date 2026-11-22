@@ -1,3 +1,4 @@
+import type { ShopDirectoryFilter } from "./shop-directory";
 import type { ChangeEvent, ReactNode } from "react";
 
 import type {
@@ -93,7 +94,8 @@ export interface ChatSurfaceProps {
   onSignUp: () => void;
   onLogIn: () => void;
   recognizedDeviceLabel: string | null;
-  onRefreshPublicStorefronts: () => void;
+  /** Loads the shop directory, filtered by category and place when given. */
+  onRefreshPublicStorefronts: (filter?: ShopDirectoryFilter) => void;
   onConversationPreference: (
     conversationId: string,
     preference: "archive" | "mute" | "pin"

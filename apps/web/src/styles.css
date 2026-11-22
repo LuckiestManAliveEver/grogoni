@@ -3133,6 +3133,29 @@ a.button-like {
   gap: 12px;
 }
 
+.shop-directory-filters {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.shop-directory-filters label {
+  display: grid;
+  flex: 1 1 140px;
+  gap: 4px;
+  min-width: 0;
+}
+
+.shop-directory-filters label > span {
+  color: #9daea4;
+  font-size: 12px;
+}
+
+.public-shop-listing {
+  color: #acceb9;
+}
+
 .marketplace-directory-heading > div {
   display: grid;
   gap: 2px;

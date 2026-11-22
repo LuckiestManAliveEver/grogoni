@@ -47,7 +47,7 @@ Tick an item only in the same commit that adds its evidence.
 - [x] One canonical card per contact across identities. evidence: tests/canonical-contacts-card.test.ts
 - [x] Grogoni ID lookup. evidence: tests/grogoni-id-routes.test.ts
 - [x] Open a conversation from a contact. evidence: tests/network-contact-conversations.test.ts
-- [ ] Find a business by name, category or place (shop directory).
+- [x] Find a business by name, category or place (shop directory), on Node and Edge. evidence: tests/shop-directory.test.ts, tests/shop-directory-ui.test.tsx
 - [ ] Android contact picker permission verified on the API 30 emulator.
 
 ## Business messaging (weight 20)
