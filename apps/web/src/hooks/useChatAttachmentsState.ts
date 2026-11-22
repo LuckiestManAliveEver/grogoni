@@ -24,9 +24,8 @@ interface UseChatAttachmentsStateDeps {
 export function useChatAttachmentsState(deps: UseChatAttachmentsStateDeps) {
   const { business, setStatusMessage, setPendingAttachments, setChatMessages } = deps;
 
-  async function handleChatAttachmentChange(event: ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(event.target.files ?? []);
-
+  /** Adds files as pending attachments: picked files, or a voice note recorded in the composer. */
+  async function addAttachmentFiles(files: File[]) {
     if (files.length === 0) {
       return;
     }
@@ -37,6 +36,11 @@ export function useChatAttachmentsState(deps: UseChatAttachmentsStateDeps) {
     }
     const nextAttachments = await Promise.all(accepted.map(createChatAttachment));
     setPendingAttachments((attachments) => [...attachments, ...nextAttachments].slice(0, 10));
+  }
+
+  async function handleChatAttachmentChange(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? []);
+    await addAttachmentFiles(files);
     event.target.value = "";
   }
 
@@ -89,6 +93,7 @@ export function useChatAttachmentsState(deps: UseChatAttachmentsStateDeps) {
   }
 
   return {
+    addAttachmentFiles,
     handleChatAttachmentChange,
     removePendingAttachment,
     handleSellerPhotoCapture

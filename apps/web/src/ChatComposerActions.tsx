@@ -8,6 +8,8 @@ interface ChatComposerActionsProps {
   sendViaLabel: string;
   onAttachFiles: () => void;
   onAddParticipants?: () => void;
+  /** Present when this browser can record and the composer can attach the recording. */
+  onRecordVoiceNote?: () => void;
   onClose: () => void;
   onOpenCommand?: () => void;
   onSendSms: () => void;
@@ -23,6 +25,7 @@ export function ChatComposerActions({
   sendViaLabel,
   onAttachFiles,
   onAddParticipants,
+  onRecordVoiceNote,
   onClose,
   onOpenCommand,
   onSendSms,
@@ -68,6 +71,12 @@ export function ChatComposerActions({
           <span className="composer-files-icon" aria-hidden="true" />
           <span>Files</span>
         </button>
+        {onRecordVoiceNote ? (
+          <button type="button" aria-label="Record voice note" onClick={onRecordVoiceNote}>
+            <span className="mic-icon" aria-hidden="true" />
+            <span>Voice note</span>
+          </button>
+        ) : null}
         {mode === "seller" && onOpenCommand ? (
           <button type="button" aria-label="Open command" onClick={onOpenCommand}>
             <span className="composer-command-icon" aria-hidden="true">

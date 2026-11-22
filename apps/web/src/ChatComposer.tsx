@@ -6,6 +6,7 @@ import { chatAttachmentAccept } from "./grogoni-application-shared";
 import { chatModuleCommands } from "./chat-module-commands";
 import { startVoiceInput } from "./chat-message-plumbing";
 import { formatChannelProvider } from "./formatters";
+import { useComposerVoiceNote, VoiceNoteBar } from "./VoiceNoteBar";
 import type { ChatComposerProps } from "./chat-composer-contracts";
 import {
   ChatComposerLazyPanel,
@@ -36,6 +37,7 @@ export function ChatComposer({
   selectedConversationTitle,
   selectedEmailCustomerId,
   onAttachmentChange,
+  onAddAttachmentFiles,
   onCancelGeneration,
   onCancelReply,
   onAddParticipants,
@@ -67,6 +69,7 @@ export function ChatComposer({
     updateLiveDraft
   } = composer;
   const [messageActionsOpen, setMessageActionsOpen] = useState(false);
+  const voiceNote = useComposerVoiceNote(onAddAttachmentFiles);
   const [channelPickerOpen, setChannelPickerOpen] = useState(false);
   const [externalAppsOpen, setExternalAppsOpen] = useState(false);
   const messageInputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -293,6 +296,7 @@ export function ChatComposer({
             </button>
           </div>
         </div>
+        <VoiceNoteBar voiceNote={voiceNote} />
         {sendWhenOpen !== null ? (
           <small className="external-share-notice" role="status">
             Sends as soon as this chat opens.
@@ -321,6 +325,7 @@ export function ChatComposer({
           sendViaLabel={sendViaLabel}
           onClose={() => setMessageActionsOpen(false)}
           onAttachFiles={() => runMessageAction(() => fileInputRef.current?.click())}
+          {...voiceNote.actionProps(runMessageAction)}
           {...(agentControlsAvailable
             ? { onOpenCommand: () => runMessageAction(() => updateLiveDraft("#")) }
             : {})}

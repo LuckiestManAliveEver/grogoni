@@ -26,6 +26,8 @@ export interface ChatComposerProps {
   selectedEmailCustomerId: string | null | undefined;
   onAgentChange: (agent: AgentSettings) => void;
   onAttachmentChange: (event: ChangeEvent<HTMLInputElement>) => void;
+  /** Adds files as pending attachments; without it the composer offers no voice notes. */
+  onAddAttachmentFiles?: ((files: File[]) => void) | undefined;
   onCancelGeneration: () => void;
   onCancelReply: () => void;
   onOpenAgentProfile: () => void;

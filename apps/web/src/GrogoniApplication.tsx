@@ -729,13 +729,17 @@ export function OwnerApp() {
     setReplyToMessageId,
     registerReset: domainResetRegistry.registerReset
   });
-  const { handleChatAttachmentChange, removePendingAttachment, handleSellerPhotoCapture } =
-    useChatAttachmentsState({
-      business,
-      setStatusMessage,
-      setPendingAttachments,
-      setChatMessages
-    });
+  const {
+    addAttachmentFiles,
+    handleChatAttachmentChange,
+    removePendingAttachment,
+    handleSellerPhotoCapture
+  } = useChatAttachmentsState({
+    business,
+    setStatusMessage,
+    setPendingAttachments,
+    setChatMessages
+  });
   const {
     handleSearchBuyFeed,
     handleAddToCart,
@@ -1898,6 +1902,7 @@ export function OwnerApp() {
                 buyCart={buyCart}
                 isCheckingOut={isPending("buy-checkout")}
                 onAttachmentChange={handleChatAttachmentChange}
+                onAddAttachmentFiles={(files) => void addAttachmentFiles(files)}
                 onSellerPhotoCapture={(file) => void handleSellerPhotoCapture(file)}
                 onStatusBroadcastPosted={handleStatusBroadcastPosted}
                 onSearchBuyFeed={(query) => void handleSearchBuyFeed(query)}

@@ -70,6 +70,8 @@ export interface ChatSurfaceProps {
   buyCart: BuyCartItem[];
   isCheckingOut: boolean;
   onAttachmentChange: (event: ChangeEvent<HTMLInputElement>) => void;
+  /** Adds files as pending attachments (a recorded voice note). */
+  onAddAttachmentFiles?: (files: File[]) => void;
   onSellerPhotoCapture: (file: File) => void;
   onStatusBroadcastPosted: (statusBroadcastId: string) => void;
   onSearchBuyFeed: (query: string) => void;

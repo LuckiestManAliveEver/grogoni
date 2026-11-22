@@ -136,6 +136,7 @@ export function ChatSurface({
   buyCart,
   isCheckingOut,
   onAttachmentChange,
+  onAddAttachmentFiles,
   onSellerPhotoCapture,
   onStatusBroadcastPosted,
   onSearchBuyFeed,
@@ -1128,6 +1129,7 @@ export function ChatSurface({
           selectedEmailCustomerId={selectedEmailCustomerId}
           onAgentChange={setAgentSettings}
           onAttachmentChange={onAttachmentChange}
+          onAddAttachmentFiles={onAddAttachmentFiles}
           onCancelGeneration={onCancelGeneration}
           onCancelReply={onCancelReply}
           onOpenAgentProfile={onOpenAgentProfile}
