@@ -3,6 +3,7 @@ import { useAsyncActions } from "./hooks/useAsyncActions";
 import { useApiMutationRevision } from "./hooks/useApiMutationRevision";
 import { fetchFreshJson, patchJson } from "./api-helpers";
 import { getUserFacingErrorMessage } from "./user-facing-error";
+import { FulfillmentRoute } from "./FulfillmentRoute";
 import type { FulfillmentStatus, LogisticsSummary } from "./grogoni-application-shared";
 
 const openStatuses: FulfillmentStatus[] = ["pending", "ready", "out_for_delivery"];
@@ -65,6 +66,8 @@ export default function LogisticsManagementCard(props: {
     setMessage(`${result.invoiceNumber} marked ${result.status.replace(/_/g, " ")}`);
   }
 
+  const selected = openDeliveries?.find((item) => item.id === logisticsId);
+
   if (openDeliveries === null) {
     return (
       <section className="record-form logistics-management-card" aria-label="Logistics">
@@ -103,6 +106,9 @@ export default function LogisticsManagementCard(props: {
                   ))}
                 </select>
               </label>
+              {selected === undefined ? null : (
+                <FulfillmentRoute status={selected.status} method={selected.method} />
+              )}
               <label>
                 New status
                 <select
@@ -137,11 +143,14 @@ export default function LogisticsManagementCard(props: {
           )}
         </>
       ) : (
-        <p>
-          <strong>Updated</strong>
-          <br />
-          {updated.invoiceNumber}: {updated.status.replace(/_/g, " ")}
-        </p>
+        <>
+          <p>
+            <strong>Updated</strong>
+            <br />
+            {updated.invoiceNumber}: {updated.status.replace(/_/g, " ")}
+          </p>
+          <FulfillmentRoute status={updated.status} method={updated.method} />
+        </>
       )}
     </section>
   );

@@ -16,6 +16,9 @@ import { getUserFacingErrorMessage } from "./user-facing-error";
 import { ApiRequestError } from "./lib/api";
 import { formatMoney } from "./formatters";
 import { fulfillmentCopy, formatDurationSeconds } from "./fulfillment-copy";
+import { currentManifestStopId, manifestStopState } from "./fulfillment-route";
+import { ManifestStopMarker, ManifestTripStrip } from "./ManifestRoute";
+import { PoolLorryGauge } from "./PoolLorryGauge";
 
 type DeliveryOutcome = "ARRIVED" | "DELIVERED" | "FAILED" | "SKIPPED";
 
@@ -209,7 +212,11 @@ export default function CorridorDispatchCard(props: { businessId: string }) {
         <>
           {pools.pools.length === 0 ? <p className="shell-note">{t.noPools}</p> : null}
           {pools.pools.map((pool) => (
-            <article className="mini-card corridor-pool" key={pool.corridorId}>
+            <article
+              className="mini-card corridor-pool"
+              key={pool.corridorId}
+              data-readiness={pool.readiness ?? "NONE"}
+            >
               <strong>
                 {pool.corridorName} ·{" "}
                 {pool.readiness === null ? t.noPolicy : t.readiness[pool.readiness]}
@@ -222,9 +229,7 @@ export default function CorridorDispatchCard(props: { businessId: string }) {
                 {t.orders(pool.eligibleOrderCount)}
               </span>
               {pool.percentFilled !== null ? (
-                <progress max={100} value={Math.min(100, pool.percentFilled)}>
-                  {pool.percentFilled}%
-                </progress>
+                <PoolLorryGauge percentFilled={pool.percentFilled} readiness={pool.readiness} />
               ) : null}
               {pool.staleResolutionCount > 0 ? (
                 <small>{t.staleCount(pool.staleResolutionCount)}</small>
@@ -303,8 +308,13 @@ export default function CorridorDispatchCard(props: { businessId: string }) {
       {manifests.map((manifest) => {
         const activeStops = manifest.stops.filter((stop) => stop.allocationActive);
         const recording = manifest.status === "CLOSED" || manifest.status === "DEPARTED";
+        const currentStopId = currentManifestStopId(manifest);
         return (
-          <article className="mini-card manifest-card" key={manifest.id}>
+          <article
+            className="mini-card manifest-card"
+            key={manifest.id}
+            data-manifest-status={manifest.status}
+          >
             <strong>
               {corridorName(manifest.corridorId)} · {t.manifestStatus[manifest.status]}
             </strong>
@@ -312,6 +322,7 @@ export default function CorridorDispatchCard(props: { businessId: string }) {
               {t.loadOf(kg(manifest.totalWeightGrams), kg(manifest.vehicleCapacityGrams))} ·{" "}
               {t.orders(activeStops.length)}
             </span>
+            <ManifestTripStrip manifest={manifest} />
             {!canAssign || manifest.status === "COMPLETED" || manifest.status === "CANCELLED" ? (
               <small>
                 {t.driver}:{" "}
@@ -345,9 +356,15 @@ export default function CorridorDispatchCard(props: { businessId: string }) {
                 </select>
               </label>
             )}
-            <ol className="manifest-stops">
+            <ol className="manifest-stops manifest-route">
               {manifest.stops.map((stop) => (
-                <li key={stop.id}>
+                <li
+                  key={stop.id}
+                  data-delivery-status={manifestStopState(stop)}
+                  className={stop.id === currentStopId ? "current" : undefined}
+                  aria-current={stop.id === currentStopId ? "step" : undefined}
+                >
+                  <ManifestStopMarker current={stop.id === currentStopId} />
                   <span>
                     {stop.sequence}. {stop.customerName ?? t.walkIn} · {kg(stop.orderWeightGrams)} ·{" "}
                     {stop.allocationActive ? t.stopStatus[stop.deliveryStatus] : t.released}

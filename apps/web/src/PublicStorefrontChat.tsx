@@ -34,6 +34,7 @@ import { startVoiceInput, getErrorMessage } from "./chat-message-plumbing";
 import { useInstallPrompt } from "./misc-browser-utils";
 
 import { BuildIdentity } from "./BuildIdentity";
+import { ShopSign } from "./ShopSign";
 
 export function PublicStorefrontChat(props: { agentId: string; productId?: string | null }) {
   const installPrompt = useInstallPrompt();
@@ -547,6 +548,7 @@ export function PublicStorefrontChat(props: { agentId: string; productId?: strin
               <span>
                 {storefront.commerceAddress} · {storefront.presence.status}
               </span>
+              <ShopSign status={storefront.presence.status} compact />
             </div>
             <div className="public-chat-actions">
               {installPrompt.canInstall ? (

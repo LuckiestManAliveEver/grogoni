@@ -1,0 +1,535 @@
+/* Design D: shop sign (D1), matatu delivery route (D2), lorry pool gauge (D3), manifest route
+   (D4) and kanga shop identity (D5). Brand tokens come from styles.css :root; fallbacks keep the
+   cards readable if a lazy chunk paints before it. Selectors are doubled up where older generic
+   rules (.mini-card span, .record-row span, .public-chat-header span) would otherwise win. */
+
+/* D1 · Shop sign --------------------------------------------------------- */
+
+.shop-sign {
+  align-items: center;
+  display: inline-flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  position: relative;
+}
+
+.shop-sign .shop-sign-string {
+  border-left: 1.5px solid var(--grogoni-ink-faint, #8b93a3);
+  border-top: 1.5px solid var(--grogoni-ink-faint, #8b93a3);
+  display: block;
+  height: 8px;
+  margin-bottom: -1px;
+  transform: rotate(45deg);
+  width: 8px;
+}
+
+.shop-sign .shop-sign-plate {
+  animation: shop-sign-flip 0.55s cubic-bezier(0.2, 0.8, 0.3, 1.3) both;
+  border-radius: 4px;
+  display: inline-block;
+  font-family: var(--grogoni-mono-font, ui-monospace, monospace);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+  overflow: visible;
+  padding: 4px 8px;
+  text-overflow: clip;
+  transform-origin: 50% 0;
+  white-space: nowrap;
+}
+
+.shop-sign .shop-sign-plate.online {
+  background: var(--grogoni-buy, #2f6b56);
+  color: var(--grogoni-ink, #f4f2ee);
+}
+
+.shop-sign .shop-sign-plate.private {
+  background: var(--grogoni-accent, #e3a13c);
+  color: var(--grogoni-accent-ink, #3a2707);
+}
+
+.shop-sign .shop-sign-plate.offline {
+  background: var(--grogoni-line, #323a48);
+  color: var(--grogoni-ink-soft, #c7cbd4);
+}
+
+.shop-sign.compact .shop-sign-string {
+  display: none;
+}
+
+.shop-sign.compact .shop-sign-plate {
+  font-size: 9px;
+  padding: 3px 6px;
+}
+
+.shop-sign.interactive .shop-sign-button {
+  align-items: center;
+  animation: shop-sign-sway 3.2s ease-in-out infinite;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 2px;
+  transform-origin: 50% 0;
+}
+
+.shop-sign.interactive .shop-sign-button:focus-visible {
+  outline: 2px solid var(--grogoni-accent, #e3a13c);
+  outline-offset: 2px;
+}
+
+.shop-sign .shop-sign-choices {
+  background: var(--grogoni-paper-dim, #1b202b);
+  border: 1px solid var(--grogoni-line-strong, #454e60);
+  border-radius: 12px;
+  box-shadow: 0 18px 40px rgb(5 6 10 / 45%);
+  display: grid;
+  gap: 4px;
+  min-width: 220px;
+  padding: 6px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 30;
+}
+
+.shop-sign .shop-sign-choice {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--grogoni-ink, #f4f2ee);
+  cursor: pointer;
+  display: flex;
+  gap: 10px;
+  min-height: 44px;
+  padding: 6px 8px;
+  text-align: left;
+}
+
+.shop-sign .shop-sign-choice[aria-pressed="true"] {
+  border-color: var(--grogoni-accent, #e3a13c);
+}
+
+.shop-sign .shop-sign-choice .shop-sign-plate {
+  animation: none;
+}
+
+.shop-sign .shop-sign-choice small {
+  color: var(--grogoni-ink-soft, #c7cbd4);
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.thread-shop-sign {
+  display: inline-flex;
+  flex: 0 0 auto;
+  margin-top: -8px;
+}
+
+.public-chat-header .shop-sign {
+  justify-self: start;
+  overflow: visible;
+}
+
+.presence-label .shop-sign {
+  vertical-align: middle;
+}
+
+@keyframes shop-sign-flip {
+  0% {
+    transform: rotateX(90deg);
+  }
+  60% {
+    transform: rotateX(-18deg);
+  }
+  100% {
+    transform: rotateX(0);
+  }
+}
+
+@keyframes shop-sign-sway {
+  0%,
+  100% {
+    transform: rotate(-3deg);
+  }
+  50% {
+    transform: rotate(3deg);
+  }
+}
+
+/* D2 · Matatu delivery route --------------------------------------------- */
+
+.fulfillment-route {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+  max-width: 420px;
+  min-width: 0;
+}
+
+.fulfillment-route .fulfillment-route-road {
+  height: 30px;
+  margin: 0 10px;
+  position: relative;
+}
+
+.fulfillment-route .fulfillment-route-road::before {
+  border-top: 2px dashed var(--grogoni-line-strong, #454e60);
+  content: "";
+  left: 0;
+  position: absolute;
+  right: 0;
+  top: 23px;
+}
+
+.fulfillment-route .fulfillment-route-travelled {
+  border-top: 2px solid var(--grogoni-accent, #e3a13c);
+  display: block;
+  left: 0;
+  position: absolute;
+  top: 23px;
+  width: var(--route-position, 0%);
+}
+
+.fulfillment-route .fulfillment-route-pin {
+  background: var(--grogoni-paper, #12151c);
+  border: 2px solid var(--grogoni-line-strong, #454e60);
+  border-radius: 50%;
+  box-sizing: border-box;
+  display: block;
+  height: 12px;
+  left: var(--pin-position, 0%);
+  margin-left: -6px;
+  position: absolute;
+  top: 18px;
+  width: 12px;
+}
+
+.fulfillment-route .fulfillment-route-pin.reached {
+  background: var(--grogoni-accent, #e3a13c);
+  border-color: var(--grogoni-accent, #e3a13c);
+}
+
+.fulfillment-route .fulfillment-route-pin.current {
+  box-shadow: 0 0 0 4px rgb(227 161 60 / 25%);
+}
+
+.fulfillment-route .fulfillment-route-vehicle {
+  color: var(--grogoni-accent, #e3a13c);
+  display: block;
+  left: var(--route-position, 0%);
+  line-height: 0;
+  position: absolute;
+  top: -2px;
+  transform: translateX(-50%);
+}
+
+.fulfillment-route.moving .fulfillment-route-vehicle {
+  animation: matatu-drive 1.3s ease-in-out infinite;
+}
+
+.fulfillment-route .fulfillment-route-labels {
+  display: flex;
+  justify-content: space-between;
+}
+
+.fulfillment-route .fulfillment-route-labels small {
+  color: var(--grogoni-ink-faint, #8b93a3);
+  font-family: var(--grogoni-mono-font, ui-monospace, monospace);
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.fulfillment-route .fulfillment-route-labels small.current {
+  color: var(--grogoni-accent, #e3a13c);
+}
+
+.fulfillment-route.cancelled .fulfillment-route-vehicle {
+  color: var(--grogoni-ink-faint, #8b93a3);
+  opacity: 0.7;
+}
+
+@keyframes matatu-drive {
+  0%,
+  100% {
+    transform: translateX(-50%);
+  }
+  50% {
+    transform: translateX(calc(-50% + 5px));
+  }
+}
+
+/* D3 · Lorry pool gauge -------------------------------------------------- */
+
+.pool-lorry .pool-lorry-picture {
+  align-items: flex-end;
+  color: var(--grogoni-ink-soft, #c7cbd4);
+  display: flex;
+}
+
+.pool-lorry .pool-lorry-bed {
+  background: var(--grogoni-paper, #12151c);
+  border: 2px solid var(--grogoni-line-strong, #454e60);
+  border-radius: 4px 0 0 4px;
+  border-right: 0;
+  flex: 1;
+  height: 32px;
+  overflow: hidden;
+  position: relative;
+}
+
+.pool-lorry .pool-lorry-load {
+  animation: lorry-load 0.8s ease-out both;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--pool-crate, var(--grogoni-sell, #c2543f)) 0 22px,
+    var(--grogoni-paper, #12151c) 22px 24px
+  );
+  bottom: 0;
+  left: 0;
+  position: absolute;
+  top: 0;
+  width: var(--pool-fill, 0%);
+}
+
+.pool-lorry[data-readiness="DISPATCH_READY"],
+.pool-lorry[data-readiness="DISPATCHABLE"] {
+  --pool-crate: #8fd8bd;
+}
+
+.pool-lorry[data-readiness="APPROVAL_REQUIRED"] {
+  --pool-crate: var(--grogoni-accent, #e3a13c);
+}
+
+.corridor-pool[data-readiness="DISPATCH_READY"] {
+  animation: pool-ready 1.8s ease-in-out infinite;
+  border-color: var(--grogoni-buy, #2f6b56);
+}
+
+@keyframes lorry-load {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pool-ready {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgb(143 216 189 / 0%);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgb(143 216 189 / 18%);
+  }
+}
+
+/* D4 · Manifest route ---------------------------------------------------- */
+
+.manifest-trip-strip {
+  display: flex;
+  gap: 4px;
+}
+
+.manifest-trip-strip i {
+  background: var(--grogoni-line, #323a48);
+  border-radius: 2px;
+  display: block;
+  flex: 1;
+  height: 4px;
+}
+
+.manifest-trip-strip i[data-delivery-status="DELIVERED"] {
+  background: var(--grogoni-accent, #e3a13c);
+}
+
+.manifest-trip-strip i[data-delivery-status="FAILED"] {
+  background: var(--grogoni-sell, #c2543f);
+}
+
+.manifest-trip-strip i[data-delivery-status="ARRIVED"] {
+  background: #8fd8bd;
+}
+
+.manifest-trip-strip i[data-delivery-status="SKIPPED"] {
+  background: var(--grogoni-ink-faint, #8b93a3);
+}
+
+.manifest-stops.manifest-route {
+  display: grid;
+  gap: 0;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.manifest-stops.manifest-route > li {
+  display: grid;
+  gap: 6px;
+  padding: 6px 0 14px 46px;
+  position: relative;
+}
+
+.manifest-stops.manifest-route > li::before {
+  border-left: 2px dashed var(--grogoni-line-strong, #454e60);
+  bottom: 0;
+  content: "";
+  left: 17px;
+  position: absolute;
+  top: 0;
+}
+
+.manifest-stops.manifest-route > li:last-child::before {
+  bottom: auto;
+  height: 22px;
+}
+
+.manifest-stops.manifest-route > li[data-delivery-status="DELIVERED"]::before,
+.manifest-stops.manifest-route > li[data-delivery-status="FAILED"]::before {
+  border-left-style: solid;
+  border-left-color: var(--grogoni-accent, #e3a13c);
+}
+
+.manifest-stops.manifest-route .manifest-stop-marker {
+  background: var(--grogoni-paper, #12151c);
+  border: 2px solid var(--grogoni-line-strong, #454e60);
+  border-radius: 50%;
+  box-sizing: border-box;
+  display: block;
+  height: 18px;
+  left: 9px;
+  position: absolute;
+  top: 8px;
+  width: 18px;
+}
+
+.manifest-stops.manifest-route > li[data-delivery-status="DELIVERED"] .manifest-stop-marker {
+  background: var(--grogoni-accent, #e3a13c);
+  border-color: var(--grogoni-accent, #e3a13c);
+}
+
+.manifest-stops.manifest-route > li[data-delivery-status="FAILED"] .manifest-stop-marker {
+  background: var(--grogoni-sell, #c2543f);
+  border-color: var(--grogoni-sell, #c2543f);
+}
+
+.manifest-stops.manifest-route > li[data-delivery-status="ARRIVED"] .manifest-stop-marker {
+  background: #8fd8bd;
+  border-color: #8fd8bd;
+}
+
+.manifest-stops.manifest-route > li[data-delivery-status="SKIPPED"],
+.manifest-stops.manifest-route > li[data-delivery-status="RELEASED"] {
+  opacity: 0.65;
+}
+
+.manifest-stops.manifest-route .manifest-stop-marker.current {
+  align-items: center;
+  animation: matatu-bob 1.2s ease-in-out infinite;
+  background: var(--grogoni-accent, #e3a13c);
+  border: 0;
+  color: var(--grogoni-accent-ink, #3a2707);
+  display: flex;
+  height: 36px;
+  justify-content: center;
+  left: 0;
+  top: 0;
+  width: 36px;
+}
+
+.manifest-stops.manifest-route .manifest-stop-marker.current .matatu-icon {
+  height: 15px;
+  width: 26px;
+}
+
+@keyframes matatu-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+/* D5 · Kanga shop identity ----------------------------------------------- */
+
+.conversation-avatar.kanga-avatar,
+.thread-avatar.kanga-avatar {
+  background-color: var(--kanga-ground, #3a1f18);
+  border-radius: 11px;
+  position: relative;
+}
+
+.kanga-avatar.kanga-mshazari {
+  background-image:
+    repeating-linear-gradient(45deg, var(--kanga-ink) 0 4px, transparent 4px 8px),
+    repeating-linear-gradient(-45deg, var(--kanga-ink) 0 1px, transparent 1px 8px);
+}
+
+.kanga-avatar.kanga-mistari {
+  background-image: repeating-linear-gradient(
+    90deg,
+    var(--kanga-ink) 0 3px,
+    transparent 3px 6px,
+    var(--kanga-ink) 6px 7px,
+    transparent 7px 12px
+  );
+}
+
+.kanga-avatar.kanga-madoa {
+  background-image: radial-gradient(circle, var(--kanga-ink) 0 2px, transparent 2.5px);
+  background-size: 8px 8px;
+}
+
+.kanga-avatar.kanga-almasi {
+  background-image:
+    linear-gradient(135deg, var(--kanga-ink) 25%, transparent 25%),
+    linear-gradient(225deg, var(--kanga-ink) 25%, transparent 25%),
+    linear-gradient(315deg, var(--kanga-ink) 25%, transparent 25%),
+    linear-gradient(45deg, var(--kanga-ink) 25%, transparent 25%);
+  background-position:
+    -6px 0,
+    -6px 0,
+    0 0,
+    0 0;
+  background-size: 12px 12px;
+}
+
+.kanga-avatar .kanga-avatar-plate {
+  align-items: center;
+  background: var(--grogoni-paper, #12151c);
+  border-radius: 5px;
+  color: var(--grogoni-ink, #f4f2ee);
+  display: inline-flex;
+  font-family: var(--grogoni-display-font, inherit);
+  font-size: 10px;
+  font-weight: 700;
+  height: 20px;
+  justify-content: center;
+  letter-spacing: 0.02em;
+  min-width: 26px;
+  padding: 0 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shop-sign .shop-sign-plate,
+  .shop-sign.interactive .shop-sign-button,
+  .fulfillment-route.moving .fulfillment-route-vehicle,
+  .pool-lorry .pool-lorry-load,
+  .corridor-pool[data-readiness="DISPATCH_READY"],
+  .manifest-stops.manifest-route .manifest-stop-marker.current {
+    animation: none;
+  }
+}

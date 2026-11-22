@@ -13,6 +13,8 @@ import { conversationMessageText } from "./chat-message-plumbing";
 import { formatMessageTime } from "./formatters";
 import { contactLabelForConversation } from "./network-contact-conversations";
 import type { DevicePhonebookContact } from "./phonebook-device-cache";
+import { KangaAvatar } from "./KangaAvatar";
+import { counterpartShopId } from "./kanga-identity";
 
 export interface ConversationListPanelProps {
   // False inside the compact-viewport StackedModule drawer, which already renders the
@@ -59,6 +61,8 @@ export interface ConversationListPanelProps {
   deletingConversationId: string | null;
   setDeletingConversationId: Dispatch<SetStateAction<string | null>>;
   onDeleteConversation: (conversationId: string) => void;
+  /** The viewer's own shop, so its customer chats keep a person avatar, not the shop's kanga. */
+  ownBusinessId?: string | null;
 }
 
 export function ConversationListPanel({
@@ -89,7 +93,8 @@ export function ConversationListPanel({
   onOpenRecycleBin,
   deletingConversationId,
   setDeletingConversationId,
-  onDeleteConversation
+  onDeleteConversation,
+  ownBusinessId = null
 }: ConversationListPanelProps) {
   // Before sign-in (no pinned chat yet) the row is the way into My Assistant. A fallback agent
   // chat (the permanent one missing from the inbox) keeps its own name.
@@ -248,21 +253,11 @@ export function ConversationListPanel({
                   onInboxOpenChange(false);
                 }}
               >
-                <span
-                  className={`conversation-avatar ${
-                    conversation.kind === "personal"
-                      ? conversation.activeShopId === null
-                        ? "buy"
-                        : "sell"
-                      : "chat"
-                  }`}
-                  aria-hidden="true"
-                >
-                  {conversationDisplayTitle(conversation, devicePhonebook ?? [])
-                    .trim()
-                    .slice(0, 1)
-                    .toUpperCase()}
-                </span>
+                <ConversationAvatar
+                  conversation={conversation}
+                  ownBusinessId={ownBusinessId}
+                  title={conversationDisplayTitle(conversation, devicePhonebook ?? [])}
+                />
                 <span className="conversation-copy">
                   <span className="conversation-title-line">
                     <strong>{conversationDisplayTitle(conversation, devicePhonebook ?? [])}</strong>
@@ -417,5 +412,29 @@ function conversationDisplayTitle(
     savedName ??
     conversationTitle(conversation) ??
     (conversation.hasHumanRecipient ? "Contact" : "Grogoni agent")
+  );
+}
+
+// Design D5: a shop on the other side of the chat gets its kanga avatar; people and the viewer's
+// own sessions keep the initial-letter avatar.
+function ConversationAvatar(props: {
+  conversation: ConversationInboxItem;
+  ownBusinessId: string | null;
+  title: string;
+}) {
+  const shopId = counterpartShopId(props.conversation, props.ownBusinessId);
+  if (shopId !== null) {
+    return <KangaAvatar className="conversation-avatar" shopId={shopId} name={props.title} />;
+  }
+  const tone =
+    props.conversation.kind === "personal"
+      ? props.conversation.activeShopId === null
+        ? "buy"
+        : "sell"
+      : "chat";
+  return (
+    <span className={`conversation-avatar ${tone}`} aria-hidden="true">
+      {props.title.trim().slice(0, 1).toUpperCase()}
+    </span>
   );
 }

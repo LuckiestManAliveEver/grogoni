@@ -10,6 +10,7 @@ import DeliveryRoutesCard from "./DeliveryRoutesCard";
 import FulfillmentSetupCard from "./FulfillmentSetupCard";
 import DriverManifestsCard from "./DriverManifestsCard";
 import { fulfillmentCopy } from "./fulfillment-copy";
+import { FulfillmentRoute } from "./FulfillmentRoute";
 
 export interface LogisticsSurfaceProps {
   businessId: string;
@@ -165,6 +166,7 @@ export function LogisticsSurface(props: LogisticsSurfaceProps) {
                       {item.method} - {item.customerName ?? "Walk-in customer"}
                       {item.destination === null ? "" : ` - ${item.destination}`}
                     </span>
+                    <FulfillmentRoute status={item.status} method={item.method} />
                   </div>
                   <div className="compact-actions">
                     <button

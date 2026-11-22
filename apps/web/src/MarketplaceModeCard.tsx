@@ -8,6 +8,7 @@ import {
 
 import { routes } from "./routes";
 import { StatusResultCard } from "./StatusResultCard";
+import { ShopSign } from "./ShopSign";
 
 import {
   type BuyCartItem,
@@ -179,7 +180,7 @@ export function MarketplaceModeCard({
               key={storefront.agentId}
             >
               <span className={`presence-label ${storefront.presence.status}`}>
-                {storefront.presence.status}
+                <ShopSign status={storefront.presence.status} compact />
               </span>
               {storefront.pinned ? <span className="pinned-shop-label">Pinned</span> : null}
               <strong>{storefront.businessName}</strong>
