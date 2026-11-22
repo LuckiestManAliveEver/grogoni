@@ -8,7 +8,8 @@ name: Scheduled Database Maintenance
 # gate neon-backup.yml uses, so nothing touches production before its secrets are configured:
 #   vars.SHOP_PURGE_ENABLED, vars.ACCOUNT_PURGE_ENABLED, vars.DB_HEALTH_ENABLED
 # Secrets: PRODUCTION_DATABASE_URL, PRODUCTION_DIRECT_DATABASE_URL, and for the account purge
-# ACCOUNT_DELETION_PROCESSORS_JSON and ACCOUNT_DELETION_WEBHOOK_SECRET.
+# ACCOUNT_DELETION_PROCESSORS_JSON plus what its processors need: BREVO_API_KEY for a
+# {"type":"brevo"} processor, ACCOUNT_DELETION_WEBHOOK_SECRET for a webhook {"url":...} one.
 
 on:
   workflow_dispatch:
@@ -79,6 +80,7 @@ jobs:
           DIRECT_DATABASE_URL: ${{ secrets.PRODUCTION_DIRECT_DATABASE_URL }}
           ACCOUNT_DELETION_PROCESSORS_JSON: ${{ secrets.ACCOUNT_DELETION_PROCESSORS_JSON }}
           ACCOUNT_DELETION_WEBHOOK_SECRET: ${{ secrets.ACCOUNT_DELETION_WEBHOOK_SECRET }}
+          BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
 
   db-health:
     if: >-

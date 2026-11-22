@@ -41,8 +41,10 @@ are not purged, which the Play legal-readiness record depends on.
 1. Add repository secrets (Settings > Secrets and variables > Actions):
    - `PRODUCTION_DATABASE_URL`: the Neon pooled connection string the API uses.
    - `PRODUCTION_DIRECT_DATABASE_URL`: the Neon direct (non-pooler) connection string.
-   - `ACCOUNT_DELETION_PROCESSORS_JSON` and `ACCOUNT_DELETION_WEBHOOK_SECRET`: the values the
-     Render account-purge cron had.
+   - `ACCOUNT_DELETION_PROCESSORS_JSON`: `[{"id":"brevo","type":"brevo"}]`.
+   - `BREVO_API_KEY`: the same key the API sends email with.
+   - `ACCOUNT_DELETION_WEBHOOK_SECRET`: only if a signed-webhook processor (`{"id","url"}`) is
+     added to the list later.
 2. Run each job once by hand: Actions > Scheduled Database Maintenance > Run workflow, choosing
    `db-health`, then `shop-purge`, then `account-purge`. Check each log.
 3. Set the variables `DB_HEALTH_ENABLED`, `SHOP_PURGE_ENABLED` and `ACCOUNT_PURGE_ENABLED` to
@@ -50,6 +52,32 @@ are not purged, which the Play legal-readiness record depends on.
 4. Record the date in `config/play-legal-readiness.json` as
    `accountDeletion.purgeScheduleEnabledOn`. `pnpm android:legal:verify` lists it as pending until
    then, because code cannot see whether a repository variable is set.
+
+## Account-deletion processors
+
+The account purge will not run without at least one processor, so an account is never marked
+fully deleted while an outside service still holds its data. Brevo is the one outside service
+that keeps per-person data: a transactional log entry (address, IP, subject, date) for every OTP
+and notification it delivers, and any contact added by hand. The `brevo` processor
+(`services/api/src/cp2/account-deletion-processors.ts`) runs inside the purge and, for every
+email address the account is known by (the primary destination, OAuth identities, and every
+backup or linked email in `cp2_account_identities`, verified or pending), calls `DELETE /v3/smtp/log/{email}` and
+`DELETE /v3/contacts/{email}`. Brevo's `404 document_not_found` means it holds nothing, which
+counts as erased, so a retry is safe; any other failure leaves the account in place as
+`PARTIALLY_FAILED` and the next nightly run tries again. The deletion proof records only counts
+(`brevo:emails-1:logs-1:contacts-0`), never the address.
+
+Known limits:
+
+- A `204` from Brevo means Brevo accepted the deletion; Brevo may finish erasing logs
+  asynchronously.
+- An email the person unlinked before requesting deletion is no longer an account identity, so
+  this purge does not erase its older Brevo logs.
+- With more than one processor, a processor that completed is not rerun while another one keeps
+  failing, so email sent in that window stays in Brevo. Production runs Brevo alone.
+
+If another provider starts holding personal data (an SMS gateway, a CRM), add a processor for it
+before it goes live.
 
 The production secrets are set only on the step that runs each script, never during
 `pnpm install` or the build, so no dependency's install script can read them. The health probe

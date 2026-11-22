@@ -10746,7 +10746,19 @@ export class Cp2Store {
         ...identities.map((identity) => ({
           provider: identity.provider,
           subject: identity.providerSubject
-        }))
+        })),
+        // Backup and linked emails/phones, verified or not: notifications, recovery notices and
+        // OTPs are sent to these, so processors such as Brevo hold data for them too.
+        ...[...this.accountIdentities.values()]
+          .filter(
+            (identity) =>
+              identity.accountId === request.accountId &&
+              identity.normalizedValue !== account?.primaryAuthDestination
+          )
+          .map((identity) => ({
+            provider: `identity_${identity.type}`,
+            subject: identity.normalizedValue
+          }))
       ]);
       const existingProof = this.accountDeletionProofs.get(request.id);
       const receipts = new Map(

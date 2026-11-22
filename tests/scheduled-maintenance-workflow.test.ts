@@ -57,6 +57,11 @@ describe("scheduled database maintenance (formerly Render crons)", () => {
     expect(jobSection("account-purge")).toContain(
       "ACCOUNT_DELETION_PROCESSORS_JSON: ${{ secrets.ACCOUNT_DELETION_PROCESSORS_JSON }}"
     );
+    // The production processor is {"id":"brevo","type":"brevo"}, which calls Brevo directly.
+    expect(jobSection("account-purge")).toContain("BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}");
+    for (const name of ["shop-purge", "db-health"]) {
+      expect(jobSection(name)).not.toContain("BREVO_API_KEY");
+    }
     expect(workflow).not.toMatch(/postgres(?:ql)?:\/\/[^$\s]+@/u);
     expect(workflow).toContain("permissions:\n  contents: read");
   });
