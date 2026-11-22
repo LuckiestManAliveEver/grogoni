@@ -152,3 +152,98 @@ describe.skipIf(!databaseUrl)("delivered status on PostgreSQL (Edge)", () => {
     }
   }, 60_000);
 });
+
+// A customer whose sync pull is not running (no IndexedDB, a superseded sync database) still lists
+// the inbox and opens the thread. Both reads deliver the shop's reply, so their Edge scope must
+// load the shop's memberships too: without them the reply looks like the customer's own side.
+describe.skipIf(!databaseUrl)(
+  "shop reply delivered by the inbox listing and thread open (Edge)",
+  () => {
+    it.each([
+      ["inbox listing", () => "/v1/conversations"],
+      ["thread open", (conversationId: string) => `/v1/conversations/${conversationId}`]
+    ])(
+      "the customer's %s marks the shop's reply delivered",
+      async (_name, pathFor) => {
+        const pool = new Pool({ connectionString: databaseUrl, max: 4 });
+        async function transaction<T>(work: (client: PoolClient) => Promise<T>) {
+          const client = await pool.connect();
+          try {
+            await client.query("begin");
+            await client.query("set local lock_timeout = '10s'");
+            await client.query(
+              "select pg_advisory_xact_lock_shared(hashtext('grogoni.cp2.normalized_store'))"
+            );
+            const result = await work(client);
+            await client.query("commit");
+            return result;
+          } catch (error) {
+            await client.query("rollback");
+            throw error;
+          } finally {
+            client.release();
+          }
+        }
+        try {
+          const store = createCp2Store();
+          const baseline = store.snapshot();
+          const owner = store.continueWithChannelPin({
+            channel: "email",
+            destination: `listing-owner-${randomUUID()}@example.invalid`,
+            pin: "3927"
+          });
+          const customer = store.continueWithChannelPin({
+            channel: "email",
+            destination: `listing-customer-${randomUUID()}@example.invalid`,
+            pin: "3927"
+          });
+          const shop = store.createBusiness({
+            sessionId: owner.session.id,
+            name: `Listing shop ${randomUUID()}`,
+            language: "en",
+            phoneNumber: `+25472${Date.now().toString().slice(-7)}`,
+            phoneCountry: "KE"
+          }).business;
+          const conversationId = store.createConversation({
+            sessionId: customer.session.id,
+            kind: "storefront",
+            activeShopId: shop.id
+          }).conversation.id;
+          store.createConversationMessage({
+            sessionId: customer.session.id,
+            conversationId,
+            clientMessageId: `listing-question-${randomUUID()}`,
+            content: { type: "text", text: "Do you deliver to Westlands?" }
+          });
+          const answer = store.createConversationMessage({
+            sessionId: owner.session.id,
+            conversationId,
+            clientMessageId: `listing-answer-${randomUUID()}`,
+            content: { type: "text", text: "Yes, tomorrow morning." }
+          });
+          await transaction((client) =>
+            saveTransactionalCp2Snapshot(client, store.snapshot(), baseline)
+          );
+          const edge = await createEdgeDomainRoutes({ transaction });
+          const path = pathFor(conversationId);
+          const response = await edge.routes(
+            new Request(`https://grogoni.com${path}`, {
+              headers: { cookie: `grogoni_session=${customer.session.id}` }
+            }),
+            path
+          );
+          expect(response?.status, await response?.clone().text()).toBe(200);
+
+          const saved = await pool.query(
+            "select record->>'status' as status from cp2_conversation_messages where entity_id = $1",
+            [answer.id]
+          );
+          expect(saved.rows[0]).toMatchObject({ status: "delivered" });
+        } finally {
+          await pool.end();
+        }
+      },
+      60_000
+    );
+  }
+);

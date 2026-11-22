@@ -59,7 +59,7 @@ Tick an item only in the same commit that adds its evidence.
 - [x] External channels: WhatsApp linked device, Telegram, SMS gateway. evidence: tests/external-messaging-api.test.ts, tests/omnichannel-messaging-gateway.test.ts
 - [x] Catalogue sharing. evidence: tests/catalogue-share-settings-card.test.tsx
 - [x] Customers and invoices. evidence: tests/customer-management-card.test.ts, tests/invoice-management-card.test.ts
-- [ ] A customer's inbox listing on Edge marks a shop reply delivered (instant-messaging-remaining §5).
+- [x] A customer's inbox listing or thread open on Edge marks a shop reply delivered. evidence: tests/edge-delivered-postgres.test.ts, tests/edge-delivering-read-scope.test.ts
 - [ ] Receipt-to-commerce engine accepted (receipt-to-commerce-checklist-2026-11-16).
 - [ ] Opt-in broadcast from a shop to its customers.
 

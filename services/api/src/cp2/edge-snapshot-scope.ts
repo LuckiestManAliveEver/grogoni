@@ -342,12 +342,12 @@ export async function createEdgeSnapshotScope(
            or coalesce(c.business_id,c.record->>'activeShopId') in (select business_id::text from public.business_memberships where user_id = nullif(${actorUser}, '')::uuid)))`
     ],
     [
-      // A sync pull marks received messages delivered and journals that to the conversation's
-      // shop staff, which needs the shop's memberships and member users. A customer is not a
-      // member, so only for that pull: memberships and users of the shops behind the caller's own
-      // shop conversations, and nothing else of those shops.
+      // A sync pull, the inbox listing and a thread open each mark received messages delivered
+      // and journal that to the conversation's shop staff, which needs the shop's memberships and
+      // member users. A customer is not a member, so only for those reads: memberships and users
+      // of the shops behind the caller's own shop conversations, and nothing else of those shops.
       "edge_conversation_shop_ids",
-      path === "/v1/sync/changes"
+      request.method === "GET" && deliveringRead(path)
         ? `select coalesce(c.business_id, c.record->>'activeShopId') as id from public.cp2_conversations c
            where c.entity_id in (select id from edge_conversation_ids) and c.record->>'kind' <> 'personal'
              and coalesce(c.business_id, c.record->>'activeShopId') is not null`
@@ -616,6 +616,18 @@ export async function createEdgeSnapshotScope(
  * request names none or several (a JSON-RPC batch): then every unexpired record of the account
  * loads.
  */
+/**
+ * GET reads that mark another participant's messages delivered to the caller's device: the sync
+ * pull, the inbox listing and a thread open (Cp2Store `listConversations`, `getConversation`).
+ */
+export function deliveringRead(path: string): boolean {
+  return (
+    path === "/v1/sync/changes" ||
+    path === "/v1/conversations" ||
+    (/^\/v1\/conversations\/[^/]+$/u.test(path) && path !== "/v1/conversations/recycle-bin")
+  );
+}
+
 export function requestedRuntimeTask(path: string, input: Record<string, unknown>): string | null {
   const fromPath = path.match(/^\/v1\/runtime\/([^/]+)/)?.[1];
   if (fromPath !== undefined) {
