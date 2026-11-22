@@ -28,8 +28,16 @@ export interface IndexedDbSyncRepositoryOptions {
 export class IndexedDbSyncRepository {
   readonly #database: IDBDatabase;
 
+  /** Called once if a newer version of the database, opened in another tab, closes this one. */
+  onVersionClose: (() => void) | null = null;
+
   constructor(database: IDBDatabase) {
     this.#database = database;
+    // When a newer version opens elsewhere, let it upgrade instead of blocking it.
+    database.onversionchange = () => {
+      database.close();
+      this.onVersionClose?.();
+    };
   }
 
   close(): void {
@@ -218,7 +226,26 @@ export async function openIndexedDbSyncRepository(
     }
   };
 
-  return new IndexedDbSyncRepository(await requestResult(request));
+  // A tab still running an older version holds the database open, which blocks this upgrade
+  // until it closes: fail fast so callers fall back instead of waiting forever.
+  let gaveUp = false;
+  const blocked = new Promise<never>((_resolve, reject) => {
+    request.onblocked = () => {
+      gaveUp = true;
+      reject(new Error("The device database is held by another Grogoni tab on an older version."));
+    };
+  });
+  const opened = requestResult(request);
+  // An open that succeeds after the caller gave up must not stay open: it would block the next
+  // upgrade the same way.
+  void opened.then(
+    (late) => {
+      if (gaveUp) late.close();
+    },
+    () => undefined
+  );
+  const database = await Promise.race([opened, blocked]);
+  return new IndexedDbSyncRepository(database);
 }
 
 function requestResult<T>(request: IDBRequest<T>): Promise<T> {

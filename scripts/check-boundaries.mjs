@@ -247,7 +247,8 @@ const lineBudgets = new Map([
   ["apps/web/src/hooks/useChatComposerState.ts", 170],
   // Bumped to match the existing size at this baseline (pre-existing, unrelated debt surfaced by the
   // CI gate); the runtime state hook has absorbed cohesive wiring over several PRs.
-  ["apps/web/src/hooks/useChatRuntimeState.ts", 2180],
+  // +7 (2026-11-20): accepted sends are recorded so a stale thread read cannot hide them.
+  ["apps/web/src/hooks/useChatRuntimeState.ts", 2190],
   // Bumped for setAgentModelBillingMode (BYO Hugging Face credential billing mode) - cohesive with
   // the rest of the agent-model-binding activation logic already in this file, not worth splitting
   // out on its own.

@@ -44,6 +44,7 @@ export const ownerModuleKeys = {
 export const workspaceModuleKeys = {
   ownerWorkspace: "owner-workspace",
   shopHub: "shop-hub",
+  catalogue: "workspace-catalogue",
   phoneContacts: "phone-contacts",
   connectionRequests: "connection-requests",
   supplierSurface: "workspace-suppliers",

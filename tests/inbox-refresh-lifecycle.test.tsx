@@ -36,6 +36,19 @@ it("loads signed-in assistant conversations before encryption registration and r
     const before = loadMessagingInbox.mock.calls.length;
     await act(async () => root.render(<Harness accountId="owner" encryptionDeviceId="ready" />));
     expect(loadMessagingInbox.mock.calls.length).toBe(before + 1);
+    // Messages an earlier page left waiting are resent once after the inbox loads, not on every
+    // effect run.
+    expect(retryQueuedMessages).toHaveBeenCalledTimes(1);
+    // Only what an earlier page left: this page's own sends may be in flight.
+    expect(retryQueuedMessages).toHaveBeenLastCalledWith({ leftByEarlierPage: true });
+    await act(async () => {
+      window.dispatchEvent(new Event("online"));
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    expect(retryQueuedMessages.mock.calls.slice(1)).toEqual([
+      [{ reconnect: true }],
+      [{ automatic: true }]
+    ]);
   } finally {
     await act(async () => root.unmount());
   }

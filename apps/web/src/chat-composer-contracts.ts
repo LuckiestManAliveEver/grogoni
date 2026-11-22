@@ -14,6 +14,8 @@ export interface ChatComposerProps {
   isSending: boolean;
   /** True while the composer is opening a conversation before the first send. */
   isOpening?: boolean;
+  /** The conversation the thread shows; a send held while opening goes only to the one it named. */
+  activeConversationId?: string | null;
   mode: GrogoniMode;
   activeAgentName: string;
   audienceLabel?: string | undefined;

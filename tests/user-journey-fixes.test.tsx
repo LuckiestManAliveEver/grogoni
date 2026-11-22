@@ -461,6 +461,32 @@ describe("device-only messages across thread refreshes", () => {
     ).toEqual(["s1", "s2", "enc-1"]);
   });
 
+  it("keeps a send still in flight when a thread read lands before its POST settles", () => {
+    // The bubble is on screen as "sending" (not yet marked as this device's copy) and in the
+    // outbox. The read's answer does not have it: it must stay, with its own status and text.
+    const sending = { ...server("client-7"), body: "Sent through a dropped connection" };
+    const inFlight = { ...sending, status: "sending" as const };
+    const waiting = [
+      {
+        clientMessageId: "client-7",
+        payload: { conversationId: "c1", content: { type: "text", text: "other text" } }
+      }
+    ];
+    const stored = outboxPlaceholders(waiting, "c1", [inFlight]);
+    expect(stored).toEqual([{ ...inFlight, deviceOnlyIn: "c1", deviceOnlyAfter: "" }]);
+    const shown = keepDeviceOnlyMessages([server("s1"), inFlight], [server("s1")], "c1", stored);
+    expect(shown.map((message) => [message.id, message.status, message.body])).toEqual([
+      ["s1", server("s1").status, server("s1").body],
+      ["client-7", "sending", "Sent through a dropped connection"]
+    ]);
+    // Once a read has it, it is the server's copy only.
+    expect(
+      keepDeviceOnlyMessages(shown, [server("s1"), server("client-7")], "c1", stored).map(
+        (message) => message.id
+      )
+    ).toEqual(["s1", "client-7"]);
+  });
+
   it("keeps encrypted copies in page memory only, and clears them on sign-out", () => {
     const values = new Map<string, string>();
     const storage = {

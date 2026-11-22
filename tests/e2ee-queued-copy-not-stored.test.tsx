@@ -16,7 +16,8 @@ vi.mock("../apps/web/src/e2ee", () => ({
 }));
 
 const { useChatRuntimeState } = await import("../apps/web/src/hooks/useChatRuntimeState");
-const { readDeviceOnlyMessages } = await import("../apps/web/src/chat-device-only-messages");
+const { clearDeviceOnlyMessages, readDeviceOnlyMessages } =
+  await import("../apps/web/src/chat-device-only-messages");
 const { readMessagingOutbox } = await import("../apps/web/src/messaging/outbox");
 
 /**
@@ -45,6 +46,7 @@ describe("a queued end-to-end encrypted message", () => {
       globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
     ).IS_REACT_ACT_ENVIRONMENT = true;
     localStorage.clear();
+    clearDeviceOnlyMessages("account-1");
     host = document.createElement("div");
     document.body.append(host);
     root = createRoot(host);
@@ -63,6 +65,79 @@ describe("a queued end-to-end encrypted message", () => {
     act(() => root.unmount());
     host.remove();
     vi.unstubAllGlobals();
+  });
+
+  it("encrypts a message sent before the chat's view has loaded, on an account without a shop", async () => {
+    // The chat is selected but its view has not arrived (sent as it opens). The runtime must load
+    // it to learn this is a direct chat, instead of sending plain text that the server refuses.
+    const { encryptDirectMessage } = await import("../apps/web/src/e2ee");
+    vi.mocked(encryptDirectMessage).mockClear();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        String(url).endsWith("/v1/conversations/dm-1")
+          ? new Response(JSON.stringify(direct), {
+              status: 200,
+              headers: { "content-type": "application/json" }
+            })
+          : new Response(JSON.stringify({ code: "service_unavailable" }), {
+              status: 503,
+              headers: { "content-type": "application/json" }
+            })
+      )
+    );
+    let sendChatDraft: ((draft?: string) => Promise<void>) | null = null;
+    let messages: unknown[] = [];
+    function Harness() {
+      const api = useChatRuntimeState({
+        business: null,
+        mode: "marketplace",
+        session,
+        authBootstrapState: "authenticated",
+        ensureAuthenticatedSession: async () => session,
+        rejectDefinitiveAuthenticationFailure: () => false,
+        agentSettings: { model: "m", role: "shopkeeper", instructions: "", name: "S" } as never,
+        setStatusMessage: () => undefined,
+        navigateToView: () => undefined,
+        requireMessagingSignIn: () => undefined,
+        searchBuyFeed: async () => null,
+        loadProducts: async () => undefined,
+        loadSuppliers: async () => undefined,
+        loadCustomers: async () => undefined,
+        loadInvoices: async () => undefined,
+        loadReports: async () => undefined,
+        loadNotifications: async () => undefined,
+        loadRuntimeSessions: async () => undefined,
+        createManagedRuntimeSession: async () => "r1",
+        ensureRuntimeSession: async () => "r1",
+        loadDocumentImports: async () => undefined,
+        chatMessages: [],
+        setChatMessages: (next) => {
+          messages = typeof next === "function" ? next(messages as never) : (next as never);
+        },
+        chatDraft: "",
+        setChatDraft: () => undefined,
+        pendingAttachments: [],
+        setPendingAttachments: () => undefined,
+        runtimeSessionId: null,
+        setRuntimeSessionId: () => undefined,
+        replyToMessageId: null,
+        setReplyToMessageId: () => undefined,
+        activeConversationId: "dm-1",
+        activeConversation: null,
+        loadMessagingInbox: async () => undefined,
+        registerReset: () => undefined
+      });
+      sendChatDraft = api.sendChatDraft;
+      return null;
+    }
+    await act(async () => root.render(<Harness />));
+    await act(async () => {
+      await sendChatDraft!("meet me at the shop at six");
+    });
+    expect(encryptDirectMessage).toHaveBeenCalledTimes(1);
+    const queued = readMessagingOutbox("account-1");
+    expect(JSON.stringify(queued)).not.toContain("meet me at the shop at six");
   });
 
   it("keeps its readable text out of storage while the ciphertext waits in the outbox", async () => {

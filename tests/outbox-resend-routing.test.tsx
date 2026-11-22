@@ -9,13 +9,22 @@ import type { ChatMessage } from "../apps/web/src/app-shell";
 
 vi.mock("../apps/web/src/api-helpers", async () => {
   const actual = await vi.importActual<typeof ApiHelpers>("../apps/web/src/api-helpers");
-  return { ...actual, getJson: vi.fn(), postJson: vi.fn(), patchJson: vi.fn(async () => ({})) };
+  const getJson = vi.fn();
+  return {
+    ...actual,
+    getJson,
+    // Thread reads bypass the GET cache; in these tests they answer from the same mock.
+    fetchFreshJson: vi.fn((path: string) => getJson(path)),
+    postJson: vi.fn(),
+    patchJson: vi.fn(async () => ({}))
+  };
 });
 
 const { getJson, patchJson, postJson } = await import("../apps/web/src/api-helpers");
 const { useChatInboxState } = await import("../apps/web/src/hooks/useChatInboxState");
 const { queueMessagingOutbox, readMessagingOutbox } =
   await import("../apps/web/src/messaging/outbox");
+const { notePendingSend } = await import("../apps/web/src/messaging/recent-sends");
 
 /**
  * The outbox resends failed messages on its own. Three ways that went wrong in review: one
@@ -29,6 +38,7 @@ describe("outbox resend routing", () => {
   let root: Root;
   let inbox: ReturnType<typeof useChatInboxState> | null = null;
   let messages: ChatMessage[] = [];
+  let setMessages: (update: (current: ChatMessage[]) => ChatMessage[]) => void = () => undefined;
   let draft = "";
   let sendInFlight = false;
   let restoreContext: (id: string) => Promise<null> = async () => null;
@@ -41,6 +51,7 @@ describe("outbox resend routing", () => {
   function Harness() {
     const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
     const [chatDraft, setChatDraft] = useState("");
+    setMessages = setChatMessages;
     messages = chatMessages;
     draft = chatDraft;
     inbox = useChatInboxState({
@@ -126,6 +137,34 @@ describe("outbox resend routing", () => {
   afterEach(() => {
     act(() => root.unmount());
     host.remove();
+  });
+
+  it("does not bring back a send cancelled while a thread read was landing", async () => {
+    vi.mocked(getJson).mockImplementation(async (path) => view(String(path).split("/").at(-1)!));
+    await act(async () => {
+      await inbox!.selectConversation("A");
+    });
+    const bubble = { id: "client-cancel", author: "merchant", body: "hi", status: "pending" };
+    await act(async () => setMessages((current) => [...current, bubble as ChatMessage]));
+    notePendingSend("A", bubble as ChatMessage);
+    let answer!: (value: unknown) => void;
+    vi.mocked(getJson).mockImplementation(
+      () => new Promise((resolve) => (answer = resolve)) as never
+    );
+    let reading!: Promise<void>;
+    await act(async () => {
+      reading = inbox!.loadConversationThread("A");
+      await flush();
+    });
+    // The send is cancelled (its text goes back to the box) and the read lands before React has
+    // rendered that: a view of the thread from the last render still has the bubble.
+    await act(async () => {
+      setMessages((current) => current.filter((item) => item.id !== "client-cancel"));
+      answer(view("A"));
+      await flush();
+      await reading;
+    });
+    expect(messages.map((item) => item.id)).not.toContain("client-cancel");
   });
 
   it("keeps the most recently selected session when context requests finish in reverse order", async () => {
@@ -295,6 +334,48 @@ describe("outbox resend routing", () => {
     });
     expect(vi.mocked(postJson).mock.calls.map(([, body]) => body.clientMessageId)).toEqual([
       "waiting"
+    ]);
+  });
+
+  it("on page load resends only what an earlier page left, never this page's own sends", async () => {
+    // Queued by this page: its send may still be running (the in-flight wait is skipped on load).
+    queue("sent-from-here", "A", 0, Date.now() + 120_000);
+    vi.mocked(postJson).mockRejectedValue(new ApiRequestError(503, "Busy"));
+    await act(async () => {
+      await inbox!.retryQueuedMessages({ leftByEarlierPage: true });
+      await flush();
+    });
+    expect(vi.mocked(postJson)).not.toHaveBeenCalled();
+  });
+
+  it("on page load resends at once what an earlier page left mid-send, within the attempt cap", async () => {
+    // Another instance of the outbox module is another page: same storage, its own page memory.
+    const earlierPage = await import("../apps/web/src/messaging/outbox?earlier-page");
+    // First in the queue: a model turn that already used its automatic attempts (a resend stops
+    // at the first 503, so it must be skipped, not just reached last).
+    earlierPage.queueMessagingOutbox({
+      accountId: "account-1",
+      clientMessageId: "used-up-turn",
+      payload: { conversationId: "B", clientMessageId: "used-up-turn" },
+      retryKind: "agent-turn",
+      attempts: 3,
+      nextAttemptAt: 0
+    });
+    // Left mid-send: its in-flight guard still says 2 minutes.
+    earlierPage.queueMessagingOutbox({
+      accountId: "account-1",
+      clientMessageId: "left-mid-send",
+      payload: { conversationId: "A", clientMessageId: "left-mid-send" },
+      attempts: 0,
+      nextAttemptAt: Date.now() + 120_000
+    });
+    vi.mocked(postJson).mockRejectedValue(new ApiRequestError(503, "Busy"));
+    await act(async () => {
+      await inbox!.retryQueuedMessages({ leftByEarlierPage: true });
+      await flush();
+    });
+    expect(vi.mocked(postJson).mock.calls.map(([, body]) => body.clientMessageId)).toEqual([
+      "left-mid-send"
     ]);
   });
 

@@ -22,11 +22,15 @@ export function subscribeAccountHints(
     let source: EventSource | null = null;
     let cursor = "";
     let healthy = false;
+    let reopenTimer: ReturnType<typeof setTimeout> | null = null;
+    let reopenDelayMs = 2_000;
     const notifyHealth = (value: boolean) => {
       healthy = value;
       for (const listener of listeners) listener.health(value);
     };
     const close = () => {
+      if (reopenTimer !== null) clearTimeout(reopenTimer);
+      reopenTimer = null;
       source?.close();
       source = null;
       notifyHealth(false);
@@ -54,6 +58,7 @@ export function subscribeAccountHints(
         // becoming visible still catches up through the visibility handler.
         const resumed = cursor !== "";
         cursor = (event as MessageEvent<string>).lastEventId || cursor;
+        reopenDelayMs = 2_000;
         notifyHealth(true);
         if (!resumed) for (const listener of listeners) listener.changed();
       });
@@ -68,7 +73,20 @@ export function subscribeAccountHints(
           /* Invalid hints never carry data into the inbox. */
         }
       });
-      source.onerror = () => notifyHealth(false);
+      source.onerror = () => {
+        notifyHealth(false);
+        // EventSource reconnects by itself after a dropped connection, but a reconnect answered
+        // with an error (a 503 on a cold start, a 429) closes it for good. Open a new one after a
+        // growing delay, or the tab would stay on fallback polling until it is hidden and shown.
+        if (source?.readyState !== EventSource.CLOSED) return;
+        source = null;
+        if (reopenTimer !== null || document.visibilityState === "hidden") return;
+        reopenTimer = setTimeout(() => {
+          reopenTimer = null;
+          open();
+        }, reopenDelayMs);
+        reopenDelayMs = Math.min(reopenDelayMs * 2, 60_000);
+      };
     };
     const visibility = () => {
       if (document.visibilityState === "hidden") close();

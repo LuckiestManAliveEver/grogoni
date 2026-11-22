@@ -16,7 +16,8 @@ import type {
   RecycleBinStatusSummary
 } from "@grogoni/shared-types";
 
-import { deleteJson, getJson, patchJson, postJson } from "../api-helpers";
+import { deleteJson, fetchFreshJson, getJson, patchJson, postJson } from "../api-helpers";
+import { applyThreadRead, forgetAcceptedSends, noteAcceptedSend } from "../messaging/recent-sends";
 import { forgetReplyVersionRequests, type ReplyVersionDeps } from "../features/reply-versions";
 import { conversationForNode, readNodeIdFromRecipient } from "../network-contact-conversations";
 import {
@@ -29,7 +30,6 @@ import { navigateToOwnerRoute, readCurrentOwnerRoute } from "../browser-navigati
 import {
   forgetDeliveredDeviceOnlyMessages,
   keepDeviceOnlyMessages,
-  outboxPlaceholders,
   readDeviceOnlyMessages,
   updateDeviceOnlyMessage
 } from "../chat-device-only-messages";
@@ -58,6 +58,7 @@ import { decryptDirectMessage, encryptDirectMessage, type E2eeIdentity } from ".
 import { isRetryableApiRequestError } from "../lib/api";
 import {
   hydrateMessagingOutbox,
+  leftByEarlierPage,
   outboxEntryDue,
   type MessagingOutboxEntry,
   readMessagingOutbox,
@@ -109,7 +110,7 @@ export function hasUnreadForMe(view: ConversationView, session: SessionResponse)
   );
 }
 
-type OutboxPass = "automatic" | "reconnect" | "manual";
+type OutboxPass = "automatic" | "reconnect" | "load" | "manual";
 
 export function useChatInboxState(deps: UseChatInboxStateDeps) {
   const outboxRetryRunning = useRef(false);
@@ -265,7 +266,10 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
         ? activeConversationRef.current
         : null;
     const cursor = cached?.messageCursor;
-    const response = await getJson<ConversationView>(
+    // Always asked of the server. Through the 30 s response cache, a refresh after a "changed"
+    // hint repeated the same ?since= URL and got the stale copy, so a message that had just arrived
+    // stayed invisible until a reload (measured live, 2026-11-20). A delta read is small.
+    const response = await fetchFreshJson<ConversationView>(
       `/v1/conversations/${conversationId}${cursor ? `?since=${encodeURIComponent(cursor)}` : ""}`
     );
     const merged = new Map(
@@ -315,16 +319,11 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
         ? mapped
         : createInitialChatMessages(conversationTitle(view, session.account.id));
     const known = readDeviceOnlyMessages(session.account.id);
-    const stored = [
-      ...known,
-      ...outboxPlaceholders(readMessagingOutbox(session.account.id), conversationId, [
-        ...known,
-        ...chatMessagesRef.current
-      ])
-    ];
+    const waiting = readMessagingOutbox(session.account.id);
     forgetDeliveredDeviceOnlyMessages(session.account.id, nextMessages);
+    const apply = applyThreadRead({ conversationId, serverMessages: nextMessages, known, waiting });
     setChatMessages((current) => {
-      const merged = keepDeviceOnlyMessages(current, nextMessages, conversationId, stored);
+      const merged = apply(current);
       return chatMessagesEqual(current, merged) ? current : merged;
     });
     if (document.visibilityState === "visible") {
@@ -799,13 +798,21 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
    * one): a message would post twice.
    */
   async function retryQueuedMessages(
-    options: { automatic?: boolean; reconnect?: boolean; clientMessageId?: string } = {}
+    options: {
+      automatic?: boolean;
+      reconnect?: boolean;
+      clientMessageId?: string;
+      /** Page load: only what an earlier page left (this page's sends may be in flight). */
+      leftByEarlierPage?: boolean;
+    } = {}
   ) {
-    const mode: OutboxPass = options.reconnect
-      ? "reconnect"
-      : options.automatic
-        ? "automatic"
-        : "manual";
+    const mode: OutboxPass = options.leftByEarlierPage
+      ? "load"
+      : options.reconnect
+        ? "reconnect"
+        : options.automatic
+          ? "automatic"
+          : "manual";
     if (!navigator.onLine || session === null) return;
     if (outboxRetryRunning.current) {
       if (mode === "manual") setStatusMessage("Already sending your waiting messages.");
@@ -836,7 +843,10 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
 
   function dueFor(entry: MessagingOutboxEntry, mode: OutboxPass): boolean {
     if (mode === "manual") return true;
-    return outboxEntryDue(entry, mode === "reconnect" ? Number.POSITIVE_INFINITY : Date.now());
+    if (mode === "load" && !leftByEarlierPage(entry)) return false;
+    // Reconnect and page load skip the wait (no earlier send of theirs is still running), never
+    // the attempt cap.
+    return outboxEntryDue(entry, mode === "automatic" ? Date.now() : Number.POSITIVE_INFINITY);
   }
 
   function markQueuedMessage(
@@ -874,6 +884,18 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
         );
         removeMessagingOutboxEntry(accountId, entry.clientMessageId);
         reconcileResent(entry, accepted);
+        const resent = chatMessagesRef.current.find(
+          (message) =>
+            message.id === entry.clientMessageId ||
+            message.clientMessageId === entry.clientMessageId
+        );
+        if (resent)
+          noteAcceptedSend(String(conversationId), {
+            ...resent,
+            id: accepted.id,
+            clientMessageId: entry.clientMessageId,
+            status: "sent"
+          });
         forgetDeliveredDeviceOnlyMessages(accountId, [
           { id: accepted.id, clientMessageId: entry.clientMessageId, author: "merchant", body: "" }
         ]);
@@ -1011,6 +1033,7 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
 
   deps.registerReset("chat-inbox", () => {
     forgetReplyVersionRequests();
+    forgetAcceptedSends();
     setConversationInbox([]);
     setActiveConversationId(null);
     setActiveConversation(null);

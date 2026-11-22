@@ -133,11 +133,20 @@ export function countMessagingOutbox(
   }
 }
 
+/** Messages this page put in the outbox (page memory): the rest were left by an earlier page. */
+const queuedOnThisPage = new Set<string>();
+
 export function queueMessagingOutbox(
   entry: MessagingOutboxEntry,
   storage: MessagingOutboxStorage = messagingOutboxStorage()
 ): void {
+  queuedOnThisPage.add(entry.clientMessageId);
   mutateOutbox(entry.accountId, storage, { kind: "put", entry });
+}
+
+/** Whether an earlier page (closed or reloaded, maybe mid-send) left this message waiting. */
+export function leftByEarlierPage(entry: MessagingOutboxEntry): boolean {
+  return !queuedOnThisPage.has(entry.clientMessageId);
 }
 
 export function removeMessagingOutboxEntry(

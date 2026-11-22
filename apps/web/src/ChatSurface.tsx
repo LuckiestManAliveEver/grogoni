@@ -65,7 +65,6 @@ import type { ShopHubSurface } from "./shop-hub-surfaces";
 import { workspaceModuleClassName, workspacePanelTitle } from "./workspace-panel-title";
 import { MerchantWorkspaceDashboard } from "./MerchantWorkspaceDashboard";
 import { NetworkSyncNestedCard } from "./NetworkSyncNestedCard";
-import { CatalogueNestedCard } from "./CatalogueNestedCard";
 import { StackedModule } from "./StackedModule";
 import type { ChatSurfaceProps } from "./chat-surface-contracts";
 export type { ChatSurfaceProps } from "./chat-surface-contracts";
@@ -74,6 +73,13 @@ const ShopHub = lazy(() =>
   loadLazyModuleWithRecovery(workspaceModuleKeys.shopHub, () => import("./ShopHub")).then(
     (module) => ({ default: module.ShopHub })
   )
+);
+// Opened only from the workspace: kept out of the owner route's first load (bundle budget).
+const CatalogueNestedCard = lazy(() =>
+  loadLazyModuleWithRecovery(
+    workspaceModuleKeys.catalogue,
+    () => import("./CatalogueNestedCard")
+  ).then((module) => ({ default: module.CatalogueNestedCard }))
 );
 
 // Grogoni Home's "trace" affordance (hidden by default, toggled by the header's capability-trace
@@ -1049,38 +1055,42 @@ export function ChatSurface({
               onMessage={() => commitDraft(`Hello ${businessName}, `)}
             />
           ) : (
-            <CatalogueNestedCard
-              businessId={businessId}
-              form={productForm}
-              fields={productFields}
-              products={products}
-              view={workspaceCardView}
-              onBack={() =>
-                setWorkspaceCardView(workspaceCardView === "catalogue" ? "cards" : "catalogue")
-              }
-              onChangeForm={onProductFormChange}
-              onDeleteProduct={onProductRemove}
-              onEditProduct={onProductEdit}
-              onProductsDuplicated={onProductsDuplicated}
-              onOpenAdd={() => {
-                onProductReset();
-                setWorkspaceCardView("addProduct");
-              }}
-              onOpenDelete={() => setWorkspaceCardView("deleteProduct")}
-              onOpenEdit={() => {
-                if (products[0] !== undefined) onProductEdit(products[0]);
-                setWorkspaceCardView("editProduct");
-              }}
-              onOpenFields={() => setWorkspaceCardView("manageFields")}
-              onOpenProduct={(product) => {
-                onProductEdit(product);
-                setWorkspaceCardView("editProduct");
-              }}
-              onSaveFields={onProductFieldsSave}
-              onSaveProduct={async () => {
-                if (await onProductSave()) setWorkspaceCardView("catalogue");
-              }}
-            />
+            <LazyModuleErrorBoundary moduleKey={workspaceModuleKeys.catalogue} label="Catalogue">
+              <Suspense fallback={<p className="record-form">Opening catalogue…</p>}>
+                <CatalogueNestedCard
+                  businessId={businessId}
+                  form={productForm}
+                  fields={productFields}
+                  products={products}
+                  view={workspaceCardView}
+                  onBack={() =>
+                    setWorkspaceCardView(workspaceCardView === "catalogue" ? "cards" : "catalogue")
+                  }
+                  onChangeForm={onProductFormChange}
+                  onDeleteProduct={onProductRemove}
+                  onEditProduct={onProductEdit}
+                  onProductsDuplicated={onProductsDuplicated}
+                  onOpenAdd={() => {
+                    onProductReset();
+                    setWorkspaceCardView("addProduct");
+                  }}
+                  onOpenDelete={() => setWorkspaceCardView("deleteProduct")}
+                  onOpenEdit={() => {
+                    if (products[0] !== undefined) onProductEdit(products[0]);
+                    setWorkspaceCardView("editProduct");
+                  }}
+                  onOpenFields={() => setWorkspaceCardView("manageFields")}
+                  onOpenProduct={(product) => {
+                    onProductEdit(product);
+                    setWorkspaceCardView("editProduct");
+                  }}
+                  onSaveFields={onProductFieldsSave}
+                  onSaveProduct={async () => {
+                    if (await onProductSave()) setWorkspaceCardView("catalogue");
+                  }}
+                />
+              </Suspense>
+            </LazyModuleErrorBoundary>
           )}
         </StackedModule>
         <ChatRecycleBinPanel
@@ -1136,6 +1146,7 @@ export function ChatSurface({
           isOpening={
             activeConversationId === null && readCurrentOwnerRoute()?.conversationId != null
           }
+          activeConversationId={activeConversationId}
           mode={mode}
           pendingAttachments={pendingAttachments}
           replyToMessageId={replyToMessageId}

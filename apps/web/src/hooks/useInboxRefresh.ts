@@ -17,11 +17,18 @@ export function useInboxRefresh({
   mode: GrogoniMode;
   activeConversationId: string | null;
   loadMessagingInbox: (preferred: string | null) => Promise<void>;
-  retryQueuedMessages: () => Promise<void>;
+  /** `reconnect` skips each message's wait but keeps its attempt cap; `automatic` keeps both. */
+  retryQueuedMessages: (options?: {
+    automatic?: boolean;
+    reconnect?: boolean;
+    leftByEarlierPage?: boolean;
+  }) => Promise<void>;
   selectConversation: (id: string) => Promise<void>;
 }) {
   const latest = useRef({ loadMessagingInbox, retryQueuedMessages, selectConversation });
   latest.current = { loadMessagingInbox, retryQueuedMessages, selectConversation };
+  // The account the waiting messages were resent for on this page load.
+  const resentOnLoadFor = useRef<string | null>(null);
   useEffect(() => {
     // Assistant conversations and inbox metadata do not need a device encryption key.
     // Refresh again when the key arrives so encrypted messages can then be decrypted.
@@ -55,7 +62,13 @@ export function useInboxRefresh({
         refreshing = false;
       }
     };
-    void refresh();
+    // Messages left waiting by an earlier page (closed or reloaded mid-send) go once the inbox
+    // has loaded, not only on the next online or visibility event.
+    void refresh().then(() => {
+      if (cancelled || resentOnLoadFor.current === accountId) return;
+      resentOnLoadFor.current = accountId;
+      void latest.current.retryQueuedMessages({ leftByEarlierPage: true });
+    });
     let interval: ReturnType<typeof setInterval>;
     const unsubscribe = subscribeAccountHints(
       accountId,
@@ -68,13 +81,14 @@ export function useInboxRefresh({
     interval = setInterval(() => void refresh(), 4_000);
     const onVisible = () => {
       if (document.visibilityState !== "hidden") {
-        void latest.current.retryQueuedMessages();
+        // Only messages due under their own backoff: not one still being sent from this page.
+        void latest.current.retryQueuedMessages({ automatic: true });
         void refresh();
       }
     };
     document.addEventListener("visibilitychange", onVisible);
     const onOnline = () => {
-      void latest.current.retryQueuedMessages();
+      void latest.current.retryQueuedMessages({ reconnect: true });
       void refresh();
     };
     const onServiceWorkerMessage = (event: MessageEvent<unknown>) => {

@@ -312,7 +312,23 @@ describe("guest chat send with the classifier", () => {
   });
 
   it("still answers by the rules when the classifier fails, with no error shown", async () => {
-    vi.stubGlobal("fetch", answer({ code: "guest_intent_failed" }, 503));
+    // Only the classifier fails; the thread's own view loads.
+    const failing = answer({ code: "guest_intent_failed" }, 503);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (...args: FetchArgs) =>
+        String(args[0]).endsWith("/v1/conversations/agent-thread-1")
+          ? new Response(
+              JSON.stringify({
+                conversation: { id: "agent-thread-1", kind: "personal" },
+                participants: [],
+                messages: []
+              }),
+              { status: 200, headers: { "content-type": "application/json" } }
+            )
+          : failing(...args)
+      )
+    );
     const { searchBuyFeed, rendered } = await send("I want to buy sugar");
     expect(searchBuyFeed).toHaveBeenCalledWith("sugar");
     expect(rendered.map((message) => message.body).join(" ")).not.toMatch(/classif|error|503/iu);

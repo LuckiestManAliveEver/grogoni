@@ -15,8 +15,8 @@ const budgets = {
   // old budget was already unmeetable. This branch adds ~0.2 KiB (lazily-loaded commerce panels).
   // Set to 185 KiB to leave a small, explicit headroom rather than a click-through ceiling.
   // Raised to 190 KiB (approved 2026-11-18): instant messaging measured 173.54 KiB before and
-  // 188.66 KiB after; the growth is the send/outbox/sync path every chat runs. The next cold
-  // candidate to defer, if this needs room again, is CatalogueNestedCard (~6-7 KiB gzip).
+  // 188.66 KiB after; the growth is the send/outbox/sync path every chat runs. CatalogueNestedCard
+  // was then deferred (2026-11-21, 190.08 -> 184.50 KiB) for the messaging fixes that followed.
   ownerRouteGzip: 190 * 1024
 };
 const failures = Object.entries(budgets).flatMap(([name, budget]) =>

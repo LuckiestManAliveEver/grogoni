@@ -70,6 +70,11 @@ jobs:
       - name: Responsive and accessibility certification
         run: pnpm test:ui-cert
 
+      - name: Instant messaging certification
+        # Controlled-latency browser gates: instant send, slow model, failed send and retry,
+        # offline then reconnect, session switching and the New Message picker.
+        run: pnpm test:messaging-cert
+
   android:
     # Compiles the native Android app and runs its JVM unit tests. Without this job the app went
     # uncompilable (hidden WRITE_SMS constant, Java/Kotlin JVM-target mismatch) with CI green.

@@ -40,3 +40,46 @@ it("catches up on a first connection, resumes reconnects from the cursor, and ig
     stop();
   }
 });
+
+it("opens a new stream after a reconnect is refused, and not while the browser still retries", async () => {
+  vi.useFakeTimers();
+  const sources: Array<{ url: string; readyState: number; onerror: (() => void) | null }> = [];
+  class FakeEvents extends EventTarget {
+    static CLOSED = 2;
+    readyState = 0;
+    onerror: (() => void) | null = null;
+    close = vi.fn();
+    constructor(readonly url: string) {
+      super();
+      sources.push(this);
+    }
+  }
+  vi.stubGlobal("EventSource", FakeEvents);
+  const stop = subscribeAccountHints("refused-owner", vi.fn(), vi.fn());
+  try {
+    await Promise.resolve();
+    expect(sources).toHaveLength(1);
+    sources[0]!.dispatchEvent(
+      new MessageEvent("ready", {
+        data: JSON.stringify({ accountId: "refused-owner" }),
+        lastEventId: "41"
+      })
+    );
+    // A dropped connection the browser is retrying (CONNECTING): leave it to the browser.
+    sources[0]!.onerror!();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(sources).toHaveLength(1);
+    // The retry was refused (e.g. 503 on a cold start): the browser gives up for good.
+    sources[0]!.readyState = FakeEvents.CLOSED;
+    sources[0]!.onerror!();
+    await vi.advanceTimersByTimeAsync(1_999);
+    expect(sources).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(sources).toHaveLength(2);
+    // It resumes from the last cursor.
+    expect(sources[1]!.url).toContain("since=41");
+  } finally {
+    stop();
+    vi.useRealTimers();
+  }
+});

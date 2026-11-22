@@ -286,10 +286,14 @@ export function inferenceHistory(
 }
 
 /**
- * Messages waiting in the outbox for this conversation that have no thread copy here (an
+ * Messages waiting in the outbox for this conversation that have no device copy here (an
  * encrypted message after a reload, whose text was never stored, or a copy lost to full
  * storage). Shown at the end of the thread with the text from the outbox when it is plain, so
  * the waiting count in the header always matches something visible.
+ *
+ * A bubble still on screen that is not marked as this device's copy (a send in flight, which
+ * keepDeviceOnlyMessages would otherwise drop when a thread read lands before the POST settles)
+ * is carried forward as it is, marked as this device's, so it keeps its own status and text.
  */
 export function outboxPlaceholders(
   waiting: Array<{ clientMessageId: string; payload: Record<string, unknown> }>,
@@ -300,18 +304,26 @@ export function outboxPlaceholders(
     .filter(
       (entry) =>
         entry.payload.conversationId === conversationId &&
-        !known.some((message) => message.id === entry.clientMessageId)
+        !known.some(
+          (message) =>
+            message.id === entry.clientMessageId && message.deviceOnlyIn === conversationId
+        )
     )
-    .map((entry) => ({
-      id: entry.clientMessageId,
-      author: "merchant" as const,
-      body: waitingText(entry.payload),
-      status: "failed" as const,
-      outboxState: "retrying" as const,
-      deviceOnlyIn: conversationId,
-      // No anchor: it goes at the end of the thread.
-      deviceOnlyAfter: ""
-    }));
+    .map((entry): ChatMessage => {
+      const onScreen = known.find((message) => message.id === entry.clientMessageId);
+      if (onScreen !== undefined)
+        return { ...onScreen, deviceOnlyIn: conversationId, deviceOnlyAfter: "" };
+      return {
+        id: entry.clientMessageId,
+        author: "merchant" as const,
+        body: waitingText(entry.payload),
+        status: "failed" as const,
+        outboxState: "retrying" as const,
+        deviceOnlyIn: conversationId,
+        // No anchor: it goes at the end of the thread.
+        deviceOnlyAfter: ""
+      };
+    });
 }
 
 /** The text of a waiting message from its outbox payload; an encrypted one has none to show. */

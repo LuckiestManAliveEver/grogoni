@@ -84,8 +84,21 @@ export function useSyncState(deps: UseSyncStateDeps) {
         closeRepository = () => repository.close();
         openedRepository = repository;
         syncRepositoryRef.current = repository;
+        // A newer version in another tab took the database. This tab's code cannot use it: stop
+        // syncing through the closed handle (catch-up, realtime, offline saves) and say so,
+        // rather than failing on a closed connection.
+        let superseded = false;
+        repository.onVersionClose = () => {
+          superseded = true;
+          if (syncRepositoryRef.current === repository) syncRepositoryRef.current = null;
+          closeRealtime?.();
+          closeRealtime = undefined;
+          deps.setStatusMessage(
+            "Grogoni was updated in another tab. Reload this tab to keep syncing."
+          );
+        };
         const catchUp = () => {
-          if (isExplicitOfflineMode()) return Promise.resolve();
+          if (superseded || isExplicitOfflineMode()) return Promise.resolve();
           if (catchUpPromise === null) {
             catchUpPromise = catchUpAccountSync({
               accountId: session.account.id,
@@ -102,6 +115,7 @@ export function useSyncState(deps: UseSyncStateDeps) {
         const startRealtime = () => {
           if (
             cancelled ||
+            superseded ||
             closeRealtime !== undefined ||
             !navigator.onLine ||
             isExplicitOfflineMode()
@@ -117,7 +131,7 @@ export function useSyncState(deps: UseSyncStateDeps) {
           });
         };
         synchronize = async () => {
-          if (cancelled || !navigator.onLine || isExplicitOfflineMode()) return;
+          if (cancelled || superseded || !navigator.onLine || isExplicitOfflineMode()) return;
           const transferred = await flushLocalSyncMutations({
             accountId: session.account.id,
             repository,

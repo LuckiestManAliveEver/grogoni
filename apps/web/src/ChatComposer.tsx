@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { runtimeHashtagCapabilities, runtimeHashtagQuery } from "@grogoni/tool-core";
 
+import { readCurrentOwnerRoute } from "./browser-navigation";
 import { chatAttachmentAccept } from "./grogoni-application-shared";
 import { chatModuleCommands } from "./chat-module-commands";
 import { startVoiceInput } from "./chat-message-plumbing";
@@ -25,6 +26,7 @@ export function ChatComposer({
   isBrowserGenerating,
   isSending,
   isOpening = false,
+  activeConversationId = null,
   mode,
   activeAgentName,
   audienceLabel,
@@ -68,6 +70,20 @@ export function ChatComposer({
   const [channelPickerOpen, setChannelPickerOpen] = useState(false);
   const [externalAppsOpen, setExternalAppsOpen] = useState(false);
   const messageInputRef = useRef<HTMLTextAreaElement | null>(null);
+  // Enter while the chat is still opening: sent as soon as it opens, to the conversation the URL
+  // named then. If it opens somewhere else (it could not be opened), the text stays in the box.
+  const [sendWhenOpen, setSendWhenOpen] = useState<string | null>(null);
+  useEffect(() => {
+    if (sendWhenOpen === null || isOpening || isSending) return;
+    setSendWhenOpen(null);
+    // The chat that opened must be the one named: another (the URL's could not be opened, or the
+    // user picked a different chat meanwhile) keeps the text in the box.
+    if (
+      activeConversationId === sendWhenOpen &&
+      readCurrentOwnerRoute()?.conversationId === sendWhenOpen
+    )
+      sendLiveDraft();
+  }, [sendWhenOpen, isOpening, isSending, sendLiveDraft, activeConversationId]);
   const hashtagQuery = agentControlsAvailable ? runtimeHashtagQuery(liveDraft) : null;
   const sellerHashtagCapabilities = [...chatModuleCommands, ...runtimeHashtagCapabilities];
   const matchingHashtagCapabilities =
@@ -210,7 +226,10 @@ export function ChatComposer({
               if (event.key === "Enter" && !event.shiftKey) {
                 // Enter never adds a newline here, even while a send runs or the chat opens.
                 event.preventDefault();
-                if (!isSending && !isOpening) sendLiveDraft();
+                if (isOpening && !isSending) {
+                  if (liveDraft.trim() || pendingAttachments.length)
+                    setSendWhenOpen(readCurrentOwnerRoute()?.conversationId ?? null);
+                } else if (!isSending) sendLiveDraft();
               }
             }}
             placeholder={
@@ -276,6 +295,11 @@ export function ChatComposer({
             </button>
           </div>
         </div>
+        {sendWhenOpen !== null ? (
+          <small className="external-share-notice" role="status">
+            Sends as soon as this chat opens.
+          </small>
+        ) : null}
         {externalShareNotice !== null ? (
           <small className="external-share-notice" role="status">
             {externalShareNotice}

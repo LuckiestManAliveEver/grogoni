@@ -119,7 +119,12 @@ describe("sending from the composer", () => {
         replyToMessageId: null,
         setReplyToMessageId: () => undefined,
         activeConversationId: "agent-thread-1",
-        activeConversation: null,
+        // The guest's agent thread, loaded (a send before it loads waits for its view).
+        activeConversation: {
+          conversation: { id: "agent-thread-1", kind: "personal" },
+          participants: [],
+          messages: []
+        },
         loadMessagingInbox: async () => undefined,
         registerReset: () => undefined
       } as never);

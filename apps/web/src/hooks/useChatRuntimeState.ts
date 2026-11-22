@@ -113,6 +113,8 @@ import {
   hydrateMessagingOutbox,
   flushMessagingOutbox
 } from "../messaging/outbox";
+import { noteBubbleAccepted, notePendingSend } from "../messaging/recent-sends";
+import { loadSendTarget } from "../messaging/send-target";
 import {
   clearAgentReplyPlaceholders,
   placeReplyAfter,
@@ -304,6 +306,8 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
     };
     performance.mark(`message.send.${optimistic.id}.start`);
     setVisibleChatMessages((messages) => [...messages, optimistic]);
+    // Before the thread is selected (still opening) it goes to the conversation the URL names.
+    notePendingSend(activeConversationId ?? readCurrentOwnerRoute()?.conversationId, optimistic);
     setChatDraft("");
     setPendingAttachments([]);
     setReplyToMessageId(null);
@@ -414,19 +418,18 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
     }
     let currentConversation =
       activeConversation?.conversation.id === activeConversationId ? activeConversation : null;
-    // A guest (no shop) has no server-side conversation to load: their thread is local. Only an
-    // owner/seller thread is fetched, so a guest send is never aborted by a conversation request.
-    if (business !== null && activeConversationId && !currentConversation) {
-      try {
-        currentConversation = await apiFetch<NonNullable<typeof activeConversation>>(
-          `/v1/conversations/${activeConversationId}`,
-          // Part of sending: the message waits on this, so it must not queue behind background reads.
-          { priority: true, urgent: true }
-        );
-      } catch (error) {
-        setStatusMessage(getErrorMessage(error));
-        return;
+    if (activeConversationId && !currentConversation) {
+      const target = await loadSendTarget(activeConversationId, business !== null, activeSession);
+      if ("error" in target) {
+        setChatMessages((messages) => messages.filter((item) => item.id !== optimistic?.id));
+        if (!chatDraftRef.current.trim()) setChatDraft((draftOverride ?? chatDraft).trim());
+        if (optimistic?.attachments?.length) setPendingAttachments(optimistic.attachments);
+        const replyTo = optimistic?.replyToMessageId; // Its own thread only, if none is set.
+        if (replyTo && currentConversationRef.current === activeConversationId)
+          setReplyToMessageId((current) => current ?? replyTo);
+        return void setStatusMessage(getErrorMessage(target.error));
       }
+      currentConversation = target.view;
     }
     if (
       business &&
@@ -948,6 +951,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
         ? messages
         : [...messages, merchantMessage]
     );
+    notePendingSend(activeConversationId, merchantMessage);
     setStatusMessage("Agent processing…");
     clearSentDraft();
     setPendingAttachments([]);
@@ -1321,7 +1325,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
         payload,
         retryKind: "transport",
         attempts: 0,
-        nextAttemptAt: Date.now() + 60_000
+        nextAttemptAt: Date.now() + 120_000 // Past the 90 s POST timeout: no overlapping resend.
       });
       setChatMessages((messages) =>
         messages.map((item) =>
@@ -1360,6 +1364,13 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
                           },
                           { headers: turnHeaders, timeoutMs: 90_000, urgent: true }
                         ).then((accepted) => {
+                          // Saved from here: later failures must not mark it unsent or resend it.
+                          persistedReceived = true;
+                          noteBubbleAccepted(
+                            `${payload.conversationId}`,
+                            merchantMessage,
+                            accepted.id
+                          );
                           onAccepted?.();
                           removeMessagingOutboxEntry(activeSession.account.id, clientMessageId);
                           setChatMessages((messages) =>
@@ -1397,6 +1408,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
                 urgent: true
               });
         persistedReceived = true;
+        noteBubbleAccepted(`${payload.conversationId}`, merchantMessage, persisted.id);
         onAccepted?.();
         removeMessagingOutboxEntry(activeSession.account.id, clientMessageId);
         const agentReply = persisted.agentMessage;

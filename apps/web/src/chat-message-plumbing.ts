@@ -242,6 +242,22 @@ export function isExternalChannelConversation(conversation: ConversationView | n
   );
 }
 
+/**
+ * Whether a thread's messages go to people rather than the model: a shop's conversation (a
+ * buyer's chat with a shop), a direct chat with another account, or an external channel.
+ */
+export function conversationGoesToPeople(
+  conversation: ConversationView | null,
+  session: SessionResponse | null
+): boolean {
+  const kind = conversation?.conversation?.kind;
+  return (
+    (kind !== undefined && kind !== "personal") ||
+    isHumanDirectConversation(conversation, session) ||
+    isExternalChannelConversation(conversation)
+  );
+}
+
 export function chatAttachmentsToConversationAttachments(
   attachments: ChatAttachment[]
 ): ConversationAttachment[] {
