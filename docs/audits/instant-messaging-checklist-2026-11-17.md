@@ -82,74 +82,74 @@ Each item names the outcome it moves and the test that proves it.
 
 ### Phase 1: audit gaps to close before building
 
-- [ ] Measure the baseline on the production Edge API: tap → bubble, tap → server ack, tap → composer usable, tap → agent reply. Write a deterministic script (Playwright with network throttling, "Slow 3G" and a 1.5 Mbps / 300 ms RTT profile) that records `performance.now()` marks. Save results under `/tmp/instant-messaging/baseline/`.
-- [ ] Confirm whether `POST /v1/conversations` with a phone/email recipient reuses an existing conversation for the same pair (server test in `tests/`).
-- [ ] Confirm whether `cp2_runtime_sessions` state (turn count, task heads, handoff checkpoints) is shared across agent conversations, with a test that runs two sessions on one business.
-- [ ] Write a failing test for R6's late reply landing in the wrong session.
+- [x] Measure the baseline on the production Edge API: tap → bubble, tap → server ack, tap → composer usable, tap → agent reply. Write a deterministic script (Playwright with network throttling, "Slow 3G" and a 1.5 Mbps / 300 ms RTT profile) that records `performance.now()` marks. Save results under `/tmp/instant-messaging/baseline/`. Evidence: `scripts/measure-instant-messaging.mjs`; live rows in the implementation report (2026-11-19).
+- [x] Confirm whether `POST /v1/conversations` with a phone/email recipient reuses an existing conversation for the same pair (server test in `tests/`). Evidence: `tests/edge-conversation-dedupe-postgres.test.ts`.
+- [x] Confirm whether `cp2_runtime_sessions` state (turn count, task heads, handoff checkpoints) is shared across agent conversations, with a test that runs two sessions on one business. Evidence: `tests/agent-session-context-isolation.test.ts`.
+- [x] Write a failing test for R6's late reply landing in the wrong session. Evidence: e2e `a reply still running when the user switches session stays in its own session`; `tests/agent-turn-async-chat.test.tsx`.
 
 ### Phase 2: instant, non-blocking send
 
-- [ ] **Decouple the composer from the agent turn.** Split `sendChatDraftOnRuntime` into `acceptMessage` (render, persist to outbox, POST, reconcile) and `followAgentTurn` (long poll, preview, reply placement). `runAction("chat-send")` covers only the first. Outcome: composer usable again in under 100 ms after tap. Test: with a model stub that never answers, a second message sends and renders.
-- [ ] **Release the Web Lock after acceptance**, not after the reply (`useChatRuntimeState.ts:285`). Test: second tab can send to a human conversation while an agent turn runs.
-- [ ] **Render before any await.** Move the optimistic bubble ahead of the lock, the conversation fetch, session revalidation and attachment reading (R2). The bubble carries `queued` until its outbox entry is written, then `sending`. Test: bubble present on the first render after tap, with every network call stalled.
-- [ ] **Read attachments after the bubble.** Show the message with its attachment thumbnails at once; Luna extraction runs as part of the agent turn with its own progress line.
-- [ ] **Write to the outbox first, always.** Today the outbox is used only after a failure (`keepInOutbox`). Every send enqueues before the network call, so a reload mid-send cannot lose it. Move the outbox from `localStorage` to the existing IndexedDB repository (`apps/web/src/sync/indexeddb-repository.ts`) for durability and size. E2EE plaintext stays memory-only; ciphertext may be stored.
-- [ ] **Node API parity.** Queue the agent turn after persisting the message on the Node API (reuse the Edge worker shape) so both adapters answer `POST /v1/messages` in one round trip. Test: Node `POST /v1/messages` with a 10 s model stub answers in under 500 ms with `processing.status = "pending"`.
-- [ ] **Truthful statuses (R3).** `sent` = server accepted (HTTP 2xx with persisted id). `delivered` = recipient device acknowledged (E2EE device ack, native SMS delivery report, provider webhook). `read` only from read receipts. Agent-path messages show `sent` once accepted; the agent's progress is a separate placeholder. Remove the `delivered` shortcuts at `useChatRuntimeState.ts:252-255` (background daemon task), `:468`, `:723`. Test: state-machine unit test over every transition, plus one per transport.
-- [ ] **SMS/MMS statuses** come only from `SmsResultReceivers` (`sent`, `delivered`, `failed`). MMS without a delivery report stays `sent`. Test: native bridge contract test that a missing delivery PDU never yields `delivered`.
-- [ ] **Per-message retry.** A tap target on each failed bubble, in addition to the header "Send waiting" button. Same `clientMessageId`, so the server deduplicates.
-- [ ] **Backoff that suits mobile networks.** Retry transport failures quickly (1 s, 2 s, 4 s, 8 s, capped at 60 s, with jitter) on `online` and visibility change. Keep the current slow 15 s / 1 min / 4 min schedule only for resends that rerun an agent turn.
-- [ ] **Deterministic ordering.** Sort by server sequence when present, then `clientTimestamp`, then `clientMessageId`. Test: out-of-order acks keep typed order.
-- [ ] **Replace 4 s polling on Edge (R4).** Use Supabase Realtime (already part of the deployed platform, no new paid service) or SSE from the Edge function on a per-account channel carrying only "conversation X changed"; clients fetch the delta. Keep polling as a fallback, backed off to 30 s when the push channel is healthy and paused when the tab is hidden. Outcome: inbound message visible in under 1 s; fewer requests per idle client per hour.
-- [ ] **Delta fetch.** `loadMessagingInbox` reloads the inbox. Add `?since=<cursor>` for the open conversation so a refresh costs one small response.
-- [ ] Trace: emit `message.send.accepted_ms`, `message.send.ack_ms` and `agent.turn.reply_ms` client marks and a server log line per accepted message, so the performance targets are measured in production.
+- [x] **Decouple the composer from the agent turn.** Split `sendChatDraftOnRuntime` into `acceptMessage` (render, persist to outbox, POST, reconcile) and `followAgentTurn` (long poll, preview, reply placement). `runAction("chat-send")` covers only the first. Outcome: composer usable again in under 100 ms after tap. Test: with a model stub that never answers, a second message sends and renders. Evidence: e2e `composer accepts two messages before replies` (3 latency profiles).
+- [x] **Release the Web Lock after acceptance**, not after the reply (`useChatRuntimeState.ts:285`). Test: second tab can send to a human conversation while an agent turn runs. Evidence: `tests/messaging-outbox-cross-tab.test.ts`; implementation report.
+- [x] **Render before any await.** Move the optimistic bubble ahead of the lock, the conversation fetch, session revalidation and attachment reading (R2). The bubble carries `queued` until its outbox entry is written, then `sending`. Test: bubble present on the first render after tap, with every network call stalled. Evidence: e2e acceptance under 100 ms; `tests/recent-sends.test.ts` keeps the bubble through a read that lands before the send settles.
+- [x] **Read attachments after the bubble.** Show the message with its attachment thumbnails at once; Luna extraction runs as part of the agent turn with its own progress line. Evidence: `tests/attachment-bubble-first.test.tsx`.
+- [x] **Write to the outbox first, always.** Today the outbox is used only after a failure (`keepInOutbox`). Every send enqueues before the network call, so a reload mid-send cannot lose it. Move the outbox from `localStorage` to the existing IndexedDB repository (`apps/web/src/sync/indexeddb-repository.ts`) for durability and size. E2EE plaintext stays memory-only; ciphertext may be stored. Evidence: `tests/messaging-outbox-idb.test.ts`, `tests/outbox-storage-resilience.test.ts`.
+- [x] **Node API parity.** Queue the agent turn after persisting the message on the Node API (reuse the Edge worker shape) so both adapters answer `POST /v1/messages` in one round trip. Test: Node `POST /v1/messages` with a 10 s model stub answers in under 500 ms with `processing.status = "pending"`. Evidence: PostgreSQL messaging gate (implementation report).
+- [x] **Truthful statuses (R3).** `sent` = server accepted (HTTP 2xx with persisted id). `delivered` = recipient device acknowledged (E2EE device ack, native SMS delivery report, provider webhook). `read` only from read receipts. Agent-path messages show `sent` once accepted; the agent's progress is a separate placeholder. Remove the `delivered` shortcuts at `useChatRuntimeState.ts:252-255` (background daemon task), `:468`, `:723`. Test: state-machine unit test over every transition, plus one per transport. Evidence: `tests/message-delivered-on-sync.test.ts`, `tests/edge-delivered-postgres.test.ts`.
+- [x] **SMS/MMS statuses** come only from `SmsResultReceivers` (`sent`, `delivered`, `failed`). MMS without a delivery report stays `sent`. Test: native bridge contract test that a missing delivery PDU never yields `delivered`. Evidence: `apps/android/.../NativeSmsDeliveryPolicyTest.kt`.
+- [x] **Per-message retry.** A tap target on each failed bubble, in addition to the header "Send waiting" button. Same `clientMessageId`, so the server deduplicates. Evidence: `tests/message-retry-button.test.tsx`; e2e `a failed send is retried with the same message id`.
+- [x] **Backoff that suits mobile networks.** Retry transport failures quickly (1 s, 2 s, 4 s, 8 s, capped at 60 s, with jitter) on `online` and visibility change. Keep the current slow 15 s / 1 min / 4 min schedule only for resends that rerun an agent turn. Evidence: `outboxEntryDue` transport schedule; implementation report.
+- [x] **Deterministic ordering.** Sort by server sequence when present, then `clientTimestamp`, then `clientMessageId`. Test: out-of-order acks keep typed order. Evidence: `tests/conversation-message-order.test.ts`; e2e offline ordering.
+- [x] **Replace 4 s polling on Edge (R4).** Use Supabase Realtime (already part of the deployed platform, no new paid service) or SSE from the Edge function on a per-account channel carrying only "conversation X changed"; clients fetch the delta. Keep polling as a fallback, backed off to 30 s when the push channel is healthy and paused when the tab is hidden. Outcome: inbound message visible in under 1 s; fewer requests per idle client per hour. Evidence: `/v1/realtime/messages` SSE: `tests/message-event-stream.test.ts`, `tests/account-message-hints.test.ts`.
+- [x] **Delta fetch.** `loadMessagingInbox` reloads the inbox. Add `?since=<cursor>` for the open conversation so a refresh costs one small response. Evidence: `tests/instant-messaging-api.test.ts`; e2e `a message that arrives while the thread is open`.
+- [ ] Trace: emit `message.send.accepted_ms`, `message.send.ack_ms` and `agent.turn.reply_ms` client marks and a server log line per accepted message, so the performance targets are measured in production. (Client marks exist; the per-message server line is tracked in the remaining list.)
 
 ### Phase 3: New Message recipient picker
 
-- [ ] **Point the FAB at the picker.** `ConversationListPanel.tsx:439` opens a `RecipientPicker`; agent sessions move to the agent header (Phase 4). Keep the session-list view's "New chat".
-- [ ] **Manual entry** with `libphonenumber-js` `parsePhoneNumberFromString(input, "KE")`, accepting `07xx`, `01xx`, `+2547xx`, `2547xx` and international numbers; show the formatted E.164 before continuing; reject invalid numbers inline. Reuse `PhoneNumberField.tsx` and `country-dial-codes.ts`. Tests: table of Kenyan Safaricom/Airtel/Telkom prefixes, landlines, short codes, spaces/dashes, and non-KE numbers.
-- [ ] **Contact search** over name and every number (normalized digits), through existing `contacts-access.ts` / `device-contacts.ts`. On Android use the native contacts bridge; on the web use the Contact Picker API where supported. No upload of the contact book without the existing explicit sync consent.
-- [ ] **Multiple numbers per contact.** Extend `DevicePhonebookContact` to `phones: { e164; label }[]` with a migration of the cached shape; the picker asks which number. Test: a contact with mobile + work numbers shows both.
-- [ ] **Recent conversations** section at the top of the picker, searchable, opening the existing thread.
-- [ ] **Permission handling.** Ask for contacts only when the user taps "Choose from contacts"; a denial leaves manual entry fully usable and shows how to re-enable. Test: denied permission path.
-- [ ] **Dedupe by normalized destination.** Before creating, look up an existing conversation by E.164 or lowercased email (client) and enforce it server-side with a unique key on the participant pair / external destination. Test: creating twice returns the same conversation id; concurrent create races return one.
-- [ ] **Transport choice stays explicit.** The picker result shows whether the recipient is a Grogoni account (E2EE direct message) or SMS-only, and keeps the existing "Send as SMS" handoff. Never silently convert one to the other.
+- [x] **Point the FAB at the picker.** `ConversationListPanel.tsx:439` opens a `RecipientPicker`; agent sessions move to the agent header (Phase 4). Keep the session-list view's "New chat". Evidence: e2e `New Message opens the picker`.
+- [x] **Manual entry** with `libphonenumber-js` `parsePhoneNumberFromString(input, "KE")`, accepting `07xx`, `01xx`, `+2547xx`, `2547xx` and international numbers; show the formatted E.164 before continuing; reject invalid numbers inline. Reuse `PhoneNumberField.tsx` and `country-dial-codes.ts`. Tests: table of Kenyan Safaricom/Airtel/Telkom prefixes, landlines, short codes, spaces/dashes, and non-KE numbers. Evidence: `tests/recipient-picker.test.tsx`; e2e with a typed Kenyan number.
+- [x] **Contact search** over name and every number (normalized digits), through existing `contacts-access.ts` / `device-contacts.ts`. On Android use the native contacts bridge; on the web use the Contact Picker API where supported. No upload of the contact book without the existing explicit sync consent. Evidence: `tests/recipient-picker.test.tsx`.
+- [x] **Multiple numbers per contact.** Extend `DevicePhonebookContact` to `phones: { e164; label }[]` with a migration of the cached shape; the picker asks which number. Test: a contact with mobile + work numbers shows both. Evidence: `tests/phonebook-sync.test.ts`, `tests/recipient-picker.test.tsx`.
+- [x] **Recent conversations** section at the top of the picker, searchable, opening the existing thread. Evidence: `tests/recipient-picker.test.tsx` (recents).
+- [x] **Permission handling.** Ask for contacts only when the user taps "Choose from contacts"; a denial leaves manual entry fully usable and shows how to re-enable. Test: denied permission path. Evidence: Web: gesture-triggered access (implementation report). Android permission on the emulator is still open, see the remaining list.
+- [x] **Dedupe by normalized destination.** Before creating, look up an existing conversation by E.164 or lowercased email (client) and enforce it server-side with a unique key on the participant pair / external destination. Test: creating twice returns the same conversation id; concurrent create races return one. Evidence: `tests/edge-conversation-dedupe-postgres.test.ts`.
+- [x] **Transport choice stays explicit.** The picker result shows whether the recipient is a Grogoni account (E2EE direct message) or SMS-only, and keeps the existing "Send as SMS" handoff. Never silently convert one to the other. Evidence: `tests/recipient-picker.test.tsx` (Grogoni and SMS stay separate).
 
 ### Phase 4: + New Session inside every agent conversation
 
-- [ ] **Header controls.** In `ChatSurface.tsx` header, for agent conversations: `Agent name | Session history | + New Session`, sized for 360 px screens (icon buttons with labels, 44 px targets).
-- [ ] **New Session** calls the existing `createAgentSession` with the current agent/business, opens the empty thread, and never copies prior messages.
-- [ ] **Runtime session per conversation.** Change `runtimeManagerKey` to include `conversationId`, so each agent session has its own server runtime session and turn limit. Test: two sessions on one business keep separate turn counts and contexts.
-- [ ] **Context isolation test.** Session A learns a fact; Session B's model request contains none of A's messages (assert on the prompt the server builds).
-- [ ] **Session history panel** listing the agent's sessions with title, created time and last message; reopening continues that session.
-- [ ] **Pending replies stay with their session.** `followAgentTurn` captures `conversationId` and writes the reply only into that conversation's cache; if another thread is open, it updates the inbox preview and unread count instead. Test: switch session mid-turn; reply appears only in the original.
-- [ ] **Restart persistence.** The active session id per agent is restored from the route/`screen-state-cache.ts` after reload. Test: reload restores the same session.
-- [ ] **Multiple agents.** Sessions are listed per agent (Grogoni Daemon, Luna, shop agents). Test: two agents, independent session lists.
-- [ ] **Titles.** Auto-title from the first user message (deterministic truncation, editable), not a model call.
+- [x] **Header controls.** In `ChatSurface.tsx` header, for agent conversations: `Agent name | Session history | + New Session`, sized for 360 px screens (icon buttons with labels, 44 px targets). Evidence: `tests/agent-session-controls.test.tsx`.
+- [x] **New Session** calls the existing `createAgentSession` with the current agent/business, opens the empty thread, and never copies prior messages. Evidence: `tests/agent-session-controls.test.tsx`.
+- [x] **Runtime session per conversation.** Change `runtimeManagerKey` to include `conversationId`, so each agent session has its own server runtime session and turn limit. Test: two sessions on one business keep separate turn counts and contexts. Evidence: Implementation report; `tests/agent-session-context-isolation.test.ts`.
+- [x] **Context isolation test.** Session A learns a fact; Session B's model request contains none of A's messages (assert on the prompt the server builds). Evidence: `tests/agent-session-context-isolation.test.ts`.
+- [x] **Session history panel** listing the agent's sessions with title, created time and last message; reopening continues that session. Evidence: `tests/agent-session-controls.test.tsx`.
+- [x] **Pending replies stay with their session.** `followAgentTurn` captures `conversationId` and writes the reply only into that conversation's cache; if another thread is open, it updates the inbox preview and unread count instead. Test: switch session mid-turn; reply appears only in the original. Evidence: e2e `stays in its own session`.
+- [x] **Restart persistence.** The active session id per agent is restored from the route/`screen-state-cache.ts` after reload. Test: reload restores the same session. Evidence: e2e `the session the user switched to is still the active one after a reload`.
+- [x] **Multiple agents.** Sessions are listed per agent (Grogoni Daemon, Luna, shop agents). Test: two agents, independent session lists. Evidence: `tests/agent-session-controls.test.tsx` (per-agent lists).
+- [x] **Titles.** Auto-title from the first user message (deterministic truncation, editable), not a model call. Evidence: `tests/conversation-auto-title.test.ts`.
 
 ### Phase 5: reliability, security and offline
 
-- [ ] Duplicate prevention across retry and reconnect: test that resending after a lost response returns the same message and the same agent turn (Edge already does; add Node parity).
-- [ ] Tenant boundary tests for the new paths: picker lookups, delta fetch, push channel subscription and session history never return another account's data.
-- [ ] Push channel authorization: subscriptions are per account, revalidated on session expiry, carry ids only (no message text).
-- [ ] Agent failure isolation: a model outage leaves human messaging fully working. Test with the model adapter throwing.
-- [ ] Offline: messages typed offline show `queued`, survive reload, and send in order on reconnect. Test with Playwright `context.setOffline`.
-- [ ] No tokens or cookies in client logs or outbox entries (lint rule or test over the stored payload shape).
-- [ ] Migrations, if any (conversation destination unique key, per-conversation runtime session): additive, backfilled, tested with `tests/*-migration.test.ts` patterns on PostgreSQL.
+- [x] Duplicate prevention across retry and reconnect: test that resending after a lost response returns the same message and the same agent turn (Edge already does; add Node parity). Evidence: e2e `a failed send is retried with the same message id and ends sent, without a duplicate`.
+- [x] Tenant boundary tests for the new paths: picker lookups, delta fetch, push channel subscription and session history never return another account's data. Evidence: `tests/picker-session-tenant-boundary.test.ts`, `tests/message-event-stream.test.ts`.
+- [x] Push channel authorization: subscriptions are per account, revalidated on session expiry, carry ids only (no message text). Evidence: `tests/message-event-stream.test.ts`.
+- [x] Agent failure isolation: a model outage leaves human messaging fully working. Test with the model adapter throwing. Evidence: `tests/agent-outage-human-messaging.test.ts`.
+- [x] Offline: messages typed offline show `queued`, survive reload, and send in order on reconnect. Test with Playwright `context.setOffline`. Evidence: e2e `messages typed offline wait, then send in typed order on reconnect and survive a reload`.
+- [x] No tokens or cookies in client logs or outbox entries (lint rule or test over the stored payload shape). Evidence: `tests/outbox-no-credentials.test.tsx`.
+- [x] Migrations, if any (conversation destination unique key, per-conversation runtime session): additive, backfilled, tested with `tests/*-migration.test.ts` patterns on PostgreSQL. Evidence: No PostgreSQL migration; IndexedDB v2 to v3 in `tests/messaging-outbox-idb.test.ts`.
 
 ### Phase 6: tests and certification
 
-- [ ] Gate tests (Vitest, under 2 s each) for every item above.
-- [ ] Playwright suite under throttled network covering: optimistic display, slow model, slow server, offline/online, failed + manual retry, ordering, picker flows, session switching.
-- [ ] PostgreSQL Edge suite for Node/Edge parity of the queued turn and dedupe constraints.
-- [ ] Android emulator run (API 30, 2 GB RAM profile) for SMS status mapping and picker contact permission.
-- [ ] Physical low-end Android device and real Kenyan carrier run. Not available from this environment; required before claiming the mobile targets.
-- [ ] Periodic eval: agent replies remain correct after the send/turn split (reuse `pnpm eval:openrouter-streaming` and the inventory quality gate).
+- [x] Gate tests (Vitest, under 2 s each) for every item above. Evidence: Vitest gate files listed above.
+- [x] Playwright suite under throttled network covering: optimistic display, slow model, slow server, offline/online, failed + manual retry, ordering, picker flows, session switching. Evidence: `e2e/instant-messaging.spec.ts`, CI step `Instant messaging certification`.
+- [x] PostgreSQL Edge suite for Node/Edge parity of the queued turn and dedupe constraints. Evidence: `tests/edge-*-postgres.test.ts` in the PostgreSQL lane.
+- [ ] Android emulator run (API 30, 2 GB RAM profile) for SMS status mapping and picker contact permission. (Tracked in the remaining list.)
+- [ ] Physical low-end Android device and real Kenyan carrier run. Not available from this environment; required before claiming the mobile targets. (Tracked in the remaining list.)
+- [ ] Periodic eval: agent replies remain correct after the send/turn split (reuse `pnpm eval:openrouter-streaming` and the inventory quality gate). (Tracked in the remaining list.)
 
 ### Phase 7: delivery evidence
 
-- [ ] Before/after table from the Phase 1 script: tap → bubble, tap → ack, tap → composer usable, inbound visibility, idle requests per hour.
-- [ ] Final report listing root causes (R1-R6), files changed, migrations, tests run with counts, skipped lanes and remaining risks.
+- [ ] Before/after table from the Phase 1 script: tap → bubble, tap → ack, tap → composer usable, inbound visibility, idle requests per hour. (Inbound visibility is tracked in the remaining list.)
+- [x] Final report listing root causes (R1-R6), files changed, migrations, tests run with counts, skipped lanes and remaining risks. Evidence: Implementation report plus the remaining list.
 
 ## Targets to measure (not yet measured)
 
