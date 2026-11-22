@@ -406,13 +406,26 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
         return next.filter((item) => item.id !== optimistic.id);
       });
     };
+    // A send stopped before anything left the device: take the "Sending…" bubble back out and
+    // give the text, attachments and reply target back to the composer, so nothing typed is lost
+    // and nothing sits as "Sending…" forever.
+    const returnUnsentMessage = (status?: string) => {
+      setChatMessages((messages) => messages.filter((item) => item.id !== optimistic?.id));
+      if (!chatDraftRef.current.trim()) setChatDraft((draftOverride ?? chatDraft).trim());
+      if (optimistic?.attachments?.length) setPendingAttachments(optimistic.attachments);
+      const replyTo = optimistic?.replyToMessageId; // Its own thread only, if none is set.
+      if (replyTo && currentConversationRef.current === activeConversationId)
+        setReplyToMessageId((current) => current ?? replyTo);
+      if (status !== undefined) setStatusMessage(status);
+    };
     await hydrateMessagingOutbox();
     let activeSession = session;
     if (activeSession === null) {
       const bootstrappedSession = await ensureAuthenticatedSession();
       if (bootstrappedSession === null) {
-        setStatusMessage("This chat needs a temporary device session before it can send.");
-        return;
+        return returnUnsentMessage(
+          "Couldn't start a device session, so the message was not sent. Your draft is saved; try again."
+        );
       }
       activeSession = bootstrappedSession;
     }
@@ -420,15 +433,7 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       activeConversation?.conversation.id === activeConversationId ? activeConversation : null;
     if (activeConversationId && !currentConversation) {
       const target = await loadSendTarget(activeConversationId, business !== null, activeSession);
-      if ("error" in target) {
-        setChatMessages((messages) => messages.filter((item) => item.id !== optimistic?.id));
-        if (!chatDraftRef.current.trim()) setChatDraft((draftOverride ?? chatDraft).trim());
-        if (optimistic?.attachments?.length) setPendingAttachments(optimistic.attachments);
-        const replyTo = optimistic?.replyToMessageId; // Its own thread only, if none is set.
-        if (replyTo && currentConversationRef.current === activeConversationId)
-          setReplyToMessageId((current) => current ?? replyTo);
-        return void setStatusMessage(getErrorMessage(target.error));
-      }
+      if ("error" in target) return returnUnsentMessage(getErrorMessage(target.error));
       currentConversation = target.view;
     }
     if (
@@ -440,12 +445,14 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
         deviceId: readStableDeviceId()
       })
     ) {
-      setStatusMessage("Wait for the runtime handoff to finish before sending another message.");
-      return;
+      return returnUnsentMessage(
+        "Wait for the runtime handoff to finish before sending another message."
+      );
     }
     if (navigator.onLine && !isExplicitOfflineMode() && authBootstrapState !== "authenticated") {
       const validatedSession = await ensureAuthenticatedSession();
-      if (validatedSession === null) return;
+      // The session check reports its own reason (sign-in prompt or status); just give back the text.
+      if (validatedSession === null) return returnUnsentMessage();
       activeSession = validatedSession;
     }
     // The public Grogoni ID identifies the storefront route. Runtime bindings, owner-node presence,
@@ -518,8 +525,9 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
       attachments.length > 0 &&
       (!navigator.onLine || isExplicitOfflineMode())
     ) {
-      setStatusMessage("Reading chat attachments needs a connection to Luna. Your draft is saved.");
-      return;
+      return returnUnsentMessage(
+        "Reading chat attachments needs a connection to Luna. Your draft is saved."
+      );
     }
     const receiptDrafts: ReceiptOCRJobSummary[] = [];
     if (!hasHumanRecipient && attachments.length > 0) {
