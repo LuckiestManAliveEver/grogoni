@@ -34,6 +34,10 @@ deploy notifier can reuse it.
 
 ## Switching the scheduled jobs on
 
+All three were switched on on 2026-11-22 after a manual run each (Actions runs 45046002745
+`db-health`, 45046170051 `shop-purge`, 45049461703 `account-purge`). The steps stay here for a
+new repository or a rotated credential.
+
 Every job in `scheduled-maintenance.yml` stays off until its repository variable is `true`, the
 same gate `neon-backup.yml` uses. Until then, account deletions past their 30-day recovery window
 are not purged, which the Play legal-readiness record depends on.

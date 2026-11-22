@@ -40,7 +40,7 @@
     "serviceProviderDeletionStatus": "pending",
     "operationsOwner": null,
     "privacyOwner": null,
-    "purgeScheduleEnabledOn": null
+    "purgeScheduleEnabledOn": "2026-11-22"
   },
   "policyBaseline": {
     "verifiedOn": "2026-07-15",

@@ -103,8 +103,9 @@ describe("CP27 Google Play legal readiness", () => {
     expect(readiness.contacts.contactVerificationStatus).toBe("pending");
     expect(readiness.accountDeletion.fulfillmentRunbookStatus).toBe("pending");
     expect(readiness.accountDeletion.serviceProviderDeletionStatus).toBe("pending");
-    // Pending until the owner switches the scheduled purge on and records the date.
-    expect(readiness.accountDeletion.purgeScheduleEnabledOn).toBeNull();
+    // Recorded when the scheduled purge (vars.ACCOUNT_PURGE_ENABLED) was switched on, after its
+    // first manual run: Actions run 45049461703 on 2026-11-22.
+    expect(readiness.accountDeletion.purgeScheduleEnabledOn).toMatch(/^\d{4}-\d{2}-\d{2}$/u);
     expect(rootPackage.scripts["android:legal:verify"]).toContain(
       "verify-play-legal-readiness.mjs"
     );
