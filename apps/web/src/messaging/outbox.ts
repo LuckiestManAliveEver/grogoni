@@ -133,6 +133,43 @@ export function countMessagingOutbox(
   }
 }
 
+/**
+ * Field names that hold credentials. The outbox persists a request body on the device (IndexedDB,
+ * readable by anything with access to the browser profile) and authentication travels in the
+ * HttpOnly session cookie, so none of these belongs in a queued message. Same set as the client
+ * log denylist (chat-message-plumbing.ts), matched case-insensitively at any depth.
+ */
+const outboxCredentialFields = new Set(
+  [
+    "sessionId",
+    "sessionToken",
+    "accessToken",
+    "refreshToken",
+    "authorization",
+    "cookie",
+    "password",
+    "pin",
+    "passkey",
+    "secret",
+    "token",
+    "apiKey"
+  ].map((key) => key.toLowerCase())
+);
+
+/** A copy of a request body with every credential field removed, at any depth. */
+export function outboxStoredPayload(payload: Record<string, unknown>): Record<string, unknown> {
+  const strip = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(strip);
+    if (typeof value !== "object" || value === null) return value;
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([key]) => !outboxCredentialFields.has(key.toLowerCase()))
+        .map(([key, nested]) => [key, strip(nested)])
+    );
+  };
+  return strip(payload) as Record<string, unknown>;
+}
+
 /** Messages this page put in the outbox (page memory): the rest were left by an earlier page. */
 const queuedOnThisPage = new Set<string>();
 
@@ -141,7 +178,10 @@ export function queueMessagingOutbox(
   storage: MessagingOutboxStorage = messagingOutboxStorage()
 ): void {
   queuedOnThisPage.add(entry.clientMessageId);
-  mutateOutbox(entry.accountId, storage, { kind: "put", entry });
+  mutateOutbox(entry.accountId, storage, {
+    kind: "put",
+    entry: { ...entry, payload: outboxStoredPayload(entry.payload) }
+  });
 }
 
 /** Whether an earlier page (closed or reloaded, maybe mid-send) left this message waiting. */

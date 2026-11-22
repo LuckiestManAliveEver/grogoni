@@ -65,41 +65,68 @@ describe("account message event stream", () => {
       new Request("https://example.invalid/v1/realtime/messages"),
       transaction,
       auth,
-      { durationMs: 100, intervalMs: 1 }
+      { durationMs: 100, intervalMs: 1, reauthorizeEveryMs: 0 }
     );
     expect(await response.text()).not.toContain("event: changed");
     expect(auth).toHaveBeenCalledTimes(2);
   });
-  it("with a combined probe, uses one transaction per probe and closes when the session ends", async () => {
-    let transactions = 0;
-    const probe = vi
-      .fn()
-      .mockResolvedValueOnce({
-        accountId: "account-a",
-        rows: [{ sequence: "4", collection: "conversation_messages", conversation_id: "thread-a" }]
-      })
-      .mockResolvedValueOnce({ accountId: "account-a", rows: [] })
-      .mockResolvedValue({ accountId: null, rows: [] });
-    const transaction: Transaction = async (work) => {
-      transactions += 1;
-      return work({ query: async () => ({ rows: [{ cursor: "3" }] }) });
-    };
-    const authorize = vi.fn(async () => "account-a");
-    const response = await messageEventStream(
-      new Request("https://example.invalid/v1/realtime/messages"),
-      transaction,
-      authorize,
-      { durationMs: 1_000, intervalMs: 1, probe }
-    );
-    const text = await response.text();
-    expect(text).toContain(
-      'id: 4\nevent: changed\ndata: {"accountId":"account-a","conversationIds":["thread-a"]}'
-    );
-    // The session check happens only at open; each probe after that is a single transaction.
-    expect(authorize).toHaveBeenCalledTimes(1);
-    expect(probe).toHaveBeenCalledTimes(3);
-    expect(probe.mock.calls.map(([, cursor]) => cursor)).toEqual(["3", "4", "4"]);
-    expect(transactions).toBe(1 + 3);
+  it("reads the journal every probe but rechecks the session only every reauthorizeEveryMs", async () => {
+    vi.useFakeTimers();
+    try {
+      const auth = vi.fn(async () => "account-a");
+      const journalReads = vi.fn();
+      const transaction: Transaction = async (work) =>
+        work({
+          query: async (sql: string) => {
+            if (!sql.includes("max(sequence)")) journalReads();
+            return { rows: sql.includes("max(sequence)") ? [{ cursor: "0" }] : [] };
+          }
+        });
+      const response = await messageEventStream(
+        new Request("https://example.invalid/v1/realtime/messages"),
+        transaction,
+        auth,
+        { durationMs: 10_000, intervalMs: 500, reauthorizeEveryMs: 5_000 }
+      );
+      const text = response.text();
+      await vi.advanceTimersByTimeAsync(10_500);
+      await text;
+      // 20 probes in 10 s, each reading the journal; the session checked at open and at 5 s and 10 s.
+      expect(journalReads.mock.calls.length).toBeGreaterThanOrEqual(19);
+      expect(auth.mock.calls.length).toBeLessThanOrEqual(3);
+      expect(auth.mock.calls.length).toBeGreaterThanOrEqual(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it("still closes within the recheck window once the session expires", async () => {
+    vi.useFakeTimers();
+    try {
+      const auth = vi
+        .fn()
+        .mockResolvedValueOnce("account-a")
+        .mockRejectedValue(new Error("expired"));
+      const transaction: Transaction = async (work) =>
+        work({ query: async () => ({ rows: [{ cursor: "0" }] }) });
+      const response = await messageEventStream(
+        new Request("https://example.invalid/v1/realtime/messages"),
+        transaction,
+        auth,
+        { durationMs: 25_000, intervalMs: 500, reauthorizeEveryMs: 5_000 }
+      );
+      let closedAt: number | null = null;
+      const started = Date.now();
+      const text = response.text().then((body) => {
+        closedAt = Date.now() - started;
+        return body;
+      });
+      await vi.advanceTimersByTimeAsync(6_000);
+      await text;
+      expect(closedAt).not.toBeNull();
+      expect(closedAt!).toBeLessThanOrEqual(5_600);
+    } finally {
+      vi.useRealTimers();
+    }
   });
   it("rejects a malformed reconnect cursor", async () => {
     const transaction: Transaction = async () => {

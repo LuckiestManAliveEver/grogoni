@@ -1,4 +1,5 @@
 import { subscribeAccountHints } from "../messaging/account-hints";
+import { messagingOutboxChangeEvent } from "../messaging/outbox";
 import { useEffect, useRef } from "react";
 import type { GrogoniMode } from "../app-shell";
 import { navigateToOwnerRoute, readCurrentOwnerRoute } from "../browser-navigation";
@@ -22,7 +23,7 @@ export function useInboxRefresh({
     automatic?: boolean;
     reconnect?: boolean;
     leftByEarlierPage?: boolean;
-  }) => Promise<void>;
+  }) => Promise<boolean | void>;
   selectConversation: (id: string) => Promise<void>;
 }) {
   const latest = useRef({ loadMessagingInbox, retryQueuedMessages, selectConversation });
@@ -61,14 +62,33 @@ export function useInboxRefresh({
       } finally {
         refreshing = false;
       }
-    };
-    // Messages left waiting by an earlier page (closed or reloaded mid-send) go once the inbox
-    // has loaded, not only on the next online or visibility event.
-    void refresh().then(() => {
-      if (cancelled || resentOnLoadFor.current === accountId) return;
+      // The outbox's own backoff decides what is due (15 s, 1 min, 4 min, then it stops), so a
+      // pass on every refresh never reruns a failing paid model turn early. The first refresh of
+      // a page load instead resends what an earlier page left waiting (closed or reloaded
+      // mid-send), without that page's in-flight wait; never two passes at once.
+      if (cancelled) return;
+      const firstForAccount = resentOnLoadFor.current !== accountId;
       resentOnLoadFor.current = accountId;
-      void latest.current.retryQueuedMessages({ leftByEarlierPage: true });
-    });
+      void latest.current
+        .retryQueuedMessages(firstForAccount ? { leftByEarlierPage: true } : { automatic: true })
+        .then((ran) => {
+          // It could not run (another pass, or another tab's): the next refresh tries it again.
+          if (firstForAccount && ran === false && resentOnLoadFor.current === accountId)
+            resentOnLoadFor.current = null;
+        });
+    };
+    void refresh();
+    // A message queued behind an earlier one in its conversation goes as soon as that one is
+    // accepted (its outbox entry is removed), not at the next refresh.
+    let outboxPass: ReturnType<typeof setTimeout> | undefined;
+    const onOutboxChange = () => {
+      clearTimeout(outboxPass);
+      outboxPass = setTimeout(() => {
+        if (!cancelled && document.visibilityState !== "hidden")
+          void latest.current.retryQueuedMessages({ automatic: true });
+      }, 1_200);
+    };
+    window.addEventListener(messagingOutboxChangeEvent, onOutboxChange);
     let interval: ReturnType<typeof setInterval>;
     const unsubscribe = subscribeAccountHints(
       accountId,
@@ -80,13 +100,10 @@ export function useInboxRefresh({
     );
     interval = setInterval(() => void refresh(), 4_000);
     const onVisible = () => {
-      if (document.visibilityState !== "hidden") {
-        // Only messages due under their own backoff: not one still being sent from this page.
-        void latest.current.retryQueuedMessages({ automatic: true });
-        void refresh();
-      }
+      if (document.visibilityState !== "hidden") void refresh();
     };
     document.addEventListener("visibilitychange", onVisible);
+    // Back online: skip the backoff wait, but not the three-try cap (only a tap passes that).
     const onOnline = () => {
       void latest.current.retryQueuedMessages({ reconnect: true });
       void refresh();
@@ -102,6 +119,8 @@ export function useInboxRefresh({
     return () => {
       cancelled = true;
       window.clearInterval(interval);
+      clearTimeout(outboxPass);
+      window.removeEventListener(messagingOutboxChangeEvent, onOutboxChange);
       unsubscribe();
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("online", onOnline);

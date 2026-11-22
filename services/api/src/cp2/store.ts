@@ -174,6 +174,7 @@ import {
   repositoryDefaultRuntimePolicy
 } from "@grogoni/shared-types";
 import { Cp2Error, assertValid } from "./cp2-error.js";
+import { receiptUnitMatchesStock } from "./domains/suppliers/receipt-units.js";
 import { assertAcceptablePin } from "./pin-strength.js";
 import { roundMoney } from "./money.js";
 import {
@@ -9855,6 +9856,8 @@ export class Cp2Store {
     const existing = [...this.salesDomain.productsMap.values()].filter(
       (p) => p.businessId === input.businessId
     );
+    // A product new to the shop may appear on several lines; they must agree on its unit too.
+    const newProductUnits = new Map<string, string | null>();
     const plan = products.map((item) => {
       const matches = existing.filter((p) =>
         item.sku
@@ -9866,6 +9869,25 @@ export class Cp2Store {
           409,
           "delivery_product_ambiguous",
           `More than one product matches ${item.itemName}. Add a unique SKU before confirming.`
+        );
+      const stocked = matches[0];
+      if (stocked === undefined) {
+        const key = item.sku
+          ? `sku:${item.sku.toLowerCase()}`
+          : `name:${item.itemName.toLowerCase()}`;
+        if (!newProductUnits.has(key)) newProductUnits.set(key, item.unit);
+        else if (!receiptUnitMatchesStock(item.unit, newProductUnits.get(key)))
+          throw new Cp2Error(
+            409,
+            "delivery_unit_mismatch",
+            `${item.itemName} appears in ${newProductUnits.get(key)} and in ${item.unit} on this receipt. Correct the lines to one unit before confirming.`
+          );
+      }
+      if (stocked !== undefined && !receiptUnitMatchesStock(item.unit, stocked.unit))
+        throw new Cp2Error(
+          409,
+          "delivery_unit_mismatch",
+          `${item.itemName} is received in ${item.unit} but stocked in ${stocked.unit}. Correct the line to the stock unit (for example 5 cartons of 12 → 60) before confirming.`
         );
       this.requireAuthorizedActor(input.sessionId, input.businessId, "inventory:adjust", input.now);
       if (!matches.length)

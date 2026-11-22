@@ -70,16 +70,17 @@ describe("frontend user guidance", () => {
     expect(asyncActions).toContain("activeActions.current.delete(key)");
   });
 
-  it("keeps Messages beside Marketplace as a pill and labels the network card My Network", () => {
+  it("routes seller mode through the home shell (no Messages/Buy pills) and labels the network card My Network", () => {
     const application = readFileSync("apps/web/src/GrogoniApplication.tsx", "utf8");
+    const menuDrawer = readFileSync("apps/web/src/MenuDrawer.tsx", "utf8");
     const shopHubCopy = readFileSync("apps/web/src/shop-hub-copy.ts", "utf8");
-    const styles = readFileSync("apps/web/src/styles.css", "utf8");
-    const marketplaceIndex = application.indexOf('data-testid="marketplace-button"');
-    const messagesIndex = application.indexOf('data-testid="messages-button"');
 
-    expect(marketplaceIndex).toBeGreaterThan(-1);
-    expect(messagesIndex).toBeGreaterThan(marketplaceIndex);
-    expect(styles).toContain(".header-action-button.messages");
+    expect(application).not.toContain('className="shell-mode-bar"');
+    expect(application).not.toContain('data-testid="marketplace-button"');
+    expect(application).not.toContain('data-testid="messages-button"');
+    // Message history and browsing stay reachable from the hamburger menu.
+    expect(menuDrawer).toContain("onMessageHistory");
+    expect(menuDrawer).toContain("onBrowse");
     expect(shopHubCopy).toContain('networkSync: "My network"');
   });
 

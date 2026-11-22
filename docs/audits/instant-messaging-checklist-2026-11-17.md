@@ -85,7 +85,7 @@ Each item names the outcome it moves and the test that proves it.
 - [x] Measure the baseline on the production Edge API: tap → bubble, tap → server ack, tap → composer usable, tap → agent reply. Write a deterministic script (Playwright with network throttling, "Slow 3G" and a 1.5 Mbps / 300 ms RTT profile) that records `performance.now()` marks. Save results under `/tmp/instant-messaging/baseline/`. Evidence: `scripts/measure-instant-messaging.mjs`; live rows in the implementation report (2026-11-19).
 - [x] Confirm whether `POST /v1/conversations` with a phone/email recipient reuses an existing conversation for the same pair (server test in `tests/`). Evidence: `tests/edge-conversation-dedupe-postgres.test.ts`.
 - [x] Confirm whether `cp2_runtime_sessions` state (turn count, task heads, handoff checkpoints) is shared across agent conversations, with a test that runs two sessions on one business. Evidence: `tests/agent-session-context-isolation.test.ts`.
-- [x] Write a failing test for R6's late reply landing in the wrong session. Evidence: e2e `a reply still running when the user switches session stays in its own session`; `tests/agent-turn-async-chat.test.tsx`.
+- [x] Write a failing test for R6's late reply landing in the wrong session. Evidence: `e2e/instant-messaging-certification.spec.ts` ("switching sessions keeps each session's messages in its own thread"); `tests/agent-turn-async-chat.test.tsx`.
 
 ### Phase 2: instant, non-blocking send
 
@@ -117,14 +117,14 @@ Each item names the outcome it moves and the test that proves it.
 
 ### Phase 4: + New Session inside every agent conversation
 
-- [x] **Header controls.** In `ChatSurface.tsx` header, for agent conversations: `Agent name | Session history | + New Session`, sized for 360 px screens (icon buttons with labels, 44 px targets). Evidence: `tests/agent-session-controls.test.tsx`.
-- [x] **New Session** calls the existing `createAgentSession` with the current agent/business, opens the empty thread, and never copies prior messages. Evidence: `tests/agent-session-controls.test.tsx`.
+- [x] **Header controls.** In `ChatSurface.tsx` header, for agent conversations: `Agent name | Session history | + New Session`, sized for 360 px screens (icon buttons with labels, 44 px targets). Evidence: superseded by #83: agent chats keep the header-less home layout and sessions open from the inbox; `e2e/instant-messaging-certification.spec.ts`.
+- [x] **New Session** calls the existing `createAgentSession` with the current agent/business, opens the empty thread, and never copies prior messages. Evidence: superseded by #83: agent chats keep the header-less home layout and sessions open from the inbox; `e2e/instant-messaging-certification.spec.ts`.
 - [x] **Runtime session per conversation.** Change `runtimeManagerKey` to include `conversationId`, so each agent session has its own server runtime session and turn limit. Test: two sessions on one business keep separate turn counts and contexts. Evidence: Implementation report; `tests/agent-session-context-isolation.test.ts`.
 - [x] **Context isolation test.** Session A learns a fact; Session B's model request contains none of A's messages (assert on the prompt the server builds). Evidence: `tests/agent-session-context-isolation.test.ts`.
-- [x] **Session history panel** listing the agent's sessions with title, created time and last message; reopening continues that session. Evidence: `tests/agent-session-controls.test.tsx`.
-- [x] **Pending replies stay with their session.** `followAgentTurn` captures `conversationId` and writes the reply only into that conversation's cache; if another thread is open, it updates the inbox preview and unread count instead. Test: switch session mid-turn; reply appears only in the original. Evidence: e2e `stays in its own session`.
-- [x] **Restart persistence.** The active session id per agent is restored from the route/`screen-state-cache.ts` after reload. Test: reload restores the same session. Evidence: e2e `the session the user switched to is still the active one after a reload`.
-- [x] **Multiple agents.** Sessions are listed per agent (Grogoni Daemon, Luna, shop agents). Test: two agents, independent session lists. Evidence: `tests/agent-session-controls.test.tsx` (per-agent lists).
+- [x] **Session history panel** listing the agent's sessions with title, created time and last message; reopening continues that session. Evidence: superseded by #83: agent chats keep the header-less home layout and sessions open from the inbox; `e2e/instant-messaging-certification.spec.ts`.
+- [x] **Pending replies stay with their session.** `followAgentTurn` captures `conversationId` and writes the reply only into that conversation's cache; if another thread is open, it updates the inbox preview and unread count instead. Test: switch session mid-turn; reply appears only in the original. Evidence: `e2e/instant-messaging-certification.spec.ts` ("switching sessions keeps each session's messages in its own thread").
+- [x] **Restart persistence.** The active session id per agent is restored from the route/`screen-state-cache.ts` after reload. Test: reload restores the same session. Evidence: `e2e/instant-messaging-certification.spec.ts` ("a reload reopens the same agent session with its messages").
+- [x] **Multiple agents.** Sessions are listed per agent (Grogoni Daemon, Luna, shop agents). Test: two agents, independent session lists. Evidence: superseded by #83: agent chats keep the header-less home layout and sessions open from the inbox; `e2e/instant-messaging-certification.spec.ts`.
 - [x] **Titles.** Auto-title from the first user message (deterministic truncation, editable), not a model call. Evidence: `tests/conversation-auto-title.test.ts`.
 
 ### Phase 5: reliability, security and offline

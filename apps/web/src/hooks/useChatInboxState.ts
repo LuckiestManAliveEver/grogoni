@@ -266,12 +266,17 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
         ? activeConversationRef.current
         : null;
     const cursor = cached?.messageCursor;
-    // Always asked of the server. Through the 30 s response cache, a refresh after a "changed"
-    // hint repeated the same ?since= URL and got the stale copy, so a message that had just arrived
-    // stayed invisible until a reload (measured live, 2026-11-20). A delta read is small.
-    const response = await fetchFreshJson<ConversationView>(
-      `/v1/conversations/${conversationId}${cursor ? `?since=${encodeURIComponent(cursor)}` : ""}`
-    );
+    // A delta read (cursor) is always asked of the server: through the 30 s response cache a
+    // refresh after a "changed" hint repeated the same ?since= URL and got the stale copy, so a
+    // message that had just arrived stayed invisible until a reload (measured live, 2026-11-20).
+    // A full read may answer from the device copy and is redrawn when the server's answer arrives.
+    const path = `/v1/conversations/${conversationId}${cursor ? `?since=${encodeURIComponent(cursor)}` : ""}`;
+    const response = cursor
+      ? await fetchFreshJson<ConversationView>(path)
+      : await getJson<ConversationView>(path, () => {
+          if (activeConversationIdRef.current === conversationId)
+            void loadConversationThread(conversationId).catch(() => undefined);
+        });
     const merged = new Map(
       (response.isDelta && cached ? cached.messages : []).map((message) => [message.id, message])
     );
@@ -805,7 +810,9 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
       /** Page load: only what an earlier page left (this page's sends may be in flight). */
       leftByEarlierPage?: boolean;
     } = {}
-  ) {
+  ): Promise<boolean> {
+    // true: the pass ran (or nothing was due); false: it could not run now (offline, another pass
+    // in this tab, or another tab holding the lock), so a one-off pass must be tried again.
     const mode: OutboxPass = options.leftByEarlierPage
       ? "load"
       : options.reconnect
@@ -813,17 +820,18 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
         : options.automatic
           ? "automatic"
           : "manual";
-    if (!navigator.onLine || session === null) return;
+    if (!navigator.onLine || session === null) return false;
     if (outboxRetryRunning.current) {
       if (mode === "manual") setStatusMessage("Already sending your waiting messages.");
-      return;
+      return false;
     }
     const accountId = session.account.id;
     await hydrateMessagingOutbox();
     const queued = readMessagingOutbox(accountId);
     if (queued.length === 0 || (mode !== "manual" && !queued.some((entry) => dueFor(entry, mode))))
-      return;
+      return true;
     outboxRetryRunning.current = true;
+    let ran = true;
     try {
       if (navigator.locks)
         await navigator.locks.request(
@@ -831,14 +839,18 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
           { ifAvailable: true },
           async (lock) => {
             if (lock) await resendQueuedMessages(accountId, mode, options.clientMessageId);
-            else if (mode === "manual")
-              setStatusMessage("Your waiting messages are being sent from another tab.");
+            else {
+              ran = false;
+              if (mode === "manual")
+                setStatusMessage("Your waiting messages are being sent from another tab.");
+            }
           }
         );
       else await resendQueuedMessages(accountId, mode, options.clientMessageId);
     } finally {
       outboxRetryRunning.current = false;
     }
+    return ran;
   }
 
   function dueFor(entry: MessagingOutboxEntry, mode: OutboxPass): boolean {

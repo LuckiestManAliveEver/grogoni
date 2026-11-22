@@ -1,21 +1,21 @@
-import type { SqlClient, Transaction } from "./session-routes.ts";
-
-type JournalRow = Record<string, unknown>;
-/** One probe: whose session this still is (null when it is no longer live) and what changed. */
-export type JournalProbe = (
-  client: SqlClient,
-  cursor: string
-) => Promise<{ accountId: string | null; rows: JournalRow[] }>;
+import type { Transaction } from "./session-routes.ts";
 
 /** Bounded SSE connection. Every probe uses a short transaction; no connection or tenant lock
- * is held while waiting. The durable account journal bridges isolates and reconnects. */
+ * is held while waiting. The durable account journal bridges isolates and reconnects.
+ *
+ * Load: the journal is read every `intervalMs` (500 ms, the inbound-visibility budget), but the
+ * session is rechecked only every `reauthorizeEveryMs` (5 s). Rechecking on every probe doubled
+ * the transactions per open stream; an expired or revoked session still stops receiving hints
+ * within 5 s, and hints carry conversation identifiers only, never message content. */
 export async function messageEventStream(
   request: Request,
   transaction: Transaction,
   authorize: () => Promise<string>,
-  options: { durationMs?: number; intervalMs?: number; probe?: JournalProbe } = {}
+  options: { durationMs?: number; intervalMs?: number; reauthorizeEveryMs?: number } = {}
 ): Promise<Response> {
   const accountId = await authorize();
+  const reauthorizeEveryMs = options.reauthorizeEveryMs ?? 5_000;
+  let authorizedAt = Date.now();
   const raw =
     request.headers.get("last-event-id") ?? new URL(request.url).searchParams.get("since");
   if (raw !== null && !/^\d{1,20}$/u.test(raw))
@@ -32,18 +32,6 @@ export async function messageEventStream(
         )
       ).rows[0]?.cursor ?? "0"
     );
-  // Without a combined probe: the session check and the journal read as two transactions.
-  const separateProbe = async () => {
-    const current = await authorize();
-    if (current !== accountId) return { accountId: current, rows: [] };
-    const result = await transaction((db) =>
-      db.query(
-        `select sequence::text, collection, entity_id, entity->>'conversationId' as conversation_id from account_sync_changes where account_id = $1 and sequence > $2::bigint order by sequence limit 100`,
-        [accountId, cursor]
-      )
-    );
-    return { accountId: current, rows: result.rows as JournalRow[] };
-  };
   let stopped = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let wake: (() => void) | undefined;
@@ -71,11 +59,16 @@ export async function messageEventStream(
             });
             wake = undefined;
             if (stopped) break;
-            const probed = options.probe
-              ? await transaction((db) => options.probe!(db, cursor))
-              : await separateProbe();
-            if (probed.accountId !== accountId) break;
-            const result = { rows: probed.rows };
+            if (Date.now() - authorizedAt >= reauthorizeEveryMs) {
+              if ((await authorize()) !== accountId) break;
+              authorizedAt = Date.now();
+            }
+            const result = await transaction((db) =>
+              db.query(
+                `select sequence::text, collection, entity_id, entity->>'conversationId' as conversation_id from account_sync_changes where account_id = $1 and sequence > $2::bigint order by sequence limit 100`,
+                [accountId, cursor]
+              )
+            );
             if (stopped) break;
             if (result.rows.length) {
               cursor = String(result.rows.at(-1)!.sequence);

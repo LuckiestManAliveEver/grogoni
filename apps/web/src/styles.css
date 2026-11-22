@@ -9198,11 +9198,11 @@ body {
 }
 
 @media (min-width: 760px) {
-  .app-frame[data-commerce-mode="buy"] .chat-surface.inbox-open > .messenger-inbox {
+  .app-frame[data-commerce-mode] .chat-surface.inbox-open > .messenger-inbox {
     grid-column: 1;
     grid-row: 1;
   }
-  .app-frame[data-commerce-mode="buy"] .chat-surface.inbox-open > .messenger-thread {
+  .app-frame[data-commerce-mode] .chat-surface.inbox-open > .messenger-thread {
     grid-column: 2;
   }
 }

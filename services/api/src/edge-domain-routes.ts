@@ -22,6 +22,7 @@ import { edgeRouteInventory } from "./edge-route-inventory.generated.js";
 import { isValidTurnId, turnContext } from "./inference/turn-stream.js";
 import {
   currentRequestTiming,
+  messageAcceptedLogLine,
   recordStage,
   runWithRequestTiming,
   serverTimingHeader,
@@ -1134,6 +1135,14 @@ export async function createEdgeDomainRoutes(
     return runWithRequestTiming(async () => {
       const response = await runDomainRequest();
       const timing = currentRequestTiming();
+      if (request.method === "POST" && path === "/v1/messages" && timing !== undefined) {
+        const accepted = messageAcceptedLogLine(
+          payload,
+          response.status,
+          performance.now() - timing.startedAt
+        );
+        if (accepted !== null) console.log(accepted);
+      }
       if (timing !== undefined) {
         const header = serverTimingHeader(timing);
         response.headers.set("Server-Timing", header);

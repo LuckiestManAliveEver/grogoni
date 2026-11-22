@@ -164,6 +164,10 @@ describe("delivered status for Grogoni messages", () => {
         .getConversation({ sessionId: owner.session.id, conversationId })
         .messages.find((item) => item.id === id)?.status;
 
+    // Opening the thread or the inbox on a colleague's device is not delivery either.
+    store.getConversation({ sessionId: staff.session.id, conversationId });
+    store.listConversations({ sessionId: staff.session.id });
+    expect(status(reply.id)).toBe("sent");
     // A colleague's device is not the customer's: the owner's reply stays sent.
     pullAll(store, staff.session.id);
     expect(status(reply.id)).toBe("sent");

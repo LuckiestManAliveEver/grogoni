@@ -25,12 +25,6 @@ import { useCompactViewport } from "./hooks/useCompactViewport";
 import { ChatParticipantsPanel } from "./ChatParticipantsPanel";
 import { AssistantDetailsPanel } from "./AssistantDetailsPanel";
 import { conversationTitle, isAssistantConversation } from "./conversation-title";
-import {
-  AgentSessionHeaderControls,
-  AgentSessionHistory,
-  agentSessionsFor,
-  isAgentSessionConversation
-} from "./AgentSessionControls";
 
 import { ChatComposer } from "./ChatComposer";
 import { readCurrentOwnerRoute } from "./browser-navigation";
@@ -302,10 +296,6 @@ export function ChatSurface({
   );
   const selectedTitle = conversationTitle(selectedConversation);
   const isAssistantSelected = isAssistantConversation(selectedConversation);
-  const [sessionHistoryOpen, setSessionHistoryOpen] = useState(false);
-  const isAgentSession = isAgentSessionConversation(selectedConversation);
-  const agentSessions = agentSessionsFor(conversations, selectedConversation);
-
   // Replies in the permanent daemon conversation come from "My Assistant", not the shop agent.
   const threadAgentName = isAssistantSelected ? permanentDaemonDisplayName : agent.name;
   const isHumanConversation =
@@ -458,7 +448,9 @@ export function ChatSurface({
     onDeleteConversation
   };
 
-  const isHomeConversation = mode === "marketplace" && activeModuleView === null;
+  // Buying and selling share one home surface: an agent chat with nothing in it yet shows the
+  // same welcome and suggestion chips whichever mode the route is in.
+  const isHomeConversation = activeModuleView === null;
   const isHomeEmpty =
     isHomeConversation &&
     !isHumanConversation &&
@@ -501,7 +493,7 @@ export function ChatSurface({
         className="messenger-thread"
         aria-label={showBlankSessionState ? "New chat" : (selectedTitle ?? "Chat")}
       >
-        {showMessageThread && !isHomeEmpty ? (
+        {showMessageThread && !isHomeEmpty && isHumanConversation ? (
           <header className="messenger-thread-header">
             <span
               className={`thread-avatar ${mode === "seller" ? "sell" : "buy"}`}
@@ -577,40 +569,14 @@ export function ChatSurface({
             {!showBlankSessionState ? (
               <WaitingMessagesButton count={queuedMessageCount} onSend={onRetryMessages} />
             ) : null}
-            {isAssistantSelected && activeConversationId !== null ? (
-              <button
-                type="button"
-                className="assistant-details-button"
-                aria-label="My Assistant details"
-                onClick={() => setAssistantDetailsId(activeConversationId)}
-              >
-                Details
-              </button>
-            ) : null}
-            {isAgentSession ? (
-              <AgentSessionHeaderControls
-                historyOpen={sessionHistoryOpen}
-                onToggleHistory={() => setSessionHistoryOpen((open) => !open)}
-                onNewSession={() => {
-                  setSessionHistoryOpen(false);
-                  onCreateAgentSession();
-                }}
-              />
-            ) : null}
             <ConversationExecutionControls
               conversation={selectedConversation}
               businessId={hasBusiness ? businessId : null}
             />
           </header>
-        ) : null}
-        {isAgentSession && sessionHistoryOpen ? (
-          <AgentSessionHistory
-            sessions={agentSessions}
-            onOpen={(conversationId) => {
-              setSessionHistoryOpen(false);
-              onSelectConversation(conversationId);
-            }}
-          />
+        ) : !isHumanConversation && !showBlankSessionState ? (
+          // Agent chats keep the home layout (no thread header), so waiting messages surface here.
+          <WaitingMessagesButton count={queuedMessageCount} onSend={onRetryMessages} />
         ) : null}
         <div
           className={`message-list${isHomeEmpty ? " home-empty-messages" : ""}`}
@@ -667,8 +633,16 @@ export function ChatSurface({
                   ) : (
                     <>
                       {isAssistantSelected ? (
-                        // My Assistant is the account's own agent, not the shop's profile.
-                        permanentDaemonDisplayName
+                        // My Assistant is the account's own agent, not the shop's profile. Agent
+                        // chats have no thread header, so its name is where the details open.
+                        <button
+                          className="message-author-link"
+                          type="button"
+                          aria-label="Open My Assistant details"
+                          onClick={() => setAssistantDetailsId(activeConversationId)}
+                        >
+                          {permanentDaemonDisplayName}
+                        </button>
                       ) : (
                         <button
                           className="message-author-link"
@@ -1101,10 +1075,10 @@ export function ChatSurface({
           onRestoreConversation={onRestoreConversation}
           onEmptyRecycleBin={onEmptyRecycleBin}
         />
-        {mode === "marketplace" &&
-        activeModuleView === null &&
+        {activeModuleView === null &&
+        !isHumanConversation &&
         visibleMessages.filter((message) => message.id !== "welcome").length === 0 ? (
-          <HomeSuggestionChips onSelect={commitDraft} />
+          <HomeSuggestionChips onSelect={commitDraft} seller={mode === "seller" && hasBusiness} />
         ) : null}
         {assistantDetailsId !== null ? (
           <AssistantDetailsPanel

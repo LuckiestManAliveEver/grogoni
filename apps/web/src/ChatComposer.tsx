@@ -237,9 +237,7 @@ export function ChatComposer({
                 ? "Opening this chat…"
                 : !agentControlsAvailable
                   ? "Write a message"
-                  : mode === "seller"
-                    ? "Ask your agent, or type # to call a capability"
-                    : "Ask Grogoni..."
+                  : "Ask Grogoni..."
             }
           />
         </label>

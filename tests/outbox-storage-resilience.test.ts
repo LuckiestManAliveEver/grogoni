@@ -135,6 +135,124 @@ describe("outbox storage resilience", () => {
     newer?.close();
   });
 
+  it("adopts a device database that opens after the deadline, keeping what waited in both", async () => {
+    vi.resetModules();
+    vi.stubGlobal("BroadcastChannel", undefined);
+    const factory = new IDBFactory();
+    localStorage.clear();
+    // An earlier page left a message waiting in the device database.
+    vi.stubGlobal("indexedDB", factory);
+    const earlier = await import("../apps/web/src/messaging/outbox-storage");
+    const earlierOutbox = await import("../apps/web/src/messaging/outbox");
+    await earlier.hydrateMessagingOutbox();
+    earlierOutbox.queueMessagingOutbox(
+      {
+        accountId: "a1",
+        clientMessageId: "left-by-earlier-page",
+        payload: { conversationId: "c" }
+      },
+      earlier.messagingOutboxStorage()
+    );
+    await earlier.flushMessagingOutbox();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    // This page's open is slow (not blocked): it answers after the 3 s deadline.
+    vi.resetModules();
+    const slow = {
+      open: (name: string, version?: number) => {
+        // Every event passes through; only "success" arrives 3.4 s late.
+        const real = factory.open(name, version);
+        const request = {
+          get result() {
+            return real.result;
+          },
+          get error() {
+            return real.error;
+          },
+          onsuccess: null as ((event: Event) => void) | null,
+          onerror: null as ((event: Event) => void) | null,
+          onblocked: null as ((event: Event) => void) | null,
+          onupgradeneeded: null as ((event: Event) => void) | null
+        };
+        real.onupgradeneeded = (event) => request.onupgradeneeded?.(event);
+        real.onblocked = (event) => request.onblocked?.(event);
+        real.onerror = (event) => request.onerror?.(event);
+        real.onsuccess = (event) => void setTimeout(() => request.onsuccess?.(event), 3_400);
+        return request;
+      }
+    } as unknown as IDBFactory;
+    vi.stubGlobal("indexedDB", slow);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const storage = await import("../apps/web/src/messaging/outbox-storage");
+    const outbox = await import("../apps/web/src/messaging/outbox");
+    await storage.hydrateMessagingOutbox();
+    // Past the deadline: this page sends from local storage, and queues a message there.
+    expect(storage.messagingOutboxStorage()).toBe(localStorage);
+    outbox.queueMessagingOutbox(
+      { accountId: "a1", clientMessageId: "queued-meanwhile", payload: { conversationId: "c" } },
+      storage.messagingOutboxStorage()
+    );
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    // The late open is adopted: both messages wait, and local storage holds no copy any more.
+    expect(storage.messagingOutboxStorage()).not.toBe(localStorage);
+    expect(
+      outbox
+        .readMessagingOutbox("a1", storage.messagingOutboxStorage())
+        .map((entry) => entry.clientMessageId)
+        .sort()
+    ).toEqual(["left-by-earlier-page", "queued-meanwhile"]);
+    expect(
+      Object.keys({ ...localStorage }).some((key) => key.startsWith("grogoni.messaging-outbox."))
+    ).toBe(false);
+    warn.mockRestore();
+  }, 15_000);
+
+  it("moves a journal entry written to local storage while the late open migrates", async () => {
+    vi.resetModules();
+    vi.stubGlobal("BroadcastChannel", undefined);
+    // Key order is not insertion order (as in Chromium): a key added mid-scan can sort first.
+    const items = new Map<string, string>();
+    const sorted = {
+      get length() {
+        return items.size;
+      },
+      key: (index: number) => [...items.keys()].sort()[index] ?? null,
+      getItem: (key: string) => items.get(key) ?? null,
+      setItem: (key: string, value: string) => void items.set(key, value),
+      removeItem: (key: string) => void items.delete(key),
+      clear: () => items.clear()
+    };
+    vi.stubGlobal("localStorage", sorted);
+    const factory = new IDBFactory();
+    vi.stubGlobal("indexedDB", factory);
+    const repository = await import("../apps/web/src/sync/indexeddb-repository");
+    const migrate = repository.IndexedDbSyncRepository.prototype.migrateMessagingOutbox;
+    let wroteMidScan = false;
+    const spy = vi
+      .spyOn(repository.IndexedDbSyncRepository.prototype, "migrateMessagingOutbox")
+      .mockImplementation(async function (
+        this: InstanceType<typeof repository.IndexedDbSyncRepository>,
+        key: string,
+        value: string
+      ) {
+        if (!wroteMidScan) {
+          wroteMidScan = true;
+          // A send writes while this migration awaits; its key sorts before the current one.
+          sorted.setItem("grogoni.messaging-outbox.a1:0000-written-mid-scan", '{"m":2}');
+        }
+        return migrate.call(this, key, value);
+      });
+    sorted.setItem("grogoni.messaging-outbox.a1:ffff-before-open", '{"m":1}');
+    const storage = await import("../apps/web/src/messaging/outbox-storage");
+    await storage.hydrateMessagingOutbox();
+    const device = storage.messagingOutboxStorage();
+    expect(device).not.toBe(sorted);
+    expect(device.getItem("grogoni.messaging-outbox.a1:0000-written-mid-scan")).toBe('{"m":2}');
+    expect(device.getItem("grogoni.messaging-outbox.a1:ffff-before-open")).toBe('{"m":1}');
+    expect([...items.keys()]).toEqual([]);
+    spy.mockRestore();
+  });
+
   it("keeps the outbox on local storage when the device database cannot open", async () => {
     vi.resetModules();
     vi.stubGlobal("BroadcastChannel", undefined);

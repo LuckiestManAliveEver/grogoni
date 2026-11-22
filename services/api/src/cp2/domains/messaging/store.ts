@@ -3417,6 +3417,7 @@ export class MessagingDomain {
           session.account.id
         );
         if (participant === null || (!input.includeArchived && participant.archivedAt)) return null;
+        this.markDeliveredToDevice(conversation.id, session.user.id, now);
         const messages = this.messagesForConversation(conversation.id);
         const lastMessage = messages.at(-1) ?? null;
         const lastRead =
@@ -3461,10 +3462,36 @@ export class MessagingDomain {
     conversationId: string;
     now?: Date;
   }): ConversationView {
-    const session = this.deps.requirePinVerifiedSession(input.sessionId, input.now ?? new Date());
-    return this.conversationView(
-      this.requireAccountConversation(input.conversationId, session.account.id)
-    );
+    const now = input.now ?? new Date();
+    const session = this.deps.requirePinVerifiedSession(input.sessionId, now);
+    const conversation = this.requireAccountConversation(input.conversationId, session.account.id);
+    this.markDeliveredToDevice(conversation.id, session.user.id, now);
+    return this.conversationView(conversation);
+  }
+
+  /**
+   * "Delivered" for Grogoni-to-Grogoni messages: another person's message reached this
+   * participant's device when their app fetched it (the inbox or the thread). Only `sent` moves:
+   * a message already delivered, read, failed or still queued keeps its status, so a reread
+   * writes nothing. The sender learns through the participants' sync journal.
+   */
+  private markDeliveredToDevice(conversationId: string, recipientUserId: string, now: Date): void {
+    for (const message of this.messagesForConversation(conversationId)) {
+      if (!this.deliverableTo(message, recipientUserId)) continue;
+      const delivered: ConversationMessageSummary = {
+        ...message,
+        status: "delivered",
+        deliveredAt: message.deliveredAt ?? now.toISOString()
+      };
+      this.conversationMessages.set(delivered.id, delivered);
+      this.recordConversationSyncForParticipants(
+        conversationId,
+        "conversation_messages",
+        delivered.id,
+        delivered,
+        now
+      );
+    }
   }
 
   async deliverWorkspaceFile(input: {
@@ -6760,26 +6787,8 @@ export class MessagingDomain {
       const message = this.conversationMessages.get(id);
       if (
         message === undefined ||
-        message.status !== "sent" ||
-        message.author !== "user" ||
-        message.authorId === input.userId ||
-        message.deletedAt != null ||
-        (message.actualChannel ?? message.selectedChannel ?? "grogoni") !== "grogoni" ||
+        !this.deliverableTo(message, input.userId) ||
         this.accountConversationParticipant(message.conversationId, input.accountId) === null
-      )
-        continue;
-      // In a shop's conversation, only a device on the other side is delivery: a staff member's
-      // pull must not mark the owner's reply to a customer delivered (the customer has not got it).
-      // Sides come from shop membership, not the conversation's account: a storefront visitor's
-      // chat belongs to the owner's account. The Edge snapshot scope loads the shop's memberships
-      // for sync pulls (edge_conversation_shop_ids) so this holds there too.
-      const conversation = this.conversations.get(message.conversationId);
-      const shopId =
-        conversation && conversation.kind !== "personal" ? conversation.activeShopId : null;
-      if (
-        shopId !== null &&
-        this.isShopMemberUser(message.authorId, shopId) ===
-          this.isShopMemberUser(input.userId, shopId)
       )
         continue;
       const delivered: ConversationMessageSummary = {
@@ -6798,6 +6807,32 @@ export class MessagingDomain {
       marked += 1;
     }
     return marked;
+  }
+
+  /**
+   * Whether this user's device receiving the message is delivery. Only another person's `sent`
+   * Grogoni message moves (a reread writes nothing). In a shop's conversation only a device on the
+   * other side counts: a staff member's device must not mark the owner's reply to a customer
+   * delivered (the customer has not got it). Sides come from shop membership, not the
+   * conversation's account (a storefront visitor's chat belongs to the owner's account); with the
+   * shop's memberships not loaded both sides read as non-members and nothing is marked.
+   */
+  private deliverableTo(message: ConversationMessageSummary, userId: string): boolean {
+    if (
+      message.status !== "sent" ||
+      message.author !== "user" ||
+      message.authorId === userId ||
+      message.deletedAt != null ||
+      (message.actualChannel ?? message.selectedChannel ?? "grogoni") !== "grogoni"
+    )
+      return false;
+    const conversation = this.conversations.get(message.conversationId);
+    const shopId =
+      conversation && conversation.kind !== "personal" ? conversation.activeShopId : null;
+    return (
+      shopId === null ||
+      this.isShopMemberUser(message.authorId, shopId) !== this.isShopMemberUser(userId, shopId)
+    );
   }
 
   private isShopMemberUser(userId: string, shopId: string): boolean {

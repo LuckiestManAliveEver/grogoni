@@ -290,7 +290,7 @@ for (const width of [1280, 390])
     await details.getByRole("button", { name: "Close My Assistant details" }).click();
     await expect(details).toHaveCount(0);
 
-    // Entry point 2: the thread header, once the assistant chat has messages.
+    // Entry point 2: the author name on an assistant message, once the chat has messages.
     messages = [
       {
         id: "assistant-reply",
@@ -325,20 +325,15 @@ for (const width of [1280, 390])
       });
     }
     await item.locator(".conversation-select").click();
-    const header = page.locator(".messenger-thread-header");
-    await expect(header).toContainText("My Assistant", { timeout: 20000 });
-    await expect(header).not.toContainText("daemon");
-    await expect(page.locator(".message.grogoniclaw .message-author").first()).toContainText(
-      "My Assistant"
-    );
-    await header.getByRole("button", { name: "My Assistant details", exact: true }).click();
+    // Agent chats share the home shell (no thread header): the author name opens the details.
+    await expect(page.locator(".messenger-thread-header")).toHaveCount(0);
+    const author = page.locator(".message.grogoniclaw .message-author").first();
+    await expect(author).toContainText("My Assistant", { timeout: 20000 });
+    await expect(author).not.toContainText("daemon");
+    await author.getByRole("button", { name: "Open My Assistant details", exact: true }).click();
     await expect(details).toBeVisible();
     await expect(agent).toHaveValue("pi");
     await expect(model).toHaveValue("model-b");
-    await details.getByRole("button", { name: "Close My Assistant details" }).click();
-    // The fixed title opens the same details instead of a rename form.
-    await header.getByRole("button", { name: "Open My Assistant details" }).click();
-    await expect(details).toBeVisible();
     await expect(page.getByLabel("Conversation topic")).toHaveCount(0);
     await page.screenshot({ path: `test-results/my-assistant-details-header-${width}.png` });
   });

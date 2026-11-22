@@ -9,6 +9,8 @@ let repository: IndexedDbSyncRepository | null = null;
 let opening: Promise<void> | null = null;
 let writes: Promise<void> = Promise.resolve();
 let failure: unknown = null;
+// A slow device-database open is still being waited for (it is adopted when it opens).
+let adoptingLate = false;
 const hydrateTimeoutMs = 3_000;
 let channel: BroadcastChannel | null = null;
 const changed = () => window.dispatchEvent(new Event("grogoni:messaging-outbox-change"));
@@ -98,62 +100,75 @@ export async function hydrateMessagingOutbox(): Promise<void> {
         }
       };
     }
-    // Bounded: an open blocked by an older tab must not hold every send (they await this).
-    let timedOut = false;
+    // Bounded: a slow open must not hold every send (they await this). A blocked open already
+    // fails fast; a slow one is adopted when it arrives (adopt below), with what was written to
+    // local storage meanwhile, so messages left by an earlier page are not hidden all session.
     const openRequest = openIndexedDbSyncRepository();
-    void openRequest.then(
-      (late) => {
-        if (timedOut) late.close();
-      },
-      () => undefined
-    );
-    const opened = await Promise.race([
-      openRequest,
-      new Promise<never>((_resolve, reject) =>
-        setTimeout(() => {
-          timedOut = true;
-          reject(new Error("Opening the device outbox timed out."));
-        }, hydrateTimeoutMs)
-      )
-    ]);
-    // Closed by a newer version before this finished loading: fall back (the catch below).
-    let closedWhileLoading = false;
-    opened.onVersionClose = () => {
-      closedWhileLoading = true;
-    };
-    const existing = await opened.loadMessagingOutbox();
-    for (const entry of existing) values.set(entry.key, entry.value);
-    // Existing installations migrate the append-only journal without combining entries.
-    const migrated: string[] = [];
-    for (let index = 0; index < localStorage.length; index += 1) {
-      const key = localStorage.key(index);
-      if (!key?.startsWith(prefix)) continue;
-      const value = localStorage.getItem(key);
-      if (value === null) continue;
-      if (!values.has(key)) {
-        values.set(key, await opened.migrateMessagingOutbox(key, value));
+    const adopt = async (opened: IndexedDbSyncRepository) => {
+      // Closed by a newer version before this finished loading: fall back (the catch below).
+      let closedWhileLoading = false;
+      opened.onVersionClose = () => {
+        closedWhileLoading = true;
+      };
+      const existing = await opened.loadMessagingOutbox();
+      for (const entry of existing) values.set(entry.key, entry.value);
+      // Existing installations migrate the append-only journal without combining entries. Sends
+      // can write to local storage while this awaits (after a late open they no longer wait for
+      // it), and storage order is not insertion order: scan again until a pass finds nothing new.
+      // That last pass does no await, so nothing is written between it and the switch below.
+      const migrated = new Set<string>();
+      for (;;) {
+        const fresh: Array<[string, string]> = [];
+        for (let index = 0; index < localStorage.length; index += 1) {
+          const key = localStorage.key(index);
+          if (!key?.startsWith(prefix) || migrated.has(key)) continue;
+          const value = localStorage.getItem(key);
+          if (value !== null) fresh.push([key, value]);
+        }
+        if (fresh.length === 0) break;
+        for (const [key, value] of fresh) {
+          if (!values.has(key)) values.set(key, await opened.migrateMessagingOutbox(key, value));
+          migrated.add(key);
+        }
       }
-      migrated.push(key);
+      if (closedWhileLoading) {
+        // The newer tab holds (and sends) what was loaded; this tab works from local storage.
+        values.clear();
+        throw new Error("Outbox upgraded in another tab.");
+      }
+      repository = opened;
+      opened.onVersionClose = useLocalStorageFromNow;
+      for (const key of migrated) localStorage.removeItem(key);
+      for (const row of received) {
+        if (row.value === null) values.delete(row.key);
+        else values.set(row.key, row.value);
+      }
+      loaded = true;
+      adoptingLate = false;
+      changed();
+    };
+    const first = await Promise.race([
+      openRequest,
+      new Promise<"late">((resolve) => setTimeout(() => resolve("late"), hydrateTimeoutMs))
+    ]);
+    if (first === "late") {
+      adoptingLate = true;
+      void openRequest.then(adopt).catch((error: unknown) => {
+        adoptingLate = false;
+        channel?.close();
+        channel = null;
+        console.warn("[Grogoni] Outbox on local storage.", error);
+      });
+      throw new Error("Opening the device outbox timed out.");
     }
-    if (closedWhileLoading) {
-      // The newer tab holds (and sends) what was loaded; this tab works from local storage.
-      values.clear();
-      throw new Error("Outbox upgraded in another tab.");
-    }
-    repository = opened;
-    opened.onVersionClose = useLocalStorageFromNow;
-    for (const key of migrated) localStorage.removeItem(key);
-    for (const row of received) {
-      if (row.value === null) values.delete(row.key);
-      else values.set(row.key, row.value);
-    }
-    loaded = true;
-    changed();
+    await adopt(first);
   })().catch((error: unknown) => {
     // The outbox keeps working on localStorage (messagingOutboxStorage falls back): a device
-    // database that cannot open must never turn a send into a failure. Not retried this session.
-    channel?.close();
-    channel = null;
+    // database that cannot open must never turn a send into a failure.
+    if (!adoptingLate) {
+      channel?.close();
+      channel = null;
+    }
     console.warn("[Grogoni] Outbox on local storage.", error);
   });
   return opening;

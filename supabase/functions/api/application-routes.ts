@@ -1,4 +1,4 @@
-import { messageEventStream, type JournalProbe } from "./message-events.ts";
+import { messageEventStream } from "./message-events.ts";
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import { Buffer } from "node:buffer";
 import { sessionCookie, type SqlClient, type Transaction } from "./session-routes.ts";
@@ -146,42 +146,6 @@ function auth(request: Request) {
   return sessionId;
 }
 
-/** A live session: `$1` is the session id. The one definition for every session check. */
-const liveSessionWhere = `s.id = $1 and s.revoked_at is null and s.expires_at > now()
-       and s.inactivity_expires_at > now() and s.absolute_expires_at > now()
-       and a.status = 'active' and a.deleted_at is null`;
-
-/**
- * The message hint stream's probe: the session check and the journal read in one query (one
- * transaction), instead of two transactions every 500 ms per open stream. `accountId` is null
- * when the session is no longer live, which closes the stream.
- */
-export function sessionJournalProbe(request: Request): JournalProbe {
-  const sessionId = sessionCookie(request);
-  return async (client, cursor) => {
-    if (!sessionId) return { accountId: null, rows: [] };
-    const result = await client.query(
-      `with me as (
-         select s.account_id from sessions s join accounts a on a.id = s.account_id
-         where ${liveSessionWhere})
-       select me.account_id::text as account_id, c.sequence::text as sequence, c.collection,
-         c.entity_id, c.entity->>'conversationId' as conversation_id
-       from me left join lateral (
-         select sequence, collection, entity_id, entity from account_sync_changes
-         where account_id = me.account_id and sequence > $2::bigint
-         order by sequence limit 100) c on true
-       order by c.sequence`,
-      [sessionId, cursor]
-    );
-    const first = result.rows[0];
-    if (!first) return { accountId: null, rows: [] };
-    return {
-      accountId: String(first.account_id),
-      rows: result.rows.filter((row) => row.sequence !== null)
-    };
-  };
-}
-
 /** The live session's account and user, or null for a missing, expired or revoked session. */
 export async function findSessionUser(
   client: SqlClient,
@@ -191,7 +155,9 @@ export async function findSessionUser(
   if (!sessionId) return null;
   const result = await client.query(
     `select s.account_id, s.user_id from sessions s join accounts a on a.id = s.account_id
-     where ${liveSessionWhere}`,
+     where s.id = $1 and s.revoked_at is null and s.expires_at > now()
+       and s.inactivity_expires_at > now() and s.absolute_expires_at > now()
+       and a.status = 'active' and a.deleted_at is null`,
     [sessionId]
   );
   const row = result.rows[0];
@@ -281,8 +247,7 @@ export function createApplicationRoutes({
         return await messageEventStream(
           request,
           recordTransaction,
-          async () => (await recordTransaction((client) => actor(client, request))).accountId,
-          { probe: sessionJournalProbe(request) }
+          async () => (await recordTransaction((client) => actor(client, request))).accountId
         );
       // Job routes check the operator token before touching the database: they are exempt
       // from the rate limit, so an unauthenticated caller must not reach a connection or lock.

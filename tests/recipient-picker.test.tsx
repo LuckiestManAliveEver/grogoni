@@ -2,6 +2,7 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
+import type { ConversationInboxItem } from "@grogoni/shared-types";
 import { RecipientPicker, normalizedRecipient } from "../apps/web/src/RecipientPicker";
 
 describe("new message recipient picker", () => {
@@ -122,84 +123,114 @@ describe("new message recipient picker", () => {
     }
   });
 
-  async function renderPicker(recent: unknown[] = []) {
+  function renderPicker(
+    recent: Array<{
+      id: string;
+      title: string | null;
+      helpTopic?: string | null;
+      isPermanentDaemon?: boolean;
+    }>,
+    handlers: { choose?: () => void; open?: (id: string) => void; sms?: () => void } = {}
+  ) {
     (
       globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
     ).IS_REACT_ACT_ENVIRONMENT = true;
     const host = document.createElement("div");
     document.body.append(host);
     const root = createRoot(host);
-    const calls = { choose: vi.fn(), sms: vi.fn(), open: vi.fn() };
-    await act(async () =>
+    act(() =>
       root.render(
         <RecipientPicker
           contacts={[]}
-          recent={recent as never}
-          onChoose={calls.choose}
-          onOpen={calls.open}
-          onSms={calls.sms}
+          recent={
+            recent.map((item) => ({
+              helpTopic: null,
+              isPermanentDaemon: false,
+              ...item
+            })) as unknown as ConversationInboxItem[]
+          }
+          onChoose={handlers.choose ?? (() => undefined)}
+          onOpen={handlers.open ?? (() => undefined)}
+          onSms={handlers.sms ?? (() => undefined)}
           onClose={() => undefined}
+          adapter={{ source: "browser", isSupported: () => false, select: vi.fn() }}
         />
       )
     );
-    const type = async (value: string) => {
-      const input = host.querySelector("input[type='search']") as HTMLInputElement;
-      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
-      await act(async () => {
+    const buttons = () => Array.from(host.querySelectorAll("button")).map((b) => b.textContent);
+    const type = (value: string) =>
+      act(() => {
+        const input = host.querySelector("input")!;
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
         setter.call(input, value);
         input.dispatchEvent(new Event("input", { bubbles: true }));
       });
+    const click = (label: string) =>
+      act(() =>
+        Array.from(host.querySelectorAll("button"))
+          .find((button) => button.textContent === label)!
+          .click()
+      );
+    const cleanup = () => {
+      act(() => root.unmount());
+      host.remove();
     };
-    const button = (text: string) =>
-      Array.from(host.querySelectorAll("button")).find((item) => item.textContent === text);
-    return { host, root, calls, type, button };
+    return { host, buttons, type, click, cleanup };
   }
 
-  it("keeps Grogoni chat and SMS as separate, explicit choices", async () => {
-    const picker = await renderPicker();
+  it("lists recent conversations by title, skips help topics, filters by the search and caps at 12", () => {
+    const open = vi.fn();
+    const recent = [
+      { id: "help", title: "How do I add stock?", helpTopic: "stock" },
+      { id: "assistant", title: "Your daemon", isPermanentDaemon: true },
+      ...Array.from({ length: 14 }, (_, index) => ({ id: `c${index}`, title: `Jane ${index}` }))
+    ];
+    const picker = renderPicker(recent, { open });
     try {
-      await picker.type("0712 345678");
-      expect(picker.host.textContent).toContain("+254712345678");
-      expect(picker.host.textContent).toContain("end-to-end encryption");
-      await act(async () => picker.button("Open Grogoni chat")!.click());
-      expect(picker.calls.choose).toHaveBeenCalledWith("+254712345678", "");
-      expect(picker.calls.sms).not.toHaveBeenCalled();
-      await act(async () => picker.button("Send as SMS")!.click());
-      expect(picker.calls.sms).toHaveBeenCalledWith("+254712345678", "");
-      // An email address can only be a Grogoni chat: no SMS option at all.
-      await picker.type("Amina@Example.com");
-      expect(picker.button("Open Grogoni chat")).toBeDefined();
-      expect(picker.button("Send as SMS")).toBeUndefined();
+      const listed = picker.buttons();
+      expect(listed).not.toContain("How do I add stock?");
+      expect(listed).toContain("My Assistant");
+      expect(listed).not.toContain("Your daemon");
+      // My Assistant plus the first 11 others: twelve recents at most.
+      expect(
+        listed.filter((label) => label === "My Assistant" || /^Jane \d+$/u.test(label!))
+      ).toHaveLength(12);
+      picker.type("jane 13");
+      expect(picker.buttons().filter((label) => /^Jane/u.test(label!))).toEqual(["Jane 13"]);
+      picker.click("Jane 13");
+      expect(open).toHaveBeenCalledWith("c13");
     } finally {
-      act(() => picker.root.unmount());
+      picker.cleanup();
     }
   });
 
-  it("lists recent conversations, searchable, without help topics, and opens the existing thread", async () => {
-    const conversation = (id: string, title: string, extra: Record<string, unknown> = {}) => ({
-      id,
-      title,
-      kind: "personal",
-      helpTopic: null,
-      ...extra
-    });
-    const picker = await renderPicker([
-      conversation("c-amina", "Amina Wanjiku"),
-      conversation("c-otieno", "Otieno Hardware"),
-      conversation("c-help", "Billing help", { helpTopic: "billing" })
-    ]);
+  it("makes the transport an explicit choice: Grogoni chat or SMS for a number, Grogoni only for email", () => {
+    const choose = vi.fn();
+    const sms = vi.fn();
+    const picker = renderPicker([], { choose, sms });
     try {
-      const recents = () =>
-        Array.from(picker.host.querySelectorAll("button"))
-          .map((item) => item.textContent)
-          .filter((text) => ["Amina Wanjiku", "Otieno Hardware", "Billing help"].includes(text!));
-      expect(recents()).toEqual(["Amina Wanjiku", "Otieno Hardware"]);
-      await picker.type("otie");
-      expect(recents()).toEqual(["Otieno Hardware"]);
-      await act(async () => picker.button("Otieno Hardware")!.click());
-      expect(picker.calls.open).toHaveBeenCalledWith("c-otieno");
+      picker.type("0712 345678");
+      expect(picker.host.textContent).toContain(
+        "Grogoni messages use end-to-end encryption. SMS uses your carrier."
+      );
+      expect(picker.buttons()).toEqual(
+        expect.arrayContaining(["Open Grogoni chat", "Send as SMS"])
+      );
+      picker.click("Send as SMS");
+      expect(sms).toHaveBeenCalledWith("+254712345678", "");
+      expect(choose).not.toHaveBeenCalled();
+      picker.click("Open Grogoni chat");
+      expect(choose).toHaveBeenCalledWith("+254712345678", "");
+
+      picker.type("Person@Example.com");
+      expect(picker.buttons()).toContain("Open Grogoni chat");
+      expect(picker.buttons()).not.toContain("Send as SMS");
+
+      picker.type("12345");
+      expect(picker.buttons()).not.toContain("Open Grogoni chat");
+      expect(picker.host.textContent).toContain("enter a valid full phone number or email");
     } finally {
-      act(() => picker.root.unmount());
+      picker.cleanup();
     }
   });
 });
