@@ -29,11 +29,11 @@ Tick an item only in the same commit that adds its evidence.
 - [x] Recycle bin and restore. evidence: tests/conversation-recycle-bin.test.ts
 - [x] Contact privacy and blocking. evidence: tests/messenger-contact-privacy.test.ts
 - [x] A send stopped before it leaves the device gives the draft back. evidence: tests/send-stopped-returns-draft.test.tsx
-- [ ] Kept sends count as on-device model history (instant-messaging-remaining §5).
-- [ ] A blocked sync database retries once the blocking tab closes (instant-messaging-remaining §5).
-- [ ] Outbox load pass reruns after a late device-database open (instant-messaging-remaining §5).
-- [ ] Another open tab's outbox entries are left to that tab (instant-messaging-remaining §5).
-- [ ] Voice notes: record and send audio in a conversation.
+- [x] Kept sends count as on-device model history. evidence: tests/user-journey-fixes.test.tsx
+- [x] A blocked sync database retries once the blocking tab closes. evidence: tests/sync-open-when-free.test.ts
+- [x] Outbox load pass reruns after a late device-database open, and a failed open is retried. evidence: tests/outbox-storage-resilience.test.ts
+- [x] Another open tab's outbox entries are left to that tab. evidence: tests/outbox-live-tab-entries.test.ts
+- [x] Voice notes: record in the composer, send as an audio attachment, play inline. evidence: tests/voice-notes.test.tsx
 - [ ] One-to-one voice calls.
 - [ ] One-to-one video calls.
 
@@ -53,7 +53,7 @@ Tick an item only in the same commit that adds its evidence.
 ## Business messaging (weight 20)
 
 - [x] Storefront conversations from a public shop page. evidence: tests/public-storefront-panel.test.tsx, tests/storefront-interaction-contracts.test.ts
-- [ ] Order conversations covered by a test (the store accepts `kind: "order"`; no test exercises it).
+- [x] Order conversations: one thread per order, shop staff answer, outsiders kept out. evidence: tests/order-conversations.test.ts
 - [x] The shop's agent answers buyers. evidence: tests/buyer-shopping-assistant.test.ts
 - [x] Human messaging keeps working when the agent is down. evidence: tests/agent-outage-human-messaging.test.ts
 - [x] External channels: WhatsApp linked device, Telegram, SMS gateway. evidence: tests/external-messaging-api.test.ts, tests/omnichannel-messaging-gateway.test.ts
