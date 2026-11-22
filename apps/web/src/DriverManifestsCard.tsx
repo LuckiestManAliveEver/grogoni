@@ -11,6 +11,8 @@ import { ApiRequestError } from "./lib/api";
 import { getUserFacingErrorMessage } from "./user-facing-error";
 import { formatMoney } from "./formatters";
 import { fulfillmentCopy } from "./fulfillment-copy";
+import { currentManifestStopId, manifestStopState } from "./fulfillment-route";
+import { ManifestStopMarker, ManifestTripStrip } from "./ManifestRoute";
 
 type DeliveryOutcome = "ARRIVED" | "DELIVERED" | "FAILED" | "SKIPPED";
 
@@ -115,15 +117,27 @@ export default function DriverManifestsCard(props: {
       {(manifests ?? []).map((manifest) => {
         const stops = manifest.stops.filter((stop) => stop.allocationActive);
         const recording = manifest.status === "CLOSED" || manifest.status === "DEPARTED";
+        const currentStopId = currentManifestStopId(manifest);
         return (
-          <article className="mini-card manifest-card" key={manifest.id}>
+          <article
+            className="mini-card manifest-card"
+            key={manifest.id}
+            data-manifest-status={manifest.status}
+          >
             <strong>
               {t.manifestStatus[manifest.status]} · {t.stopsCount(stops.length)} ·{" "}
               {kg(manifest.totalWeightGrams)}
             </strong>
-            <ol className="manifest-stops">
+            <ManifestTripStrip manifest={manifest} />
+            <ol className="manifest-stops manifest-route">
               {stops.map((stop) => (
-                <li key={stop.id}>
+                <li
+                  key={stop.id}
+                  data-delivery-status={manifestStopState(stop)}
+                  className={stop.id === currentStopId ? "current" : undefined}
+                  aria-current={stop.id === currentStopId ? "step" : undefined}
+                >
+                  <ManifestStopMarker current={stop.id === currentStopId} />
                   <span>
                     {stop.sequence}. {stop.customerName ?? t.walkIn} · {kg(stop.orderWeightGrams)} ·{" "}
                     {t.stopStatus[stop.deliveryStatus]}

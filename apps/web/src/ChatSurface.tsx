@@ -48,6 +48,9 @@ import {
 import { conversationMessageText, isRedundantAgentErrorMessage } from "./chat-message-plumbing";
 
 import { ShopPresenceButtons } from "./ShopPresenceButtons";
+import { ShopSign } from "./ShopSign";
+import { KangaAvatar } from "./KangaAvatar";
+import { counterpartShopId } from "./kanga-identity";
 
 import { MarketplaceModeCard } from "./MarketplaceModeCard";
 import { StorefrontPreviewCard } from "./StorefrontPreviewCard";
@@ -296,6 +299,15 @@ export function ChatSurface({
     (conversation) => conversation.id === activeConversationId
   );
   const selectedTitle = conversationTitle(selectedConversation);
+  // Design D: the other shop's kanga avatar in a customer's shop chat, and the owner's own shop sign
+  // in their shop's customer chats. A customer never sees another shop's live presence here: the
+  // presence route is members-only (CP2Store.getShopPresence).
+  const threadShopId = counterpartShopId(selectedConversation, businessId);
+  const ownShopSignVisible =
+    mode === "seller" &&
+    businessId !== null &&
+    selectedConversation?.conversationType === "BUSINESS" &&
+    selectedConversation.activeShopId === businessId;
   const isAssistantSelected = isAssistantConversation(selectedConversation);
   // Replies in the permanent daemon conversation come from "My Assistant", not the shop agent.
   const threadAgentName = isAssistantSelected ? permanentDaemonDisplayName : agent.name;
@@ -406,6 +418,7 @@ export function ChatSurface({
   }, [activeConversationId, messages.length, showMessageThread, workspaceCardView]);
 
   const conversationListPanelProps = {
+    ownBusinessId: businessId,
     onOpenAssistantDetails: setAssistantDetailsId,
     pinnedAgent:
       conversations.find((conversation) => isAssistantConversation(conversation)) ??
@@ -496,15 +509,23 @@ export function ChatSurface({
       >
         {showMessageThread && !isHomeEmpty && isHumanConversation ? (
           <header className="messenger-thread-header">
-            <span
-              className={`thread-avatar ${mode === "seller" ? "sell" : "buy"}`}
-              aria-hidden="true"
-            >
-              {(showBlankSessionState ? "New chat" : (selectedTitle ?? agent.name))
-                .trim()
-                .slice(0, 1)
-                .toUpperCase()}
-            </span>
+            {threadShopId !== null ? (
+              <KangaAvatar
+                className="thread-avatar"
+                shopId={threadShopId}
+                name={selectedTitle ?? agent.name}
+              />
+            ) : (
+              <span
+                className={`thread-avatar ${mode === "seller" ? "sell" : "buy"}`}
+                aria-hidden="true"
+              >
+                {(showBlankSessionState ? "New chat" : (selectedTitle ?? agent.name))
+                  .trim()
+                  .slice(0, 1)
+                  .toUpperCase()}
+              </span>
+            )}
             <div>
               {editingTopic !== null ? (
                 <form
@@ -567,6 +588,11 @@ export function ChatSurface({
                       }`}
               </small>
             </div>
+            {ownShopSignVisible ? (
+              <span className="thread-shop-sign">
+                <ShopSign status={shopPresenceStatus} onChange={onStatusChange} />
+              </span>
+            ) : null}
             {!showBlankSessionState ? (
               <WaitingMessagesButton count={queuedMessageCount} onSend={onRetryMessages} />
             ) : null}

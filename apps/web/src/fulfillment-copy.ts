@@ -1,6 +1,7 @@
 import type {
   CorridorPoolReadiness,
   DispatchFallbackAction,
+  FulfillmentStatus,
   ManifestStatus,
   ManifestStopDeliveryStatus
 } from "@grogoni/shared-types";
@@ -104,6 +105,23 @@ const en = {
   driverLeft: "Driver no longer in this business",
   assignDriver: "Assign driver",
   stopsCount: (count: number) => (count === 1 ? "1 stop" : `${count} stops`),
+  fulfillmentStatus: {
+    pending: "Pending",
+    ready: "Ready",
+    out_for_delivery: "Out for delivery",
+    completed: "Completed",
+    cancelled: "Cancelled"
+  } satisfies Record<FulfillmentStatus, string>,
+  routeStop: {
+    received: "Received",
+    ready: "Ready",
+    onTheWay: "On the way",
+    delivered: "Delivered",
+    collected: "Collected"
+  },
+  routeProgress: (label: string) => `Delivery progress: ${label}`,
+  tripProgress: (done: number, total: number) => `${done} of ${total} stops done`,
+  poolLoad: (percent: number) => `Load ${percent}% of target`,
   setup: "Delivery setup",
   setupHeading: "Set up corridor deliveries",
   setupIntro:
@@ -266,6 +284,23 @@ const sw: FulfillmentCopy = {
   driverLeft: "Dereva hayupo tena kwenye biashara hii",
   assignDriver: "Mpe dereva",
   stopsCount: (count: number) => (count === 1 ? "kituo 1" : `vituo ${count}`),
+  fulfillmentStatus: {
+    pending: "Inasubiri",
+    ready: "Tayari",
+    out_for_delivery: "Iko njiani",
+    completed: "Imekamilika",
+    cancelled: "Imeghairiwa"
+  },
+  routeStop: {
+    received: "Imepokelewa",
+    ready: "Tayari",
+    onTheWay: "Njiani",
+    delivered: "Imefika",
+    collected: "Imechukuliwa"
+  },
+  routeProgress: (label: string) => `Hatua ya usafirishaji: ${label}`,
+  tripProgress: (done: number, total: number) => `Vituo ${done} kati ya ${total} vimekamilika`,
+  poolLoad: (percent: number) => `Mzigo ${percent}% ya lengo`,
   setup: "Mipangilio ya usafirishaji",
   setupHeading: "Andaa usafirishaji kwa njia",
   setupIntro:
