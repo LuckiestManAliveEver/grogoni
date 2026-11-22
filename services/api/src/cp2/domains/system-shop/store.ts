@@ -159,11 +159,17 @@ export class SystemShopDomain {
     }
 
     const presence = this.deps.storedShopPresence(systemShop.businessId);
-    if (presence?.status !== "online" || presence.catalogueShareable !== true) {
+    if (
+      presence?.status !== "online" ||
+      presence.catalogueShareable !== true ||
+      presence.category !== systemShop.directoryCategory
+    ) {
       this.deps.setShopPresence({
+        ...presence,
         businessId: systemShop.businessId,
         status: "online",
         catalogueShareable: true,
+        category: systemShop.directoryCategory,
         updatedBy: systemShop.userId,
         updatedAt: at
       });

@@ -7,10 +7,16 @@ import type { ShopPresenceSummary } from "@grogoni/shared-types";
 
 const getJson = vi.fn();
 const patchJson = vi.fn();
+// The owner check (useIsShopOwner): an owner unless a test says otherwise.
+const postJson = vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => ({
+  allowed: true,
+  role: "owner"
+}));
 
 vi.mock("../apps/web/src/api-helpers", () => ({
   getJson: (...args: unknown[]) => getJson(...args),
-  patchJson: (...args: unknown[]) => patchJson(...args)
+  patchJson: (...args: unknown[]) => patchJson(...args),
+  postJson: (...args: unknown[]) => postJson(...args)
 }));
 
 const { default: CatalogueShareSettingsCard } =

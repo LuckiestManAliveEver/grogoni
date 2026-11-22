@@ -8830,6 +8830,7 @@ export class Cp2Store {
       ...this.shopPresenceForBusiness(input.businessId),
       category: input.category,
       place: place.length === 0 ? null : place,
+      placeKey: place.length === 0 ? null : place.toLowerCase(),
       updatedBy: session.user.id,
       updatedAt: now.toISOString()
     };
@@ -18627,6 +18628,7 @@ function systemShopPlanStorefront(): PublicStorefrontSummary {
     pinned: true,
     operatedBy: "marketplace_agent",
     presence: { status: "online", updatedAt: new Date(0).toISOString() },
+    category: systemShop.directoryCategory,
     products: systemShopProductPlan().map((product) => ({
       id: product.id,
       name: product.name,

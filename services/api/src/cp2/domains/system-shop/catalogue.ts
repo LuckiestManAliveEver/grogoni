@@ -39,7 +39,12 @@ export const systemShop = {
    * reach this address. The account is also `suspended`, which every sign-in path refuses.
    */
   operatorDestination: "marketplace-agent@system.grogoni.invalid",
-  currency: "KES"
+  currency: "KES",
+  /**
+   * Its shop directory category (a general duka). No place: it is a demo shop with no address,
+   * and a made-up town would send buyers looking for it.
+   */
+  directoryCategory: "groceries"
 } as const;
 
 /** Stock the Marketplace Agent keeps on every product. */

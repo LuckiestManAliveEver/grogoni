@@ -72,4 +72,56 @@ describe("MarketplaceModeCard", () => {
     expect(host.textContent).not.toContain("grogoni.mama-mboga");
     expect(host.textContent).not.toContain("grogoni.amina-fresh");
   });
+
+  it("nudges the owner to add a directory listing until the shop has one", () => {
+    const ownShop = (listing: Partial<PublicStorefrontSummary>): PublicStorefrontSummary => ({
+      ...otherShop,
+      agentId: "grogoni.mama-mboga",
+      grogoniId: "grogoni.mama-mboga",
+      commerceAddress: "mama-mboga@grogoni.com",
+      businessName: "Mama Mboga",
+      ...listing
+    });
+    root = createRoot(host);
+    const render = (storefronts: PublicStorefrontSummary[]) =>
+      act(() => {
+        root.render(
+          <MarketplaceModeCard
+            businessName="Mama Mboga"
+            hasBusiness
+            isAuthenticated
+            isIntro={false}
+            isLoadingStorefronts={false}
+            productCount={3}
+            publicStorefronts={storefronts}
+            grogoniId="grogoni.mama-mboga"
+            buyFeed={null}
+            isSearchingBuyFeed={false}
+            buyCart={[]}
+            isCheckingOut={false}
+            onOpenStore={noop}
+            onCompleteIntro={noop}
+            onPrompt={noop}
+            onRefreshStorefronts={noop}
+            onSell={noop}
+            onSearchBuyFeed={noop}
+            onAddToCart={noop}
+            onRemoveFromCart={noop}
+            onCheckout={noop}
+            onSignUp={noop}
+          />
+        );
+      });
+    const nudge = /Buyers can.t find Mama Mboga/u;
+    render([otherShop, ownShop({})]);
+    expect(host.textContent).toMatch(nudge);
+    render([otherShop, ownShop({ category: "fresh_produce" })]);
+    expect(host.textContent).not.toMatch(nudge);
+    // A filtered list without the owner's shop says nothing either way.
+    render([otherShop]);
+    expect(host.textContent).not.toMatch(nudge);
+    // Shown on each listed card: category label and place.
+    render([ownShop({ category: "fresh_produce", place: "Westlands" })]);
+    expect(host.textContent).toContain("Fruit and vegetables · Westlands");
+  });
 });

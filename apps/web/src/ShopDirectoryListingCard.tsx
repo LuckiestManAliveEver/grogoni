@@ -3,6 +3,7 @@ import { shopPlaceMaxLength, type ShopPresenceSummary } from "@grogoni/shared-ty
 
 import { getJson, patchJson } from "./api-helpers";
 import { useAsyncActions } from "./hooks/useAsyncActions";
+import { useIsShopOwner } from "./hooks/useIsShopOwner";
 import { shopCategories, shopCategoryLabels, type ShopCategory } from "./shop-directory";
 import { getUserFacingErrorMessage } from "./user-facing-error";
 
@@ -18,6 +19,8 @@ export default function ShopDirectoryListingCard(props: { businessId: string }) 
   const [place, setPlace] = useState("");
   const [message, setMessage] = useState("");
   const [attempt, setAttempt] = useState(0);
+  const owner = useIsShopOwner(props.businessId);
+  const readOnly = owner === false;
 
   useEffect(() => {
     let cancelled = false;
@@ -87,10 +90,12 @@ export default function ShopDirectoryListingCard(props: { businessId: string }) 
             Buyers searching the marketplace can filter by what a shop sells and where it is. A
             private shop is never listed.
           </p>
+          {readOnly ? <p className="shell-note">Only the shop owner can change this.</p> : null}
           <label>
             What you sell
             <select
               value={category}
+              disabled={readOnly}
               onChange={(event) => setCategory(event.target.value as ShopCategory | "")}
             >
               <option value="">Not set</option>
@@ -106,13 +111,16 @@ export default function ShopDirectoryListingCard(props: { businessId: string }) 
             <input
               value={place}
               maxLength={shopPlaceMaxLength}
+              disabled={readOnly}
               placeholder="For example Westlands, Nairobi"
               onChange={(event) => setPlace(event.target.value)}
             />
           </label>
-          <button type="submit" disabled={isPending("shop-directory-save")}>
-            Save listing
-          </button>
+          {readOnly ? null : (
+            <button type="submit" disabled={isPending("shop-directory-save")}>
+              Save listing
+            </button>
+          )}
           {message.length > 0 ? (
             <p className="shell-note" role="status">
               {message}

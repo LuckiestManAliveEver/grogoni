@@ -3152,6 +3152,13 @@ a.button-like {
   font-size: 12px;
 }
 
+.shop-directory-nudge {
+  border-left: 3px solid #d9a441;
+  color: #e7d6ae;
+  margin: 0;
+  padding: 4px 8px;
+}
+
 .public-shop-listing {
   color: #acceb9;
 }

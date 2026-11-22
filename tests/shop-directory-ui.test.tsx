@@ -5,9 +5,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const getJson = vi.fn();
 const patchJson = vi.fn();
+// The owner check (useIsShopOwner): an owner unless a test says otherwise.
+const postJson = vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => ({
+  allowed: true,
+  role: "owner"
+}));
 vi.mock("../apps/web/src/api-helpers", () => ({
   getJson: (...args: unknown[]) => getJson(...args),
-  patchJson: (...args: unknown[]) => patchJson(...args)
+  patchJson: (...args: unknown[]) => patchJson(...args),
+  postJson: (...args: unknown[]) => postJson(...args)
 }));
 
 const { default: ShopDirectoryListingCard } =
@@ -127,6 +133,28 @@ describe("owner listing card", () => {
       place: null
     });
     expect(host.textContent).toMatch(/listed by name only/u);
+    act(() => root.unmount());
+  });
+
+  it("shows staff the listing read-only, with no Save", async () => {
+    postJson.mockResolvedValueOnce({ allowed: false, role: "staff" });
+    getJson.mockResolvedValue({
+      businessId: "shop-a",
+      status: "online",
+      catalogueShareable: false,
+      category: "bakery",
+      place: "Nakuru",
+      updatedBy: "u",
+      updatedAt: new Date(0).toISOString()
+    });
+    const root = createRoot(host);
+    await act(async () => root.render(<ShopDirectoryListingCard businessId="shop-a" />));
+    await flush();
+    expect(postJson).toHaveBeenCalledWith("/roles/check", { businessId: "shop-a", role: "owner" });
+    expect(host.querySelector("select")!.disabled).toBe(true);
+    expect(host.querySelector("input")!.disabled).toBe(true);
+    expect(host.querySelector('button[type="submit"]')).toBeNull();
+    expect(host.textContent).toMatch(/Only the shop owner can change this/u);
     act(() => root.unmount());
   });
 

@@ -3013,6 +3013,11 @@ export interface ShopPresenceSummary {
   category?: ShopCategory | null;
   /** Shop directory listing: where it is, as the owner writes it ("Westlands, Nairobi"). */
   place?: string | null;
+  /**
+   * `place` lower-cased once, in JavaScript, when saved. The Edge API's SQL search matches this
+   * rather than Postgres lower(), whose case rules differ from JavaScript's for some letters.
+   */
+  placeKey?: string | null;
   updatedBy: string;
   updatedAt: string;
 }

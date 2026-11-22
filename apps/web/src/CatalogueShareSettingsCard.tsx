@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { ShopPresenceSummary } from "@grogoni/shared-types";
 import { useAsyncActions } from "./hooks/useAsyncActions";
+import { useIsShopOwner } from "./hooks/useIsShopOwner";
 import { getJson, patchJson } from "./api-helpers";
 import { getUserFacingErrorMessage } from "./user-facing-error";
 
@@ -12,6 +13,7 @@ export default function CatalogueShareSettingsCard(props: { businessId: string }
   const { isPending, runAction } = useAsyncActions();
   const [presence, setPresence] = useState<ShopPresenceSummary | null>(null);
   const [message, setMessage] = useState("");
+  const owner = useIsShopOwner(props.businessId);
 
   useEffect(() => {
     let cancelled = false;
@@ -64,7 +66,7 @@ export default function CatalogueShareSettingsCard(props: { businessId: string }
         <input
           type="checkbox"
           checked={presence.catalogueShareable}
-          disabled={isPending("catalogue-share-toggle")}
+          disabled={owner === false || isPending("catalogue-share-toggle")}
           onChange={(event) =>
             void runAction("catalogue-share-toggle", async () => {
               try {
@@ -77,6 +79,7 @@ export default function CatalogueShareSettingsCard(props: { businessId: string }
         />
         Allow other shops to duplicate my catalogue
       </label>
+      {owner === false ? <p className="shell-note">Only the shop owner can change this.</p> : null}
       {message.length > 0 ? <p className="shell-note">{message}</p> : null}
     </section>
   );

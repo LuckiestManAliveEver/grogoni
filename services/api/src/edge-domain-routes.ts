@@ -1299,11 +1299,17 @@ export async function createEdgeDomainRoutes(
                and record->'catalogueSource'->>'datasetVersion' = $3
                and (record->>'quantity')::numeric > 0) as products,
              exists (select 1 from cp2_shop_presences where entity_id = $1
-               and record->>'status' = 'online' and record->>'catalogueShareable' = 'true')
+               and record->>'status' = 'online' and record->>'catalogueShareable' = 'true'
+               and record->>'category' = $4)
              and exists (select 1 from cp2_agent_profiles where entity_id = $1)
              and exists (select 1 from business_memberships where business_id = $1::uuid
                and user_id = $2::uuid and role = 'owner') as ready`,
-        [systemShop.businessId, systemShop.userId, seedCatalogue.version]
+        [
+          systemShop.businessId,
+          systemShop.userId,
+          seedCatalogue.version,
+          systemShop.directoryCategory
+        ]
       );
       const row = result.rows[0];
       // Any missing piece (an agent profile whose install failed, a presence that drifted,

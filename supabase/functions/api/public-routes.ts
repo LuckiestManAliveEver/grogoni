@@ -62,6 +62,9 @@ export function createPublicRoutes(
         .trim()
         .toLowerCase()
         .slice(0, shopPlaceMaxLength);
+      // The saved, JavaScript-lower-cased place (Cp2Store.setShopDirectoryListing). Plain search
+      // matches in-stock products only, as Cp2Store.listPublicStorefronts does.
+      const placeKey = `coalesce(p.record->>'placeKey', lower(coalesce(p.record->>'place', '')))`;
       await options.ensureSystemShop?.().catch(() => undefined);
       return transaction(async (client) => {
         const result = await client.query(
@@ -76,11 +79,12 @@ export function createPublicRoutes(
           where coalesce(p.record->>'status', 'online') <> 'private'
             and coalesce(b.record->>'quarantined', 'false') <> 'true'
             and ($4 = '' or p.record->>'category' = $4)
-            and ($5 = '' or position($5 in lower(coalesce(p.record->>'place', ''))) > 0)
+            and ($5 = '' or position($5 in ${placeKey}) > 0)
             and ($1 = '' or position($1 in lower(b.record->>'name')) > 0
               or position($1 in lower(b.record->>'grogoniId')) > 0
-              or position($1 in lower(coalesce(p.record->>'place', ''))) > 0
+              or position($1 in ${placeKey}) > 0
               or exists (select 1 from cp2_products c where c.business_id = b.entity_id
+                and (c.record->>'quantity')::numeric > 0
                 and position($1 in lower(c.record->>'name')) > 0))
           order by (b.entity_id = $3) desc, b.record->>'name' limit $2`,
           [search, limit, pinnedSystemShopBusinessId, category, place]

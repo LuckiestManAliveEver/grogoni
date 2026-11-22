@@ -172,6 +172,46 @@ describe("shop directory listing", () => {
     }
   });
 
+  it("lists Jane's Shop under groceries, with no made-up place, and restores a drifted listing", () => {
+    const store = createCp2Store();
+    store.provisionSystemShop();
+    const janes = () =>
+      store.listPublicStorefronts({}).find((storefront) => storefront.pinned === true);
+    expect(janes()).toMatchObject({ category: "groceries" });
+    expect(janes()).not.toHaveProperty("place");
+    expect(store.listPublicStorefronts({ category: "groceries" })).toContainEqual(
+      expect.objectContaining({ pinned: true })
+    );
+    // A presence that lost its category (an older deploy) is completed on the next provisioning.
+    const snapshot = store.snapshot();
+    const restored = createCp2Store({
+      initialSnapshot: {
+        ...snapshot,
+        shopPresences: (snapshot.shopPresences ?? []).map((presence) => ({
+          ...presence,
+          category: null
+        }))
+      }
+    } as never);
+    expect(restored.provisionSystemShop().status).toBe("provisioned");
+    expect(
+      restored.listPublicStorefronts({ category: "groceries" }).some((shop) => shop.pinned)
+    ).toBe(true);
+  });
+
+  it("saves the place's search key in JavaScript case rules", () => {
+    const store = createCp2Store();
+    const shop = shopFor(store, "Case Shop");
+    expect(
+      store.setShopDirectoryListing({
+        sessionId: shop.owner.session.id,
+        businessId: shop.business.id,
+        category: null,
+        place: "NYERI Ébène"
+      })
+    ).toMatchObject({ place: "NYERI Ébène", placeKey: "nyeri ébène" });
+  });
+
   it("the Edge API's copy of the categories matches the shared list", () => {
     expect([...edgeShopCategories]).toEqual([...shopCategories]);
     expect(edgeShopPlaceMaxLength).toBe(shopPlaceMaxLength);
@@ -208,6 +248,20 @@ describe.skipIf(!databaseUrl)("shop directory on PostgreSQL (Edge)", () => {
       const baseline = store.snapshot();
       const place = `Ruiru ${randomUUID().slice(0, 8)}`;
       const shop = shopFor(store, `Directory shop ${randomUUID().slice(0, 8)}`);
+      // Out of stock: plain search on Edge must not find the shop by it (as on Node).
+      const soldOut = `Soldout${randomUUID().slice(0, 8)}`;
+      store.createProduct({
+        sessionId: shop.owner.session.id,
+        businessId: shop.business.id,
+        product: {
+          name: soldOut,
+          sku: soldOut,
+          unit: "item",
+          quantity: 0,
+          buyingPrice: 1,
+          sellingPrice: 2
+        }
+      });
       await transaction((client) =>
         saveTransactionalCp2Snapshot(client, store.snapshot(), baseline)
       );
@@ -249,6 +303,16 @@ describe.skipIf(!databaseUrl)("shop directory on PostgreSQL (Edge)", () => {
         await search(`place=${encodeURIComponent(`  ${place.replace(" ", "    ")} `)}`)
       ).toHaveLength(1);
       expect(await search(`category=pharmacy&place=${encodeURIComponent(place)}`)).toEqual([]);
+      expect(await search(`search=${encodeURIComponent(soldOut.toLowerCase())}`)).toEqual([]);
+      // The saved JavaScript search key is what Edge matches, whatever Postgres lower() does.
+      await transaction((client) =>
+        client.query(
+          `update cp2_shop_presences set record = record || jsonb_build_object('placeKey', $2::text)
+           where entity_id = $1`,
+          [shop.business.id, "key-only-match"]
+        )
+      );
+      expect(await search("place=key-only-match")).toHaveLength(1);
       const refused = await publicRoutes(
         new Request("https://grogoni.com/public/storefronts?category=casino"),
         "/public/storefronts"

@@ -68,6 +68,10 @@ export function MarketplaceModeCard({
   onSignUp
 }: MarketplaceModeCardProps) {
   const [buyQueryDraft, setBuyQueryDraft] = useState("");
+  // The owner's own shop is listed but has no category or place: nudge them to add both.
+  const ownStorefront = publicStorefronts.find((storefront) => storefront.grogoniId === grogoniId);
+  const unlistedOwnShop =
+    hasBusiness && ownStorefront !== undefined && !ownStorefront.category && !ownStorefront.place;
   return (
     <section className="generated-card-message mode-card" aria-label="Explore the marketplace">
       <div className="mode-card-heading">
@@ -226,6 +230,12 @@ export function MarketplaceModeCard({
               {productCount === 1 ? "item" : "items"}
             </p>
           </button>
+          {unlistedOwnShop ? (
+            <p className="shop-directory-nudge" role="note">
+              Buyers can&apos;t find {businessName} by what it sells or where it is yet. Add both in
+              Manage, under Shop directory.
+            </p>
+          ) : null}
           <div className="compact-actions">
             <button type="button" onClick={onOpenStore}>
               Open store
