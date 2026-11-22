@@ -82,6 +82,7 @@
     "db:backup:verify": "pnpm --filter @grogoni/api db:backup:verify",
     "db:backfill-native-runtime": "pnpm --filter @grogoni/api db:backfill-native-runtime",
     "db:grant-platform-operator": "pnpm --filter @grogoni/api db:grant-platform-operator",
+    "score:messenger": "node scripts/score-messenger.mjs",
     "db:health": "pnpm --filter @grogoni/api db:health",
     "db:migrate": "pnpm --filter @grogoni/api db:migrate",
     "db:purge-shops": "pnpm --filter @grogoni/api db:purge-shops",
