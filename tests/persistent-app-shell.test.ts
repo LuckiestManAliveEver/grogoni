@@ -35,7 +35,7 @@ describe("persistent authenticated app shell", () => {
   });
 
   it("does not recreate IndexedDB or realtime when online state changes", () => {
-    const repositoryEffectStart = syncStateHook.indexOf("void openIndexedDbSyncRepository()");
+    const repositoryEffectStart = syncStateHook.indexOf("void openSyncRepositoryWhenFree(");
     const repositoryEffectEnd = syncStateHook.indexOf(
       "async function loadSyncQueue",
       repositoryEffectStart

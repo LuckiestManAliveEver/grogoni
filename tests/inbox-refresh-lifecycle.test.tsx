@@ -126,3 +126,49 @@ it("tries the page-load resend again when it could not run (another pass or anot
     await act(async () => root.unmount());
   }
 });
+
+it("reruns the page-load pass when a late device database is adopted, again if it could not run", async () => {
+  // The page-load pass ran on the local-storage fallback; the late open brought in more messages
+  // an earlier page left. A rerun that finds another pass still sending (false) is not lost: the
+  // next refresh runs it.
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  vi.useFakeTimers();
+  const root = createRoot(document.createElement("div"));
+  const retryQueuedMessages = vi.fn<(options?: unknown) => Promise<boolean>>(async () => true);
+  function Harness() {
+    useInboxRefresh({
+      accountId: "owner",
+      encryptionDeviceId: null,
+      mode: "seller",
+      activeConversationId: "chat",
+      loadMessagingInbox: vi.fn(async () => undefined),
+      retryQueuedMessages,
+      selectConversation: vi.fn(async () => undefined)
+    });
+    return null;
+  }
+  try {
+    await act(async () => root.render(<Harness />));
+    expect(retryQueuedMessages.mock.calls).toEqual([[{ leftByEarlierPage: true }]]);
+    retryQueuedMessages.mockClear();
+    retryQueuedMessages.mockResolvedValueOnce(false);
+    await act(async () => {
+      window.dispatchEvent(new Event("grogoni:messaging-outbox-adopted"));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(retryQueuedMessages.mock.calls).toEqual([[{ leftByEarlierPage: true }]]);
+    await act(async () => vi.advanceTimersByTimeAsync(8_200));
+    const passes = retryQueuedMessages.mock.calls.map(([options]) => JSON.stringify(options));
+    // The adoption's pass could not run; the next refresh ran the page-load pass again, and only
+    // after that do refreshes go back to the automatic pass.
+    expect(passes.slice(0, 2)).toEqual([
+      '{"leftByEarlierPage":true}',
+      '{"leftByEarlierPage":true}'
+    ]);
+    expect(passes.length).toBeGreaterThan(2);
+    expect(passes.slice(2).every((options) => options === '{"automatic":true}')).toBe(true);
+  } finally {
+    await act(async () => root.unmount());
+    vi.useRealTimers();
+  }
+});

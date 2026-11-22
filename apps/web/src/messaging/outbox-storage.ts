@@ -12,6 +12,16 @@ let failure: unknown = null;
 // A slow device-database open is still being waited for (it is adopted when it opens).
 let adoptingLate = false;
 const hydrateTimeoutMs = 3_000;
+/** A device database that failed or was blocked is tried again this long after, on next use. */
+export const reopenAfterFailureMs = 30_000;
+let openFailedAt: number | null = null;
+// A newer Grogoni version took the database: this tab's code cannot open it again.
+let superseded = false;
+/**
+ * Dispatched on window when a device database that opened late (after the page-load resend pass
+ * ran on the local-storage fallback) is adopted, so that pass runs again with what it brought in.
+ */
+export const messagingOutboxAdoptedEvent = "grogoni:messaging-outbox-adopted";
 let channel: BroadcastChannel | null = null;
 const changed = () => window.dispatchEvent(new Event("grogoni:messaging-outbox-change"));
 function persist(key: string, value: string | null) {
@@ -61,6 +71,7 @@ const cache = {
  */
 function useLocalStorageFromNow() {
   repository = null;
+  superseded = true;
   channel?.close();
   channel = null;
   try {
@@ -77,7 +88,14 @@ export function messagingOutboxStorage(): Storage | typeof cache {
 }
 export async function hydrateMessagingOutbox(): Promise<void> {
   if (typeof indexedDB === "undefined") return;
-  if (opening) return opening;
+  const retry =
+    openFailedAt !== null &&
+    Date.now() - openFailedAt >= reopenAfterFailureMs &&
+    repository === null &&
+    !adoptingLate &&
+    !superseded;
+  if (opening && !retry) return opening;
+  openFailedAt = null;
   opening = (async () => {
     const received: Array<{ key: string; value: string | null }> = [];
     let loaded = false;
@@ -132,7 +150,9 @@ export async function hydrateMessagingOutbox(): Promise<void> {
         }
       }
       if (closedWhileLoading) {
-        // The newer tab holds (and sends) what was loaded; this tab works from local storage.
+        // The newer tab holds (and sends) what was loaded; this tab works from local storage,
+        // for good: its code cannot open the newer database.
+        superseded = true;
         values.clear();
         throw new Error("Outbox upgraded in another tab.");
       }
@@ -153,19 +173,26 @@ export async function hydrateMessagingOutbox(): Promise<void> {
     ]);
     if (first === "late") {
       adoptingLate = true;
-      void openRequest.then(adopt).catch((error: unknown) => {
-        adoptingLate = false;
-        channel?.close();
-        channel = null;
-        console.warn("[Grogoni] Outbox on local storage.", error);
-      });
+      void openRequest
+        .then(adopt)
+        .then(() => window.dispatchEvent(new Event(messagingOutboxAdoptedEvent)))
+        .catch((error: unknown) => {
+          adoptingLate = false;
+          openFailedAt = Date.now();
+          channel?.close();
+          channel = null;
+          console.warn("[Grogoni] Outbox on local storage.", error);
+        });
       throw new Error("Opening the device outbox timed out.");
     }
     await adopt(first);
   })().catch((error: unknown) => {
     // The outbox keeps working on localStorage (messagingOutboxStorage falls back): a device
     // database that cannot open must never turn a send into a failure.
+    // A newer version already upgraded the database: this tab's code can never open it again.
+    if ((error as { name?: string } | null)?.name === "VersionError") superseded = true;
     if (!adoptingLate) {
+      openFailedAt = Date.now();
       channel?.close();
       channel = null;
     }

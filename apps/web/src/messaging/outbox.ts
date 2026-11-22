@@ -1,6 +1,6 @@
 import { messagingOutboxStorage } from "./outbox-storage";
 import { flushMessagingOutbox as flushIndexedDbOutbox } from "./outbox-storage";
-export { hydrateMessagingOutbox } from "./outbox-storage";
+export { hydrateMessagingOutbox, messagingOutboxAdoptedEvent } from "./outbox-storage";
 import { clearDeviceOnlyMessages } from "../chat-device-only-messages";
 
 const messagingOutboxStoragePrefix = "grogoni.messaging-outbox.v2";
@@ -17,6 +17,10 @@ export interface MessagingOutboxEntry {
   retryKind?: "transport" | "agent-turn";
   /** Epoch ms before which no automatic resend runs. */
   nextAttemptAt?: number;
+  /** The page (tab load) that queued it; while that page is open its sends are its own. */
+  queuedBy?: string;
+  /** Epoch ms it was queued. */
+  queuedAt?: number;
 }
 
 /**
@@ -173,6 +177,71 @@ export function outboxStoredPayload(payload: Record<string, unknown>): Record<st
 /** Messages this page put in the outbox (page memory): the rest were left by an earlier page. */
 const queuedOnThisPage = new Set<string>();
 
+/**
+ * This page's id, and a Web Lock held for as long as the page is open, so another tab can tell a
+ * live tab's waiting messages (its sends may be in flight, with their own backoff) from ones a
+ * closed or reloaded page left. Without Web Locks every other page's message counts as left, as
+ * before; the server dedupes a double send by clientMessageId.
+ */
+export const outboxPageId =
+  typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `page-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+const pageLockPrefix = "grogoni-outbox-page:";
+interface PageLockManager {
+  request(name: string, callback: () => Promise<void>): Promise<unknown>;
+  query(): Promise<{ held?: Array<{ name?: string }> }>;
+}
+function pageLocks(): PageLockManager | null {
+  const locks = (globalThis as { navigator?: { locks?: Partial<PageLockManager> } }).navigator
+    ?.locks;
+  return typeof locks?.request === "function" && typeof locks.query === "function"
+    ? (locks as PageLockManager)
+    : null;
+}
+let releasePageLock: (() => void) | null = null;
+function holdPageLock() {
+  const locks = pageLocks();
+  if (locks === null || releasePageLock !== null) return;
+  const held = new Promise<void>((resolve) => {
+    releasePageLock = resolve;
+  });
+  void locks.request(`${pageLockPrefix}${outboxPageId}`, () => held).catch(() => undefined);
+}
+holdPageLock();
+// A held Web Lock keeps a page out of the back/forward cache: let go when the page is hidden for
+// navigation, take it again if the page comes back from the cache.
+if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+  window.addEventListener("pagehide", () => {
+    releasePageLock?.();
+    releasePageLock = null;
+  });
+  window.addEventListener("pageshow", () => holdPageLock());
+}
+/**
+ * A live tab's message counts as left anyway once it is this far past due: that tab is not
+ * sending it (it switched account, or is frozen). Longer than any automatic backoff (4 min).
+ */
+export const liveTabGraceMs = 5 * 60_000;
+
+/** Pages open right now, refreshed before each page-load pass; null without Web Locks. */
+let livePages: ReadonlySet<string> | null = null;
+export async function refreshLiveOutboxPages(): Promise<void> {
+  const locks = pageLocks();
+  if (locks === null) return;
+  try {
+    const { held = [] } = await locks.query();
+    livePages = new Set(
+      held
+        .map((lock) => lock.name ?? "")
+        .filter((name) => name.startsWith(pageLockPrefix))
+        .map((name) => name.slice(pageLockPrefix.length))
+    );
+  } catch {
+    livePages = null;
+  }
+}
+
 export function queueMessagingOutbox(
   entry: MessagingOutboxEntry,
   storage: MessagingOutboxStorage = messagingOutboxStorage()
@@ -180,13 +249,29 @@ export function queueMessagingOutbox(
   queuedOnThisPage.add(entry.clientMessageId);
   mutateOutbox(entry.accountId, storage, {
     kind: "put",
-    entry: { ...entry, payload: outboxStoredPayload(entry.payload) }
+    entry: {
+      ...entry,
+      queuedBy: outboxPageId,
+      queuedAt: entry.queuedAt ?? Date.now(),
+      payload: outboxStoredPayload(entry.payload)
+    }
   });
 }
 
-/** Whether an earlier page (closed or reloaded, maybe mid-send) left this message waiting. */
-export function leftByEarlierPage(entry: MessagingOutboxEntry): boolean {
-  return !queuedOnThisPage.has(entry.clientMessageId);
+/**
+ * Whether an earlier page (closed or reloaded, maybe mid-send) left this message waiting. Not one
+ * this page queued, and not one another open tab queued (refreshLiveOutboxPages): that tab sends
+ * it on its own backoff.
+ */
+export function leftByEarlierPage(entry: MessagingOutboxEntry, now = Date.now()): boolean {
+  if (queuedOnThisPage.has(entry.clientMessageId)) return false;
+  const ownedByLiveTab =
+    entry.queuedBy !== undefined &&
+    entry.queuedBy !== outboxPageId &&
+    livePages?.has(entry.queuedBy) === true;
+  if (!ownedByLiveTab) return true;
+  const due = Math.max(entry.queuedAt ?? 0, entry.nextAttemptAt ?? 0);
+  return due > 0 && now - due > liveTabGraceMs;
 }
 
 export function removeMessagingOutboxEntry(

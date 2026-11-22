@@ -473,7 +473,9 @@ describe("device-only messages across thread refreshes", () => {
       }
     ];
     const stored = outboxPlaceholders(waiting, "c1", [inFlight]);
-    expect(stored).toEqual([{ ...inFlight, deviceOnlyIn: "c1", deviceOnlyAfter: "" }]);
+    expect(stored).toEqual([
+      { ...inFlight, deviceOnlyIn: "c1", deviceOnlyAfter: "", keptSend: true }
+    ]);
     const shown = keepDeviceOnlyMessages([server("s1"), inFlight], [server("s1")], "c1", stored);
     expect(shown.map((message) => [message.id, message.status, message.body])).toEqual([
       ["s1", server("s1").status, server("s1").body],
@@ -634,6 +636,30 @@ describe("model history", () => {
       { role: "user", content: "real question" },
       { role: "assistant", content: "real answer" }
     ]);
+  });
+
+  it("counts a kept send: the turn just before the one being answered", () => {
+    // A first send was in flight when a stale thread read landed; the second send's model
+    // request must still see it, or the model answers without the previous turn.
+    const inFlight = {
+      id: "client-1",
+      author: "merchant" as const,
+      body: "Do you have 2kg sugar?",
+      status: "sending" as const
+    };
+    const [kept] = outboxPlaceholders(
+      [{ clientMessageId: "client-1", payload: { conversationId: "c1" } }],
+      "c1",
+      [inFlight]
+    );
+    expect(inferenceHistory([{ id: "s1", author: "grogoniclaw", body: "Hello" }, kept!])).toEqual([
+      { role: "assistant", content: "Hello" },
+      { role: "user", content: "Do you have 2kg sugar?" }
+    ]);
+    // Once it has failed, or the outbox stopped or the server rejected it, it is left out.
+    expect(inferenceHistory([{ ...kept!, status: "failed" }])).toEqual([]);
+    expect(inferenceHistory([{ ...kept!, outboxState: "rejected" }])).toEqual([]);
+    expect(inferenceHistory([{ ...kept!, outboxState: "stopped" }])).toEqual([]);
   });
 
   it("keeps only the most recent turns", () => {

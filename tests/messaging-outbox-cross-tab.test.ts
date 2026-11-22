@@ -186,7 +186,14 @@ describe("messaging outbox lock", () => {
     expect(locks.granted).toEqual([outbox.messagingOutboxLockName("account-a")]);
     expect(locks.granted[0]).toBe("grogoni-outbox-write:account-a");
     expect(JSON.parse(storage.getItem(key)!)).toEqual([
-      { ...entry("second"), attempts: 1, nextAttemptAt: 60_000 }
+      // Tagged with the page that queued it (outbox-live-tab-entries.test.ts).
+      {
+        ...entry("second"),
+        attempts: 1,
+        nextAttemptAt: 60_000,
+        queuedBy: outbox.outboxPageId,
+        queuedAt: expect.any(Number)
+      }
     ]);
     outbox.clearMessagingOutbox("account-a", storage);
     expect(outbox.readMessagingOutbox("account-a", storage)).toEqual([]);

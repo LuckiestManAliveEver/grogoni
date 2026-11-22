@@ -131,6 +131,12 @@ describe("outbox storage resilience", () => {
     await storage.hydrateMessagingOutbox();
     expect(storage.messagingOutboxStorage()).toBe(localStorage);
     spy.mockRestore();
+    // Taken over for good: no retry every 30 s for the rest of the session.
+    const open = vi.spyOn(factory, "open");
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + 10 * storage.reopenAfterFailureMs);
+    await storage.hydrateMessagingOutbox();
+    expect(open).not.toHaveBeenCalled();
+    vi.restoreAllMocks();
     warn.mockRestore();
     newer?.close();
   });
@@ -185,6 +191,8 @@ describe("outbox storage resilience", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const storage = await import("../apps/web/src/messaging/outbox-storage");
     const outbox = await import("../apps/web/src/messaging/outbox");
+    const adopted = vi.fn();
+    window.addEventListener(storage.messagingOutboxAdoptedEvent, adopted);
     await storage.hydrateMessagingOutbox();
     // Past the deadline: this page sends from local storage, and queues a message there.
     expect(storage.messagingOutboxStorage()).toBe(localStorage);
@@ -204,8 +212,61 @@ describe("outbox storage resilience", () => {
     expect(
       Object.keys({ ...localStorage }).some((key) => key.startsWith("grogoni.messaging-outbox."))
     ).toBe(false);
+    // The page-load resend pass ran on local storage; the late open says so, so it runs again
+    // with "left-by-earlier-page" instead of leaving it to its backoff (useInboxRefresh).
+    expect(adopted).toHaveBeenCalledOnce();
+    window.removeEventListener(storage.messagingOutboxAdoptedEvent, adopted);
     warn.mockRestore();
   }, 15_000);
+
+  it("tries a blocked device database again once the blocking tab has had time to close", async () => {
+    vi.resetModules();
+    vi.stubGlobal("BroadcastChannel", undefined);
+    const factory = new IDBFactory();
+    vi.stubGlobal("indexedDB", factory);
+    localStorage.clear();
+    const oldTab = await openRaw(factory, 1);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const storage = await import("../apps/web/src/messaging/outbox-storage");
+    await storage.hydrateMessagingOutbox();
+    expect(storage.messagingOutboxStorage()).toBe(localStorage);
+    localStorage.setItem("grogoni.messaging-outbox.a1", '{"waiting":1}');
+    oldTab.close();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    // Too soon: the same session does not hammer the database on every send.
+    await storage.hydrateMessagingOutbox();
+    expect(storage.messagingOutboxStorage()).toBe(localStorage);
+    const now = Date.now();
+    vi.spyOn(Date, "now").mockReturnValue(now + storage.reopenAfterFailureMs);
+    await storage.hydrateMessagingOutbox();
+    expect(storage.messagingOutboxStorage()).not.toBe(localStorage);
+    expect(storage.messagingOutboxStorage().getItem("grogoni.messaging-outbox.a1")).toBe(
+      '{"waiting":1}'
+    );
+    expect(localStorage.getItem("grogoni.messaging-outbox.a1")).toBeNull();
+    vi.restoreAllMocks();
+    warn.mockRestore();
+  });
+
+  it("does not reopen a database a newer version took over", async () => {
+    vi.resetModules();
+    vi.stubGlobal("BroadcastChannel", undefined);
+    const factory = new IDBFactory();
+    vi.stubGlobal("indexedDB", factory);
+    localStorage.clear();
+    const storage = await import("../apps/web/src/messaging/outbox-storage");
+    await storage.hydrateMessagingOutbox();
+    const newer = await openRaw(factory, 99);
+    expect(storage.messagingOutboxStorage()).toBe(localStorage);
+    const open = vi.spyOn(factory, "open");
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + 10 * storage.reopenAfterFailureMs);
+    await storage.hydrateMessagingOutbox();
+    expect(open).not.toHaveBeenCalled();
+    expect(storage.messagingOutboxStorage()).toBe(localStorage);
+    vi.restoreAllMocks();
+    newer.close();
+  });
 
   it("moves a journal entry written to local storage while the late open migrates", async () => {
     vi.resetModules();

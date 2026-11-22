@@ -198,6 +198,14 @@ export class IndexedDbSyncRepository {
   }
 }
 
+/** Another tab on an older Grogoni version holds the device database open, blocking an upgrade. */
+export class SyncDatabaseBlockedError extends Error {
+  constructor() {
+    super("The device database is held by another Grogoni tab on an older version.");
+    this.name = "SyncDatabaseBlockedError";
+  }
+}
+
 export async function openIndexedDbSyncRepository(
   options: IndexedDbSyncRepositoryOptions = {}
 ): Promise<IndexedDbSyncRepository> {
@@ -232,7 +240,7 @@ export async function openIndexedDbSyncRepository(
   const blocked = new Promise<never>((_resolve, reject) => {
     request.onblocked = () => {
       gaveUp = true;
-      reject(new Error("The device database is held by another Grogoni tab on an older version."));
+      reject(new SyncDatabaseBlockedError());
     };
   });
   const opened = requestResult(request);

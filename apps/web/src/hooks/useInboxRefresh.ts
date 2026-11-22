@@ -1,5 +1,5 @@
 import { subscribeAccountHints } from "../messaging/account-hints";
-import { messagingOutboxChangeEvent } from "../messaging/outbox";
+import { messagingOutboxAdoptedEvent, messagingOutboxChangeEvent } from "../messaging/outbox";
 import { useEffect, useRef } from "react";
 import type { GrogoniMode } from "../app-shell";
 import { navigateToOwnerRoute, readCurrentOwnerRoute } from "../browser-navigation";
@@ -89,6 +89,16 @@ export function useInboxRefresh({
       }, 1_200);
     };
     window.addEventListener(messagingOutboxChangeEvent, onOutboxChange);
+    // The device database opened late: the page-load pass ran on the local-storage fallback, so
+    // what the late open brought in would wait out its backoff (up to minutes). Count the pass as
+    // not done and refresh: the refresh runs it, and one that cannot run now (another pass is
+    // still sending, or another tab's) is tried again on the next refresh, as on page load.
+    const onOutboxAdopted = () => {
+      if (cancelled) return;
+      if (resentOnLoadFor.current === accountId) resentOnLoadFor.current = null;
+      void refresh();
+    };
+    window.addEventListener(messagingOutboxAdoptedEvent, onOutboxAdopted);
     let interval: ReturnType<typeof setInterval>;
     const unsubscribe = subscribeAccountHints(
       accountId,
@@ -121,6 +131,7 @@ export function useInboxRefresh({
       window.clearInterval(interval);
       clearTimeout(outboxPass);
       window.removeEventListener(messagingOutboxChangeEvent, onOutboxChange);
+      window.removeEventListener(messagingOutboxAdoptedEvent, onOutboxAdopted);
       unsubscribe();
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("online", onOnline);

@@ -6,6 +6,7 @@ import type { SyncMutationPayload, SyncMutationType } from "@grogoni/shared-type
 
 import { getErrorMessage } from "../chat-message-plumbing";
 import { getJson, postJson } from "../api-helpers";
+import { openSyncRepositoryWhenFree } from "../sync/open-when-free";
 import {
   openIndexedDbSyncRepository,
   type IndexedDbSyncRepository
@@ -75,12 +76,21 @@ export function useSyncState(deps: UseSyncStateDeps) {
     };
     window.addEventListener(offlineModeEvent, modeChanged);
     window.addEventListener("online", synchronizeWhenOnline);
-    void openIndexedDbSyncRepository()
+    // An older tab blocking the database upgrade is retried until it closes (open-when-free.ts).
+    let waitedForOldTab = false;
+    void openSyncRepositoryWhenFree({
+      open: () => openIndexedDbSyncRepository(),
+      isCancelled: () => cancelled,
+      onBlocked: () => {
+        waitedForOldTab = true;
+        deps.setStatusMessage(
+          "Another Grogoni tab is on an older version. Close or reload it to keep syncing."
+        );
+      }
+    })
       .then(async (repository) => {
-        if (cancelled) {
-          repository.close();
-          return;
-        }
+        if (repository === null) return;
+        if (waitedForOldTab) deps.setStatusMessage("Syncing again.");
         closeRepository = () => repository.close();
         openedRepository = repository;
         syncRepositoryRef.current = repository;

@@ -73,6 +73,12 @@ export interface ChatMessage {
   /** The message a device-only one followed when it was created; places it on every refresh. */
   deviceOnlyAfter?: string | null;
   /**
+   * A send that was in flight when a thread read landed without it, carried forward as this
+   * device's copy until a read includes it. Unlike a search exchange or a queued resend, it is
+   * reaching the conversation, so it counts as model history.
+   */
+  keptSend?: boolean;
+  /**
    * For a message in the outbox: "retrying" (resent automatically), "stopped" (automatic resends
    * used up; the resend control still works), or "rejected" (the server refused it for good).
    */

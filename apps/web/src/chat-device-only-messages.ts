@@ -266,7 +266,11 @@ export function deviceOnlyAnchor(messages: ChatMessage[]): string | null {
 
 /**
  * The last turns a model sees as history. Device-only messages never reached the conversation (a
- * buyer's search exchange, a message still in the outbox), so they are left out.
+ * buyer's search exchange, a message still in the outbox), so they are left out. A kept send is
+ * the exception: it was in flight when a stale thread read landed, so it is reaching the
+ * conversation, and leaving it out would drop the turn just before the one being answered. Once
+ * it fails, or the outbox has stopped or the server rejected it, it is left out like any other
+ * queued message.
  */
 export function inferenceHistory(
   messages: ChatMessage[],
@@ -276,7 +280,10 @@ export function inferenceHistory(
     .filter(
       (message) =>
         (message.author === "merchant" || message.author === "grogoniclaw") &&
-        message.deviceOnlyIn === undefined
+        (message.deviceOnlyIn === undefined ||
+          (message.keptSend === true &&
+            message.status !== "failed" &&
+            message.outboxState === undefined))
     )
     .slice(-limit)
     .map((message) => ({
@@ -312,7 +319,7 @@ export function outboxPlaceholders(
     .map((entry): ChatMessage => {
       const onScreen = known.find((message) => message.id === entry.clientMessageId);
       if (onScreen !== undefined)
-        return { ...onScreen, deviceOnlyIn: conversationId, deviceOnlyAfter: "" };
+        return { ...onScreen, deviceOnlyIn: conversationId, deviceOnlyAfter: "", keptSend: true };
       return {
         id: entry.clientMessageId,
         author: "merchant" as const,

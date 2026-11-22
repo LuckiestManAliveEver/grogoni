@@ -59,6 +59,7 @@ import { isRetryableApiRequestError } from "../lib/api";
 import {
   hydrateMessagingOutbox,
   leftByEarlierPage,
+  refreshLiveOutboxPages,
   outboxEntryDue,
   type MessagingOutboxEntry,
   readMessagingOutbox,
@@ -827,6 +828,7 @@ export function useChatInboxState(deps: UseChatInboxStateDeps) {
     }
     const accountId = session.account.id;
     await hydrateMessagingOutbox();
+    if (mode === "load") await refreshLiveOutboxPages();
     const queued = readMessagingOutbox(accountId);
     if (queued.length === 0 || (mode !== "manual" && !queued.some((entry) => dueFor(entry, mode))))
       return true;
