@@ -73,7 +73,7 @@ Tick an item only in the same commit that adds its evidence.
 - [x] Owner corrections are kept and applied. evidence: tests/agent-owner-correction-retention.test.ts
 - [x] Agent skills. evidence: tests/agent-skills.test.ts
 - [x] Eval: agent replies stay correct across the send/turn split, on the real Edge pipeline and model (`pnpm eval:agent-turn-split`, 5/5 on 2026-11-23; it caught read tools answering "Done." with the data dropped). evidence: scripts/eval-agent-turn-split.ts, tests/runtime-read-replies.test.ts
-- [ ] That eval runs weekly in CI (`agent-eval.yml` is ready; needs the `OPENROUTER_API_KEY` secret and `AGENT_TURN_EVAL_ENABLED`).
+- [x] That eval runs weekly in CI (Mondays 05:17 UTC; first run 45247721547 passed 5/5 on 2026-11-23). evidence: .github/workflows/agent-eval.yml, tests/agent-eval-workflow.test.ts
 - [x] Send and reply timings measured on real phones: client marks beaconed to the Edge API and logged beside the server's `message_accepted` line. evidence: tests/client-timings.test.ts, tests/edge-request-timing.test.ts
 
 ## Default app on phones (weight 15)

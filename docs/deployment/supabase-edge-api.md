@@ -206,14 +206,16 @@ as `client_timing` (name, ms, clientMessageId, network class; never message text
 an address; nothing stored, no database): `message.send.accepted_ms` (tap to bubble),
 `message.send.ack_ms` (tap to server acknowledgement) and `agent.turn.reply_ms` (acknowledgement to
 agent reply). Join the two on clientMessageId to split a slow send into phone, network and server.
-For the median acknowledgement on 3G, in the function logs:
+For the median acknowledgement on 3G (Logs Explorer, or the Management API's
+`/v1/projects/<ref>/analytics/endpoints/logs` with `iso_timestamp_start`/`_end`; the table is
+`logs` and the dialect is ClickHouse; verified on 2026-11-23 against a test beacon):
 
 ```sql
-select approx_quantile(cast(json_value(event_message, '$.ms') as float64), 0.5) as p50_ms, count(*)
-from function_logs
-where json_value(event_message, '$.event') = 'client_timing'
-  and json_value(event_message, '$.name') = 'message.send.ack_ms'
-  and json_value(event_message, '$.network') = '3g'
+select quantile(0.5)(JSONExtractFloat(event_message, 'ms')) as p50_ms, count() as n
+from logs
+where JSONExtractString(event_message, 'event') = 'client_timing'
+  and JSONExtractString(event_message, 'name') = 'message.send.ack_ms'
+  and JSONExtractString(event_message, 'network') = '3g'
 ```
 
 The route caps itself at 1,200 lines per isolate per minute (the database rate limiter does not
