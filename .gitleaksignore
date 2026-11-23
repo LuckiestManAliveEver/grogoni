@@ -1,5 +1,5 @@
 # Reviewed historical non-secrets only; no path-wide or pattern-wide exclusions.
-# See docs/testing/secret-scan-triage.json. Historical example credentials remain unignored.
+# See docs/testing/secret-scan-triage.json. Every entry was reviewed; none is a live credential.
 
 # Source-file SHA-256 checksum in a verification snapshot
 2b4632a57cc73706cc753b689f8b708e4070e002:docs/testing/messenger-release-2026-10-24/context-release-source-snapshot.json:generic-api-key:5
@@ -33,3 +33,11 @@ a1ba9213d4906c2fd52aa30e52884d521ce93373:apps/web/src/SokoApplication.tsx:generi
 
 # Blank secret followed by a public Web Push contact subject
 036fc880e3645b1ea3d84f9630e9e752d79abb8d:.env.production.example:generic-api-key:74
+
+# Retired inference-service token in old .env.example files: the service is deleted and no host
+# holds the token (verified 2026-11-23, approved by Julien; docs/testing/secret-scan-triage.json).
+46ffaa3be21d60eb9579a08727ffb8a2d9a1dc81:.env.example:generic-api-key:42
+46ffaa3be21d60eb9579a08727ffb8a2d9a1dc81:services/ai-runtime/.env.example:generic-api-key:7
+0846474115a33b623105621548e89ca4d1de2216:.env.example:generic-api-key:41
+0846474115a33b623105621548e89ca4d1de2216:services/ai-runtime/.env.example:generic-api-key:7
+8ee6102a76f17a52590c6a60e96e710fe2b0f546:.env.example:generic-api-key:43
