@@ -252,7 +252,9 @@ describe.skipIf(!url)("daemon lanes inside the Edge API", () => {
     });
     const kept = (await call("session-a", "POST", "/v1/daemon/claims")).json.claim;
     expect(kept.task.payload).toMatchObject({ modelId: "gpt-6-luna", agentAdapterId: "pi" });
-  });
+    // The hanging lookup alone waits out its deadline (the claim's own bound is 4 s) before the
+    // later Postgres calls: the 5 s default left no room on a busy CI runner (run 45252163144).
+  }, 20_000);
   it("refreshes on the server worker path, keeps a runtime it cannot run, and survives a failed save", async () => {
     const conversation = {
       id: "11111111-1111-4111-8111-111111111111",
