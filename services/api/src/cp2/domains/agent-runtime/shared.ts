@@ -386,7 +386,31 @@ export function createRuntimeResponse(input: {
     if (input.toolResult.total === 0) {
       return `No catalogue products matched "${input.toolResult.query}" in this shop.`;
     }
-    return `Found ${input.toolResult.total} verified catalogue ${input.toolResult.total === 1 ? "product" : "products"} for "${input.toolResult.query}".`;
+    return [
+      `Found ${input.toolResult.total} verified catalogue ${input.toolResult.total === 1 ? "product" : "products"} for "${input.toolResult.query}".`,
+      ...input.toolResult.products
+        .slice(0, 5)
+        .map(
+          (product) =>
+            `• ${product.name}: ${product.availability.replace(/_/gu, " ")}${priceText(product.sellingPrice)}`
+        )
+    ].join("\n");
+  }
+
+  // The shop's own product list (products.list with no query): the stock and price the owner
+  // asked about. Before, this answered "<the model's plan> Done." and the numbers never reached
+  // the chat (scripts/eval-agent-turn-split.ts, follow-up case).
+  if (input.plan.toolName === "products.list" && isProductList(input.toolResult)) {
+    if (input.toolResult.length === 0) return "There are no products in this shop yet.";
+    return [
+      ...input.toolResult
+        .slice(0, 10)
+        .map(
+          (product) =>
+            `• ${product.name}: ${product.quantity} ${product.unit} in stock${priceText(product.sellingPrice)}`
+        ),
+      ...(input.toolResult.length > 10 ? [`and ${input.toolResult.length - 10} more.`] : [])
+    ].join("\n");
   }
 
   if (input.plan.toolName === "workspace.deliver" && isWorkspaceDeliverResult(input.toolResult)) {
@@ -432,11 +456,15 @@ export function createRuntimeResponse(input: {
 
   if (
     input.toolResult !== null &&
-    input.proposalReason.startsWith("Explicit chat capability #") &&
     runtimeToolRegistry[input.plan.toolName].readOnly &&
     !input.plan.toolName.startsWith("computer.")
   ) {
-    return formatCapabilityReadResult(input.plan.toolName, input.toolResult);
+    const formatted = formatCapabilityReadResult(input.plan.toolName, input.toolResult);
+    // An explicit "#tool" command echoes its name above the result. A read the model chose is
+    // answered by the result itself: never by the model's plan and "Done." with the data dropped.
+    if (input.proposalReason.startsWith("Explicit chat capability #")) return formatted;
+    const lines = formatted.split("\n").slice(1);
+    return lines.length > 0 ? lines.join("\n") : input.proposalReason;
   }
 
   if (input.toolResult !== null) {
@@ -520,6 +548,25 @@ function isWorkspaceDeliverResult(value: unknown): value is {
     typeof (record.attachment as Record<string, unknown>).name === "string" &&
     Array.isArray(record.attachments) &&
     record.attachments.length > 0
+  );
+}
+
+function priceText(price: number | null): string {
+  return price === null ? "" : `, selling price ${price}`;
+}
+
+function isProductList(
+  value: unknown
+): value is Array<{ name: string; quantity: number; unit: string; sellingPrice: number | null }> {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (item) =>
+        item !== null &&
+        typeof item === "object" &&
+        typeof (item as Record<string, unknown>).name === "string" &&
+        typeof (item as Record<string, unknown>).quantity === "number"
+    )
   );
 }
 

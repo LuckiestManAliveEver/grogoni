@@ -17,6 +17,7 @@ export const edgeApiUploadFiles = Object.freeze([
   "application-routes.ts",
   "message-events.ts",
   "public-routes.ts",
+  "client-timings.ts",
   "rate-limit.ts",
   "job-transaction.ts",
   "store-coordination.ts",

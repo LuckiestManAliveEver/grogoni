@@ -313,11 +313,11 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
     setPendingAttachments([]);
     setReplyToMessageId(null);
     performance.mark(`message.send.${optimistic.id}.accepted`);
-    performance.measure(
-      "message.send.accepted_ms",
-      `message.send.${optimistic.id}.start`,
-      `message.send.${optimistic.id}.accepted`
-    );
+    performance.measure("message.send.accepted_ms", {
+      start: `message.send.${optimistic.id}.start`,
+      end: `message.send.${optimistic.id}.accepted`,
+      detail: { clientMessageId: optimistic.id }
+    });
     const key = `${session?.account.id ?? "guest"}:${activeConversationId ?? "opening"}`;
     const previous = acceptanceTails.current.get(key) ?? Promise.resolve();
     let release!: () => void;
@@ -1385,11 +1385,11 @@ export function useChatRuntimeState(deps: UseChatRuntimeStateDeps) {
                             performance.getEntriesByName(`message.send.${clientMessageId}.start`)
                               .length
                           )
-                            performance.measure(
-                              "message.send.ack_ms",
-                              `message.send.${clientMessageId}.start`,
-                              `message.send.${clientMessageId}.ack`
-                            );
+                            performance.measure("message.send.ack_ms", {
+                              start: `message.send.${clientMessageId}.start`,
+                              end: `message.send.${clientMessageId}.ack`,
+                              detail: { clientMessageId }
+                            });
                           return accepted;
                         })
                     )

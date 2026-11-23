@@ -69,7 +69,12 @@ export async function waitForAgentTurn<T extends { id?: string; processing?: Age
       // A dropped poll is asked again; the turn keeps running on the server either way.
     }
     if (turn?.processing !== undefined && turn.processing.status !== "pending") {
-      performance.measure("agent.turn.reply_ms", { start: replyStarted, end: performance.now() });
+      performance.measure("agent.turn.reply_ms", {
+        start: replyStarted,
+        end: performance.now(),
+        // The accepted message's own id, so the reply time joins the send's timings.
+        detail: { clientMessageId: (response as { clientMessageId?: unknown }).clientMessageId }
+      });
       return { ...response, ...turn, id: response.id ?? turn.id } as T;
     }
     // A failed ask always backs off fully, so a network outage never turns into a tight loop.

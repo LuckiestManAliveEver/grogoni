@@ -72,8 +72,9 @@ Tick an item only in the same commit that adds its evidence.
 - [x] Versioned business runtime with rollback. evidence: tests/agent-business-runtime.test.ts
 - [x] Owner corrections are kept and applied. evidence: tests/agent-owner-correction-retention.test.ts
 - [x] Agent skills. evidence: tests/agent-skills.test.ts
-- [ ] Periodic eval: agent replies stay correct after the send/turn split (instant-messaging-checklist).
-- [ ] Send and reply timing marks (`message.send.ack_ms`, `agent.turn.reply_ms`) with a server log line (instant-messaging-checklist).
+- [x] Eval: agent replies stay correct across the send/turn split, on the real Edge pipeline and model (`pnpm eval:agent-turn-split`, 5/5 on 2026-11-23; it caught read tools answering "Done." with the data dropped). evidence: scripts/eval-agent-turn-split.ts, tests/runtime-read-replies.test.ts
+- [ ] That eval runs weekly in CI (`agent-eval.yml` is ready; needs the `OPENROUTER_API_KEY` secret and `AGENT_TURN_EVAL_ENABLED`).
+- [x] Send and reply timings measured on real phones: client marks beaconed to the Edge API and logged beside the server's `message_accepted` line. evidence: tests/client-timings.test.ts, tests/edge-request-timing.test.ts
 
 ## Default app on phones (weight 15)
 

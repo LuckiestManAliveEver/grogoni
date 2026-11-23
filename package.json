@@ -43,6 +43,7 @@
     "eval:user-journey:local": "EVAL_TARGET=local node scripts/eval-user-journey.mjs",
     "eval:user-journey:production": "EVAL_TARGET=production node scripts/eval-user-journey.mjs",
     "eval:daemon-lanes:production": "EVAL_TARGET=production node --env-file-if-exists=.env --env-file-if-exists=.env.local --import tsx scripts/eval-daemon-lanes-live.ts",
+    "eval:agent-turn-split": "node --env-file-if-exists=.env.openrouter --import tsx scripts/eval-agent-turn-split.ts",
     "eval:openrouter-streaming": "node --env-file-if-exists=.env.openrouter --import tsx services/api/scripts/eval-openrouter-streaming.ts",
     "test:live-openrouter": "node --env-file-if-exists=.env.openrouter --import tsx scripts/test-openrouter-runtime.ts",
     "android:manifest:gate": "node scripts/verify-android-release-manifest.mjs --require-release",

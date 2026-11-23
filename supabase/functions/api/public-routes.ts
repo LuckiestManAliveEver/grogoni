@@ -1,3 +1,4 @@
+import { createClientTimingsRoute } from "./client-timings.ts";
 import { sessionCookie, type Transaction } from "./session-routes.ts";
 
 type RecordView = Record<string, unknown>;
@@ -41,7 +42,11 @@ export function createPublicRoutes(
     ensureSystemShop?: () => Promise<unknown>;
   } = {}
 ) {
+  const clientTimings = createClientTimingsRoute();
   return async (request: Request, path: string): Promise<Response | null> => {
+    // Send and reply timings from the web app: logged, never stored, no database.
+    if (request.method === "POST" && path === "/v1/client-timings")
+      return clientTimings(request, path);
     if (
       request.method === "GET" &&
       (path === "/auth/oauth/providers" || path === "/api/auth/oauth/providers")

@@ -1,0 +1,64 @@
+name: Agent Turn Split Eval
+
+# Periodic, paid eval (CLAUDE.md "Periodic evals"): agent replies stay correct across the Edge
+# send/turn split. scripts/eval-agent-turn-split.ts drives the real Edge pipeline on a throwaway
+# PostgreSQL service with the platform default model through OpenRouter, and fails below its pass
+# threshold or on any integrity case (a resend must never run a second model turn).
+#
+# Off until it is configured, like the other scheduled jobs: set the repository secret
+# OPENROUTER_API_KEY and the variable AGENT_TURN_EVAL_ENABLED=true. Each run makes about six
+# model calls. A manual dispatch runs it regardless of the variable.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 5 * * 1" # Mondays 05:17 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  agent-turn-split:
+    if: github.event_name == 'workflow_dispatch' || vars.AGENT_TURN_EVAL_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: grogoni_eval
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -r --filter "./packages/**" --if-present build
+      - name: Migrate the throwaway database
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/grogoni_eval
+          PGOPTIONS: -c grogoni.allow_108=yes
+        run: pnpm db:migrate
+      - name: Run the eval
+        env:
+          EVAL_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/grogoni_eval
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: pnpm eval:agent-turn-split --report agent-turn-split-report.json
+      - name: Keep the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-turn-split-report
+          path: agent-turn-split-report.json
+          if-no-files-found: ignore

@@ -7,6 +7,8 @@ import { runDeploymentRecoveryStartupChecks } from "./lazy-module-recovery";
 import { PerformancePanel } from "./PerformancePanel";
 import { recordReadiness, startPerformanceMonitoring } from "./performance";
 import { registerAppServiceWorker } from "./service-worker";
+import { browserTimingEnvironment, startClientTimings } from "./messaging/client-timings";
+import { readApiBaseUrl } from "./lib/api";
 import { captureJoinLink } from "./staff-join-link";
 import "./styles.css";
 import "./home-reference.css";
@@ -20,6 +22,11 @@ function App() {
     recordReadiness("app-shell");
     registerAppServiceWorker();
     runDeploymentRecoveryStartupChecks();
+    // Send and reply timings off the device (production only; logged by the Edge API).
+    const timings = import.meta.env.PROD
+      ? browserTimingEnvironment(`${readApiBaseUrl()}/v1/client-timings`)
+      : null;
+    if (timings !== null) startClientTimings(timings);
   }, []);
 
   return (

@@ -248,24 +248,32 @@ describe.skipIf(!databaseUrl)("shop directory on PostgreSQL (Edge)", () => {
       const baseline = store.snapshot();
       const place = `Ruiru ${randomUUID().slice(0, 8)}`;
       const shop = shopFor(store, `Directory shop ${randomUUID().slice(0, 8)}`);
-      // Out of stock: plain search on Edge must not find the shop by it (as on Node).
       const soldOut = `Soldout${randomUUID().slice(0, 8)}`;
-      store.createProduct({
-        sessionId: shop.owner.session.id,
-        businessId: shop.business.id,
-        product: {
-          name: soldOut,
-          sku: soldOut,
-          unit: "item",
-          quantity: 0,
-          buyingPrice: 1,
-          sellingPrice: 2
-        }
-      });
       await transaction((client) =>
         saveTransactionalCp2Snapshot(client, store.snapshot(), baseline)
       );
       const edge = await createEdgeDomainRoutes({ transaction });
+      // Out of stock: plain search on Edge must not find the shop by it (as on Node). Created
+      // through the Edge API so its sync-journal row does not collide with an earlier run's.
+      const product = await edge.routes(
+        new Request(`https://grogoni.com/businesses/${shop.business.id}/products`, {
+          method: "POST",
+          headers: {
+            cookie: `grogoni_session=${shop.owner.session.id}`,
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({
+            name: soldOut,
+            sku: soldOut,
+            unit: "item",
+            quantity: 0,
+            buyingPrice: 1,
+            sellingPrice: 2
+          })
+        }),
+        `/businesses/${shop.business.id}/products`
+      );
+      expect(product?.status, await product?.clone().text()).toBe(200);
       const path = `/businesses/${shop.business.id}/directory-listing`;
       const saved = await edge.routes(
         new Request(`https://grogoni.com${path}`, {
@@ -305,14 +313,15 @@ describe.skipIf(!databaseUrl)("shop directory on PostgreSQL (Edge)", () => {
       expect(await search(`category=pharmacy&place=${encodeURIComponent(place)}`)).toEqual([]);
       expect(await search(`search=${encodeURIComponent(soldOut.toLowerCase())}`)).toEqual([]);
       // The saved JavaScript search key is what Edge matches, whatever Postgres lower() does.
+      const onlyKey = `key-only-${randomUUID().slice(0, 8)}`;
       await transaction((client) =>
         client.query(
           `update cp2_shop_presences set record = record || jsonb_build_object('placeKey', $2::text)
            where entity_id = $1`,
-          [shop.business.id, "key-only-match"]
+          [shop.business.id, onlyKey]
         )
       );
-      expect(await search("place=key-only-match")).toHaveLength(1);
+      expect(await search(`place=${onlyKey}`)).toHaveLength(1);
       const refused = await publicRoutes(
         new Request("https://grogoni.com/public/storefronts?category=casino"),
         "/public/storefronts"

@@ -198,6 +198,27 @@ begin, store lock), `scope`, `locks`, `load` (snapshot read), `hydrate`, `appBui
 `persist`, `total`, and `edge` (whole function). Read it from the browser's network panel or with
 `curl -D -`.
 
+### Send and reply timings from real phones
+
+Each accepted message logs `message_accepted` (clientMessageId, conversationId, agentTurn,
+serverMs). Production web clients beacon their own measures to `POST /v1/client-timings`, logged
+as `client_timing` (name, ms, clientMessageId, network class; never message text, an account or
+an address; nothing stored, no database): `message.send.accepted_ms` (tap to bubble),
+`message.send.ack_ms` (tap to server acknowledgement) and `agent.turn.reply_ms` (acknowledgement to
+agent reply). Join the two on clientMessageId to split a slow send into phone, network and server.
+For the median acknowledgement on 3G, in the function logs:
+
+```sql
+select approx_quantile(cast(json_value(event_message, '$.ms') as float64), 0.5) as p50_ms, count(*)
+from function_logs
+where json_value(event_message, '$.event') = 'client_timing'
+  and json_value(event_message, '$.name') = 'message.send.ack_ms'
+  and json_value(event_message, '$.network') = '3g'
+```
+
+The route caps itself at 1,200 lines per isolate per minute (the database rate limiter does not
+run without a transaction) and drops the rest silently.
+
 Supabase retires an isolate once its CPU use passes the soft limit (shutdown reason `EarlyDrop` in
 the function logs, with `cpu_time_used`). On 2026-11-19 every isolate was retired after one request
 (~1.1 s CPU, mostly startup), so every request paid a ~0.95 s cold start. Three changes keep
