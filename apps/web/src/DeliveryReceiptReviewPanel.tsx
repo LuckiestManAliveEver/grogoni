@@ -3,7 +3,11 @@ import type { PurchaseReceiptSummary, ReceiptOCRJobSummary } from "@grogoni/shar
 import { fetchFreshJson, patchJson, postJson } from "./api-helpers";
 import { ReceiptFieldsForm } from "./ReceiptFieldsForm";
 import { ReceiptBindingCard } from "./ReceiptBindingCard";
-import { ReceiptChecksPanel, receiptReadyToConfirm } from "./ReceiptChecksPanel";
+import {
+  ReceiptChecksPanel,
+  receiptConfirmAcknowledgements,
+  receiptReadyToConfirm
+} from "./ReceiptChecksPanel";
 
 /** Durable chat cards read the same receipt drafts as the Suppliers workspace. */
 export function DeliveryReceiptReviewPanel({ businessId }: { businessId: string }) {
@@ -105,7 +109,7 @@ export function DeliveryReceiptReviewPanel({ businessId }: { businessId: string 
                           supplierId: job.matchedSupplierId,
                           salesAgentId: job.matchedSalesAgentId,
                           receiveInventory: true,
-                          acknowledgedDiscrepancies: [...(acknowledged[job.id] ?? [])],
+                          ...receiptConfirmAcknowledgements(acknowledged[job.id] ?? new Set()),
                           createSupplier: job.matchedSupplierId === null,
                           createSalesAgent:
                             job.matchedSalesAgentId === null && job.salesAgentName !== null

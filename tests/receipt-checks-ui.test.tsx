@@ -3,7 +3,12 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ReceiptChecksSummary, ReceiptOCRJobSummary } from "../packages/shared-types/src";
-import { ReceiptChecksPanel, receiptReadyToConfirm } from "../apps/web/src/ReceiptChecksPanel";
+import {
+  duplicateKey,
+  ReceiptChecksPanel,
+  receiptConfirmAcknowledgements,
+  receiptReadyToConfirm
+} from "../apps/web/src/ReceiptChecksPanel";
 import { ReceiptFieldsForm } from "../apps/web/src/ReceiptFieldsForm";
 import {
   buildReceiptStructuredExtraction,
@@ -83,6 +88,65 @@ describe("receipt checks panel", () => {
     expect(receiptReadyToConfirm(quotation, new Set())).toBe(false);
     // A draft from before the checks existed confirms as it did.
     expect(receiptReadyToConfirm(undefined, new Set())).toBe(true);
+    act(() => root.unmount());
+  });
+});
+
+describe("duplicates in review", () => {
+  const clean: ReceiptChecksSummary = { ...mismatch, arithmeticIssues: [] };
+  const duplicateOf = {
+    receiptId: "0b8f2c4e-1111-4111-8111-111111111111",
+    receiptDate: "2026-11-20T00:00:00.000Z",
+    total: 1900,
+    supplierName: "Acacia Wholesale"
+  };
+
+  it("shows a saved receipt as already saved, and never lets it confirm", async () => {
+    host = document.createElement("div");
+    document.body.append(host);
+    const checks = { ...clean, duplicateOf: { ...duplicateOf, match: "same" as const } };
+    const root = createRoot(host);
+    await act(async () =>
+      root.render(
+        <ReceiptChecksPanel
+          checks={checks}
+          acknowledged={new Set()}
+          onAcknowledge={() => undefined}
+        />
+      )
+    );
+    expect(host.textContent).toContain("Already saved");
+    expect(host.textContent).toContain("2026-11-20");
+    expect(receiptReadyToConfirm(checks, new Set([duplicateKey(duplicateOf.receiptId)]))).toBe(
+      false
+    );
+    act(() => root.unmount());
+  });
+
+  it("asks about a possible duplicate, and sends the answer as confirmedDifferentFrom", async () => {
+    host = document.createElement("div");
+    document.body.append(host);
+    const checks = { ...clean, duplicateOf: { ...duplicateOf, match: "possible" as const } };
+    const onAcknowledge = vi.fn();
+    const root = createRoot(host);
+    await act(async () =>
+      root.render(
+        <ReceiptChecksPanel
+          checks={checks}
+          acknowledged={new Set()}
+          onAcknowledge={onAcknowledge}
+        />
+      )
+    );
+    act(() => host.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click());
+    expect(onAcknowledge).toHaveBeenCalledWith(duplicateKey(duplicateOf.receiptId), true);
+    expect(receiptReadyToConfirm(checks, new Set())).toBe(false);
+    const ticked = new Set([duplicateKey(duplicateOf.receiptId), "receipt.total"]);
+    expect(receiptReadyToConfirm(checks, ticked)).toBe(true);
+    expect(receiptConfirmAcknowledgements(ticked)).toEqual({
+      acknowledgedDiscrepancies: ["receipt.total"],
+      confirmedDifferentFrom: duplicateOf.receiptId
+    });
     act(() => root.unmount());
   });
 });

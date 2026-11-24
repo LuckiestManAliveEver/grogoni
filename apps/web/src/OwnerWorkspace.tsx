@@ -485,10 +485,8 @@ function renderOwnerWorkspaceScreen(input: OwnerWorkspaceBindings) {
             void createSalesAgentFromPhoneContact(supplierId, networkNodeId)
           }
           onUploadReceipt={uploadSupplierReceipt}
-          onConfirmReceipt={(job, acknowledgedDiscrepancies) =>
-            void runAction("receipt-confirm", () =>
-              confirmSupplierReceipt(job, acknowledgedDiscrepancies)
-            )
+          onConfirmReceipt={(job, acknowledgements) =>
+            void runAction("receipt-confirm", () => confirmSupplierReceipt(job, acknowledgements))
           }
           onImport={() => navigateToView("imports")}
         />

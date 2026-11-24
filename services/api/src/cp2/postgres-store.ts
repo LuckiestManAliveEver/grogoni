@@ -2354,12 +2354,20 @@ async function loadRelationalCoreSnapshot(pool: Pool, snapshot: Cp2Snapshot): Pr
           ocr_job_id: string | null;
           image_stored: boolean;
           created_at: Date;
+          document_type: string | null;
+          derived_fields: string[] | null;
+          acknowledged_discrepancies: string[] | null;
+          document_fingerprint: string | null;
+          content_fingerprint: string | null;
+          confirmed_different_from: string | null;
         }>(
           pool,
           "load purchase receipts",
           `
               select id, business_id, supplier_id, supplier_name, sales_agent_id, sales_agent_name,
-                     receipt_date, total, source_file_name, ocr_job_id, image_stored, created_at
+                     receipt_date, total, source_file_name, ocr_job_id, image_stored, created_at,
+                     document_type, derived_fields, acknowledged_discrepancies,
+                     document_fingerprint, content_fingerprint, confirmed_different_from
               from purchase_receipts
               order by business_id, receipt_date, id
             `
@@ -2376,7 +2384,19 @@ async function loadRelationalCoreSnapshot(pool: Pool, snapshot: Cp2Snapshot): Pr
           sourceFileName: row.source_file_name,
           ocrJobId: row.ocr_job_id,
           imageStored: row.image_stored,
-          createdAt: timestampToIso(row.created_at)
+          createdAt: timestampToIso(row.created_at),
+          // Migration 143. Receipts saved before it have none of these (documentFingerprint
+          // undefined marks them, so duplicate checks fingerprint them from their scan).
+          ...(row.document_type === null
+            ? {}
+            : {
+                documentType: row.document_type,
+                derivedFields: row.derived_fields ?? [],
+                acknowledgedDiscrepancies: row.acknowledged_discrepancies ?? [],
+                documentFingerprint: row.document_fingerprint,
+                contentFingerprint: row.content_fingerprint,
+                confirmedDifferentFrom: row.confirmed_different_from
+              })
         })) as Cp2Snapshot["purchaseReceipts"];
       },
       async () => {
@@ -4130,10 +4150,18 @@ export async function saveRelationalCoreRecords(
       `
         insert into purchase_receipts (
           id, business_id, supplier_id, supplier_name, sales_agent_id, sales_agent_name,
-          receipt_date, total, source_file_name, ocr_job_id, image_stored, created_at
+          receipt_date, total, source_file_name, ocr_job_id, image_stored, created_at,
+          document_type, derived_fields, acknowledged_discrepancies, document_fingerprint,
+          content_fingerprint, confirmed_different_from
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb, $15::jsonb, $16, $17, $18)
         on conflict (id) do update set
+          document_type = excluded.document_type,
+          derived_fields = excluded.derived_fields,
+          acknowledged_discrepancies = excluded.acknowledged_discrepancies,
+          document_fingerprint = excluded.document_fingerprint,
+          content_fingerprint = excluded.content_fingerprint,
+          confirmed_different_from = excluded.confirmed_different_from,
           supplier_id = excluded.supplier_id,
           supplier_name = excluded.supplier_name,
           sales_agent_id = excluded.sales_agent_id,
@@ -4143,7 +4171,7 @@ export async function saveRelationalCoreRecords(
           source_file_name = excluded.source_file_name,
           ocr_job_id = excluded.ocr_job_id,
           image_stored = excluded.image_stored
-          where (purchase_receipts.supplier_id, purchase_receipts.supplier_name, purchase_receipts.sales_agent_id, purchase_receipts.sales_agent_name, purchase_receipts.receipt_date, purchase_receipts.total, purchase_receipts.source_file_name, purchase_receipts.ocr_job_id, purchase_receipts.image_stored) is distinct from (excluded.supplier_id, excluded.supplier_name, excluded.sales_agent_id, excluded.sales_agent_name, excluded.receipt_date, excluded.total, excluded.source_file_name, excluded.ocr_job_id, excluded.image_stored)
+          where (purchase_receipts.supplier_id, purchase_receipts.supplier_name, purchase_receipts.sales_agent_id, purchase_receipts.sales_agent_name, purchase_receipts.receipt_date, purchase_receipts.total, purchase_receipts.source_file_name, purchase_receipts.ocr_job_id, purchase_receipts.image_stored, purchase_receipts.document_type, purchase_receipts.derived_fields, purchase_receipts.acknowledged_discrepancies, purchase_receipts.document_fingerprint, purchase_receipts.content_fingerprint, purchase_receipts.confirmed_different_from) is distinct from (excluded.supplier_id, excluded.supplier_name, excluded.sales_agent_id, excluded.sales_agent_name, excluded.receipt_date, excluded.total, excluded.source_file_name, excluded.ocr_job_id, excluded.image_stored, excluded.document_type, excluded.derived_fields, excluded.acknowledged_discrepancies, excluded.document_fingerprint, excluded.content_fingerprint, excluded.confirmed_different_from)
       `,
       [
         requiredText(record, "id"),
@@ -4157,7 +4185,15 @@ export async function saveRelationalCoreRecords(
         firstText(record, ["sourceFileName"]),
         firstText(record, ["ocrJobId"]),
         record.imageStored === true,
-        requiredText(record, "createdAt")
+        requiredText(record, "createdAt"),
+        firstText(record, ["documentType"]),
+        Array.isArray(record.derivedFields) ? JSON.stringify(record.derivedFields) : null,
+        Array.isArray(record.acknowledgedDiscrepancies)
+          ? JSON.stringify(record.acknowledgedDiscrepancies)
+          : null,
+        firstText(record, ["documentFingerprint"]),
+        firstText(record, ["contentFingerprint"]),
+        firstText(record, ["confirmedDifferentFrom"])
       ]
     );
   }

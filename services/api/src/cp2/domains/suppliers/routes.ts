@@ -411,6 +411,10 @@ export function registerSuppliersRoutes(
           ...parseAcknowledgedDiscrepancies(
             (request.body as { acknowledgedDiscrepancies?: unknown } | undefined)
               ?.acknowledgedDiscrepancies
+          ),
+          ...parseConfirmedDifferentFrom(
+            (request.body as { confirmedDifferentFrom?: unknown } | undefined)
+              ?.confirmedDifferentFrom
           )
         });
       } catch (error) {
@@ -681,4 +685,16 @@ function parseAcknowledgedDiscrepancies(value: unknown): { acknowledgedDiscrepan
       "Acknowledged mismatches must be field names."
     );
   return { acknowledgedDiscrepancies: value as string[] };
+}
+
+/** The saved receipt a possible duplicate was confirmed to differ from. */
+function parseConfirmedDifferentFrom(value: unknown): { confirmedDifferentFrom?: string } {
+  if (value === undefined || value === null) return {};
+  if (typeof value !== "string" || !/^[0-9a-f-]{36}$/u.test(value))
+    throw new Cp2Error(
+      400,
+      "receipt_duplicate_confirmation_invalid",
+      "Name the receipt it differs from."
+    );
+  return { confirmedDifferentFrom: value };
 }

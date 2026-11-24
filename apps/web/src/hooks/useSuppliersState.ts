@@ -363,7 +363,9 @@ export function useSuppliersState(deps: UseSuppliersStateDeps) {
 
   async function confirmSupplierReceipt(
     job: ReceiptOCRJobSummary,
-    acknowledgedDiscrepancies: string[] = []
+    acknowledgements: { acknowledgedDiscrepancies: string[]; confirmedDifferentFrom?: string } = {
+      acknowledgedDiscrepancies: []
+    }
   ) {
     if (deps.businessId === null) {
       return;
@@ -382,7 +384,7 @@ export function useSuppliersState(deps: UseSuppliersStateDeps) {
           receiveInventory: true,
           createSupplier: job.matchedSupplierId === null,
           createSalesAgent: job.matchedSalesAgentId === null && job.salesAgentName !== null,
-          acknowledgedDiscrepancies
+          ...acknowledgements
         }
       );
       await loadSuppliers(deps.businessId);

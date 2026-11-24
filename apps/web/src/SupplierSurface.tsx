@@ -1,5 +1,9 @@
 import { ReceiptBindingCard } from "./ReceiptBindingCard";
-import { ReceiptChecksPanel, receiptReadyToConfirm } from "./ReceiptChecksPanel";
+import {
+  ReceiptChecksPanel,
+  receiptConfirmAcknowledgements,
+  receiptReadyToConfirm
+} from "./ReceiptChecksPanel";
 import { ReceiptFieldsForm } from "./ReceiptFieldsForm";
 import { patchJson } from "./api-helpers";
 import { useState, type ChangeEvent } from "react";
@@ -40,7 +44,10 @@ export interface SupplierSurfaceProps {
   onLinkSalesAgentContact: (salesAgentId: string, networkNodeId: string) => void;
   onCreateSalesAgentFromContact: (supplierId: string, networkNodeId: string) => void;
   onUploadReceipt: (file: File) => Promise<ReceiptOCRJobSummary | null>;
-  onConfirmReceipt: (job: ReceiptOCRJobSummary, acknowledgedDiscrepancies: string[]) => void;
+  onConfirmReceipt: (
+    job: ReceiptOCRJobSummary,
+    acknowledgements: ReturnType<typeof receiptConfirmAcknowledgements>
+  ) => void;
   onImport: () => void;
 }
 
@@ -246,7 +253,10 @@ export function SupplierSurface(props: SupplierSurfaceProps) {
                   )
                 }
                 onClick={() =>
-                  props.onConfirmReceipt(receiptJob, [...(acknowledged[receiptJob.id] ?? [])])
+                  props.onConfirmReceipt(
+                    receiptJob,
+                    receiptConfirmAcknowledgements(acknowledged[receiptJob.id] ?? new Set())
+                  )
                 }
               >
                 Confirm and save

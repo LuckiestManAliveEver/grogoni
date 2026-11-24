@@ -2393,6 +2393,12 @@ export interface PurchaseReceiptSummary {
   derivedFields?: string[];
   /** Arithmetic mismatches the person confirmed as printed (fields like "receipt.total"). */
   acknowledgedDiscrepancies?: string[];
+  /** Supplier + number + currency + total + date, when a number was printed (unique per shop). */
+  documentFingerprint?: string | null;
+  /** Supplier + date + total + lines, for spotting a possible duplicate without a number. */
+  contentFingerprint?: string | null;
+  /** A possible duplicate the person confirmed is a different receipt (that receipt's id). */
+  confirmedDifferentFrom?: string | null;
 }
 
 /**
@@ -2428,6 +2434,18 @@ export interface ReceiptChecksSummary {
   /** Why it cannot be confirmed as a purchase, when it cannot. */
   refusal: string | null;
   arithmeticIssues: ReceiptArithmeticIssueSummary[];
+  /**
+   * A receipt this shop already saved that this draft matches: "same" (same supplier, number,
+   * total and date: refused) or "possible" (no number, same supplier, date, total and lines: a
+   * person confirms it is different). Absent when there is none.
+   */
+  duplicateOf?: {
+    receiptId: string;
+    match: "same" | "possible";
+    receiptDate: string;
+    total: number;
+    supplierName: string;
+  };
 }
 
 /** Engine provenance. Historical PaddleOCR records remain readable; plain text is not OCR. */

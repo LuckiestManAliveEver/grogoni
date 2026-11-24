@@ -4,6 +4,7 @@
  * arithmetic holds, and which values were printed rather than derived. A model's reading is
  * evidence for review; these rules decide what a confirmation may post.
  */
+import { createHash } from "node:crypto";
 import type {
   ReceiptArithmeticIssueSummary,
   ReceiptChecksSummary,
@@ -282,4 +283,48 @@ export function withReceiptChecks(
   const receipt = { ...extraction.receipt, documentType };
   const checks = receiptChecksFor({ ...extraction, receipt, derivedFields }, fullText);
   return { ...extraction, receipt, derivedFields, checks };
+}
+
+/**
+ * The same commercial receipt, whatever photograph or OCR it came through: a recapture, a crop
+ * or a re-typed copy reads the same supplier, number, total and date. Two fingerprints, never the
+ * image bytes:
+ * - strong: supplier (tax PIN when printed, else name and phone) + document number + currency +
+ *   total + date. Only when a document number and a supplier are printed: then a second
+ *   confirmation is refused.
+ * - weak: supplier + date + total + the lines, for receipts without a number: a possible
+ *   duplicate that a person confirms is a different receipt.
+ */
+export function receiptFingerprints(extraction: ReceiptStructuredExtractionSummary): {
+  strong: string | null;
+  weak: string | null;
+} {
+  const alnum = (value: string | null | undefined) =>
+    (value ?? "").toUpperCase().replace(/[^A-Z0-9]/gu, "");
+  const supplierName = alnum(
+    extraction.supplier.supplierName ?? extraction.supplier.tradingName
+  ).replace(/(?:LTD|LIMITED|CO|COMPANY|ENTERPRISES?)$/u, "");
+  const phone = (extraction.supplier.phoneNumber ?? "").replace(/\D/gu, "").slice(-9);
+  const taxPin = alnum(extraction.supplier.taxPin);
+  const supplier = taxPin ? `pin:${taxPin}` : supplierName ? `name:${supplierName}:${phone}` : "";
+  const number = alnum(extraction.receipt.receiptNumber ?? extraction.receipt.invoiceNumber);
+  const total =
+    extraction.receipt.total === null ? "" : String(Math.round(extraction.receipt.total * 100));
+  const date = (extraction.receipt.purchaseDate ?? "").slice(0, 10);
+  const currency = alnum(extraction.receipt.currency) || "KES";
+  const digest = (value: string) => createHash("sha256").update(value).digest("hex");
+  const lines = extraction.products
+    .map((product) =>
+      [alnum(product.itemName), product.quantity, Math.round(product.unitPrice * 100)].join(":")
+    )
+    .sort()
+    .join("|");
+  return {
+    strong:
+      supplier && number ? digest(`v1|${supplier}|${number}|${currency}|${total}|${date}`) : null,
+    weak:
+      supplier && (total || lines)
+        ? digest(`v1w|${supplier}|${date}|${currency}|${total}|${lines}`)
+        : null
+  };
 }

@@ -1,4 +1,4 @@
-import { receiptChecksFor, withReceiptChecks } from "./receipt-validation.js";
+import { receiptChecksFor, receiptFingerprints, withReceiptChecks } from "./receipt-validation.js";
 import { parseReceiptFields, receiptFieldsToParsed } from "./receipt-fields.js";
 /**
  * Fourth slice of in-process domain modularization for the Cp2Store monolith (see
@@ -30,6 +30,8 @@ import {
 } from "@grogoni/business-core";
 import type { BusinessEvent } from "@grogoni/event-core";
 import type {
+  ReceiptChecksSummary,
+  ReceiptStructuredExtractionSummary,
   AuthenticatedActorView,
   NetworkNodeSummary,
   NetworkSyncSourceSummary,
@@ -615,9 +617,9 @@ export class SupplierDomain {
     const sourceFileName = input.sourceFileName.trim() || "receipt-upload";
     const jobId = randomUUID();
     // Document type and arithmetic checks, recomputed on every save (receipt-validation.ts).
-    const structuredExtraction = withReceiptChecks(
-      suppliedFields ?? buildReceiptStructuredExtraction(parsed),
-      extractedText
+    const structuredExtraction = this.withDuplicateCheck(
+      input.businessId,
+      withReceiptChecks(suppliedFields ?? buildReceiptStructuredExtraction(parsed), extractedText)
     );
 
     const contactMatchingResult = this.createReceiptContactMatchingResult({
@@ -712,6 +714,8 @@ export class SupplierDomain {
     receiveInventory?: boolean;
     /** Arithmetic mismatches the person checked against the paper (fields like "receipt.total"). */
     acknowledgedDiscrepancies?: string[];
+    /** A possible duplicate (no printed number) the person confirmed is a different receipt. */
+    confirmedDifferentFrom?: string | null;
     now?: Date;
   }): PurchaseReceiptSummary {
     const now = input.now ?? new Date();
@@ -744,6 +748,7 @@ export class SupplierDomain {
       throw new Cp2Error(409, "receipt_ocr_failed", job.errorMessage ?? "Receipt OCR failed.");
     }
     const checks = this.assertReceiptPostable(job, input);
+    const fingerprints = receiptFingerprints(job.structuredExtraction);
 
     let supplier =
       input.supplierId === null || input.supplierId === undefined
@@ -839,7 +844,10 @@ export class SupplierDomain {
         ...(job.receiptDate === null ? ["receipt.purchaseDate"] : []),
         ...(job.total === null ? ["receipt.total"] : [])
       ],
-      acknowledgedDiscrepancies: checks.arithmeticIssues.map((issue) => issue.field)
+      acknowledgedDiscrepancies: checks.arithmeticIssues.map((issue) => issue.field),
+      documentFingerprint: fingerprints.strong,
+      contentFingerprint: fingerprints.weak,
+      confirmedDifferentFrom: checks.duplicateOf?.receiptId ?? null
     };
     const confirmedJob: ReceiptOCRJobSummary = {
       ...job,
@@ -875,9 +883,37 @@ export class SupplierDomain {
    */
   assertReceiptPostable(
     job: ReceiptOCRJobSummary,
-    input: { receiveInventory?: boolean; acknowledgedDiscrepancies?: string[] }
+    input: {
+      receiveInventory?: boolean;
+      acknowledgedDiscrepancies?: string[];
+      confirmedDifferentFrom?: string | null;
+    }
   ) {
-    const checks = receiptChecksFor(job.structuredExtraction, job.fullText);
+    const checks = {
+      ...receiptChecksFor(job.structuredExtraction, job.fullText),
+      ...this.duplicateCheck(job.businessId, job.structuredExtraction, job.id)
+    };
+    // The same receipt confirmed twice (another photo of it, a retyped copy) is never posted
+    // again; a possible one without a printed number needs the person to say it is different.
+    if (checks.duplicateOf?.match === "same")
+      throw new Cp2Error(
+        409,
+        "receipt_duplicate",
+        `This receipt was already saved on ${checks.duplicateOf.receiptDate.slice(0, 10)} (${checks.duplicateOf.supplierName}, ${checks.duplicateOf.total}).`,
+        false,
+        { receiptId: checks.duplicateOf.receiptId }
+      );
+    if (
+      checks.duplicateOf?.match === "possible" &&
+      input.confirmedDifferentFrom !== checks.duplicateOf.receiptId
+    )
+      throw new Cp2Error(
+        409,
+        "receipt_possible_duplicate",
+        `This looks like a receipt already saved on ${checks.duplicateOf.receiptDate.slice(0, 10)} (${checks.duplicateOf.supplierName}, ${checks.duplicateOf.total}). Confirm it is a different receipt.`,
+        false,
+        { receiptId: checks.duplicateOf.receiptId }
+      );
     if (!checks.recordPurchase)
       throw new Cp2Error(409, "receipt_document_not_postable", checks.refusal ?? "", false, {
         documentType: checks.documentType
@@ -901,6 +937,69 @@ export class SupplierDomain {
         { issues: open }
       );
     return checks;
+  }
+
+  /** The extraction with any matching saved receipt recorded on its checks. */
+  private withDuplicateCheck(
+    businessId: string,
+    extraction: ReceiptStructuredExtractionSummary,
+    jobId?: string
+  ): ReceiptStructuredExtractionSummary {
+    if (extraction.checks === undefined) return extraction;
+    const { duplicateOf } = this.duplicateCheck(businessId, extraction, jobId);
+    const { duplicateOf: _previous, ...checks } = extraction.checks;
+    void _previous;
+    return { ...extraction, checks: duplicateOf ? { ...checks, duplicateOf } : checks };
+  }
+
+  /**
+   * A receipt this shop already saved that the extraction matches. Receipts saved before
+   * fingerprints existed are fingerprinted from their own scan's extraction.
+   */
+  private duplicateCheck(
+    businessId: string,
+    extraction: ReceiptStructuredExtractionSummary,
+    excludeJobId?: string
+  ): { duplicateOf?: NonNullable<ReceiptChecksSummary["duplicateOf"]> } {
+    const mine = receiptFingerprints(extraction);
+    if (mine.strong === null && mine.weak === null) return {};
+    let possible: PurchaseReceiptSummary | undefined;
+    const view = (receipt: PurchaseReceiptSummary, match: "same" | "possible") => ({
+      duplicateOf: {
+        receiptId: receipt.id,
+        match,
+        receiptDate: receipt.receiptDate,
+        total: receipt.total,
+        supplierName: receipt.supplierName
+      }
+    });
+    for (const receipt of this.purchaseReceipts.values()) {
+      if (receipt.businessId !== businessId || (excludeJobId && receipt.ocrJobId === excludeJobId))
+        continue;
+      const theirs =
+        receipt.documentFingerprint !== undefined
+          ? {
+              strong: receipt.documentFingerprint ?? null,
+              weak: receipt.contentFingerprint ?? null
+            }
+          : (() => {
+              const job = receipt.ocrJobId ? this.receiptOCRJobs.get(receipt.ocrJobId) : undefined;
+              return job
+                ? receiptFingerprints(job.structuredExtraction)
+                : { strong: null, weak: null };
+            })();
+      if (mine.strong !== null && mine.strong === theirs.strong) return view(receipt, "same");
+      // Without a printed number on one of them, the same supplier, date, total and lines is
+      // possibly the same receipt.
+      if (
+        possible === undefined &&
+        mine.weak !== null &&
+        mine.weak === theirs.weak &&
+        (mine.strong === null || theirs.strong === null)
+      )
+        possible = receipt;
+    }
+    return possible === undefined ? {} : view(possible, "possible");
   }
 
   correctReceiptOCRJob(input: {
@@ -986,9 +1085,13 @@ export class SupplierDomain {
       warnings,
       fieldEvidence: buildReceiptFieldEvidence(parsed, extractedText),
       structuredExtraction: {
-        ...withReceiptChecks(
-          suppliedFields ?? buildReceiptStructuredExtraction(parsed),
-          extractedText
+        ...this.withDuplicateCheck(
+          input.businessId,
+          withReceiptChecks(
+            suppliedFields ?? buildReceiptStructuredExtraction(parsed),
+            extractedText
+          ),
+          input.ocrJobId
         ),
         ...(job.structuredExtraction.sourceDocument
           ? { sourceDocument: job.structuredExtraction.sourceDocument }
