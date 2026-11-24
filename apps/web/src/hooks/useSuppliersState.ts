@@ -361,7 +361,10 @@ export function useSuppliersState(deps: UseSuppliersStateDeps) {
     }
   }
 
-  async function confirmSupplierReceipt(job: ReceiptOCRJobSummary) {
+  async function confirmSupplierReceipt(
+    job: ReceiptOCRJobSummary,
+    acknowledgedDiscrepancies: string[] = []
+  ) {
     if (deps.businessId === null) {
       return;
     }
@@ -378,7 +381,8 @@ export function useSuppliersState(deps: UseSuppliersStateDeps) {
           salesAgentId: job.matchedSalesAgentId,
           receiveInventory: true,
           createSupplier: job.matchedSupplierId === null,
-          createSalesAgent: job.matchedSalesAgentId === null && job.salesAgentName !== null
+          createSalesAgent: job.matchedSalesAgentId === null && job.salesAgentName !== null,
+          acknowledgedDiscrepancies
         }
       );
       await loadSuppliers(deps.businessId);

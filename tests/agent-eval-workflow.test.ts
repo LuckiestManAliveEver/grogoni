@@ -15,9 +15,14 @@ describe("agent turn split eval workflow", () => {
     );
   });
 
-  it("gives the model key to the eval step only, against the job's own PostgreSQL", () => {
+  it("gives the model key to the eval steps only, against the job's own PostgreSQL", () => {
     const secretAt = workflow.indexOf("secrets.OPENROUTER_API_KEY");
     expect(workflow.indexOf("secrets.")).toBe(secretAt);
+    // Every secret reference is the model key, on an eval step.
+    expect(workflow.match(/secrets\.[A-Z_]+/gu)).toEqual([
+      "secrets.OPENROUTER_API_KEY",
+      "secrets.OPENROUTER_API_KEY"
+    ]);
     expect(secretAt).toBeGreaterThan(workflow.indexOf("pnpm install"));
     expect(secretAt).toBeGreaterThan(workflow.indexOf("pnpm db:migrate"));
     expect(workflow).toContain(
@@ -30,5 +35,7 @@ describe("agent turn split eval workflow", () => {
   it("runs the eval script that exists", () => {
     expect(workflow).toContain("pnpm eval:agent-turn-split");
     expect(pkg.scripts["eval:agent-turn-split"]).toContain("scripts/eval-agent-turn-split.ts");
+    expect(workflow).toContain("pnpm eval:receipt-reading");
+    expect(pkg.scripts["eval:receipt-reading"]).toContain("scripts/eval-receipt-reading.ts");
   });
 });

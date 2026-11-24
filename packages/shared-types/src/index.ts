@@ -2384,6 +2384,50 @@ export interface PurchaseReceiptSummary {
   imageStored: boolean;
   createdAt: string;
   lineItems: ReceiptLineItemSummary[];
+  /** What the document was when confirmed (absent on receipts saved before 2026-11-24). */
+  documentType?: ReceiptDocumentType;
+  /**
+   * Values that were not printed: computed (a line total from quantity × price) or filled in
+   * (the confirmation time when the receipt shows no date). Paths like "receipt.purchaseDate".
+   */
+  derivedFields?: string[];
+  /** Arithmetic mismatches the person confirmed as printed (fields like "receipt.total"). */
+  acknowledgedDiscrepancies?: string[];
+}
+
+/**
+ * What a scanned document is. It decides what confirming it may post
+ * (services/api/src/cp2/domains/suppliers/receipt-validation.ts receiptDocumentEffects).
+ */
+export type ReceiptDocumentType =
+  | "purchase_receipt"
+  | "delivery_note"
+  | "invoice"
+  | "pro_forma"
+  | "quotation"
+  | "sales_receipt"
+  | "payment_receipt"
+  | "return"
+  | "refund"
+  | "credit_note"
+  | "unknown";
+
+export interface ReceiptArithmeticIssueSummary {
+  code: "line_total_mismatch" | "subtotal_mismatch" | "total_mismatch" | "balance_mismatch";
+  field: string;
+  expected: number;
+  printed: number;
+  message: string;
+}
+
+/** The checks confirmation enforces, computed by the server for the review screen. */
+export interface ReceiptChecksSummary {
+  documentType: ReceiptDocumentType;
+  recordPurchase: boolean;
+  receiveStock: boolean;
+  /** Why it cannot be confirmed as a purchase, when it cannot. */
+  refusal: string | null;
+  arithmeticIssues: ReceiptArithmeticIssueSummary[];
 }
 
 /** Engine provenance. Historical PaddleOCR records remain readable; plain text is not OCR. */
@@ -2496,7 +2540,13 @@ export interface ReceiptStructuredExtractionSummary {
     tillNumber: string | null;
     paybillNumber: string | null;
     transactionReference: string | null;
+    /** The kind of document; null or absent until classified. */
+    documentType?: ReceiptDocumentType | null;
   };
+  /** Values computed rather than printed (paths like "products.0.lineTotal"). */
+  derivedFields?: string[];
+  /** Server-computed; recomputed on every save. Absent on drafts from before 2026-11-24. */
+  checks?: ReceiptChecksSummary;
   products: Array<{
     itemName: string;
     itemCode: string | null;

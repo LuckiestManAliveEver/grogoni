@@ -407,7 +407,11 @@ export function registerSuppliersRoutes(
           supplierId: body.supplierId,
           salesAgentId: body.salesAgentId,
           createSupplier: body.createSupplier,
-          createSalesAgent: body.createSalesAgent
+          createSalesAgent: body.createSalesAgent,
+          ...parseAcknowledgedDiscrepancies(
+            (request.body as { acknowledgedDiscrepancies?: unknown } | undefined)
+              ?.acknowledgedDiscrepancies
+          )
         });
       } catch (error) {
         return sendCp2Error(reply, error);
@@ -659,4 +663,22 @@ function parseReceiptOCRConfirmBody(body: ReceiptOCRConfirmBody | null | undefin
         ? false
         : parseBoolean(record.createSalesAgent, "createSalesAgent")
   };
+}
+
+/** Mismatched fields the person confirmed against the paper ("receipt.total", "products.2.lineTotal"). */
+function parseAcknowledgedDiscrepancies(value: unknown): { acknowledgedDiscrepancies?: string[] } {
+  if (value === undefined || value === null) return {};
+  if (
+    !Array.isArray(value) ||
+    value.length > 400 ||
+    value.some(
+      (field) => typeof field !== "string" || !/^[a-zA-Z]+(?:\.\d+)?\.[a-zA-Z]+$/u.test(field)
+    )
+  )
+    throw new Cp2Error(
+      400,
+      "receipt_acknowledgement_invalid",
+      "Acknowledged mismatches must be field names."
+    );
+  return { acknowledgedDiscrepancies: value as string[] };
 }

@@ -65,6 +65,8 @@ export interface ParsedReceiptText {
     total: number;
     batchNumber: string | null;
     expiryDate: string | null;
+    /** No line total was printed: this one is quantity × unit price. */
+    totalDerived?: boolean;
   }>;
 }
 
@@ -203,14 +205,19 @@ function normalizeReceiptDate(value: string | null): string | null {
   return Number.isNaN(parsed) ? null : new Date(parsed).toISOString();
 }
 
-function parseReceiptMoney(value: string | null): number | null {
+/**
+ * The first amount in a printed value. Kenyan receipts write thousands with commas and decimals
+ * with a point: "3,800" is three thousand eight hundred (it was once read as 3.80), "1,234.50"
+ * keeps its cents.
+ */
+export function parseReceiptMoney(value: string | null): number | null {
   if (value === null) {
     return null;
   }
 
-  const match = value.match(/[0-9]+(?:[.,][0-9]{1,2})?/u);
+  const match = value.match(/[0-9]{1,3}(?:,[0-9]{3})+(?:\.[0-9]{1,2})?|[0-9]+(?:\.[0-9]{1,2})?/u);
 
-  return match === null ? null : roundMoney(Number(match[0].replace(",", ".")));
+  return match === null ? null : roundMoney(Number(match[0].replace(/,/gu, "")));
 }
 
 function normalizeReceiptTime(value: string | null): string | null {
@@ -250,7 +257,9 @@ function parseReceiptLineItems(lines: string[]): ParsedReceiptText["items"] {
 
     const quantity = Number(match[2]);
     const unitPrice = Number(match[3]);
-    const total = match[4] === undefined ? quantity * unitPrice : Number(match[4]);
+    // A missing line total is computed, and recorded as computed: it is not printed evidence.
+    const totalDerived = match[4] === undefined;
+    const total = totalDerived ? quantity * unitPrice : Number(match[4]);
 
     items.push({
       name: match[1]?.trim() ?? "Receipt item",
@@ -261,7 +270,8 @@ function parseReceiptLineItems(lines: string[]): ParsedReceiptText["items"] {
       unitPrice: roundMoney(unitPrice),
       total: roundMoney(total),
       batchNumber: null,
-      expiryDate: null
+      expiryDate: null,
+      ...(totalDerived ? { totalDerived: true } : {})
     });
   }
 
@@ -310,8 +320,12 @@ export function buildReceiptStructuredExtraction(
       paymentMethod: parsed.paymentMethod,
       tillNumber: parsed.tillNumber,
       paybillNumber: parsed.paybillNumber,
-      transactionReference: parsed.transactionReference
+      transactionReference: parsed.transactionReference,
+      documentType: null
     },
+    derivedFields: parsed.items.flatMap((item, index) =>
+      item.totalDerived ? [`products.${index}.lineTotal`] : []
+    ),
     products: parsed.items.map((item) => ({
       itemName: item.name,
       itemCode: item.itemCode,

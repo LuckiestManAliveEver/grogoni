@@ -2095,7 +2095,7 @@ describePostgres("CP2 Postgres store", () => {
         contentType: "text/plain",
         contentBase64: null,
         extractedText:
-          "Supplier: Postgres Wholesale Ltd\nPhone: +254711222333\nTotal: 500\nItem A, 2, 100, 200"
+          "Supplier: Postgres Wholesale Ltd\nPhone: +254711222333\nTotal: 200\nItem A, 2, 100, 200"
       },
       owner.sessionCookie
     );

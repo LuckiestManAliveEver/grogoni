@@ -3,6 +3,7 @@ import type { PurchaseReceiptSummary, ReceiptOCRJobSummary } from "@grogoni/shar
 import { fetchFreshJson, patchJson, postJson } from "./api-helpers";
 import { ReceiptFieldsForm } from "./ReceiptFieldsForm";
 import { ReceiptBindingCard } from "./ReceiptBindingCard";
+import { ReceiptChecksPanel, receiptReadyToConfirm } from "./ReceiptChecksPanel";
 
 /** Durable chat cards read the same receipt drafts as the Suppliers workspace. */
 export function DeliveryReceiptReviewPanel({ businessId }: { businessId: string }) {
@@ -11,6 +12,8 @@ export function DeliveryReceiptReviewPanel({ businessId }: { businessId: string 
   const [ready, setReady] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
+  // Arithmetic mismatches ticked as checked against the paper, per draft.
+  const [acknowledged, setAcknowledged] = useState<Record<string, ReadonlySet<string>>>({});
   useEffect(() => {
     let cancelled = false;
     void fetchFreshJson<ReceiptOCRJobSummary[]>(path).then(
@@ -57,6 +60,20 @@ export function DeliveryReceiptReviewPanel({ businessId }: { businessId: string 
                 );
               }}
             />
+            {!completed ? (
+              <ReceiptChecksPanel
+                checks={job.structuredExtraction.checks}
+                acknowledged={acknowledged[job.id] ?? new Set()}
+                onAcknowledge={(field, checked) =>
+                  setAcknowledged((current) => {
+                    const next = new Set(current[job.id] ?? []);
+                    if (checked) next.add(field);
+                    else next.delete(field);
+                    return { ...current, [job.id]: next };
+                  })
+                }
+              />
+            ) : null}
             <details>
               <summary>Extracted receipt text</summary>
               <pre>{job.fullText}</pre>
@@ -70,7 +87,14 @@ export function DeliveryReceiptReviewPanel({ businessId }: { businessId: string 
               !completed && (
                 <button
                   type="button"
-                  disabled={busy !== null || ready[job.id] === false}
+                  disabled={
+                    busy !== null ||
+                    ready[job.id] === false ||
+                    !receiptReadyToConfirm(
+                      job.structuredExtraction.checks,
+                      acknowledged[job.id] ?? new Set()
+                    )
+                  }
                   onClick={async () => {
                     setBusy(job.id);
                     setError("");
@@ -81,6 +105,7 @@ export function DeliveryReceiptReviewPanel({ businessId }: { businessId: string 
                           supplierId: job.matchedSupplierId,
                           salesAgentId: job.matchedSalesAgentId,
                           receiveInventory: true,
+                          acknowledgedDiscrepancies: [...(acknowledged[job.id] ?? [])],
                           createSupplier: job.matchedSupplierId === null,
                           createSalesAgent:
                             job.matchedSalesAgentId === null && job.salesAgentName !== null

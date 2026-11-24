@@ -3,8 +3,10 @@ import type {
   ReceiptContactMatchingResultSummary
 } from "@grogoni/shared-types";
 import { Cp2Error } from "../../cp2-error.js";
+import { normalizeDocumentType } from "./receipt-validation.js";
 import {
   buildReceiptStructuredExtraction,
+  parseReceiptMoney,
   parseReceiptText,
   type ParsedReceiptText
 } from "./shared.js";
@@ -21,7 +23,12 @@ export function parseReceiptFields(value: unknown): ReceiptStructuredExtractionS
     if (!input || typeof input !== "object" || Array.isArray(input))
       throw new Cp2Error(400, "receipt_fields_invalid", `Missing receipt section: ${section}.`);
     for (const key of Object.keys(fields[section])) {
-      const item = (input as Record<string, unknown>)[key] ?? null;
+      const raw = (input as Record<string, unknown>)[key] ?? null;
+      // A printed amount sent as text ("KES 3,800") is that number; anything else stays invalid.
+      const item =
+        section === "receipt" && amounts.has(key) && typeof raw === "string"
+          ? (moneyFromText(raw) ?? raw)
+          : raw;
       if (
         item !== null &&
         (section === "receipt" && amounts.has(key)
@@ -70,6 +77,24 @@ export function parseReceiptFields(value: unknown): ReceiptStructuredExtractionS
       expiryDate: text("expiryDate")
     };
   });
+  // A document type a person or Luna named (resolveReceiptDocumentType cross-checks Luna's).
+  fields.receipt.documentType = normalizeDocumentType(fields.receipt.documentType);
+  // A computed line total stays marked as computed while it still equals its calculation; one a
+  // person changed is what they entered.
+  fields.derivedFields = (Array.isArray(source.derivedFields) ? source.derivedFields : [])
+    .slice(0, 400)
+    .filter((path): path is string => {
+      if (typeof path !== "string") return false;
+      // An assumed type stays assumed only while nobody chose one (withReceiptChecks re-adds it).
+      if (path === "receipt.documentType") return false;
+      const line = /^products\.(\d+)\.lineTotal$/u.exec(path);
+      const product = line ? fields.products[Number(line[1])] : undefined;
+      return (
+        product !== undefined &&
+        Math.abs(Math.round(product.quantity * product.unitPrice * 100) / 100 - product.lineTotal) <
+          0.005
+      );
+    });
   if (fields.receipt.purchaseDate && !Number.isFinite(Date.parse(fields.receipt.purchaseDate)))
     throw new Cp2Error(400, "receipt_fields_invalid", "Check the receipt date before saving.");
   return fields;
@@ -111,7 +136,10 @@ export function receiptFieldsToParsed(f: ReceiptStructuredExtractionSummary): Pa
     tillNumber: f.receipt.tillNumber,
     paybillNumber: f.receipt.paybillNumber,
     transactionReference: f.receipt.transactionReference,
-    items: f.products.map((p) => ({
+    items: f.products.map((p, index) => ({
+      ...((f.derivedFields ?? []).includes(`products.${index}.lineTotal`)
+        ? { totalDerived: true }
+        : {}),
       name: p.itemName,
       itemCode: p.itemCode,
       sku: p.sku,
@@ -154,4 +182,12 @@ export function restoreReceiptJobFields(
     temporaryImageExpiresAt: null,
     confirmedAt: null
   };
+}
+
+/** A whole printed amount ("3800", "KES 3,800.50"), or null when the text is anything more. */
+function moneyFromText(value: string): number | null {
+  const bare = value.replace(/^\s*(?:KES|KSH|Ksh|Kshs\.?|Sh\.?)\s*/u, "").trim();
+  return /^(?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)(?:\.[0-9]{1,2})?$/u.test(bare)
+    ? parseReceiptMoney(bare)
+    : null;
 }

@@ -1,4 +1,5 @@
 import { ReceiptBindingCard } from "./ReceiptBindingCard";
+import { ReceiptChecksPanel, receiptReadyToConfirm } from "./ReceiptChecksPanel";
 import { ReceiptFieldsForm } from "./ReceiptFieldsForm";
 import { patchJson } from "./api-helpers";
 import { useState, type ChangeEvent } from "react";
@@ -39,12 +40,14 @@ export interface SupplierSurfaceProps {
   onLinkSalesAgentContact: (salesAgentId: string, networkNodeId: string) => void;
   onCreateSalesAgentFromContact: (supplierId: string, networkNodeId: string) => void;
   onUploadReceipt: (file: File) => Promise<ReceiptOCRJobSummary | null>;
-  onConfirmReceipt: (job: ReceiptOCRJobSummary) => void;
+  onConfirmReceipt: (job: ReceiptOCRJobSummary, acknowledgedDiscrepancies: string[]) => void;
   onImport: () => void;
 }
 
 export function SupplierSurface(props: SupplierSurfaceProps) {
   const [receiptReady, setReceiptReady] = useState<Record<string, boolean>>({});
+  // Arithmetic mismatches ticked as checked against the paper, per draft.
+  const [acknowledged, setAcknowledged] = useState<Record<string, ReadonlySet<string>>>({});
   const [reviewedJobs, setReviewedJobs] = useState<Record<string, ReceiptOCRJobSummary>>({});
   const [openSupplierId, setOpenSupplierId] = useState<string | null>(
     props.suppliers[0]?.id ?? null
@@ -210,6 +213,18 @@ export function SupplierSurface(props: SupplierSurfaceProps) {
               ) : receiptJob.cleanupPending ? (
                 <span>Image cleanup pending after confirmation.</span>
               ) : null}
+              <ReceiptChecksPanel
+                checks={receiptJob.structuredExtraction.checks}
+                acknowledged={acknowledged[receiptJob.id] ?? new Set()}
+                onAcknowledge={(field, checked) =>
+                  setAcknowledged((current) => {
+                    const next = new Set(current[receiptJob.id] ?? []);
+                    if (checked) next.add(field);
+                    else next.delete(field);
+                    return { ...current, [receiptJob.id]: next };
+                  })
+                }
+              />
               {receiptJob.warnings.length > 0 ? (
                 <ul>
                   {receiptJob.warnings.map((warning) => (
@@ -222,11 +237,17 @@ export function SupplierSurface(props: SupplierSurfaceProps) {
                 disabled={
                   receiptReady[receiptJob.id] === false ||
                   offline ||
+                  !receiptReadyToConfirm(
+                    receiptJob.structuredExtraction.checks,
+                    acknowledged[receiptJob.id] ?? new Set()
+                  ) ||
                   !["REVIEW_REQUIRED", "MATCHING", "matched", "needs_review"].includes(
                     receiptJob.status
                   )
                 }
-                onClick={() => props.onConfirmReceipt(receiptJob)}
+                onClick={() =>
+                  props.onConfirmReceipt(receiptJob, [...(acknowledged[receiptJob.id] ?? [])])
+                }
               >
                 Confirm and save
               </button>

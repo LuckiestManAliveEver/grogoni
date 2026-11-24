@@ -1,8 +1,10 @@
 import { useState } from "react";
 import type {
+  ReceiptDocumentType,
   ReceiptOCRJobSummary,
   ReceiptStructuredExtractionSummary
 } from "@grogoni/shared-types";
+import { receiptDocumentTypeLabels } from "./receipt-checks";
 
 /** A document is evidence for these proposed fields; the owner reviews it before committing records. */
 export function ReceiptFieldsForm({
@@ -51,6 +53,29 @@ export function ReceiptFieldsForm({
         The receipt connects the wholesaler, sales agent and delivered products. Review the fields,
         save corrections, then confirm the delivery.
       </p>
+      <label>
+        What is this document?
+        <select
+          aria-label="Document type"
+          disabled={!editable || busy}
+          value={fields.receipt.documentType ?? "unknown"}
+          onChange={(event) =>
+            updateFields((current) => ({
+              ...current,
+              receipt: {
+                ...current.receipt,
+                documentType: event.target.value as ReceiptDocumentType
+              }
+            }))
+          }
+        >
+          {Object.entries(receiptDocumentTypeLabels).map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </label>
       {(["supplier", "salesAgent", "receipt"] as const).map((section) => (
         <fieldset key={section} disabled={!editable || busy}>
           <legend>
@@ -60,36 +85,38 @@ export function ReceiptFieldsForm({
                 ? "Sales agent"
                 : "Receipt details"}
           </legend>
-          {Object.entries(fields[section]).map(([key, value]) => (
-            <label key={key}>
-              {key.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase())}
-              <input
-                aria-label={`${section} ${key}`}
-                value={value ?? ""}
-                type={
-                  typeof value === "number" ||
-                  ["subtotal", "discount", "tax", "total", "amountPaid", "balance"].includes(key)
-                    ? "number"
-                    : "text"
-                }
-                step="any"
-                min="0"
-                onChange={(event) => {
-                  const raw = event.target.value;
-                  const next =
-                    event.target.type === "number"
-                      ? raw === ""
-                        ? null
-                        : Number(raw)
-                      : raw || null;
-                  updateFields((current) => ({
-                    ...current,
-                    [section]: { ...current[section], [key]: next }
-                  }));
-                }}
-              />
-            </label>
-          ))}
+          {Object.entries(fields[section])
+            .filter(([key]) => key !== "documentType")
+            .map(([key, value]) => (
+              <label key={key}>
+                {key.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase())}
+                <input
+                  aria-label={`${section} ${key}`}
+                  value={value ?? ""}
+                  type={
+                    typeof value === "number" ||
+                    ["subtotal", "discount", "tax", "total", "amountPaid", "balance"].includes(key)
+                      ? "number"
+                      : "text"
+                  }
+                  step="any"
+                  min="0"
+                  onChange={(event) => {
+                    const raw = event.target.value;
+                    const next =
+                      event.target.type === "number"
+                        ? raw === ""
+                          ? null
+                          : Number(raw)
+                        : raw || null;
+                    updateFields((current) => ({
+                      ...current,
+                      [section]: { ...current[section], [key]: next }
+                    }));
+                  }}
+                />
+              </label>
+            ))}
         </fieldset>
       ))}
       <fieldset disabled={!editable || busy}>
@@ -100,6 +127,10 @@ export function ReceiptFieldsForm({
             {Object.entries(product).map(([key, value]) => (
               <label key={key}>
                 {key.replace(/([A-Z])/g, " $1")}
+                {key === "lineTotal" &&
+                (fields.derivedFields ?? []).includes(`products.${index}.lineTotal`) ? (
+                  <small> (calculated, not printed)</small>
+                ) : null}
                 <input
                   aria-label={`Product ${index + 1} ${key}`}
                   value={value ?? ""}

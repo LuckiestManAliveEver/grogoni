@@ -258,6 +258,12 @@ describe("delivery receipt field routing and document bindings", () => {
       parseReceiptFields({ ...f, deliveryBinding: { purchaseReceiptId: "forged" } }).deliveryBinding
     ).toBeUndefined();
     expect(parseReceiptFields(f).salesAgent.phoneNumber).toBe("+254722345678");
-    expect(() => parseReceiptFields({ ...f, receipt: { ...f.receipt, total: "570" } })).toThrow();
+    // A printed amount sent as text is that number (Luna sometimes sends "KES 570"); words are not.
+    expect(
+      parseReceiptFields({ ...f, receipt: { ...f.receipt, total: "570" } }).receipt.total
+    ).toBe(570);
+    expect(() =>
+      parseReceiptFields({ ...f, receipt: { ...f.receipt, total: "five hundred" } })
+    ).toThrow();
   });
 });

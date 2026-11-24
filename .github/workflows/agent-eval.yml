@@ -55,10 +55,20 @@ jobs:
           EVAL_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/grogoni_eval
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: pnpm eval:agent-turn-split --report agent-turn-split-report.json
+      - name: Install Chromium for the receipt images
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run the receipt reading eval
+        # Rendered receipts through the production image reader (scripts/eval-receipt-reading.ts).
+        if: always()
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: pnpm eval:receipt-reading --report receipt-reading-report.json
       - name: Keep the report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: agent-turn-split-report
-          path: agent-turn-split-report.json
+          path: |
+            agent-turn-split-report.json
+            receipt-reading-report.json
           if-no-files-found: ignore

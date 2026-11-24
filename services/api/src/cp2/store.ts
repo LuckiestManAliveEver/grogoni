@@ -9916,6 +9916,8 @@ export class Cp2Store {
       throw new Cp2Error(404, "receipt_not_found", "Receipt draft not found.");
     if (job.structuredExtraction.deliveryBinding)
       return this.supplierDomain.confirmReceiptOCRJob(input);
+    // Document type and arithmetic first: nothing is planned for a document that may not post.
+    this.supplierDomain.assertReceiptPostable(job, input);
     const products = job.structuredExtraction.products;
     if (
       !products.length ||

@@ -1,3 +1,4 @@
+import { receiptChecksFor, withReceiptChecks } from "./receipt-validation.js";
 import { parseReceiptFields, receiptFieldsToParsed } from "./receipt-fields.js";
 /**
  * Fourth slice of in-process domain modularization for the Cp2Store monolith (see
@@ -613,7 +614,11 @@ export class SupplierDomain {
     ];
     const sourceFileName = input.sourceFileName.trim() || "receipt-upload";
     const jobId = randomUUID();
-    const structuredExtraction = suppliedFields ?? buildReceiptStructuredExtraction(parsed);
+    // Document type and arithmetic checks, recomputed on every save (receipt-validation.ts).
+    const structuredExtraction = withReceiptChecks(
+      suppliedFields ?? buildReceiptStructuredExtraction(parsed),
+      extractedText
+    );
 
     const contactMatchingResult = this.createReceiptContactMatchingResult({
       businessId: input.businessId,
@@ -705,6 +710,8 @@ export class SupplierDomain {
     createSupplier?: boolean;
     createSalesAgent?: boolean;
     receiveInventory?: boolean;
+    /** Arithmetic mismatches the person checked against the paper (fields like "receipt.total"). */
+    acknowledgedDiscrepancies?: string[];
     now?: Date;
   }): PurchaseReceiptSummary {
     const now = input.now ?? new Date();
@@ -736,6 +743,7 @@ export class SupplierDomain {
     if (job.status === "failed" || job.status === "FAILED") {
       throw new Cp2Error(409, "receipt_ocr_failed", job.errorMessage ?? "Receipt OCR failed.");
     }
+    const checks = this.assertReceiptPostable(job, input);
 
     let supplier =
       input.supplierId === null || input.supplierId === undefined
@@ -822,7 +830,16 @@ export class SupplierDomain {
       ocrJobId: job.id,
       imageStored: false,
       createdAt: now.toISOString(),
-      lineItems
+      lineItems,
+      documentType: checks.documentType,
+      // What was filled in rather than printed: computed line totals, and the confirmation time
+      // or the line sum when the receipt shows no date or total.
+      derivedFields: [
+        ...(job.structuredExtraction.derivedFields ?? []),
+        ...(job.receiptDate === null ? ["receipt.purchaseDate"] : []),
+        ...(job.total === null ? ["receipt.total"] : [])
+      ],
+      acknowledgedDiscrepancies: checks.arithmeticIssues.map((issue) => issue.field)
     };
     const confirmedJob: ReceiptOCRJobSummary = {
       ...job,
@@ -848,6 +865,42 @@ export class SupplierDomain {
     }
 
     return receipt;
+  }
+
+  /**
+   * Refuses a confirmation the document does not allow: a type that may not post (a quotation,
+   * a return, an unclassified document), receiving stock from one that may not move it, or
+   * arithmetic that does not add up and was not checked against the paper. Recomputed from the
+   * draft itself, never taken from the client.
+   */
+  assertReceiptPostable(
+    job: ReceiptOCRJobSummary,
+    input: { receiveInventory?: boolean; acknowledgedDiscrepancies?: string[] }
+  ) {
+    const checks = receiptChecksFor(job.structuredExtraction, job.fullText);
+    if (!checks.recordPurchase)
+      throw new Cp2Error(409, "receipt_document_not_postable", checks.refusal ?? "", false, {
+        documentType: checks.documentType
+      });
+    if (input.receiveInventory && !checks.receiveStock)
+      throw new Cp2Error(
+        409,
+        "receipt_document_cannot_receive_stock",
+        "This document cannot add goods to stock.",
+        false,
+        { documentType: checks.documentType }
+      );
+    const acknowledged = new Set(input.acknowledgedDiscrepancies ?? []);
+    const open = checks.arithmeticIssues.filter((issue) => !acknowledged.has(issue.field));
+    if (open.length > 0)
+      throw new Cp2Error(
+        409,
+        "receipt_arithmetic_mismatch",
+        `${open[0]!.message}${open.length > 1 ? ` (and ${open.length - 1} more)` : ""} Correct it, or confirm it matches the paper.`,
+        false,
+        { issues: open }
+      );
+    return checks;
   }
 
   correctReceiptOCRJob(input: {
@@ -933,7 +986,10 @@ export class SupplierDomain {
       warnings,
       fieldEvidence: buildReceiptFieldEvidence(parsed, extractedText),
       structuredExtraction: {
-        ...(suppliedFields ?? buildReceiptStructuredExtraction(parsed)),
+        ...withReceiptChecks(
+          suppliedFields ?? buildReceiptStructuredExtraction(parsed),
+          extractedText
+        ),
         ...(job.structuredExtraction.sourceDocument
           ? { sourceDocument: job.structuredExtraction.sourceDocument }
           : {})
