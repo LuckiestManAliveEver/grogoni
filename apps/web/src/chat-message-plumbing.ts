@@ -548,10 +548,12 @@ export interface BrowserSpeechRecognition {
   lang: string;
   onresult: ((event: { results: ArrayLike<{ 0: { transcript: string } }> }) => void) | null;
   onerror: (() => void) | null;
+  onend: (() => void) | null;
   start(): void;
+  stop(): void;
 }
 
-export function startVoiceInput(onTranscript: (transcript: string) => void): void {
+export function startVoiceInput(onTranscript: (transcript: string) => void, onError: () => void = () => {}, onEnd: () => void = () => {}): BrowserSpeechRecognition | null {
   const SpeechRecognitionConstructor =
     (
       window as Window & {
@@ -561,13 +563,15 @@ export function startVoiceInput(onTranscript: (transcript: string) => void): voi
     ).SpeechRecognition ??
     (window as Window & { webkitSpeechRecognition?: new () => BrowserSpeechRecognition })
       .webkitSpeechRecognition;
-  if (!SpeechRecognitionConstructor) return;
+  if (!SpeechRecognitionConstructor) { onError(); return null; }
   const recognition = new SpeechRecognitionConstructor();
   recognition.lang = navigator.language || "en";
   recognition.interimResults = false;
   recognition.onresult = (event) => onTranscript(event.results[0]?.[0].transcript ?? "");
-  recognition.onerror = () => undefined;
-  recognition.start();
+  recognition.onerror = onError;
+  recognition.onend = onEnd;
+  try { recognition.start(); } catch { onError(); return null; }
+  return recognition;
 }
 
 export function isRedundantAgentErrorMessage(message: string): boolean {

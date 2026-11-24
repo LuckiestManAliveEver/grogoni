@@ -148,7 +148,7 @@ export function ConversationExecutionControls({
         key={conversation.id}
         conversationId={conversation.id}
         businessId={businessId}
-        enabled={conversation.businessAgentEnabled === true}
+        enabled={conversation.businessAgentEnabled !== false}
       />
     );
   return null;

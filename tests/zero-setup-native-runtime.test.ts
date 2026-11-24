@@ -33,13 +33,7 @@ describe("zero-setup native runtime", () => {
       });
       const conversationId = thread.conversation.id;
       const ownerCookie = owner.cookie;
-      const enable = await app.inject({
-        method: "PATCH",
-        url: `/v1/conversations/${conversationId}`,
-        headers: jsonHeaders(ownerCookie),
-        payload: { agentEnabled: true }
-      });
-      expect(enable.statusCode).toBe(200);
+      expect(thread.conversation.businessAgentEnabled).toBe(true);
       const response = await app.inject({
         method: "POST",
         url: "/v1/messages",

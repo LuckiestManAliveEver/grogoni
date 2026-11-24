@@ -3904,7 +3904,7 @@ export class MessagingDomain {
         "customer:write",
         now
       );
-      if (!conversation.businessAgentEnabled)
+      if (conversation.businessAgentEnabled === false)
         throw new Cp2Error(409, "business_agent_disabled", "The business agent is disabled.");
     }
     return this.createMessageForActor({ ...input, conversationId: conversation.id }, actor);
@@ -4270,7 +4270,7 @@ export class MessagingDomain {
         "Agent business does not match this conversation."
       );
     }
-    if (conversation.kind !== "personal" && !conversation.businessAgentEnabled)
+    if (conversation.kind !== "personal" && conversation.businessAgentEnabled === false)
       throw new Cp2Error(
         409,
         "business_agent_disabled",
@@ -5222,7 +5222,7 @@ export class MessagingDomain {
         "conversation_business_mismatch",
         "Agent business does not match this conversation."
       );
-    if (conversation.kind !== "personal" && !conversation.businessAgentEnabled)
+    if (conversation.kind !== "personal" && conversation.businessAgentEnabled === false)
       throw new Cp2Error(
         409,
         "business_agent_disabled",
@@ -6068,6 +6068,9 @@ export class MessagingDomain {
       accountId: input.accountId,
       kind: input.kind,
       activeShopId: input.activeShopId,
+      ...(input.kind !== "personal" && input.activeShopId !== null
+        ? { businessAgentEnabled: true }
+        : {}),
       runtimeBindingId: input.recipientAccountId
         ? null
         : this.deps.assignRuntimeBinding({

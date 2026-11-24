@@ -29,7 +29,8 @@ import { formatMoney, formatCareRequestType } from "./formatters";
 import { createStorefrontUrl } from "./grogoniid-and-storefront";
 
 import { findBestByName, hasUseVerb } from "./agent-command-engine";
-import { startVoiceInput, getErrorMessage } from "./chat-message-plumbing";
+import { getErrorMessage } from "./chat-message-plumbing";
+import { useVoiceInput } from "./hooks/useVoiceInput";
 
 import { useInstallPrompt } from "./misc-browser-utils";
 
@@ -46,6 +47,9 @@ export function PublicStorefrontChat(props: { agentId: string; productId?: strin
   const [cart, setCart] = useState<StorefrontCartItem[]>([]);
   const [crmNotes, setCrmNotes] = useState<StorefrontCrmNote[]>([]);
   const [draft, setDraft] = useState("");
+  const voiceInput = useVoiceInput((text) => {
+    if (text.trim()) setDraft((current) => [current.trim(), text.trim()].filter(Boolean).join(" "));
+  });
   const [receiptProductId, setReceiptProductId] = useState("");
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [receiptOpen, setReceiptOpen] = useState(false);
@@ -197,10 +201,6 @@ export function PublicStorefrontChat(props: { agentId: string; productId?: strin
     appendMessage("customer", "I would like a callback.");
     setCareRequestType("callback");
     appendMessage("agent", "Add your name and phone number so I can send the callback request.");
-  }
-
-  function requestVoiceInput() {
-    startVoiceInput(setDraft);
   }
 
   function handleStorefrontAttachmentChange(event: ChangeEvent<HTMLInputElement>) {
@@ -945,8 +945,9 @@ export function PublicStorefrontChat(props: { agentId: string; productId?: strin
             <button
               className="icon-button composer-icon-button"
               type="button"
-              aria-label="Voice input"
-              onClick={requestVoiceInput}
+              aria-label={voiceInput.listening ? "Stop voice input" : "Voice input"}
+              aria-pressed={voiceInput.listening}
+              onClick={voiceInput.toggle}
               disabled={storefrontCardOpen}
             >
               <span className="mic-icon" aria-hidden="true" />
@@ -984,6 +985,7 @@ export function PublicStorefrontChat(props: { agentId: string; productId?: strin
               <span className="visually-hidden">Send</span>
             </button>
           </form>
+          {voiceInput.listening || voiceInput.error ? <small role="status">{voiceInput.error ?? "Listening… Speak your message."}</small> : null}
           <footer className="app-credits">
             <span>Karibu Grogoni</span>
             <BuildIdentity />
