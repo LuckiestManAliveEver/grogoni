@@ -32,6 +32,7 @@ import type {
   ProductCaptureJobSummary,
   ProductSummary,
   BroadcastPreferenceSummary,
+  ContactHashSummary,
   MutedShopSummary,
   StatusBroadcastCandidateSummary,
   StatusBroadcastItemSummary,
@@ -117,6 +118,10 @@ export interface CommerceDomainDeps {
   customers: Map<string, CustomerSummary>;
   networkNodes: Map<string, NetworkNodeSummary>;
   users: Map<string, UserSummary>;
+  /** Synced contact hash records, by id (a network node lists its own in contactHashIds). */
+  contactHashes?: Map<string, ContactHashSummary>;
+  /** The contact hash values an account's own phone numbers and sign-in email would have. */
+  accountContactHashes?: (accountId: string) => Set<string>;
   businesses: Map<string, BusinessSummary>;
   invoices: Map<string, InvoiceSummary>;
   /**
@@ -168,6 +173,16 @@ export class CommerceDomain {
   }
   get broadcastPreferencesMap(): Map<string, BroadcastPreferenceSummary> {
     return this.broadcastPreferences;
+  }
+
+  /** Contact hash values of every account that turned this shop off. */
+  private mutedAccountContactHashes(businessId: string): Set<string> {
+    const hashes = new Set<string>();
+    if (this.deps.accountContactHashes === undefined) return hashes;
+    for (const preference of this.broadcastPreferences.values())
+      if (preference.businessId === businessId)
+        for (const hash of this.deps.accountContactHashes(preference.accountId)) hashes.add(hash);
+    return hashes;
   }
 
   /** Whether this account turned off this shop's status updates. */
@@ -863,14 +878,24 @@ export class CommerceDomain {
       return node;
     });
     // A contact who turned this shop's updates off is never sent to, whatever the picker sent.
-    const reachable = nodes.filter(
-      (node) => !this.mutedShop(this.accountIdForNetworkNode(node), input.businessId)
-    );
+    // That includes a phone-only contact (no stored account link) whose number or email is that
+    // of an account that turned the shop off: dropped silently, since naming them would tell the
+    // shop they are on Grogoni.
+    const mutedHashes = this.mutedAccountContactHashes(input.businessId);
+    const reachable = nodes.filter((node) => {
+      const accountId = this.accountIdForNetworkNode(node);
+      if (accountId !== null) return !this.mutedShop(accountId, input.businessId);
+      return !node.contactHashIds.some((id) => {
+        const hash = this.deps.contactHashes?.get(id)?.hashValue;
+        return hash !== undefined && mutedHashes.has(hash);
+      });
+    });
     if (reachable.length === 0)
       throw new Cp2Error(
         409,
         "status_broadcast_recipients_opted_out",
-        "Everyone you chose has turned off updates from this shop."
+        // Neutral on purpose: it must not tell the shop which contacts are on Grogoni.
+        "None of the chosen contacts can receive this status."
       );
     const recipients: StatusBroadcastRecipientSummary[] = reachable.map((node) => {
       return {
@@ -978,6 +1003,9 @@ export class CommerceDomain {
     const status = this.requireStatusBroadcastById(input.statusBroadcastId);
     const recipient = this.recipientForViewer(status, session.user.id);
     if (recipient === undefined || recipient.viewedAt !== null) return status;
+    // Opened by link after turning the shop off: it still opens (the customer's own act), but
+    // the shop gets no view, so turning updates off sends the shop no signal at all.
+    if (this.mutedShop(session.account.id, status.businessId)) return status;
     const updated: StatusBroadcastSummary = {
       ...status,
       viewCount: status.viewCount + 1,

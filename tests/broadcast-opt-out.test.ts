@@ -203,6 +203,112 @@ describe("turning a shop's status updates off and on", () => {
     await app.close();
   });
 
+  it("skips a phone-only contact whose number is a customer who turned the shop off, without saying so", async () => {
+    const store = createCp2Store();
+    const app = buildApi({ cp2: { store } });
+    const seller = await createOwnerBusiness(app, "254700000851");
+    const customer = await createOwnerBusiness(app, "254700000852");
+    // Undiscoverable: the seller's address book cannot link her, so she is a phone-only contact.
+    const privacy = await app.inject({
+      method: "PATCH",
+      url: "/network/privacy",
+      headers: jsonHeaders(customer.cookie),
+      payload: JSON.stringify({ discoverable: false })
+    });
+    expect(privacy.statusCode, privacy.body).toBe(200);
+    expect(
+      (await put(app, seller.business.id, { receive: false }, customer.cookie)).statusCode
+    ).toBe(200);
+    const graph = await postJson<NetworkGraphSummary>(
+      app,
+      "/network/sync/contacts",
+      {
+        contacts: [
+          { name: "Hidden Wanjiru", phone: "+254700000852" },
+          { name: "Neighbour", phone: "+254700000859" }
+        ]
+      },
+      seller.cookie
+    );
+    const hidden = graph.nodes.find((node) => node.displayName === "Hidden Wanjiru")!;
+    const neighbour = graph.nodes.find((node) => node.displayName === "Neighbour")!;
+    expect(hidden.grogoniUserId).toBeNull();
+    // The picker shows her as an ordinary phone contact: nothing says she is on Grogoni.
+    const candidates = (
+      await getJson<{ candidates: StatusBroadcastCandidateSummary[] }>(
+        app,
+        `/businesses/${seller.business.id}/status-broadcasts/candidates`,
+        seller.cookie
+      )
+    ).candidates;
+    expect(candidates.find((item) => item.networkNodeId === hidden.id)).toMatchObject({
+      isGrogoniUser: false,
+      optedOut: false
+    });
+    const job = await postJson<ProductCaptureJobSummary>(
+      app,
+      `/businesses/${seller.business.id}/product-captures`,
+      { fileName: "shelf.jpg", contentType: "image/png", contentBase64: onePixelPng },
+      seller.cookie
+    );
+    await postJson(
+      app,
+      `/businesses/${seller.business.id}/product-captures/${job.id}/items/${job.items[0]!.id}/confirm`,
+      { title: "Maize flour", visiblePrice: 180 },
+      seller.cookie
+    );
+    const status = await postJson<StatusBroadcastSummary>(
+      app,
+      `/businesses/${seller.business.id}/status-broadcasts`,
+      { sourceCaptureJobId: job.id, recipientNodeIds: [hidden.id, neighbour.id] },
+      seller.cookie
+    );
+    expect(status.recipients.map((recipient) => recipient.networkNodeId)).toEqual([neighbour.id]);
+    const alone = await app.inject({
+      method: "POST",
+      url: `/businesses/${seller.business.id}/status-broadcasts`,
+      headers: jsonHeaders(seller.cookie),
+      payload: JSON.stringify({ sourceCaptureJobId: job.id, recipientNodeIds: [hidden.id] })
+    });
+    expect(alone.statusCode).toBe(409);
+    expect(alone.json().message).toBe("None of the chosen contacts can receive this status.");
+    await app.close();
+  });
+
+  it("gives the shop no view when a turned-off customer opens its status by link", async () => {
+    const store = createCp2Store();
+    const app = buildApi({ cp2: { store } });
+    const { seller, customer, amina, job } = await setup(app, "254700000861", "254700000862");
+    const status = await postJson<StatusBroadcastSummary>(
+      app,
+      `/businesses/${seller.business.id}/status-broadcasts`,
+      { sourceCaptureJobId: job.id, recipientNodeIds: [amina.id] },
+      seller.cookie
+    );
+    await put(app, seller.business.id, { receive: false }, customer.cookie);
+    const opened = await postJson<StatusBroadcastSummary>(
+      app,
+      `/status-broadcasts/${status.id}/view`,
+      {},
+      customer.cookie
+    );
+    expect(opened.id).toBe(status.id);
+    expect(opened.viewCount).toBe(0);
+    // Back on: a view counts again.
+    await put(app, seller.business.id, { receive: true }, customer.cookie);
+    expect(
+      (
+        await postJson<StatusBroadcastSummary>(
+          app,
+          `/status-broadcasts/${status.id}/view`,
+          {},
+          customer.cookie
+        )
+      ).viewCount
+    ).toBe(1);
+    await app.close();
+  });
+
   it("goes with the shop when the shop is deleted", async () => {
     const store = createCp2Store();
     const app = buildApi({ cp2: { store } });
@@ -401,6 +507,60 @@ describe.skipIf(!databaseUrl)("shop update preferences on PostgreSQL (Edge)", ()
         defaultSelected: false
       });
 
+      // Posting a status runs the scope that loads turned-off customers' users (phone-only
+      // matching): its SQL must hold. A missing capture job answers 404 from the handler, not 500.
+      const post = await edge.routes(
+        new Request(`https://grogoni.com/businesses/${shop.id}/status-broadcasts`, {
+          method: "POST",
+          headers: {
+            cookie: `grogoni_session=${sellerOwner.session.id}`,
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({ sourceCaptureJobId: randomUUID(), recipientNodeIds: [node.id] })
+        }),
+        `/businesses/${shop.id}/status-broadcasts`
+      );
+      expect(post?.status, await post?.clone().text()).toBe(404);
+
+      // Two tabs: one account's choices run one at a time (the Edge account lock), so a burst of
+      // off/on requests never leaves a state the last request did not ask for.
+      const holder = await pool.connect();
+      await holder.query("begin");
+      await holder.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [
+        `edge:account:${customerOwner.account.id}`
+      ]);
+      let finished = false;
+      const waiting = call(
+        `/v1/broadcast-preferences/${shop.id}`,
+        "PUT",
+        customerOwner.session.id,
+        {
+          receive: true
+        }
+      ).then(() => {
+        finished = true;
+      });
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      expect(finished).toBe(false);
+      await holder.query("rollback");
+      holder.release();
+      await waiting;
+      await Promise.all(
+        [false, true, false, true, false].map((receive) =>
+          call(`/v1/broadcast-preferences/${shop.id}`, "PUT", customerOwner.session.id, { receive })
+        )
+      );
+      await call(`/v1/broadcast-preferences/${shop.id}`, "PUT", customerOwner.session.id, {
+        receive: false
+      });
+      expect(
+        (
+          await pool.query(
+            "select count(*)::int as n from cp2_broadcast_preferences where entity_id = $1",
+            [`${customerOwner.account.id}:${shop.id}`]
+          )
+        ).rows[0].n
+      ).toBe(1);
       await call(`/v1/broadcast-preferences/${shop.id}`, "PUT", customerOwner.session.id, {
         receive: true
       });

@@ -388,6 +388,13 @@ export async function createEdgeSnapshotScope(
     [
       "edge_identity_user_ids",
       `select id from edge_user_ids union select id from edge_contact_user_ids
+       ${
+         // Posting a status: the users of customers who turned this shop off, so a phone-only
+         // contact who is one of them is recognised by number and skipped.
+         request.method === "POST" && /^\/businesses\/[^/]+\/status-broadcasts$/u.test(path)
+           ? `union select u.id::text from public.users u where u.account_id::text in (select account_id from public.cp2_broadcast_preferences where business_id = nullif(${requestedBusiness}, ''))`
+           : ""
+       }
        union select id::text from public.users where account_id::text in (select id from edge_peer_account_ids)
        union select user_id::text from public.business_memberships where business_id::text in (select id from edge_conversation_shop_ids)
       union select phone_holder.id::text from public.users phone_holder

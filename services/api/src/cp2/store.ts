@@ -653,6 +653,7 @@ export type {
   SocialProfileNetworkInput
 } from "./domains/network/shared.js";
 export { createContactHash } from "./domains/network/shared.js";
+import { createContactHash as createContactHashForStore } from "./domains/network/shared.js";
 export type {
   AgentConversationMessageResult,
   ChannelIdentityLinkGrantRecord,
@@ -1722,6 +1723,8 @@ export class Cp2Store {
       users: this.users,
       businesses: this.businesses,
       invoices: this.salesDomain.invoicesMap,
+      contactHashes: this.networkDomain.contactHashesMap,
+      accountContactHashes: (accountId) => this.accountContactHashValues(accountId),
       onCatalogueOrdersCreated: (orders, now) => {
         this.systemShopDomain.completeBuyOrders(orders, now);
       },
@@ -15866,6 +15869,29 @@ export class Cp2Store {
         }
       ]
     };
+  }
+
+  /**
+   * The contact hashes an account's own phone numbers and sign-in email would have in someone's
+   * synced address book (createContactHash), so a phone-only contact can be recognised as this
+   * account without a stored link.
+   */
+  private accountContactHashValues(accountId: string): Set<string> {
+    const values = new Set<string>();
+    const add = (type: "phone" | "email", raw: string | null | undefined) => {
+      if (!raw) return;
+      try {
+        values.add(createContactHashForStore(type, raw));
+      } catch {
+        // An unparseable stored value matches no contact.
+      }
+    };
+    const account = this.accounts.get(accountId);
+    if (account?.primaryAuthChannel === "phone" || account?.primaryAuthChannel === "email")
+      add(account.primaryAuthChannel, account.primaryAuthDestination);
+    for (const user of this.users.values())
+      if (user.accountId === accountId) add("phone", user.phoneNumberE164);
+    return values;
   }
 
   private shopPresenceForBusiness(businessId: string): ShopPresenceSummary {
