@@ -38,3 +38,7 @@ apps/android/build/
 
 # Downloaded, checksum-verified Android Node runtime cache.
 apps/android/.node-runtime-cache/
+
+# Local voice-communication tracking and Codex handoff (not tracked).
+/voicecom.md
+/voicecom-handoff.sh

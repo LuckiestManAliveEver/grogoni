@@ -13,6 +13,8 @@ describe("API response latency policy", () => {
     expect(responseBudgetClass("POST", "/auth/pin/login")).toBe("long-running");
     expect(responseBudgetClass("POST", "/v1/inference")).toBe("long-running");
     expect(responseBudgetClass("POST", "/v1/chat/images/read")).toBe("long-running");
+    expect(responseBudgetClass("POST", "/v1/voice/transcribe")).toBe("long-running");
+    expect(responseBudgetClass("POST", "/v1/voice/speak")).toBe("long-running");
     expect(responseBudgetClass("POST", "/businesses/shop-1/imports")).toBe("long-running");
     expect(responseBudgetClass("POST", "/businesses/shop-1/model-templates/t/evaluations")).toBe(
       "long-running"

@@ -1,6 +1,9 @@
 import type { Dispatch, SetStateAction } from "react";
 
 import type { ChatMessage } from "../app-shell";
+
+/** Ids of the live reply shown while an agent turn streams; replaced when the turn settles. */
+export const agentPreviewIdPrefix = "agent-preview-";
 import type { AgentTurnCompanion } from "./agent-turn-companion";
 
 /**
@@ -13,7 +16,7 @@ export async function withAgentTurnPreview<T>(input: {
   onStatus?: (status: string) => void;
   run: (headers: Record<string, string>) => Promise<T>;
 }): Promise<T> {
-  const previewId = `agent-preview-${crypto.randomUUID()}`;
+  const previewId = `${agentPreviewIdPrefix}${crypto.randomUUID()}`;
   const turnId = crypto.randomUUID();
   let shown = false;
   let settled = false;

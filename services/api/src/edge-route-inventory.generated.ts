@@ -4,6 +4,8 @@ import type { EdgeRouteInventoryEntry } from "./edge-route-inventory.js";
 
 export const edgeRouteInventory: readonly EdgeRouteInventoryEntry[] = [
   { method: "POST", path: "/v1/chat/images/read", websocket: false },
+  { method: "POST", path: "/v1/voice/transcribe", websocket: false },
+  { method: "POST", path: "/v1/voice/speak", websocket: false },
   { method: "POST", path: "/auth/identify", websocket: false },
   { method: "POST", path: "/auth/login/methods", websocket: false },
   { method: "POST", path: "/auth/signup/start", websocket: false },

@@ -64,6 +64,8 @@ import { MerchantWorkspaceDashboard } from "./MerchantWorkspaceDashboard";
 import { NetworkSyncNestedCard } from "./NetworkSyncNestedCard";
 import { StackedModule } from "./StackedModule";
 import type { ChatSurfaceProps } from "./chat-surface-contracts";
+import { useReadAloud } from "./hooks/useReadAloud";
+import { ReadAloudButton } from "./ReadAloudButton";
 export type { ChatSurfaceProps } from "./chat-surface-contracts";
 
 const ShopHub = lazy(() =>
@@ -262,6 +264,7 @@ export function ChatSurface({
   const [forwardingMessageId, setForwardingMessageId] = useState<string | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const replyVersions = useReplyVersions(replyVersionDeps);
+  const readAloud = useReadAloud();
   const [editingMessageText, setEditingMessageText] = useState("");
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
   const [workspaceCardView, setWorkspaceCardView] = useState<
@@ -748,6 +751,13 @@ export function ChatSurface({
                     <button type="button" onClick={() => onReply(message.id)}>
                       Reply
                     </button>
+                    {message.author === "grogoniclaw" ? (
+                      <ReadAloudButton
+                        readAloud={readAloud}
+                        messageId={message.id}
+                        text={message.body}
+                      />
+                    ) : null}
                     <button
                       type="button"
                       aria-expanded={activeMessageMenuId === message.id}

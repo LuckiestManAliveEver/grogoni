@@ -32,6 +32,7 @@
     "eval:inventory:hosted": "INVENTORY_BENCHMARK_PROVIDER=openrouter node --env-file-if-exists=.env.openrouter --import tsx services/api/src/benchmarks/run-inventory-benchmark.ts --require-model-pass",
     "eval:my-assistant-runtime": "node --env-file-if-exists=.env --env-file-if-exists=.env.openrouter --import tsx scripts/eval-my-assistant-runtime.ts",
     "eval:reply-regeneration": "node --env-file-if-exists=.env --env-file-if-exists=.env.openrouter --import tsx scripts/eval-reply-regeneration.ts",
+    "eval:voice": "node --env-file-if-exists=.env.openrouter --import tsx scripts/eval-voice.ts",
     "eval:guest-intent": "node --env-file-if-exists=.env --env-file-if-exists=.env.openrouter --import tsx scripts/eval-guest-intent.ts",
     "eval:system-shop": "node --env-file-if-exists=.env.openrouter --import tsx scripts/eval-system-shop.ts",
     "eval:inventory": "node --import tsx services/api/src/benchmarks/run-inventory-benchmark.ts",

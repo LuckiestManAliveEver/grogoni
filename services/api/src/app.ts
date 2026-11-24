@@ -739,6 +739,7 @@ export function responseBudgetClass(method: string, url: string): "interactive" 
   if (
     pathname.startsWith("/v1/inference") ||
     pathname === "/v1/chat/images/read" ||
+    pathname.startsWith("/v1/voice/") ||
     pathname.startsWith("/v1/runtime/") ||
     pathname.startsWith("/auth/") ||
     pathname.startsWith("/v1/webhooks/") ||

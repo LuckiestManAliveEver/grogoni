@@ -151,6 +151,84 @@ describe("Edge shared user and business routes", () => {
       vi.unstubAllEnvs();
     }
   });
+  it("serves voice transcription and speech without a snapshot transaction, signed-in only", async () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "test-key");
+    const transaction = vi.fn(async () => {
+      throw new Error("Voice must not open a snapshot transaction");
+    });
+    let signedIn = true;
+    const findUser = vi.fn(async () => (signedIn ? { userId: "owner" } : null));
+    const fetch = vi.fn(async (url: string | URL) =>
+      String(url).endsWith("/audio/transcriptions")
+        ? Response.json({ text: "two crates of soda" })
+        : new Response(new Uint8Array([0x49, 0x44, 0x33, 4]), {
+            headers: { "content-type": "audio/mpeg" }
+          })
+    );
+    vi.stubGlobal("fetch", fetch);
+    try {
+      const { routes } = await createEdgeDomainRoutes({
+        transaction,
+        daemon: { queue: {} as never, hint: null, findUser }
+      });
+      const post = (path: string, body: unknown) =>
+        routes(
+          new Request(`https://grogoni.com${path}`, {
+            method: "POST",
+            headers: { "content-type": "application/json", cookie: "grogoni_session=test" },
+            body: JSON.stringify(body)
+          }),
+          path
+        );
+      const lines = vi.spyOn(console, "log").mockImplementation(() => {});
+      const heard = await post("/v1/voice/transcribe", {
+        audioBase64: Buffer.from([0x1a, 0x45, 0xdf, 0xa3]).toString("base64"),
+        contentType: "audio/webm"
+      });
+      expect(heard!.status).toBe(200);
+      expect(await heard!.json()).toEqual({
+        text: "two crates of soda",
+        model: "openai/gpt-4o-transcribe"
+      });
+      // One redacted trace line on Edge too: model and sizes, never the words or the account.
+      const traced = lines.mock.calls
+        .map(([line]) => String(line))
+        .filter((line) => line.includes('"voice.transcribed"'));
+      expect(traced).toHaveLength(1);
+      expect(JSON.parse(traced[0]!)).toMatchObject({
+        event: "voice.transcribed",
+        model: "openai/gpt-4o-transcribe",
+        format: "webm",
+        audioBytes: 4,
+        transcriptChars: 18
+      });
+      expect(traced[0]).not.toContain("crates");
+      expect(traced[0]).not.toContain("owner");
+      lines.mockRestore();
+      const spoken = await post("/v1/voice/speak", { text: "Your order is ready." });
+      expect(spoken!.status).toBe(200);
+      expect((await spoken!.json()).audioBase64).toBe(
+        Buffer.from([0x49, 0x44, 0x33, 4]).toString("base64")
+      );
+      const invalid = await post("/v1/voice/transcribe", {
+        audioBase64: "AAAA",
+        contentType: "video/mp4"
+      });
+      expect(invalid!.status).toBe(400);
+      expect((await invalid!.json()).code).toBe("voice_audio_unsupported");
+      signedIn = false;
+      expect((await post("/v1/voice/speak", { text: "Hello." }))!.status).toBe(401);
+      expect(
+        (await post("/v1/voice/transcribe", { audioBase64: "AAAA", contentType: "audio/webm" }))!
+          .status
+      ).toBe(401);
+      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(transaction).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    }
+  });
   it("coordinates GET handlers before loading a snapshot because session maintenance can write", async () => {
     const { call, client } = await setup();
     expect((await call("/v1/shops"))!.status).toBe(200);

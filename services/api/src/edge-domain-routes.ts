@@ -7,6 +7,12 @@ import { loadDaemonConversationHistory } from "./daemon/conversation-history.js"
 import { readWebPushConfiguration } from "./cp2/push.js";
 import { registerCommerceRoutes } from "./cp2/domains/commerce/routes.js";
 import { registerChatImageRoutes } from "./cp2/chat-image-routes.js";
+import {
+  registerVoiceRoutes,
+  voiceSpeakPath,
+  voiceTranscribePath
+} from "./cp2/voice/voice-routes.js";
+import { createVoiceServices, type VoiceServices } from "./cp2/voice/voice-speech.js";
 import Fastify, {
   type FastifyError,
   type FastifyInstance,
@@ -414,6 +420,8 @@ export async function createEdgeDomainRoutes(
   // proxies. Only the per-request objects differ between the two.
   const cp2RouteOptions = (context: SharedRouteContext): Cp2RouteOptions => ({
     store: context.store,
+    // Voice is served by the database-free speechApp below, never by these apps.
+    voiceServices: {},
     // Each request's store gets the linked-WhatsApp cipher when it is created (runAttempt).
     // Route registration must not add it again: a second registration throws, and on the shared
     // app the store is a proxy that only works inside a request.
@@ -491,8 +499,35 @@ export async function createEdgeDomainRoutes(
       );
       return user ? {} : null;
     });
+    // Speech calls hold no database connection either: the session lookup commits first.
+    let voiceServices: VoiceServices = {};
+    try {
+      voiceServices = createVoiceServices(process.env);
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          event: "voice_configuration_invalid",
+          message: error instanceof Error ? error.message : "invalid"
+        })
+      );
+    }
+    registerVoiceRoutes(imageReader, {
+      authenticate: async (request) => {
+        const user = await edgeDatabase.daemon!.findUser(
+          new Request(`https://grogoni.com${request.url}`, {
+            headers: { cookie: request.headers.cookie ?? "" }
+          })
+        );
+        return user ? { accountId: user.userId } : null;
+      },
+      services: () => voiceServices,
+      // Fastify logging is off here; one redacted JSON line per call, like the other Edge events.
+      trace: (_request, level, line) =>
+        (level === "warn" ? console.warn : console.log)(JSON.stringify(line))
+    });
     await imageReader.ready();
   }
+  const speechRoutes = new Set(["/v1/chat/images/read", voiceTranscribePath, voiceSpeakPath]);
   /** One attempt's store dependencies: model calls deferred, sends stopped once one is. */
   const realResolver = storeDependencies.modelRuntimeAdapterResolver ?? (() => undefined);
   const newLedger = (streamTurnId: string | null) =>
@@ -1003,7 +1038,7 @@ export async function createEdgeDomainRoutes(
         : Buffer.from(await request.arrayBuffer());
     if (payload && payload.length > 15_000_000)
       return Response.json({ code: "request_too_large" }, { status: 413 });
-    if (path === "/v1/chat/images/read" && imageReader) {
+    if (speechRoutes.has(path) && imageReader) {
       const result = await imageReader.inject({
         method: "POST",
         url: path,

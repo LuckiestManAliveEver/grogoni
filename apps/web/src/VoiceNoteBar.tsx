@@ -23,12 +23,31 @@ export function VoiceNoteBar({
 }: {
   voiceNote: ReturnType<typeof useVoiceNoteRecorder>;
   /** Dictation (useVoiceInput): its listening state or error shows here too. */
-  voiceInput?: { listening: boolean; error: string | null };
+  voiceInput?: {
+    listening: boolean;
+    transcribing?: boolean;
+    error: string | null;
+    canRetry?: boolean;
+    retry?: () => void;
+  };
 }) {
   return (
     <>
-      {voiceInput?.listening || voiceInput?.error ? (
-        <small role="status">{voiceInput.error ?? "Listening… Speak your message."}</small>
+      {voiceInput?.listening || voiceInput?.transcribing || voiceInput?.error ? (
+        <small role="status">
+          {voiceInput.error ??
+            (voiceInput.transcribing
+              ? "Turning your words into text…"
+              : "Listening… Tap the microphone again when you are done.")}
+          {voiceInput.error && voiceInput.canRetry && voiceInput.retry ? (
+            <>
+              {" "}
+              <button type="button" className="secondary" onClick={voiceInput.retry}>
+                Try again
+              </button>
+            </>
+          ) : null}
+        </small>
       ) : null}
       {voiceNote.state !== "idle" ? (
         <div className="composer-voice-note" role="group" aria-label="Voice note">
@@ -63,5 +82,27 @@ export function VoiceNoteBar({
         </small>
       ) : null}
     </>
+  );
+}
+
+/** The composer's microphone: voice typing (useVoiceInput). Busy while the server transcribes. */
+export function VoiceInputButton({
+  voiceInput
+}: {
+  voiceInput: { listening: boolean; transcribing: boolean; toggle: () => void };
+}) {
+  return (
+    <button
+      className="icon-button composer-icon-button composer-mic-button"
+      type="button"
+      aria-label={voiceInput.listening ? "Stop voice input" : "Record voice"}
+      aria-pressed={voiceInput.listening}
+      aria-busy={voiceInput.transcribing}
+      disabled={voiceInput.transcribing}
+      onClick={voiceInput.toggle}
+    >
+      <span className="mic-icon" aria-hidden="true" />
+      <span className="visually-hidden">Voice</span>
+    </button>
   );
 }

@@ -47,9 +47,14 @@ export function PublicStorefrontChat(props: { agentId: string; productId?: strin
   const [cart, setCart] = useState<StorefrontCartItem[]>([]);
   const [crmNotes, setCrmNotes] = useState<StorefrontCrmNote[]>([]);
   const [draft, setDraft] = useState("");
-  const voiceInput = useVoiceInput((text) => {
-    if (text.trim()) setDraft((current) => [current.trim(), text.trim()].filter(Boolean).join(" "));
-  });
+  const voiceInput = useVoiceInput(
+    (text) => {
+      if (text.trim())
+        setDraft((current) => [current.trim(), text.trim()].filter(Boolean).join(" "));
+      // Guests have no session for the server's speech service (voicecom P2.4).
+    },
+    { server: false }
+  );
   const [receiptProductId, setReceiptProductId] = useState("");
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [receiptOpen, setReceiptOpen] = useState(false);

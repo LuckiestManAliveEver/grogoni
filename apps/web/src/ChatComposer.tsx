@@ -6,7 +6,7 @@ import { chatAttachmentAccept } from "./grogoni-application-shared";
 import { chatModuleCommands } from "./chat-module-commands";
 import { useComposerVoiceInput } from "./hooks/useVoiceInput";
 import { formatChannelProvider } from "./formatters";
-import { useComposerVoiceNote, VoiceNoteBar } from "./VoiceNoteBar";
+import { useComposerVoiceNote, VoiceInputButton, VoiceNoteBar } from "./VoiceNoteBar";
 import type { ChatComposerProps } from "./chat-composer-contracts";
 import {
   ChatComposerLazyPanel,
@@ -268,16 +268,7 @@ export function ChatComposer({
                 Cancel
               </button>
             ) : null}
-            <button
-              className="icon-button composer-icon-button composer-mic-button"
-              type="button"
-              aria-label={voiceInput.listening ? "Stop voice input" : "Record voice"}
-              aria-pressed={voiceInput.listening}
-              onClick={voiceInput.toggle}
-            >
-              <span className="mic-icon" aria-hidden="true" />
-              <span className="visually-hidden">Voice</span>
-            </button>
+            <VoiceInputButton voiceInput={voiceInput} />
             <button
               className="send-button"
               type="button"

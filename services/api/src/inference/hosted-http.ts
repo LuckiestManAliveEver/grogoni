@@ -1,5 +1,33 @@
 import { ModelRuntimeError } from "./model-runtime.js";
 
+/**
+ * Failures that prove the request never reached the provider: name resolution, refused or
+ * unreachable connections, and undici's connect timeout. A reset, a socket error or anything
+ * else may come after the request was sent and the work billed, so it is not on this list.
+ */
+const notSentCodes: ReadonlySet<string> = new Set([
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "ECONNREFUSED",
+  "ENETUNREACH",
+  "EHOSTUNREACH",
+  "UND_ERR_CONNECT_TIMEOUT"
+]);
+
+/**
+ * The request got no HTTP response. `requestNotSent` is true only when the cause shows the
+ * request never left (notSentCodes); only then may a caller repeat it without risking a second
+ * charge.
+ */
+export class HostedConnectionError extends ModelRuntimeError {
+  readonly requestNotSent: boolean;
+  constructor(cause: unknown) {
+    super("PROVIDER_UNAVAILABLE", "Hosted runtime could not be reached.", true);
+    const code = (cause as { cause?: { code?: unknown } } | null)?.cause?.code;
+    this.requestNotSent = typeof code === "string" && notSentCodes.has(code);
+  }
+}
+
 interface HostedRequestInput {
   url: URL;
   init: RequestInit;
@@ -22,12 +50,19 @@ async function hostedRequest<T>(
   const timeout = AbortSignal.timeout(input.timeoutMs);
   const signal = input.signal ? AbortSignal.any([input.signal, timeout]) : timeout;
   try {
-    const response = await (input.request ?? fetch)(input.url, {
-      ...input.init,
-      redirect: "error",
-      credentials: "omit",
-      signal
-    });
+    let response: Response;
+    try {
+      response = await (input.request ?? fetch)(input.url, {
+        ...input.init,
+        redirect: "error",
+        credentials: "omit",
+        signal
+      });
+    } catch (error) {
+      if (input.signal?.aborted || timeout.aborted) throw error;
+      // No response at all. Whether the provider got the request depends on the cause.
+      throw new HostedConnectionError(error);
+    }
     if (!response.ok) {
       await response.body?.cancel();
       const code =
@@ -99,6 +134,34 @@ export async function hostedJsonRequest(input: HostedRequestInput): Promise<unkn
         false
       );
     }
+  });
+}
+
+/**
+ * A call answered with raw bytes (OpenRouter's speech endpoint): the body, capped at maxBytes, and
+ * its content type. A JSON or text answer to a 200 is a provider error and fails like one.
+ */
+export async function hostedBytesRequest(
+  input: HostedRequestInput
+): Promise<{ bytes: Buffer; contentType: string }> {
+  return hostedRequest(input, async (reader, response) => {
+    const contentType = (response.headers.get("content-type") ?? "").split(";")[0]!.trim();
+    if (contentType === "application/json" || contentType.startsWith("text/"))
+      throw new ModelRuntimeError(
+        "INVALID_PROVIDER_RESPONSE",
+        "Hosted runtime returned no audio.",
+        false
+      );
+    const chunks: Uint8Array[] = [];
+    let bytes = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > (input.maxBytes ?? 4_000_000)) throw tooLarge();
+      chunks.push(value);
+    }
+    return { bytes: Buffer.concat(chunks), contentType };
   });
 }
 

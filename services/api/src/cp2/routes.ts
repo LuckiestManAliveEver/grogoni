@@ -3,6 +3,8 @@ import { registerCommerceSourceRoutes } from "./domains/commerce-sources/routes.
 import { registerAgentSkillsRoutes } from "./domains/agent-skills/routes.js";
 import { registerOfflineRuntimeRoutes } from "./offline-runtime-routes.js";
 import { registerChatImageRoutes } from "./chat-image-routes.js";
+import { registerVoiceRoutes } from "./voice/voice-routes.js";
+import { createVoiceServices, type VoiceServices } from "./voice/voice-speech.js";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { BusinessPermission } from "@grogoni/business-core";
 import type {
@@ -123,6 +125,8 @@ import { HttpComputerWorkerClient } from "../computer-runtime/client.js";
 import type { InventoryTaskController } from "./domains/agent-runtime/inventory-task-controller.js";
 
 export interface Cp2RouteOptions {
+  /** Speech-to-text and text-to-speech for agents (voice/voice-speech.ts); default from env. */
+  voiceServices?: VoiceServices;
   /**
    * The host enforces auth rate limits itself (the Edge API's database-backed limiter). The
    * in-memory per-IP count is then not kept: an app shared across requests sees every injected
@@ -346,6 +350,9 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
     });
   });
   registerChatImageRoutes(app, store);
+  // Read once at registration: invalid voice configuration stops the Node API at startup.
+  const voiceServices = options.voiceServices ?? createVoiceServices(process.env);
+  registerVoiceRoutes(app, { store, services: () => voiceServices });
   const telegramBotUsername = options.telegramBotUsername ?? "";
   const binaryUploadPipeline = options.binaryUploadPipeline;
   const runtimeRegistryAdapters: Partial<

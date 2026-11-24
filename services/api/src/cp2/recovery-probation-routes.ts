@@ -254,6 +254,8 @@ export const probationAllowedWrites: ReadonlySet<string> = new Set([
   "POST /v1/skills",
   "POST /v1/skills/:skillId/lifecycle",
   "POST /v1/staff-invitations/:invitationId/decline",
+  "POST /v1/voice/speak",
+  "POST /v1/voice/transcribe",
   "POST /v1/webhooks/channels/:provider",
   "PUT /account/display-name",
   "PUT /businesses/:businessId/agent-profile",
