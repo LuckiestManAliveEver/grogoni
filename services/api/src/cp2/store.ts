@@ -1,3 +1,4 @@
+import type { VoiceTranscriber } from "./voice/voice-speech.js";
 import {
   deferLinkedDelegationResult,
   isLinkedDelegationResultEntry,
@@ -1057,6 +1058,7 @@ export interface Cp2StoreOptions {
   workspaceRoot?: string;
   workspaceDeliveryMaxFileBytes?: number;
   conversationAttachmentBlobStore?: ConversationAttachmentBlobStore;
+  voiceTranscriber?: VoiceTranscriber;
   accountAiAssetStore?: AccountAiAssetStore;
   templateExecutor?: TemplateExecutor;
   templateJudgeEvaluator?: JudgeEvaluator;
@@ -1814,6 +1816,7 @@ export class Cp2Store {
       ensureGrogoniSessionContext: (session, now) => this.ensureGrogoniSessionContext(session, now),
       handleSkillChat: (input) => this.handleAgentSkillChat(input),
       createRuntimeTurn: (input) => this.createRuntimeTurn(input),
+      ...(options.voiceTranscriber ? { voiceTranscriber: options.voiceTranscriber } : {}),
       agentModelRecoveryGuidance: (businessId, error) =>
         this.agentRuntimeDomain.agentModelRecoveryGuidance(businessId, error),
       attemptPublicAgentReply: (input) => this.attemptPublicAgentReply(input),
@@ -11873,7 +11876,7 @@ export class Cp2Store {
   ): ReturnType<AgentRuntimeDomain["createRuntimeTurn"]> {
     const input = args[0];
     const match = /^\/skill\s+(\S+)\s+([\s\S]+)$/.exec(input.message);
-    if (match && input.confirmationToken === undefined) {
+    if (match && !input.voiceEvidenceOnly && input.confirmationToken === undefined) {
       const profile = this.agentRuntimeDomain.getAgentProfile({
         sessionId: input.sessionId,
         businessId: input.businessId

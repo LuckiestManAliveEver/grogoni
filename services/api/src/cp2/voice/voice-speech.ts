@@ -4,7 +4,7 @@ import {
   hostedJsonRequest
 } from "../../inference/hosted-http.js";
 import { ModelRuntimeError } from "../../inference/model-runtime.js";
-import { linkedAudioDurationSeconds } from "../../messaging/whatsapp-linked/transcriber.js";
+import { voiceAudioDurationSeconds } from "./audio-duration.js";
 
 /**
  * Speech for talking with agents: speech-to-text for dictation and text-to-speech for agent
@@ -284,8 +284,8 @@ export function parseTranscriptionRequest(body: unknown): {
     throw new VoiceRequestError("voice_audio_invalid", "The recording is empty.");
   if (bytes.length > voiceDictationMaxBytes)
     throw new VoiceRequestError("voice_audio_too_large", "The recording is too large.");
-  if (format === "ogg" || format === "wav" || format === "m4a") {
-    const seconds = linkedAudioDurationSeconds(bytes, format);
+  {
+    const seconds = voiceAudioDurationSeconds(bytes, format);
     if (seconds !== null && seconds > voiceDictationMaxSeconds)
       throw new VoiceRequestError(
         "voice_audio_too_long",

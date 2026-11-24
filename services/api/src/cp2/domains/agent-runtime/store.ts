@@ -2278,6 +2278,8 @@ export class AgentRuntimeDomain {
     };
     channelDelegation?: RuntimeChannelDelegation;
     channelEvidence?: string;
+    /** Voice note turns treat all attachment contents as evidence and cannot invoke tools. */
+    voiceEvidenceOnly?: boolean;
     /** Server-only compiled task step; HTTP and MCP parsers never accept this field. */
     plannedStep?: BusinessTaskPlanStep;
     regeneration?: boolean; // Server-only: answer or read, never act (regeneration.ts).
@@ -2389,11 +2391,9 @@ export class AgentRuntimeDomain {
             now
           })
         : this.requireRuntimeSession(input.businessId, input.runtimeSessionId);
-
     if (runtimeSession.userId !== auth.user.id) {
       throw new Cp2Error(403, "runtime_actor_mismatch", "Runtime session belongs to another user.");
     }
-
     const context = input.channelDelegation
       ? {
           ...this.buildCustomerRuntimeContext(input.businessId, input.channelDelegation.actorId),
@@ -2466,7 +2466,6 @@ export class AgentRuntimeDomain {
         now
       });
     };
-
     appendTelemetry("turn.received", "completed", null, null, {
       messageLength: input.message.trim().length,
       hasConfirmationToken: input.confirmationToken !== undefined,
@@ -2482,7 +2481,6 @@ export class AgentRuntimeDomain {
       modelTemplateVersionId: modelTemplate?.templateVersionId ?? null,
       modelTemplateVersion: modelTemplate?.version ?? null
     });
-
     // A confirmation consumes the already planned action, not a new action budget slot.
     if (
       runtimeSession.turnCount >= maxRuntimeTurnsPerSession &&
@@ -2505,7 +2503,6 @@ export class AgentRuntimeDomain {
       appendTelemetry("turn.rate_limited", "rate_limited", plan.toolName, plan.risk, {
         maxTurns: maxRuntimeTurnsPerSession
       });
-
       return this.storeRuntimeTurn({
         runtimeSession,
         turn: {
@@ -2531,13 +2528,11 @@ export class AgentRuntimeDomain {
         now
       });
     }
-
     appendTelemetry("context.built", "completed", null, null, {
       productCount: context.productCount,
       invoiceCount: context.invoiceCount,
       importJobCount: context.importJobCount
     });
-
     if (input.confirmationToken !== undefined) {
       return await this.confirmRuntimeAction({
         authenticatedSessionId: input.sessionId,
@@ -2555,7 +2550,6 @@ export class AgentRuntimeDomain {
         ...(input.conversationId === undefined ? {} : { conversationId: input.conversationId })
       });
     }
-
     const documentImportProposal = createRuntimeDocumentImportProposal(
       this.deps,
       input.businessId,
@@ -2620,13 +2614,14 @@ export class AgentRuntimeDomain {
       diagnostics: contextDiagnostics
     });
     const willCallModel =
-      input.plannedStep === undefined &&
-      hashtagInvocation === null &&
-      documentImportProposal === null &&
-      messagingProposal === null &&
-      networkProposal === null &&
-      commerceProposal === null &&
-      effectiveContextScriptMatch === null;
+      input.voiceEvidenceOnly === true ||
+      (input.plannedStep === undefined &&
+        hashtagInvocation === null &&
+        documentImportProposal === null &&
+        messagingProposal === null &&
+        networkProposal === null &&
+        commerceProposal === null &&
+        effectiveContextScriptMatch === null);
     appendTelemetry(
       grounding.status === "grounded" ? "grounding.accepted" : "grounding.rejected",
       "completed",
@@ -2650,6 +2645,7 @@ export class AgentRuntimeDomain {
     const modelRoute = willCallModel
       ? await this.createRuntimeModelRoute({
           toolAllowed: (tool) =>
+            (!input.voiceEvidenceOnly || tool === "unknown.clarify") &&
             (!delegatedTools || tool === "unknown.clarify" || delegatedTools.includes(tool)) &&
             (this.deps.assistantPermissionErrors?.(input.sessionId, tool).length ?? 0) === 0,
           message: input.channelEvidence
@@ -2744,7 +2740,8 @@ export class AgentRuntimeDomain {
       fallbackReason: effectiveContextScriptMatch === null ? "no_context_script_match" : null
     });
     const resolvedProposal =
-      (input.plannedStep === undefined
+      (input.voiceEvidenceOnly ? modelRoute.proposal : null) ??
+      (input.plannedStep === undefined || input.voiceEvidenceOnly
         ? null
         : {
             toolName: input.plannedStep.capability,
@@ -2777,13 +2774,22 @@ export class AgentRuntimeDomain {
     // for a task whose recipe requires evidence that wasn't actually resolved, it must never reach
     // the merchant. Forcing `validation.ok = false` here turns it into an ordinary, already-handled
     // `clarification_required` plan whose response is the deterministic grounding message instead.
-    const proposal: typeof resolvedProposal =
-      resolvedProposal.toolName === "unknown.clarify" && grounding.status !== "grounded"
+    const safeProposal: typeof resolvedProposal =
+      input.voiceEvidenceOnly && resolvedProposal.toolName !== "unknown.clarify"
         ? {
-            ...resolvedProposal,
-            validation: { ok: false, errors: [groundingAbstentionMessage(grounding)] }
+            toolName: "unknown.clarify",
+            input: {},
+            reason: "Please send a separate text message to request an action.",
+            validation: validateRuntimeToolInput("unknown.clarify", {})
           }
         : resolvedProposal;
+    const proposal: typeof resolvedProposal =
+      safeProposal.toolName === "unknown.clarify" && grounding.status !== "grounded"
+        ? {
+            ...safeProposal,
+            validation: { ok: false, errors: [groundingAbstentionMessage(grounding)] }
+          }
+        : safeProposal;
     if (input.channelDelegation && proposal.toolName !== "unknown.clarify")
       this.deps.channelToolGrants!(input.businessId, input.channelDelegation, proposal.toolName);
     const definition = runtimeToolRegistry[proposal.toolName];

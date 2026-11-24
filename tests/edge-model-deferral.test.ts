@@ -80,6 +80,69 @@ describe("Edge model call deferral", () => {
     expect(ledger.replayed).toBe(1);
   });
 
+  it("defers voice transcription until the transaction ends and replays it across model retries", async () => {
+    let transactionOpen = true;
+    const transcribe = vi.fn(async ({ bytes }: { bytes: Buffer }) => {
+      expect(transactionOpen).toBe(false);
+      return { text: bytes.toString(), model: "fixture" };
+    });
+    const generate = vi.fn(async () => answer("heard"));
+    const ledger = new ModelCallLedger(() => fakeAdapter(generate));
+    const audio = { bytes: Buffer.from("note"), format: "webm" as const };
+    ledger.beginAttempt();
+    await expect(ledger.voiceTranscriber(transcribe)(audio)).rejects.toBeInstanceOf(
+      ModelCallDeferredError
+    );
+    expect(transcribe).not.toHaveBeenCalled();
+    transactionOpen = false;
+    await ledger.callLive();
+    transactionOpen = true;
+    ledger.beginAttempt();
+    await expect(ledger.voiceTranscriber(transcribe)(audio)).resolves.toEqual({
+      text: "note",
+      model: "fixture"
+    });
+    await expect(
+      ledger
+        .resolver()(resolverInput)!
+        .generate({ context, prompt: prompt("note") })
+    ).rejects.toBeInstanceOf(ModelCallDeferredError);
+    transactionOpen = false;
+    await ledger.callLive();
+    transactionOpen = true;
+    ledger.beginAttempt();
+    await expect(ledger.voiceTranscriber(transcribe)(audio)).resolves.toMatchObject({
+      text: "note"
+    });
+    await expect(
+      ledger
+        .resolver()(resolverInput)!
+        .generate({ context, prompt: prompt("note") })
+    ).resolves.toMatchObject({ text: "heard" });
+    expect(transcribe).toHaveBeenCalledTimes(1);
+  });
+
+  it("replays transcription failures and invalidates a changed recording", async () => {
+    const transcribe = vi.fn(async ({ bytes }: { bytes: Buffer }) => {
+      if (bytes.toString() === "bad") throw new Error("provider down");
+      return { text: bytes.toString(), model: "fixture" };
+    });
+    const ledger = new ModelCallLedger(() => undefined);
+    const call = (text: string) =>
+      ledger.voiceTranscriber(transcribe)({ bytes: Buffer.from(text), format: "webm" });
+    ledger.beginAttempt();
+    await expect(call("bad")).rejects.toBeInstanceOf(ModelCallDeferredError);
+    await ledger.callLive();
+    ledger.beginAttempt();
+    await expect(call("bad")).rejects.toThrow("provider down");
+    ledger.beginAttempt();
+    await expect(call("new")).rejects.toBeInstanceOf(ModelCallDeferredError);
+    await ledger.callLive();
+    ledger.beginAttempt();
+    await expect(call("new")).resolves.toMatchObject({ text: "new" });
+    expect(transcribe).toHaveBeenCalledTimes(2);
+  });
+
   it("drops a recording whose input changed between attempts and asks again", async () => {
     const generate = vi.fn(async (input: { prompt: { message: string } }) =>
       answer(`re: ${input.prompt.message}`)

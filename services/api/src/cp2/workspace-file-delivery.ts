@@ -180,7 +180,10 @@ export function managedAttachmentFromRecord(
     name: record.filename,
     mimeType: record.mimeType,
     size: record.size,
-    category: attachmentCategory(record.kind),
+    category:
+      record.kind === "file" && record.mimeType.toLowerCase().startsWith("audio/")
+        ? "audio"
+        : attachmentCategory(record.kind),
     source: "managed",
     kind: record.kind,
     previewable: record.previewable,

@@ -532,7 +532,9 @@ export async function createEdgeDomainRoutes(
   const realResolver = storeDependencies.modelRuntimeAdapterResolver ?? (() => undefined);
   const newLedger = (streamTurnId: string | null) =>
     new ModelCallLedger(realResolver, { streamTurnId });
-  const attemptDependencies = (ledger: ModelCallLedger): typeof storeDependencies => {
+  const attemptDependencies = (
+    ledger: ModelCallLedger
+  ): typeof storeDependencies & { voiceTranscriber: NonNullable<VoiceServices["transcriber"]> } => {
     const {
       modelRuntimeAdapterResolver,
       pushNotificationSender,
@@ -544,6 +546,16 @@ export async function createEdgeDomainRoutes(
     } = storeDependencies;
     return {
       ...rest,
+      // Supply even when disabled so the messaging domain never constructs a direct provider call.
+      voiceTranscriber: ledger.voiceTranscriber(async (input) => {
+        const transcriber = createVoiceServices({
+          ...process.env,
+          VOICE_SPEECH_MODEL: "off",
+          VOICE_SPEECH_VOICE: "default"
+        }).transcriber;
+        if (!transcriber) throw new Error("Voice transcription unavailable.");
+        return transcriber(input);
+      }),
       ...(modelRuntimeAdapterResolver === undefined
         ? {}
         : { modelRuntimeAdapterResolver: ledger.resolver() }),

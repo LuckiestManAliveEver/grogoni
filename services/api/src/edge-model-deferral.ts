@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import type { VoiceTranscriber } from "./cp2/voice/voice-speech.js";
 import type { Cp2StoreOptions } from "./cp2/store.js";
 import {
   ModelRuntimeError,
@@ -32,16 +34,29 @@ type Resolver = NonNullable<Cp2StoreOptions["modelRuntimeAdapterResolver"]>;
 type ResolverInput = Parameters<Resolver>[0];
 type CallKind = "generate" | "healthCheck";
 type Outcome =
-  | { ok: ModelRuntimeGenerationResult | ModelRuntimeHealthResult }
+  | {
+      ok:
+        | ModelRuntimeGenerationResult
+        | ModelRuntimeHealthResult
+        | Awaited<ReturnType<VoiceTranscriber>>;
+    }
   | { error: { name: string; message: string; code: string | null; retryable: boolean } };
 
-interface PendingCall {
+interface PendingModelCall {
   kind: CallKind;
   resolverInput: ResolverInput;
   /** The call's input without its abort signal. */
   input: Record<string, unknown>;
   fingerprint: string;
 }
+
+interface PendingVoiceCall {
+  kind: "transcribe";
+  fingerprint: string;
+  input: Parameters<VoiceTranscriber>[0];
+  transcriber: VoiceTranscriber;
+}
+type PendingCall = PendingModelCall | PendingVoiceCall;
 
 /** The most provider calls one request (or one background agent turn) may make. */
 export const maxLiveModelCalls = 4;
@@ -95,6 +110,7 @@ export class ModelCallLedger {
   private readonly recorded: { fingerprint: string; outcome: Outcome }[] = [];
   private cursor = 0;
   private live = 0;
+  private liveVoice = 0;
   pending: PendingCall | null = null;
   /** Calls answered from the ledger, for the request's trace. */
   replayed = 0;
@@ -139,6 +155,33 @@ export class ModelCallLedger {
     };
   }
 
+  /** Defer audio just like model calls; replay uses a content hash, not the audio in a key. */
+  voiceTranscriber(transcriber: VoiceTranscriber): VoiceTranscriber {
+    return async (input) => {
+      if (this.pending !== null) throw new ModelCallDeferredError();
+      const fingerprint = JSON.stringify({
+        kind: "transcribe",
+        format: input.format,
+        language: input.language,
+        digest: createHash("sha256").update(input.bytes).digest("hex")
+      });
+      const entry = this.recorded[this.cursor];
+      if (entry?.fingerprint === fingerprint) {
+        this.cursor += 1;
+        this.replayed += 1;
+        if ("ok" in entry.outcome)
+          return structuredClone(entry.outcome.ok) as Awaited<ReturnType<VoiceTranscriber>>;
+        throw new Error(entry.outcome.error.message);
+      }
+      if (entry !== undefined) {
+        this.mismatched += 1;
+        this.recorded.length = this.cursor;
+      }
+      this.pending = { kind: "transcribe", fingerprint, input, transcriber };
+      throw new ModelCallDeferredError();
+    };
+  }
+
   private async next(
     kind: CallKind,
     resolverInput: ResolverInput,
@@ -151,7 +194,9 @@ export class ModelCallLedger {
     if (entry !== undefined && entry.fingerprint === fingerprint) {
       this.cursor += 1;
       this.replayed += 1;
-      if ("ok" in entry.outcome) return structuredClone(entry.outcome.ok);
+      if ("ok" in entry.outcome)
+        return structuredClone(entry.outcome.ok) as
+          ModelRuntimeGenerationResult | ModelRuntimeHealthResult;
       const failure = entry.outcome.error;
       throw failure.name === "ModelRuntimeError"
         ? new ModelRuntimeError(
@@ -179,17 +224,21 @@ export class ModelCallLedger {
     const call = this.pending;
     if (call === null) return;
     this.pending = null;
-    if (this.live >= maxLiveModelCalls)
+    if (call.kind === "transcribe" ? this.liveVoice >= 10 : this.live >= maxLiveModelCalls)
       throw new ModelRuntimeError(
         "AGENT_TURN_UNSTABLE",
         "The shop data kept changing while the agent worked. Try again.",
         true
       );
-    this.live += 1;
-    const adapter = this.real(call.resolverInput);
+    if (call.kind === "transcribe") this.liveVoice += 1;
+    else this.live += 1;
+    const adapter = call.kind === "transcribe" ? undefined : this.real(call.resolverInput);
     const timeout = AbortSignal.timeout(this.options.timeoutMs ?? liveModelCallTimeoutMs);
     const callSignal = signal === undefined ? timeout : AbortSignal.any([signal, timeout]);
-    const context = { ...(call.input.context as ModelRuntimeContext), signal: callSignal };
+    const context =
+      call.kind === "transcribe"
+        ? undefined
+        : { ...(call.input.context as ModelRuntimeContext), signal: callSignal };
     // A provider that ignores its signal must not keep the run past its limit.
     const stopped = new Promise<never>((_resolve, reject) => {
       const stop = () => reject(callSignal.reason ?? new Error("The model call was stopped."));
@@ -199,6 +248,13 @@ export class ModelCallLedger {
     stopped.catch(() => {});
     const run = async (): Promise<Outcome> => {
       try {
+        if (call.kind === "transcribe")
+          return {
+            ok: await Promise.race([
+              stopped,
+              call.transcriber({ ...call.input, signal: callSignal })
+            ])
+          };
         if (adapter === undefined)
           throw new ModelRuntimeError(
             "RUNTIME_NOT_CONFIGURED",
@@ -211,13 +267,13 @@ export class ModelCallLedger {
               ? await Promise.race([
                   stopped,
                   adapter.generate({
-                    context,
+                    context: context!,
                     prompt: call.input.prompt as Parameters<
                       ModelRuntimeAdapter["generate"]
                     >[0]["prompt"]
                   })
                 ])
-              : await Promise.race([stopped, adapter.healthCheck(context)])
+              : await Promise.race([stopped, adapter.healthCheck(context!)])
         };
       } catch (error) {
         const timedOut = timeout.aborted && !(signal?.aborted ?? false);

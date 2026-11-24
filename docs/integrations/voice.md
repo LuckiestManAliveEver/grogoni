@@ -142,3 +142,9 @@ Model choice on 2026-11-24, with ElevenLabs speech feeding the transcription row
 Gate tests (no network) are in `services/api/src/cp2/voice/voice-routes.test.ts`,
 `tests/voice-speech.test.ts`, `tests/voice-input-hook.test.tsx`, `tests/read-aloud.test.tsx`, the voice case in
 `tests/supabase-edge-domain-routes.test.ts` and `tests/api-response-budget.test.ts`.
+
+Agent voice-note transcription is under development and is not yet complete. Voice-note turns
+label transcripts as error-prone sender evidence and do not execute tools. Supported inline
+notes and verified managed attachments are processed without fetching external URLs. The
+recording remains attached if transcription fails. Duration validation for WebM and MP3 is
+still incomplete; do not rely on it until P2.1 is complete.

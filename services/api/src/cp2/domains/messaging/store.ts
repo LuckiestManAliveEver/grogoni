@@ -69,6 +69,12 @@ import { linkedOptOutCommand } from "../../../messaging/whatsapp-linked/opt-out.
 import { isDeepStrictEqual } from "node:util";
 import { contactIsBlocked } from "../network/shared.js";
 import { helpConversationId, helpGuides, helpGuideText } from "./help-guides.js";
+import { voiceNoteEvidence } from "../../voice/voice-note-evidence.js";
+import {
+  createVoiceServices,
+  voiceDictationMaxBytes,
+  type VoiceTranscriber
+} from "../../voice/voice-speech.js";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import {
   linkedMediaMaxBytes,
@@ -317,6 +323,8 @@ export interface MessagingDomainDeps {
     conversationHistory?: RuntimeModelConversationMessage[];
     /** See AgentRuntimeDomain.executeRuntimeTurn: answer or read only, never act. */
     regeneration?: boolean;
+    channelEvidence?: string;
+    voiceEvidenceOnly?: boolean;
     signal?: AbortSignal;
     now?: Date;
   }) => Promise<RuntimeTurnResult>;
@@ -375,6 +383,7 @@ export interface MessagingDomainDeps {
   workspaceRoot?: string;
   workspaceDeliveryMaxFileBytes?: number;
   conversationAttachmentBlobStore: ConversationAttachmentBlobStore;
+  voiceTranscriber?: VoiceTranscriber;
 }
 
 export class MessagingDomain {
@@ -4375,11 +4384,17 @@ export class MessagingDomain {
       ? new Date(Math.max(Date.parse(message.createdAt) + 1, 0))
       : now;
 
-    const skillReply = await this.deps.handleSkillChat?.({
-      sessionId: input.sessionId,
-      businessId: input.businessId,
-      message: input.message
-    });
+    // Audio is evidence only, never a skill command or deterministic action.
+    const hasAudio =
+      message.content.type === "text" &&
+      (message.content.attachments ?? []).some((attachment) => attachment.category === "audio");
+    const skillReply = hasAudio
+      ? null
+      : await this.deps.handleSkillChat?.({
+          sessionId: input.sessionId,
+          businessId: input.businessId,
+          message: input.message
+        });
     if (skillReply !== undefined && skillReply !== null) {
       const agentMessage = this.createConversationMessage({
         sessionId: input.sessionId,
@@ -4404,7 +4419,7 @@ export class MessagingDomain {
       };
     }
 
-    if (this.inventoryTaskController && message.content.type === "text") {
+    if (!hasAudio && this.inventoryTaskController && message.content.type === "text") {
       const handled = await this.inventoryTaskController.handle({
         sessionId: input.sessionId,
         businessId: input.businessId,
@@ -4443,6 +4458,100 @@ export class MessagingDomain {
       }
     }
 
+    let transcriber: VoiceTranscriber | undefined;
+    try {
+      transcriber =
+        this.deps.voiceTranscriber ??
+        (hasAudio
+          ? createVoiceServices({
+              ...process.env,
+              VOICE_SPEECH_MODEL: "off",
+              VOICE_SPEECH_VOICE: "default"
+            }).transcriber
+          : undefined);
+    } catch {
+      /* voice unavailable */
+    }
+    const checkedRecords = new Map<string, ConversationAttachmentRecord>();
+    const evidence =
+      message.content.type === "text"
+        ? (
+            await Promise.all(
+              (message.content.attachments ?? []).map(async (attachment) => {
+                if (attachment.category !== "audio") return undefined;
+                if (!transcriber || attachment.size > voiceDictationMaxBytes)
+                  return "Automatic transcription of the sender's voice note is unavailable.";
+                let bytes: Buffer | undefined;
+                if (attachment.source === "managed") {
+                  const record = this.conversationAttachments.get(attachment.id);
+                  if (
+                    !record ||
+                    record.accountId !== session.account.id ||
+                    record.conversationId !== conversation.id ||
+                    record.messageId !== message.id ||
+                    record.mimeType !== attachment.mimeType ||
+                    record.size !== attachment.size
+                  )
+                    return "Automatic transcription of the sender's voice note is unavailable.";
+                  const stored = await this.deps.conversationAttachmentBlobStore
+                    .get(record.storageKey)
+                    .catch(() => null);
+                  if (
+                    !stored ||
+                    stored.length !== record.size ||
+                    createHash("sha256").update(stored).digest("hex") !== record.checksum
+                  )
+                    return "Automatic transcription of the sender's voice note is unavailable.";
+                  checkedRecords.set(record.id, record);
+                  bytes = stored;
+                }
+                return (
+                  (await voiceNoteEvidence(attachment, transcriber, bytes)) ??
+                  "Automatic transcription of the sender's voice note is unavailable."
+                );
+              })
+            )
+          ).filter((item): item is string => item !== undefined)
+        : [];
+    for (const [id, record] of checkedRecords)
+      if (this.conversationAttachments.get(id) !== record)
+        throw new Cp2Error(
+          404,
+          "attachment_not_found",
+          "The attachment changed during transcription."
+        );
+    if (hasAudio)
+      this.deps.recordAuditEvent({
+        type: "voice_note.transcription_processed",
+        aggregateType: "conversation_message",
+        aggregateId: message.id,
+        actorId: session.user.id,
+        occurredAt: new Date().toISOString(),
+        payload: {
+          conversationId: conversation.id,
+          noteCount: evidence.length,
+          transcriptCount: evidence.filter((item) => !item.endsWith("is unavailable.")).length
+        }
+      });
+    // Access or deletion may have changed while the provider was running.
+    this.requireAccountConversation(conversation.id, session.account.id);
+    if (this.conversationHasHumanRecipient(conversation.id, session.account.id))
+      throw new Cp2Error(
+        409,
+        "agent_processing_requires_agent_conversation",
+        "Encrypted direct messages are not processed by the business agent."
+      );
+    this.deps.requireAuthorizedSession(
+      input.sessionId,
+      input.businessId,
+      "customer:write",
+      new Date()
+    );
+    if (
+      this.conversationMessages.get(message.id)?.deletedAt !== null ||
+      !isDeepStrictEqual(this.conversationMessages.get(message.id)?.content, message.content)
+    )
+      throw new Cp2Error(404, "message_not_found", "The message was deleted.");
     const conversationHistory = this.runtimeConversationHistory(conversation.id, message.id);
     let runtime: RuntimeTurnResult;
     try {
@@ -4453,7 +4562,13 @@ export class MessagingDomain {
         ...(input.runtimeSessionId === undefined
           ? {}
           : { runtimeSessionId: input.runtimeSessionId }),
-        message: input.message,
+        message: hasAudio ? "Please consider the attached voice note." : input.message,
+        ...(evidence.length
+          ? {
+              channelEvidence: `Message accompanying the voice note: ${JSON.stringify(input.message)}\n${evidence.join("\n")}`,
+              voiceEvidenceOnly: true
+            }
+          : {}),
         conversationHistory,
         now
       });
