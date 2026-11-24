@@ -61,7 +61,7 @@ Tick an item only in the same commit that adds its evidence.
 - [x] Customers and invoices. evidence: tests/customer-management-card.test.ts, tests/invoice-management-card.test.ts
 - [x] A customer's inbox listing or thread open on Edge marks a shop reply delivered. evidence: tests/edge-delivered-postgres.test.ts, tests/edge-delivering-read-scope.test.ts
 - [ ] Receipt-to-commerce engine accepted (receipt-to-commerce-checklist-2026-11-16).
-- [ ] Opt-in broadcast from a shop to its customers.
+- [x] Opt-in broadcast from a shop to its customers: status updates to chosen contacts, which a customer can turn off per shop (the shop then cannot select or send to them) and back on. evidence: tests/status-broadcast.test.ts, tests/broadcast-opt-out.test.ts, tests/broadcast-opt-out-ui.test.tsx
 
 ## Agents as participants (weight 15)
 

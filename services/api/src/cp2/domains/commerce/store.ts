@@ -31,6 +31,8 @@ import type {
   ProductCaptureItemSummary,
   ProductCaptureJobSummary,
   ProductSummary,
+  BroadcastPreferenceSummary,
+  MutedShopSummary,
   StatusBroadcastCandidateSummary,
   StatusBroadcastItemSummary,
   StatusBroadcastRecipientSummary,
@@ -137,6 +139,8 @@ export class CommerceDomain {
   private readonly buyOrders = new Map<string, BuyOrderSummary>();
   private readonly statusOrders = new Map<string, StatusOrderSummary>();
   private readonly unifiedCheckouts = new Map<string, UnifiedCheckoutSummary>();
+  /** Shops a customer turned off, keyed `<accountId>:<businessId>` (BroadcastPreferenceSummary). */
+  private readonly broadcastPreferences = new Map<string, BroadcastPreferenceSummary>();
 
   constructor(private readonly deps: CommerceDomainDeps) {}
 
@@ -150,6 +154,7 @@ export class CommerceDomain {
     this.buyOrders.clear();
     this.statusOrders.clear();
     this.unifiedCheckouts.clear();
+    this.broadcastPreferences.clear();
   }
 
   // Exposed read-only for Cp2Store's generic snapshot/restore/Postgres-persistence/account-
@@ -160,6 +165,56 @@ export class CommerceDomain {
   }
   get statusBroadcastsMap(): Map<string, StatusBroadcastSummary> {
     return this.statusBroadcasts;
+  }
+  get broadcastPreferencesMap(): Map<string, BroadcastPreferenceSummary> {
+    return this.broadcastPreferences;
+  }
+
+  /** Whether this account turned off this shop's status updates. */
+  private mutedShop(accountId: string | null, businessId: string): boolean {
+    return accountId !== null && this.broadcastPreferences.has(`${accountId}:${businessId}`);
+  }
+
+  /**
+   * A customer turns one shop's status updates off or back on. Off hides that shop's statuses from
+   * their feed and stops the shop selecting or sending to them; the shop sees "turned off updates"
+   * in its picker, never why. Only the customer's own session can change it.
+   */
+  setBroadcastPreference(input: {
+    sessionId: string | null;
+    businessId: string;
+    receive: boolean;
+    now?: Date;
+  }): { businessId: string; receive: boolean } {
+    const now = input.now ?? new Date();
+    const session = this.deps.requirePinVerifiedSession(input.sessionId, now);
+    if (!this.deps.businesses.has(input.businessId))
+      throw new Cp2Error(404, "business_not_found", "Shop was not found.");
+    const id = `${session.account.id}:${input.businessId}`;
+    if (input.receive) this.broadcastPreferences.delete(id);
+    else
+      this.broadcastPreferences.set(id, {
+        id,
+        accountId: session.account.id,
+        userId: session.user.id,
+        businessId: input.businessId,
+        receive: false,
+        updatedAt: now.toISOString()
+      });
+    return { businessId: input.businessId, receive: input.receive };
+  }
+
+  /** The shops whose updates the viewer turned off, newest first. */
+  listMutedShops(input: { sessionId: string | null; now?: Date }): MutedShopSummary[] {
+    const session = this.deps.requirePinVerifiedSession(input.sessionId, input.now ?? new Date());
+    return [...this.broadcastPreferences.values()]
+      .filter((preference) => preference.accountId === session.account.id)
+      .map((preference) => ({
+        businessId: preference.businessId,
+        businessName: this.deps.businesses.get(preference.businessId)?.name ?? "A shop",
+        mutedAt: preference.updatedAt
+      }))
+      .sort((a, b) => b.mutedAt.localeCompare(a.mutedAt));
   }
   get buyOrdersMap(): Map<string, BuyOrderSummary> {
     return this.buyOrders;
@@ -742,12 +797,14 @@ export class CommerceDomain {
         const isGrogoniUser = recipientAccountId !== null;
         const isExistingCustomer =
           isGrogoniUser && existingCustomerAccountIds.has(recipientAccountId);
+        const optedOut = this.mutedShop(recipientAccountId, input.businessId);
         return {
           networkNodeId: node.id,
           displayName: node.displayName,
           isGrogoniUser,
           isExistingCustomer,
-          defaultSelected: isGrogoniUser && isExistingCustomer
+          defaultSelected: isGrogoniUser && isExistingCustomer && !optedOut,
+          optedOut
         };
       });
   }
@@ -794,7 +851,7 @@ export class CommerceDomain {
       );
     }
 
-    const recipients: StatusBroadcastRecipientSummary[] = input.recipientNodeIds.map((nodeId) => {
+    const nodes = input.recipientNodeIds.map((nodeId) => {
       const node = this.deps.networkNodes.get(nodeId);
       if (node === undefined || node.ownerUserId !== session.user.id) {
         throw new Cp2Error(
@@ -803,6 +860,19 @@ export class CommerceDomain {
           "A selected contact was not found."
         );
       }
+      return node;
+    });
+    // A contact who turned this shop's updates off is never sent to, whatever the picker sent.
+    const reachable = nodes.filter(
+      (node) => !this.mutedShop(this.accountIdForNetworkNode(node), input.businessId)
+    );
+    if (reachable.length === 0)
+      throw new Cp2Error(
+        409,
+        "status_broadcast_recipients_opted_out",
+        "Everyone you chose has turned off updates from this shop."
+      );
+    const recipients: StatusBroadcastRecipientSummary[] = reachable.map((node) => {
       return {
         networkNodeId: node.id,
         displayName: node.displayName,
@@ -958,6 +1028,7 @@ export class CommerceDomain {
     const session = this.deps.requirePinVerifiedSession(input.sessionId, now);
     return [...this.statusBroadcasts.values()]
       .filter((status) => this.recipientForViewer(status, session.user.id) !== undefined)
+      .filter((status) => !this.mutedShop(session.account.id, status.businessId))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 
@@ -1010,7 +1081,9 @@ export class CommerceDomain {
           agentId: null,
           productId: null,
           statusBroadcastId: status.id,
-          productCaptureItemId: item.productCaptureItemId
+          productCaptureItemId: item.productCaptureItemId,
+          sourceBusinessId: status.businessId,
+          sourceBusinessName: this.deps.businesses.get(status.businessId)?.name ?? null
         }));
       });
     }

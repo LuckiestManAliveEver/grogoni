@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { MutedShopSummary } from "@grogoni/shared-types";
 import { apiCloudFetch } from "./lib/api";
 import { networkChangedEvent } from "./phonebook-sync";
 
@@ -11,6 +12,33 @@ export function NetworkPrivacyControls() {
   const [privacy, setPrivacy] = useState<Privacy | null>(null);
   const [busy, setBusy] = useState(false),
     [status, setStatus] = useState("");
+  // Shops whose status updates this person turned off (from the marketplace feed).
+  const [mutedShops, setMutedShops] = useState<MutedShopSummary[]>([]);
+  async function loadMutedShops() {
+    try {
+      setMutedShops(
+        (await apiCloudFetch<{ mutedShops: MutedShopSummary[] }>("/v1/broadcast-preferences"))
+          .mutedShops
+      );
+    } catch {
+      // The rest of the panel still works; the list stays as it was.
+    }
+  }
+  async function unmute(shop: MutedShopSummary) {
+    setBusy(true);
+    try {
+      await apiCloudFetch(`/v1/broadcast-preferences/${encodeURIComponent(shop.businessId)}`, {
+        method: "PUT",
+        body: { receive: true }
+      });
+      setMutedShops((current) => current.filter((item) => item.businessId !== shop.businessId));
+      setStatus(`Updates from ${shop.businessName} are on again.`);
+    } catch {
+      setStatus("Shop updates could not be turned back on. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
   async function update(
     path = "/network/privacy",
     method = "GET",
@@ -35,7 +63,10 @@ export function NetworkPrivacyControls() {
   return (
     <details
       onToggle={(event) => {
-        if (event.currentTarget.open) void update();
+        if (event.currentTarget.open) {
+          void update();
+          void loadMutedShops();
+        }
       }}
     >
       <summary>Contact privacy and blocked people</summary>
@@ -70,6 +101,19 @@ export function NetworkPrivacyControls() {
               </button>
             </p>
           ))}
+          {mutedShops.length > 0 ? (
+            <>
+              <p>Shops whose updates you turned off. They cannot send you new statuses.</p>
+              {mutedShops.map((shop) => (
+                <p key={shop.businessId}>
+                  {shop.businessName}{" "}
+                  <button type="button" disabled={busy} onClick={() => void unmute(shop)}>
+                    Turn updates from {shop.businessName} back on
+                  </button>
+                </p>
+              ))}
+            </>
+          ) : null}
         </>
       ) : (
         <button type="button" disabled={busy} onClick={() => void update()}>

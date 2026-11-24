@@ -63,6 +63,7 @@ export const probationAllowedWrites: ReadonlySet<string> = new Set([
   "PATCH /businesses/:businessId/suppliers/:supplierId",
   "PATCH /businesses/:businessId/suppliers/:supplierId/sales-agents/:salesAgentId",
   "PATCH /network/privacy",
+  "PUT /v1/broadcast-preferences/:businessId",
   "PATCH /v1/conversations/:conversationId",
   "PATCH /v1/conversations/:conversationId/messages/:messageId",
   "PATCH /v1/session/context",

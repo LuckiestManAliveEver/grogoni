@@ -7,6 +7,8 @@ import {
 } from "@grogoni/shared-types";
 
 import { routes } from "./routes";
+import { apiFetch } from "./lib/api";
+import { getUserFacingErrorMessage } from "./user-facing-error";
 import { ShopDirectoryFilters } from "./ShopDirectoryFilters";
 import { shopCategoryLabels, type ShopDirectoryFilter } from "./shop-directory";
 import { StatusResultCard } from "./StatusResultCard";
@@ -68,6 +70,27 @@ export function MarketplaceModeCard({
   onSignUp
 }: MarketplaceModeCardProps) {
   const [buyQueryDraft, setBuyQueryDraft] = useState("");
+  // Shops whose updates the buyer turned off here: their statuses leave this feed at once.
+  const [mutedShops, setMutedShops] = useState<ReadonlySet<string>>(new Set());
+  const [muteNotice, setMuteNotice] = useState("");
+  async function muteShop(businessId: string, shopName: string) {
+    try {
+      await apiFetch(`/v1/broadcast-preferences/${encodeURIComponent(businessId)}`, {
+        method: "PUT",
+        body: { receive: false }
+      });
+      setMutedShops((current) => new Set([...current, businessId]));
+      setMuteNotice(
+        `You won't see updates from ${shopName}. Turn them back on in Contacts, under Contact privacy.`
+      );
+    } catch (error) {
+      setMuteNotice(getUserFacingErrorMessage(error));
+    }
+  }
+  const visibleResults =
+    buyFeed?.results.filter(
+      (result) => !result.sourceBusinessId || !mutedShops.has(result.sourceBusinessId)
+    ) ?? [];
   // The owner's own shop is listed but has no category or place: nudge them to add both.
   const ownStorefront = publicStorefronts.find((storefront) => storefront.grogoniId === grogoniId);
   const unlistedOwnShop =
@@ -129,18 +152,26 @@ export function MarketplaceModeCard({
       </form>
       {buyFeed !== null ? (
         <div className="buy-feed" aria-label="Search results">
-          {buyFeed.results.length === 0 ? (
+          {muteNotice ? (
+            <p className="shell-note" role="status">
+              {muteNotice}
+            </p>
+          ) : null}
+          {visibleResults.length === 0 ? (
             <p className="marketplace-directory-status">
               No results for &quot;{buyFeed.query}&quot;.
             </p>
           ) : (
-            buyFeed.results.map((result) => (
+            visibleResults.map((result) => (
               <StatusResultCard
                 key={result.id}
                 result={result}
                 isAuthenticated={isAuthenticated}
                 onAddToCart={onAddToCart}
                 onSignUp={onSignUp}
+                onMuteShop={(businessId) =>
+                  void muteShop(businessId, result.sourceBusinessName ?? result.sourceLabel)
+                }
               />
             ))
           )}

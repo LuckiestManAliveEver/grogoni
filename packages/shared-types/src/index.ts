@@ -2045,6 +2045,28 @@ export interface StatusBroadcastCandidateSummary {
   isGrogoniUser: boolean;
   isExistingCustomer: boolean;
   defaultSelected: boolean;
+  /** The contact turned off this shop's updates: never selected, skipped if sent to. */
+  optedOut: boolean;
+}
+
+/**
+ * A customer turned off one shop's status updates. Stored only while off (turning updates back on
+ * deletes it), keyed by account and shop: id is `<accountId>:<businessId>`.
+ */
+export interface BroadcastPreferenceSummary {
+  id: string;
+  accountId: string;
+  userId: string;
+  businessId: string;
+  receive: false;
+  updatedAt: string;
+}
+
+/** A shop whose updates the viewer turned off, for turning them back on. */
+export interface MutedShopSummary {
+  businessId: string;
+  businessName: string;
+  mutedAt: string;
 }
 
 export type BuyResultSourceKind = "contact" | "catalogue" | "marketplace_connector" | "offer";
@@ -2066,6 +2088,10 @@ export interface BuyResultSummary {
   productId: string | null;
   statusBroadcastId: string | null;
   productCaptureItemId: string | null;
+  /** The shop a contact status came from, so the buyer can turn its updates off. */
+  sourceBusinessId?: string | null;
+  /** That shop's name (sourceLabel is the contact's name). */
+  sourceBusinessName?: string | null;
 }
 
 /**

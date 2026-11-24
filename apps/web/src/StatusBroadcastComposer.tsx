@@ -98,6 +98,8 @@ export default function StatusBroadcastComposer(props: {
             <input
               type="checkbox"
               checked={selected.has(candidate.networkNodeId)}
+              // Turned this shop's updates off: it cannot be chosen (the server skips it too).
+              disabled={candidate.optedOut}
               onChange={(event) =>
                 setSelected((current) => {
                   const next = new Set(current);
@@ -112,7 +114,13 @@ export default function StatusBroadcastComposer(props: {
             </span>
             <span className="status-contact-copy">
               <strong>{candidate.displayName}</strong>
-              <small>{candidate.isGrogoniUser ? "On Grogoni" : "Shared via your phone"}</small>
+              <small>
+                {candidate.optedOut
+                  ? "Turned off updates from your shop"
+                  : candidate.isGrogoniUser
+                    ? "On Grogoni"
+                    : "Shared via your phone"}
+              </small>
             </span>
           </label>
         ))

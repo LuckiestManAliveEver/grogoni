@@ -190,6 +190,7 @@ INSERT INTO purge_table_plan (table_name, classification, delete_order, reason) 
   ('product_media', 'DELETE', 12, 'Business product media'),
   ('product_capture_jobs', 'DELETE', 12, 'Business camera capture jobs'),
   ('status_broadcasts', 'DELETE', 12, 'Seller status broadcasts posted to contacts'),
+  ('cp2_broadcast_preferences', 'DELETE', 11, 'Shops whose status updates a customer turned off'),
   ('buy_orders', 'DELETE', 12, 'Authenticated-buyer catalogue orders from the unified checkout'),
   ('status_orders', 'DELETE', 12, 'Buyer pickup requests against a contact status broadcast'),
   ('unified_checkouts', 'DELETE', 12, 'Unified checkout records correlating buy_orders/status_orders'),

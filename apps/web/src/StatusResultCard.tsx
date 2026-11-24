@@ -15,6 +15,8 @@ export function StatusResultCard(props: {
   // still lead somewhere - signup - rather than a dead end. Callers that already gate guest
   // browsing some other way (or never render this card unauthenticated) can leave it unset.
   onSignUp?: () => void;
+  /** Turns off this contact status's shop (only offered for a contact status with its shop). */
+  onMuteShop?: (businessId: string) => void;
 }) {
   const { result } = props;
   return (
@@ -32,9 +34,21 @@ export function StatusResultCard(props: {
         </span>
       </span>
       {props.isAuthenticated ? (
-        <button type="button" onClick={() => props.onAddToCart(result)}>
-          + Add
-        </button>
+        <span className="buy-result-actions">
+          <button type="button" onClick={() => props.onAddToCart(result)}>
+            + Add
+          </button>
+          {result.sourceKind === "contact" && result.sourceBusinessId && props.onMuteShop ? (
+            <button
+              type="button"
+              className="secondary"
+              aria-label={`Stop updates from ${result.sourceBusinessName ?? result.sourceLabel}`}
+              onClick={() => props.onMuteShop?.(result.sourceBusinessId as string)}
+            >
+              Stop updates
+            </button>
+          ) : null}
+        </span>
       ) : props.onSignUp !== undefined ? (
         <button type="button" onClick={props.onSignUp}>
           Sign up to message this seller

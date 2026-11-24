@@ -144,6 +144,8 @@ export const normalizedCollections: NormalizedCollection[] = [
   { key: "productMedia", tableName: "product_media" },
   { key: "productCaptureJobs", tableName: "product_capture_jobs" },
   { key: "statusBroadcasts", tableName: "status_broadcasts" },
+  // 142_broadcast_preferences.sql: a customer's turned-off shops (one row per account and shop).
+  { key: "broadcastPreferences", tableName: "cp2_broadcast_preferences" },
   { key: "buyOrders", tableName: "buy_orders" },
   { key: "statusOrders", tableName: "status_orders" },
   { key: "unifiedCheckouts", tableName: "unified_checkouts" },
@@ -518,6 +520,13 @@ const mutatingMethodNames = new Set([
   "listLaunchChecklist",
   "listNotifications",
   "setShopPresence",
+  // Shop directory and status broadcasts: a write each, saved like presence. Missing until
+  // 2026-11-24 (tests/postgres-write-route-persistence.test.ts now catches a new omission).
+  "setShopDirectoryListing",
+  "setBroadcastPreference",
+  "createStatusBroadcast",
+  "recordStatusBroadcastView",
+  "recordStatusBroadcastReply",
   "syncConnectedSocialProvider",
   "updateInvoice",
   "purgeExpiredShopDeletions",
@@ -5444,6 +5453,7 @@ function emptySnapshot(): Cp2Snapshot {
     productMedia: [],
     productCaptureJobs: [],
     statusBroadcasts: [],
+    broadcastPreferences: [],
     buyOrders: [],
     statusOrders: [],
     unifiedCheckouts: [],

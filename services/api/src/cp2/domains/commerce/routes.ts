@@ -482,6 +482,41 @@ export function registerCommerceRoutes(
     }
   });
 
+  // A customer's turned-off shops: the shops whose status updates they stopped.
+  app.get("/v1/broadcast-preferences", async (request, reply) => {
+    try {
+      return {
+        mutedShops: store.listMutedShops({ sessionId: readSessionCookie(request.headers.cookie) })
+      };
+    } catch (error) {
+      return sendCp2Error(reply, error);
+    }
+  });
+
+  app.put(
+    "/v1/broadcast-preferences/:businessId",
+    async (
+      request: FastifyRequest<{ Params: { businessId: string }; Body: { receive?: unknown } }>,
+      reply
+    ) => {
+      try {
+        if (typeof request.body?.receive !== "boolean")
+          throw new Cp2Error(
+            400,
+            "broadcast_preference_invalid",
+            "Say whether to receive updates."
+          );
+        return store.setBroadcastPreference({
+          sessionId: readSessionCookie(request.headers.cookie),
+          businessId: request.params.businessId,
+          receive: request.body.receive
+        });
+      } catch (error) {
+        return sendCp2Error(reply, error);
+      }
+    }
+  );
+
   app.post(
     "/status-broadcasts/:statusBroadcastId/view",
     async (request: FastifyRequest<{ Params: StatusBroadcastEngagementParams }>, reply) => {

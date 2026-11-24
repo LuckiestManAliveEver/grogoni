@@ -184,16 +184,19 @@ describe("shop directory listing", () => {
     );
     // A presence that lost its category (an older deploy) is completed on the next provisioning.
     const snapshot = store.snapshot();
-    const restored = createCp2Store({
-      initialSnapshot: {
-        ...snapshot,
-        shopPresences: (snapshot.shopPresences ?? []).map((presence) => ({
-          ...presence,
-          category: null
-        }))
-      }
-    } as never);
-    expect(restored.provisionSystemShop().status).toBe("provisioned");
+    const drifted = structuredClone(snapshot);
+    drifted.shopPresences = (drifted.shopPresences ?? []).map((presence) => ({
+      ...presence,
+      category: null
+    }));
+    const restored = createCp2Store();
+    restored.hydrateSnapshot(drifted);
+    // Restored without its category: not listed under groceries until provisioning completes it.
+    expect(
+      restored.listPublicStorefronts({ category: "groceries" }).some((shop) => shop.pinned)
+    ).toBe(false);
+    // Repaired, not created again: an existing shop missing a piece reports "updated".
+    expect(restored.provisionSystemShop().status).toBe("updated");
     expect(
       restored.listPublicStorefronts({ category: "groceries" }).some((shop) => shop.pinned)
     ).toBe(true);

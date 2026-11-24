@@ -3133,6 +3133,12 @@ a.button-like {
   gap: 12px;
 }
 
+.buy-result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .shop-directory-filters {
   align-items: end;
   display: flex;

@@ -67,8 +67,10 @@ describe("registered-user purge script", () => {
     // WhatsApp Linked Devices adds three normalized outboxes/state tables, plus the business
     // connector lease and remote-worker registry; all five contain business-owned state or
     // credential material and must be removed with the registered users.
-    expect(plan.size).toBe(211);
-    expect([...plan.values()].filter((value) => value === "DELETE")).toHaveLength(204);
+    // Opt-in broadcasts (infra/db/migrations/142_broadcast_preferences.sql) added
+    // cp2_broadcast_preferences, classified DELETE - a customer's own turned-off shops.
+    expect(plan.size).toBe(212);
+    expect([...plan.values()].filter((value) => value === "DELETE")).toHaveLength(205);
     expect(
       [...plan.entries()]
         .filter(([, classification]) => classification === "PRESERVE")

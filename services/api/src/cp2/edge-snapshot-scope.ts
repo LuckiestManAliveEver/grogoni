@@ -293,8 +293,19 @@ export async function createEdgeSnapshotScope(
       where not parent.entity_id = any(linked.path) and cardinality(linked.path) < 24
   ) select distinct entity_id, record, business_id from linked`
     : `select null::text as entity_id, null::jsonb as record, null::text as business_id where false`;
+  // A customer's shop-update choices name shops they do not work in: only those shops' business
+  // rows load (for the existence check and the names), never the rest of their data.
+  const preferenceShop = /^\/v1\/broadcast-preferences\/([^/]+)$/u.exec(path)?.[1] ?? "";
   const ctes: [string, string][] = [
     ["edge_commerce_records", commerceMetadata],
+    [
+      "edge_preference_business_ids",
+      path === "/v1/broadcast-preferences"
+        ? `select business_id as id from public.cp2_broadcast_preferences where account_id = ${actorAccount} and ${actorAccount} <> ''`
+        : uuid.test(preferenceShop)
+          ? `select ${escapeLiteral(preferenceShop)}::text as id`
+          : `select null::text as id where false`
+    ],
     [
       "edge_recipient_node_ids",
       `select entity_id as id from public.cp2_network_nodes where record->>'grogoniUserId' = nullif(${actorUser}, '')`
@@ -466,7 +477,7 @@ export async function createEdgeSnapshotScope(
     ],
     [
       "businesses",
-      "select * from public.businesses where id in (select id::uuid from edge_business_ids)"
+      "select * from public.businesses where id in (select id::uuid from edge_business_ids) or id::text in (select id from edge_preference_business_ids)"
     ],
     [
       "business_memberships",
@@ -566,8 +577,9 @@ export async function createEdgeSnapshotScope(
         return `account_id = ${actorAccount} or account_id in (select id from edge_peer_account_ids) or account_id in (select u.account_id::text from public.users u where u.id::text in (select id from edge_user_ids))`;
       if (key === "e2eeDevices")
         return `account_id = ${actorAccount} or account_id in (select id from edge_peer_account_ids)`;
-      if (key === "businesses" || key === "shopPresences")
-        return "entity_id in (select id from edge_business_ids)";
+      if (key === "businesses")
+        return "entity_id in (select id from edge_business_ids) or entity_id in (select id from edge_preference_business_ids)";
+      if (key === "shopPresences") return "entity_id in (select id from edge_business_ids)";
       if (key === "networkNodes")
         return `user_id = nullif(${actorUser}, '') or entity_id in (select id from edge_recipient_node_ids)`;
       if (key === "statusBroadcasts")

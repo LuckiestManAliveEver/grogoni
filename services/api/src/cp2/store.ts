@@ -427,6 +427,7 @@ import type {
   GrogoniChatSurface,
   GrogoniMode,
   GrogoniSessionContext,
+  BroadcastPreferenceSummary,
   ShopCategory,
   ShopPresenceStatus,
   ShopPresenceSummary,
@@ -904,6 +905,7 @@ export interface Cp2Snapshot
   productMedia?: ProductMediaRecord[];
   productCaptureJobs?: ProductCaptureJobSummary[];
   statusBroadcasts?: StatusBroadcastSummary[];
+  broadcastPreferences?: BroadcastPreferenceSummary[];
   buyOrders?: BuyOrderSummary[];
   statusOrders?: StatusOrderSummary[];
   unifiedCheckouts?: UnifiedCheckoutSummary[];
@@ -9442,6 +9444,19 @@ export class Cp2Store {
     return this.commerce.listStatusBroadcastsReceivedByViewer(...args);
   }
 
+  setBroadcastPreference(
+    ...args: Parameters<CommerceDomain["setBroadcastPreference"]>
+  ): ReturnType<CommerceDomain["setBroadcastPreference"]> {
+    // Allowed during recovery probation (probationAllowedWrites): it only quiets a shop.
+    return this.commerce.setBroadcastPreference(...args);
+  }
+
+  listMutedShops(
+    ...args: Parameters<CommerceDomain["listMutedShops"]>
+  ): ReturnType<CommerceDomain["listMutedShops"]> {
+    return this.commerce.listMutedShops(...args);
+  }
+
   searchBuyFeed(
     ...args: Parameters<CommerceDomain["searchBuyFeed"]>
   ): ReturnType<CommerceDomain["searchBuyFeed"]> {
@@ -12698,6 +12713,7 @@ export class Cp2Store {
       productMedia: [...this.salesDomain.productMediaMap.values()],
       productCaptureJobs: [...this.commerce.productCaptureJobsMap.values()],
       statusBroadcasts: [...this.commerce.statusBroadcastsMap.values()],
+      broadcastPreferences: [...this.commerce.broadcastPreferencesMap.values()],
       buyOrders: [...this.commerce.buyOrdersMap.values()],
       statusOrders: [...this.commerce.statusOrdersMap.values()],
       unifiedCheckouts: [...this.commerce.unifiedCheckoutsMap.values()],
@@ -12948,6 +12964,8 @@ export class Cp2Store {
     for (const status of snapshot.statusBroadcasts ?? []) {
       this.commerce.statusBroadcastsMap.set(status.id, status);
     }
+    for (const preference of snapshot.broadcastPreferences ?? [])
+      this.commerce.broadcastPreferencesMap.set(preference.id, preference);
     for (const order of snapshot.buyOrders ?? []) this.commerce.buyOrdersMap.set(order.id, order);
     for (const order of snapshot.statusOrders ?? []) {
       this.commerce.statusOrdersMap.set(order.id, order);
@@ -17047,6 +17065,10 @@ export class Cp2Store {
     }
 
     this.shopPresences.delete(businessId);
+    // Customers' turned-off choices for this shop go with it (no "A shop" left in their list).
+    for (const [id, preference] of this.commerce.broadcastPreferencesMap.entries()) {
+      if (preference.businessId === businessId) this.commerce.broadcastPreferencesMap.delete(id);
+    }
     for (const [id, invite] of this.networkInvites.entries()) {
       if (invite.businessId === businessId) this.networkInvites.delete(id);
     }
@@ -17276,6 +17298,7 @@ export class Cp2Store {
       deletedRecordCount += deleteScopedMapRecords(this.salesDomain.productMediaMap, scope);
       deletedRecordCount += deleteScopedMapRecords(this.commerce.productCaptureJobsMap, scope);
       deletedRecordCount += deleteScopedMapRecords(this.commerce.statusBroadcastsMap, scope);
+      deletedRecordCount += deleteScopedMapRecords(this.commerce.broadcastPreferencesMap, scope);
       deletedRecordCount += deleteScopedMapRecords(this.commerce.buyOrdersMap, scope);
       deletedRecordCount += deleteScopedMapRecords(this.commerce.statusOrdersMap, scope);
       deletedRecordCount += deleteScopedMapRecords(this.commerce.unifiedCheckoutsMap, scope);
