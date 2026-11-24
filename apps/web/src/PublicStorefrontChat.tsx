@@ -985,7 +985,9 @@ export function PublicStorefrontChat(props: { agentId: string; productId?: strin
               <span className="visually-hidden">Send</span>
             </button>
           </form>
-          {voiceInput.listening || voiceInput.error ? <small role="status">{voiceInput.error ?? "Listening… Speak your message."}</small> : null}
+          {voiceInput.listening || voiceInput.error ? (
+            <small role="status">{voiceInput.error ?? "Listening… Speak your message."}</small>
+          ) : null}
           <footer className="app-credits">
             <span>Karibu Grogoni</span>
             <BuildIdentity />

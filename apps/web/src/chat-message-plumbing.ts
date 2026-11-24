@@ -553,7 +553,11 @@ export interface BrowserSpeechRecognition {
   stop(): void;
 }
 
-export function startVoiceInput(onTranscript: (transcript: string) => void, onError: () => void = () => {}, onEnd: () => void = () => {}): BrowserSpeechRecognition | null {
+export function startVoiceInput(
+  onTranscript: (transcript: string) => void,
+  onError: () => void = () => {},
+  onEnd: () => void = () => {}
+): BrowserSpeechRecognition | null {
   const SpeechRecognitionConstructor =
     (
       window as Window & {
@@ -563,14 +567,22 @@ export function startVoiceInput(onTranscript: (transcript: string) => void, onEr
     ).SpeechRecognition ??
     (window as Window & { webkitSpeechRecognition?: new () => BrowserSpeechRecognition })
       .webkitSpeechRecognition;
-  if (!SpeechRecognitionConstructor) { onError(); return null; }
+  if (!SpeechRecognitionConstructor) {
+    onError();
+    return null;
+  }
   const recognition = new SpeechRecognitionConstructor();
   recognition.lang = navigator.language || "en";
   recognition.interimResults = false;
   recognition.onresult = (event) => onTranscript(event.results[0]?.[0].transcript ?? "");
   recognition.onerror = onError;
   recognition.onend = onEnd;
-  try { recognition.start(); } catch { onError(); return null; }
+  try {
+    recognition.start();
+  } catch {
+    onError();
+    return null;
+  }
   return recognition;
 }
 

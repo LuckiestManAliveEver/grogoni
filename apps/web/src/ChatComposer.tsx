@@ -4,7 +4,7 @@ import { runtimeHashtagCapabilities, runtimeHashtagQuery } from "@grogoni/tool-c
 import { readCurrentOwnerRoute } from "./browser-navigation";
 import { chatAttachmentAccept } from "./grogoni-application-shared";
 import { chatModuleCommands } from "./chat-module-commands";
-import { useVoiceInput } from "./hooks/useVoiceInput";
+import { useComposerVoiceInput } from "./hooks/useVoiceInput";
 import { formatChannelProvider } from "./formatters";
 import { useComposerVoiceNote, VoiceNoteBar } from "./VoiceNoteBar";
 import type { ChatComposerProps } from "./chat-composer-contracts";
@@ -70,11 +70,7 @@ export function ChatComposer({
   } = composer;
   const [messageActionsOpen, setMessageActionsOpen] = useState(false);
   const voiceNote = useComposerVoiceNote(onAddAttachmentFiles);
-  const currentDraft = useRef(liveDraft);
-  currentDraft.current = liveDraft;
-  const voiceInput = useVoiceInput((text) => {
-    if (text.trim()) updateLiveDraft([currentDraft.current.trim(), text.trim()].filter(Boolean).join(" "));
-  });
+  const voiceInput = useComposerVoiceInput(liveDraft, updateLiveDraft);
   const [channelPickerOpen, setChannelPickerOpen] = useState(false);
   const [externalAppsOpen, setExternalAppsOpen] = useState(false);
   const messageInputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -272,16 +268,16 @@ export function ChatComposer({
                 Cancel
               </button>
             ) : null}
-              <button
-                className="icon-button composer-icon-button composer-mic-button"
-                type="button"
-                aria-label={voiceInput.listening ? "Stop voice input" : "Voice input"}
-                aria-pressed={voiceInput.listening}
-                onClick={voiceInput.toggle}
-              >
-                <span className="mic-icon" aria-hidden="true" />
-                <span className="visually-hidden">Voice</span>
-              </button>
+            <button
+              className="icon-button composer-icon-button composer-mic-button"
+              type="button"
+              aria-label={voiceInput.listening ? "Stop voice input" : "Record voice"}
+              aria-pressed={voiceInput.listening}
+              onClick={voiceInput.toggle}
+            >
+              <span className="mic-icon" aria-hidden="true" />
+              <span className="visually-hidden">Voice</span>
+            </button>
             <button
               className="send-button"
               type="button"
@@ -300,8 +296,7 @@ export function ChatComposer({
             </button>
           </div>
         </div>
-        <VoiceNoteBar voiceNote={voiceNote} />
-        {voiceInput.listening || voiceInput.error ? <small role="status">{voiceInput.error ?? "Listening… Speak your message."}</small> : null}
+        <VoiceNoteBar voiceNote={voiceNote} voiceInput={voiceInput} />
         {sendWhenOpen !== null ? (
           <small className="external-share-notice" role="status">
             Sends as soon as this chat opens.

@@ -18,12 +18,18 @@ export function useComposerVoiceNote(onAddAttachmentFiles?: (files: File[]) => v
 
 /** The composer's recording bar (timer, Cancel, Stop and attach) and why a recording failed. */
 export function VoiceNoteBar({
-  voiceNote
+  voiceNote,
+  voiceInput
 }: {
   voiceNote: ReturnType<typeof useVoiceNoteRecorder>;
+  /** Dictation (useVoiceInput): its listening state or error shows here too. */
+  voiceInput?: { listening: boolean; error: string | null };
 }) {
   return (
     <>
+      {voiceInput?.listening || voiceInput?.error ? (
+        <small role="status">{voiceInput.error ?? "Listening… Speak your message."}</small>
+      ) : null}
       {voiceNote.state !== "idle" ? (
         <div className="composer-voice-note" role="group" aria-label="Voice note">
           <span className="composer-voice-note-dot" aria-hidden="true" />
