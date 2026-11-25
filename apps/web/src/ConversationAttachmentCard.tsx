@@ -63,6 +63,12 @@ export function ConversationAttachmentCard({ attachment }: { attachment: ChatAtt
       <div className="conversation-attachment-details">
         <strong>{attachment.name}</strong>
         {attachment.caption ? <span>{attachment.caption}</span> : null}
+        {attachment.transcript ? (
+          <details className="conversation-attachment-transcript">
+            <summary>Transcript</summary>
+            <p>{attachment.transcript}</p>
+          </details>
+        ) : null}
         <small>
           {typeLabel} · {formatFileSize(attachment.size)}
         </small>

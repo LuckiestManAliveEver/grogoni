@@ -30,6 +30,7 @@
     "android.permission.READ_PHONE_STATE": "No Grogoni code reads it; the default SMS role grants it, so sending and reading do not depend on it here.",
     "android.permission.FOREGROUND_SERVICE": "Normal permission granted at install; required to host the WhatsApp sidecar foreground service that keeps linked messaging alive.",
     "android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING": "Normal permission granted at install; declares the WhatsApp sidecar foreground service type as remote messaging on Android 14+.",
-    "android.permission.RECEIVE_BOOT_COMPLETED": "Normal permission granted at install; lets the WhatsApp sidecar restart its foreground service after a reboot so linked messaging resumes."
+    "android.permission.RECEIVE_BOOT_COMPLETED": "Normal permission granted at install; lets the WhatsApp sidecar restart its foreground service after a reboot so linked messaging resumes.",
+    "android.permission.RECORD_AUDIO": "Not on the checklist: asked by Android at the first tap on a microphone (voice typing, voice notes, talking with agents), and only the app's own pages receive audio (PermissionChecklistPolicy.audioCaptureDecision)."
   }
 }

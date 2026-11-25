@@ -43,6 +43,8 @@ enum class ChecklistStatus(val wire: String) {
     UNAVAILABLE("unavailable"),
 }
 
+enum class AudioCaptureDecision { GRANT, REQUEST, DENY }
+
 sealed interface ChecklistStep {
     data object Skip : ChecklistStep
     data object RequestRole : ChecklistStep
@@ -117,6 +119,20 @@ object PermissionChecklistPolicy {
 
     fun geolocationAllowed(trustedOrigin: Boolean, granted: Set<String>): Boolean =
         trustedOrigin && (Manifest.permission.ACCESS_COARSE_LOCATION in granted || Manifest.permission.ACCESS_FINE_LOCATION in granted)
+
+    /**
+     * A WebView page asking for the microphone (getUserMedia audio). Only the pinned app origin, only
+     * audio (never camera or protected media in the same request), and Android's RECORD_AUDIO is
+     * asked for at that first use when it is not held yet.
+     */
+    fun audioCaptureDecision(trustedOrigin: Boolean, resources: List<String>, granted: Set<String>): AudioCaptureDecision = when {
+        !trustedOrigin || resources.isEmpty() || resources.any { it != AUDIO_CAPTURE_RESOURCE } -> AudioCaptureDecision.DENY
+        Manifest.permission.RECORD_AUDIO in granted -> AudioCaptureDecision.GRANT
+        else -> AudioCaptureDecision.REQUEST
+    }
+
+    /** android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE, as a constant so tests need no Android. */
+    const val AUDIO_CAPTURE_RESOURCE = "android.webkit.resource.AUDIO_CAPTURE"
 
     fun missing(group: ChecklistGroup, granted: Set<String>): List<String> =
         if (group.satisfied(granted)) emptyList() else group.permissions.filter { it !in granted }

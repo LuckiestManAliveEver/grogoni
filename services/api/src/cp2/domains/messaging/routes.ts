@@ -1816,7 +1816,7 @@ function parseConversationKind(value: unknown): ConversationKind {
   throw new Cp2Error(400, "conversation_kind_invalid", "Conversation kind is not supported.");
 }
 
-function parseConversationMessageContent(value: unknown): ConversationMessageContent {
+export function parseConversationMessageContent(value: unknown): ConversationMessageContent {
   const content = parseRequestBody(value);
   const type = parseString(content.type, "content.type");
 

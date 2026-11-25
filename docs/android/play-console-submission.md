@@ -8,8 +8,8 @@ search for it in Console.
 **The privacy policy is the known blocker.** `https://grogoni.com/privacy` shows "Draft", contains
 placeholders such as `[Legal Entity Name]`, and never mentions SMS, camera or location. Play compares
 it with the app's permissions and the Data Safety form. Publish a final version first. It must name
-the legal entity and a contact, and state what happens to SMS and MMS, contacts, camera, location, and
-the optional business sync. The source is `apps/web/src/legal/privacy-v1-draft-part-*.md`.
+the legal entity and a contact, and state what happens to SMS and MMS, contacts, camera, location,
+microphone audio, and the optional business sync. The source is `apps/web/src/legal/privacy-v1-draft-part-*.md`.
 
 ## 2. Create the app
 
@@ -56,7 +56,17 @@ business send through the user's SIM and lets users share a message to a server.
 off by default and turned on by the user. If Play cites this feature, decide whether to remove
 it from the Play build.
 
-**Also required:** Data Safety (must match the privacy policy; declare SMS, contacts, location, photos),
+**Microphone (`RECORD_AUDIO`).** Used for voice typing, voice notes and talking with agents in the
+app's WebView. Android asks at the first tap on the microphone, never in the bulk permission
+request, and only the app's own pages get audio (`PermissionChecklistPolicy.audioCaptureDecision`).
+Recordings for voice typing and voice notes sent to an agent are sent to the speech-to-text provider
+(OpenRouter, `openai/gpt-4o-transcribe`) to be turned into text; they are not used for ads or
+shared otherwise. Voice notes in person-to-person chats stay end-to-end encrypted and are never
+transcribed. In Data Safety declare **Audio: voice or sound recordings**, collected, processed
+ephemerally for app functionality, not shared. The privacy policy must say the same.
+
+**Also required:** Data Safety (must match the privacy policy; declare SMS, contacts, location, photos,
+audio recordings),
 privacy policy URL, account deletion URL `https://grogoni.com/account-deletion`, ads, content rating,
 target audience. Marketplace chat and the assistant may also need the user-generated content and AI
 declarations.

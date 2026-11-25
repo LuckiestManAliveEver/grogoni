@@ -69,7 +69,11 @@ import { linkedOptOutCommand } from "../../../messaging/whatsapp-linked/opt-out.
 import { isDeepStrictEqual } from "node:util";
 import { contactIsBlocked } from "../network/shared.js";
 import { helpConversationId, helpGuides, helpGuideText } from "./help-guides.js";
-import { voiceNoteEvidence } from "../../voice/voice-note-evidence.js";
+import {
+  transcribeVoiceNote,
+  voiceNoteEvidenceLabel,
+  voiceNoteEvidenceUnavailable
+} from "../../voice/voice-note-evidence.js";
 import {
   createVoiceServices,
   voiceDictationMaxBytes,
@@ -107,6 +111,7 @@ import type {
   ConnectedMailboxSummary,
   ConnectedMailboxSyncSummary,
   ConversationAttachment,
+  ConversationAttachmentTranscript,
   ConversationChannelSummary,
   ConversationExecutionSummary,
   ConversationInboxItem,
@@ -4299,7 +4304,7 @@ export class MessagingDomain {
       );
     }
 
-    const message = this.createConversationMessage({
+    let message = this.createConversationMessage({
       sessionId: input.sessionId,
       conversationId: conversation.id,
       clientMessageId: input.clientMessageId,
@@ -4473,14 +4478,19 @@ export class MessagingDomain {
       /* voice unavailable */
     }
     const checkedRecords = new Map<string, ConversationAttachmentRecord>();
+    // New transcripts by attachment id; saved on the message once access is re-checked below.
+    const transcribed = new Map<string, ConversationAttachmentTranscript>();
     const evidence =
       message.content.type === "text"
         ? (
             await Promise.all(
               (message.content.attachments ?? []).map(async (attachment) => {
                 if (attachment.category !== "audio") return undefined;
+                // A regenerated reply or a retried turn reuses the saved transcript.
+                if (attachment.transcript)
+                  return voiceNoteEvidenceLabel(attachment.transcript.text);
                 if (!transcriber || attachment.size > voiceDictationMaxBytes)
-                  return "Automatic transcription of the sender's voice note is unavailable.";
+                  return voiceNoteEvidenceUnavailable;
                 let bytes: Buffer | undefined;
                 if (attachment.source === "managed") {
                   const record = this.conversationAttachments.get(attachment.id);
@@ -4492,7 +4502,7 @@ export class MessagingDomain {
                     record.mimeType !== attachment.mimeType ||
                     record.size !== attachment.size
                   )
-                    return "Automatic transcription of the sender's voice note is unavailable.";
+                    return voiceNoteEvidenceUnavailable;
                   const stored = await this.deps.conversationAttachmentBlobStore
                     .get(record.storageKey)
                     .catch(() => null);
@@ -4501,14 +4511,18 @@ export class MessagingDomain {
                     stored.length !== record.size ||
                     createHash("sha256").update(stored).digest("hex") !== record.checksum
                   )
-                    return "Automatic transcription of the sender's voice note is unavailable.";
+                    return voiceNoteEvidenceUnavailable;
                   checkedRecords.set(record.id, record);
                   bytes = stored;
                 }
-                return (
-                  (await voiceNoteEvidence(attachment, transcriber, bytes)) ??
-                  "Automatic transcription of the sender's voice note is unavailable."
-                );
+                const transcript = await transcribeVoiceNote(attachment, transcriber, bytes);
+                if (!transcript) return voiceNoteEvidenceUnavailable;
+                transcribed.set(attachment.id, {
+                  text: transcript.text,
+                  model: transcript.model,
+                  transcribedAt: new Date().toISOString()
+                });
+                return voiceNoteEvidenceLabel(transcript.text);
               })
             )
           ).filter((item): item is string => item !== undefined)
@@ -4530,7 +4544,7 @@ export class MessagingDomain {
         payload: {
           conversationId: conversation.id,
           noteCount: evidence.length,
-          transcriptCount: evidence.filter((item) => !item.endsWith("is unavailable.")).length
+          transcriptCount: evidence.filter((item) => item !== voiceNoteEvidenceUnavailable).length
         }
       });
     // Access or deletion may have changed while the provider was running.
@@ -4552,6 +4566,28 @@ export class MessagingDomain {
       !isDeepStrictEqual(this.conversationMessages.get(message.id)?.content, message.content)
     )
       throw new Cp2Error(404, "message_not_found", "The message was deleted.");
+    if (transcribed.size > 0 && message.content.type === "text") {
+      // Every participant sees the transcript under the voice note (P2.2).
+      const withTranscripts: ConversationMessageSummary = {
+        ...message,
+        content: {
+          ...message.content,
+          attachments: (message.content.attachments ?? []).map((attachment) => {
+            const transcript = transcribed.get(attachment.id);
+            return transcript ? { ...attachment, transcript } : attachment;
+          })
+        }
+      };
+      this.conversationMessages.set(message.id, withTranscripts);
+      this.recordConversationSyncForParticipants(
+        conversation.id,
+        "conversation_messages",
+        message.id,
+        withTranscripts,
+        now
+      );
+      message = withTranscripts;
+    }
     const conversationHistory = this.runtimeConversationHistory(conversation.id, message.id);
     let runtime: RuntimeTurnResult;
     try {
@@ -5895,6 +5931,23 @@ export class MessagingDomain {
    * output) resolves to `null` rather than throwing: the customer's own message must always be
    * accepted, whether or not an automatic reply could be produced.
    */
+  /**
+   * Guest voice (voice-routes.ts registerGuestVoiceRoutes): the id of a valid, unexpired,
+   * unrevoked storefront capability for this token, or null. Reads only.
+   */
+  findVoiceGuestCapability(token: string, now: Date = new Date()): string | null {
+    if (token.length === 0 || token.length > 200) return null;
+    const tokenHash = hashCustomerCapability(token);
+    const capability = [...this.customerRuntimeCapabilities.values()].find(
+      (candidate) => candidate.tokenHash === tokenHash
+    );
+    return capability !== undefined &&
+      capability.revokedAt === null &&
+      Date.parse(capability.expiresAt) > now.getTime()
+      ? capability.id
+      : null;
+  }
+
   requireCustomerCapability(
     token: string,
     businessId: string,

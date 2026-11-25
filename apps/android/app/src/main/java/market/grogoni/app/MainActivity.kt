@@ -97,6 +97,14 @@ open class MainActivity : ComponentActivity() {
         checklistRequest = null; checklistQueue.onPermissionsResult()
     }
     private var pendingCapture: Pair<ValueCallback<Array<Uri>>, Uri>? = null
+    private var pendingMicrophone: PermissionRequest? = null
+    private var microphonePermissionInFlight = false
+    private val microphone = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        microphonePermissionInFlight = false
+        val request = pendingMicrophone ?: return@registerForActivityResult
+        pendingMicrophone = null
+        if (granted) request.grant(arrayOf(PermissionRequest.RESOURCE_AUDIO_CAPTURE)) else request.deny()
+    }
     private val capture = registerForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
         val (callback, uri) = pendingCapture ?: return@registerForActivityResult
         pendingCapture = null
@@ -155,6 +163,28 @@ open class MainActivity : ComponentActivity() {
                 webFileCallback = callback
                 webFiles.launch(if (types.isEmpty()) arrayOf("*/*") else types)
                 return true
+            }
+            // Voice typing and voice notes: microphone for the pinned origin only, asked at first use.
+            override fun onPermissionRequest(request: PermissionRequest) {
+                val decision = PermissionChecklistPolicy.audioCaptureDecision(
+                    trusted(request.origin), request.resources.toList(), AndroidPermissionPolicy.grantedPermissions(this@MainActivity)
+                )
+                when (decision) {
+                    AudioCaptureDecision.GRANT -> request.grant(arrayOf(PermissionRequest.RESOURCE_AUDIO_CAPTURE))
+                    AudioCaptureDecision.DENY -> request.deny()
+                    AudioCaptureDecision.REQUEST -> {
+                        if (microphonePermissionInFlight) {
+                            request.deny()
+                        } else {
+                            pendingMicrophone = request
+                            microphonePermissionInFlight = true
+                            microphone.launch(Manifest.permission.RECORD_AUDIO)
+                        }
+                    }
+                }
+            }
+            override fun onPermissionRequestCanceled(request: PermissionRequest) {
+                if (pendingMicrophone === request) pendingMicrophone = null
             }
             // In-app location features (shop location) reach Android location only for the pinned origin.
             override fun onGeolocationPermissionsShowPrompt(origin: String, callback: GeolocationPermissions.Callback) {

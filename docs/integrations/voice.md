@@ -36,8 +36,54 @@ Code: `services/api/src/cp2/voice/` (server), `apps/web/src/messaging/voice-spee
 - **Fallback.** If the server answers `voice_unavailable` (no key, or the model is set to `off`),
   the page remembers that until reload. Voice typing then uses the browser's Web Speech
   recognition on the next tap, and Listen uses `speechSynthesis` from the part that failed.
-  The public storefront (signed-out guests) always uses browser speech for now (see
-  voicecom P2.4).
+  Storefront guests use server speech when a guest session is available, with browser speech as
+  the fallback.
+
+## Voice notes to agents
+
+A voice note sent in an agent conversation (in the app, not WhatsApp) is transcribed on the server
+before the agent's turn (`services/api/src/cp2/voice/voice-note-evidence.ts`, called from
+`createAgentConversationMessage` in `domains/messaging/store.ts`).
+
+- **Evidence, never commands.** The agent receives the transcript quoted and labeled as the
+  sender's words (`voiceNoteEvidenceLabel`), with the typed text that came with the note. A turn
+  carrying a voice note never runs a tool: whatever the model or a deterministic parser proposes is
+  narrowed to a clarification (`agent-runtime/voice-evidence-turn.ts`). To act, the person types
+  and sends the request. Skill commands and inventory tasks are skipped for such turns too.
+- **Which notes.** Embedded audio (data URLs) and managed attachments whose stored bytes match
+  their checksum. URLs are never fetched. A recording over 4 MiB or 2 minutes, one whose length
+  cannot be measured, or one whose transcription fails stays a plain voice note: the agent is
+  told the transcription is unavailable and the message is delivered as usual. Duration is read
+  from the container for WebM (block timecodes, so MediaRecorder streams without a duration
+  header are covered), Ogg Opus, MP3 (frame by frame), WAV and M4A (`audio-duration.ts`).
+- **Who.** Never in person-to-person chats: those are end-to-end encrypted and the server cannot
+  read them. Access is checked again after the provider call; a message deleted or a
+  conversation whose access changed meanwhile is not processed.
+- **Edge.** The provider call is deferred out of the database transaction and replayed across
+  attempts like model calls (`edge-model-deferral.ts`), so it never holds a Neon connection.
+- **Transcript on the note.** A successful transcript is saved on the attachment
+  (`transcript: { text, model, transcribedAt }`) and synced to every participant; the chat shows
+  a collapsible **Transcript** under the voice note. Only the server writes it: the message API
+  drops a client-sent `transcript`, and the web client ignores one inside decrypted content.
+  A regenerated reply reuses the saved transcript instead of calling the provider again.
+
+## Guests on the storefront
+
+Signed-out storefront guests get the same two calls at
+`POST /public/storefronts/:agentId/voice/transcribe` and `.../speak`, with their storefront
+`capabilityToken` in the body (`registerGuestVoiceRoutes`). A guest needs a valid, unexpired,
+unrevoked capability; each capability gets 5 transcriptions and 10 speech calls a minute. On Edge
+the token is checked with one indexed read of `customer_runtime_capabilities` (no snapshot, lock
+or held connection). The storefront chat uses server voice once its guest session exists, and its
+agent replies have Listen. The transcript or audio goes back only to the caller and touches no
+shop data, so the storefront id in the path is not a trust boundary.
+
+## Android
+
+The Android app declares `RECORD_AUDIO`. Android asks for it at the first tap on a microphone,
+never in the bulk permission request, and only the app's own pages get audio
+(`PermissionChecklistPolicy.audioCaptureDecision`, tested in `PermissionChecklistPolicyTest`).
+Play declarations: `docs/android/play-console-submission.md`.
 
 ## API
 
@@ -47,8 +93,8 @@ Code: `services/api/src/cp2/voice/` (server), `apps/web/src/messaging/voice-spee
 - `contentType` must be one of `audio/webm`, `audio/ogg`, `audio/opus`, `audio/mp4`,
   `audio/x-m4a`, `audio/aac`, `audio/mpeg`, `audio/wav`, `audio/x-wav` or `audio/wave`.
   Codec parameters are allowed.
-- The limits are 4 MiB of audio and 2 minutes, where the container states its length
-  (Ogg, WAV, MP4).
+- The limits are 4 MiB of audio and 2 minutes where the recording's duration can be measured.
+  Voice-note processing requires a measurable duration; see the voice-note section above.
 - `language` is an optional ISO-639-1 code (`en`, `sw`). Without it, the model detects the
   language.
 
@@ -104,7 +150,8 @@ If any of these is invalid, the Node API stops at startup. The Edge API logs
   45 s client timeout passed), the Node API aborts the provider call. On Edge the request is
   replayed into an in-process Fastify app that cannot see the browser connection, so the call
   runs to its own 30 s timeout; it still answers nobody and is traced as usual.
-- Audio and text are never stored or logged. Each call writes one line, `voice.transcribed` or
+- Speech endpoint audio and text are not stored or logged by the endpoint. Voice-note transcripts
+  can be stored with the message as described above. Each call writes one line, `voice.transcribed` or
   `voice.spoken` (`voice.transcribe_failed` / `voice.speak_failed` with the error code), with the
   model, sizes and milliseconds, and no content or account id. On Node it goes to the request
   logger; on Edge, where Fastify logging is off, it is a JSON line on stdout (warn for
@@ -142,9 +189,3 @@ Model choice on 2026-11-24, with ElevenLabs speech feeding the transcription row
 Gate tests (no network) are in `services/api/src/cp2/voice/voice-routes.test.ts`,
 `tests/voice-speech.test.ts`, `tests/voice-input-hook.test.tsx`, `tests/read-aloud.test.tsx`, the voice case in
 `tests/supabase-edge-domain-routes.test.ts` and `tests/api-response-budget.test.ts`.
-
-Agent voice-note transcription is under development and is not yet complete. Voice-note turns
-label transcripts as error-prone sender evidence and do not execute tools. Supported inline
-notes and verified managed attachments are processed without fetching external URLs. The
-recording remains attached if transcription fails. Duration validation for WebM and MP3 is
-still incomplete; do not rely on it until P2.1 is complete.

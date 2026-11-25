@@ -202,6 +202,8 @@ export const probationAllowedWrites: ReadonlySet<string> = new Set([
   "POST /public/storefronts/:agentId/messages",
   "POST /public/storefronts/:agentId/orders",
   "POST /public/storefronts/:agentId/sessions",
+  "POST /public/storefronts/:agentId/voice/speak",
+  "POST /public/storefronts/:agentId/voice/transcribe",
   "POST /roles/check",
   "POST /session/refresh",
   "POST /status-broadcasts/:statusBroadcastId/reply",

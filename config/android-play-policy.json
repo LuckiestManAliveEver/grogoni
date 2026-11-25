@@ -32,7 +32,8 @@
     "android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING",
     "android.permission.WAKE_LOCK",
     "android.permission.RECEIVE_BOOT_COMPLETED",
-    "market.grogoni.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+    "market.grogoni.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION",
+    "android.permission.RECORD_AUDIO"
   ],
   "permissionJustifications": {
     "android.permission.FOREGROUND_SERVICE": "Runs the owner-enabled on-phone WhatsApp worker as a visible foreground service (also merged from WorkManager).",

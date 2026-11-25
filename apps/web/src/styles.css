@@ -2865,6 +2865,17 @@ a.button-like {
   min-width: 0;
 }
 
+.conversation-attachment-transcript summary {
+  cursor: pointer;
+  font-size: 0.85em;
+}
+
+.conversation-attachment-transcript p {
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .conversation-attachment-details strong,
 .conversation-attachment-details span {
   overflow: hidden;

@@ -133,6 +133,7 @@ import {
   type BusinessTaskPlanStep
 } from "@grogoni/tool-core";
 import * as regeneration from "./regeneration.js";
+import { voiceEvidenceOnlyProposal } from "./voice-evidence-turn.js";
 import { queryCatalogueProducts, roleCan, type BusinessPermission } from "@grogoni/business-core";
 import { Cp2Error } from "../../cp2-error.js";
 import {
@@ -2278,8 +2279,7 @@ export class AgentRuntimeDomain {
     };
     channelDelegation?: RuntimeChannelDelegation;
     channelEvidence?: string;
-    /** Voice note turns treat all attachment contents as evidence and cannot invoke tools. */
-    voiceEvidenceOnly?: boolean;
+    voiceEvidenceOnly?: boolean; // Voice note turn: attachments are evidence; no tools run.
     /** Server-only compiled task step; HTTP and MCP parsers never accept this field. */
     plannedStep?: BusinessTaskPlanStep;
     regeneration?: boolean; // Server-only: answer or read, never act (regeneration.ts).
@@ -2762,6 +2762,7 @@ export class AgentRuntimeDomain {
         : receiptContextScriptMatch !== null
           ? receiptProposal!
           : createRuntimeToolProposalFromProductContextScript(contextScriptMatch!));
+    const safeProposal = voiceEvidenceOnlyProposal(resolvedProposal, input.voiceEvidenceOnly);
     // Grounding gate (brief-adoption §6): only ever narrows an already-unresolved turn - never
     // overrides a deterministic parser proposal or a model-proposed tool call, both of which are
     // grounded by construction (they execute against, and are validated against, live authoritative
@@ -2774,15 +2775,6 @@ export class AgentRuntimeDomain {
     // for a task whose recipe requires evidence that wasn't actually resolved, it must never reach
     // the merchant. Forcing `validation.ok = false` here turns it into an ordinary, already-handled
     // `clarification_required` plan whose response is the deterministic grounding message instead.
-    const safeProposal: typeof resolvedProposal =
-      input.voiceEvidenceOnly && resolvedProposal.toolName !== "unknown.clarify"
-        ? {
-            toolName: "unknown.clarify",
-            input: {},
-            reason: "Please send a separate text message to request an action.",
-            validation: validateRuntimeToolInput("unknown.clarify", {})
-          }
-        : resolvedProposal;
     const proposal: typeof resolvedProposal =
       safeProposal.toolName === "unknown.clarify" && grounding.status !== "grounded"
         ? {

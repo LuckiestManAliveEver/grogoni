@@ -9331,6 +9331,10 @@ export class Cp2Store {
   ): ReturnType<SalesDomain["listPublicCustomerCareRequests"]> {
     return this.salesDomain.listPublicCustomerCareRequests(...args);
   }
+  findVoiceGuestCapability(token: string, now?: Date): string | null {
+    return this.messagingDomain.findVoiceGuestCapability(token, now);
+  }
+
   listPublicStorefrontMessages(
     ...args: Parameters<MessagingDomain["listPublicStorefrontMessages"]>
   ): ReturnType<MessagingDomain["listPublicStorefrontMessages"]> {

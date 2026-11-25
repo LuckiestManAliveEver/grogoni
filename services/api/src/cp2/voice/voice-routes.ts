@@ -43,6 +43,17 @@ export function createVoiceRateLimiter(input: {
 
 export const voiceTranscribePath = "/v1/voice/transcribe";
 export const voiceSpeakPath = "/v1/voice/speak";
+export const guestVoiceTranscribePath = "/public/storefronts/:agentId/voice/transcribe";
+export const guestVoiceSpeakPath = "/public/storefronts/:agentId/voice/speak";
+/** Matches the two guest voice paths with any storefront id. */
+export const guestVoicePathPattern = /^\/public\/storefronts\/[^/]+\/voice\/(?:transcribe|speak)$/u;
+
+type VoiceTrace = (
+  request: FastifyRequest,
+  level: "info" | "warn",
+  line: Record<string, unknown>
+) => void;
+type VoiceLimits = { transcribe: (key: string) => boolean; speak: (key: string) => boolean };
 
 /**
  * POST /v1/voice/transcribe -> { text, model } and POST /v1/voice/speak -> { audioBase64,
@@ -56,22 +67,87 @@ export function registerVoiceRoutes(
     store?: Pick<Cp2Store, "getSession"> | null;
     authenticate?: (request: FastifyRequest) => Promise<{ accountId: string } | null>;
     services: () => VoiceServices;
-    limits?: { transcribe: (accountId: string) => boolean; speak: (accountId: string) => boolean };
+    limits?: VoiceLimits;
     /**
      * Where the per-call trace line goes. Default: the request logger. The Edge app runs Fastify
      * with logging off, so it passes a JSON console line.
      */
-    trace?: (
-      request: FastifyRequest,
-      level: "info" | "warn",
-      line: Record<string, unknown>
-    ) => void;
+    trace?: VoiceTrace;
   }
 ): void {
-  const trace =
-    options.trace ??
-    ((request: FastifyRequest, level: "info" | "warn", line: Record<string, unknown>) =>
-      request.log[level](line, String(line.event)));
+  registerVoicePair(app, {
+    transcribePath: voiceTranscribePath,
+    speakPath: voiceSpeakPath,
+    audience: "account",
+    identify: async (request) =>
+      options.authenticate
+        ? ((await options.authenticate(request))?.accountId ?? null)
+        : (options.store?.getSession(readSessionCookie(request.headers.cookie))?.account.id ??
+          null),
+    unauthorized: () => new Cp2Error(401, "auth_required", "Authentication is required."),
+    limits: options.limits ?? {
+      transcribe: createVoiceRateLimiter({ max: 20, windowMs: 60_000 }),
+      // A long reply is several speech calls (900 characters each).
+      speak: createVoiceRateLimiter({ max: 40, windowMs: 60_000 })
+    },
+    services: options.services,
+    ...(options.trace ? { trace: options.trace } : {})
+  });
+}
+
+/**
+ * The same two calls for signed-out storefront guests (voicecom P2.4):
+ * POST /public/storefronts/:agentId/voice/transcribe and .../speak, each with the guest's
+ * `capabilityToken` in the body. A guest needs a valid, unexpired, unrevoked storefront capability,
+ * and each capability gets 5 transcriptions and 10 speech calls a minute (stricter than accounts).
+ * The transcript or audio goes back only to the caller and touches no shop data, so the storefront
+ * id in the path is not a trust boundary.
+ */
+export function registerGuestVoiceRoutes(
+  app: FastifyInstance,
+  options: {
+    /** The capability's id for a valid token, else null. Must hold no lock after it returns. */
+    verifyGuest: (capabilityToken: string) => Promise<string | null>;
+    services: () => VoiceServices;
+    limits?: VoiceLimits;
+    trace?: VoiceTrace;
+  }
+): void {
+  registerVoicePair(app, {
+    transcribePath: guestVoiceTranscribePath,
+    speakPath: guestVoiceSpeakPath,
+    audience: "guest",
+    identify: async (request) => {
+      const token = (request.body as { capabilityToken?: unknown } | null)?.capabilityToken;
+      if (typeof token !== "string" || token.length === 0 || token.length > 200) return null;
+      return options.verifyGuest(token);
+    },
+    unauthorized: () =>
+      new Cp2Error(401, "customer_capability_invalid", "Customer session is invalid."),
+    limits: options.limits ?? {
+      transcribe: createVoiceRateLimiter({ max: 5, windowMs: 60_000 }),
+      speak: createVoiceRateLimiter({ max: 10, windowMs: 60_000 })
+    },
+    services: options.services,
+    ...(options.trace ? { trace: options.trace } : {})
+  });
+}
+
+function registerVoicePair(
+  app: FastifyInstance,
+  options: {
+    transcribePath: string;
+    speakPath: string;
+    audience: "account" | "guest";
+    identify: (request: FastifyRequest) => Promise<string | null>;
+    unauthorized: () => Cp2Error;
+    limits: VoiceLimits;
+    services: () => VoiceServices;
+    trace?: VoiceTrace;
+  }
+): void {
+  const trace: VoiceTrace =
+    options.trace ?? ((request, level, line) => request.log[level](line, String(line.event)));
   /** Aborts the provider call when the client goes away before the answer is sent. */
   const disconnectSignal = (reply: FastifyReply): AbortSignal => {
     const controller = new AbortController();
@@ -80,20 +156,10 @@ export function registerVoiceRoutes(
     });
     return controller.signal;
   };
-  const limits = options.limits ?? {
-    transcribe: createVoiceRateLimiter({ max: 20, windowMs: 60_000 }),
-    // A long reply is several speech calls (900 characters each).
-    speak: createVoiceRateLimiter({ max: 40, windowMs: 60_000 })
-  };
-  const signedIn = async (
-    request: FastifyRequest,
-    allow: (accountId: string) => boolean
-  ): Promise<void> => {
-    const accountId = options.authenticate
-      ? (await options.authenticate(request))?.accountId
-      : options.store?.getSession(readSessionCookie(request.headers.cookie))?.account.id;
-    if (!accountId) throw new Cp2Error(401, "auth_required", "Authentication is required.");
-    if (!allow(accountId))
+  const admit = async (request: FastifyRequest, allow: (key: string) => boolean): Promise<void> => {
+    const key = await options.identify(request);
+    if (!key) throw options.unauthorized();
+    if (!allow(key))
       throw new Cp2Error(
         429,
         "voice_rate_limited",
@@ -118,9 +184,10 @@ export function registerVoiceRoutes(
       );
     return sendCp2Error(reply, error);
   };
+  const audience = options.audience;
 
   app.post(
-    voiceTranscribePath,
+    options.transcribePath,
     {
       // base64 of the largest recording plus the JSON envelope.
       bodyLimit: Math.ceil((voiceDictationMaxBytes * 4) / 3) + 16_384
@@ -128,13 +195,14 @@ export function registerVoiceRoutes(
     async (request, reply) => {
       const started = Date.now();
       try {
-        await signedIn(request, limits.transcribe);
+        await admit(request, options.limits.transcribe);
         const { transcriber, transcriptionModel } = options.services();
         if (!transcriber) throw unavailable();
         const audio = parseTranscriptionRequest(request.body);
         const result = await transcriber({ ...audio, signal: disconnectSignal(reply) });
         trace(request, "info", {
           event: "voice.transcribed",
+          audience,
           model: transcriptionModel,
           format: audio.format,
           audioBytes: audio.bytes.length,
@@ -146,6 +214,7 @@ export function registerVoiceRoutes(
       } catch (error) {
         trace(request, "warn", {
           event: "voice.transcribe_failed",
+          audience,
           code: errorCode(error),
           ms: Date.now() - started
         });
@@ -154,16 +223,17 @@ export function registerVoiceRoutes(
     }
   );
 
-  app.post(voiceSpeakPath, { bodyLimit: 16_384 }, async (request, reply) => {
+  app.post(options.speakPath, { bodyLimit: 16_384 }, async (request, reply) => {
     const started = Date.now();
     try {
-      await signedIn(request, limits.speak);
+      await admit(request, options.limits.speak);
       const { speaker, speechModel } = options.services();
       if (!speaker) throw unavailable();
       const { text } = parseSpeechRequest(request.body);
       const result = await speaker({ text, signal: disconnectSignal(reply) });
       trace(request, "info", {
         event: "voice.spoken",
+        audience,
         model: speechModel,
         textChars: text.length,
         audioBytes: result.audio.length,
@@ -179,6 +249,7 @@ export function registerVoiceRoutes(
     } catch (error) {
       trace(request, "warn", {
         event: "voice.speak_failed",
+        audience,
         code: errorCode(error),
         ms: Date.now() - started
       });

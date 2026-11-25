@@ -31,6 +31,9 @@ import { createStorefrontUrl } from "./grogoniid-and-storefront";
 import { findBestByName, hasUseVerb } from "./agent-command-engine";
 import { getErrorMessage } from "./chat-message-plumbing";
 import { useVoiceInput } from "./hooks/useVoiceInput";
+import { useStorefrontVoice } from "./hooks/useStorefrontVoice";
+import { useReadAloud } from "./hooks/useReadAloud";
+import { ReadAloudButton } from "./ReadAloudButton";
 
 import { useInstallPrompt } from "./misc-browser-utils";
 
@@ -47,13 +50,14 @@ export function PublicStorefrontChat(props: { agentId: string; productId?: strin
   const [cart, setCart] = useState<StorefrontCartItem[]>([]);
   const [crmNotes, setCrmNotes] = useState<StorefrontCrmNote[]>([]);
   const [draft, setDraft] = useState("");
+  const voice = useStorefrontVoice(props.agentId, capabilityToken);
+  const readAloud = useReadAloud(voice.environment);
   const voiceInput = useVoiceInput(
     (text) => {
       if (text.trim())
         setDraft((current) => [current.trim(), text.trim()].filter(Boolean).join(" "));
-      // Guests have no session for the server's speech service (voicecom P2.4).
     },
-    { server: false }
+    { server: voice.server, post: voice.post }
   );
   const [receiptProductId, setReceiptProductId] = useState("");
   const [checkoutOpen, setCheckoutOpen] = useState(false);
@@ -838,6 +842,13 @@ export function PublicStorefrontChat(props: { agentId: string; productId?: strin
                     message.body
                   )}
                 </p>
+                {message.author === "agent" ? (
+                  <ReadAloudButton
+                    readAloud={readAloud}
+                    messageId={message.id}
+                    text={message.body}
+                  />
+                ) : null}
               </div>
             ))}
 

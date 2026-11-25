@@ -76,7 +76,7 @@ describe("findPlayBundleProblems", () => {
       goodManifest.replace("<application", '<application android:debuggable="true"'),
       "debuggable"
     ],
-    ["unused permission", goodManifest.replace("READ_SMS", "RECORD_AUDIO"), "RECORD_AUDIO"],
+    ["unused permission", goodManifest.replace("READ_SMS", "READ_CALL_LOG"), "READ_CALL_LOG"],
     ["reused version", goodManifest.replace('versionCode="4"', 'versionCode="3"'), "must exceed"],
     [
       "icon only on an activity",

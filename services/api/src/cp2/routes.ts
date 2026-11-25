@@ -3,7 +3,7 @@ import { registerCommerceSourceRoutes } from "./domains/commerce-sources/routes.
 import { registerAgentSkillsRoutes } from "./domains/agent-skills/routes.js";
 import { registerOfflineRuntimeRoutes } from "./offline-runtime-routes.js";
 import { registerChatImageRoutes } from "./chat-image-routes.js";
-import { registerVoiceRoutes } from "./voice/voice-routes.js";
+import { registerGuestVoiceRoutes, registerVoiceRoutes } from "./voice/voice-routes.js";
 import { createVoiceServices, type VoiceServices } from "./voice/voice-speech.js";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { BusinessPermission } from "@grogoni/business-core";
@@ -353,6 +353,10 @@ export function registerCp2Routes(app: FastifyInstance, options: Cp2RouteOptions
   // Read once at registration: invalid voice configuration stops the Node API at startup.
   const voiceServices = options.voiceServices ?? createVoiceServices(process.env);
   registerVoiceRoutes(app, { store, services: () => voiceServices });
+  registerGuestVoiceRoutes(app, {
+    verifyGuest: async (token) => store.findVoiceGuestCapability(token),
+    services: () => voiceServices
+  });
   const telegramBotUsername = options.telegramBotUsername ?? "";
   const binaryUploadPipeline = options.binaryUploadPipeline;
   const runtimeRegistryAdapters: Partial<

@@ -7,6 +7,9 @@ import android.os.Build
 import androidx.core.content.ContextCompat
 
 object AndroidPermissionPolicy {
+    /** Requested only when a feature first needs it, never by the bulk device-permission request. */
+    val askedOnFirstUse: Set<String> = setOf(Manifest.permission.RECORD_AUDIO)
+
     fun permissionSetForSdk(sdk: Int = Build.VERSION.SDK_INT): Set<String> {
         val permissions = linkedSetOf<String>()
 
@@ -26,6 +29,9 @@ object AndroidPermissionPolicy {
         permissions += Manifest.permission.RECEIVE_WAP_PUSH
         permissions += Manifest.permission.RECEIVE_SMS
         permissions += Manifest.permission.READ_SMS
+        // Voice typing, voice notes and talking with agents in the WebView (getUserMedia audio).
+        // Asked only at first microphone use (onPermissionRequest), never by the bulk request.
+        permissions += Manifest.permission.RECORD_AUDIO
         // No WRITE_SMS: it is not a public SDK permission and is never granted to apps. The default
         // SMS role itself grants write access to the SMS provider.
 
@@ -42,7 +48,9 @@ object AndroidPermissionPolicy {
             Manifest.permission.RECEIVE_WAP_PUSH,
             Manifest.permission.READ_SMS,
         )
-        return permissionSetForSdk().filter { smsRoleGranted || it !in restricted }.toSet()
+        return permissionSetForSdk()
+            .filter { (smsRoleGranted || it !in restricted) && it !in askedOnFirstUse }
+            .toSet()
     }
 
     fun grantedPermissions(context: Context): Set<String> = permissionSetForSdk().filter {

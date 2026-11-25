@@ -109,6 +109,8 @@ export interface ChatAttachment {
   dataUrl?: string;
   previewUrl?: string;
   downloadUrl?: string;
+  /** Server speech-to-text of a voice note in an agent conversation. */
+  transcript?: string;
 }
 
 export const quickActions: QuickAction[] = [

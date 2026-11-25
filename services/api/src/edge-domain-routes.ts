@@ -8,10 +8,13 @@ import { readWebPushConfiguration } from "./cp2/push.js";
 import { registerCommerceRoutes } from "./cp2/domains/commerce/routes.js";
 import { registerChatImageRoutes } from "./cp2/chat-image-routes.js";
 import {
+  guestVoicePathPattern,
+  registerGuestVoiceRoutes,
   registerVoiceRoutes,
   voiceSpeakPath,
   voiceTranscribePath
 } from "./cp2/voice/voice-routes.js";
+import { hashCustomerCapability } from "./cp2/domains/messaging/shared.js";
 import { createVoiceServices, type VoiceServices } from "./cp2/voice/voice-speech.js";
 import Fastify, {
   type FastifyError,
@@ -525,9 +528,28 @@ export async function createEdgeDomainRoutes(
       trace: (_request, level, line) =>
         (level === "warn" ? console.warn : console.log)(JSON.stringify(line))
     });
+    // Guests: one indexed read of the capability (unique index on tokenHash), autocommit on the
+    // shared pool, so the speech call holds no snapshot, lock or connection.
+    registerGuestVoiceRoutes(imageReader, {
+      verifyGuest: async (token) => {
+        const result = await edgeDatabase.daemon!.queue.query<{ record: Record<string, unknown> }>(
+          "select record from customer_runtime_capabilities where record ->> 'tokenHash' = $1 limit 1",
+          [hashCustomerCapability(token)]
+        );
+        const record = result.rows[0]?.record;
+        if (!record || record.revokedAt !== null) return null;
+        const expiresAt = Date.parse(String(record.expiresAt));
+        return Number.isFinite(expiresAt) && expiresAt > Date.now() ? String(record.id) : null;
+      },
+      services: () => voiceServices,
+      trace: (_request, level, line) =>
+        (level === "warn" ? console.warn : console.log)(JSON.stringify(line))
+    });
     await imageReader.ready();
   }
   const speechRoutes = new Set(["/v1/chat/images/read", voiceTranscribePath, voiceSpeakPath]);
+  const isSpeechRoute = (path: string) =>
+    speechRoutes.has(path) || guestVoicePathPattern.test(path);
   /** One attempt's store dependencies: model calls deferred, sends stopped once one is. */
   const realResolver = storeDependencies.modelRuntimeAdapterResolver ?? (() => undefined);
   const newLedger = (streamTurnId: string | null) =>
@@ -1050,7 +1072,7 @@ export async function createEdgeDomainRoutes(
         : Buffer.from(await request.arrayBuffer());
     if (payload && payload.length > 15_000_000)
       return Response.json({ code: "request_too_large" }, { status: 413 });
-    if (speechRoutes.has(path) && imageReader) {
+    if (isSpeechRoute(path) && imageReader) {
       const result = await imageReader.inject({
         method: "POST",
         url: path,

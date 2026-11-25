@@ -511,6 +511,18 @@ export interface ConversationAttachment {
   caption?: string;
   /** Historical client attachments use a data URL or HTTPS URL. Managed attachments omit it. */
   url?: string;
+  /**
+   * Server-written speech-to-text of an audio attachment in an agent conversation. Never accepted
+   * from a client; absent for person-to-person (encrypted) chats, which the server cannot read.
+   */
+  transcript?: ConversationAttachmentTranscript;
+}
+
+export interface ConversationAttachmentTranscript {
+  text: string;
+  /** The OpenRouter model that produced it. */
+  model: string;
+  transcribedAt: string;
 }
 
 export interface WorkspaceDeliverResult {

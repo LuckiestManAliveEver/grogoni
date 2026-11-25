@@ -145,6 +145,23 @@ export type VoicePost = <T>(
 export const postVoice: VoicePost = (path, body, options) =>
   apiFetch(path, { method: "POST", body, urgent: true, ...options });
 
+/**
+ * The same speech calls for a signed-out storefront guest: /v1/voice/* becomes
+ * /public/storefronts/:agentId/voice/*, with the guest's capability token in the body.
+ */
+export function guestVoicePost(agentId: string, capabilityToken: () => string): VoicePost {
+  return (path, body, options) =>
+    apiFetch(
+      path.replace(/^\/v1\/voice\//u, `/public/storefronts/${encodeURIComponent(agentId)}/voice/`),
+      {
+        method: "POST",
+        body: { ...body, capabilityToken: capabilityToken() },
+        urgent: true,
+        ...options
+      }
+    );
+}
+
 /** Whether the server's speech service answered voice_unavailable during this page's life. */
 const serverVoice = { transcribe: true, speak: true };
 

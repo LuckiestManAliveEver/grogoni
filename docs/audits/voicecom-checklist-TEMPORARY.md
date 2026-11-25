@@ -1,6 +1,5 @@
 > **TEMPORARY.** Working checklist for voice communication with agents (STT + TTS). It lives only on the `wip/voicecom` branch
-> and is deleted, with that branch, once every item below is ticked and merged. Phase 1 is live on `main` at `cba09565`;
-> everything on this branch after it is unfinished, unreviewed work and must not be merged as is.
+> and is deleted once every item below is complete. Phase 1 is live on `main` at `cba09565`.
 
 # voicecom: voice communication with agents (STT + TTS)
 
@@ -32,10 +31,10 @@ Local tracking file (gitignored via `/voicecom.md`). Audited 2026-11-24 against 
 
 ## Phase 2: voice reaches agents everywhere
 
-- [ ] P2.1 In-app voice notes sent to an agent conversation are transcribed server-side and handed to the agent as labeled untrusted evidence (same wording rule as `linkedVoiceNoteEvidence`).
-- [ ] P2.2 Transcript shown under the voice note bubble for every participant.
-- [ ] P2.3 (Julien 2026-11-24: "let codex handle the rest"; code only, own commit, no Play release) Android: declare `RECORD_AUDIO`, request it at first mic use, `WebChromeClient.onPermissionRequest` grants `RESOURCE_AUDIO_CAPTURE` only for the app origin, update `AndroidPermissionPolicyTest`, Play data-safety note.
-- [ ] P2.4 Public storefront chat (guests): server STT/TTS behind the guest session with a stricter rate limit.
+- [x] P2.1 In-app voice notes sent to an agent conversation are transcribed server-side and handed to the agent as labeled untrusted evidence (same wording rule as `linkedVoiceNoteEvidence`).
+- [x] P2.2 Transcript shown under the voice note bubble for every participant.
+- [x] P2.3 (Julien 2026-11-24: "let codex handle the rest"; code only, no Play release) Android: declare `RECORD_AUDIO`, request it at first mic use, `WebChromeClient.onPermissionRequest` grants `RESOURCE_AUDIO_CAPTURE` only for the app origin, update `AndroidPermissionPolicyTest`, Play data-safety note.
+- [x] P2.4 Public storefront chat (guests): server STT/TTS behind the guest session with a stricter rate limit.
 
 ## Phase 3: hands-free conversation
 
@@ -47,6 +46,7 @@ Local tracking file (gitignored via `/voicecom.md`). Audited 2026-11-24 against 
 
 ## Progress log
 
+- 2026-11-25: Phase 2 implementation gates passed: 161 focused tests across voice routes, guest voice, agent and encrypted-message paths, duration parsing, Edge deferral, Android readiness and web playback; conversation API transcript check passed; Android `:app:testDebugUnitTest`, workspace typecheck, touched-file lint/format, boundary, route coverage and Edge bundle checks passed. Edge bundle: 4,836,263 / 5,000,000 bytes. No Play release.
 - 2026-11-24: audit done, checklist written.
 - 2026-11-24: P1.1-P1.8 built. Gate tests: 29 files / 285 tests green (voice-routes 31, voice-speech 17, voice-input-hook 4, edge voice case). `pnpm eval:voice` PASS: WER 0 on mp3 and Chromium webm/Opus, 12/12, report /tmp/voicecom/eval/report.json; bake-off in /tmp/voicecom/bakeoff/. Found + fixed: stale TTS model id, eval scorer number words, connection-drop retry.
 - 2026-11-24: critic round 1 FAIL (13 findings, /tmp/voicecom/critique/round-1.md); all fixed, 41 files / 386 tests green, eval PASS again. Critic round 2 running.

@@ -171,4 +171,22 @@ class PermissionChecklistPolicyTest {
             assertEquals(ChecklistStep.RequestPermissions(listOf(Manifest.permission.CAMERA)),
                 PermissionChecklistPolicy.nextStep(camera, status, roleHeld = false, roleJustRefused = true, granted = emptySet()))
     }
+
+    @Test
+    fun `microphone is granted only to the app origin, only for audio, asked at first use`() {
+        val audio = PermissionChecklistPolicy.AUDIO_CAPTURE_RESOURCE
+        val held = setOf(Manifest.permission.RECORD_AUDIO)
+        assertEquals(AudioCaptureDecision.GRANT, PermissionChecklistPolicy.audioCaptureDecision(true, listOf(audio), held))
+        assertEquals(AudioCaptureDecision.REQUEST, PermissionChecklistPolicy.audioCaptureDecision(true, listOf(audio), emptySet()))
+        assertEquals(AudioCaptureDecision.DENY, PermissionChecklistPolicy.audioCaptureDecision(false, listOf(audio), held))
+        assertEquals(AudioCaptureDecision.DENY, PermissionChecklistPolicy.audioCaptureDecision(true, emptyList(), held))
+        assertEquals(
+            AudioCaptureDecision.DENY,
+            PermissionChecklistPolicy.audioCaptureDecision(true, listOf(audio, "android.webkit.resource.VIDEO_CAPTURE"), held)
+        )
+        assertEquals(
+            AudioCaptureDecision.DENY,
+            PermissionChecklistPolicy.audioCaptureDecision(true, listOf("android.webkit.resource.PROTECTED_MEDIA_ID"), held)
+        )
+    }
 }

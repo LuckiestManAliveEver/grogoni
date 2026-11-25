@@ -12,7 +12,8 @@ import {
   dictationMaxMs,
   serverTranscriptionAvailable,
   postVoice,
-  transcribeRecording
+  transcribeRecording,
+  type VoicePost
 } from "../messaging/voice-speech";
 
 /**
@@ -24,8 +25,10 @@ import {
 export function useVoiceInput(
   onTranscript: (text: string) => void,
   options: {
-    /** false: browser speech only (signed-out guests, who cannot call the speech service). */
+    /** false: browser speech only (for example a guest before the storefront session exists). */
     server?: boolean;
+    /** The speech call to use; default the signed-in API (guests pass guestVoicePost). */
+    post?: VoicePost;
   } = {}
 ) {
   const [listening, setListening] = useState(false);
@@ -42,6 +45,8 @@ export function useVoiceInput(
   const abort = useRef<AbortController | null>(null);
   // The last recording that could not be transcribed, kept so the person can try again.
   const failed = useRef<Blob | null>(null);
+  const post = useRef<VoicePost>(options.post ?? postVoice);
+  post.current = options.post ?? postVoice;
   const deliver = useRef(onTranscript);
   deliver.current = onTranscript;
 
@@ -70,7 +75,7 @@ export function useVoiceInput(
     const controller = new AbortController();
     abort.current = controller;
     try {
-      const text = await transcribeRecording(postVoice, file, {
+      const text = await transcribeRecording(post.current, file, {
         signal: controller.signal,
         online: globalThis.navigator?.onLine !== false
       });

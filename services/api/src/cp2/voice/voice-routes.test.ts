@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 import type { Cp2Store } from "../store.js";
 import {
   createVoiceRateLimiter,
+  guestVoicePathPattern,
+  registerGuestVoiceRoutes,
   registerVoiceRoutes,
   voiceSpeakPath,
   voiceTranscribePath
@@ -554,5 +556,93 @@ describe("word error rate (voice eval scorer)", () => {
     expect(wordErrorRate("sold three loaves", "we sold three loaves")).toBeCloseTo(1 / 3);
     expect(wordErrorRate("sold three", "")).toBe(1);
     expect(wordErrorRate("", "")).toBe(0);
+  });
+});
+
+describe("guest voice (storefront)", () => {
+  async function guestApp(valid = new Set(["good-token"])) {
+    const request = provider(defaultAnswer);
+    const verifyGuest = vi.fn(async (token: string) => (valid.has(token) ? `cap-${token}` : null));
+    const app = Fastify();
+    registerGuestVoiceRoutes(app, {
+      verifyGuest,
+      services: () => createVoiceServices({ OPENROUTER_API_KEY: key }, request)
+    });
+    await app.ready();
+    return { app, request, verifyGuest };
+  }
+  const transcribe = "/public/storefronts/mama-mboga/voice/transcribe";
+  const speak = "/public/storefronts/mama-mboga/voice/speak";
+
+  it("serves a guest with a valid storefront capability", async () => {
+    const { app, verifyGuest } = await guestApp();
+    try {
+      const heard = await app.inject({
+        method: "POST",
+        url: transcribe,
+        payload: { ...dictation(), capabilityToken: "good-token" }
+      });
+      expect(heard.statusCode).toBe(200);
+      expect(heard.json().text).toBe("two crates of soda for Mama Wanjiru");
+      const spoken = await app.inject({
+        method: "POST",
+        url: speak,
+        payload: { text: "Karibu.", capabilityToken: "good-token" }
+      });
+      expect(spoken.statusCode).toBe(200);
+      expect(verifyGuest).toHaveBeenCalledWith("good-token");
+    } finally {
+      await app.close();
+    }
+  });
+
+  it.each([
+    [{ capabilityToken: "stolen" }],
+    [{ capabilityToken: "" }],
+    [{ capabilityToken: "x".repeat(201) }],
+    [{}]
+  ])("refuses %j before any provider call", async (auth) => {
+    const { app, request } = await guestApp();
+    try {
+      for (const [url, payload] of [
+        [transcribe, { ...dictation(), ...auth }],
+        [speak, { text: "Hi.", ...auth }]
+      ] as const) {
+        const result = await app.inject({ method: "POST", url, payload });
+        expect(result.statusCode).toBe(401);
+        expect(result.json().code).toBe("customer_capability_invalid");
+      }
+      expect(request).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("limits each guest to 5 transcriptions and 10 speech calls a minute", async () => {
+    const { app } = await guestApp(new Set(["a", "b"]));
+    try {
+      const codes = async (url: string, payload: Record<string, unknown>, times: number) => {
+        const out: number[] = [];
+        for (let call = 0; call < times; call += 1)
+          out.push((await app.inject({ method: "POST", url, payload })).statusCode);
+        return out;
+      };
+      expect(await codes(transcribe, { ...dictation(), capabilityToken: "a" }, 6)).toEqual([
+        200, 200, 200, 200, 200, 429
+      ]);
+      expect((await codes(speak, { text: "Hi.", capabilityToken: "a" }, 11)).at(-1)).toBe(429);
+      // Another guest has their own budget.
+      expect(await codes(transcribe, { ...dictation(), capabilityToken: "b" }, 1)).toEqual([200]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("matches only the two guest voice paths", () => {
+    expect(guestVoicePathPattern.test(transcribe)).toBe(true);
+    expect(guestVoicePathPattern.test(speak)).toBe(true);
+    expect(guestVoicePathPattern.test("/public/storefronts/a/b/voice/speak")).toBe(false);
+    expect(guestVoicePathPattern.test("/public/storefronts/a/voice/speak/x")).toBe(false);
+    expect(guestVoicePathPattern.test("/public/storefronts/a/messages")).toBe(false);
   });
 });

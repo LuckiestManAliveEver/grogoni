@@ -23,11 +23,22 @@ class AndroidPermissionPolicyTest {
         assertFalse(permissions.contains("android.permission.WRITE_CALL_LOG"))
     }
 
+    /** Voice typing and voice notes use the microphone, asked only at first use, never in bulk. */
+    @Test
+    fun `microphone is declared but never part of the bulk permission request`() {
+        for (sdk in listOf(23, 30, 33, 36)) {
+            assertTrue("sdk $sdk", AndroidPermissionPolicy.permissionSetForSdk(sdk).contains(Manifest.permission.RECORD_AUDIO))
+        }
+        for (smsRole in listOf(false, true)) {
+            assertFalse(AndroidPermissionPolicy.requestablePermissions(smsRole).contains(Manifest.permission.RECORD_AUDIO))
+        }
+    }
+
     /** Declaring these without a core use is what Play review rejects. */
     @Test
     fun `unused sensitive permissions stay out on every API level`() {
         val unused = setOf(
-            "android.permission.RECORD_AUDIO", "android.permission.FOREGROUND_SERVICE", "android.permission.READ_MEDIA_IMAGES",
+            "android.permission.FOREGROUND_SERVICE", "android.permission.READ_MEDIA_IMAGES",
             "android.permission.READ_MEDIA_VIDEO", "android.permission.READ_MEDIA_AUDIO",
             "android.permission.READ_MEDIA_VISUAL_USER_SELECTED", "android.permission.READ_EXTERNAL_STORAGE",
             "android.permission.WRITE_EXTERNAL_STORAGE", "android.permission.WRITE_CONTACTS", "android.permission.CALL_PHONE",

@@ -141,6 +141,10 @@ export function mapConversationMessage(
               ? {}
               : { previewable: attachment.previewable }),
             ...(attachment.caption === undefined ? {} : { caption: attachment.caption }),
+            // Only the server writes transcripts: never trust one inside decrypted E2EE content.
+            ...(message.content.type === "text" && attachment.transcript?.text
+              ? { transcript: attachment.transcript.text }
+              : {}),
             ...(attachment.source === "managed"
               ? {
                   ...(attachment.previewable

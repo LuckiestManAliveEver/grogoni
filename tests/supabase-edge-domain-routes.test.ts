@@ -151,6 +151,68 @@ describe("Edge shared user and business routes", () => {
       vi.unstubAllEnvs();
     }
   });
+  it("serves guest voice from one capability lookup, with no snapshot transaction", async () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "test-key");
+    const { createHash } = await import("node:crypto");
+    const transaction = vi.fn(async () => {
+      throw new Error("Guest voice must not open a snapshot transaction");
+    });
+    const future = new Date(Date.now() + 86_400_000).toISOString();
+    const capabilities: Record<string, Record<string, unknown>> = {
+      [createHash("sha256").update("guest-token").digest("hex")]: {
+        id: "cap-1",
+        revokedAt: null,
+        expiresAt: future
+      },
+      [createHash("sha256").update("revoked-token").digest("hex")]: {
+        id: "cap-2",
+        revokedAt: "2026-11-01T00:00:00.000Z",
+        expiresAt: future
+      },
+      [createHash("sha256").update("expired-token").digest("hex")]: {
+        id: "cap-3",
+        revokedAt: null,
+        expiresAt: "2026-01-01T00:00:00.000Z"
+      }
+    };
+    const query = vi.fn(async (sql: string, values: unknown[]) => {
+      expect(sql).toContain("customer_runtime_capabilities");
+      const record = capabilities[String(values[0])];
+      return { rows: record ? [{ record }] : [] };
+    });
+    const fetch = vi.fn(
+      async () =>
+        new Response(new Uint8Array([0x49, 0x44, 0x33, 4]), {
+          headers: { "content-type": "audio/mpeg" }
+        })
+    );
+    vi.stubGlobal("fetch", fetch);
+    try {
+      const { routes } = await createEdgeDomainRoutes({
+        transaction,
+        daemon: { queue: { query } as never, hint: null, findUser: vi.fn(async () => null) }
+      });
+      const path = "/public/storefronts/mama-mboga/voice/speak";
+      const say = (capabilityToken: string) =>
+        routes(
+          new Request(`https://grogoni.com${path}`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ capabilityToken, text: "Karibu." })
+          }),
+          path
+        );
+      expect((await say("guest-token"))!.status).toBe(200);
+      for (const token of ["revoked-token", "expired-token", "unknown-token"])
+        expect((await say(token))!.status).toBe(401);
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(transaction).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("serves voice transcription and speech without a snapshot transaction, signed-in only", async () => {
     vi.stubEnv("OPENROUTER_API_KEY", "test-key");
     const transaction = vi.fn(async () => {
